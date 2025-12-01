@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FoxESS History & Reports</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --bg-card: #161b22;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --success: #7ee787;
+            --warning: #d29922;
+            --danger: #f85149;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, var(--bg) 0%, #161b22 50%, var(--bg) 100%);
+            min-height: 100vh;
+            color: var(--text);
+            padding-top: 60px;
+        }
+        
+        /* Navigation */
+        nav {
+            background: rgba(22,27,34,0.95);
+            border-bottom: 1px solid var(--border);
+            padding: 10px 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: space-between;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10000;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        nav a {
+            background: #21262d;
+            border: 1px solid var(--border);
+            color: var(--accent);
+            padding: 8px 14px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        nav a:hover { background: #30363d; }
+        nav a.active {
+            background: #1f6feb;
+            color: #fff;
+            border-color: #1f6feb;
+            box-shadow: 0 0 0 3px rgba(31,111,235,0.1);
+        }
+        
+        /* Main content */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .page-header {
+            margin-bottom: 24px;
+        }
+        .page-header h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .page-header p {
+            color: var(--text-muted);
+            margin-top: 8px;
+            font-size: 14px;
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(0,0,0,0.2);
+        }
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-body {
+            padding: 20px;
+        }
+        
+        /* Controls row */
+        .controls-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .control-group label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Inputs */
+        .input, select {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .input:focus, select:focus {
+            border-color: var(--accent);
+        }
+        select {
+            cursor: pointer;
+        }
+        
+        /* Buttons */
+        .btn {
+            background: #21262d;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn:hover { background: #30363d; }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-primary {
+            background: #238636;
+            border-color: #238636;
+            color: #fff;
+        }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-accent {
+            background: #1f6feb;
+            border-color: #1f6feb;
+            color: #fff;
+        }
+        .btn-accent:hover { background: #388bfd; }
+        
+        /* Status messages */
+        .status {
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .status.loading {
+            display: block;
+            background: rgba(88, 166, 255, 0.1);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+            color: var(--accent);
+        }
+        .status.error {
+            display: block;
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+            color: var(--danger);
+        }
+        .status.success {
+            display: block;
+            background: rgba(126, 231, 135, 0.1);
+            border: 1px solid rgba(126, 231, 135, 0.3);
+            color: var(--success);
+        }
+        
+        /* Chart container */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+            margin-top: 16px;
+        }
+        .chart-container canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+        
+        /* Data table */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+            font-size: 13px;
+        }
+        .data-table th, .data-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        .data-table th {
+            background: rgba(0,0,0,0.2);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .data-table tr:hover {
+            background: rgba(88, 166, 255, 0.05);
+        }
+        .data-table .value {
+            font-weight: 600;
+            color: var(--accent);
+        }
+        .data-table .positive { color: var(--success); }
+        .data-table .negative { color: var(--danger); }
+        
+        /* Stats grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .stat-box {
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px;
+            text-align: center;
+        }
+        .stat-box .label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .stat-box .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .stat-box .unit {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-left: 2px;
+        }
+        .stat-box.generation .value { color: #ffd43b; }
+        .stat-box.feedin .value { color: var(--success); }
+        .stat-box.consumption .value { color: var(--accent); }
+        .stat-box.charge .value { color: #a371f7; }
+        .stat-box.discharge .value { color: #f78166; }
+        
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+        .empty-state p {
+            font-size: 14px;
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 4px;
+        }
+        .tab {
+            padding: 8px 16px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 6px 6px 0 0;
+            transition: all 0.2s;
+        }
+        .tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+        .tab.active {
+            color: var(--accent);
+            background: rgba(88, 166, 255, 0.1);
+            border-bottom: 2px solid var(--accent);
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .controls-row { flex-direction: column; align-items: stretch; }
+            .chart-container { height: 250px; }
+            nav { flex-wrap: wrap; gap: 8px; }
+        }
+        
+        /* Info banner */
+        .info-banner {
+            background: rgba(88, 166, 255, 0.08);
+            border: 1px solid rgba(88, 166, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            font-size: 13px;
+        }
+        .info-banner .icon { font-size: 18px; }
+        .info-banner .text { color: var(--text-muted); }
+        .info-banner strong { color: var(--text); }
+    </style>
+</head>
+<body>
+    <nav>
+        <div style="display:flex;gap:10px;align-items:center">
+            <a href="/">🏠 Overview</a>
+            <a href="/test.html">🧪 Automation Lab</a>
+            <a href="/control.html">🧭 Controls</a>
+            <a href="/history.html" class="active">📊 History</a>
+            <a href="/settings.html">⚙️ Settings</a>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted)">
+            <span id="deviceSnDisplay">Device: —</span>
+        </div>
+    </nav>
+
+    <!-- API call metrics footer -->
+    <div id="apiMetricsFooter" style="position:fixed;top:60px;right:12px;background:rgba(13,17,23,0.95);border:1px solid rgba(48,54,61,0.6);padding:7px 12px;border-radius:8px;display:flex;gap:12px;align-items:center;font-size:12px;color:#8b949e;z-index:1000;backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(0,0,0,0.4)">
+        <div style="font-weight:600;color:#58a6ff;font-size:13px">📊</div>
+        <div id="metricsDate" style="min-width:90px;font-size:12px">—</div>
+        <div id="metricsCounts" style="display:flex;gap:12px;align-items:center">
+            <div style="color:#7ee787;font-size:12px">Fox: <span id="countFox" style="font-weight:600">0</span></div>
+            <div style="color:#79c0ff;font-size:12px">Amb: <span id="countAmber" style="font-weight:600">0</span></div>
+            <div style="color:#ffd43b;font-size:12px">Wea: <span id="countWeather" style="font-weight:600">0</span></div>
+        </div>
+        <button class="btn" onclick="loadApiMetrics(1)" title="Refresh metrics" style="padding:4px 7px;font-size:11px">🔄</button>
+    </div>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>📊 History & Reports</h1>
+            <p>View historical inverter data, generation reports, and energy statistics. Data is fetched on-demand to respect API limits.</p>
+        </div>
+
+        <div class="info-banner">
+            <span class="icon">ℹ️</span>
+            <div class="text">
+                <strong>Manual fetch only:</strong> Click the buttons below to load data. No automatic API calls are made on this page to conserve your FoxESS API quota.
+            </div>
+        </div>
+        
+        <div class="info-banner" style="background: linear-gradient(135deg, rgba(255,170,0,0.1), rgba(255,170,0,0.05)); border-color: rgba(255,170,0,0.3);">
+            <span class="icon">⚠️</span>
+            <div class="text">
+                <strong>API Usage Note:</strong> Ranges &gt;24h require multiple API calls (48h=2, 7 days=7). Results are cached for 30 days to minimize repeat calls.
+            </div>
+        </div>
+
+        <!-- History Section (24h time-series) -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">⚡ Real-Time History (Last 24 Hours)</div>
+                <div style="font-size:11px;color:var(--text-muted)" id="historyTimestamp">Not loaded</div>
+            </div>
+            <div class="card-body">
+                <div class="controls-row">
+                    <div class="control-group">
+                        <label>Time Range</label>
+                        <select id="historyRange">
+                            <option value="6">Last 6 hours</option>
+                            <option value="12">Last 12 hours</option>
+                            <option value="24" selected>Last 24 hours</option>
+                            <option value="48">Last 48 hours</option>
+                            <option value="168">Last 7 days ⚠️</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="fetchHistory()" id="btnFetchHistory">
+                        📈 Fetch History Data
+                    </button>
+                    <!-- Test Data button removed (mock endpoint disabled) -->
+                </div>
+                
+                <div id="historyStatus" class="status"></div>
+                
+                <div id="historyContent">
+                    <div class="empty-state">
+                        <div class="icon">📊</div>
+                        <p>Click "Fetch History Data" to load inverter time-series data</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reports Section (Aggregated) -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">📅 Energy Reports</div>
+                <div style="font-size:11px;color:var(--text-muted)" id="reportTimestamp">Not loaded</div>
+            </div>
+            <div class="card-body">
+                <div class="controls-row">
+                    <div class="control-group">
+                        <label>Report Type</label>
+                        <select id="reportDimension">
+                            <option value="day">Daily (this month)</option>
+                            <option value="month">Monthly (this year)</option>
+                            <option value="year">Yearly</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>Year</label>
+                        <select id="reportYear"></select>
+                    </div>
+                    <div class="control-group" id="reportMonthGroup">
+                        <label>Month</label>
+                        <select id="reportMonth">
+                            <option value="1">January</option>
+                            <option value="2">February</option>
+                            <option value="3">March</option>
+                            <option value="4">April</option>
+                            <option value="5">May</option>
+                            <option value="6">June</option>
+                            <option value="7">July</option>
+                            <option value="8">August</option>
+                            <option value="9">September</option>
+                            <option value="10">October</option>
+                            <option value="11">November</option>
+                            <option value="12">December</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-accent" onclick="fetchReport()" id="btnFetchReport">
+                        📊 Fetch Report
+                    </button>
+                </div>
+                
+                <div id="reportStatus" class="status"></div>
+                
+                <div id="reportContent">
+                    <div class="empty-state">
+                        <div class="icon">📅</div>
+                        <p>Click "Fetch Report" to load aggregated energy data</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Generation Summary -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">🌞 Generation Summary</div>
+                <div style="font-size:11px;color:var(--text-muted)" id="generationTimestamp">Not loaded</div>
+            </div>
+            <div class="card-body">
+                <div class="controls-row">
+                    <button class="btn btn-primary" onclick="fetchGeneration()" id="btnFetchGeneration">
+                        🔋 Fetch Generation Data
+                    </button>
+                </div>
+                
+                <div id="generationStatus" class="status"></div>
+                
+                <div id="generationContent">
+                    <div class="empty-state">
+                        <div class="icon">🌞</div>
+                        <p>Click "Fetch Generation Data" to load lifetime generation statistics</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Raw Data Viewer -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">🔍 Raw Data Viewer</div>
+                <button class="btn" onclick="toggleRawData()" style="font-size:11px;padding:6px 12px">
+                    Toggle Raw JSON
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="rawDataContent" style="display:none">
+                    <pre id="rawDataPre" style="background:rgba(0,0,0,0.3);padding:16px;border-radius:8px;overflow:auto;max-height:400px;font-size:12px;color:var(--text-muted)">No data loaded yet</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart.js CDN (loaded on demand) -->
+    <script>
+        // Global state
+        let chartJsLoaded = false;
+        let historyChart = null;
+        let reportChart = null;
+        let lastRawData = null;
+        let deviceSn = null;
+
+        // Initialize page (NO automatic API calls)
+        document.addEventListener('DOMContentLoaded', () => {
+            // Populate year dropdown
+            const yearSelect = document.getElementById('reportYear');
+            const currentYear = new Date().getFullYear();
+            for (let y = currentYear; y >= currentYear - 5; y--) {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.textContent = y;
+                yearSelect.appendChild(opt);
+            }
+            
+            // Set current month
+            document.getElementById('reportMonth').value = new Date().getMonth() + 1;
+            
+            // Handle dimension change
+            document.getElementById('reportDimension').addEventListener('change', (e) => {
+                const monthGroup = document.getElementById('reportMonthGroup');
+                monthGroup.style.display = e.target.value === 'day' ? 'flex' : 'none';
+            });
+            
+            // Try to get device SN from config (no API call - just check localStorage or URL)
+            try {
+                const savedSn = localStorage.getItem('deviceSn');
+                if (savedSn) {
+                    deviceSn = savedSn;
+                    document.getElementById('deviceSnDisplay').textContent = `Device: ${deviceSn}`;
+                }
+            } catch (e) {}
+            
+            // Load device SN from backend config (single lightweight call)
+            loadDeviceSn();
+        });
+
+        async function loadDeviceSn() {
+            try {
+                const resp = await fetch('/api/config');
+                const data = await resp.json();
+                if (data.errno === 0 && data.result?.deviceSn) {
+                    deviceSn = data.result.deviceSn;
+                    document.getElementById('deviceSnDisplay').textContent = `Device: ${deviceSn}`;
+                    try { localStorage.setItem('deviceSn', deviceSn); } catch (e) {}
+                }
+            } catch (e) {
+                console.warn('Could not load device SN:', e);
+            }
+        }
+
+        // Load Chart.js on demand
+        async function ensureChartJs() {
+            if (chartJsLoaded) return;
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+                script.onload = () => {
+                    chartJsLoaded = true;
+                    resolve();
+                };
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+
+        // Format date/time
+        function formatDateTime(ts) {
+            const d = new Date(ts);
+            return d.toLocaleString('en-AU', { 
+                day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                hour12: false
+            });
+        }
+        
+        function formatTime(ts) {
+            const d = new Date(ts);
+            return d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
+        }
+
+        // ==================== HISTORY ====================
+        // fetchHistoryMock() removed — mock endpoint disabled and Test Data UI removed.
+        
+        async function fetchHistory() {
+            const btn = document.getElementById('btnFetchHistory');
+            const status = document.getElementById('historyStatus');
+            const content = document.getElementById('historyContent');
+            const timestamp = document.getElementById('historyTimestamp');
+            
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Loading...';
+            status.className = 'status loading';
+            status.textContent = 'Fetching history data from FoxESS...';
+            
+            try {
+                const hours = parseInt(document.getElementById('historyRange').value);
+                const end = Math.floor(Date.now() / 1000); // Convert ms to Unix seconds
+                const begin = end - (hours * 60 * 60); // hours to seconds
+                
+                const resp = await fetch(`/api/inverter/history?begin=${begin}&end=${end}`);
+                const data = await resp.json();
+                
+                if (data.errno && data.errno !== 0) {
+                    throw new Error(data.msg || 'API error');
+                }
+                
+                lastRawData = { type: 'history', data };
+                updateRawDataViewer();
+                
+                await renderHistoryData(data, hours);
+                
+                status.className = 'status success';
+                status.textContent = `✓ History loaded successfully (${hours}h range)`;
+                timestamp.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+                
+                setTimeout(() => { status.style.display = 'none'; }, 3000);
+            } catch (e) {
+                status.className = 'status error';
+                status.textContent = `✗ Error: ${e.message}`;
+                content.innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>Failed to load history: ${e.message}</p></div>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '📈 Fetch History Data';
+            }
+        }
+
+        async function renderHistoryData(data, hours) {
+            const content = document.getElementById('historyContent');
+            
+            // Parse the FoxESS response format - data.result[0].datas contains the variables
+            const result = data.result;
+            if (!result || !Array.isArray(result) || result.length === 0) {
+                content.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No history data available for this period</p></div>';
+                return;
+            }
+            
+            // Extract datas array from the first result item
+            const datas = result[0].datas || [];
+            if (datas.length === 0) {
+                content.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No history data available for this period</p></div>';
+                return;
+            }
+            
+            // FoxESS returns: {datas: [{variable: 'xxx', data: [{time: ts, value: v}, ...]}]}
+            const variables = {};
+            datas.forEach(item => {
+                if (item.variable && item.data) {
+                    variables[item.variable] = item;
+                }
+            });
+            
+            // Build stats
+            const genData = variables.generationPower?.data || [];
+            const feedData = variables.feedinPower?.data || [];
+            const gridData = variables.gridConsumptionPower?.data || [];
+            
+            const avgGen = genData.length ? (genData.reduce((s, d) => s + (d.value || 0), 0) / genData.length) : 0;
+            const avgFeed = feedData.length ? (feedData.reduce((s, d) => s + (d.value || 0), 0) / feedData.length) : 0;
+            const avgGrid = gridData.length ? (gridData.reduce((s, d) => s + (d.value || 0), 0) / gridData.length) : 0;
+            const maxGen = genData.length ? Math.max(...genData.map(d => d.value || 0)) : 0;
+            
+            let html = `
+                <div class="stats-grid">
+                    <div class="stat-box generation">
+                        <div class="label">Avg Generation</div>
+                        <div class="value">${avgGen.toFixed(2)}<span class="unit">kW</span></div>
+                    </div>
+                    <div class="stat-box generation">
+                        <div class="label">Peak Generation</div>
+                        <div class="value">${maxGen.toFixed(2)}<span class="unit">kW</span></div>
+                    </div>
+                    <div class="stat-box feedin">
+                        <div class="label">Avg Feed-in</div>
+                        <div class="value">${avgFeed.toFixed(2)}<span class="unit">kW</span></div>
+                    </div>
+                    <div class="stat-box consumption">
+                        <div class="label">Avg Grid Import</div>
+                        <div class="value">${avgGrid.toFixed(2)}<span class="unit">kW</span></div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="historyChartCanvas"></canvas>
+                </div>
+            `;
+            
+            content.innerHTML = html;
+            
+            // Render chart
+            await ensureChartJs();
+            
+            if (historyChart) {
+                historyChart.destroy();
+            }
+            
+            const ctx = document.getElementById('historyChartCanvas').getContext('2d');
+            
+            // Prepare datasets - parse time strings from the response
+            const labels = genData.map(d => {
+                // Parse time format: "2025-12-01 23:20:14 AEDT+1100"
+                const timeStr = typeof d.time === 'string' ? d.time.split(' ')[1] : formatTime(d.time);
+                return timeStr;
+            });
+            
+            // Compute derived House Load: generation - feedin + grid
+            const feedinMap = {};
+            const gridMap = {};
+            feedData.forEach(d => feedinMap[d.time] = d.value || 0);
+            gridData.forEach(d => gridMap[d.time] = d.value || 0);
+            
+            const houseLoad = genData.map(d => {
+                const gen = d.value || 0;
+                const feedin = feedinMap[d.time] || 0;
+                const grid = gridMap[d.time] || 0;
+                return gen - feedin + grid;
+            });
+            
+            historyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Generation (kW)',
+                            data: genData.map(d => d.value || 0),
+                            borderColor: '#ffd43b',
+                            backgroundColor: 'rgba(255, 212, 59, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 1
+                        },
+                        {
+                            label: 'Feed-in (kW)',
+                            data: feedData.map(d => d.value || 0),
+                            borderColor: '#7ee787',
+                            backgroundColor: 'rgba(126, 231, 135, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 1
+                        },
+                        {
+                            label: 'Grid Import (kW)',
+                            data: gridData.map(d => d.value || 0),
+                            borderColor: '#58a6ff',
+                            backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 1
+                        },
+                        {
+                            label: 'House Load (kW)',
+                            data: houseLoad,
+                            borderColor: '#ff7b72',
+                            backgroundColor: 'rgba(255, 123, 114, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { 
+                            labels: { color: '#c9d1d9', usePointStyle: true }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(22, 27, 34, 0.95)',
+                            titleColor: '#e6edf3',
+                            bodyColor: '#8b949e',
+                            borderColor: '#30363d',
+                            borderWidth: 1
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#8b949e', maxTicksLimit: 12 },
+                            grid: { color: 'rgba(48, 54, 61, 0.5)' }
+                        },
+                        y: {
+                            ticks: { color: '#8b949e' },
+                            grid: { color: 'rgba(48, 54, 61, 0.5)' },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // ==================== REPORTS ====================
+        async function fetchReport() {
+            const btn = document.getElementById('btnFetchReport');
+            const status = document.getElementById('reportStatus');
+            const content = document.getElementById('reportContent');
+            const timestamp = document.getElementById('reportTimestamp');
+            
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Loading...';
+            status.className = 'status loading';
+            status.textContent = 'Fetching report data from FoxESS...';
+            
+            try {
+                const dimension = document.getElementById('reportDimension').value;
+                const year = document.getElementById('reportYear').value;
+                const month = document.getElementById('reportMonth').value;
+                
+                let url = `/api/inverter/report?dimension=${dimension}&year=${year}&month=${month}`;
+                
+                const resp = await fetch(url);
+                const data = await resp.json();
+                
+                if (data.errno && data.errno !== 0) {
+                    throw new Error(data.msg || 'API error');
+                }
+                
+                lastRawData = { type: 'report', data };
+                updateRawDataViewer();
+                
+                await renderReportData(data, dimension);
+                
+                status.className = 'status success';
+                status.textContent = `✓ Report loaded successfully`;
+                timestamp.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+                
+                setTimeout(() => { status.style.display = 'none'; }, 3000);
+            } catch (e) {
+                status.className = 'status error';
+                status.textContent = `✗ Error: ${e.message}`;
+                content.innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>Failed to load report: ${e.message}</p></div>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '📊 Fetch Report';
+            }
+        }
+
+        async function renderReportData(data, dimension) {
+            const content = document.getElementById('reportContent');
+            
+            const result = data.result || data;
+            if (!result || !Array.isArray(result) || result.length === 0) {
+                content.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No report data available</p></div>';
+                return;
+            }
+            
+            // Parse variables
+            const variables = {};
+            result.forEach(item => {
+                if (item.variable && item.data) {
+                    variables[item.variable] = item;
+                }
+            });
+            
+            const genData = variables.generation?.data || [];
+            const feedData = variables.feedin?.data || [];
+            const gridData = variables.gridConsumption?.data || [];
+            const chargeData = variables.chargeEnergyToTal?.data || [];
+            const dischargeData = variables.dischargeEnergyToTal?.data || [];
+            
+            // Calculate totals
+            const totalGen = genData.reduce((s, d) => s + (d.value || 0), 0);
+            const totalFeed = feedData.reduce((s, d) => s + (d.value || 0), 0);
+            const totalGrid = gridData.reduce((s, d) => s + (d.value || 0), 0);
+            const totalCharge = chargeData.reduce((s, d) => s + (d.value || 0), 0);
+            const totalDischarge = dischargeData.reduce((s, d) => s + (d.value || 0), 0);
+            
+            const labelMap = { day: 'Day', month: 'Month', year: 'Year' };
+            const periodLabel = labelMap[dimension] || 'Period';
+            
+            let html = `
+                <div class="stats-grid">
+                    <div class="stat-box generation">
+                        <div class="label">Total Generation</div>
+                        <div class="value">${totalGen.toFixed(1)}<span class="unit">kWh</span></div>
+                    </div>
+                    <div class="stat-box feedin">
+                        <div class="label">Total Feed-in</div>
+                        <div class="value">${totalFeed.toFixed(1)}<span class="unit">kWh</span></div>
+                    </div>
+                    <div class="stat-box consumption">
+                        <div class="label">Total Grid Import</div>
+                        <div class="value">${totalGrid.toFixed(1)}<span class="unit">kWh</span></div>
+                    </div>
+                    <div class="stat-box charge">
+                        <div class="label">Battery Charged</div>
+                        <div class="value">${totalCharge.toFixed(1)}<span class="unit">kWh</span></div>
+                    </div>
+                    <div class="stat-box discharge">
+                        <div class="label">Battery Discharged</div>
+                        <div class="value">${totalDischarge.toFixed(1)}<span class="unit">kWh</span></div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="reportChartCanvas"></canvas>
+                </div>
+            `;
+            
+            content.innerHTML = html;
+            
+            // Render chart
+            await ensureChartJs();
+            
+            if (reportChart) {
+                reportChart.destroy();
+            }
+            
+            const ctx = document.getElementById('reportChartCanvas').getContext('2d');
+            
+            // Labels based on dimension
+            const labels = genData.map(d => {
+                if (dimension === 'day') return `Day ${d.index || d.day || '?'}`;
+                if (dimension === 'month') return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.index - 1] || `M${d.index}`;
+                return `${d.index || d.year || '?'}`;
+            });
+            
+            reportChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Generation (kWh)',
+                            data: genData.map(d => d.value || 0),
+                            backgroundColor: 'rgba(255, 212, 59, 0.7)',
+                            borderColor: '#ffd43b',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Feed-in (kWh)',
+                            data: feedData.map(d => d.value || 0),
+                            backgroundColor: 'rgba(126, 231, 135, 0.7)',
+                            borderColor: '#7ee787',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Grid Import (kWh)',
+                            data: gridData.map(d => d.value || 0),
+                            backgroundColor: 'rgba(88, 166, 255, 0.7)',
+                            borderColor: '#58a6ff',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            labels: { color: '#c9d1d9', usePointStyle: true }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(22, 27, 34, 0.95)',
+                            titleColor: '#e6edf3',
+                            bodyColor: '#8b949e'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#8b949e' },
+                            grid: { color: 'rgba(48, 54, 61, 0.3)' }
+                        },
+                        y: {
+                            ticks: { color: '#8b949e' },
+                            grid: { color: 'rgba(48, 54, 61, 0.5)' },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // ==================== GENERATION ====================
+        async function fetchGeneration() {
+            const btn = document.getElementById('btnFetchGeneration');
+            const status = document.getElementById('generationStatus');
+            const content = document.getElementById('generationContent');
+            const timestamp = document.getElementById('generationTimestamp');
+            
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Loading...';
+            status.className = 'status loading';
+            status.textContent = 'Fetching generation data from FoxESS...';
+            
+            try {
+                const resp = await fetch('/api/inverter/generation');
+                const data = await resp.json();
+                
+                if (data.errno && data.errno !== 0) {
+                    throw new Error(data.msg || 'API error');
+                }
+                
+                lastRawData = { type: 'generation', data };
+                updateRawDataViewer();
+                
+                renderGenerationData(data);
+                
+                status.className = 'status success';
+                status.textContent = `✓ Generation data loaded successfully`;
+                timestamp.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+                
+                setTimeout(() => { status.style.display = 'none'; }, 3000);
+            } catch (e) {
+                status.className = 'status error';
+                status.textContent = `✗ Error: ${e.message}`;
+                content.innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>Failed to load generation: ${e.message}</p></div>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🔋 Fetch Generation Data';
+            }
+        }
+
+        function renderGenerationData(data) {
+            const content = document.getElementById('generationContent');
+            
+            const result = data.result || data;
+            if (!result) {
+                content.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No generation data available</p></div>';
+                return;
+            }
+            
+            // FoxESS generation response typically includes cumulative values
+            const today = result.today || result.todayGeneration || 0;
+            const month = result.month || result.monthGeneration || 0;
+            const year = result.year || result.yearGeneration || 0;
+            const total = result.cumulative || result.cumulativeGeneration || result.total || 0;
+            
+            let html = `
+                <div class="stats-grid">
+                    <div class="stat-box generation">
+                        <div class="label">Today</div>
+                        <div class="value">${Number(today).toFixed(1)}<span class="unit">kWh</span></div>
+                    </div>
+                    <div class="stat-box generation">
+                        <div class="label">This Month</div>
+                        <div class="value">${Number(month).toFixed(1)}<span class="unit">kWh</span></div>
+                    </div>
+                    <div class="stat-box generation">
+                        <div class="label">This Year</div>
+                        <div class="value">${Number(year).toFixed(1)}<span class="unit">kWh</span></div>
+                    </div>
+                    <div class="stat-box generation">
+                        <div class="label">Lifetime Total</div>
+                        <div class="value">${Number(total).toFixed(0)}<span class="unit">kWh</span></div>
+                    </div>
+                </div>
+            `;
+            
+            // Add any additional fields from the response
+            const knownKeys = ['today', 'month', 'year', 'cumulative', 'todayGeneration', 'monthGeneration', 'yearGeneration', 'cumulativeGeneration', 'total'];
+            const extraFields = Object.entries(result).filter(([k, v]) => !knownKeys.includes(k) && typeof v === 'number');
+            
+            if (extraFields.length > 0) {
+                html += `
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>Metric</th><th>Value</th></tr>
+                        </thead>
+                        <tbody>
+                            ${extraFields.map(([k, v]) => `
+                                <tr>
+                                    <td>${k}</td>
+                                    <td class="value">${typeof v === 'number' ? v.toFixed(2) : v}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+            
+            content.innerHTML = html;
+        }
+
+        // ==================== RAW DATA ====================
+        function toggleRawData() {
+            const el = document.getElementById('rawDataContent');
+            el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function updateRawDataViewer() {
+            const pre = document.getElementById('rawDataPre');
+            if (lastRawData) {
+                pre.textContent = JSON.stringify(lastRawData, null, 2);
+            }
+        }
+
+        // Load API call metrics (per-day) and display in footer
+        async function loadApiMetrics(days = 1) {
+            try {
+                const resp = await fetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+                const data = await resp.json();
+                if (!data || data.errno !== 0 || !data.result) return;
+                const keys = Object.keys(data.result).sort().reverse();
+                const todayKey = keys[0];
+                const today = data.result[todayKey] || {};
+
+                document.getElementById('metricsDate').textContent = formatDate(new Date(todayKey), false);
+                document.getElementById('countFox').textContent = today.foxess ?? 0;
+                document.getElementById('countAmber').textContent = today.amber ?? 0;
+                document.getElementById('countWeather').textContent = today.weather ?? 0;
+            } catch (e) {
+                console.warn('Failed to load api metrics', e.message);
+            }
+        }
+
+        // Helper function for date formatting
+        function formatDate(date, includeTime = true) {
+            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            if (includeTime) {
+                const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                return `${dateStr} ${timeStr}`;
+            }
+            return dateStr;
+        }
+
+        // Load metrics on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadApiMetrics(1);
+        });
+    </script>
+</body>
+</html>

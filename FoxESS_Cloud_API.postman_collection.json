@@ -1,0 +1,1741 @@
+{
+	"info": {
+		"_postman_id": "foxess-cloud-api",
+		"name": "FoxESS Cloud API",
+		"description": "Collection for FoxESS Cloud Open API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Platform Interface",
+			"item": [
+				{
+					"name": "Get access count",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/user/getAccessCount",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"user",
+								"getAccessCount"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Installer device count",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/installer/count",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"installer",
+								"count"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Inverter-V1",
+			"item": [
+				{
+					"name": "Get device real-time data",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sns\": [\"{{sn}}\"],\n  \"variables\": []\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v1/device/real/query",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v1",
+								"device",
+								"real",
+								"query"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Inverter",
+			"item": [
+				{
+					"name": "Get device list",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"currentPage\": 1,\n  \"pageSize\": 10\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/list",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"list"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Device Battery real Data",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/battery/real/query",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"battery",
+								"real",
+								"query"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get device detail",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/detail?sn={{sn}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"detail"
+							],
+							"query": [
+								{
+									"key": "sn",
+									"value": "{{sn}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get available variables",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/variable/get",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"variable",
+								"get"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get error code information",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/fault/get",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"fault",
+								"get"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get device real-time data (Deprecated)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/real/query",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"real",
+								"query"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get device history data",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"var endTime = new Date().getTime();",
+									"var beginTime = endTime - (24 * 60 * 60 * 1000);",
+									"pm.environment.set(\"history_end\", endTime);",
+									"pm.environment.set(\"history_begin\", beginTime);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\",\n  \"begin\": {{history_begin}},\n  \"end\": {{history_end}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/history/query",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"history",
+								"query"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get device production report",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\",\n  \"year\": 2024,\n  \"dimension\": \"month\",\n  \"variables\": [\"generation\"]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/report/query",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"report",
+								"query"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get device power generation",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/generation?sn={{sn}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"generation"
+							],
+							"query": [
+								{
+									"key": "sn",
+									"value": "{{sn}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get the minimum soc settings",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/battery/soc/get?sn={{sn}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"battery",
+								"soc",
+								"get"
+							],
+							"query": [
+								{
+									"key": "sn",
+									"value": "{{sn}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set the minmum soc",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\",\n  \"minSoc\": 10,\n  \"minSocOnGrid\": 10\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/battery/soc/set",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"battery",
+								"soc",
+								"set"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get battery charging time",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/battery/forceChargeTime/get?sn={{sn}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"battery",
+								"forceChargeTime",
+								"get"
+							],
+							"query": [
+								{
+									"key": "sn",
+									"value": "{{sn}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set battery charging time",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\",\n  \"enable1\": false,\n  \"enable2\": false,\n  \"startTime1\": {\n    \"hour\": 0,\n    \"minute\": 0\n  },\n  \"endTime1\": {\n    \"hour\": 0,\n    \"minute\": 0\n  },\n  \"startTime2\": {\n    \"hour\": 0,\n    \"minute\": 0\n  },\n  \"endTime2\": {\n    \"hour\": 0,\n    \"minute\": 0\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/battery/forceChargeTime/set",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"battery",
+								"forceChargeTime",
+								"set"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get device settings item",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\",\n  \"key\": \"MinSoc\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/setting/get",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"setting",
+								"get"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set device settings item",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\",\n  \"key\": \"MinSoc\",\n  \"value\": \"10\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/setting/set",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"setting",
+								"set"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get device time",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/time/get",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"time",
+								"get"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set device time",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\",\n  \"year\": \"2024\",\n  \"month\": \"01\",\n  \"day\": \"01\",\n  \"hour\": \"12\",\n  \"minute\": \"00\",\n  \"second\": \"00\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/time/set",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"time",
+								"set"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get peakshaving settings",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/peakShaving/get",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"peakShaving",
+								"get"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set peakshaving settings",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\",\n  \"importLimit\": 0,\n  \"soc\": 10\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/peakShaving/set",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"peakShaving",
+								"set"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Meter Reader",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/getMeterReader",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"getMeterReader"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set Meter Reader",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\",\n  \"readerType\": 0,\n  \"readerInfo\": {}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/setMeterReader",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"setMeterReader"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get battery heating Parameter",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/batteryHeating/get",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"batteryHeating",
+								"get"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set battery heating Parameter",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\",\n  \"batteryWarmUpEnable\": \"0\",\n  \"startTemperature\": \"0\",\n  \"endTemperature\": \"10\",\n  \"time1Enable\": \"0\",\n  \"time1StartHour\": \"0\",\n  \"time1StartMinute\": \"0\",\n  \"time1EndHour\": \"0\",\n  \"time1EndMinute\": \"0\",\n  \"time2Enable\": \"0\",\n  \"time2StartHour\": \"0\",\n  \"time2StartMinute\": \"0\",\n  \"time2EndHour\": \"0\",\n  \"time2EndMinute\": \"0\",\n  \"time3Enable\": \"0\",\n  \"time3StartHour\": \"0\",\n  \"time3StartMinute\": \"0\",\n  \"time3EndHour\": \"0\",\n  \"time3EndMinute\": \"0\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/batteryHeating/set",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"batteryHeating",
+								"set"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Power Station",
+			"item": [
+				{
+					"name": "Create power station",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"devices\": [\n    {\n      \"sn\": \"{{sn}}\"\n    }\n  ],\n  \"details\": {\n    \"name\": \"My Station\",\n    \"type\": 1,\n    \"countryCode\": \"CN\",\n    \"city\": \"City\",\n    \"address\": \"Address\",\n    \"postcode\": \"123456\",\n    \"timezone\": \"Asia/Shanghai\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/plant/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"plant",
+								"create"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete power station",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"stationID\": \"station_id\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/plant/delete",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"plant",
+								"delete"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Edit power station",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"stationID\": \"station_id\",\n  \"details\": {\n    \"name\": \"My Station Updated\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/plant/update",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"plant",
+								"update"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get power station detail",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/plant/detail?id=station_id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"plant",
+								"detail"
+							],
+							"query": [
+								{
+									"key": "id",
+									"value": "station_id"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get power station list",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"currentPage\": 1,\n  \"pageSize\": 10\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/plant/list",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"plant",
+								"list"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Scheduler-V2",
+			"item": [
+				{
+					"name": "Get time segment information",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"deviceSN\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v2/device/scheduler/get",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v2",
+								"device",
+								"scheduler",
+								"get"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set time segment information",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"deviceSN\": \"{{sn}}\",\n  \"groups\": []\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v2/device/scheduler/enable",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v2",
+								"device",
+								"scheduler",
+								"enable"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Scheduler-V1",
+			"item": [
+				{
+					"name": "Get main switch status",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"deviceSN\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v1/device/scheduler/get/flag",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v1",
+								"device",
+								"scheduler",
+								"get",
+								"flag"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set main switch status",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"deviceSN\": \"{{sn}}\",\n  \"enable\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v1/device/scheduler/set/flag",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v1",
+								"device",
+								"scheduler",
+								"set",
+								"flag"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get time segment information",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"deviceSN\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v1/device/scheduler/get",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v1",
+								"device",
+								"scheduler",
+								"get"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set time segment information",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"deviceSN\": \"{{sn}}\",\n  \"groups\": []\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v1/device/scheduler/enable",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v1",
+								"device",
+								"scheduler",
+								"enable"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Scheduler (Deprecated)",
+			"item": [
+				{
+					"name": "Get main switch status",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"deviceSN\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/scheduler/get/flag",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"scheduler",
+								"get",
+								"flag"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set main switch status",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"deviceSN\": \"{{sn}}\",\n  \"enable\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/scheduler/set/flag",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"scheduler",
+								"set",
+								"flag"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get time segment information",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"deviceSN\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/scheduler/get",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"scheduler",
+								"get"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set time segment information",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"deviceSN\": \"{{sn}}\",\n  \"groups\": []\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/device/scheduler/enable",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"device",
+								"scheduler",
+								"enable"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Data Logger",
+			"item": [
+				{
+					"name": "Get Data Logger Signal",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/module/getSignal",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"module",
+								"getSignal"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Data Logger list",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"currentPage\": 1,\n  \"pageSize\": 10\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/module/list",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"module",
+								"list"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Modbus Commands",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\",\n  \"data\": \"base64_encoded_data\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/module/modbus/commands",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"module",
+								"modbus",
+								"commands"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "EMS",
+			"item": [
+				{
+					"name": "Get Ems Rate Setting",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"emsID\": \"ems_id\",\n  \"port\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/ems/setting/rate/get",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"ems",
+								"setting",
+								"rate",
+								"get"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Ems System Setting",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/ems/setting/system/get?emsID=ems_id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"ems",
+								"setting",
+								"system",
+								"get"
+							],
+							"query": [
+								{
+									"key": "emsID",
+									"value": "ems_id"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Ems list",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"currentPage\": 1,\n  \"pageSize\": 10\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/ems/list",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"ems",
+								"list"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set Ems Rate Setting",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"emsID\": \"ems_id\",\n  \"port\": 1,\n  \"rate\": 9600,\n  \"dataBit\": 8,\n  \"stopBit\": 1,\n  \"parityBit\": 0\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/ems/setting/rate/set",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"ems",
+								"setting",
+								"rate",
+								"set"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set Ems System Setting",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"emsID\": \"ems_id\",\n  \"general\": {},\n  \"parallelControl\": {},\n  \"powerLimit\": {}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/ems/setting/system/set",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"ems",
+								"setting",
+								"system",
+								"set"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Meter",
+			"item": [
+				{
+					"name": "Get meter list",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"currentPage\": 1,\n  \"pageSize\": 10\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/gw/list",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"gw",
+								"list"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get device settings item",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/gw/setting/get",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"gw",
+								"setting",
+								"get"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set device settings item",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"{{sn}}\",\n  \"mode\": \"mode_value\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/gw/setting/set",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"gw",
+								"setting",
+								"set"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Heat",
+			"item": [
+				{
+					"name": "Heat Pump Register",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"heat_pump_sn\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/heat/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"heat",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Heat Pump Register List",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"currentPage\": 1,\n  \"pageSize\": 10,\n  \"sn\": \"heat_pump_sn\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/register/heat/list",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"register",
+								"heat",
+								"list"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Heat Pump Register Status Change",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sn\": \"heat_pump_sn\",\n  \"status\": \"pending\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/op/v0/heat/register/status/change",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"op",
+								"v0",
+								"heat",
+								"register",
+								"status",
+								"change"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"var sdk = require('postman-collection');",
+					"var crypto = require('crypto-js');",
+					"",
+					"// Get the path from the request URL",
+					"var path = \"/\" + pm.request.url.path.join(\"/\");",
+					"",
+					"var token = pm.variables.get(\"token\");",
+					"if (!token) {",
+					"    token = \"\";",
+					"} else if (typeof token === 'string') {",
+					"    // Remove all whitespace and non-printable characters",
+					"    token = token.replace(/\\s/g, '').replace(/[^\\x20-\\x7E]/g, '');",
+					"} else {",
+					"    token = String(token);",
+					"}",
+					"",
+					"var timestamp = new Date().getTime();",
+					"",
+					"// Signature rule: Encrypt the string url + \"\\r\\n\" + token + \"\\r\\n\" + timestamp with md5",
+					"var signaturePlain = path + \"\\\\r\\\\n\" + token + \"\\\\r\\\\n\" + timestamp;",
+					"var signature = crypto.MD5(signaturePlain).toString();",
+					"",
+					"// Debugging",
+					"console.log(\"Path:\", path);",
+					"console.log(\"Token:\", token);",
+					"console.log(\"Signature:\", signature);",
+					"",
+					"pm.request.headers.upsert({key: \"token\", value: token});",
+					"pm.request.headers.upsert({key: \"timestamp\", value: timestamp.toString()});",
+					"pm.request.headers.upsert({key: \"signature\", value: signature});",
+					"pm.request.headers.upsert({key: \"lang\", value: \"en\"});",
+					"pm.request.headers.upsert({key: \"Content-Type\", value: \"application/json\"});"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://www.foxesscloud.com",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "a470aead-5f6a-4519-bbb3-7981fda4ed00",
+			"type": "string"
+		},
+		{
+			"key": "sn",
+			"value": "60KB10305AKA064",
+			"type": "string"
+		}
+	]
+}

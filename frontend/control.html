@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inverter Controls</title>
+  <link rel="icon" href="data:," />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    :root {
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --bg3: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --success: #238636;
+      --danger: #f85149;
+    }
+    body {
+      margin: 0;
+      background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%);
+      min-height: 100vh;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .hint {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 16px;
+      padding: 10px 14px;
+      background: rgba(88, 166, 255, 0.05);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: linear-gradient(145deg, rgba(33, 38, 45, 0.9), rgba(22, 27, 34, 0.95));
+      border: 1px solid rgba(48, 54, 61, 0.6);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: all 0.2s ease;
+    }
+    .card:hover {
+      border-color: rgba(88, 166, 255, 0.3);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      background: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+    }
+    .card-header h2 {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      margin: 0;
+    }
+    .card-body {
+      padding: 16px 18px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 14px;
+      background: rgba(33, 38, 45, 0.8);
+      border: 1px solid rgba(48, 54, 61, 0.8);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      font-family: inherit;
+    }
+    .btn:hover {
+      background: rgba(48, 54, 61, 0.8);
+      border-color: rgba(88, 166, 255, 0.4);
+      transform: translateY(-1px);
+    }
+    .btn:active {
+      transform: translateY(0);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #238636, #1a7f37);
+      border-color: #238636;
+      color: #fff;
+      font-weight: 500;
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #2ea043, #238636);
+      border-color: #2ea043;
+    }
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .input {
+      width: 100%;
+      padding: 9px 12px;
+      background: rgba(13, 17, 23, 0.6);
+      border: 1px solid rgba(48, 54, 61, 0.8);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    }
+    .input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+    }
+    .input::placeholder {
+      color: #484f58;
+    }
+    select.input {
+      cursor: pointer;
+    }
+    .input-group {
+      margin-bottom: 12px;
+    }
+    .input-group label {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 500;
+    }
+    .input-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .form-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(48, 54, 61, 0.4);
+    }
+    .output-panel {
+      background: linear-gradient(145deg, rgba(33, 38, 45, 0.9), rgba(22, 27, 34, 0.95));
+      border: 1px solid rgba(48, 54, 61, 0.6);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .output-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      background: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+    }
+    .output-header h2 {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0;
+    }
+    .output-body {
+      padding: 0;
+    }
+    .output-content {
+      background: #010409;
+      padding: 14px;
+      border-radius: 0;
+      overflow: auto;
+      max-height: 500px;
+      min-height: 200px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #7ee787;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .status-message {
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .status-message.success {
+      background: rgba(35, 134, 54, 0.15);
+      border: 1px solid rgba(35, 134, 54, 0.3);
+      color: #7ee787;
+    }
+    .status-message.error {
+      background: rgba(248, 81, 73, 0.15);
+      border: 1px solid rgba(248, 81, 73, 0.3);
+      color: #ff7b72;
+    }
+    .status-message.info {
+      background: rgba(88, 166, 255, 0.15);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      color: #79c0ff;
+    }
+  </style>
+</head>
+<body>
+  <nav style="background:rgba(22,27,34,0.95);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;gap:10px;align-items:center;position:fixed;top:0;left:0;right:0;z-index:10000;backdrop-filter:blur(10px);box-shadow:0 2px 8px rgba(0,0,0,0.3)">
+    <a href="/" style="background:#21262d;border:1px solid var(--border);color:var(--accent);padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:500;transition:all 0.2s">🏠 Overview</a>
+    <a href="/test.html" style="background:#21262d;border:1px solid var(--border);color:var(--accent);padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:500;transition:all 0.2s">🧪 Automation Lab</a>
+    <a href="/control.html" style="background:#1f6feb;color:#fff;padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600;box-shadow:0 0 0 3px rgba(31,111,235,0.1)">🧭 Controls</a>
+    <a href="/settings.html" style="background:#21262d;border:1px solid var(--border);color:var(--accent);padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:500;transition:all 0.2s">⚙️ Settings</a>
+    <a href="/history.html" style="background:#21262d;border:1px solid var(--border);color:var(--accent);padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:500;transition:all 0.2s">📊 History</a>
+  </nav>
+
+  <div class="container" style="padding-top:70px">
+    <header>
+      <h1><span style="font-size:1.8rem">🎛️</span> Advanced Controls</h1>
+    </header>
+
+    <div class="hint">
+      ℹ️ These advanced controls were moved here to keep the main dashboard clean and focused. Configure device settings, work modes, and access detailed system information.
+    </div>
+
+    <div class="grid">
+      
+      <!-- Battery SoC Settings -->
+      <div class="card">
+        <div class="card-header">
+          <h2>🔋 Battery SoC Limits</h2>
+        </div>
+        <div class="card-body">
+          <form id="form-batterySoc" onsubmit="setBatterySoc(event)">
+            <div class="input-row">
+              <div class="input-group">
+                <label>Min SoC (%)</label>
+                <input type="number" name="minSoc" class="input" min="10" max="100" placeholder="e.g., 10" required>
+              </div>
+              <div class="input-group">
+                <label>Min SoC on Grid (%)</label>
+                <input type="number" name="minSocOnGrid" class="input" min="10" max="100" placeholder="e.g., 10" required>
+              </div>
+            </div>
+            <div id="status-batterySoc"></div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary" style="flex:1">💾 Save Settings</button>
+              <button type="button" class="btn" onclick="getBatterySoc()">🔄 Load Current</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Work Mode Control -->
+      <div class="card">
+        <div class="card-header">
+          <h2>⚡ Work Mode</h2>
+        </div>
+        <div class="card-body">
+          <form id="form-workMode" onsubmit="setWorkMode(event)">
+            <div class="input-group">
+              <label>Select Work Mode</label>
+              <select name="workMode" class="input" required>
+                <option value="">-- Select Mode --</option>
+                <option value="SelfUse">Self Use</option>
+                <option value="ForceCharge">Force Charge</option>
+                <option value="ForceDischarge">Force Discharge</option>
+                <option value="Feedin">Feed In</option>
+                <option value="Backup">Backup</option>
+              </select>
+            </div>
+            <div id="currentWorkMode" style="padding:10px;background:rgba(88,166,255,0.05);border-radius:6px;font-size:13px;color:var(--muted);margin-bottom:12px">
+              Current mode: <span style="color:var(--accent)">Unknown</span>
+            </div>
+            <div id="status-workMode"></div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary" style="flex:1">✅ Apply Mode</button>
+              <button type="button" class="btn" onclick="getWorkMode()">🔄 Check Current</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Force Charge Times -->
+      <div class="card">
+        <div class="card-header">
+          <h2>⏰ Force Charge Times</h2>
+        </div>
+        <div class="card-body">
+          <form id="form-forceCharge" onsubmit="setForceChargeTimes(event)">
+            <div class="input-group">
+              <label style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" name="enable1" style="width:auto">
+                <span>Enable Period 1</span>
+              </label>
+            </div>
+            <div class="input-row">
+              <div class="input-group">
+                <label>Start Time 1</label>
+                <input type="time" name="startTime1" class="input" value="00:00">
+              </div>
+              <div class="input-group">
+                <label>End Time 1</label>
+                <input type="time" name="endTime1" class="input" value="07:00">
+              </div>
+            </div>
+            <div class="input-group">
+              <label style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" name="enable2" style="width:auto">
+                <span>Enable Period 2</span>
+              </label>
+            </div>
+            <div class="input-row">
+              <div class="input-group">
+                <label>Start Time 2</label>
+                <input type="time" name="startTime2" class="input" value="00:00">
+              </div>
+              <div class="input-group">
+                <label>End Time 2</label>
+                <input type="time" name="endTime2" class="input" value="00:00">
+              </div>
+            </div>
+            <div id="status-forceCharge"></div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary" style="flex:1">💾 Save Times</button>
+              <button type="button" class="btn" onclick="getForceChargeTimes()">🔄 Load Current</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Scheduler Info -->
+      <div class="card">
+        <div class="card-header">
+          <h2>📅 Scheduler Info</h2>
+        </div>
+        <div class="card-body">
+          <div class="btn-grid">
+            <button class="btn" onclick="callAPI('/api/scheduler/get', 'Scheduler Data')">📊 Get Scheduler</button>
+            <button class="btn" onclick="callAPI('/api/scheduler/flag', 'Scheduler Flag')">🚩 Check Flag</button>
+            <button class="btn" onclick="callAPI('/api/device/battery/forceChargeTime/get', 'Charge Times')">⏰ Charge Times</button>
+            <button class="btn" onclick="callAPI('/api/device/workmode/get', 'Work Mode')">⚙️ Work Mode</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Platform & Logger -->
+      <div class="card">
+        <div class="card-header">
+          <h2>🛠️ Platform & Logger</h2>
+        </div>
+        <div class="card-body">
+          <div class="btn-grid">
+            <button class="btn" onclick="callAPI('/api/platform/access-count', 'Access Count')">📊 Access Count</button>
+            <button class="btn" onclick="callAPI('/api/module/signal', 'Module Signal')">📡 Signal</button>
+            <button class="btn" onclick="callAPI('/api/plant/list', 'Plant List')">🏭 Plants</button>
+            <button class="btn" onclick="callAPI('/api/module/list', 'Module List')">📋 Modules</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- EMS & Meter -->
+      <div class="card">
+        <div class="card-header">
+          <h2>🌡️ EMS & Meter</h2>
+        </div>
+        <div class="card-body">
+          <div class="btn-grid">
+            <button class="btn" onclick="callAPI('/api/ems/list', 'EMS List')">📋 EMS List</button>
+            <button class="btn" onclick="callAPI('/api/meter/list', 'Meter List')">⚡ Meter List</button>
+              <button class="btn" onclick="callAPIPost('/api/device/getMeterReader', 'Get Meter Reader', {}, true)">🔎 Get Meter Reader</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inverter Data -->
+      <div class="card">
+        <div class="card-header">
+          <h2>⚡ Inverter Data</h2>
+        </div>
+        <div class="card-body">
+          <div class="btn-grid">
+            <button class="btn" onclick="callAPI('/api/inverter/real-time', 'Real-time Data')">📊 Real-time</button>
+            <button class="btn" onclick="callAPI('/api/inverter/battery-soc', 'Battery SoC')">🔋 Battery</button>
+            <button class="btn" onclick="callAPI('/api/inverter/generation', 'Generation')">☀️ Generation</button>
+            <button class="btn" onclick="callAPI('/api/inverter/temps', 'Temperatures')">🌡️ Temps</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- View Settings Info (Read-Only) -->
+      <div class="card">
+        <div class="card-header">
+          <h2>🔍 View Device Settings</h2>
+        </div>
+        <div class="card-body">
+          <div style="padding:10px;background:rgba(88,166,255,0.05);border-radius:6px;margin-bottom:12px;font-size:12px;color:#79c0ff;border:1px solid rgba(88,166,255,0.2)">
+            ℹ️ <strong>Read-only viewer</strong> - Query device settings without making changes. Use the forms above to modify settings.
+          </div>
+          <div class="input-group">
+            <label>Select Setting to View</label>
+            <select id="settingKey" class="input">
+              <option value="MinSoc">MinSoc - Minimum State of Charge</option>
+              <option value="MinSocOnGrid">MinSocOnGrid - Min SoC when on grid</option>
+              <option value="MaxSoc">MaxSoc - Maximum State of Charge</option>
+              <option value="workMode">workMode - Current work mode</option>
+              <option value="pvPower">pvPower - PV Power setting</option>
+              <option value="gridCharge">gridCharge - Grid charge enabled</option>
+              <option value="forceChargeSOC">forceChargeSOC - Force charge SoC target</option>
+              <option value="peakAndValley">peakAndValley - Peak/Valley mode</option>
+              <option value="loadFirst">loadFirst - Load first priority</option>
+              <option value="batteryFirst">batteryFirst - Battery first priority</option>
+            </select>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn" onclick="getDeviceSetting()" style="flex:1">👁️ View Setting</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Output Panel -->
+    <div class="output-panel">
+      <div class="output-header">
+        <h2>📋 API Response</h2>
+        <button class="btn" onclick="clearOutput()" style="padding:6px 10px;font-size:12px">🗑️ Clear</button>
+      </div>
+      <div class="output-body">
+        <div id="output" class="output-content">Click any button above to see API responses here...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- API Call Metrics Footer -->
+  <div id="apiMetricsFooter" style="position:fixed;top:60px;right:12px;background:rgba(13,17,23,0.95);border:1px solid rgba(48,54,61,0.6);padding:8px 14px;border-radius:8px;display:flex;gap:14px;align-items:center;font-size:13px;color:#8b949e;z-index:9999;backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(0,0,0,0.4)">
+    <div style="font-weight:600;color:#58a6ff;margin-right:4px">📊 API Calls</div>
+    <div id="metricsDate" style="min-width:100px;font-size:12px">—</div>
+    <div id="metricsCounts" style="display:flex;gap:14px;align-items:center">
+      <div style="color:#7ee787;font-size:12px">FoxESS: <span id="countFox" style="font-weight:600">0</span></div>
+      <div style="color:#79c0ff;font-size:12px">Amber: <span id="countAmber" style="font-weight:600">0</span></div>
+      <div style="color:#ffd43b;font-size:12px">Weather: <span id="countWeather" style="font-weight:600">0</span></div>
+    </div>
+    <button class="btn" onclick="loadApiMetrics(1)" title="Refresh metrics" style="padding:4px 8px;font-size:11px;margin:0">🔄</button>
+  </div>
+
+  <script>
+    const output = document.getElementById('output');
+
+    function showStatus(formId, message, type = 'info') {
+      const statusEl = document.getElementById(`status-${formId}`);
+      if (statusEl) {
+        statusEl.innerHTML = `<div class="status-message ${type}">${message}</div>`;
+        setTimeout(() => statusEl.innerHTML = '', 5000);
+      }
+    }
+
+    function clearOutput() {
+      output.innerHTML = '<div style="text-align:center;padding:40px;color:#8b949e;font-size:13px">📋 Output cleared. Click any button to see API responses...</div>';
+    }
+
+    function displayFormattedResponse(title, data) {
+      const isSuccess = data.errno === 0;
+      const statusColor = isSuccess ? '#7ee787' : '#ff7b72';
+      const statusIcon = isSuccess ? '✅' : '❌';
+      
+      let html = `<div style="border-bottom:1px solid rgba(48,54,61,0.6);padding-bottom:10px;margin-bottom:12px">`;
+      html += `<div style="font-size:14px;font-weight:600;color:${statusColor};margin-bottom:4px">${statusIcon} ${title}</div>`;
+      html += `<div style="font-size:11px;color:#8b949e">Status: ${data.errno === 0 ? 'Success' : 'Error'} • Code: ${data.errno}</div>`;
+      html += `</div>`;
+      
+      if (data.msg) {
+        html += `<div style="padding:8px;background:rgba(88,166,255,0.05);border-radius:6px;margin-bottom:10px;font-size:12px;color:#79c0ff">📝 ${data.msg}</div>`;
+      }
+      
+      if (data.result) {
+        html += `<div style="font-size:12px;font-weight:600;color:#8b949e;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Result Data:</div>`;
+        html += `<div style="background:rgba(0,0,0,0.3);padding:10px;border-radius:6px;border:1px solid rgba(48,54,61,0.6)">`;
+        
+        if (typeof data.result === 'object' && !Array.isArray(data.result)) {
+          for (const [key, value] of Object.entries(data.result)) {
+            const displayValue = typeof value === 'object' ? JSON.stringify(value) : value;
+            html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(48,54,61,0.3)">`;
+            html += `<span style="color:#8b949e;font-size:12px">${key}:</span>`;
+            html += `<span style="color:#7ee787;font-size:12px;font-weight:500">${displayValue}</span>`;
+            html += `</div>`;
+          }
+        } else {
+          html += `<pre style="margin:0;color:#7ee787;font-size:11px;white-space:pre-wrap">${JSON.stringify(data.result, null, 2)}</pre>`;
+        }
+        html += `</div>`;
+      }
+      
+      html += `<details style="margin-top:12px;cursor:pointer">`;
+      html += `<summary style="color:#8b949e;font-size:11px;padding:6px;background:rgba(0,0,0,0.2);border-radius:4px">🔍 View Raw JSON</summary>`;
+      html += `<pre style="margin:8px 0 0 0;padding:10px;background:#010409;border-radius:6px;font-size:11px;color:#7ee787;overflow:auto">${JSON.stringify(data, null, 2)}</pre>`;
+      html += `</details>`;
+      
+      output.innerHTML = html;
+    }
+
+    async function callAPI(url, title = 'API Response') {
+      output.innerHTML = `<div style="text-align:center;padding:20px;color:#79c0ff">⏳ Loading ${title}...</div>`;
+      try {
+        const res = await fetch(url);
+        const text = await res.text();
+        let parsed;
+        try {
+          parsed = JSON.parse(text);
+          displayFormattedResponse(title, parsed);
+        } catch {
+          output.innerHTML = `<div style="color:#ffd43b;padding:10px;background:rgba(255,212,59,0.1);border-radius:6px;border:1px solid rgba(255,212,59,0.3)">`;
+          output.innerHTML += `<div style="font-weight:600;margin-bottom:8px">⚠️ Non-JSON Response</div>`;
+          output.innerHTML += `<pre style="font-size:11px;white-space:pre-wrap;margin:0">${text}</pre>`;
+          output.innerHTML += `</div>`;
+        }
+      } catch (e) {
+        output.innerHTML = `<div style="color:#ff7b72;padding:10px;background:rgba(248,81,73,0.1);border-radius:6px;border:1px solid rgba(248,81,73,0.3)">`;
+        output.innerHTML += `<div style="font-weight:600;margin-bottom:8px">❌ Error fetching ${title}</div>`;
+        output.innerHTML += `<div style="font-size:12px">${e.message}</div>`;
+        output.innerHTML += `</div>`;
+      }
+    }
+
+    // POST helper for APIs that require a JSON body
+    async function callAPIPost(endpoint, title = 'API Response', bodyTemplate = {}, autoOpen = false) {
+      // optionally auto-open the right panel (not necessary in this page)
+      output.innerHTML = `<div style="text-align:center;padding:20px;color:#79c0ff">⏳ Sending ${title}...</div>`;
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyTemplate)
+        });
+        const text = await res.text();
+        try {
+          const parsed = JSON.parse(text);
+          displayFormattedResponse(title, parsed);
+        } catch (e) {
+          output.innerHTML = `<div style="color:#ffd43b;padding:10px;background:rgba(255,212,59,0.1);border-radius:6px;border:1px solid rgba(255,212,59,0.3)">`;
+          output.innerHTML += `<div style="font-weight:600;margin-bottom:8px">⚠️ Non-JSON Response</div>`;
+          output.innerHTML += `<pre style="font-size:11px;white-space:pre-wrap;margin:0">${text}</pre>`;
+          output.innerHTML += `</div>`;
+        }
+      } catch (e) {
+        output.innerHTML = `<div style="color:#ff7b72;padding:10px;background:rgba(248,81,73,0.1);border-radius:6px;border:1px solid rgba(248,81,73,0.3)">`;
+        output.innerHTML += `<div style="font-weight:600;margin-bottom:8px">❌ Error sending ${title}</div>`;
+        output.innerHTML += `<div style="font-size:12px">${e.message}</div>`;
+        output.innerHTML += `</div>`;
+      }
+    }
+
+    // Battery SoC Functions
+    async function setBatterySoc(e) {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        minSoc: parseInt(form.minSoc.value),
+        minSocOnGrid: parseInt(form.minSocOnGrid.value)
+      };
+      
+      showStatus('batterySoc', '⏳ Saving battery SoC settings...', 'info');
+      
+      try {
+        const res = await fetch('/api/device/battery/soc/set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        
+        if (result.errno === 0) {
+          showStatus('batterySoc', '✅ Battery SoC settings saved successfully!', 'success');
+          displayFormattedResponse('Battery SoC Settings', result);
+        } else {
+          showStatus('batterySoc', `❌ Error: ${result.msg || 'Failed to save settings'}`, 'error');
+          displayFormattedResponse('Battery SoC Settings', result);
+        }
+      } catch (error) {
+        showStatus('batterySoc', `❌ Error: ${error.message}`, 'error');
+      }
+    }
+
+    async function getBatterySoc() {
+      showStatus('batterySoc', '⏳ Loading current settings...', 'info');
+      try {
+        const res = await fetch('/api/device/battery/soc/get');
+        const contentType = res.headers.get('content-type');
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        let result;
+        if (contentType && contentType.includes('application/json')) {
+          result = await res.json();
+        } else {
+          const text = await res.text();
+          showStatus('batterySoc', `❌ Error: Server returned invalid response (${text.substring(0, 100)})`, 'error');
+          return;
+        }
+        
+        if (result.errno === 0 && result.result) {
+          const form = document.getElementById('form-batterySoc');
+          form.minSoc.value = result.result.minSoc || 10;
+          form.minSocOnGrid.value = result.result.minSocOnGrid || 10;
+          showStatus('batterySoc', '✅ Loaded current settings', 'success');
+          displayFormattedResponse('Battery SoC Settings', result);
+        } else {
+          showStatus('batterySoc', `❌ ${result.msg || 'Failed to load settings'}`, 'error');
+        }
+      } catch (error) {
+        showStatus('batterySoc', `❌ Error: ${error.message}`, 'error');
+      }
+    }
+
+    // Work Mode Functions
+    async function setWorkMode(e) {
+      e.preventDefault();
+      const form = e.target;
+      const workMode = form.workMode.value;
+      
+      if (!workMode) {
+        showStatus('workMode', '⚠️ Please select a work mode', 'error');
+        return;
+      }
+      
+      showStatus('workMode', `⏳ Setting work mode to ${workMode}...`, 'info');
+      
+      try {
+        const res = await fetch('/api/inverter/mode/set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workMode })
+        });
+        const result = await res.json();
+        
+        if (result.errno === 0) {
+          showStatus('workMode', `✅ Work mode set to ${workMode} successfully!`, 'success');
+          document.getElementById('currentWorkMode').innerHTML = `Current mode: <span style="color:#7ee787">${workMode}</span>`;
+          displayFormattedResponse('Work Mode Setting', result);
+        } else {
+          showStatus('workMode', `❌ Error: ${result.msg || 'Failed to set work mode'}`, 'error');
+          displayFormattedResponse('Work Mode Setting', result);
+        }
+      } catch (error) {
+        showStatus('workMode', `❌ Error: ${error.message}`, 'error');
+      }
+    }
+
+    async function getWorkMode() {
+      try {
+        const res = await fetch('/api/device/workmode/get');
+        const result = await res.json();
+        
+        if (result.errno === 0 && result.result) {
+          const currentMode = result.result.value;
+          document.getElementById('currentWorkMode').innerHTML = `Current mode: <span style="color:#7ee787">${currentMode}</span>`;
+          
+          const select = document.querySelector('#form-workMode select[name="workMode"]');
+          select.value = currentMode;
+          
+          showStatus('workMode', '✅ Loaded current work mode', 'success');
+          displayFormattedResponse('Work Mode Setting', result);
+        } else {
+          showStatus('workMode', `❌ ${result.msg || 'Failed to get work mode'}`, 'error');
+          displayFormattedResponse('Work Mode Setting', result);
+        }
+      } catch (error) {
+        showStatus('workMode', `❌ Error: ${error.message}`, 'error');
+      }
+    }
+
+    // Force Charge Times Functions
+    async function setForceChargeTimes(e) {
+      e.preventDefault();
+      const form = e.target;
+      
+      const parseTime = (timeStr) => {
+        const [hour, minute] = timeStr.split(':').map(Number);
+        return { hour, minute };
+      };
+      
+      const data = {
+        enable1: form.enable1.checked,
+        enable2: form.enable2.checked,
+        startTime1: parseTime(form.startTime1.value),
+        endTime1: parseTime(form.endTime1.value),
+        startTime2: parseTime(form.startTime2.value),
+        endTime2: parseTime(form.endTime2.value)
+      };
+      
+      showStatus('forceCharge', '⏳ Saving force charge times...', 'info');
+      
+      try {
+        const res = await fetch('/api/device/battery/forceChargeTime/set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        
+        if (result.errno === 0) {
+          showStatus('forceCharge', '✅ Force charge times saved successfully!', 'success');
+          displayFormattedResponse('Force Charge Times', result);
+        } else {
+          showStatus('forceCharge', `❌ Error: ${result.msg || 'Failed to save times'}`, 'error');
+          displayFormattedResponse('Force Charge Times', result);
+        }
+      } catch (error) {
+        showStatus('forceCharge', `❌ Error: ${error.message}`, 'error');
+      }
+    }
+
+    async function getForceChargeTimes() {
+      try {
+        const res = await fetch('/api/device/battery/forceChargeTime/get');
+        const result = await res.json();
+        
+        if (result.errno === 0 && result.result) {
+          const form = document.getElementById('form-forceCharge');
+          const data = result.result;
+          
+          form.enable1.checked = data.enable1 || false;
+          form.enable2.checked = data.enable2 || false;
+          
+          const formatTime = (obj) => {
+            const h = String(obj.hour || 0).padStart(2, '0');
+            const m = String(obj.minute || 0).padStart(2, '0');
+            return `${h}:${m}`;
+          };
+          
+          form.startTime1.value = formatTime(data.startTime1 || {});
+          form.endTime1.value = formatTime(data.endTime1 || {});
+          form.startTime2.value = formatTime(data.startTime2 || {});
+          form.endTime2.value = formatTime(data.endTime2 || {});
+          
+          showStatus('forceCharge', '✅ Loaded current charge times', 'success');
+          displayFormattedResponse('Force Charge Times', result);
+        } else {
+          showStatus('forceCharge', `❌ ${result.msg || 'Failed to load times'}`, 'error');
+          displayFormattedResponse('Force Charge Times', result);
+        }
+      } catch (error) {
+        showStatus('forceCharge', `❌ Error: ${error.message}`, 'error');
+      }
+    }
+
+    // Device Setting Query
+    async function getDeviceSetting() {
+      const key = document.getElementById('settingKey').value.trim();
+      if (!key) {
+        output.textContent = '⚠️ Please enter a setting key';
+        output.style.color = '#ffd43b';
+        return;
+      }
+      callAPI(`/api/inverter/settings?key=${encodeURIComponent(key)}`, `Setting: ${key}`);
+    }
+
+    // Load API metrics
+    async function loadApiMetrics(days = 1) {
+      try {
+        const resp = await fetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+        const data = await resp.json();
+        if (!data || data.errno !== 0 || !data.result) return;
+        const keys = Object.keys(data.result).sort().reverse();
+        const todayKey = keys[0];
+        const today = data.result[todayKey] || {};
+
+        const dateObj = new Date(todayKey);
+        const formatted = dateObj.toLocaleDateString('en-AU', { month: 'short', day: 'numeric', year: 'numeric' });
+        document.getElementById('metricsDate').textContent = formatted;
+        document.getElementById('countFox').textContent = today.foxess ?? 0;
+        document.getElementById('countAmber').textContent = today.amber ?? 0;
+        document.getElementById('countWeather').textContent = today.weather ?? 0;
+      } catch (e) {
+        console.warn('Failed to load api metrics', e.message);
+      }
+    }
+
+    // Load current work mode and API metrics on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      getWorkMode();
+      loadApiMetrics(1);
+      // Refresh metrics every 60 seconds
+      setInterval(() => loadApiMetrics(1), 60000);
+    });
+  </script>
+</body>
+</html>

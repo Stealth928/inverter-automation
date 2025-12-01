@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - FoxESS Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        :root {
+            --bg: #0d1117;
+            --bg2: #161b22;
+            --bg3: #21262d;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --accent: #58a6ff;
+            --success: #238636;
+            --danger: #f85149;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%);
+            min-height: 100vh;
+            color: var(--text);
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            padding-top: 70px;
+        }
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        .page-header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .status-bar {
+            background: linear-gradient(135deg, #1f6feb 0%, #238636 100%);
+            padding: 10px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-bar .info {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+        .status-bar .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .status-bar .label {
+            font-size: 11px;
+            color: rgba(255,255,255,0.7);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .status-bar .value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .btn-primary {
+            background: #238636;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-primary:hover {
+            background: #2ea043;
+        }
+        .btn-secondary {
+            background: #21262d;
+            color: #e6edf3;
+            border: 1px solid #30363d;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-secondary:hover {
+            background: #30363d;
+            border-color: #58a6ff;
+        }
+        .status-bar .actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            /* Prevent generic .actions rules from adding a divider inside the status bar */
+            margin-top: 0;
+            padding-top: 0;
+            border-top: none;
+        }
+        .section {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #30363d;
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .section-description {
+            color: #8b949e;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .setting-item {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 16px;
+            transition: border-color 0.2s;
+        }
+        .setting-item:hover {
+            border-color: #58a6ff;
+        }
+        .setting-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e6edf3;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .setting-hint {
+            font-size: 12px;
+            color: #8b949e;
+            margin-bottom: 10px;
+        }
+        .setting-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .setting-input input {
+            flex: 1;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            color: #e6edf3;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+        }
+        .setting-input input:focus {
+            outline: none;
+            border-color: #58a6ff;
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+        }
+        .setting-input .unit {
+            color: #8b949e;
+            font-size: 13px;
+            min-width: 60px;
+        }
+        .setting-input .time-display {
+            color: #7ee787;
+            font-size: 12px;
+            font-weight: 500;
+            background: rgba(126, 231, 135, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            min-width: 60px;
+            text-align: center;
+        }
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+        }
+        .alert-info {
+            background: rgba(88, 166, 255, 0.1);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+            color: #58a6ff;
+        }
+        .alert-warning {
+            background: rgba(210, 153, 34, 0.1);
+            border: 1px solid rgba(210, 153, 34, 0.3);
+            color: #d29922;
+        }
+        .alert-success {
+            background: rgba(35, 134, 54, 0.1);
+            border: 1px solid rgba(35, 134, 54, 0.3);
+            color: #7ee787;
+        }
+        .badge {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-sync {
+            background: rgba(88, 166, 255, 0.2);
+            color: #58a6ff;
+        }
+        .badge-modified {
+            background: rgba(210, 153, 34, 0.2);
+            color: #d29922;
+        }
+        .actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #30363d;
+        }
+        .spinner {
+            border: 2px solid rgba(88, 166, 255, 0.2);
+            border-top: 2px solid #58a6ff;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .hidden {
+            display: none;
+        }
+        /* FAQ Styles */
+        .faq-section {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px dashed #30363d;
+        }
+        .faq-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: #58a6ff;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 8px 0;
+            user-select: none;
+        }
+        .faq-toggle:hover {
+            color: #79c0ff;
+        }
+        .faq-toggle .arrow {
+            transition: transform 0.2s;
+            font-size: 10px;
+        }
+        .faq-toggle.open .arrow {
+            transform: rotate(90deg);
+        }
+        .faq-content {
+            display: none;
+            margin-top: 12px;
+        }
+        .faq-content.open {
+            display: block;
+        }
+        .faq-item {
+            background: rgba(13, 17, 23, 0.6);
+            border: 1px solid #21262d;
+            border-radius: 8px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+        }
+        .faq-question {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e6edf3;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .faq-question::before {
+            content: '❓';
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+        .faq-answer {
+            font-size: 12px;
+            color: #8b949e;
+            line-height: 1.6;
+            padding-left: 24px;
+        }
+        .faq-answer code {
+            background: #161b22;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #7ee787;
+        }
+        .faq-tip {
+            background: rgba(35, 134, 54, 0.1);
+            border-left: 3px solid #238636;
+            padding: 10px 12px;
+            margin-top: 8px;
+            border-radius: 0 6px 6px 0;
+            font-size: 12px;
+            color: #7ee787;
+        }
+        .faq-tip::before {
+            content: '💡 ';
+        }
+    </style>
+</head>
+<body>
+    <nav style="background:rgba(22,27,34,0.95);border-bottom:1px solid rgba(48,54,61,0.6);padding:10px 20px;display:flex;gap:10px;align-items:center;justify-content:space-between;position:fixed;top:0;left:0;right:0;z-index:10000;backdrop-filter:blur(10px);box-shadow:0 2px 8px rgba(0,0,0,0.3)">
+        <div style="display:flex;gap:10px;align-items:center">
+            <a href="/" style="background:#21262d;border:1px solid var(--border);color:var(--accent);padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:500;transition:all 0.2s">🏠 Overview</a>
+            <a href="/test.html" style="background:#21262d;border:1px solid var(--border);color:var(--accent);padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:500;transition:all 0.2s">🧪 Automation Lab</a>
+            <a href="/control.html" style="background:#21262d;border:1px solid var(--border);color:var(--accent);padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:500;transition:all 0.2s">🧭 Controls</a>
+            <a href="/settings.html" style="background:#1f6feb;color:#fff;padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600;box-shadow:0 0 0 3px rgba(31,111,235,0.1)">⚙️ Settings</a>
+            <a href="/history.html" style="background:#21262d;border:1px solid var(--border);color:var(--accent);padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:500;transition:all 0.2s">📊 History</a>
+        </div>
+        <div style="color:var(--muted);font-size:12px;padding:8px">Configuration Manager</div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1><span style="font-size:1.8rem">⚙️</span> Settings</h1>
+        </div>
+
+        <div class="status-bar">
+            <div class="info">
+                <div class="info-item">
+                    <div class="label">Changes</div>
+                    <div class="value" id="configStatus">Loading...</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">Last Saved</div>
+                    <div class="value" id="lastSaved">-</div>
+                </div>
+            </div>
+            <div class="actions">
+                <button class="btn-secondary" onclick="reloadFromServer()">🔄 Reload from Server</button>
+                <button class="btn-primary" onclick="saveAllSettings()">💾 Save All Changes</button>
+            </div>
+        </div>
+
+        <div id="messageArea"></div>
+
+        <!-- Automation Settings -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        🤖 Automation Timing
+                        <span class="badge badge-sync" id="automationBadge">Synced</span>
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="resetSection('automation')">Undo Current Changes</button>
+            </div>
+            <div class="section-description">
+                Controls how often the automation engine evaluates rules and triggers actions.
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <div class="setting-label">Automation Cycle Interval</div>
+                    <div class="setting-hint">How often automation rules are evaluated</div>
+                    <div class="setting-input">
+                        <input type="number" id="automation_intervalMs" data-section="automation" data-key="intervalMs" min="10000" max="300000" step="1000" value="60000">
+                        <span class="unit">ms</span>
+                        <span class="time-display" id="automation_intervalMs_display">= 60s</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Startup Delay</div>
+                    <div class="setting-hint">Delay before automation starts after server boot</div>
+                    <div class="setting-input">
+                        <input type="number" id="automation_startDelayMs" data-section="automation" data-key="startDelayMs" min="0" max="30000" step="1000" value="5000">
+                        <span class="unit">ms</span>
+                        <span class="time-display" id="automation_startDelayMs_display">= 5s</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Data Gathering Timeout</div>
+                    <div class="setting-hint">Max time to wait for API responses during automation cycle</div>
+                    <div class="setting-input">
+                        <input type="number" id="automation_gatherDataTimeoutMs" data-section="automation" data-key="gatherDataTimeoutMs" min="5000" max="30000" step="1000" value="8000">
+                        <span class="unit">ms</span>
+                        <span class="time-display" id="automation_gatherDataTimeoutMs_display">= 8s</span>
+                    </div>
+                </div>
+            </div>
+            <div class="faq-section">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> Frequently Asked Questions
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">What's the best cycle interval for my setup?</div>
+                        <div class="faq-answer">
+                            For most users, <code>60 seconds</code> is ideal. This balances responsiveness with API rate limits. 
+                            If you have time-sensitive price rules, try <code>30 seconds</code>. For battery longevity, <code>120 seconds</code> reduces switching frequency.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Why would I change the startup delay?</div>
+                        <div class="faq-answer">
+                            The startup delay gives your network and external APIs time to stabilize after a server restart. 
+                            Increase it if you see errors on boot. Set to <code>0</code> if automation should start immediately.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What happens if the data gathering times out?</div>
+                        <div class="faq-answer">
+                            If APIs don't respond within this timeout, the automation cycle skips that data source and uses cached values. 
+                            Increase this if you have a slow internet connection or see frequent timeout warnings in logs.
+                            <div class="faq-tip">Check the Logging section and set level to "Debug" to see detailed timeout information.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cache Settings -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        💾 Cache & Refresh Intervals
+                        <span class="badge badge-sync" id="cacheBadge">Synced</span>
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="resetSection('cache')">Undo Current Changes</button>
+            </div>
+            <div class="section-description">
+                Configure how long data is cached before refreshing from external APIs. Longer intervals reduce API calls.
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <div class="setting-label">Amber Prices Cache</div>
+                    <div class="setting-hint">Amber pricing data refresh interval</div>
+                    <div class="setting-input">
+                        <input type="number" id="cache_amber" data-section="cache" data-key="amber" min="30000" max="300000" step="5000" value="60000">
+                        <span class="unit">ms</span>
+                        <span class="time-display" id="cache_amber_display">= 60s</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Inverter Data Cache</div>
+                    <div class="setting-hint">FoxESS inverter data refresh interval (respect rate limits)</div>
+                    <div class="setting-input">
+                        <input type="number" id="cache_inverter" data-section="cache" data-key="inverter" min="60000" max="600000" step="30000" value="300000">
+                        <span class="unit">ms</span>
+                        <span class="time-display" id="cache_inverter_display">= 5m</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Weather Data Cache</div>
+                    <div class="setting-hint">Weather forecast refresh interval</div>
+                    <div class="setting-input">
+                        <input type="number" id="cache_weather" data-section="cache" data-key="weather" min="300000" max="3600000" step="300000" value="1800000">
+                        <span class="unit">ms</span>
+                        <span class="time-display" id="cache_weather_display">= 30m</span>
+                    </div>
+                </div>
+            </div>
+            <div class="faq-section">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> Frequently Asked Questions
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">Why can't I set the inverter cache below 60 seconds?</div>
+                        <div class="faq-answer">
+                            FoxESS Cloud API has rate limits. Polling too frequently can get your API key temporarily blocked or cause errors. 
+                            <code>5 minutes</code> is the recommended minimum to stay well within limits while keeping data reasonably fresh.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">How does caching affect my automation rules?</div>
+                        <div class="faq-answer">
+                            Automation rules use cached data when making decisions. Shorter cache times mean more up-to-date data but more API calls.
+                            For price-based rules, <code>60 seconds</code> Amber cache ensures you react quickly to price changes.
+                            <div class="faq-tip">Balance responsiveness with API usage — aggressive caching can hit rate limits during busy periods.</div>
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Why is weather cache so long (30 minutes)?</div>
+                        <div class="faq-answer">
+                            Weather forecasts don't change frequently and the data is typically updated hourly by providers. 
+                            A <code>30 minute</code> cache is sufficient for solar production estimates while minimizing unnecessary API calls.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Default Rule Settings -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        📋 Automation Rule Defaults
+                        <span class="badge badge-sync" id="defaultsBadge">Synced</span>
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="resetSection('defaults')">Undo Current Changes</button>
+            </div>
+            <div class="section-description">
+                Default values used when creating new automation rules. Existing rules are not affected.
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <div class="setting-label">Default Cooldown</div>
+                    <div class="setting-hint">Minimum time between rule triggers</div>
+                    <div class="setting-input">
+                        <input type="number" id="defaults_cooldownMinutes" data-section="defaults" data-key="cooldownMinutes" min="0" max="60" step="1" value="5">
+                        <span class="unit">minutes</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Default Duration</div>
+                    <div class="setting-hint">How long scheduler segments run</div>
+                    <div class="setting-input">
+                        <input type="number" id="defaults_durationMinutes" data-section="defaults" data-key="durationMinutes" min="5" max="120" step="5" value="30">
+                        <span class="unit">minutes</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Default Force Discharge Power</div>
+                    <div class="setting-hint">Battery discharge power setting</div>
+                    <div class="setting-input">
+                        <input type="number" id="defaults_fdPwr" data-section="defaults" data-key="fdPwr" min="1000" max="10000" step="500" value="5000">
+                        <span class="unit">watts</span>
+                    </div>
+                </div>
+            </div>
+            <div class="faq-section">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> Frequently Asked Questions
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">What is the cooldown and why does it matter?</div>
+                        <div class="faq-answer">
+                            Cooldown prevents a rule from triggering repeatedly in quick succession. For example, if prices fluctuate around your threshold, 
+                            a <code>5 minute</code> cooldown prevents the rule from toggling on/off every cycle. This protects your battery from excessive cycling.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">How does duration affect my scheduler?</div>
+                        <div class="faq-answer">
+                            When a rule triggers, it creates a scheduler segment lasting this many minutes. After the duration expires, the inverter returns to its default mode.
+                            <code>30 minutes</code> is a good balance for most price arbitrage scenarios.
+                            <div class="faq-tip">Set shorter durations (15-20 min) if prices change frequently, longer (45-60 min) for more stable pricing periods.</div>
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What force discharge power should I use?</div>
+                        <div class="faq-answer">
+                            This controls how fast your battery discharges during ForceDischarge mode. <code>5000W</code> is typical for most home setups.
+                            Lower values (3000W) are gentler on the battery; higher values (7000-10000W) maximize export during high price windows but increase wear.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logging Settings -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        📝 Logging
+                        <span class="badge badge-sync" id="loggingBadge">Synced</span>
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="resetSection('logging')">Undo Current Changes</button>
+            </div>
+            <div class="section-description">
+                Control server logging verbosity for debugging issues.
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <div class="setting-label">Log Level</div>
+                    <div class="setting-hint">Higher levels include more detail (debug > info > warn > error)</div>
+                    <div class="setting-input">
+                        <select id="logging_level" data-section="logging" data-key="level" style="flex:1;background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:8px 12px;border-radius:6px;font-size:14px">
+                            <option value="error">Error - Critical issues only</option>
+                            <option value="warn">Warn - Warnings and errors</option>
+                            <option value="info" selected>Info - General information (default)</option>
+                            <option value="debug">Debug - Detailed debugging</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="faq-section">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> Frequently Asked Questions
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">Which log level should I use?</div>
+                        <div class="faq-answer">
+                            <strong>Info</strong> (default) — Shows automation cycles, rule triggers, and important events. Good for normal operation.<br><br>
+                            <strong>Debug</strong> — Shows everything including API responses, condition evaluations, and timing details. Use when troubleshooting.<br><br>
+                            <strong>Warn</strong> — Only warnings and errors. Use for minimal output in stable setups.<br><br>
+                            <strong>Error</strong> — Only critical failures. Not recommended as you'll miss important information.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Where can I see the logs?</div>
+                        <div class="faq-answer">
+                            Logs are output to the terminal where you started the server (<code>node server.js</code>). 
+                            Each log line includes a timestamp, level, and message.
+                            <div class="faq-tip">On Windows, you can scroll up in PowerShell or Command Prompt to see historical logs.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Retry Settings -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        🔄 API Retry Settings
+                        <span class="badge badge-sync" id="apiBadge">Synced</span>
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="resetSection('api')">Undo Current Changes</button>
+            </div>
+            <div class="section-description">
+                Configure retry behavior for external API calls (FoxESS, Amber). Helps handle transient failures.
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <div class="setting-label">Retry Count</div>
+                    <div class="setting-hint">Number of retry attempts on failure (0-10)</div>
+                    <div class="setting-input">
+                        <input type="number" id="api_retryCount" data-section="api" data-key="retryCount" min="0" max="10" step="1" value="3">
+                        <span class="unit">retries</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Base Retry Delay</div>
+                    <div class="setting-hint">Initial delay between retries (uses exponential backoff)</div>
+                    <div class="setting-input">
+                        <input type="number" id="api_retryDelayMs" data-section="api" data-key="retryDelayMs" min="100" max="10000" step="100" value="1000">
+                        <span class="unit">ms</span>
+                        <span class="time-display" id="api_retryDelayMs_display">= 1s</span>
+                    </div>
+                </div>
+            </div>
+            <div class="faq-section">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> Frequently Asked Questions
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">What is exponential backoff?</div>
+                        <div class="faq-answer">
+                            When an API call fails, the system waits before retrying. With exponential backoff, each retry waits longer:
+                            1st retry = <code>1s</code>, 2nd = <code>2s</code>, 3rd = <code>4s</code>, and so on.
+                            This prevents overwhelming a struggling API server while still recovering from transient issues.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Should I increase retries if I see lots of failures?</div>
+                        <div class="faq-answer">
+                            Maybe, but first check why calls are failing. Frequent failures might indicate network issues, API outages, or rate limiting.
+                            <code>3 retries</code> with <code>1 second</code> base delay handles most transient issues without excessive delays.
+                            <div class="faq-tip">Set logging to "Debug" to see detailed API response information when troubleshooting failures.</div>
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What if I set retry count to 0?</div>
+                        <div class="faq-answer">
+                            API calls will fail immediately on first error with no retry attempts. This reduces latency but means any transient network glitch 
+                            will cause a failed automation cycle. Not recommended unless you have extremely reliable connectivity.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Blackout Windows (Advanced) -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        🌙 Automation Blackout Windows
+                        <span class="badge badge-sync" id="blackoutBadge">Synced</span>
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="addBlackoutWindow()">➕ Add Window</button>
+            </div>
+            <div class="section-description">
+                Time periods when automation is paused. Useful for maintenance, peak tariffs, or overnight periods.
+            </div>
+            <div id="blackoutWindowsList" style="margin-top:16px">
+                <!-- Blackout windows will be rendered here -->
+                <div style="color:#8b949e;font-size:13px;text-align:center;padding:20px">No blackout windows configured</div>
+            </div>
+            <div class="faq-section">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> Frequently Asked Questions
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">When would I use a blackout window?</div>
+                        <div class="faq-answer">
+                            Common use cases include:<br>
+                            • <strong>Overnight quiet hours</strong> — Pause automation from 11pm-6am when you don't want mode changes<br>
+                            • <strong>Scheduled maintenance</strong> — Temporarily disable automation during system updates<br>
+                            • <strong>Peak demand events</strong> — Prevent discharge during grid emergencies when you want to keep battery full
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Do blackout windows work overnight (crossing midnight)?</div>
+                        <div class="faq-answer">
+                            Yes! A window from <code>22:00</code> to <code>06:00</code> correctly spans midnight. 
+                            The system understands that the end time is on the following day.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What happens during a blackout window?</div>
+                        <div class="faq-answer">
+                            Automation cycles are completely skipped — no rules are evaluated and no actions are taken. 
+                            Your inverter continues running in whatever mode it was in before the blackout started.
+                            <div class="faq-tip">Active scheduler segments from before the blackout will continue running until they expire naturally.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn-secondary" onclick="resetToFactoryDefaults()" style="color:#f85149;border-color:#f85149">🔄 Factory Reset</button>
+            <button class="btn-secondary" onclick="loadSettings()">🔄 Reload from Server</button>
+            <button class="btn-primary" onclick="saveAllSettings()">💾 Save All Changes</button>
+        </div>
+    </div>
+
+    <script>
+        console.log('Settings page script loaded');
+        let currentConfig = {};
+        let originalConfig = {};
+        let hasUnsavedChanges = false;
+        
+        // Toggle FAQ section visibility
+        function toggleFaq(element) {
+            element.classList.toggle('open');
+            const content = element.nextElementSibling;
+            if (content) {
+                content.classList.toggle('open');
+            }
+        }
+
+        // Helper to format milliseconds to human-readable
+        function formatMs(ms) {
+            if (ms === null || ms === undefined || isNaN(ms)) return '?';
+            ms = parseInt(ms);
+            if (ms < 1000) return `${ms}ms`;
+            if (ms < 60000) return `${Math.round(ms/1000)}s`;
+            if (ms < 3600000) return `${Math.round(ms/60000)}m`;
+            return `${(ms/3600000).toFixed(1)}h`;
+        }
+
+        // Update time display for a millisecond input
+        function updateTimeDisplay(inputId) {
+            const input = document.getElementById(inputId);
+            const display = document.getElementById(inputId + '_display');
+            if (input && display) {
+                display.textContent = '= ' + formatMs(input.value);
+            }
+        }
+
+        // Update all time displays
+        function updateAllTimeDisplays() {
+            const msInputs = [
+                'automation_intervalMs', 'automation_startDelayMs', 'automation_gatherDataTimeoutMs',
+                'cache_amber', 'cache_inverter', 'cache_weather',
+                'api_retryDelayMs'
+            ];
+            msInputs.forEach(updateTimeDisplay);
+        }
+
+        // Helper to show messages
+        function showMessage(type, message) {
+            const area = document.getElementById('messageArea');
+            const icon = type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️';
+            area.innerHTML = `<div class="alert alert-${type}">${icon} ${message}</div>`;
+            setTimeout(() => area.innerHTML = '', 5000);
+        }
+
+        // Load current settings from server
+        async function reloadFromServer() {
+            console.log('=== reloadFromServer called ===');
+            try {
+                showMessage('Reloading settings from server...', 'info');
+                await loadSettings();
+                showMessage('Settings reloaded from server successfully', 'success');
+            } catch (err) {
+                console.error('Error reloading settings:', err);
+                showMessage('Error reloading settings: ' + err.message, 'error');
+            }
+        }
+
+        async function loadSettings() {
+            console.log('=== loadSettings called ===');
+            try {
+                document.getElementById('configStatus').innerHTML = '<span class="spinner"></span> Loading...';
+                
+                const resp = await fetch('/api/config?t=' + Date.now());
+                const data = await resp.json();
+                console.log('API response:', data);
+                
+                if (data.errno !== 0 || !data.result) {
+                    throw new Error(data.msg || 'Invalid response from server');
+                }
+                
+                // Set current config
+                currentConfig = data.result;
+                console.log('Setting currentConfig to:', currentConfig);
+                
+                // Helper to safely set input value
+                const setInput = (id, value) => {
+                    const input = document.getElementById(id);
+                    if (input) {
+                        input.value = value;
+                        console.log(`Set ${id} = ${value}`);
+                    } else {
+                        console.error(`Element not found: ${id}`);
+                    }
+                };
+                
+                // Automation
+                if (currentConfig.automation) {
+                    console.log('Setting automation values:', currentConfig.automation);
+                    setInput('automation_intervalMs', currentConfig.automation.intervalMs);
+                    setInput('automation_startDelayMs', currentConfig.automation.startDelayMs);
+                    setInput('automation_gatherDataTimeoutMs', currentConfig.automation.gatherDataTimeoutMs);
+                }
+                
+                // Cache
+                if (currentConfig.cache) {
+                    console.log('Setting cache values:', currentConfig.cache);
+                    setInput('cache_amber', currentConfig.cache.amber);
+                    setInput('cache_inverter', currentConfig.cache.inverter);
+                    setInput('cache_weather', currentConfig.cache.weather);
+                }
+                
+                // Defaults
+                if (currentConfig.defaults) {
+                    console.log('Setting defaults values:', currentConfig.defaults);
+                    setInput('defaults_cooldownMinutes', currentConfig.defaults.cooldownMinutes);
+                    setInput('defaults_durationMinutes', currentConfig.defaults.durationMinutes);
+                    setInput('defaults_fdPwr', currentConfig.defaults.fdPwr);
+                }
+                
+                // Logging
+                if (currentConfig.logging) {
+                    console.log('Setting logging values:', currentConfig.logging);
+                    const levelSelect = document.getElementById('logging_level');
+                    if (levelSelect) levelSelect.value = currentConfig.logging.level || 'info';
+                }
+                
+                // API retry
+                if (currentConfig.api) {
+                    console.log('Setting api values:', currentConfig.api);
+                    setInput('api_retryCount', currentConfig.api.retryCount);
+                    setInput('api_retryDelayMs', currentConfig.api.retryDelayMs);
+                }
+                
+                // Blackout windows
+                renderBlackoutWindows(currentConfig.automation?.blackoutWindows || []);
+                
+                // NOW set originalConfig to match what we just loaded (so no unsaved changes)
+                originalConfig = JSON.parse(JSON.stringify(data.result));
+                console.log('Set originalConfig to:', originalConfig);
+                
+                updateAllTimeDisplays();
+                updateStatus();
+                showMessage('success', 'Configuration loaded from server');
+                console.log('=== loadSettings complete ===');
+            } catch (error) {
+                console.error('loadSettings error:', error);
+                document.getElementById('configStatus').textContent = 'Error';
+                showMessage('warning', `Failed to load: ${error.message}`);
+            }
+        }
+
+        function setInputValue(id, value) {
+            const input = document.getElementById(id);
+            if (input) {
+                input.value = value !== undefined && value !== null ? value : '';
+            }
+        }
+
+        function getInputValue(id) {
+            const input = document.getElementById(id);
+            return input ? parseInt(input.value) : null;
+        }
+
+        // Check for unsaved changes
+        function checkForChanges() {
+            // Don't check if configs aren't loaded yet
+            if (!currentConfig || !originalConfig) {
+                console.log('checkForChanges: configs not loaded yet');
+                return false;
+            }
+            
+            const sections = ['automation', 'cache', 'defaults', 'logging', 'api'];
+            let hasChanges = false;
+            
+            sections.forEach(section => {
+                const badge = document.getElementById(`${section}Badge`);
+                let sectionChanged = false;
+                
+                if (currentConfig[section] && originalConfig[section]) {
+                    Object.keys(currentConfig[section]).forEach(key => {
+                        // Skip blackoutWindows - handled separately
+                        if (key === 'blackoutWindows') return;
+                        
+                        const inputId = `${section}_${key}`;
+                        const input = document.getElementById(inputId);
+                        if (!input) return;
+                        
+                        // Handle select vs number inputs
+                        const currentValue = input.tagName === 'SELECT' ? input.value : parseInt(input.value);
+                        const originalValue = originalConfig[section][key];
+                        
+                        if (currentValue !== originalValue) {
+                            sectionChanged = true;
+                            hasChanges = true;
+                        }
+                    });
+                }
+                
+                if (badge) {
+                    if (sectionChanged) {
+                        badge.textContent = 'Modified';
+                        badge.className = 'badge badge-modified';
+                    } else {
+                        badge.textContent = 'Synced';
+                        badge.className = 'badge badge-sync';
+                    }
+                }
+            });
+            
+            // Check blackout windows separately
+            const currentWindows = JSON.stringify(getBlackoutWindowsFromUI());
+            const originalWindows = JSON.stringify(originalConfig.automation?.blackoutWindows || []);
+            if (currentWindows !== originalWindows) {
+                hasChanges = true;
+                const badge = document.getElementById('blackoutBadge');
+                if (badge) {
+                    badge.textContent = 'Modified';
+                    badge.className = 'badge badge-modified';
+                }
+            } else {
+                const badge = document.getElementById('blackoutBadge');
+                if (badge) {
+                    badge.textContent = 'Synced';
+                    badge.className = 'badge badge-sync';
+                }
+            }
+            
+            hasUnsavedChanges = hasChanges;
+            return hasChanges;
+        }
+
+        // Update status display
+        function updateStatus() {
+            const status = document.getElementById('configStatus');
+            if (checkForChanges()) {
+                status.innerHTML = '<span style="color:#d29922">⚠️ Unsaved</span>';
+            } else {
+                status.innerHTML = '<span style="color:#7ee787">✓ No Changes</span>';
+            }
+        }
+
+        // Save all settings
+        async function saveAllSettings() {
+            try {
+                // Collect all values
+                const newConfig = {
+                    automation: {
+                        intervalMs: getInputValue('automation_intervalMs'),
+                        startDelayMs: getInputValue('automation_startDelayMs'),
+                        gatherDataTimeoutMs: getInputValue('automation_gatherDataTimeoutMs'),
+                        blackoutWindows: getBlackoutWindowsFromUI()
+                    },
+                    cache: {
+                        amber: getInputValue('cache_amber'),
+                        inverter: getInputValue('cache_inverter'),
+                        weather: getInputValue('cache_weather')
+                    },
+                    defaults: {
+                        cooldownMinutes: getInputValue('defaults_cooldownMinutes'),
+                        durationMinutes: getInputValue('defaults_durationMinutes'),
+                        fdPwr: getInputValue('defaults_fdPwr')
+                    },
+                    logging: {
+                        level: document.getElementById('logging_level')?.value || 'info'
+                    },
+                    api: {
+                        retryCount: getInputValue('api_retryCount'),
+                        retryDelayMs: getInputValue('api_retryDelayMs')
+                    }
+                };
+
+                // Validate
+                if (newConfig.automation.intervalMs < 10000) {
+                    showMessage('warning', 'Automation interval must be at least 10 seconds');
+                    return;
+                }
+
+                const statusEl = document.getElementById('configStatus');
+                statusEl.innerHTML = '<span class="spinner"></span> Saving...';
+
+                const resp = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newConfig)
+                });
+
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                
+                const data = await resp.json();
+                if (data.errno !== 0) throw new Error(data.msg || 'Failed to save config');
+
+                // Update original config from server response
+                originalConfig = JSON.parse(JSON.stringify(data.result));
+                currentConfig = data.result;
+                
+                updateStatus();
+                document.getElementById('lastSaved').textContent = new Date().toLocaleTimeString();
+                
+                showMessage('success', '✅ Configuration saved to server and persisted to disk!');
+            } catch (error) {
+                console.error('Failed to save settings:', error);
+                showMessage('warning', `Failed to save configuration: ${error.message}`);
+                updateStatus();
+            }
+        }
+
+        // Reset section to defaults
+        function resetSection(section) {
+            if (!confirm(`Undo changes to ${section} settings?`)) return;
+            
+            if (section === 'logging' && originalConfig.logging) {
+                const levelSelect = document.getElementById('logging_level');
+                if (levelSelect) levelSelect.value = originalConfig.logging.level || 'info';
+            } else if (originalConfig[section]) {
+                Object.keys(originalConfig[section]).forEach(key => {
+                    if (key === 'blackoutWindows') return;
+                    setInputValue(`${section}_${key}`, originalConfig[section][key]);
+                });
+            }
+            
+            updateAllTimeDisplays();
+            updateStatus();
+        }
+        
+        // Blackout window functions
+        function renderBlackoutWindows(windows) {
+            const container = document.getElementById('blackoutWindowsList');
+            if (!windows || windows.length === 0) {
+                container.innerHTML = '<div style="color:#8b949e;font-size:13px;text-align:center;padding:20px">No blackout windows configured</div>';
+                return;
+            }
+            
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            let html = '';
+            windows.forEach((w, idx) => {
+                const daysStr = w.days && w.days.length > 0 
+                    ? w.days.map(d => dayNames[d]).join(', ')
+                    : 'Every day';
+                html += `
+                    <div class="setting-item" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px" data-window-idx="${idx}">
+                        <div style="display:flex;align-items:center;gap:12px">
+                            <input type="time" class="blackout-start" value="${w.start || '00:00'}" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:6px;border-radius:4px">
+                            <span style="color:#8b949e">to</span>
+                            <input type="time" class="blackout-end" value="${w.end || '23:59'}" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:6px;border-radius:4px">
+                            <span style="color:#8b949e;font-size:12px">(${daysStr})</span>
+                        </div>
+                        <button onclick="removeBlackoutWindow(${idx})" style="background:#f8514926;border:1px solid #f85149;color:#f85149;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:12px">🗑️ Remove</button>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+            
+            // Add change listeners
+            container.querySelectorAll('input').forEach(input => {
+                input.addEventListener('change', updateStatus);
+            });
+        }
+        
+        function getBlackoutWindowsFromUI() {
+            const container = document.getElementById('blackoutWindowsList');
+            const items = container.querySelectorAll('[data-window-idx]');
+            const windows = [];
+            items.forEach(item => {
+                const start = item.querySelector('.blackout-start')?.value;
+                const end = item.querySelector('.blackout-end')?.value;
+                if (start && end) {
+                    windows.push({ start, end, days: [] }); // days: [] means every day
+                }
+            });
+            return windows;
+        }
+        
+        function addBlackoutWindow() {
+            const current = getBlackoutWindowsFromUI();
+            current.push({ start: '22:00', end: '06:00', days: [] });
+            renderBlackoutWindows(current);
+            updateStatus();
+        }
+        
+        function removeBlackoutWindow(idx) {
+            const current = getBlackoutWindowsFromUI();
+            current.splice(idx, 1);
+            renderBlackoutWindows(current);
+            updateStatus();
+        }
+        
+        // Factory reset
+        async function resetToFactoryDefaults() {
+            if (!confirm('⚠️ This will reset ALL settings to factory defaults. Are you sure?')) return;
+            if (!confirm('This action cannot be undone. Continue?')) return;
+            
+            try {
+                const statusEl = document.getElementById('configStatus');
+                statusEl.innerHTML = '<span class="spinner"></span> Resetting...';
+                
+                const resp = await fetch('/api/config/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}) // Reset all
+                });
+                
+                const data = await resp.json();
+                if (data.errno !== 0) throw new Error(data.msg || 'Reset failed');
+                
+                // Reload settings from server
+                await loadSettings();
+                showMessage('success', '✅ All settings reset to factory defaults');
+            } catch (error) {
+                console.error('Factory reset failed:', error);
+                showMessage('warning', `Factory reset failed: ${error.message}`);
+                updateStatus();
+            }
+        }
+
+        // Add change listeners to all inputs
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM Content Loaded - initializing settings page');
+            loadSettings();
+            
+            // Add change listeners for status and time displays
+            document.querySelectorAll('input[type="number"]').forEach(input => {
+                input.addEventListener('input', () => {
+                    updateStatus();
+                    updateTimeDisplay(input.id);
+                });
+            });
+            
+            // Add change listener for select
+            document.querySelectorAll('select').forEach(select => {
+                select.addEventListener('change', updateStatus);
+            });
+            
+            // Initialize time displays
+            updateAllTimeDisplays();
+            console.log('Settings page initialization complete');
+        });
+
+        // Warn before leaving with unsaved changes
+        window.addEventListener('beforeunload', (e) => {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automation Testing - Dry Run Mode</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-card: #21262d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent: #7ee787;
+            --accent-blue: #58a6ff;
+            --accent-yellow: #d29922;
+            --accent-red: #f85149;
+            --accent-purple: #a371f7;
+            --border: #30363d;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1600px; margin: 0 auto; }
+        
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        header h1 { 
+            font-size: 1.4rem; 
+            display: flex; 
+            align-items: center; 
+            gap: 10px;
+        }
+        .badge {
+            background: var(--accent-yellow);
+            color: #000;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        .badge-safe {
+            background: var(--accent);
+            color: #000;
+        }
+        .back-link {
+            color: var(--accent-blue);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .back-link:hover { text-decoration: underline; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+        }
+        @media (max-width: 1200px) {
+            .grid { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 800px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 16px;
+            border: 1px solid var(--border);
+        }
+        .card h2 {
+            font-size: 0.95rem;
+            margin-bottom: 14px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card h2 .icon { font-size: 1.1rem; }
+
+        /* Buttons */
+        button {
+            padding: 8px 14px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--accent); color: #000; font-weight: 600; }
+        .btn-primary:hover { background: #56d364; }
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border) !important;
+        }
+        .btn-secondary:hover { background: #30363d; }
+        .btn-danger { background: var(--accent-red); color: #fff; }
+        .btn-danger:hover { background: #da3633; }
+        .btn-blue { background: var(--accent-blue); color: #fff; }
+        .btn-blue:hover { background: #4493f8; }
+
+        /* Form inputs */
+        input, select, textarea {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            padding: 8px 10px;
+            font-size: 0.9rem;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        /* Mock Data Section */
+        .sim-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .sim-field label {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .sim-field input {
+            width: 100%;
+        }
+        .sim-field .hint {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        /* Presets */
+        .presets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 12px;
+        }
+        .presets button {
+            padding: 6px 10px;
+            font-size: 0.75rem;
+        }
+
+        /* Rules Display */
+        .rule-card {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-left: 3px solid var(--accent-blue);
+        }
+        .rule-card.disabled { 
+            opacity: 0.5; 
+            border-left-color: var(--text-secondary);
+        }
+        .rule-card.triggered {
+            border-left-color: var(--accent);
+            background: rgba(126, 231, 135, 0.1);
+        }
+        .rule-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .rule-name { font-weight: 600; font-size: 0.9rem; }
+        .rule-status {
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+        }
+        .rule-status.enabled { background: var(--accent); color: #000; }
+        .rule-status.disabled { background: var(--text-secondary); color: #000; }
+        .rule-params {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            font-size: 0.8rem;
+        }
+        .rule-param {
+            background: var(--bg-card);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .rule-param .label { color: var(--text-secondary); font-size: 0.7rem; }
+        .rule-param .value { font-weight: 600; color: var(--accent); }
+        
+        .cond-badge {
+            display: inline-block;
+            padding: 3px 6px;
+            background: var(--bg-card);
+            border: 1px solid var(--accent-blue);
+            border-radius: 4px;
+            font-size: 0.7rem;
+            color: var(--accent-blue);
+            margin-right: 4px;
+            margin-bottom: 4px;
+        }
+        
+        /* Priority Badge */
+        .priority-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent-yellow);
+            color: #000;
+            font-weight: 700;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-right: 8px;
+            min-width: 24px;
+        }
+        .priority-badge.p1 { background: #ff6b6b; color: #fff; } /* High priority - Red */
+        .priority-badge.p2 { background: #ff922b; color: #000; } /* Medium-high - Orange */
+        .priority-badge.p3 { background: #ffd43b; color: #000; } /* Medium - Yellow */
+        .priority-badge.p4, .priority-badge.p5 { background: #51cf66; color: #000; } /* Lower - Green */
+        .priority-badge.p-low { background: var(--text-secondary); color: #000; } /* Very low */
+
+        /* Scheduler Mock */
+        .scheduler-segment {
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 8px;
+            border: 1px solid var(--border);
+        }
+        .scheduler-segment.pending {
+            border-color: var(--accent-yellow);
+            background: rgba(210, 153, 34, 0.1);
+        }
+        .scheduler-segment .time-bar {
+            height: 6px;
+            background: var(--bg-card);
+            border-radius: 3px;
+            margin: 8px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .scheduler-segment .time-bar .fill {
+            position: absolute;
+            height: 100%;
+            background: var(--accent-blue);
+            border-radius: 3px;
+        }
+        .segment-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        .segment-mode {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        /* Test Results */
+        .result-box {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 14px;
+            margin-top: 12px;
+        }
+        .result-box.triggered {
+            border: 2px solid var(--accent);
+            background: rgba(126, 231, 135, 0.1);
+        }
+        .result-box.not-triggered {
+            border: 2px solid var(--accent-yellow);
+            background: rgba(210, 153, 34, 0.1);
+        }
+        .result-box.error {
+            border: 2px solid var(--accent-red);
+            background: rgba(248, 81, 73, 0.1);
+        }
+        .result-title {
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Log Output */
+        .log-area {
+            background: #010409;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.75rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            padding: 3px 0;
+            border-bottom: 1px solid #21262d;
+        }
+        .log-entry:last-child { border-bottom: none; }
+        .log-time { color: #6e7681; }
+        .log-info { color: var(--accent-blue); }
+        .log-warn { color: var(--accent-yellow); }
+        .log-success { color: var(--accent); }
+        .log-error { color: var(--accent-red); }
+
+        /* Run Button */
+        .run-btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 1rem;
+            margin-top: 12px;
+        }
+
+        .full-width { grid-column: 1 / -1; }
+        .span-2 { grid-column: span 2; }
+        
+        .info-banner {
+            background: rgba(88, 166, 255, 0.1);
+            border: 1px solid var(--accent-blue);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 16px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .info-banner .icon { font-size: 1.2rem; }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+        .modal-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            width: 95%;
+            max-width: 700px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        /* API Payload Display */
+        .api-payload {
+            background: #010409;
+            border-radius: 6px;
+            padding: 12px;
+            font-family: 'Consolas', monospace;
+            font-size: 0.75rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            color: var(--accent);
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-secondary);
+        }
+        .empty-state .icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        /* FAQ Section */
+        .faq-section {
+            margin-top: 20px;
+        }
+        .faq-item {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            overflow: hidden;
+        }
+        .faq-question {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        .faq-question:hover {
+            background: var(--bg-card);
+        }
+        .faq-question .icon {
+            transition: transform 0.2s;
+            font-size: 0.8rem;
+        }
+        .faq-item.open .faq-question .icon {
+            transform: rotate(180deg);
+        }
+        .faq-answer {
+            display: none;
+            padding: 0 16px 16px;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+        .faq-item.open .faq-answer {
+            display: block;
+        }
+        .faq-answer code {
+            background: var(--bg-card);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+            color: var(--accent-blue);
+        }
+        .faq-answer ul {
+            margin: 8px 0;
+            padding-left: 20px;
+        }
+        .faq-answer li {
+            margin-bottom: 6px;
+        }
+        .faq-highlight {
+            background: rgba(126, 231, 135, 0.15);
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            border-left: 3px solid var(--accent);
+        }
+
+        .rule-actions {
+            display: flex;
+            gap: 4px;
+            margin-top: 8px;
+        }
+        .rule-actions button {
+            padding: 4px 8px;
+            font-size: 0.7rem;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <nav style="background:#161b22;border-bottom:1px solid #30363d;padding:8px 16px;display:flex;gap:8px;align-items:center;position:sticky;top:0;z-index:100">
+        <a href="/" style="background:#21262d;border:1px solid #30363d;color:var(--accent-blue);padding:6px 12px;border-radius:6px;text-decoration:none;font-size:13px">🏠 Overview</a>
+        <a href="/test.html" style="background:var(--accent-blue);color:#000;padding:6px 12px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">🧪 Automation Lab</a>
+        <a href="/control.html" style="background:#21262d;border:1px solid #30363d;color:var(--accent-blue);padding:6px 12px;border-radius:6px;text-decoration:none;font-size:13px">🧭 Controls</a>
+        <a href="/settings.html" style="background:#21262d;border:1px solid #30363d;color:var(--accent-blue);padding:6px 12px;border-radius:6px;text-decoration:none;font-size:13px">⚙️ Settings</a>
+        <a href="/history.html" style="background:#21262d;border:1px solid #30363d;color:var(--accent-blue);padding:6px 12px;border-radius:6px;text-decoration:none;font-size:13px">📊 History</a>
+    </nav>
+
+    <div class="container">
+        <header>
+            <h1>
+                🧪 Automation Test Lab
+                <span class="badge">DRY RUN</span>
+                <span class="badge badge-safe">SAFE MODE</span>
+            </h1>
+            <a href="/" class="back-link">← Back to Dashboard</a>
+        </header>
+
+        <div class="info-banner">
+            <span class="icon">🛡️</span>
+            <div>
+                <strong>Safe Testing Environment:</strong> All tests run in simulation mode. 
+                No commands will be sent to your inverter. Test rules and see exactly what would happen.
+            </div>
+        </div>
+
+        <div class="grid">
+            <!-- Column 1: Mock Data Input -->
+            <div class="card">
+                <h2><span class="icon">📊</span> Simulated Conditions</h2>
+                <div class="sim-grid">
+                    <div class="sim-field">
+                        <label>Feed-in Price (¢/kWh)</label>
+                        <input type="number" id="simFeedIn" value="25" step="0.5">
+                        <div class="hint">What you earn exporting</div>
+                    </div>
+                    <div class="sim-field">
+                        <label>Buy Price (¢/kWh)</label>
+                        <input type="number" id="simBuy" value="30" step="0.5">
+                        <div class="hint">Cost to import</div>
+                    </div>
+                    <div class="sim-field">
+                        <label>Battery SoC (%)</label>
+                        <input type="number" id="simSoC" value="75" min="0" max="100">
+                    </div>
+                    <div class="sim-field">
+                        <label>Battery Temp (°C)</label>
+                        <input type="number" id="simBatteryTemp" value="28" step="0.5">
+                    </div>
+                    <div class="sim-field">
+                        <label>Ambient Temp (°C)</label>
+                        <input type="number" id="simAmbientTemp" value="22" step="0.5">
+                    </div>
+                    <div class="sim-field">
+                        <label>Simulated Time</label>
+                        <input type="time" id="simTime" value="">
+                    </div>
+                </div>
+                
+                <div class="presets">
+                    <span style="font-size:0.75rem;color:var(--text-secondary);margin-right:6px">Presets:</span>
+                    <button class="btn-secondary" onclick="loadPreset('highFeedIn')">High Export 💰</button>
+                    <button class="btn-secondary" onclick="loadPreset('cheapBuy')">Cheap Import 📉</button>
+                    <button class="btn-secondary" onclick="loadPreset('spike')">Price Spike ⚡</button>
+                    <button class="btn-secondary" onclick="loadPreset('lowSoc')">Low Battery 🔋</button>
+                    <button class="btn-secondary" onclick="loadPreset('hotBattery')">Hot Battery 🔥</button>
+                </div>
+                
+                <button class="btn-primary run-btn" onclick="runTest()">
+                    🚀 Run Automation Test
+                </button>
+            </div>
+
+            <!-- Column 2: Rules -->
+            <div class="card">
+                <h2>
+                    <span class="icon">⚙️</span> Automation Rules
+                    <button class="btn-blue" style="margin-left:auto;padding:4px 10px;font-size:0.75rem" onclick="showAddRuleModal()">➕ Add Rule</button>
+                </h2>
+                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:8px;padding:4px 8px;background:rgba(88,166,255,0.1);border-radius:4px">
+                    📋 Sorted by priority • Lower number = Higher priority • First match wins
+                </div>
+                <div id="rulesDisplay">
+                    <div class="empty-state">
+                        <div class="icon">📋</div>
+                        <p>Loading rules...</p>
+                    </div>
+                </div>
+                <button class="btn-secondary" style="width:100%;margin-top:10px" onclick="loadRules()">🔄 Refresh</button>
+            </div>
+
+            <!-- Column 3: Mock Scheduler -->
+            <div class="card">
+                <h2><span class="icon">📅</span> Mock Inverter Scheduler</h2>
+                <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px">
+                    Shows what scheduler segments would be created
+                </p>
+                <div id="mockScheduler">
+                    <div class="empty-state">
+                        <div class="icon">📭</div>
+                        <p>No pending segments</p>
+                        <p style="font-size:0.75rem">Run a test to see what would be scheduled</p>
+                    </div>
+                </div>
+                <button class="btn-secondary" style="width:100%;margin-top:10px" onclick="clearMockScheduler()">🗑️ Clear Mock Segments</button>
+            </div>
+
+            <!-- Test Results -->
+            <div class="card span-2">
+                <h2><span class="icon">📋</span> Test Results</h2>
+                <div id="testResults">
+                    <div class="empty-state">
+                        <div class="icon">🔬</div>
+                        <p>Run a test to see results</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- API Payload Preview -->
+            <div class="card">
+                <h2><span class="icon">📡</span> API Payload Preview</h2>
+                <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:8px">
+                    What would be sent to FoxESS API
+                </p>
+                <div class="api-payload" id="apiPayload">
+// Run a test to see the API payload that would be sent
+                </div>
+            </div>
+
+            <!-- Logs -->
+            <div class="card full-width">
+                <h2><span class="icon">📜</span> Test Log</h2>
+                <div class="log-area" id="logArea">
+                    <div class="log-entry"><span class="log-time">[Ready]</span> <span class="log-info">Test lab initialized. Configure mock data and run tests.</span></div>
+                </div>
+            </div>
+
+            <!-- FAQ Section -->
+            <div class="card full-width">
+                <h2><span class="icon">❓</span> Automation FAQ</h2>
+                <div class="faq-section" id="faqContainer">
+                    <!-- FAQ items are rendered from the `automationFaq` config in the script. -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // FAQ toggle
+        function toggleFaq(element) {
+            const item = element.parentElement;
+            item.classList.toggle('open');
+        }
+
+        // FAQ content driven from configuration
+        const automationFaq = [
+            {
+                question: 'How often does automation check conditions?',
+                answer: `The automation engine runs every <code>60 seconds</code>. Each cycle it uses <strong>cached data</strong> from:
+                    <ul>
+                        <li><strong>Amber prices:</strong> refreshed every 60 seconds</li>
+                        <li><strong>Inverter data (SoC, temps):</strong> refreshed every 5 minutes (respects FoxESS rate limits)</li>
+                        <li><strong>Weather:</strong> refreshed every 30 minutes</li>
+                    </ul>
+                    <div class="faq-highlight">
+                        The automation does NOT poll the inverter every 60 seconds – it reuses the same data cache as the main UI to avoid excessive API calls.
+                    </div>`
+            },
+            {
+                question: 'What is the cooldown and why does it exist?',
+                answer: `Each rule has a <code>cooldown</code> period (default: 5 minutes). After a rule triggers, it cannot trigger again until the cooldown expires.
+                    <div class="faq-highlight"><strong>Why?</strong> Prevents "flapping" – rapidly switching modes when values hover near thresholds. For example, if SoC bounces between 29% and 31%, you don't want to switch modes every 60 seconds.</div>`
+            },
+            {
+                question: 'What happens if conditions change after a rule triggers?',
+                answer: `<div class="faq-highlight"><strong>Active Cancellation:</strong> Rules are monitored continuously. If the triggering rule's conditions are no longer met, the scheduled segment is cancelled immediately (within ~30 seconds).</div>
+                    <strong>Example:</strong>
+                    <ul>
+                        <li>Price drops below 10¢ → "Charge Battery" rule triggers for 30 minutes</li>
+                        <li>5 minutes later, price spikes back up to 40¢</li>
+                        <li>Within 30 seconds, system detects conditions changed → <em>cancels the charging segment</em></li>
+                        <li>A different rule (e.g., "High Export Price") may then take over</li>
+                    </ul>
+                    <div class="faq-highlight"><strong>Priority Override:</strong> If a higher-priority rule's conditions are met while a lower-priority rule is active, the higher-priority rule <em>immediately replaces</em> the active segment (bypasses cooldown).</div>
+                    This prevents wasteful operations when market conditions change rapidly.`
+            },
+            {
+                question: 'How does priority work?',
+                answer: `<ul>
+                        <li><strong>Lower number = Higher priority</strong> (Priority 1 beats Priority 5)</li>
+                        <li>Rules are evaluated in priority order</li>
+                        <li><strong>First match wins</strong> – once a rule's conditions are met, no lower-priority rules are checked</li>
+                        <li>Use high priority (1-2) for safety rules (e.g., hot battery protection)</li>
+                        <li>Use lower priority (3-5) for optimization rules (e.g., price arbitrage)</li>
+                    </ul>
+                    <div class="faq-highlight">💡 <strong>Tip:</strong> Color-coded badges show priority at a glance: 🔴 Red = 1, 🟠 Orange = 2, 🟡 Yellow = 3, 🟢 Green = 4-5</div>`
+            },
+            {
+                question: 'What is "duration" in the action?',
+                answer: `Duration sets how long the inverter scheduler segment should last (default: 30 minutes).
+                    <ul>
+                        <li>A triggered rule creates a time-bound segment (e.g., 10:00–10:30)</li>
+                        <li>After the segment ends, the inverter reverts to its base schedule</li>
+                        <li>However, if conditions are still met, the rule will re-trigger (after cooldown)</li>
+                    </ul>
+                    <strong>Note:</strong> Due to Active Cancellation, segments may end early if conditions change.`
+            },
+            {
+                question: 'What conditions can I use?',
+                answer: `<ul>
+                        <li><code>feedInPrice</code> – Amber feed-in price (¢/kWh) with min/max</li>
+                        <li><code>buyPrice</code> – Amber import price (¢/kWh) with min/max</li>
+                        <li><code>batterySoC</code> – Battery state of charge (%) with min/max</li>
+                        <li><code>batteryTemp</code> – Battery temperature (°C) with min/max</li>
+                        <li><code>ambientTemp</code> – Weather/ambient temperature (°C) with min/max</li>
+                        <li><code>timeWindow</code> – Time of day range (e.g., 14:00-18:00)</li>
+                    </ul>
+                    All specified conditions must be met (AND logic) for the rule to trigger.`
+            }
+        ];
+
+        function renderFaq() {
+            const container = document.getElementById('faqContainer');
+            if (!container) return;
+            let html = '';
+            automationFaq.forEach((item, idx) => {
+                html += `<div class="faq-item ${idx === 0 ? 'open' : ''}">` +
+                        `<div class="faq-question" onclick="toggleFaq(this)"><span>${item.question}</span><span class="icon">▼</span></div>` +
+                        `<div class="faq-answer">${item.answer}</div>` +
+                        `</div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        // Render the FAQ from the config
+        renderFaq();
+
+        // State
+        let mockSchedulerSegments = [];
+        let currentRules = {};
+        
+        // Initialize time to now
+        document.getElementById('simTime').value = new Date().toTimeString().slice(0,5);
+
+        // Presets
+        const presets = {
+            highFeedIn: { feedIn: 40, buy: 25, soc: 85, batteryTemp: 28, ambientTemp: 22 },
+            cheapBuy: { feedIn: 8, buy: 5, soc: 30, batteryTemp: 25, ambientTemp: 20 },
+            spike: { feedIn: 150, buy: 180, soc: 70, batteryTemp: 32, ambientTemp: 25 },
+            lowSoc: { feedIn: 15, buy: 35, soc: 18, batteryTemp: 26, ambientTemp: 22 },
+            hotBattery: { feedIn: 20, buy: 30, soc: 60, batteryTemp: 48, ambientTemp: 35 }
+        };
+
+        function loadPreset(name) {
+            const p = presets[name];
+            if (!p) return;
+            document.getElementById('simFeedIn').value = p.feedIn;
+            document.getElementById('simBuy').value = p.buy;
+            document.getElementById('simSoC').value = p.soc;
+            document.getElementById('simBatteryTemp').value = p.batteryTemp;
+            document.getElementById('simAmbientTemp').value = p.ambientTemp;
+            log('info', `Loaded preset: ${name}`);
+        }
+
+        async function loadRules() {
+            try {
+                const resp = await fetch('/api/automation/status');
+                const data = await resp.json();
+                if (data.errno === 0 && data.result) {
+                    currentRules = data.result.rules || {};
+                    renderRules(data.result);
+                    log('success', `Loaded ${Object.keys(currentRules).length} rules`);
+                }
+            } catch (e) {
+                log('error', 'Failed to load rules: ' + e.message);
+            }
+        }
+
+        function renderRules(status) {
+            const container = document.getElementById('rulesDisplay');
+            let html = '';
+            
+            // Master status
+            html += `<div style="padding:8px;margin-bottom:12px;background:${status.enabled ? 'rgba(126,231,135,0.1)' : 'rgba(248,81,73,0.1)'};border-radius:6px;font-size:0.85rem;display:flex;align-items:center;gap:8px">
+                <span style="font-size:1.2rem">${status.enabled ? '✅' : '⏸️'}</span>
+                <span>Master: <strong style="color:${status.enabled ? 'var(--accent)' : 'var(--accent-red)'}">${status.enabled ? 'ACTIVE' : 'PAUSED'}</strong></span>
+            </div>`;
+            
+            const rules = Object.entries(status.rules || {}).sort((a, b) => (a[1].priority || 99) - (b[1].priority || 99));
+            
+            if (rules.length === 0) {
+                html += `<div class="empty-state"><div class="icon">📭</div><p>No rules configured</p></div>`;
+            }
+            
+            for (const [key, rule] of rules) {
+                const conditions = rule.conditions || {};
+                let condHtml = '';
+                if (conditions.feedInPrice?.enabled) condHtml += `<span class="cond-badge">Feed ${conditions.feedInPrice.operator} ${conditions.feedInPrice.value}¢</span>`;
+                if (conditions.buyPrice?.enabled) condHtml += `<span class="cond-badge">Buy ${conditions.buyPrice.operator} ${conditions.buyPrice.value}¢</span>`;
+                if (conditions.soc?.enabled) condHtml += `<span class="cond-badge">SoC ${conditions.soc.operator} ${conditions.soc.value}%</span>`;
+                if (conditions.temperature?.enabled) condHtml += `<span class="cond-badge">${conditions.temperature.type || 'Bat'} ${conditions.temperature.operator} ${conditions.temperature.value}°C</span>`;
+                // Handle both 'time' and legacy 'timeWindow' formats
+                const timeCond = conditions.time || conditions.timeWindow;
+                if (timeCond?.enabled) condHtml += `<span class="cond-badge">${timeCond.startTime || timeCond.start}-${timeCond.endTime || timeCond.end}</span>`;
+                
+                const action = rule.action || {};
+                const priorityClass = rule.priority <= 1 ? 'p1' : rule.priority === 2 ? 'p2' : rule.priority === 3 ? 'p3' : (rule.priority === 4 || rule.priority === 5) ? 'p4' : 'p-low';
+                html += `
+                <div class="rule-card ${rule.enabled ? '' : 'disabled'}" id="rule-${key}">
+                    <div class="rule-header">
+                        <span class="rule-name">
+                            <span class="priority-badge ${priorityClass}" title="Priority ${rule.priority || '?'} (lower number = higher priority)">P${rule.priority || '?'}</span>
+                            ${rule.name || key}
+                        </span>
+                        <span class="rule-status ${rule.enabled ? 'enabled' : 'disabled'}">${rule.enabled ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div style="margin-bottom:6px">${condHtml || '<span style="color:var(--text-secondary);font-size:0.75rem">No conditions</span>'}</div>
+                    <div class="rule-params">
+                        <div class="rule-param"><span class="label">→</span> <span class="value">${action.workMode || 'N/A'}</span></div>
+                        <div class="rule-param"><span class="label">⏱</span> <span class="value">${action.durationMinutes || 0}m</span></div>
+                        <div class="rule-param"><span class="label">⚡</span> <span class="value">${action.fdPwr || 0}W</span></div>
+                    </div>
+                    <div class="rule-actions">
+                        <button class="btn-secondary" onclick="editRule('${key}')">✏️ Edit</button>
+                        <button class="btn-secondary" onclick="testSingleRule('${key}')">🧪 Test</button>
+                        <button class="btn-danger" onclick="deleteRule('${key}')">🗑️</button>
+                    </div>
+                </div>`;
+            }
+            
+            container.innerHTML = html;
+        }
+
+        async function runTest() {
+            const mockData = {
+                feedInPrice: parseFloat(document.getElementById('simFeedIn').value) || 0,
+                buyPrice: parseFloat(document.getElementById('simBuy').value) || 0,
+                soc: parseFloat(document.getElementById('simSoC').value) || 50,
+                batteryTemp: parseFloat(document.getElementById('simBatteryTemp').value) || 25,
+                ambientTemp: parseFloat(document.getElementById('simAmbientTemp').value) || 20,
+                testTime: document.getElementById('simTime').value || null
+            };
+            
+            const timeStr = mockData.testTime ? ` Time=${mockData.testTime}` : '';
+            log('info', `Testing: Feed-in=${mockData.feedInPrice}¢, Buy=${mockData.buyPrice}¢, SoC=${mockData.soc}%, BatTemp=${mockData.batteryTemp}°C${timeStr}`);
+            
+            // Show loading state
+            const resultsContainer = document.getElementById('testResults');
+            resultsContainer.innerHTML = `
+                <div class="result-box" style="border-color:var(--accent-blue)">
+                    <div class="result-title">
+                        <span style="display:inline-block;animation:spin 1s linear infinite">⚙️</span>
+                        Running Test...
+                    </div>
+                    <p style="color:var(--text-secondary);margin-top:8px">Evaluating automation rules with mock conditions...</p>
+                </div>
+            `;
+            
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 15000);
+                
+                const resp = await fetch('/api/automation/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mockData }),
+                    signal: controller.signal
+                });
+                clearTimeout(timeout);
+                
+                const result = await resp.json();
+                
+                // Update rules display to highlight triggered rule
+                document.querySelectorAll('.rule-card').forEach(el => el.classList.remove('triggered'));
+                
+                if (result.errno === 0) {
+                    if (result.triggered) {
+                        const ruleName = result.result.ruleName;
+                        log('success', `✓ TRIGGERED: ${ruleName} → ${result.result.action?.workMode}`);
+                        
+                        // Highlight triggered rule
+                        const ruleEl = document.getElementById(`rule-${ruleName}`);
+                        if (ruleEl) ruleEl.classList.add('triggered');
+                        
+                        // Add to mock scheduler
+                        addMockSegment(result.result);
+                        
+                        // Show API payload
+                        showApiPayload(result.result);
+                        
+                        showResult('triggered', result);
+                    } else {
+                        log('warn', 'No rules triggered with current conditions');
+                        showResult('not-triggered', result);
+                        document.getElementById('apiPayload').textContent = '// No action would be taken';
+                    }
+                } else {
+                    log('error', 'Test error: ' + (result.error || 'Unknown'));
+                    showResult('error', result);
+                }
+            } catch (e) {
+                if (e.name === 'AbortError') {
+                    log('error', 'Request timed out');
+                } else {
+                    log('error', 'Test failed: ' + e.message);
+                }
+                showResult('error', { error: e.message });
+            }
+        }
+
+        async function testSingleRule(ruleName) {
+            log('info', `Testing single rule: ${ruleName}`);
+            runTest();
+        }
+
+        function showResult(type, data) {
+            const container = document.getElementById('testResults');
+            const icons = { 'triggered': '✅', 'not-triggered': '⚠️', 'error': '❌' };
+            const titles = { 'triggered': 'Rule Would Trigger!', 'not-triggered': 'No Rules Matched', 'error': 'Test Error' };
+            
+            let detailsHtml = '';
+            if (type === 'triggered' && data.result) {
+                const r = data.result;
+                const a = r.action || {};
+                detailsHtml = `
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+                        <div>
+                            <h4 style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">Triggered Rule</h4>
+                            <p><strong>Name:</strong> ${r.ruleName}</p>
+                            <p><strong>Priority:</strong> P${r.priority || '?'}</p>
+                        </div>
+                        <div>
+                            <h4 style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">Action Details</h4>
+                            <p><strong>Mode:</strong> <span style="color:var(--accent)">${a.workMode}</span></p>
+                            <p><strong>Duration:</strong> ${a.durationMinutes} minutes</p>
+                            <p><strong>FD Power:</strong> ${a.fdPwr}W</p>
+                            <p><strong>Min SoC:</strong> ${a.minSocOnGrid}%</p>
+                        </div>
+                    </div>
+                    <div style="margin-top:12px;padding:10px;background:rgba(126,231,135,0.1);border-radius:6px;font-size:0.85rem">
+                        <strong style="color:var(--accent)">✓ In production:</strong> 
+                        FoxESS scheduler segment would be created for ${a.workMode} mode
+                    </div>
+                `;
+            } else if (type === 'not-triggered') {
+                // Show all rules checked and why they didn't match
+                let ruleDetails = '';
+                if (data.result?.allResults && data.result.allResults.length > 0) {
+                    ruleDetails = data.result.allResults.map(r => {
+                        const condSummary = r.conditions?.map(c => 
+                            `<span style="color:${c.met ? 'var(--accent)' : 'var(--accent-red)'}; margin-right:8px">` +
+                            `${c.name}: ${c.value} ${c.met ? '✓' : '✗'} (need ${c.target})</span>`
+                        ).join('') || 'No conditions';
+                        return `<div style="margin-bottom:10px;padding:8px;background:var(--bg-secondary);border-radius:6px">
+                            <div style="font-weight:600;margin-bottom:4px">${r.ruleName}</div>
+                            <div style="font-size:0.8rem">${condSummary}</div>
+                        </div>`;
+                    }).join('');
+                }
+                detailsHtml = `
+                    <p style="color:var(--text-secondary)">The simulated conditions did not match any enabled rule.</p>
+                    ${ruleDetails ? `<div style="margin:12px 0">${ruleDetails}</div>` : ''}
+                    <div style="margin-top:12px">
+                        <h4 style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">Test Conditions Used:</h4>
+                        <pre style="background:var(--bg-card);padding:10px;border-radius:6px;font-size:0.8rem;overflow-x:auto">${JSON.stringify(data.testData, null, 2)}</pre>
+                    </div>
+                    <p style="margin-top:10px;font-size:0.85rem">Try adjusting values or check that rules are enabled.</p>
+                `;
+            } else {
+                detailsHtml = `<pre style="color:var(--accent-red)">${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            
+            container.innerHTML = `
+                <div class="result-box ${type}">
+                    <div class="result-title">${icons[type]} ${titles[type]}</div>
+                    ${detailsHtml}
+                </div>
+            `;
+        }
+
+        function addMockSegment(result) {
+            const action = result.action || {};
+            const now = new Date();
+            const startTime = now.toTimeString().slice(0,5);
+            const endDate = new Date(now.getTime() + (action.durationMinutes || 30) * 60000);
+            const endTime = endDate.toTimeString().slice(0,5);
+            
+            const segment = {
+                id: Date.now(),
+                ruleName: result.ruleName,
+                workMode: action.workMode,
+                startTime,
+                endTime,
+                duration: action.durationMinutes,
+                minSocOnGrid: action.minSocOnGrid,
+                fdSoc: action.fdSoc,
+                fdPwr: action.fdPwr,
+                maxSoc: action.maxSoc,
+                timestamp: now.toISOString()
+            };
+            
+            // Replace existing segment - only Segment 1 exists on the inverter
+            mockSchedulerSegments = [segment];
+            renderMockScheduler();
+        }
+
+        function renderMockScheduler() {
+            const container = document.getElementById('mockScheduler');
+            
+            if (mockSchedulerSegments.length === 0) {
+                container.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>No pending segments</p></div>`;
+                return;
+            }
+            
+            let html = '';
+            mockSchedulerSegments.forEach((seg, i) => {
+                html += `
+                <div class="scheduler-segment pending">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <div>
+                            <span style="font-size:0.7rem;color:var(--accent-blue);margin-right:6px">SEGMENT 1</span>
+                            <span class="segment-mode">${seg.workMode}</span>
+                        </div>
+                        <span style="font-size:0.75rem;color:var(--accent-yellow)">MOCK</span>
+                    </div>
+                    <div class="time-bar">
+                        <div class="fill" style="left:0;width:100%"></div>
+                    </div>
+                    <div class="segment-info">
+                        <span>${seg.startTime} → ${seg.endTime}</span>
+                        <span>${seg.duration}min</span>
+                    </div>
+                    <div style="margin-top:8px;font-size:0.75rem;color:var(--text-secondary);display:grid;grid-template-columns:1fr 1fr;gap:4px">
+                        <div>From rule: <strong>${seg.ruleName}</strong></div>
+                        <div>FD Power: <strong style="color:var(--accent)">${seg.fdPwr}W</strong></div>
+                        <div>Min SoC (Grid): <strong style="color:var(--accent)">${seg.minSocOnGrid}%</strong></div>
+                        <div>FD SoC: <strong style="color:var(--accent)">${seg.fdSoc}%</strong></div>
+                        <div>Max SoC: <strong style="color:var(--accent)">${seg.maxSoc}%</strong></div>
+                    </div>
+                </div>`;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        function clearMockScheduler() {
+            mockSchedulerSegments = [];
+            renderMockScheduler();
+            log('info', 'Mock scheduler cleared');
+        }
+
+        function showApiPayload(result) {
+            const action = result.action || {};
+            const now = new Date();
+            const startHour = now.getHours();
+            const startMinute = now.getMinutes();
+            const endDate = new Date(now.getTime() + (action.durationMinutes || 30) * 60000);
+            
+            const payload = {
+                sn: "YOUR_DEVICE_SN",
+                groups: [{
+                    enable: true,
+                    startHour: startHour,
+                    startMinute: startMinute,
+                    endHour: endDate.getHours(),
+                    endMinute: endDate.getMinutes(),
+                    workMode: action.workMode,
+                    minSocOnGrid: action.minSocOnGrid || 20,
+                    fdSoc: action.fdSoc || 35,
+                    fdPwr: action.fdPwr || 0,
+                    maxsoc: action.maxSoc || 100
+                }]
+            };
+            
+            document.getElementById('apiPayload').textContent = 
+                `// POST /op/v0/device/scheduler/set\n` +
+                JSON.stringify(payload, null, 2);
+        }
+
+        function log(level, message) {
+            const container = document.getElementById('logArea');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${level}">${message}</span>`;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // Rule Management
+        function showAddRuleModal(editData = null) {
+            const isEdit = !!editData;
+            
+            // Pre-process time condition to handle both formats
+            const timeCond = editData?.conditions?.time || editData?.conditions?.timeWindow;
+            const timeEnabled = timeCond?.enabled || false;
+            const timeStart = timeCond?.startTime || timeCond?.start || '06:00';
+            const timeEnd = timeCond?.endTime || timeCond?.end || '18:00';
+            
+            const modalHtml = `
+                <div id="ruleModal" class="modal-overlay">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>${isEdit ? '✏️ Edit Rule' : '➕ Create Test Rule'}</h3>
+                            <button class="modal-close" onclick="closeRuleModal()">×</button>
+                        </div>
+                        
+                        <input type="hidden" id="editingRuleId" value="${editData?.id || ''}">
+                        
+                        <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:16px">
+                            <div>
+                                <label style="display:block;font-size:0.8rem;color:var(--text-secondary);margin-bottom:4px">Rule Name</label>
+                                <input type="text" id="ruleName" value="${editData?.name || ''}" placeholder="e.g., High Export Discharge" style="width:100%">
+                            </div>
+                            <div>
+                                <label style="display:block;font-size:0.8rem;color:var(--text-secondary);margin-bottom:4px">Priority (1=highest)</label>
+                                <input type="number" id="rulePriority" value="${editData?.priority || 5}" min="1" max="99" style="width:100%">
+                            </div>
+                        </div>
+                        
+                        <!-- Conditions -->
+                        <div style="background:var(--bg-card);border-radius:8px;padding:14px;margin-bottom:16px">
+                            <h4 style="font-size:0.9rem;color:var(--accent-blue);margin-bottom:12px">📋 Conditions (ALL must match)</h4>
+                            
+                            <div style="display:flex;flex-direction:column;gap:10px">
+                                <!-- Feed-in Price -->
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px">
+                                    <input type="checkbox" id="condFeedIn" ${editData?.conditions?.feedInPrice?.enabled ? 'checked' : ''}>
+                                    <label style="min-width:120px;font-size:0.85rem">💰 Feed-in Price</label>
+                                    <select id="condFeedInOp" style="width:70px">
+                                        <option value=">" ${editData?.conditions?.feedInPrice?.operator === '>' ? 'selected' : ''}>&gt;</option>
+                                        <option value=">=" ${editData?.conditions?.feedInPrice?.operator === '>=' ? 'selected' : ''}>&gt;=</option>
+                                        <option value="<" ${editData?.conditions?.feedInPrice?.operator === '<' ? 'selected' : ''}>&lt;</option>
+                                        <option value="<=" ${editData?.conditions?.feedInPrice?.operator === '<=' ? 'selected' : ''}>&lt;=</option>
+                                    </select>
+                                    <input type="number" id="condFeedInVal" value="${editData?.conditions?.feedInPrice?.value || 25}" style="width:70px"> ¢
+                                </div>
+                                
+                                <!-- Buy Price -->
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px">
+                                    <input type="checkbox" id="condBuy" ${editData?.conditions?.buyPrice?.enabled ? 'checked' : ''}>
+                                    <label style="min-width:120px;font-size:0.85rem">🛒 Buy Price</label>
+                                    <select id="condBuyOp" style="width:70px">
+                                        <option value="<" ${editData?.conditions?.buyPrice?.operator === '<' ? 'selected' : ''}>&lt;</option>
+                                        <option value="<=" ${editData?.conditions?.buyPrice?.operator === '<=' ? 'selected' : ''}>&lt;=</option>
+                                        <option value=">" ${editData?.conditions?.buyPrice?.operator === '>' ? 'selected' : ''}>&gt;</option>
+                                        <option value=">=" ${editData?.conditions?.buyPrice?.operator === '>=' ? 'selected' : ''}>&gt;=</option>
+                                    </select>
+                                    <input type="number" id="condBuyVal" value="${editData?.conditions?.buyPrice?.value || 10}" style="width:70px"> ¢
+                                </div>
+                                
+                                <!-- SoC -->
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px">
+                                    <input type="checkbox" id="condSoc" ${editData?.conditions?.soc?.enabled ? 'checked' : ''}>
+                                    <label style="min-width:120px;font-size:0.85rem">🔋 Battery SoC</label>
+                                    <select id="condSocOp" style="width:70px">
+                                        <option value=">" ${editData?.conditions?.soc?.operator === '>' ? 'selected' : ''}>&gt;</option>
+                                        <option value=">=" ${editData?.conditions?.soc?.operator === '>=' ? 'selected' : ''}>&gt;=</option>
+                                        <option value="<" ${editData?.conditions?.soc?.operator === '<' ? 'selected' : ''}>&lt;</option>
+                                        <option value="<=" ${editData?.conditions?.soc?.operator === '<=' ? 'selected' : ''}>&lt;=</option>
+                                    </select>
+                                    <input type="number" id="condSocVal" value="${editData?.conditions?.soc?.value || 50}" min="0" max="100" style="width:70px"> %
+                                </div>
+                                
+                                <!-- Temperature -->
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px">
+                                    <input type="checkbox" id="condTemp" ${editData?.conditions?.temperature?.enabled ? 'checked' : ''}>
+                                    <label style="min-width:120px;font-size:0.85rem">🌡️ Temperature</label>
+                                    <select id="condTempType" style="width:80px">
+                                        <option value="battery" ${editData?.conditions?.temperature?.type === 'battery' ? 'selected' : ''}>Battery</option>
+                                        <option value="ambient" ${editData?.conditions?.temperature?.type === 'ambient' ? 'selected' : ''}>Ambient</option>
+                                    </select>
+                                    <select id="condTempOp" style="width:70px">
+                                        <option value="<" ${editData?.conditions?.temperature?.operator === '<' ? 'selected' : ''}>&lt;</option>
+                                        <option value=">" ${editData?.conditions?.temperature?.operator === '>' ? 'selected' : ''}>&gt;</option>
+                                    </select>
+                                    <input type="number" id="condTempVal" value="${editData?.conditions?.temperature?.value || 40}" style="width:60px"> °C
+                                </div>
+                                
+                                <!-- Time - handle both 'time' and legacy 'timeWindow' formats -->
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px">
+                                    <input type="checkbox" id="condTime" ${timeEnabled ? 'checked' : ''}>
+                                    <label style="min-width:120px;font-size:0.85rem">🕐 Time Window</label>
+                                    <input type="time" id="condTimeStart" value="${timeStart}">
+                                    <span>to</span>
+                                    <input type="time" id="condTimeEnd" value="${timeEnd}">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Action -->
+                        <div style="background:var(--bg-card);border-radius:8px;padding:14px;margin-bottom:16px">
+                            <h4 style="font-size:0.9rem;color:var(--accent);margin-bottom:12px">⚡ Action</h4>
+                            
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+                                <div>
+                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Work Mode</label>
+                                    <select id="actionMode" style="width:100%">
+                                        <option value="ForceDischarge" ${editData?.action?.workMode === 'ForceDischarge' ? 'selected' : ''}>Force Discharge</option>
+                                        <option value="ForceCharge" ${editData?.action?.workMode === 'ForceCharge' ? 'selected' : ''}>Force Charge</option>
+                                        <option value="SelfUse" ${editData?.action?.workMode === 'SelfUse' ? 'selected' : ''}>Self Use</option>
+                                        <option value="Feedin" ${editData?.action?.workMode === 'Feedin' ? 'selected' : ''}>Feed In</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Duration (min)</label>
+                                    <input type="number" id="actionDuration" value="${editData?.action?.durationMinutes || 30}" min="5" max="120" style="width:100%">
+                                </div>
+                                <div>
+                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Cooldown (min)</label>
+                                    <input type="number" id="actionCooldown" value="${editData?.cooldownMinutes || 5}" min="1" max="60" style="width:100%">
+                                </div>
+                            </div>
+                            
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+                                <div>
+                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">FD Power (W)</label>
+                                    <input type="number" id="actionFdPwr" value="${editData?.action?.fdPwr || 7000}" min="0" max="10500" step="100" style="width:100%">
+                                </div>
+                                <div>
+                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">FD SoC (%)</label>
+                                    <input type="number" id="actionFdSoc" value="${editData?.action?.fdSoc || 35}" min="10" max="100" style="width:100%">
+                                </div>
+                                <div>
+                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Min SoC Grid</label>
+                                    <input type="number" id="actionMinSoc" value="${editData?.action?.minSocOnGrid || 20}" min="10" max="100" style="width:100%">
+                                </div>
+                                <div>
+                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Max SoC (%)</label>
+                                    <input type="number" id="actionMaxSoc" value="${editData?.action?.maxSoc || 90}" min="10" max="100" style="width:100%">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="display:flex;gap:10px">
+                            <button class="btn-secondary" style="flex:1" onclick="closeRuleModal()">Cancel</button>
+                            <button class="btn-primary" style="flex:1" onclick="saveRule()">${isEdit ? 'Update Rule' : 'Create Rule'}</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+
+        function closeRuleModal() {
+            const modal = document.getElementById('ruleModal');
+            if (modal) modal.remove();
+        }
+
+        async function saveRule() {
+            const editingId = document.getElementById('editingRuleId').value;
+            const name = document.getElementById('ruleName').value.trim();
+            
+            if (!name) {
+                alert('Please enter a rule name');
+                return;
+            }
+            
+            const ruleName = editingId || name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || ('rule_' + Date.now());
+            
+            const conditions = {
+                feedInPrice: {
+                    enabled: document.getElementById('condFeedIn').checked,
+                    operator: document.getElementById('condFeedInOp').value,
+                    value: parseFloat(document.getElementById('condFeedInVal').value) || 0
+                },
+                buyPrice: {
+                    enabled: document.getElementById('condBuy').checked,
+                    operator: document.getElementById('condBuyOp').value,
+                    value: parseFloat(document.getElementById('condBuyVal').value) || 0
+                },
+                soc: {
+                    enabled: document.getElementById('condSoc').checked,
+                    operator: document.getElementById('condSocOp').value,
+                    value: parseFloat(document.getElementById('condSocVal').value) || 50
+                },
+                temperature: {
+                    enabled: document.getElementById('condTemp').checked,
+                    type: document.getElementById('condTempType').value,
+                    operator: document.getElementById('condTempOp').value,
+                    value: parseFloat(document.getElementById('condTempVal').value) || 40
+                },
+                time: {
+                    enabled: document.getElementById('condTime').checked,
+                    startTime: document.getElementById('condTimeStart').value || '00:00',
+                    endTime: document.getElementById('condTimeEnd').value || '23:59'
+                }
+            };
+            
+            const hasCondition = Object.values(conditions).some(c => c.enabled);
+            if (!hasCondition) {
+                alert('Please enable at least one condition');
+                return;
+            }
+            
+            const payload = {
+                ruleName,
+                name,
+                priority: parseInt(document.getElementById('rulePriority').value) || 5,
+                conditions,
+                cooldownMinutes: parseInt(document.getElementById('actionCooldown').value) || 5,
+                enabled: true,
+                action: {
+                    workMode: document.getElementById('actionMode').value,
+                    durationMinutes: parseInt(document.getElementById('actionDuration').value) || 30,
+                    fdPwr: parseInt(document.getElementById('actionFdPwr').value) || 7000,
+                    fdSoc: parseInt(document.getElementById('actionFdSoc').value) || 35,
+                    minSocOnGrid: parseInt(document.getElementById('actionMinSoc').value) || 20,
+                    maxSoc: parseInt(document.getElementById('actionMaxSoc').value) || 90
+                }
+            };
+            
+            try {
+                const endpoint = editingId ? '/api/automation/rule/update' : '/api/automation/rule/create';
+                const resp = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                
+                if (data.errno === 0) {
+                    log('success', `Rule ${editingId ? 'updated' : 'created'}: ${name}`);
+                    closeRuleModal();
+                    loadRules();
+                } else {
+                    alert('Failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        }
+
+        async function editRule(ruleName) {
+            const rule = currentRules[ruleName];
+            if (!rule) {
+                alert('Rule not found');
+                return;
+            }
+            showAddRuleModal({
+                id: ruleName,
+                name: rule.name || ruleName,
+                priority: rule.priority,
+                conditions: rule.conditions,
+                cooldownMinutes: rule.cooldownMinutes,
+                action: rule.action
+            });
+        }
+
+        async function deleteRule(ruleName) {
+            if (!confirm(`Delete rule "${ruleName}"?`)) return;
+            
+            try {
+                const resp = await fetch('/api/automation/rule/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ruleName })
+                });
+                const data = await resp.json();
+                
+                if (data.errno === 0) {
+                    log('success', `Rule deleted: ${ruleName}`);
+                    loadRules();
+                } else {
+                    alert('Failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        }
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            loadRules();
+        });
+    </script>
+</body>
+</html>
