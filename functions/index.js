@@ -247,8 +247,12 @@ app.get('/api/health/auth', (req, res) => {
  * Generate FoxESS API signature
  */
 function generateFoxESSSignature(apiPath, token, timestamp) {
-  const signaturePlain = `${apiPath}\\r\\n${token}\\r\\n${timestamp}`;
-  return crypto.createHash('md5').update(signaturePlain).digest('hex');
+  const signaturePlain = `${apiPath}\r\n${token}\r\n${timestamp}`;
+  const signature = crypto.createHash('md5').update(signaturePlain).digest('hex');
+  console.log(`[FoxESS] Signature calc: path="${apiPath}" token="${token}" timestamp="${timestamp}"`);
+  console.log(`[FoxESS] Plain text (length=${signaturePlain.length}): ${JSON.stringify(signaturePlain)}`);
+  console.log(`[FoxESS] Generated signature: ${signature}`);
+  return signature;
 }
 
 /**
@@ -256,10 +260,15 @@ function generateFoxESSSignature(apiPath, token, timestamp) {
  */
 async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, userId = null) {
   const config = getConfig();
-  const token = userConfig?.foxessToken || config.foxess.token;
+  let token = userConfig?.foxessToken || config.foxess.token;
   
   if (!token) {
     return { errno: 401, error: 'FoxESS token not configured' };
+  }
+  
+  // Clean token - remove whitespace per Postman collection
+  if (typeof token === 'string') {
+    token = token.trim().replace(/\s+/g, '').replace(/[^\x20-\x7E]/g, '');
   }
   
   // Track API call if userId provided
@@ -276,9 +285,10 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, u
     const options = {
       method: method,
       headers: {
-        'X-Access-Token': token,
-        'X-Timestamp': timestamp.toString(),
-        'X-Signature': signature,
+        'token': token,
+        'timestamp': timestamp.toString(),
+        'signature': signature,
+        'lang': 'en',
         'Content-Type': 'application/json'
       }
     };
@@ -291,9 +301,12 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, u
     const timeout = setTimeout(() => controller.abort(), 10000);
     options.signal = controller.signal;
     
+    console.log(`[FoxESS] Calling ${method} ${url.toString()} with signature ${signature}`);
     const response = await fetch(url, options);
     clearTimeout(timeout);
     const text = await response.text();
+    
+    console.log(`[FoxESS] Response status: ${response.status}, body length: ${text.length}, content: ${text.slice(0, 500)}`);
     
     try {
       return JSON.parse(text);
@@ -304,6 +317,7 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, u
     if (error.name === 'AbortError') {
       return { errno: 408, msg: 'Request timeout' };
     }
+    console.error(`[FoxESS] Error calling API: ${error.message}`);
     return { errno: 500, msg: error.message };
   }
 }
