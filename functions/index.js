@@ -83,12 +83,17 @@ function generateFoxESSSignature(apiPath, token, timestamp) {
 /**
  * Call FoxESS API with user's credentials
  */
-async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig) {
+async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, userId = null) {
   const config = getConfig();
   const token = userConfig?.foxessToken || config.foxess.token;
   
   if (!token) {
     return { errno: 401, msg: 'FoxESS token not configured' };
+  }
+  
+  // Track API call if userId provided
+  if (userId) {
+    incrementApiCount(userId, 'foxess').catch(() => {});
   }
   
   const timestamp = Date.now();
@@ -135,12 +140,17 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig) {
 /**
  * Call Amber API
  */
-async function callAmberAPI(path, queryParams = {}, userConfig) {
+async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
   const config = getConfig();
   const apiKey = userConfig?.amberApiKey || config.amber.apiKey;
   
   if (!apiKey) {
     return { errno: 401, error: 'Amber API key not configured' };
+  }
+  
+  // Track API call if userId provided
+  if (userId) {
+    incrementApiCount(userId, 'amber').catch(() => {});
   }
   
   const url = new URL(`${config.amber.baseUrl}${path}`);
@@ -179,7 +189,12 @@ async function callAmberAPI(path, queryParams = {}, userConfig) {
 /**
  * Call Weather API (Open-Meteo)
  */
-async function callWeatherAPI(place = 'Sydney', days = 3) {
+async function callWeatherAPI(place = 'Sydney', days = 3, userId = null) {
+  // Track API call if userId provided
+  if (userId) {
+    incrementApiCount(userId, 'weather').catch(() => {});
+  }
+  
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
@@ -334,6 +349,85 @@ app.post('/api/config', async (req, res) => {
   }
 });
 
+// Validate API credentials (for setup flow)
+app.post('/api/config/validate-keys', async (req, res) => {
+  try {
+    const { device_sn, foxess_token, amber_api_key } = req.body;
+    const errors = {};
+    const failed_keys = [];
+    
+    // Validate FoxESS token by making a test API call
+    if (foxess_token && device_sn) {
+      const testConfig = { foxessToken: foxess_token, deviceSn: device_sn };
+      const foxResult = await callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, testConfig);
+      
+      if (foxResult.errno !== 0) {
+        failed_keys.push('foxess_token');
+        errors.foxess_token = foxResult.msg || 'Invalid FoxESS token or API error';
+      } else {
+        // Check if device SN exists in the response
+        const devices = foxResult.result?.data || [];
+        const deviceFound = devices.some(d => d.deviceSN === device_sn);
+        if (!deviceFound && devices.length > 0) {
+          failed_keys.push('device_sn');
+          errors.device_sn = `Device SN not found. Available: ${devices.map(d => d.deviceSN).join(', ')}`;
+        }
+      }
+    } else {
+      if (!device_sn) {
+        failed_keys.push('device_sn');
+        errors.device_sn = 'Device Serial Number is required';
+      }
+      if (!foxess_token) {
+        failed_keys.push('foxess_token');
+        errors.foxess_token = 'FoxESS API Token is required';
+      }
+    }
+    
+    // Validate Amber API key if provided
+    if (amber_api_key) {
+      const testConfig = { amberApiKey: amber_api_key };
+      const amberResult = await callAmberAPI('/sites', {}, testConfig);
+      
+      if (amberResult.errno || amberResult.error || !Array.isArray(amberResult)) {
+        failed_keys.push('amber_api_key');
+        errors.amber_api_key = amberResult.error || amberResult.message || 'Invalid Amber API key';
+      }
+    }
+    
+    if (failed_keys.length > 0) {
+      return res.json({ errno: 1, msg: 'Validation failed', failed_keys, errors });
+    }
+    
+    // Save validated config to Firestore
+    const configData = {
+      deviceSn: device_sn,
+      foxessToken: foxess_token,
+      amberApiKey: amber_api_key || '',
+      setupComplete: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    
+    await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(configData, { merge: true });
+    
+    res.json({ errno: 0, msg: 'Credentials validated and saved', result: { deviceSn: device_sn } });
+  } catch (error) {
+    console.error('Validation error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Check if user setup is complete
+app.get('/api/config/setup-status', async (req, res) => {
+  try {
+    const config = await getUserConfig(req.user.uid);
+    const setupComplete = !!(config?.setupComplete && config?.deviceSn && config?.foxessToken);
+    res.json({ errno: 0, result: { setupComplete, hasDeviceSn: !!config?.deviceSn, hasFoxessToken: !!config?.foxessToken, hasAmberKey: !!config?.amberApiKey } });
+  } catch (error) {
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // Get automation state
 app.get('/api/automation/status', async (req, res) => {
   try {
@@ -434,7 +528,7 @@ app.get('/api/automation/history', async (req, res) => {
 app.get('/api/inverter/list', async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
-    const result = await callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig);
+    const result = await callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -453,7 +547,7 @@ app.get('/api/inverter/real-time', async (req, res) => {
     const result = await callFoxESSAPI('/op/v0/device/real/query', 'POST', {
       sn,
       variables: ['generationPower', 'pvPower', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'batTemperature', 'ambientTemperation']
-    }, userConfig);
+    }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -464,7 +558,7 @@ app.get('/api/inverter/real-time', async (req, res) => {
 app.get('/api/amber/sites', async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
-    const result = await callAmberAPI('/sites', {}, userConfig);
+    const result = await callAmberAPI('/sites', {}, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -480,7 +574,7 @@ app.get('/api/amber/prices', async (req, res) => {
       return res.status(400).json({ errno: 400, error: 'Site ID is required' });
     }
     
-    const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 1 }, userConfig);
+    const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 1 }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -492,7 +586,7 @@ app.get('/api/weather', async (req, res) => {
   try {
     const place = req.query.place || 'Sydney';
     const days = parseInt(req.query.days || '3', 10);
-    const result = await callWeatherAPI(place, days);
+    const result = await callWeatherAPI(place, days, req.user.uid);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -504,7 +598,7 @@ app.get('/api/scheduler/v1/get', async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
     const sn = req.query.sn || userConfig?.deviceSn;
-    const result = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN: sn }, userConfig);
+    const result = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN: sn }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -516,7 +610,7 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
     const userConfig = await getUserConfig(req.user.uid);
     const deviceSN = req.body.sn || req.body.deviceSN || userConfig?.deviceSn;
     const groups = req.body.groups || [];
-    const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups }, userConfig);
+    const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups }, userConfig, req.user.uid);
     
     // Log action to history
     await addHistoryEntry(req.user.uid, {
@@ -527,6 +621,69 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
     });
     
     res.json(result);
+  } catch (error) {
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// ==================== API METRICS (USER-SPECIFIC) ====================
+
+/**
+ * Increment API call count for a user
+ */
+async function incrementApiCount(userId, apiType) {
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const docRef = db.collection('users').doc(userId).collection('metrics').doc(today);
+  
+  try {
+    await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(docRef);
+      const data = doc.exists ? doc.data() : { foxess: 0, amber: 0, weather: 0 };
+      data[apiType] = (data[apiType] || 0) + 1;
+      data.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      transaction.set(docRef, data, { merge: true });
+    });
+  } catch (error) {
+    console.error('Error incrementing API count:', error);
+  }
+}
+
+/**
+ * Get API call metrics for a user
+ */
+app.get('/api/metrics/api-calls', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days || '7', 10);
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days + 1);
+    
+    const metricsSnapshot = await db.collection('users').doc(req.user.uid)
+      .collection('metrics')
+      .orderBy(admin.firestore.FieldPath.documentId(), 'desc')
+      .limit(days)
+      .get();
+    
+    const result = {};
+    metricsSnapshot.forEach(doc => {
+      result[doc.id] = {
+        foxess: doc.data().foxess || 0,
+        amber: doc.data().amber || 0,
+        weather: doc.data().weather || 0
+      };
+    });
+    
+    // Fill in missing days with zeros
+    for (let i = 0; i < days; i++) {
+      const d = new Date(endDate);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      if (!result[key]) {
+        result[key] = { foxess: 0, amber: 0, weather: 0 };
+      }
+    }
+    
+    res.json({ errno: 0, result });
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
   }

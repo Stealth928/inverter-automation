@@ -81,7 +81,13 @@ function showInfo(message, duration = 5000) {
  */
 async function loadApiMetrics(days = 1) {
     try {
-        const resp = await fetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+        // Use authenticated fetch if firebaseAuth is available
+        let resp;
+        if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn()) {
+            resp = await firebaseAuth.fetchWithAuth(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+        } else {
+            resp = await fetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+        }
         const data = await resp.json();
         
         if (!data || data.errno !== 0 || !data.result) return;

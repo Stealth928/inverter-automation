@@ -650,10 +650,9 @@
             submitBtn.innerHTML = '<div class="spinner"></div><span>Validating...</span>';
 
             try {
-                // Call backend validation endpoint
-                const response = await fetch('/api/config/validate-keys', {
+                // Call backend validation endpoint with authentication
+                const response = await firebaseAuth.fetchWithAuth('/api/config/validate-keys', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         device_sn: deviceSn,
                         foxess_token: foxessToken,

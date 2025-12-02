@@ -5,13 +5,19 @@
  * Get these from Firebase Console > Project Settings > Your apps > Web app
  */
 
+/**
+ * Firebase Configuration for Inverter Automation Dashboard
+ * Project: inverter-automation-firebase
+ */
+
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyDUbi89rbCYvTgoOVQRjx5zkhpYUU1f8eo",
+  authDomain: "inverter-automation-firebase.firebaseapp.com",
+  projectId: "inverter-automation-firebase",
+  storageBucket: "inverter-automation-firebase.firebasestorage.app",
+  messagingSenderId: "527688083750",
+  appId: "1:527688083750:web:b508cc98adb9926c7a79e7",
+  measurementId: "G-MWF4ZBMREE"
 };
 
 // Export for use in other modules

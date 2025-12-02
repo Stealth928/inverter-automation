@@ -5697,13 +5697,12 @@
                             console.log('[Auth] User signed in:', user.email);
                             updateUserUI(user);
                             
-                            // Check if setup is complete (DEVICE_SN and FOXESS_TOKEN configured)
+                            // Check if setup is complete via authenticated API
                             try {
-                                const response = await fetch('/api/config');
-                                const config = await response.json();
-                                const hasSetup = config.result && config.result.deviceSn && config.result.deviceSn.trim();
+                                const response = await firebaseAuth.fetchWithAuth('/api/config/setup-status');
+                                const data = await response.json();
                                 
-                                if (!hasSetup) {
+                                if (data.errno === 0 && !data.result?.setupComplete) {
                                     console.log('[Setup] Configuration incomplete - redirecting to setup');
                                     window.location.href = '/setup.html';
                                     return;
@@ -5714,8 +5713,7 @@
                             }
                         } else {
                             console.log('[Auth] No user - redirecting to login');
-                            // Uncomment the next line to enforce authentication:
-                            // window.location.href = '/login.html';
+                            window.location.href = '/login.html';
                         }
                     });
                 }

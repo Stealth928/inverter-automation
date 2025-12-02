@@ -6,6 +6,13 @@
       "**/.*",
       "**/node_modules/**"
     ],
+    "redirects": [
+      {
+        "source": "/",
+        "destination": "/login.html",
+        "type": 302
+      }
+    ],
     "rewrites": [
       {
         "source": "/api/**",

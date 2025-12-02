@@ -518,10 +518,21 @@
             await firebaseAuth.init(firebaseConfig);
 
             // Check if already signed in
-            firebaseAuth.onAuthStateChanged((user) => {
+            firebaseAuth.onAuthStateChanged(async (user) => {
                 if (user) {
-                    // Redirect to dashboard
-                    window.location.href = '/index.html';
+                    // Check if setup is complete before redirecting to dashboard
+                    try {
+                        const response = await firebaseAuth.fetchWithAuth('/api/config/setup-status');
+                        const data = await response.json();
+                        if (data.errno === 0 && data.result?.setupComplete) {
+                            window.location.href = '/index.html';
+                        } else {
+                            window.location.href = '/setup.html';
+                        }
+                    } catch (e) {
+                        // If API fails, default to setup
+                        window.location.href = '/setup.html';
+                    }
                 }
             });
         });

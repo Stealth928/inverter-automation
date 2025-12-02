@@ -26,13 +26,18 @@ class FirebaseAuth {
    * Initialize Firebase with config
    * Call this once on page load
    */
-  async init(config) {
-      // If config is missing or clearly placeholder, enable mock mode for local dev
+  async init(config, options = {}) {
+      // If config is missing or clearly placeholder, enable mock mode only for localhost
+      // or when explicitly allowed via options.allowMock.
       const isPlaceholderConfig = !config || !config.apiKey || String(config.apiKey).trim() === '' || String(config.apiKey).startsWith('YOUR_');
+      const allowMock = !!options.allowMock;
+      const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
+      const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname === '';
+
       if (isPlaceholderConfig) {
-        // Lightweight mock auth for development (simulates Firebase behavior)
+        if (allowMock || isLocalhost) {
+          // Lightweight mock auth for local development (simulates Firebase behavior)
           this.mock = true;
-          // In mock mode we persist a fake user in localStorage so sign-in survives page navigation
           try {
             const raw = localStorage.getItem('mockAuthUser');
             if (raw) {
@@ -46,14 +51,20 @@ class FirebaseAuth {
               this.idToken = null;
             }
           } catch (e) {
-            // localStorage may be unavailable in some environments — fall back to in-memory
             this.user = null;
             this.idToken = null;
           }
-        this.initialized = true;
-        console.warn('[FirebaseAuth] Running in MOCK auth mode (no Firebase config provided)');
+          this.initialized = true;
+          console.warn('[FirebaseAuth] Running in MOCK auth mode (no Firebase config provided)');
+          setTimeout(() => this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user)), 0);
+          return;
+        }
 
-        // immediate callback with null user
+        // In production, do not silently enable mock mode. Log a clear error so the
+        // deployer can populate `js/firebase-config.js` with real project config.
+        console.error('[FirebaseAuth] Firebase config missing or placeholder. Populate `js/firebase-config.js` with your project config for production.');
+        // Still mark initialized so callers aren't blocked, but user remains signed out.
+        this.initialized = true;
         setTimeout(() => this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user)), 0);
         return;
       }
