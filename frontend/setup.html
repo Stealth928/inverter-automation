@@ -649,7 +649,7 @@
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<div class="spinner"></div><span>Validating...</span>';
 
-            try {
+                        try {
                 // Call backend validation endpoint with authentication
                 const response = await firebaseAuth.fetchWithAuth('/api/config/validate-keys', {
                     method: 'POST',
@@ -678,7 +678,7 @@
                             }
                         });
                     } else {
-                        setFieldError('deviceSn', result.msg || 'Validation failed. Please check your credentials.');
+                        setFieldError('deviceSn', result.msg || result.error || 'Validation failed. Please check your credentials.');
                     }
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = '<span class="btn-text">Validate & Continue</span><span>→</span>';
@@ -707,7 +707,7 @@
 
             } catch (error) {
                 console.error('Validation error:', error);
-                setFieldError('deviceSn', 'Connection error. Please check your network and try again.');
+                setFieldError('deviceSn', 'Connection error: ' + (error.message || 'Please check your network and try again.'));
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<span class="btn-text">Validate & Continue</span><span>→</span>';
             }

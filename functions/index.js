@@ -358,12 +358,15 @@ app.post('/api/config/validate-keys', async (req, res) => {
     
     // Validate FoxESS token by making a test API call
     if (foxess_token && device_sn) {
+      console.log(`[Validation] Testing FoxESS token for user ${req.user.uid}`);
       const testConfig = { foxessToken: foxess_token, deviceSn: device_sn };
-      const foxResult = await callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, testConfig);
+      const foxResult = await callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, testConfig, null);
       
-      if (foxResult.errno !== 0) {
+      console.log(`[Validation] FoxESS API response:`, foxResult);
+      
+      if (!foxResult || foxResult.errno !== 0) {
         failed_keys.push('foxess_token');
-        errors.foxess_token = foxResult.msg || 'Invalid FoxESS token or API error';
+        errors.foxess_token = foxResult?.msg || foxResult?.error || 'Invalid FoxESS token or API error';
       } else {
         // Check if device SN exists in the response
         const devices = foxResult.result?.data || [];
@@ -371,6 +374,10 @@ app.post('/api/config/validate-keys', async (req, res) => {
         if (!deviceFound && devices.length > 0) {
           failed_keys.push('device_sn');
           errors.device_sn = `Device SN not found. Available: ${devices.map(d => d.deviceSN).join(', ')}`;
+        } else if (!deviceFound && devices.length === 0) {
+          // No devices returned - might be a token issue
+          failed_keys.push('foxess_token');
+          errors.foxess_token = 'No devices found. Please check your FoxESS token.';
         }
       }
     } else {
@@ -386,8 +393,11 @@ app.post('/api/config/validate-keys', async (req, res) => {
     
     // Validate Amber API key if provided
     if (amber_api_key) {
+      console.log(`[Validation] Testing Amber API key for user ${req.user.uid}`);
       const testConfig = { amberApiKey: amber_api_key };
-      const amberResult = await callAmberAPI('/sites', {}, testConfig);
+      const amberResult = await callAmberAPI('/sites', {}, testConfig, null);
+      
+      console.log(`[Validation] Amber API response:`, amberResult);
       
       if (amberResult.errno || amberResult.error || !Array.isArray(amberResult)) {
         failed_keys.push('amber_api_key');
@@ -396,6 +406,7 @@ app.post('/api/config/validate-keys', async (req, res) => {
     }
     
     if (failed_keys.length > 0) {
+      console.log(`[Validation] Validation failed for user ${req.user.uid}:`, failed_keys);
       return res.json({ errno: 1, msg: 'Validation failed', failed_keys, errors });
     }
     
@@ -410,9 +421,10 @@ app.post('/api/config/validate-keys', async (req, res) => {
     
     await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(configData, { merge: true });
     
+    console.log(`[Validation] Config saved successfully for user ${req.user.uid}`);
     res.json({ errno: 0, msg: 'Credentials validated and saved', result: { deviceSn: device_sn } });
   } catch (error) {
-    console.error('Validation error:', error);
+    console.error('[Validation] Error:', error);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
