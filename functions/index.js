@@ -87,35 +87,37 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, u
   const config = getConfig();
   const token = userConfig?.foxessToken || config.foxess.token;
   
-  if (!token) {
-    return { errno: 401, msg: 'FoxESS token not configured' };
-  }
-  
-  // Track API call if userId provided
-  if (userId) {
-    incrementApiCount(userId, 'foxess').catch(() => {});
-  }
-  
-  const timestamp = Date.now();
-  const signaturePath = apiPath.split('?')[0];
-  const signature = generateFoxESSSignature(signaturePath, token, timestamp);
-  
-  const headers = {
-    'token': token,
-    'timestamp': timestamp.toString(),
-    'signature': signature,
-    'lang': 'en',
-    'Content-Type': 'application/json'
-  };
-  
-  const options = { method, headers };
-  if (body && method !== 'GET') {
-    options.body = JSON.stringify(body);
-  }
-  
-  const url = `${config.foxess.baseUrl}${apiPath}`;
-  
-  try {
+  if (!scheduleApi) {
+    console.warn('[Automation] No schedule API available in firebase-functions package; scheduled automation will be disabled.');
+  } else {
+    exports.runAutomation = scheduleApi
+      .schedule('every 1 minutes')
+      .timeZone('Australia/Sydney')
+      .onRun(async (context) => {
+        console.log('[Automation] Starting scheduled automation cycle');
+
+        try {
+          // 1. Fetch and cache shared data (Amber prices, Weather)
+          await updateSharedCache();
+
+          // 2. Get all users with automation enabled
+          const usersSnapshot = await db.collection('users').get();
+
+          // 3. Process each user's automation
+          const promises = [];
+          usersSnapshot.forEach(userDoc => {
+            promises.push(processUserAutomation(userDoc.id));
+          });
+
+          await Promise.allSettled(promises);
+
+          console.log(`[Automation] Cycle complete. Processed ${promises.length} users.`);
+        } catch (error) {
+          console.error('[Automation] Error in scheduled run:', error);
+        }
+
+        return null;
+      });
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     options.signal = controller.signal;
@@ -385,42 +387,20 @@ app.post('/api/config/validate-keys', async (req, res) => {
         failed_keys.push('device_sn');
         errors.device_sn = 'Device Serial Number is required';
       }
-      if (!scheduleApi) {
-        console.warn('[Automation] No schedule API available in firebase-functions package; scheduled automation will be disabled.');
-      } else {
-        exports.runAutomation = scheduleApi
-          .schedule('every 1 minutes')
-          .timeZone('Australia/Sydney')
-          .onRun(async (context) => {
-            console.log('[Automation] Starting scheduled automation cycle');
-
-            try {
-              // 1. Fetch and cache shared data (Amber prices, Weather)
-              await updateSharedCache();
-
-              // 2. Get all users with automation enabled
-              const usersSnapshot = await db.collection('users').get();
-
-              // 3. Process each user's automation
-              const promises = [];
-              usersSnapshot.forEach(userDoc => {
-                promises.push(processUserAutomation(userDoc.id));
-              });
-
-              await Promise.allSettled(promises);
-
-              console.log(`[Automation] Cycle complete. Processed ${promises.length} users.`);
-            } catch (error) {
-              console.error('[Automation] Error in scheduled run:', error);
-            }
-
-            return null;
-          });
+      if (!foxess_token) {
+        failed_keys.push('foxess_token');
+        errors.foxess_token = 'FoxESS API Token is required';
+      }
+    }
+    
+    const configData = {
+      deviceSn: device_sn,
+      foxessToken: foxess_token,
       amberApiKey: amber_api_key || '',
       setupComplete: true,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
-    
+
     await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(configData, { merge: true });
     
     console.log(`[Validation] Config saved successfully for user ${req.user.uid}`);
