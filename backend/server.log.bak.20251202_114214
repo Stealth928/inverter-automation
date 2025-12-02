@@ -1,0 +1,29 @@
+[2025-12-02T00:30:49.037Z] [INFO] [Config] Loaded configuration from file
+[Automation] State loaded from file
+[2025-12-02T00:30:49.045Z] Server running on http://localhost:3000
+Make sure to set your FOXESS_TOKEN and DEVICE_SN in .env file
+[Automation] Starting background loop (delayed start)
+[Automation] Starting background loop (Interval: 60000ms)
+[2025-12-02T00:30:54.046Z] [INFO] [Automation] Master switch is OFF - skipping cycle
+[2025-12-02T00:31:54.048Z] [INFO] [Automation] Master switch is OFF - skipping cycle
+callAmberAPI error request to https://api.amber.com.au/v1/sites failed, reason: self-signed certificate in certificate chain
+callFoxESSAPI fetch error: request to https://www.foxesscloud.com/op/v0/device/real/query failed, reason: self-signed certificate in certificate chain
+callWeatherAPI error request to https://geocoding-api.open-meteo.com/v1/search?name=Roselands%20Sydney%202196&count=1&language=en failed, reason: self-signed certificate in certificate chain
+[2025-12-02T00:32:54.049Z] [INFO] [Automation] Master switch is OFF - skipping cycle
+[2025-12-02T00:33:54.049Z] [INFO] [Automation] Master switch is OFF - skipping cycle
+[2025-12-02T00:34:54.050Z] [INFO] [Automation] Master switch is OFF - skipping cycle
+[2025-12-02T00:35:54.050Z] [INFO] [Automation] Master switch is OFF - skipping cycle
+callFoxESSAPI fetch error: request to https://www.foxesscloud.com/op/v0/device/real/query failed, reason: self-signed certificate in certificate chain
+callWeatherAPI error request to https://geocoding-api.open-meteo.com/v1/search?name=Roselands%20Sydney%202196&count=1&language=en failed, reason: self-signed certificate in certificate chain
+callAmberAPI error request to https://api.amber.com.au/v1/sites failed, reason: self-signed certificate in certificate chain
+[2025-12-02T00:36:54.051Z] [INFO] [Automation] Master switch is OFF - skipping cycle
+[2025-12-02T00:37:54.052Z] [INFO] [Automation] Master switch is OFF - skipping cycle
+callAmberAPI error request to https://api.amber.com.au/v1/sites failed, reason: self-signed certificate in certificate chain
+callWeatherAPI error request to https://geocoding-api.open-meteo.com/v1/search?name=Roselands%20Sydney%202196&count=1&language=en failed, reason: self-signed certificate in certificate chain
+callFoxESSAPI fetch error: request to https://www.foxesscloud.com/op/v0/device/real/query failed, reason: self-signed certificate in certificate chain
+[2025-12-02T00:38:54.052Z] [INFO] [Automation] Master switch is OFF - skipping cycle
+[2025-12-02T00:39:54.052Z] [INFO] [Automation] Master switch is OFF - skipping cycle
+[2025-12-02T00:40:54.054Z] [INFO] [Automation] Master switch is OFF - skipping cycle
+[2025-12-02T00:41:54.055Z] [INFO] [Automation] Master switch is OFF - skipping cycle
+[2025-12-02T00:42:06.035Z] Received SIGTERM
+[2025-12-02T00:42:06.035Z] Process exit with code: 0
