@@ -1885,6 +1885,20 @@
         let panelCollapsed = false;
         // When true, suppress auto-opening the right response panel (used during init)
         window.suppressPanelAutoOpen = false;
+
+        /**
+         * Helper function to make authenticated API calls.
+         * Uses firebaseAuth.fetchWithAuth to include the Authorization header.
+         * Falls back to plain fetch if not authenticated (for debugging).
+         */
+        async function authenticatedFetch(url, options = {}) {
+            if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn && firebaseAuth.isSignedIn()) {
+                return await firebaseAuth.fetchWithAuth(url, options);
+            }
+            // Fallback - should not happen in normal operation
+            console.warn('authenticatedFetch: Not signed in, using plain fetch for', url);
+            return await fetch(url, options);
+        }
         // Dismiss the weather fallback banner for a given location key
         function dismissWeatherFallback(key) {
             try {
@@ -1992,7 +2006,7 @@
                     if (!fetchPromise) {
                         fetchPromise = (async () => {
                             try {
-                                const response = await fetch(url);
+                                const response = await authenticatedFetch(url);
                                 return await response.json();
                             } finally {
                                 // Clear the in-flight entry when finished (success or error)
@@ -2068,7 +2082,7 @@
                 if (!postPromise) {
                     postPromise = (async () => {
                         try {
-                            const response = await fetch(endpoint, {
+                            const response = await authenticatedFetch(endpoint, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify(body)
@@ -2112,7 +2126,7 @@
                 let url = '/api/device/workmode/get';
                 if (sn) url += `?sn=${encodeURIComponent(sn)}`;
                 const fetchStart = Date.now();
-                const response = await fetch(url);
+                const response = await authenticatedFetch(url);
                 const data = await response.json();
                 
                 if (data.errno === 0 && data.result) {
@@ -2177,7 +2191,7 @@
                 const body = { workMode };
                 if (sn) body.sn = sn;
                 
-                const response = await fetch('/api/device/workmode/set', {
+                const response = await authenticatedFetch('/api/device/workmode/set', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
@@ -2749,7 +2763,7 @@
             card.innerHTML = '<div style="color:#8b949e">Loading weather...</div>';
 
             try {
-                const resp = await fetch(`/api/weather?place=${encodeURIComponent(place)}&days=${days}`);
+                const resp = await authenticatedFetch(`/api/weather?place=${encodeURIComponent(place)}&days=${days}`);
                 const data = await resp.json();
                 renderWeatherCard(data);
                 // mark last updated for weather
@@ -3188,7 +3202,7 @@
             select.innerHTML = '<option value="">Loading...</option>';
             
             try {
-                const resp = await fetch('/api/amber/sites');
+                const resp = await authenticatedFetch('/api/amber/sites');
                 const data = await resp.json();
                 if (Array.isArray(data) && data.length > 0) {
                     amberSites = data;
@@ -3215,7 +3229,7 @@
             
             try {
                 const next = Number(document.getElementById('amberNext')?.value) || 12;
-                const resp = await fetch(`/api/amber/prices/current?siteId=${siteId}&next=${next}`);
+                const resp = await authenticatedFetch(`/api/amber/prices/current?siteId=${siteId}&next=${next}`);
                 const data = await resp.json();
                 renderAmberCard(data);
                 // Also set last-updated for amber (history query counts as an update)
@@ -3241,7 +3255,7 @@
             card.innerHTML = '<div style="color:#8b949e">Loading history...</div>';
             
             try {
-                const resp = await fetch(`/api/amber/prices?siteId=${siteId}&startDate=${yesterday.toISOString().slice(0,10)}&endDate=${today.toISOString().slice(0,10)}`);
+                const resp = await authenticatedFetch(`/api/amber/prices?siteId=${siteId}&startDate=${yesterday.toISOString().slice(0,10)}&endDate=${today.toISOString().slice(0,10)}`);
                 const data = await resp.json();
                 renderAmberCard(data);
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
@@ -3543,7 +3557,7 @@
             statusEl.textContent = '🔄 Clearing all segments...';
             
             try {
-                const resp = await fetch('/api/scheduler/v1/clear-all', {
+                const resp = await authenticatedFetch('/api/scheduler/v1/clear-all', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({})
@@ -3571,7 +3585,7 @@
             container.innerHTML = '<div style="color:#8b949e;font-size:12px;padding:20px;text-align:center">Loading...</div>';
             
             try {
-                const resp = await fetch('/api/scheduler/v1/get');
+                const resp = await authenticatedFetch('/api/scheduler/v1/get');
                 const data = await resp.json();
                 
                 if (data.errno !== 0 || !data.result) {
@@ -3666,7 +3680,7 @@
             // First load current segments if not loaded
             if (currentSchedulerGroups.length === 0) {
                 try {
-                    const resp = await fetch('/api/scheduler/v1/get');
+                    const resp = await authenticatedFetch('/api/scheduler/v1/get');
                     const data = await resp.json();
                     if (data.errno === 0 && data.result?.groups) {
                         currentSchedulerGroups = data.result.groups;
@@ -3702,7 +3716,7 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
                 
-                const resp = await fetch('/api/scheduler/v1/set', {
+                const resp = await authenticatedFetch('/api/scheduler/v1/set', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body),
@@ -3757,7 +3771,7 @@
             // First load current segments if not loaded
             if (currentSchedulerGroups.length === 0) {
                 try {
-                    const resp = await fetch('/api/scheduler/v1/get');
+                    const resp = await authenticatedFetch('/api/scheduler/v1/get');
                     const data = await resp.json();
                     if (data.errno === 0 && data.result?.groups) {
                         currentSchedulerGroups = data.result.groups;
@@ -3818,7 +3832,7 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), CONFIG.timeout.schedulerMs);
                 
-                const resp = await fetch('/api/scheduler/v1/set', {
+                const resp = await authenticatedFetch('/api/scheduler/v1/set', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body),
@@ -4330,7 +4344,7 @@
 
             // 0) Load shared config from backend (e.g. default weather location)
             try {
-                const cfgResp = await fetch('/api/config');
+                const cfgResp = await authenticatedFetch('/api/config');
                 const cfg = await cfgResp.json();
                 if (cfg.errno === 0 && cfg.result) {
                     const wInput = document.getElementById('weatherPlace');
@@ -4527,7 +4541,7 @@
                     container.innerHTML = '<div style="color:#8b949e;font-size:12px">Loading automation status...</div>';
                 }
                 
-                const resp = await fetch('/api/automation/status');
+                const resp = await authenticatedFetch('/api/automation/status');
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const data = await resp.json();
                 if (data.errno === 0 && data.result) {
@@ -4980,7 +4994,7 @@
             try {
                 // Use update endpoint if editing, create if new
                 const endpoint = editingId ? '/api/automation/rule/update' : '/api/automation/rule/create';
-                const resp = await fetch(endpoint, {
+                const resp = await authenticatedFetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -5015,7 +5029,7 @@
         // Edit an existing rule - opens modal with pre-filled values
         async function editBackendRule(ruleName) {
             try {
-                const resp = await fetch('/api/automation/status');
+                const resp = await authenticatedFetch('/api/automation/status');
                 const data = await resp.json();
                 const rule = data.result?.rules?.[ruleName];
                 if (!rule) {
@@ -5098,7 +5112,7 @@
             if (!confirm(`Delete rule "${ruleName}"? This cannot be undone.`)) return;
             
             try {
-                const resp = await fetch('/api/automation/rule/delete', {
+                const resp = await authenticatedFetch('/api/automation/rule/delete', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ruleName })
@@ -5118,11 +5132,11 @@
         // Toggle backend automation on/off
         async function toggleBackendAutomation() {
             try {
-                const statusResp = await fetch('/api/automation/status');
+                const statusResp = await authenticatedFetch('/api/automation/status');
                 const statusData = await statusResp.json();
                 const currentEnabled = statusData.result?.enabled || false;
                 
-                const resp = await fetch('/api/automation/enable', {
+                const resp = await authenticatedFetch('/api/automation/enable', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ enabled: !currentEnabled })
@@ -5142,7 +5156,7 @@
                 const body = { ruleName };
                 body[field] = field === 'enabled' ? !!value : (field === 'threshold' ? parseFloat(value) : parseInt(value));
                 
-                const resp = await fetch('/api/automation/rule/update', {
+                const resp = await authenticatedFetch('/api/automation/rule/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
@@ -5172,7 +5186,7 @@
                     body.action[field] = parseInt(value, 10);
                 }
                 
-                const resp = await fetch('/api/automation/rule/update', {
+                const resp = await authenticatedFetch('/api/automation/rule/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
@@ -5191,7 +5205,7 @@
             if (!confirm(`Manually trigger the "${ruleName}" rule? This will immediately apply the automation action.`)) return;
             
             try {
-                const resp = await fetch('/api/automation/trigger', {
+                const resp = await authenticatedFetch('/api/automation/trigger', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ruleName })
@@ -5220,7 +5234,7 @@
         // Reset backend automation cooldowns
         async function resetBackendAutomation() {
             try {
-                const resp = await fetch('/api/automation/reset', {
+                const resp = await authenticatedFetch('/api/automation/reset', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -5613,7 +5627,7 @@
         // Load API call metrics (per-day) and display in footer
         async function loadApiMetrics(days = 1) {
             try {
-                const resp = await fetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+                const resp = await authenticatedFetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
                 const data = await resp.json();
                 if (!data || data.errno !== 0 || !data.result) return;
                 const keys = Object.keys(data.result).sort().reverse();

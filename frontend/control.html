@@ -467,6 +467,18 @@
   <script>
     const output = document.getElementById('output');
 
+    /**
+     * Helper function to make authenticated API calls.
+     * Uses firebaseAuth.fetchWithAuth to include the Authorization header.
+     */
+    async function authenticatedFetch(url, options = {}) {
+      if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn && firebaseAuth.isSignedIn()) {
+        return await firebaseAuth.fetchWithAuth(url, options);
+      }
+      console.warn('authenticatedFetch: Not signed in, using plain fetch for', url);
+      return await fetch(url, options);
+    }
+
     function showStatus(formId, message, type = 'info') {
       const statusEl = document.getElementById(`status-${formId}`);
       if (statusEl) {
@@ -522,7 +534,7 @@
     async function callAPI(url, title = 'API Response') {
       output.innerHTML = `<div style="text-align:center;padding:20px;color:#79c0ff">⏳ Loading ${title}...</div>`;
       try {
-        const res = await fetch(url);
+        const res = await authenticatedFetch(url);
         const text = await res.text();
         let parsed;
         try {
@@ -547,7 +559,7 @@
       // optionally auto-open the right panel (not necessary in this page)
       output.innerHTML = `<div style="text-align:center;padding:20px;color:#79c0ff">⏳ Sending ${title}...</div>`;
       try {
-        const res = await fetch(endpoint, {
+        const res = await authenticatedFetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bodyTemplate)
@@ -582,7 +594,7 @@
       showStatus('batterySoc', '⏳ Saving battery SoC settings...', 'info');
       
       try {
-        const res = await fetch('/api/device/battery/soc/set', {
+        const res = await authenticatedFetch('/api/device/battery/soc/set', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
@@ -604,7 +616,7 @@
     async function getBatterySoc() {
       showStatus('batterySoc', '⏳ Loading current settings...', 'info');
       try {
-        const res = await fetch('/api/device/battery/soc/get');
+        const res = await authenticatedFetch('/api/device/battery/soc/get');
         const contentType = res.headers.get('content-type');
         
         if (!res.ok) {
@@ -648,7 +660,7 @@
       showStatus('workMode', `⏳ Setting work mode to ${workMode}...`, 'info');
       
       try {
-        const res = await fetch('/api/inverter/mode/set', {
+        const res = await authenticatedFetch('/api/inverter/mode/set', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ workMode })
@@ -670,7 +682,7 @@
 
     async function getWorkMode() {
       try {
-        const res = await fetch('/api/device/workmode/get');
+        const res = await authenticatedFetch('/api/device/workmode/get');
         const result = await res.json();
         
         if (result.errno === 0 && result.result) {
@@ -713,7 +725,7 @@
       showStatus('forceCharge', '⏳ Saving force charge times...', 'info');
       
       try {
-        const res = await fetch('/api/device/battery/forceChargeTime/set', {
+        const res = await authenticatedFetch('/api/device/battery/forceChargeTime/set', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
@@ -734,7 +746,7 @@
 
     async function getForceChargeTimes() {
       try {
-        const res = await fetch('/api/device/battery/forceChargeTime/get');
+        const res = await authenticatedFetch('/api/device/battery/forceChargeTime/get');
         const result = await res.json();
         
         if (result.errno === 0 && result.result) {
@@ -780,7 +792,7 @@
     // Load API metrics
     async function loadApiMetrics(days = 1) {
       try {
-        const resp = await fetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+        const resp = await authenticatedFetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
         const data = await resp.json();
         if (!data || data.errno !== 0 || !data.result) return;
         const keys = Object.keys(data.result).sort().reverse();

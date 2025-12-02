@@ -580,6 +580,18 @@
     </div>
 
     <script>
+        /**
+         * Helper function to make authenticated API calls.
+         * Uses firebaseAuth.fetchWithAuth to include the Authorization header.
+         */
+        async function authenticatedFetch(url, options = {}) {
+            if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn && firebaseAuth.isSignedIn()) {
+                return await firebaseAuth.fetchWithAuth(url, options);
+            }
+            console.warn('authenticatedFetch: Not signed in, using plain fetch for', url);
+            return await fetch(url, options);
+        }
+
         // FAQ toggle
         function toggleFaq(element) {
             const item = element.parentElement;
@@ -698,7 +710,7 @@
 
         async function loadRules() {
             try {
-                const resp = await fetch('/api/automation/status');
+                const resp = await authenticatedFetch('/api/automation/status');
                 const data = await resp.json();
                 if (data.errno === 0 && data.result) {
                     currentRules = data.result.rules || {};
@@ -794,7 +806,7 @@
                 const controller = new AbortController();
                 const timeout = setTimeout(() => controller.abort(), 15000);
                 
-                const resp = await fetch('/api/automation/test', {
+                const resp = await authenticatedFetch('/api/automation/test', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ mockData }),
@@ -1246,7 +1258,7 @@
             
             try {
                 const endpoint = editingId ? '/api/automation/rule/update' : '/api/automation/rule/create';
-                const resp = await fetch(endpoint, {
+                const resp = await authenticatedFetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -1285,7 +1297,7 @@
             if (!confirm(`Delete rule "${ruleName}"?`)) return;
             
             try {
-                const resp = await fetch('/api/automation/rule/delete', {
+                const resp = await authenticatedFetch('/api/automation/rule/delete', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ruleName })

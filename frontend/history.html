@@ -488,6 +488,18 @@
         let lastRawData = null;
         let deviceSn = null;
 
+        /**
+         * Helper function to make authenticated API calls.
+         * Uses firebaseAuth.fetchWithAuth to include the Authorization header.
+         */
+        async function authenticatedFetch(url, options = {}) {
+            if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn && firebaseAuth.isSignedIn()) {
+                return await firebaseAuth.fetchWithAuth(url, options);
+            }
+            console.warn('authenticatedFetch: Not signed in, using plain fetch for', url);
+            return await fetch(url, options);
+        }
+
         // Initialize page (NO automatic API calls)
         document.addEventListener('DOMContentLoaded', () => {
             // Populate year dropdown
@@ -524,7 +536,7 @@
 
         async function loadDeviceSn() {
             try {
-                const resp = await fetch('/api/config');
+                const resp = await authenticatedFetch('/api/config');
                 const data = await resp.json();
                 if (data.errno === 0 && data.result?.deviceSn) {
                     deviceSn = data.result.deviceSn;
@@ -584,7 +596,7 @@
                 const end = Math.floor(Date.now() / 1000); // Convert ms to Unix seconds
                 const begin = end - (hours * 60 * 60); // hours to seconds
                 
-                const resp = await fetch(`/api/inverter/history?begin=${begin}&end=${end}`);
+                const resp = await authenticatedFetch(`/api/inverter/history?begin=${begin}&end=${end}`);
                 const data = await resp.json();
                 
                 if (data.errno && data.errno !== 0) {
@@ -794,7 +806,7 @@
                 
                 let url = `/api/inverter/report?dimension=${dimension}&year=${year}&month=${month}`;
                 
-                const resp = await fetch(url);
+                const resp = await authenticatedFetch(url);
                 const data = await resp.json();
                 
                 if (data.errno && data.errno !== 0) {
@@ -969,7 +981,7 @@
             status.textContent = 'Fetching generation data from FoxESS...';
             
             try {
-                const resp = await fetch('/api/inverter/generation');
+                const resp = await authenticatedFetch('/api/inverter/generation');
                 const data = await resp.json();
                 
                 if (data.errno && data.errno !== 0) {
@@ -1073,7 +1085,7 @@
         // Load API call metrics (per-day) and display in footer
         async function loadApiMetrics(days = 1) {
             try {
-                const resp = await fetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+                const resp = await authenticatedFetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
                 const data = await resp.json();
                 if (!data || data.errno !== 0 || !data.result) return;
                 const keys = Object.keys(data.result).sort().reverse();
