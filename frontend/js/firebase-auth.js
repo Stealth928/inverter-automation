@@ -27,6 +27,37 @@ class FirebaseAuth {
    * Call this once on page load
    */
   async init(config) {
+      // If config is missing or clearly placeholder, enable mock mode for local dev
+      const isPlaceholderConfig = !config || !config.apiKey || String(config.apiKey).trim() === '' || String(config.apiKey).startsWith('YOUR_');
+      if (isPlaceholderConfig) {
+        // Lightweight mock auth for development (simulates Firebase behavior)
+          this.mock = true;
+          // In mock mode we persist a fake user in localStorage so sign-in survives page navigation
+          try {
+            const raw = localStorage.getItem('mockAuthUser');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              // ensure getIdToken exists for compatibility
+              parsed.getIdToken = async () => localStorage.getItem('mockAuthToken') || ('mock-token-' + Date.now());
+              this.user = parsed;
+              this.idToken = await parsed.getIdToken();
+            } else {
+              this.user = null;
+              this.idToken = null;
+            }
+          } catch (e) {
+            // localStorage may be unavailable in some environments — fall back to in-memory
+            this.user = null;
+            this.idToken = null;
+          }
+        this.initialized = true;
+        console.warn('[FirebaseAuth] Running in MOCK auth mode (no Firebase config provided)');
+
+        // immediate callback with null user
+        setTimeout(() => this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user)), 0);
+        return;
+      }
+
     if (this.initialized) {
       console.log('[FirebaseAuth] Already initialized');
       return;
@@ -88,6 +119,18 @@ class FirebaseAuth {
    * Sign up with email and password
    */
   async signUp(email, password, displayName = '') {
+    if (this.mock) {
+      // create a fake user
+      this.user = { email, displayName: displayName || email.split('@')[0], uid: 'mock-' + Date.now() };
+      // persist mock user for cross-page persistence
+      try { localStorage.setItem('mockAuthUser', JSON.stringify(this.user)); } catch (e) {}
+      const token = 'mock-token-' + Date.now();
+      try { localStorage.setItem('mockAuthToken', token); } catch (e) {}
+      this.user.getIdToken = async () => token;
+      this.idToken = await this.user.getIdToken();
+      this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user));
+      return { success: true, user: this.user };
+    }
     try {
       const result = await this.auth.createUserWithEmailAndPassword(email, password);
       
@@ -108,6 +151,17 @@ class FirebaseAuth {
    * Sign in with email and password
    */
   async signIn(email, password) {
+    if (this.mock) {
+      // Accept any credentials in mock mode
+      this.user = { email, displayName: email.split('@')[0], uid: 'mock-' + Date.now() };
+      try { localStorage.setItem('mockAuthUser', JSON.stringify(this.user)); } catch (e) {}
+      const token = 'mock-token-' + Date.now();
+      try { localStorage.setItem('mockAuthToken', token); } catch (e) {}
+      this.user.getIdToken = async () => token;
+      this.idToken = await this.user.getIdToken();
+      this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user));
+      return { success: true, user: this.user };
+    }
     try {
       const result = await this.auth.signInWithEmailAndPassword(email, password);
       console.log('[FirebaseAuth] Sign in successful:', email);
@@ -122,6 +176,18 @@ class FirebaseAuth {
    * Sign in with Google
    */
   async signInWithGoogle() {
+    if (this.mock) {
+      // Simulate Google sign-in
+      const email = 'google.mock@local';
+      this.user = { email, displayName: 'Google Mock', uid: 'mock-google-' + Date.now() };
+      try { localStorage.setItem('mockAuthUser', JSON.stringify(this.user)); } catch (e) {}
+      const token = 'mock-google-token-' + Date.now();
+      try { localStorage.setItem('mockAuthToken', token); } catch (e) {}
+      this.user.getIdToken = async () => token;
+      this.idToken = await this.user.getIdToken();
+      this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user));
+      return { success: true, user: this.user };
+    }
     try {
       const provider = new firebase.auth.GoogleAuthProvider();
       provider.addScope('email');
@@ -140,6 +206,13 @@ class FirebaseAuth {
    * Sign out
    */
   async signOut() {
+    if (this.mock) {
+      this.user = null;
+      this.idToken = null;
+      try { localStorage.removeItem('mockAuthUser'); localStorage.removeItem('mockAuthToken'); } catch (e) {}
+      this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user));
+      return { success: true };
+    }
     try {
       await this.auth.signOut();
       console.log('[FirebaseAuth] Sign out successful');
@@ -154,6 +227,10 @@ class FirebaseAuth {
    * Send password reset email
    */
   async sendPasswordResetEmail(email) {
+    if (this.mock) {
+      // pretend email sent
+      return { success: true };
+    }
     try {
       await this.auth.sendPasswordResetEmail(email);
       console.log('[FirebaseAuth] Password reset email sent to:', email);

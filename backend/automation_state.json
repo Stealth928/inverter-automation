@@ -57,7 +57,7 @@
     "negative_buy_price": {
       "name": "Negative Buy Price",
       "enabled": true,
-      "priority": 3,
+      "priority": 5,
       "conditions": {
         "feedInPrice": {
           "enabled": false,
@@ -107,7 +107,7 @@
     "time_based_at_night": {
       "name": "Time based at night",
       "enabled": true,
-      "priority": 4,
+      "priority": 7,
       "conditions": {
         "feedInPrice": {
           "enabled": true,
@@ -151,56 +151,6 @@
         "minSocOnGrid": 20,
         "fdSoc": 35,
         "fdPwr": 1000,
-        "maxSoc": 90
-      }
-    },
-    "full_battery_slow_discharge": {
-      "name": "Full Battery Slow Discharge",
-      "enabled": true,
-      "priority": 7,
-      "conditions": {
-        "feedInPrice": {
-          "enabled": true,
-          "operator": ">",
-          "value": 3,
-          "value2": 50
-        },
-        "buyPrice": {
-          "enabled": false,
-          "operator": "<",
-          "value": 10,
-          "value2": 20
-        },
-        "soc": {
-          "enabled": true,
-          "operator": ">",
-          "value": 90,
-          "value2": 100
-        },
-        "temperature": {
-          "enabled": false,
-          "type": "battery",
-          "operator": "<",
-          "value": 40
-        },
-        "weather": {
-          "enabled": false,
-          "codes": []
-        },
-        "time": {
-          "enabled": false,
-          "startTime": "06:00",
-          "endTime": "18:00"
-        }
-      },
-      "cooldownMinutes": 5,
-      "lastTriggered": 1764568607048,
-      "action": {
-        "workMode": "ForceDischarge",
-        "durationMinutes": 30,
-        "minSocOnGrid": 20,
-        "fdSoc": 35,
-        "fdPwr": 4000,
         "maxSoc": 90
       }
     },

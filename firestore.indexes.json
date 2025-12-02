@@ -1,13 +1,6 @@
 {
   "indexes": [
     {
-      "collectionGroup": "history",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "rules",
       "queryScope": "COLLECTION",
       "fields": [

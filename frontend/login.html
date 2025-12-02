@@ -4,27 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - FoxESS Solar Dashboard</title>
+    <link rel="stylesheet" href="css/shared-styles.css" />
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        /* Page-specific styles */
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%);
-            min-height: 100vh;
-            color: #e6edf3;
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 20px;
         }
 
         .login-container {
             width: 100%;
-            max-width: 420px;
-            padding: 20px;
+            max-width: 440px;
         }
 
         .login-card {
@@ -33,47 +25,71 @@
             border: 1px solid rgba(48, 54, 61, 0.6);
             overflow: hidden;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            animation: slideUp 0.4s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .login-header {
-            padding: 32px 32px 24px;
+            padding: 40px 32px 28px;
             text-align: center;
-            background: rgba(0, 0, 0, 0.2);
+            background: linear-gradient(180deg, rgba(88, 166, 255, 0.08) 0%, transparent 100%);
             border-bottom: 1px solid rgba(48, 54, 61, 0.4);
         }
 
         .logo {
-            font-size: 48px;
-            margin-bottom: 16px;
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, rgba(255, 180, 50, 0.15), rgba(255, 120, 50, 0.1));
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            box-shadow: 0 4px 24px rgba(255, 150, 50, 0.15);
         }
 
         .login-header h1 {
-            font-size: 24px;
+            font-size: 22px;
             font-weight: 600;
-            color: #58a6ff;
+            color: var(--text-primary);
             margin-bottom: 8px;
         }
 
         .login-header p {
             font-size: 14px;
-            color: #8b949e;
+            color: var(--text-secondary);
+            line-height: 1.4;
         }
 
         .login-body {
-            padding: 32px;
+            padding: 28px 32px 32px;
         }
 
         .tab-buttons {
             display: flex;
             gap: 8px;
             margin-bottom: 24px;
+            background: rgba(13, 17, 23, 0.4);
+            padding: 4px;
+            border-radius: 10px;
         }
 
         .tab-btn {
             flex: 1;
-            padding: 12px 16px;
-            background: rgba(33, 38, 45, 0.6);
-            border: 1px solid rgba(48, 54, 61, 0.6);
+            padding: 10px 16px;
+            background: transparent;
+            border: none;
             border-radius: 8px;
             color: #8b949e;
             font-size: 14px;
@@ -82,36 +98,52 @@
             transition: all 0.2s ease;
         }
 
-        .tab-btn:hover {
-            background: rgba(48, 54, 61, 0.6);
+        .tab-btn:hover:not(.active) {
             color: #e6edf3;
+            background: rgba(48, 54, 61, 0.3);
         }
 
         .tab-btn.active {
             background: rgba(88, 166, 255, 0.15);
-            border-color: rgba(88, 166, 255, 0.4);
             color: #58a6ff;
+            box-shadow: 0 2px 8px rgba(88, 166, 255, 0.1);
         }
 
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 18px;
         }
 
         .form-group label {
             display: block;
-            font-size: 13px;
+            font-size: 12px;
             color: #8b949e;
             margin-bottom: 8px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #484f58;
+            font-size: 16px;
+            pointer-events: none;
+            transition: color 0.2s ease;
         }
 
         .form-group input {
             width: 100%;
-            padding: 14px 16px;
+            padding: 14px 14px 14px 42px;
             background: rgba(13, 17, 23, 0.6);
             border: 1px solid rgba(48, 54, 61, 0.8);
-            border-radius: 8px;
+            border-radius: 10px;
             color: #e6edf3;
             font-size: 15px;
             transition: all 0.2s ease;
@@ -121,18 +153,42 @@
             outline: none;
             border-color: #58a6ff;
             box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+            background: rgba(13, 17, 23, 0.8);
+        }
+
+        .form-group input:focus + .input-icon,
+        .form-group input:not(:placeholder-shown) + .input-icon {
+            color: #58a6ff;
         }
 
         .form-group input::placeholder {
             color: #484f58;
         }
 
+        .password-toggle {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #484f58;
+            cursor: pointer;
+            padding: 4px;
+            font-size: 16px;
+            transition: color 0.2s ease;
+        }
+
+        .password-toggle:hover {
+            color: #8b949e;
+        }
+
         .btn {
             width: 100%;
             padding: 14px 20px;
             background: linear-gradient(135deg, #238636, #1a7f37);
-            border: 1px solid #238636;
-            border-radius: 8px;
+            border: none;
+            border-radius: 10px;
             color: #fff;
             font-size: 15px;
             font-weight: 600;
@@ -142,14 +198,16 @@
             align-items: center;
             justify-content: center;
             gap: 8px;
+            box-shadow: 0 4px 12px rgba(35, 134, 54, 0.2);
         }
 
-        .btn:hover {
+        .btn:hover:not(:disabled) {
             background: linear-gradient(135deg, #2ea043, #238636);
-            transform: translateY(-1px);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(35, 134, 54, 0.3);
         }
 
-        .btn:active {
+        .btn:active:not(:disabled) {
             transform: translateY(0);
         }
 
@@ -163,19 +221,23 @@
             background: rgba(33, 38, 45, 0.8);
             border: 1px solid rgba(48, 54, 61, 0.8);
             margin-top: 16px;
+            box-shadow: none;
         }
 
-        .btn-google:hover {
+        .btn-google:hover:not(:disabled) {
             background: rgba(48, 54, 61, 0.8);
             border-color: rgba(88, 166, 255, 0.4);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
 
         .divider {
             display: flex;
             align-items: center;
             margin: 24px 0;
-            color: #8b949e;
+            color: #6e7681;
             font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .divider::before,
@@ -183,55 +245,64 @@
             content: '';
             flex: 1;
             height: 1px;
-            background: rgba(48, 54, 61, 0.6);
+            background: linear-gradient(90deg, transparent, rgba(48, 54, 61, 0.8), transparent);
         }
 
         .divider span {
             padding: 0 16px;
         }
 
-        .error-message {
-            background: rgba(248, 81, 73, 0.1);
-            border: 1px solid rgba(248, 81, 73, 0.3);
-            border-radius: 8px;
-            padding: 12px 16px;
-            color: #f85149;
+        .message {
+            border-radius: 10px;
+            padding: 14px 16px;
             font-size: 13px;
             margin-bottom: 20px;
             display: none;
+            align-items: center;
+            gap: 10px;
+            animation: fadeIn 0.3s ease;
         }
 
-        .error-message.show {
-            display: block;
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.show {
+            display: flex;
+        }
+
+        .message-icon {
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .error-message {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+            color: #f85149;
         }
 
         .success-message {
             background: rgba(35, 134, 54, 0.1);
             border: 1px solid rgba(35, 134, 54, 0.3);
-            border-radius: 8px;
-            padding: 12px 16px;
             color: #7ee787;
-            font-size: 13px;
-            margin-bottom: 20px;
-            display: none;
-        }
-
-        .success-message.show {
-            display: block;
         }
 
         .forgot-password {
             text-align: center;
-            margin-top: 20px;
+            margin-top: 18px;
         }
 
         .forgot-password a {
             color: #58a6ff;
             text-decoration: none;
             font-size: 13px;
+            transition: color 0.2s ease;
         }
 
         .forgot-password a:hover {
+            color: #79b8ff;
             text-decoration: underline;
         }
 
@@ -241,6 +312,7 @@
 
         .form-section.active {
             display: block;
+            animation: fadeIn 0.3s ease;
         }
 
         .spinner {
@@ -253,14 +325,49 @@
         }
 
         @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
+            to { transform: rotate(360deg); }
         }
 
         .google-icon {
             width: 20px;
             height: 20px;
+        }
+
+        .login-footer {
+            text-align: center;
+            padding: 16px 32px 24px;
+            border-top: 1px solid rgba(48, 54, 61, 0.3);
+            font-size: 12px;
+            color: #6e7681;
+        }
+
+        .login-footer a {
+            color: #58a6ff;
+            text-decoration: none;
+        }
+
+        .login-footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 0;
+            }
+
+            .login-card {
+                border-radius: 0;
+                min-height: 100vh;
+            }
+
+            .login-header {
+                padding: 32px 24px 24px;
+            }
+
+            .login-body {
+                padding: 24px;
+            }
         }
     </style>
 
@@ -284,19 +391,32 @@
                     <button class="tab-btn" data-tab="signup">Sign Up</button>
                 </div>
 
-                <div id="errorMessage" class="error-message"></div>
-                <div id="successMessage" class="success-message"></div>
+                <div id="errorMessage" class="message error-message">
+                    <span class="message-icon">⚠️</span>
+                    <span class="message-text"></span>
+                </div>
+                <div id="successMessage" class="message success-message">
+                    <span class="message-icon">✓</span>
+                    <span class="message-text"></span>
+                </div>
 
                 <!-- Sign In Form -->
                 <div id="signinForm" class="form-section active">
                     <form id="signinFormElement">
                         <div class="form-group">
                             <label for="signinEmail">Email</label>
-                            <input type="email" id="signinEmail" placeholder="you@example.com" required>
+                            <div class="input-wrapper">
+                                <input type="email" id="signinEmail" placeholder="you@example.com" required>
+                                <span class="input-icon">✉️</span>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="signinPassword">Password</label>
-                            <input type="password" id="signinPassword" placeholder="••••••••" required>
+                            <div class="input-wrapper">
+                                <input type="password" id="signinPassword" placeholder="••••••••" required>
+                                <span class="input-icon">🔒</span>
+                                <button type="button" class="password-toggle" data-target="signinPassword" aria-label="Toggle password visibility">👁️</button>
+                            </div>
                         </div>
                         <button type="submit" class="btn" id="signinBtn">
                             <span>Sign In</span>
@@ -313,19 +433,33 @@
                     <form id="signupFormElement">
                         <div class="form-group">
                             <label for="signupName">Display Name</label>
-                            <input type="text" id="signupName" placeholder="John Doe">
+                            <div class="input-wrapper">
+                                <input type="text" id="signupName" placeholder="John Doe">
+                                <span class="input-icon">👤</span>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="signupEmail">Email</label>
-                            <input type="email" id="signupEmail" placeholder="you@example.com" required>
+                            <div class="input-wrapper">
+                                <input type="email" id="signupEmail" placeholder="you@example.com" required>
+                                <span class="input-icon">✉️</span>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="signupPassword">Password</label>
-                            <input type="password" id="signupPassword" placeholder="••••••••" minlength="6" required>
+                            <div class="input-wrapper">
+                                <input type="password" id="signupPassword" placeholder="••••••••" minlength="6" required>
+                                <span class="input-icon">🔒</span>
+                                <button type="button" class="password-toggle" data-target="signupPassword" aria-label="Toggle password visibility">👁️</button>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="signupPasswordConfirm">Confirm Password</label>
-                            <input type="password" id="signupPasswordConfirm" placeholder="••••••••" required>
+                            <div class="input-wrapper">
+                                <input type="password" id="signupPasswordConfirm" placeholder="••••••••" required>
+                                <span class="input-icon">🔒</span>
+                                <button type="button" class="password-toggle" data-target="signupPasswordConfirm" aria-label="Toggle password visibility">👁️</button>
+                            </div>
                         </div>
                         <button type="submit" class="btn" id="signupBtn">
                             <span>Create Account</span>
@@ -336,24 +470,27 @@
                 <!-- Reset Password Form -->
                 <div id="resetForm" class="form-section">
                     <form id="resetFormElement">
-                        <p style="color: #8b949e; margin-bottom: 20px; font-size: 14px;">
+                        <p style="color: #8b949e; margin-bottom: 20px; font-size: 14px; line-height: 1.5;">
                             Enter your email address and we'll send you a link to reset your password.
                         </p>
                         <div class="form-group">
                             <label for="resetEmail">Email</label>
-                            <input type="email" id="resetEmail" placeholder="you@example.com" required>
+                            <div class="input-wrapper">
+                                <input type="email" id="resetEmail" placeholder="you@example.com" required>
+                                <span class="input-icon">✉️</span>
+                            </div>
                         </div>
                         <button type="submit" class="btn" id="resetBtn">
                             <span>Send Reset Link</span>
                         </button>
                     </form>
                     <div class="forgot-password">
-                        <a href="#" id="backToSigninLink">Back to Sign In</a>
+                        <a href="#" id="backToSigninLink">← Back to Sign In</a>
                     </div>
                 </div>
 
                 <div class="divider">
-                    <span>OR</span>
+                    <span>or continue with</span>
                 </div>
 
                 <button class="btn btn-google" id="googleSigninBtn">
@@ -365,6 +502,10 @@
                     </svg>
                     <span>Continue with Google</span>
                 </button>
+            </div>
+
+            <div class="login-footer">
+                By signing in, you agree to our <a href="#">Terms</a> and <a href="#">Privacy Policy</a>
             </div>
         </div>
     </div>
@@ -382,6 +523,16 @@
                     // Redirect to dashboard
                     window.location.href = '/index.html';
                 }
+            });
+        });
+
+        // Password toggle functionality
+        document.querySelectorAll('.password-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const input = document.getElementById(btn.dataset.target);
+                const isPassword = input.type === 'password';
+                input.type = isPassword ? 'text' : 'password';
+                btn.textContent = isPassword ? '🔒' : '👁️';
             });
         });
 
@@ -533,13 +684,13 @@
 
         function showError(message) {
             const el = document.getElementById('errorMessage');
-            el.textContent = message;
+            el.querySelector('.message-text').textContent = message;
             el.classList.add('show');
         }
 
         function showSuccess(message) {
             const el = document.getElementById('successMessage');
-            el.textContent = message;
+            el.querySelector('.message-text').textContent = message;
             el.classList.add('show');
         }
 

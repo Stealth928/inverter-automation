@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup - FoxESS Solar Dashboard</title>
+    <link rel="stylesheet" href="css/shared-styles.css" />
+    <style>
+        /* Page-specific styles */
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .setup-container {
+            width: 100%;
+            max-width: 520px;
+            animation: slideUp 0.4s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .setup-card {
+            background: linear-gradient(145deg, rgba(33, 38, 45, 0.95), rgba(22, 27, 34, 0.98));
+            border: 1px solid rgba(48, 54, 61, 0.6);
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .setup-header {
+            background: linear-gradient(180deg, rgba(88, 166, 255, 0.08) 0%, transparent 100%);
+            padding: 36px 32px 28px;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+            text-align: center;
+        }
+
+        .setup-header .logo {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, rgba(88, 166, 255, 0.15), rgba(120, 75, 162, 0.1));
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            box-shadow: 0 4px 24px rgba(88, 166, 255, 0.15);
+        }
+
+        .setup-header h1 {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .setup-header p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .setup-body {
+            padding: 28px 32px 32px;
+        }
+
+        .progress-indicator {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            padding: 16px;
+            background: rgba(13, 17, 23, 0.4);
+            border-radius: 12px;
+        }
+
+        .progress-step {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .progress-step .step-dot {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(48, 54, 61, 0.6);
+            border: 2px solid rgba(48, 54, 61, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .progress-step.current .step-dot {
+            background: rgba(88, 166, 255, 0.2);
+            border-color: #58a6ff;
+            color: #58a6ff;
+        }
+
+        .progress-step.complete .step-dot {
+            background: rgba(126, 231, 135, 0.2);
+            border-color: #7ee787;
+            color: #7ee787;
+        }
+
+        .progress-step .step-label {
+            font-size: 11px;
+            color: #6e7681;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            transition: color 0.3s ease;
+        }
+
+        .progress-step.current .step-label,
+        .progress-step.complete .step-label {
+            color: #8b949e;
+        }
+
+        .progress-line {
+            flex: 0.5;
+            height: 2px;
+            background: rgba(48, 54, 61, 0.6);
+            margin-top: 16px;
+            border-radius: 1px;
+            transition: background 0.3s ease;
+        }
+
+        .progress-line.complete {
+            background: #7ee787;
+        }
+
+        .info-box {
+            padding: 14px 16px;
+            background: rgba(88, 166, 255, 0.06);
+            border: 1px solid rgba(88, 166, 255, 0.15);
+            border-radius: 10px;
+            margin-bottom: 24px;
+            font-size: 13px;
+            color: #8b949e;
+            line-height: 1.5;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .info-box .info-icon {
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .info-box a {
+            color: #58a6ff;
+            text-decoration: none;
+        }
+
+        .info-box a:hover {
+            text-decoration: underline;
+        }
+
+        .form-group {
+            margin-bottom: 22px;
+        }
+
+        .form-group label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #e6edf3;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .required-indicator {
+            color: #f85149;
+            font-weight: normal;
+        }
+
+        .optional-badge {
+            font-size: 10px;
+            font-weight: 400;
+            color: #6e7681;
+            background: rgba(48, 54, 61, 0.5);
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: none;
+            letter-spacing: normal;
+        }
+
+        .form-group .hint {
+            font-size: 12px;
+            color: #6e7681;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .form-group .hint a {
+            color: #58a6ff;
+            text-decoration: none;
+        }
+
+        .form-group .hint a:hover {
+            text-decoration: underline;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 16px;
+            color: #484f58;
+            pointer-events: none;
+            transition: color 0.2s ease;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 14px 14px 14px 44px;
+            background: rgba(13, 17, 23, 0.6);
+            border: 1px solid rgba(48, 54, 61, 0.8);
+            border-radius: 10px;
+            color: #e6edf3;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #58a6ff;
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+            background: rgba(13, 17, 23, 0.8);
+        }
+
+        .form-group input:focus ~ .input-icon {
+            color: #58a6ff;
+        }
+
+        .form-group input::placeholder {
+            color: #484f58;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #484f58;
+            cursor: pointer;
+            padding: 4px;
+            font-size: 16px;
+            transition: color 0.2s ease;
+        }
+
+        .password-toggle:hover {
+            color: #8b949e;
+        }
+
+        .form-group.error input {
+            border-color: #f85149;
+            box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.1);
+        }
+
+        .form-group.error .input-icon {
+            color: #f85149;
+        }
+
+        .form-group.success input {
+            border-color: #7ee787;
+            box-shadow: 0 0 0 3px rgba(126, 231, 135, 0.1);
+        }
+
+        .form-group.success .input-icon {
+            color: #7ee787;
+        }
+
+        .field-message {
+            display: none;
+            font-size: 12px;
+            margin-top: 8px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            align-items: center;
+            gap: 8px;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .error-message {
+            background: rgba(248, 81, 73, 0.08);
+            border-left: 3px solid #f85149;
+            color: #f85149;
+        }
+
+        .success-message {
+            background: rgba(126, 231, 135, 0.08);
+            border-left: 3px solid #7ee787;
+            color: #7ee787;
+        }
+
+        .form-group.error .error-message,
+        .form-group.success .success-message {
+            display: flex;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 16px 20px;
+            background: linear-gradient(135deg, #238636, #1a7f37);
+            border: none;
+            border-radius: 10px;
+            color: #e6edf3;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 4px 12px rgba(35, 134, 54, 0.2);
+            margin-top: 8px;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: linear-gradient(135deg, #2ea043, #238636);
+            box-shadow: 0 8px 24px rgba(35, 134, 54, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-primary .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(230, 237, 243, 0.3);
+            border-top-color: #e6edf3;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .setup-footer {
+            padding: 16px 32px 24px;
+            background: rgba(0, 0, 0, 0.15);
+            border-top: 1px solid rgba(48, 54, 61, 0.3);
+            font-size: 13px;
+            color: #6e7681;
+            text-align: center;
+        }
+
+        .setup-footer a {
+            color: #58a6ff;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .setup-footer a:hover {
+            text-decoration: underline;
+        }
+
+        .divider {
+            margin: 28px 0;
+            border-top: 1px solid rgba(48, 54, 61, 0.4);
+            position: relative;
+        }
+
+        .divider-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #21262d;
+            padding: 0 16px;
+            font-size: 11px;
+            color: #6e7681;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 520px) {
+            .setup-container {
+                padding: 0;
+            }
+
+            .setup-card {
+                border-radius: 0;
+                min-height: 100vh;
+            }
+
+            .setup-header {
+                padding: 28px 20px 20px;
+            }
+
+            .setup-body {
+                padding: 20px;
+            }
+
+            .progress-indicator {
+                padding: 12px;
+            }
+
+            .progress-step .step-label {
+                font-size: 10px;
+            }
+
+            .setup-footer {
+                padding: 16px 20px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <div class="setup-card">
+            <div class="setup-header">
+                <div class="logo">⚡</div>
+                <h1>Welcome! Let's get started</h1>
+                <p>Connect your FoxESS inverter and configure your dashboard</p>
+            </div>
+
+            <div class="setup-body">
+                <div class="progress-indicator">
+                    <div class="progress-step current" id="step1">
+                        <div class="step-dot">1</div>
+                        <span class="step-label">Device</span>
+                    </div>
+                    <div class="progress-line" id="line1"></div>
+                    <div class="progress-step" id="step2">
+                        <div class="step-dot">2</div>
+                        <span class="step-label">API Token</span>
+                    </div>
+                    <div class="progress-line" id="line2"></div>
+                    <div class="progress-step" id="step3">
+                        <div class="step-dot">3</div>
+                        <span class="step-label">Amber</span>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <span class="info-icon">💡</span>
+                    <span>Need help finding your credentials? Check the <a href="/settings.html" target="_blank">Settings page</a> for detailed instructions.</span>
+                </div>
+
+                <form id="setupForm">
+                    <!-- Device Serial Number -->
+                    <div class="form-group" id="deviceSnGroup">
+                        <label for="deviceSn">
+                            <span>Device Serial Number</span>
+                            <span class="required-indicator">*</span>
+                        </label>
+                        <div class="hint">Found on your inverter label or in the FoxESS Cloud app under Device Info</div>
+                        <div class="input-wrapper">
+                            <input 
+                                type="text" 
+                                id="deviceSn" 
+                                name="deviceSn" 
+                                placeholder="e.g., 60KB10305AKA064" 
+                                required
+                                autocomplete="off"
+                                spellcheck="false"
+                            >
+                            <span class="input-icon">🔌</span>
+                        </div>
+                        <div class="field-message error-message">
+                            <span>⚠️</span>
+                            <span class="message-text"></span>
+                        </div>
+                        <div class="field-message success-message">
+                            <span>✓</span>
+                            <span class="message-text">Valid</span>
+                        </div>
+                    </div>
+
+                    <!-- FoxESS Token -->
+                    <div class="form-group" id="foxessTokenGroup">
+                        <label for="foxessToken">
+                            <span>FoxESS API Token</span>
+                            <span class="required-indicator">*</span>
+                        </label>
+                        <div class="hint">Generate from FoxESS Cloud → User Settings → API Management</div>
+                        <div class="input-wrapper">
+                            <input 
+                                type="password" 
+                                id="foxessToken" 
+                                name="foxessToken" 
+                                placeholder="Your FoxESS API token" 
+                                required
+                                autocomplete="off"
+                                spellcheck="false"
+                            >
+                            <span class="input-icon">🔑</span>
+                            <button type="button" class="password-toggle" data-target="foxessToken" aria-label="Toggle visibility">👁️</button>
+                        </div>
+                        <div class="field-message error-message">
+                            <span>⚠️</span>
+                            <span class="message-text"></span>
+                        </div>
+                        <div class="field-message success-message">
+                            <span>✓</span>
+                            <span class="message-text">Valid</span>
+                        </div>
+                    </div>
+
+                    <div class="divider">
+                        <span class="divider-text">Optional</span>
+                    </div>
+
+                    <!-- Amber API Key (Optional) -->
+                    <div class="form-group" id="amberApiKeyGroup">
+                        <label for="amberApiKey">
+                            <span>Amber API Key</span>
+                            <span class="optional-badge">Optional</span>
+                        </label>
+                        <div class="hint">Enable electricity price automation. Get your API key from <a href="https://app.amber.com.au/developers" target="_blank">Amber Developer Portal</a></div>
+                        <div class="input-wrapper">
+                            <input 
+                                type="password" 
+                                id="amberApiKey" 
+                                name="amberApiKey" 
+                                placeholder="Your Amber API key (optional)"
+                                autocomplete="off"
+                                spellcheck="false"
+                            >
+                            <span class="input-icon">⚡</span>
+                            <button type="button" class="password-toggle" data-target="amberApiKey" aria-label="Toggle visibility">👁️</button>
+                        </div>
+                        <div class="field-message error-message">
+                            <span>⚠️</span>
+                            <span class="message-text"></span>
+                        </div>
+                        <div class="field-message success-message">
+                            <span>✓</span>
+                            <span class="message-text">Valid</span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-primary" id="submitBtn">
+                        <span class="btn-text">Validate & Continue</span>
+                        <span>→</span>
+                    </button>
+                </form>
+            </div>
+
+            <div class="setup-footer">
+                Wrong account? <a href="#" id="signOutLink">Sign out</a> and try again
+            </div>
+        </div>
+    </div>
+
+    <script src="js/firebase-config.js"></script>
+    <script src="js/firebase-auth.js"></script>
+    <script>
+        // Initialize Firebase auth
+        document.addEventListener('DOMContentLoaded', async () => {
+            await firebaseAuth.init(firebaseConfig);
+
+            // Redirect to login if not authenticated
+            firebaseAuth.onAuthStateChanged((user) => {
+                if (!user) {
+                    window.location.href = '/login.html';
+                }
+            });
+
+            // Initialize progress based on any pre-filled values
+            updateProgress();
+        });
+
+        // Password toggle functionality
+        document.querySelectorAll('.password-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const input = document.getElementById(btn.dataset.target);
+                const isPassword = input.type === 'password';
+                input.type = isPassword ? 'text' : 'password';
+                btn.textContent = isPassword ? '🔒' : '👁️';
+            });
+        });
+
+        // Sign out link
+        document.getElementById('signOutLink').addEventListener('click', async (e) => {
+            e.preventDefault();
+            await firebaseAuth.signOut();
+            window.location.href = '/login.html';
+        });
+
+        // Form submission
+        document.getElementById('setupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // Get values and strip any invisible characters that browsers might add
+            const deviceSn = sanitizeInput(document.getElementById('deviceSn').value);
+            const foxessToken = sanitizeInput(document.getElementById('foxessToken').value);
+            const amberApiKey = sanitizeInput(document.getElementById('amberApiKey').value);
+
+            // Clear previous errors
+            clearAllFieldStates();
+
+            // Validate inputs
+            if (!deviceSn) {
+                setFieldError('deviceSn', 'Device Serial Number is required');
+                return;
+            }
+
+            if (!foxessToken) {
+                setFieldError('foxessToken', 'FoxESS API Token is required');
+                return;
+            }
+
+            // Disable button and show loading state
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<div class="spinner"></div><span>Validating...</span>';
+
+            try {
+                // Call backend validation endpoint
+                const response = await fetch('/api/config/validate-keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        device_sn: deviceSn,
+                        foxess_token: foxessToken,
+                        amber_api_key: amberApiKey || null
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.errno !== 0) {
+                    // Validation failed
+                    if (result.failed_keys && Array.isArray(result.failed_keys)) {
+                        result.failed_keys.forEach(key => {
+                            const fieldMap = {
+                                'device_sn': 'deviceSn',
+                                'foxess_token': 'foxessToken',
+                                'amber_api_key': 'amberApiKey'
+                            };
+                            const fieldId = fieldMap[key];
+                            if (fieldId) {
+                                const detailed = result.errors && result.errors[key];
+                                setFieldError(fieldId, detailed || result.msg || 'Validation failed');
+                            }
+                        });
+                    } else {
+                        setFieldError('deviceSn', result.msg || 'Validation failed. Please check your credentials.');
+                    }
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<span class="btn-text">Validate & Continue</span><span>→</span>';
+                    return;
+                }
+
+                // Success - mark fields as valid
+                setFieldSuccess('deviceSn');
+                setFieldSuccess('foxessToken');
+                if (amberApiKey) setFieldSuccess('amberApiKey');
+
+                // Update button to show success
+                submitBtn.innerHTML = '<span>✓</span><span>Success! Redirecting...</span>';
+                submitBtn.style.background = 'linear-gradient(135deg, #238636, #1a7f37)';
+
+                // Store config in localStorage for UX
+                localStorage.setItem('foxess_setup_device_sn', deviceSn);
+                if (amberApiKey) {
+                    localStorage.setItem('foxess_setup_amber_api_key', amberApiKey);
+                }
+
+                // Redirect to dashboard after brief delay
+                setTimeout(() => {
+                    window.location.href = '/index.html';
+                }, 1000);
+
+            } catch (error) {
+                console.error('Validation error:', error);
+                setFieldError('deviceSn', 'Connection error. Please check your network and try again.');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<span class="btn-text">Validate & Continue</span><span>→</span>';
+            }
+        });
+
+        // Sanitize input: remove invisible characters, BOM, zero-width spaces, etc.
+        function sanitizeInput(value) {
+            if (!value) return '';
+            // Remove BOM, zero-width characters, and trim whitespace
+            return value
+                .replace(/[\uFEFF\u200B\u200C\u200D\u00A0]/g, '') // BOM and zero-width chars
+                .replace(/[\x00-\x1F\x7F]/g, '') // Control characters
+                .trim();
+        }
+
+        function clearAllFieldStates() {
+            document.querySelectorAll('.form-group').forEach(g => {
+                g.classList.remove('error', 'success');
+                const errMsg = g.querySelector('.error-message .message-text');
+                if (errMsg) errMsg.textContent = '';
+            });
+        }
+
+        function setFieldError(fieldId, message) {
+            const group = document.getElementById(fieldId).closest('.form-group');
+            group.classList.remove('success');
+            group.classList.add('error');
+            const msgEl = group.querySelector('.error-message .message-text');
+            if (msgEl) msgEl.textContent = message;
+            updateProgress();
+        }
+
+        function setFieldSuccess(fieldId) {
+            const group = document.getElementById(fieldId).closest('.form-group');
+            group.classList.remove('error');
+            group.classList.add('success');
+            updateProgress();
+        }
+
+        function updateProgress() {
+            const deviceSn = document.getElementById('deviceSn');
+            const foxessToken = document.getElementById('foxessToken');
+            const amberApiKey = document.getElementById('amberApiKey');
+
+            const deviceSnValid = deviceSn.value.trim() && !deviceSn.closest('.form-group').classList.contains('error');
+            const foxessValid = foxessToken.value.trim() && !foxessToken.closest('.form-group').classList.contains('error');
+            const amberValid = !amberApiKey.closest('.form-group').classList.contains('error');
+
+            const step1 = document.getElementById('step1');
+            const step2 = document.getElementById('step2');
+            const step3 = document.getElementById('step3');
+            const line1 = document.getElementById('line1');
+            const line2 = document.getElementById('line2');
+
+            // Step 1: Device SN
+            step1.classList.remove('current', 'complete');
+            if (deviceSnValid) {
+                step1.classList.add('complete');
+                step1.querySelector('.step-dot').textContent = '✓';
+            } else if (deviceSn.value.trim()) {
+                step1.classList.add('current');
+                step1.querySelector('.step-dot').textContent = '1';
+            } else {
+                step1.classList.add('current');
+                step1.querySelector('.step-dot').textContent = '1';
+            }
+
+            // Line 1
+            line1.classList.toggle('complete', deviceSnValid);
+
+            // Step 2: FoxESS Token
+            step2.classList.remove('current', 'complete');
+            if (foxessValid) {
+                step2.classList.add('complete');
+                step2.querySelector('.step-dot').textContent = '✓';
+            } else if (foxessToken.value.trim() && deviceSnValid) {
+                step2.classList.add('current');
+                step2.querySelector('.step-dot').textContent = '2';
+            } else {
+                step2.querySelector('.step-dot').textContent = '2';
+            }
+
+            // Line 2
+            line2.classList.toggle('complete', foxessValid);
+
+            // Step 3: Amber (optional, shows complete if no error)
+            step3.classList.remove('current', 'complete');
+            if (amberValid && foxessValid) {
+                step3.classList.add('complete');
+                step3.querySelector('.step-dot').textContent = '✓';
+            } else if (foxessValid) {
+                step3.classList.add('current');
+                step3.querySelector('.step-dot').textContent = '3';
+            } else {
+                step3.querySelector('.step-dot').textContent = '3';
+            }
+        }
+
+        // Real-time progress updates as user types
+        document.getElementById('deviceSn').addEventListener('input', () => {
+            clearFieldState('deviceSn');
+            updateProgress();
+        });
+        document.getElementById('foxessToken').addEventListener('input', () => {
+            clearFieldState('foxessToken');
+            updateProgress();
+        });
+        document.getElementById('amberApiKey').addEventListener('input', () => {
+            clearFieldState('amberApiKey');
+            updateProgress();
+        });
+
+        function clearFieldState(fieldId) {
+            const group = document.getElementById(fieldId).closest('.form-group');
+            group.classList.remove('error', 'success');
+        }
+    </script>
+</body>
+</html>

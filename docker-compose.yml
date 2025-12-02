@@ -12,6 +12,8 @@ services:
       - ./backend/.env
     volumes:
       - ./backend:/usr/src/app:ro
+      # Make frontend available to backend at ../frontend (express.static uses ../frontend)
+      - ./frontend:/usr/src/frontend:ro
     networks:
       - inverter-net
 

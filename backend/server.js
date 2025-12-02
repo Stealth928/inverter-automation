@@ -12,10 +12,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-const FOXESS_TOKEN = process.env.FOXESS_TOKEN;
+let FOXESS_TOKEN = process.env.FOXESS_TOKEN;
 const FOXESS_BASE_URL = process.env.FOXESS_BASE_URL || 'https://www.foxesscloud.com';
-const DEVICE_SN = process.env.DEVICE_SN;
-const AMBER_API_KEY = process.env.AMBER_API_KEY;
+let DEVICE_SN = process.env.DEVICE_SN;
+let AMBER_API_KEY = process.env.AMBER_API_KEY;
 const AMBER_BASE_URL = process.env.AMBER_BASE_URL || 'https://api.amber.com.au/v1';
 const PORT = process.env.PORT || 3000;
 
@@ -1463,7 +1463,9 @@ function addMinutes(hour, minute, addMins) {
 
 // Generate FoxESS signature
 function generateSignature(apiPath, token, timestamp) {
-    const signaturePlain = `${apiPath}\\r\\n${token}\\r\\n${timestamp}`;
+    // FoxESS expects LITERAL backslash-r-backslash-n strings (not actual CRLF bytes)
+    // This matches the Postman pre-request script: path + "\\r\\n" + token + "\\r\\n" + timestamp
+    const signaturePlain = apiPath + '\\r\\n' + token + '\\r\\n' + timestamp;
     return crypto.createHash('md5').update(signaturePlain).digest('hex');
 }
 
@@ -1738,6 +1740,221 @@ app.post('/api/config/reset', (req, res) => {
     } catch (error) {
         log('error', 'Failed to reset configuration:', error);
         res.json({ errno: 1, msg: `Failed to reset: ${error.message}` });
+    }
+});
+
+// Clear stored credentials (FoxESS token, device SN, Amber API key)
+// Useful for testing/setup flows to force re-onboarding without restarting the process
+app.post('/api/config/clear-credentials', (req, res) => {
+    try {
+        process.env.FOXESS_TOKEN = '';
+        process.env.DEVICE_SN = '';
+        process.env.AMBER_API_KEY = '';
+
+        FOXESS_TOKEN = '';
+        DEVICE_SN = '';
+        AMBER_API_KEY = '';
+
+        log('info', '[Config] Cleared FOXESS_TOKEN, DEVICE_SN and AMBER_API_KEY from environment and memory');
+
+        res.json({ errno: 0, msg: 'Cleared stored credentials' });
+    } catch (error) {
+        log('error', 'Failed to clear credentials:', error);
+        res.json({ errno: 1, msg: `Failed to clear credentials: ${error.message}` });
+    }
+});
+
+// Validate provided credentials (FoxESS token, device SN, Amber API key)
+app.post('/api/config/validate-keys', async (req, res) => {
+    try {
+        const { device_sn, foxess_token, amber_api_key } = req.body;
+        // optional query flag to include raw upstream responses for debugging: /api/config/validate-keys?diagnose=1
+        const diagnose = String(req.query?.diagnose || '').trim() === '1';
+        const failed_keys = [];
+        const errors = {};
+
+        // Test FoxESS token if provided
+        if (foxess_token && foxess_token.trim()) {
+            const testToken = foxess_token.trim();
+            const timestamp = Date.now();
+            const signaturePath = '/op/v0/device/detail';
+            const signature = generateSignature(signaturePath, testToken, timestamp);
+
+            const headers = {
+                'token': testToken,
+                'timestamp': timestamp.toString(),
+                'signature': signature,
+                'lang': 'en',
+                'Content-Type': 'application/json'
+            };
+
+            const url = `${FOXESS_BASE_URL}${signaturePath}?sn=${encodeURIComponent(device_sn || '')}`;
+
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 10000);
+                const response = await fetch(url, { method: 'GET', headers, signal: controller.signal });
+                clearTimeout(timeout);
+                const rawText = await response.text();
+
+                // Try parse JSON safely — if parsing fails, capture raw response for diagnostics
+                let data = null;
+                try {
+                    data = rawText ? JSON.parse(rawText) : null;
+                } catch (parseErr) {
+                    // Keep rawText available for error reporting below
+                    data = null;
+                }
+
+                // If not ok or upstream returned an unexpected payload, mark as failed and include diagnostic snippets
+                if (!response.ok || !data || data.errno !== 0) {
+                    failed_keys.push('foxess_token');
+                    // Prefer upstream message when available
+                    if (data && data.msg) {
+                        errors.foxess_token = data.msg;
+                    } else if (!response.ok) {
+                        errors.foxess_token = `FoxESS API HTTP ${response.status} ${response.statusText}`;
+                    } else if (!rawText || rawText.trim() === '') {
+                        errors.foxess_token = `Empty or non-JSON response from FoxESS (HTTP ${response.status})`;
+                    } else {
+                        // Include a short raw preview to help diagnose unexpected responses
+                        errors.foxess_token = `Invalid JSON response from FoxESS (preview): ${rawText.substring(0, 400)}`;
+                    }
+                    if (diagnose) {
+                        // include a trimmed raw debug preview when requested
+                        errors.foxess_token_raw = rawText ? rawText.substring(0, 2000) : '';
+
+                        // Attempt alternative signature timestamp formats to help diagnose 'illegal signature' issues.
+                        // Try both millisecond and second timestamps and return short previews for each attempt.
+                        try {
+                            const altAttempts = [];
+                            const tsCandidates = [Date.now(), Math.floor(Date.now() / 1000)];
+                            // Different signature builders to try when diagnosing 'illegal signature'
+                            // IMPORTANT: FoxESS uses LITERAL backslash-r-backslash-n strings, NOT actual CRLF bytes
+                            const variants = [
+                                { name: 'path_literal_rn_token_literal_rn_ts', build: (p, tk, t) => p + '\\r\\n' + tk + '\\r\\n' + t },
+                                { name: 'path_CRLF_token_CRLF_ts', build: (p, tk, t) => `${p}\r\n${tk}\r\n${t}` },
+                                { name: 'path_LF_token_LF_ts', build: (p, tk, t) => `${p}\n${tk}\n${t}` },
+                                { name: 'token_literal_rn_path_literal_rn_ts', build: (p, tk, t) => tk + '\\r\\n' + p + '\\r\\n' + t }
+                            ];
+
+                            for (let ts of tsCandidates) {
+                                for (let v of variants) {
+                                    const sigPlain = v.build(signaturePath, testToken, ts);
+                                    const hash = crypto.createHash('md5').update(sigPlain).digest();
+                                    const sigHex = hash.toString('hex');
+                                    const sigHexUpper = sigHex.toUpperCase();
+                                    const sigBase64 = Buffer.from(hash).toString('base64');
+                                    const sigFormats = [sigHex, sigHexUpper, sigBase64];
+                                    for (let fmt of sigFormats) {
+                                        const altHeaders = { ...headers, timestamp: String(ts), signature: fmt };
+                                        const ctrl = new AbortController();
+                                        const timeoutId = setTimeout(() => ctrl.abort(), 10000);
+                                        try {
+                                            const resp = await fetch(url, { method: 'GET', headers: altHeaders, signal: ctrl.signal });
+                                            clearTimeout(timeoutId);
+                                            const txt = await resp.text();
+                                            let parsed = null;
+                                            try { parsed = txt ? JSON.parse(txt) : null; } catch (parseE) { parsed = null; }
+                                            altAttempts.push({ variant: v.name, timestamp: ts, status: resp.status, ok: resp.ok, errno: parsed?.errno ?? null, msg: parsed?.msg ?? null, preview: txt ? txt.substring(0, 800) : '' });
+                                        } catch (fetchErr) {
+                                            clearTimeout(timeoutId);
+                                            altAttempts.push({ variant: v.name, timestamp: ts, error: String(fetchErr) });
+                                        }
+                                    }
+                                }
+                            }
+                            errors.foxess_attempts = altAttempts;
+                        } catch (e) {
+                            // best-effort diagnostics — don't fail the whole validation flow
+                            errors.foxess_attempts_diag_error = String(e);
+                        }
+                    }
+                }
+            } catch (error) {
+                failed_keys.push('foxess_token');
+                const msg = String(error && error.message ? error.message : error);
+                // Common TLS/cert issues produce 'self-signed certificate in certificate chain' — give actionable hint
+                if (msg.toLowerCase().indexOf('self-signed') !== -1 || msg.toLowerCase().indexOf('certificate') !== -1) {
+                    errors.foxess_token = `Failed to contact FoxESS (TLS certificate problem): ${msg}. This often indicates a local MITM/proxy or upstream hosting with private CA. Check your environment or run validations from a machine without TLS interception.`;
+                } else {
+                    errors.foxess_token = `Failed to verify FoxESS token: ${msg}`;
+                }
+            }
+        } else if (!foxess_token || !foxess_token.trim()) {
+            failed_keys.push('foxess_token');
+            errors.foxess_token = 'FoxESS token is required';
+        }
+
+        // Test device SN if provided (validated in FoxESS test above)
+        if (!device_sn || !device_sn.trim()) {
+            failed_keys.push('device_sn');
+            errors.device_sn = 'Device serial number is required';
+        }
+
+        // Test Amber API key if provided (optional)
+        if (amber_api_key && amber_api_key.trim()) {
+            const testKey = amber_api_key.trim();
+            const url = new URL(`${AMBER_BASE_URL}/sites`);
+            const headers = {
+                'Authorization': `Bearer ${testKey}`,
+                'Accept': 'application/json'
+            };
+
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 10000);
+                const response = await fetch(url.toString(), { headers, signal: controller.signal });
+                clearTimeout(timeout);
+                const amberRawText = await response.text();
+                let amberData = null;
+                try {
+                    amberData = amberRawText ? JSON.parse(amberRawText) : null;
+                } catch (e) {
+                    amberData = null;
+                }
+
+                // Check if the response indicates success
+                if (!response.ok || !amberData || (amberData.error && amberData.error !== 'ok')) {
+                    failed_keys.push('amber_api_key');
+                    if (amberData && amberData.error) errors.amber_api_key = amberData.error; else if (!response.ok) errors.amber_api_key = `Amber API HTTP ${response.status} ${response.statusText}`; else errors.amber_api_key = `Non-JSON response from Amber (preview): ${amberRawText ? amberRawText.substring(0, 400) : ''}`;
+                    if (diagnose) errors.amber_api_key_raw = amberRawText ? amberRawText.substring(0, 2000) : '';
+                }
+            } catch (error) {
+                failed_keys.push('amber_api_key');
+                errors.amber_api_key = `Failed to verify Amber API key: ${error.message}`;
+            }
+        }
+
+        // If any keys failed, return error
+        if (failed_keys.length > 0) {
+            return res.json({
+                errno: 1,
+                msg: `Validation failed for: ${failed_keys.join(', ')}`,
+                failed_keys,
+                errors
+            });
+        }
+
+        // All validations passed - save configuration
+        process.env.DEVICE_SN = device_sn;
+        process.env.FOXESS_TOKEN = foxess_token;
+        if (amber_api_key) process.env.AMBER_API_KEY = amber_api_key;
+
+        // Update in-memory variables
+        DEVICE_SN = device_sn;
+        FOXESS_TOKEN = foxess_token;
+        if (amber_api_key) AMBER_API_KEY = amber_api_key;
+
+        log('info', `[Config] Credentials validated and set: DEVICE_SN='${DEVICE_SN}', FOXESS_TOKEN=***`, AMBER_API_KEY ? ', AMBER_API_KEY=***' : '');
+
+        res.json({
+            errno: 0,
+            msg: 'All credentials validated successfully'
+        });
+    } catch (error) {
+        log('error', 'Failed to validate credentials:', error);
+        res.json({ errno: 1, msg: `Validation error: ${error.message}` });
     }
 });
 
