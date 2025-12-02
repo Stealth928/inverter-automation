@@ -32,11 +32,13 @@ This project is a production-ready, multi-user solar inverter automation and mon
 - **Shared cache**: External API data (Amber, Weather)
 - **Security rules**: Row-level access control
 
-### DevOps
+## DevOps
+
 - **Firebase CLI**: Deploy hosting, functions, rules
 - **Cloud Scheduler**: Automated tasks (every minute)
 - **Secret Manager**: API keys and credentials
 
+> Note: This repository originally included Docker-based configs. The project has been decoupled from Docker — Dockerfiles and compose files were removed to simplify local development. You can run everything locally without containers.
 ---
 
 ## Architecture
@@ -135,12 +137,31 @@ metrics/{id}                # API call tracking
 
 ## Quick Start
 
-### Local Development
+### Local Development (no Docker required)
 ```bash
 # 1. Start the local backend (for testing without Firebase)
-cd backend && npm install && npm start
+cd backend
+npm install
+npm start
 
-# 2. Open http://localhost:3000
+Backend notes
+- The backend server binds to port 3000 by default. If port 3000 is already in use you will see an EADDRINUSE error — stop the conflicting process or change the port in `backend/server.js`.
+- The backend requires some environment variables for certain integrations (for example `FOXESS_TOKEN`) — you can place these in a `.env` file in `backend/` or configure secrets when deploying functions.
+
+# 2. Frontend (local preview)
+The frontend is static and served from `frontend/`. You can open `frontend/index.html` directly in a browser for a quick preview, or use a simple local server such as `http-server` or VS Code Live Server.
+
+Quick local server (recommended):
+```powershell
+# install a local static server once
+npm install -g http-server
+
+# from the project root, serve the frontend
+cd frontend
+http-server -p 5000
+
+# open http://localhost:5000
+```
 ```
 
 ### Firebase Deployment
@@ -157,8 +178,21 @@ firebase functions:config:set foxess.token="YOUR_TOKEN" amber.api_key="YOUR_KEY"
 
 # 4. Update frontend/js/firebase-config.js with your project config
 
-# 5. Deploy everything
+## 5. Deploy everything
 firebase deploy
+
+Important: Cloud Functions require a Blaze (pay-as-you-go) billing plan in order to enable certain Google Cloud APIs (for example `cloudbuild.googleapis.com`) when deploying. If your project is on the free Spark plan you'll see an error asking you to upgrade — upgrade in the Firebase Console before attempting to deploy functions.
+
+If you only want to deploy static hosting and Firestore rules (no functions) you can deploy without Blaze:
+```powershell
+firebase deploy --only hosting,firestore:rules,firestore:indexes
+```
+
+Local emulator (recommended for development — no Blaze upgrade required):
+```powershell
+# Start hosting, functions, firestore and auth emulators
+firebase emulators:start
+```
 ```
 
 See `FIREBASE_SETUP.md` for detailed deployment instructions.
