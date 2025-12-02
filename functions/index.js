@@ -752,9 +752,9 @@ app.get('/api/metrics/api-calls', async (req, res) => {
   }
 });
 
-// ==================== EXPORT EXPRESS APP AS CLOUD FUNCTION (2nd Gen) ====================
-// Use the supported chaining API to set region and runtime options.
-exports.api = functions.region('us-central1').runWith({ memory: '512MB' }).https.onRequest(app);
+// ==================== EXPORT EXPRESS APP AS CLOUD FUNCTION ====================
+// Use the broadly-compatible onRequest export to avoid depending on newer SDK features
+exports.api = functions.https.onRequest(app);
 
 // ==================== SCHEDULED AUTOMATION ====================
 /**
