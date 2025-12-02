@@ -94,6 +94,78 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   }
 });
 
+// Validate API credentials during setup (no auth required for initial validation)
+app.post('/api/config/validate-keys', async (req, res) => {
+  try {
+    const { device_sn, foxess_token, amber_api_key } = req.body;
+    const errors = {};
+    const failed_keys = [];
+    
+    // For unauthenticated setup, just validate the FoxESS token without saving
+    // Once user is authenticated, they can complete setup via authenticated endpoint
+    if (foxess_token && device_sn) {
+      console.log(`[Validation] Testing FoxESS token`);
+      const testConfig = { foxessToken: foxess_token, deviceSn: device_sn };
+      const foxResult = await callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, testConfig, null);
+      
+      console.log(`[Validation] FoxESS API response:`, foxResult);
+      
+      if (!foxResult || foxResult.errno !== 0) {
+        failed_keys.push('foxess_token');
+        errors.foxess_token = foxResult?.msg || foxResult?.error || 'Invalid FoxESS token or API error';
+      } else {
+        // Check if device SN exists in the response
+        const devices = foxResult.result?.data || [];
+        const deviceFound = devices.some(d => d.deviceSN === device_sn);
+        if (!deviceFound && devices.length > 0) {
+          failed_keys.push('device_sn');
+          errors.device_sn = `Device SN not found. Available: ${devices.map(d => d.deviceSN).join(', ')}`;
+        } else if (!deviceFound && devices.length === 0) {
+          // No devices returned - might be a token issue
+          failed_keys.push('foxess_token');
+          errors.foxess_token = 'No devices found. Please check your FoxESS token.';
+        }
+      }
+    } else {
+      if (!device_sn) {
+        failed_keys.push('device_sn');
+        errors.device_sn = 'Device Serial Number is required';
+      }
+      if (!foxess_token) {
+        failed_keys.push('foxess_token');
+        errors.foxess_token = 'FoxESS API Token is required';
+      }
+    }
+    
+    // If validation passed and user is authenticated, save config
+    if (failed_keys.length === 0 && req.user?.uid) {
+      const configData = {
+        deviceSn: device_sn,
+        foxessToken: foxess_token,
+        amberApiKey: amber_api_key || '',
+        setupComplete: true,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(configData, { merge: true });
+      console.log(`[Validation] Config saved successfully for user ${req.user.uid}`);
+    }
+    
+    if (failed_keys.length > 0) {
+      return res.status(400).json({
+        errno: 1,
+        msg: `Validation failed for: ${failed_keys.join(', ')}`,
+        failed_keys,
+        errors
+      });
+    }
+    
+    res.json({ errno: 0, msg: 'Credentials validated successfully', result: { deviceSn: device_sn } });
+  } catch (error) {
+    console.error('[Validation] Error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // Apply auth middleware to remaining API routes
 app.use('/api', authenticateUser);
 
@@ -374,66 +446,6 @@ app.post('/api/config', async (req, res) => {
     await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(config, { merge: true });
     res.json({ errno: 0, msg: 'Config saved' });
   } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Validate API credentials (for setup flow)
-app.post('/api/config/validate-keys', async (req, res) => {
-  try {
-    const { device_sn, foxess_token, amber_api_key } = req.body;
-    const errors = {};
-    const failed_keys = [];
-    
-    // Validate FoxESS token by making a test API call
-    if (foxess_token && device_sn) {
-      console.log(`[Validation] Testing FoxESS token for user ${req.user.uid}`);
-      const testConfig = { foxessToken: foxess_token, deviceSn: device_sn };
-      const foxResult = await callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, testConfig, null);
-      
-      console.log(`[Validation] FoxESS API response:`, foxResult);
-      
-      if (!foxResult || foxResult.errno !== 0) {
-        failed_keys.push('foxess_token');
-        errors.foxess_token = foxResult?.msg || foxResult?.error || 'Invalid FoxESS token or API error';
-      } else {
-        // Check if device SN exists in the response
-        const devices = foxResult.result?.data || [];
-        const deviceFound = devices.some(d => d.deviceSN === device_sn);
-        if (!deviceFound && devices.length > 0) {
-          failed_keys.push('device_sn');
-          errors.device_sn = `Device SN not found. Available: ${devices.map(d => d.deviceSN).join(', ')}`;
-        } else if (!deviceFound && devices.length === 0) {
-          // No devices returned - might be a token issue
-          failed_keys.push('foxess_token');
-          errors.foxess_token = 'No devices found. Please check your FoxESS token.';
-        }
-      }
-    } else {
-      if (!device_sn) {
-        failed_keys.push('device_sn');
-        errors.device_sn = 'Device Serial Number is required';
-      }
-      if (!foxess_token) {
-        failed_keys.push('foxess_token');
-        errors.foxess_token = 'FoxESS API Token is required';
-      }
-    }
-    
-    const configData = {
-      deviceSn: device_sn,
-      foxessToken: foxess_token,
-      amberApiKey: amber_api_key || '',
-      setupComplete: true,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
-
-    await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(configData, { merge: true });
-    
-    console.log(`[Validation] Config saved successfully for user ${req.user.uid}`);
-    res.json({ errno: 0, msg: 'Credentials validated and saved', result: { deviceSn: device_sn } });
-  } catch (error) {
-    console.error('[Validation] Error:', error);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
