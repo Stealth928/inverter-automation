@@ -19,3 +19,6 @@ tmp_docker_check/
 # Editor
 .vscode/
 .idea/
+
+# Firebase cache and deployment artifacts
+.firebase/
