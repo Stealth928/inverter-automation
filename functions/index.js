@@ -166,6 +166,23 @@ app.post('/api/config/validate-keys', async (req, res) => {
   }
 });
 
+// Check if user setup is complete (no auth required for initial check during setup flow)
+app.get('/api/config/setup-status', async (req, res) => {
+  try {
+    // If user is authenticated (has ID token), check their Firestore config
+    if (req.user?.uid) {
+      const config = await getUserConfig(req.user.uid);
+      const setupComplete = !!(config?.setupComplete && config?.deviceSn && config?.foxessToken);
+      return res.json({ errno: 0, result: { setupComplete, hasDeviceSn: !!config?.deviceSn, hasFoxessToken: !!config?.foxessToken, hasAmberKey: !!config?.amberApiKey } });
+    }
+    
+    // Unauthenticated user - setup not complete
+    res.json({ errno: 0, result: { setupComplete: false, hasDeviceSn: false, hasFoxessToken: false, hasAmberKey: false } });
+  } catch (error) {
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // Apply auth middleware to remaining API routes
 app.use('/api', authenticateUser);
 
@@ -445,17 +462,6 @@ app.post('/api/config', async (req, res) => {
     const { config } = req.body;
     await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(config, { merge: true });
     res.json({ errno: 0, msg: 'Config saved' });
-  } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Check if user setup is complete
-app.get('/api/config/setup-status', async (req, res) => {
-  try {
-    const config = await getUserConfig(req.user.uid);
-    const setupComplete = !!(config?.setupComplete && config?.deviceSn && config?.foxessToken);
-    res.json({ errno: 0, result: { setupComplete, hasDeviceSn: !!config?.deviceSn, hasFoxessToken: !!config?.foxessToken, hasAmberKey: !!config?.amberApiKey } });
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
   }
