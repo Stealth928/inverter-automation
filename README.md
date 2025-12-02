@@ -18,6 +18,7 @@ This project is a production-ready, multi-user solar inverter automation and mon
 - **Express.js**: API routing
 - **External APIs**:
   - **FoxESS**: Solar inverter data and control
+    - Important: FoxESS uses a non-standard signature format. The signature must be computed using literal "\\r\\n" sequences (backslash-r-backslash-n), not actual CRLF bytes. See `CONFIGURATION.md` → "FoxESS API authentication / signature" for exact details and examples.
   - **Amber**: Energy price and market data
   - **Open-Meteo**: Weather data
 

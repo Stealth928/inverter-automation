@@ -249,6 +249,8 @@ app.get('/api/health/auth', (req, res) => {
  * This matches the Postman collection which uses escaped \\r\\n
  */
 function generateFoxESSSignature(apiPath, token, timestamp) {
+  // See CONFIGURATION.md -> "FoxESS API authentication / signature" for examples (curl, PowerShell, Node.js) and troubleshooting tips.
+
   const signaturePlain = `${apiPath}\\r\\n${token}\\r\\n${timestamp}`;
   const signature = crypto.createHash('md5').update(signaturePlain).digest('hex');
   console.log(`[FoxESS] Signature calc: path="${apiPath}" token="${token}" timestamp="${timestamp}"`);
