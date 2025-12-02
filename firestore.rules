@@ -1,0 +1,100 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==================== HELPER FUNCTIONS ====================
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user owns this document (uid matches)
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Check if user is admin (custom claim)
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.admin == true;
+    }
+    
+    // Validate that required fields exist
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    // ==================== USER PROFILES ====================
+    // Each user has a profile document: /users/{userId}
+    match /users/{userId} {
+      // Users can read/write their own profile
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && hasRequiredFields(['email', 'createdAt']);
+      allow update: if isOwner(userId);
+      allow delete: if false; // Prevent self-deletion, admin only
+      
+      // Admins can read any user profile
+      allow read: if isAdmin();
+    }
+    
+    // ==================== USER CONFIG ====================
+    // Per-user configuration: /users/{userId}/config/{configId}
+    match /users/{userId}/config/{configId} {
+      allow read, write: if isOwner(userId);
+    }
+    
+    // ==================== USER AUTOMATION STATE ====================
+    // Per-user automation state: /users/{userId}/automation/{docId}
+    match /users/{userId}/automation/{docId} {
+      allow read, write: if isOwner(userId);
+    }
+    
+    // ==================== USER AUTOMATION RULES ====================
+    // Per-user automation rules: /users/{userId}/rules/{ruleId}
+    match /users/{userId}/rules/{ruleId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && hasRequiredFields(['name', 'enabled', 'priority', 'createdAt']);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
+    }
+    
+    // ==================== USER HISTORY ====================
+    // Per-user automation history: /users/{userId}/history/{historyId}
+    match /users/{userId}/history/{historyId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow delete: if isOwner(userId);
+      // No updates to history (immutable log)
+      allow update: if false;
+    }
+    
+    // ==================== SHARED CACHE (GLOBAL) ====================
+    // Shared API cache for external APIs (Amber, Weather, etc.)
+    // Written by Cloud Functions only, readable by authenticated users
+    match /cache/{cacheId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only Cloud Functions can write (via Admin SDK)
+    }
+    
+    // ==================== GLOBAL SETTINGS (ADMIN ONLY) ====================
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // ==================== API METRICS (ADMIN ONLY) ====================
+    match /metrics/{metricId} {
+      allow read: if isAdmin();
+      allow write: if false; // Only Cloud Functions can write
+    }
+    
+    // ==================== NOTIFICATIONS ====================
+    // Per-user notifications: /users/{userId}/notifications/{notificationId}
+    match /users/{userId}/notifications/{notificationId} {
+      allow read: if isOwner(userId);
+      allow update: if isOwner(userId); // Mark as read
+      allow delete: if isOwner(userId);
+      allow create: if false; // Only Cloud Functions can create
+    }
+  }
+}

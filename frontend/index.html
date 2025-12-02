@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FoxESS Solar Dashboard</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <style>
         * {
             margin: 0;
@@ -68,6 +72,105 @@
         }
         .device-input input::placeholder {
             color: #484f58;
+        }
+
+        /* User Menu */
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        .user-avatar:hover {
+            transform: scale(1.05);
+        }
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .user-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 8px;
+            background: rgba(33, 38, 45, 0.98);
+            border: 1px solid rgba(48, 54, 61, 0.8);
+            border-radius: 12px;
+            min-width: 200px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+            display: none;
+            z-index: 1000;
+            overflow: hidden;
+        }
+        .user-dropdown.show {
+            display: block;
+        }
+        .user-dropdown-header {
+            padding: 16px;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.6);
+        }
+        .user-dropdown-header .user-email {
+            font-size: 12px;
+            color: #8b949e;
+            margin-top: 4px;
+        }
+        .user-dropdown-header .user-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e6edf3;
+        }
+        .user-dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            color: #e6edf3;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        .user-dropdown-item:hover {
+            background: rgba(88, 166, 255, 0.1);
+        }
+        .user-dropdown-item.danger {
+            color: #f85149;
+        }
+        .user-dropdown-item.danger:hover {
+            background: rgba(248, 81, 73, 0.1);
+        }
+        .auth-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .auth-loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(88, 166, 255, 0.2);
+            border-top-color: #58a6ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         /* Main Layout */
@@ -1262,6 +1365,24 @@
         <div class="device-input">
             <label>Device SN</label>
             <input type="text" id="deviceSn" placeholder="Auto-detect from .env">
+        </div>
+        <!-- User Menu -->
+        <div class="user-menu" id="userMenu" style="position: relative;">
+            <div class="user-avatar" id="userAvatar" onclick="toggleUserDropdown()">
+                <span id="userInitials">?</span>
+            </div>
+            <div class="user-dropdown" id="userDropdown">
+                <div class="user-dropdown-header">
+                    <div class="user-name" id="userName">Guest</div>
+                    <div class="user-email" id="userEmail">Not signed in</div>
+                </div>
+                <div class="user-dropdown-item" onclick="window.location.href='/settings.html'">
+                    ⚙️ Settings
+                </div>
+                <div class="user-dropdown-item danger" onclick="handleSignOut()">
+                    🚪 Sign Out
+                </div>
+            </div>
         </div>
     </nav>
     
@@ -5514,6 +5635,102 @@
                 renderRules();
             }
         }
+
+        // ==================== FIREBASE AUTH INTEGRATION ====================
+        // User menu toggle
+        function toggleUserDropdown() {
+            const dropdown = document.getElementById('userDropdown');
+            dropdown.classList.toggle('show');
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const userMenu = document.getElementById('userMenu');
+            const dropdown = document.getElementById('userDropdown');
+            if (userMenu && !userMenu.contains(e.target)) {
+                dropdown.classList.remove('show');
+            }
+        });
+
+        // Update user UI
+        function updateUserUI(user) {
+            const avatar = document.getElementById('userAvatar');
+            const initials = document.getElementById('userInitials');
+            const userName = document.getElementById('userName');
+            const userEmail = document.getElementById('userEmail');
+
+            if (user) {
+                // Get initials from display name or email
+                const name = user.displayName || user.email.split('@')[0];
+                const initial = name.charAt(0).toUpperCase();
+                
+                if (user.photoURL) {
+                    avatar.innerHTML = `<img src="${user.photoURL}" alt="${name}">`;
+                } else {
+                    initials.textContent = initial;
+                }
+                
+                userName.textContent = name;
+                userEmail.textContent = user.email;
+            }
+        }
+
+        // Sign out handler
+        async function handleSignOut() {
+            if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn()) {
+                await firebaseAuth.signOut();
+                window.location.href = '/login.html';
+            }
+        }
+
+        // Initialize Firebase Auth (if available)
+        async function initFirebaseAuth() {
+            // Check if Firebase SDK is loaded
+            if (typeof firebase === 'undefined') {
+                console.log('[Auth] Firebase SDK not loaded - running in local mode');
+                return;
+            }
+
+            // Load Firebase config and auth module
+            try {
+                // Check if config exists
+                if (typeof firebaseConfig === 'undefined') {
+                    console.log('[Auth] Firebase config not found - running in local mode');
+                    return;
+                }
+
+                // Initialize if not already done
+                if (typeof firebaseAuth !== 'undefined') {
+                    await firebaseAuth.init(firebaseConfig);
+                    
+                    // Check auth state
+                    firebaseAuth.onAuthStateChanged((user) => {
+                        if (user) {
+                            console.log('[Auth] User signed in:', user.email);
+                            updateUserUI(user);
+                        } else {
+                            console.log('[Auth] No user - redirecting to login');
+                            // Uncomment the next line to enforce authentication:
+                            // window.location.href = '/login.html';
+                        }
+                    });
+                }
+            } catch (error) {
+                console.warn('[Auth] Firebase initialization failed:', error.message);
+            }
+        }
+
+        // Call on page load (after existing DOMContentLoaded handlers)
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initFirebaseAuth);
+        } else {
+            initFirebaseAuth();
+        }
     </script>
+    
+    <!-- Firebase modules (loaded at end for better performance) -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/firebase-auth.js"></script>
+    <script src="js/api-client.js"></script>
 </body>
 </html>

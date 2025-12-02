@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log
+.env
+server.log
+server.pid
+history_cache.json
+automation_state.json
+api_call_counts.json
+amber_store.json
+notifications.json
+*.log

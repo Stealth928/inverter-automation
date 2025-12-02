@@ -1,0 +1,40 @@
+version: '3.8'
+services:
+  backend:
+    build: ./backend
+    container_name: inverter-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # Optional envs can be mounted from .env
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/usr/src/app:ro
+    networks:
+      - inverter-net
+
+  functions:
+    build: ./functions
+    container_name: inverter-functions
+    ports:
+      - "5001:8080" # map container 8080 to 5001 externally
+    env_file:
+      - ./functions/.runtimeconfig.env
+    volumes:
+      - ./functions:/workspace:ro
+    networks:
+      - inverter-net
+
+  frontend:
+    build: ./frontend
+    container_name: inverter-frontend
+    ports:
+      - "8080:80"
+    networks:
+      - inverter-net
+
+networks:
+  inverter-net:
+    driver: bridge
