@@ -385,35 +385,37 @@ app.post('/api/config/validate-keys', async (req, res) => {
         failed_keys.push('device_sn');
         errors.device_sn = 'Device Serial Number is required';
       }
-      if (!foxess_token) {
-        failed_keys.push('foxess_token');
-        errors.foxess_token = 'FoxESS API Token is required';
-      }
-    }
-    
-    // Validate Amber API key if provided
-    if (amber_api_key) {
-      console.log(`[Validation] Testing Amber API key for user ${req.user.uid}`);
-      const testConfig = { amberApiKey: amber_api_key };
-      const amberResult = await callAmberAPI('/sites', {}, testConfig, null);
-      
-      console.log(`[Validation] Amber API response:`, amberResult);
-      
-      if (amberResult.errno || amberResult.error || !Array.isArray(amberResult)) {
-        failed_keys.push('amber_api_key');
-        errors.amber_api_key = amberResult.error || amberResult.message || 'Invalid Amber API key';
-      }
-    }
-    
-    if (failed_keys.length > 0) {
-      console.log(`[Validation] Validation failed for user ${req.user.uid}:`, failed_keys);
-      return res.json({ errno: 1, msg: 'Validation failed', failed_keys, errors });
-    }
-    
-    // Save validated config to Firestore
-    const configData = {
-      deviceSn: device_sn,
-      foxessToken: foxess_token,
+      if (!scheduleApi) {
+        console.warn('[Automation] No schedule API available in firebase-functions package; scheduled automation will be disabled.');
+      } else {
+        exports.runAutomation = scheduleApi
+          .schedule('every 1 minutes')
+          .timeZone('Australia/Sydney')
+          .onRun(async (context) => {
+            console.log('[Automation] Starting scheduled automation cycle');
+
+            try {
+              // 1. Fetch and cache shared data (Amber prices, Weather)
+              await updateSharedCache();
+
+              // 2. Get all users with automation enabled
+              const usersSnapshot = await db.collection('users').get();
+
+              // 3. Process each user's automation
+              const promises = [];
+              usersSnapshot.forEach(userDoc => {
+                promises.push(processUserAutomation(userDoc.id));
+              });
+
+              await Promise.allSettled(promises);
+
+              console.log(`[Automation] Cycle complete. Processed ${promises.length} users.`);
+            } catch (error) {
+              console.error('[Automation] Error in scheduled run:', error);
+            }
+
+            return null;
+          });
       amberApiKey: amber_api_key || '',
       setupComplete: true,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
