@@ -4398,40 +4398,55 @@
                     panelCollapsed = true;
                 }
             } catch (e) { /* ignore */ }
-            // 1) Load Amber sites / prices (loadAmberSites will auto-call getAmberCurrent if sites exist)
-            loadAmberSites();
+            // NOTE: All authenticated API calls are now deferred to initializePageData()
+            // which is called only after firebaseAuth confirms user is authenticated
+            // This prevents 401 errors from trying to make authenticated API calls before auth is ready
+        });
+        
+        // =====================================================
+        // AUTHENTICATED PAGE DATA INITIALIZATION
+        // =====================================================
+        // This function is called ONLY after user is authenticated
+        // It loads all data that requires Firebase auth tokens
+        function initializePageData() {
+            console.log('[PageInit] Initializing page data for authenticated user');
+            
+            // 1) Load Amber sites / prices
+            try { loadAmberSites(); } catch(e) { console.warn('Failed to load Amber sites:', e); }
+            
             // 2) Fetch inverter real-time data immediately
-            callAPI('/api/inverter/real-time', 'Real-time Data');
-            // 3) Ensure weatherDays default is 6 on load and fetch weather for that many days
-            try { document.getElementById('weatherDays').value = 6; } catch(e){}
-            try { updateWeatherRequestedLabel(); } catch(e) {}
-            try { document.getElementById('weatherDays').addEventListener('input', updateWeatherRequestedLabel); } catch(e) {}
-            getWeather();
-            // 4) Load automation rules from localStorage
+            try { callAPI('/api/inverter/real-time', 'Real-time Data'); } catch(e) { console.warn('Failed to load inverter data:', e); }
+            
+            // 3) Set up weather request
             try {
-                loadAutomationRules();
-            } catch (e) {
-                console.error('Error loading automation rules:', e);
-            }
-            // 5) Load backend automation status directly (ensure it runs after DOM ready)
-            setTimeout(() => { loadBackendAutomationStatus(); }, 300);
-            // 6) Load today's API call metrics
-            try { loadApiMetrics(1); } catch(e) {}
+                document.getElementById('weatherDays').value = 6;
+                updateWeatherRequestedLabel();
+                document.getElementById('weatherDays').addEventListener('input', updateWeatherRequestedLabel);
+                getWeather();
+            } catch(e) { console.warn('Failed to initialize weather:', e); }
+            
+            // 4) Load automation rules from localStorage
+            try { loadAutomationRules(); } catch (e) { console.error('Error loading automation rules:', e); }
+            
+            // 5) Load backend automation status
+            try { setTimeout(() => { loadBackendAutomationStatus(); }, 300); } catch(e) { console.warn('Failed to load automation status:', e); }
+            
+            // 6) Load API call metrics
+            try { loadApiMetrics(1); } catch(e) { console.warn('Failed to load API metrics:', e); }
+            
             // Now allow user-triggered API calls to open the panel
             window.suppressPanelAutoOpen = false;
-
+            
             // ---- Start auto-refresh timers ----
-            // Amber prices: every 30s (call getAmberCurrent if a site selected)
+            // Amber prices: every 30s
             try {
                 if (amberRefreshTimer) clearInterval(amberRefreshTimer);
                 amberRefreshTimer = setInterval(() => {
-                    // Only fetch if a site id is present or sites list already loaded
                     const siteId = document.getElementById('amberSiteId')?.value;
                     if (siteId) getAmberCurrent();
                 }, REFRESH.amberPricesMs);
-                // set ticker if not running
                 if (!lastUpdateTicker) lastUpdateTicker = setInterval(updateLastUpdateDisplays, 1000);
-            } catch (e) { console.warn('Amber refresh timer failed to start', e); }
+            } catch (e) { console.warn('Amber refresh timer failed:', e); }
 
             // Inverter real-time data: every 5 minutes
             try {
@@ -4440,7 +4455,7 @@
                     callAPI('/api/inverter/real-time', 'Real-time Data');
                 }, REFRESH.inverterMs);
                 if (!lastUpdateTicker) lastUpdateTicker = setInterval(updateLastUpdateDisplays, 1000);
-            } catch (e) { console.warn('Inverter refresh timer failed to start', e); }
+            } catch (e) { console.warn('Inverter refresh timer failed:', e); }
 
             // Weather: every 30 minutes
             try {
@@ -4449,31 +4464,30 @@
                     getWeather();
                 }, REFRESH.weatherMs);
                 if (!lastUpdateTicker) lastUpdateTicker = setInterval(updateLastUpdateDisplays, 1000);
-            } catch (e) { console.warn('Weather refresh timer failed to start', e); }
+            } catch (e) { console.warn('Weather refresh timer failed:', e); }
 
-            // Ensure the 'since' ticker is running
-            if (!lastUpdateTicker) {
-                lastUpdateTicker = setInterval(updateLastUpdateDisplays, 1000);
-            }
-            // initial render
+            // Backend automation status: refresh every 10 seconds
+            try {
+                if (window.automationStatusRefreshTimer) clearInterval(window.automationStatusRefreshTimer);
+                window.automationStatusRefreshTimer = setInterval(() => {
+                    loadBackendAutomationStatus();
+                }, 10000);
+            } catch (e) { console.warn('Automation status refresh failed:', e); }
+            
+            // Start the 'since' ticker
             try {
                 updateLastUpdateDisplays();
-            } catch(e) {
-                console.error('Initial updateLastUpdateDisplays failed:', e);
-            }
+                if (!lastUpdateTicker) {
+                    lastUpdateTicker = setInterval(updateLastUpdateDisplays, 1000);
+                }
+            } catch(e) { console.error('Update displays failed:', e); }
             
-            // Backend automation status: refresh every 10 seconds to catch state changes
-            if (window.automationStatusRefreshTimer) clearInterval(window.automationStatusRefreshTimer);
-            window.automationStatusRefreshTimer = setInterval(() => {
-                loadBackendAutomationStatus();
-            }, 10000);
-
-            // init resizer for automation panel
+            // Init resizer for automation panel
             try { initAutomationResizer(); } catch(e) { console.error('initAutomationResizer failed:', e); }
 
-            // Allow automated API calls to open the panel again after init
+            // Allow automated API calls to open the panel
             setTimeout(() => { try { window.suppressPanelAutoOpen = false; } catch(e) {} }, 1200);
-        });
+        }
 
         // =====================================================
         // AUTOMATION RULES SYSTEM
@@ -5696,6 +5710,10 @@
                         if (user) {
                             console.log('[Auth] User signed in:', user.email);
                             updateUserUI(user);
+                            
+                            // ONLY NOW call authenticated data initialization
+                            // This ensures all API calls have valid auth tokens
+                            initializePageData();
                             
                             // Check if setup is complete via authenticated API
                             try {
