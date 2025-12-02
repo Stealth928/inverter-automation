@@ -160,4 +160,40 @@ Then you can:
 - Test firestore emulator UI at http://127.0.0.1:4000/firestore
 - Browser at http://127.0.0.1:5000 (hosting emulator with rewrites)
 
+## Automated Testing (E2E Test Script)
+
+A test script is provided (`test-emulator.js`) that validates all endpoints:
+
+### Using PowerShell (Recommended)
+```powershell
+cd D:\inverter-automation
+.\run-emulator-tests.ps1
+```
+
+This will:
+1. Start the functions emulator in a minimized window
+2. Wait 8 seconds for it to boot  
+3. Run 5 automated tests against the endpoints
+4. Report pass/fail results
+5. Keep emulator running for manual testing
+
+### Using Batch (Windows)
+```cmd
+cd D:\inverter-automation
+run-emulator-tests.bat
+```
+
+### Manual Testing
+You can also manually test endpoints while emulator is running:
+
+```powershell
+# Terminal 1: Start emulator
+cd D:\inverter-automation
+firebase emulators:start --only functions --project inverter-automation-firebase
+
+# Terminal 2: Run tests (after ~8 seconds when "All emulators ready" appears)
+cd D:\inverter-automation
+node test-emulator.js
+```
+
 ## Manual API Testing (with Functions Emulator)
