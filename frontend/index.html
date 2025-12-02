@@ -417,12 +417,40 @@
             flex-direction: column;
             gap: 12px;
             position: relative;
+            /* ensure the automation panel itself can scroll when its content exceeds the viewport
+               so users can reach all rules without the main content blocking scroll */
+            max-height: calc(100vh - 120px);
+            overflow-y: auto;
+            overscroll-behavior: contain;
         }
         .automation-panel.collapsed {
             width: 0 !important;
             min-width: 0 !important;
             overflow: hidden;
             transform: translateX(100%);
+        }
+        /* Make the backend automation content scrollable so users can access
+           many rules even when the panel grows tall. Keep a comfortable
+           max-height so the panel doesn't extend past the top/nav area. */
+        #backendAutomationStatus {
+            max-height: calc(100vh - 220px);
+            overflow-y: auto;
+            padding-right: 6px; /* small padding to prevent content from being cut off by the scrollbar */
+            overscroll-behavior: contain;
+        }
+
+        /* FAQ card in automation panel - small default size and scrollable content */
+        .automation-panel .faq-card {
+            /* Make the FAQ card take less vertical space by default */
+            max-height: 220px;
+            overflow: hidden; /* prevent the FAQ card from expanding the automation panel */
+        }
+        .automation-panel .faq-card .card-body {
+            /* Allow only the inner FAQ area to scroll */
+            max-height: calc(220px - 66px); /* account for header height */
+            overflow-y: auto;
+            padding-right: 6px;
+            overscroll-behavior: contain;
         }
         /* Force Manual Scheduler into row 2 and span full width */
         .manual-scheduler-card {
@@ -1438,7 +1466,7 @@
                 </div>
 
                 <!-- FAQ Section -->
-                <div class="card" style="margin-bottom:16px">
+                <div class="card faq-card" style="margin-bottom:16px">
                     <div class="card-header">
                         <div class="card-title"><span class="icon">❓</span> How It Works</div>
                     </div>
