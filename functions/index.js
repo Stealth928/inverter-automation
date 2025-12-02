@@ -22,29 +22,53 @@ const db = admin.firestore();
 // ==================== CONFIGURATION ====================
 // Secrets are stored in Firebase Functions config or Secret Manager
 // Set via: firebase functions:config:set foxess.token="xxx" amber.api_key="xxx"
-const getConfig = () => ({
-  foxess: {
-    token: functions.config().foxess?.token || process.env.FOXESS_TOKEN || '',
-    baseUrl: functions.config().foxess?.base_url || 'https://www.foxesscloud.com'
-  },
-  amber: {
-    apiKey: functions.config().amber?.api_key || process.env.AMBER_API_KEY || '',
-    baseUrl: functions.config().amber?.base_url || 'https://api.amber.com.au/v1'
-  },
-  automation: {
-    intervalMs: 60000,
-    cacheTtl: {
-      amber: 60000,      // 60 seconds
-      inverter: 300000,  // 5 minutes
-      weather: 1800000   // 30 minutes
-    }
+const getConfig = () => {
+  let ffConfig = {};
+  try {
+    ffConfig = functions.config() || {};
+  } catch (e) {
+    // functions.config() may not be available in 2nd gen runtimes.
+    ffConfig = {};
   }
-});
+
+  return {
+    foxess: {
+      token: (ffConfig.foxess && ffConfig.foxess.token) || process.env.FOXESS_TOKEN || '',
+      baseUrl: (ffConfig.foxess && ffConfig.foxess.base_url) || process.env.FOXESS_BASE_URL || 'https://www.foxesscloud.com'
+    },
+    amber: {
+      apiKey: (ffConfig.amber && ffConfig.amber.api_key) || process.env.AMBER_API_KEY || '',
+      baseUrl: (ffConfig.amber && ffConfig.amber.base_url) || process.env.AMBER_BASE_URL || 'https://api.amber.com.au/v1'
+    },
+    automation: {
+      intervalMs: 60000,
+      cacheTtl: {
+        amber: 60000,      // 60 seconds
+        inverter: 300000,  // 5 minutes
+        weather: 1800000   // 30 minutes
+      }
+    }
+  };
+};
 
 // ==================== EXPRESS APP ====================
 const app = express();
 app.use(cors({ origin: true }));
-app.use(express.json());
+// Capture raw request body (for debugging) and provide a more helpful error when JSON parsing fails
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf && buf.toString ? buf.toString() : '';
+  }
+}));
+
+// JSON parse error handler - return structured JSON instead of generic 500
+app.use((err, req, res, next) => {
+  if (err && err.type === 'entity.parse.failed') {
+    console.error('[API] Invalid JSON body:', err.message, 'rawBody=', req.rawBody && req.rawBody.slice ? req.rawBody.slice(0, 1000) : req.rawBody);
+    return res.status(400).json({ errno: 400, error: 'Invalid JSON body', raw: req.rawBody && req.rawBody.slice ? req.rawBody.slice(0, 1000) : req.rawBody });
+  }
+  next(err);
+});
 
 // ==================== AUTH MIDDLEWARE ====================
 /**
