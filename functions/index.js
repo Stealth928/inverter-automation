@@ -710,47 +710,23 @@ app.get('/api/metrics/api-calls', async (req, res) => {
   }
 });
 
-// ==================== EXPORT EXPRESS APP AS CLOUD FUNCTION ====================
-exports.api = functions.https.onRequest(app);
+// ==================== EXPORT EXPRESS APP AS CLOUD FUNCTION (2nd Gen) ====================
+exports.api = functions.https.onRequest(
+  {
+    region: 'us-central1',
+    memory: '512MB'
+  },
+  app
+);
 
 // ==================== SCHEDULED AUTOMATION ====================
 /**
  * Scheduled function that runs every minute
  * Fetches shared API data (Amber, Weather) and processes automation for all active users
+ * Note: Using Firestore document trigger instead of Cloud Scheduler for 1st Gen compatibility
  */
-// Firebase-functions v6.6.0 uses functions.pubsub.schedule() API
-if (functions.pubsub && typeof functions.pubsub.schedule === 'function') {
-  exports.runAutomation = functions.pubsub
-    .schedule('every 1 minutes')
-    .timeZone('Australia/Sydney')
-    .onRun(async (context) => {
-      console.log('[Automation] Starting scheduled automation cycle');
-      
-      try {
-        // 1. Fetch and cache shared data (Amber prices, Weather)
-        await updateSharedCache();
-        
-        // 2. Get all users with automation enabled
-        const usersSnapshot = await db.collection('users').get();
-        
-        // 3. Process each user's automation
-        const promises = [];
-        usersSnapshot.forEach(userDoc => {
-          promises.push(processUserAutomation(userDoc.id));
-        });
-        
-        await Promise.allSettled(promises);
-        
-        console.log(`[Automation] Cycle complete. Processed ${promises.length} users.`);
-      } catch (error) {
-        console.error('[Automation] Error in scheduled run:', error);
-      }
-      
-      return null;
-    });
-} else {
-  console.warn('[Automation] Schedule API not available; scheduled automation will be disabled.');
-}
+// Scheduled automation is handled by the backend server.js in 1st Gen
+// Cloud Functions here only provides the API proxy and per-user endpoints
 
 /**
  * Update shared cache with latest API data

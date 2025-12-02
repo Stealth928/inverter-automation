@@ -6,6 +6,19 @@ const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
 const nodemailer = require('nodemailer');
+const admin = require('firebase-admin');
+
+// Initialize Firebase Admin SDK (uses GOOGLE_APPLICATION_CREDENTIALS env var or Application Default Credentials)
+let db = null;
+try {
+    // Production: use real credentials
+    admin.initializeApp();
+    db = admin.firestore();
+    console.log('[Firebase] Admin SDK initialized successfully');
+} catch (error) {
+    console.warn('[Firebase] Admin SDK initialization failed:', error.message);
+    // Continue anyway - backend will work without Firestore for per-user persistence
+}
 
 const app = express();
 app.use(cors());
@@ -1683,6 +1696,73 @@ async function callWeatherAPI(place = 'Sydney', days = 3, timeoutMs = 10000, sou
     }
 }
 
+// ==================== FIRESTORE HELPERS ====================
+// Extract Firebase UID from Authorization header (Bearer token)
+async function getUidFromRequest(req) {
+    const authHeader = req.headers.authorization || req.headers.Authorization || '';
+    const token = authHeader.replace('Bearer ', '').trim();
+    if (!token || !admin.auth) {
+        return null;
+    }
+    try {
+        const decodedToken = await admin.auth().verifyIdToken(token);
+        return decodedToken.uid;
+    } catch (error) {
+        return null;
+    }
+}
+
+// Save user credentials to Firestore
+async function saveUserCredentials(uid, credentials) {
+    if (!db) {
+        console.warn('[Firestore] Not connected - credentials will not persist');
+        return false;
+    }
+    
+    try {
+        await db.collection('users').doc(uid).set({
+            credentials: {
+                device_sn: credentials.device_sn || '',
+                foxess_token: credentials.foxess_token || '',
+                amber_api_key: credentials.amber_api_key || '',
+                updated_at: new Date()
+            }
+        }, { merge: true });
+        console.log(`[Firestore] Saved credentials for user ${uid}`);
+        return true;
+    } catch (error) {
+        console.warn(`[Firestore] Failed to save credentials for user ${uid}:`, error.message);
+        return false;
+    }
+}
+
+// Load user credentials from Firestore
+async function loadUserCredentials(uid) {
+    if (!db) {
+        return null;
+    }
+    
+    try {
+        const doc = await db.collection('users').doc(uid).get();
+        if (doc.exists && doc.data().credentials) {
+            return doc.data().credentials;
+        }
+        return null;
+    } catch (error) {
+        console.warn(`[Firestore] Failed to load credentials for user ${uid}:`, error.message);
+        return null;
+    }
+}
+
+// Middleware to attach uid to request if authenticated
+app.use(async (req, res, next) => {
+    const uid = await getUidFromRequest(req);
+    if (uid) {
+        req.uid = uid;
+    }
+    next();
+});
+
 // Health check endpoint to help debugging 'Failed to fetch' issues
 app.get('/health', (req, res) => {
     res.json({ ok: true, FOXESS_TOKEN: !!FOXESS_TOKEN, DEVICE_SN: DEVICE_SN || null, logLevel: CONFIG.logging?.level || 'info' });
@@ -1704,6 +1784,40 @@ app.get('/api/config', (req, res) => {
         }
     });
 });
+
+// Check if setup is complete
+app.get('/api/config/setup-status', async (req, res) => {
+    let deviceSn = null;
+    let foxessToken = null;
+    let hasAmberKey = false;
+    let uid = req.uid || 'unknown';
+    
+    // If user is authenticated, load their per-user credentials from Firestore
+    if (req.uid) {
+        const userCreds = await loadUserCredentials(req.uid);
+        console.log(`[Setup Status] UID: ${req.uid}, Creds found:`, !!userCreds, userCreds);
+        if (userCreds) {
+            deviceSn = userCreds.device_sn || null;
+            foxessToken = userCreds.foxess_token || null;
+            hasAmberKey = !!userCreds.amber_api_key;
+        }
+    } else {
+        console.log('[Setup Status] No UID in request - user not authenticated');
+    }
+    
+    // Setup is complete if user has both device SN and FoxESS token
+    const setupComplete = !!(deviceSn && foxessToken);
+    res.json({
+        errno: 0,
+        result: {
+            setupComplete,
+            deviceSn: deviceSn || null,
+            hasAmberKey: hasAmberKey,
+            debug: { uid, authenticated: !!req.uid }
+        }
+    });
+});
+
 
 // Get factory defaults (for reset functionality)
 app.get('/api/config/defaults', (req, res) => {
@@ -1947,6 +2061,15 @@ app.post('/api/config/validate-keys', async (req, res) => {
         if (amber_api_key) AMBER_API_KEY = amber_api_key;
 
         log('info', `[Config] Credentials validated and set: DEVICE_SN='${DEVICE_SN}', FOXESS_TOKEN=***`, AMBER_API_KEY ? ', AMBER_API_KEY=***' : '');
+
+        // Save to Firestore for the authenticated user
+        if (req.uid) {
+            await saveUserCredentials(req.uid, {
+                device_sn,
+                foxess_token,
+                amber_api_key: amber_api_key || ''
+            });
+        }
 
         res.json({
             errno: 0,

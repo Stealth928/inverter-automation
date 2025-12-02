@@ -790,6 +790,7 @@
         let currentConfig = {};
         let originalConfig = {};
         let hasUnsavedChanges = false;
+        let originalCredentials = {}; // Track original credential values separately
         
         // Toggle FAQ section visibility
         function toggleFaq(element) {
@@ -979,6 +980,10 @@
             
             const sections = ['automation', 'cache', 'defaults', 'logging', 'api'];
             let hasChanges = false;
+            
+            // Check credentials for changes
+            const credentialsChanged = checkCredentialsChanged();
+            if (credentialsChanged) hasChanges = true;
             
             sections.forEach(section => {
                 const badge = document.getElementById(`${section}Badge`);
@@ -1261,17 +1266,52 @@
         }
 
         // Load only credentials status (reload deviceSn and token presence)
+        function checkCredentialsChanged() {
+            const deviceSn = (document.getElementById('credentials_deviceSn')?.value || '').trim();
+            const foxessToken = (document.getElementById('credentials_foxessToken')?.value || '').trim();
+            const amberKey = (document.getElementById('credentials_amberKey')?.value || '').trim();
+            
+            const changed = (deviceSn !== originalCredentials.deviceSn) || 
+                           (foxessToken !== (originalCredentials.foxessToken || '')) || 
+                           (amberKey !== (originalCredentials.amberKey || ''));
+            
+            const badge = document.getElementById('credentialsBadge');
+            if (badge) {
+                if (changed) {
+                    badge.textContent = 'Modified';
+                    badge.className = 'badge badge-modified';
+                } else {
+                    badge.textContent = 'Synced';
+                    badge.className = 'badge badge-sync';
+                }
+            }
+            return changed;
+        }
+        
         async function loadCredentials() {
             try {
                 const resp = await fetch('/api/config?t=' + Date.now());
                 const data = await resp.json();
                 if (data.errno === 0 && data.result) {
-                    document.getElementById('credentials_deviceSn').value = data.result.deviceSn || '';
+                    const deviceSn = data.result.deviceSn || '';
+                    document.getElementById('credentials_deviceSn').value = deviceSn;
+                    originalCredentials.deviceSn = deviceSn;
                 }
+                
+                // Clear token inputs on reload (for security - tokens aren't returned by API)
+                document.getElementById('credentials_foxessToken').value = '';
+                document.getElementById('credentials_amberKey').value = '';
+                originalCredentials.foxessToken = '';
+                originalCredentials.amberKey = '';
+                
                 const healthResp = await fetch('/health');
                 const health = await healthResp.json();
                 const credStatusEl = document.getElementById('credentialsStatus');
                 if (health && health.FOXESS_TOKEN) credStatusEl.textContent = 'FoxESS token is present on server (hidden)'; else credStatusEl.textContent = 'FoxESS token not set';
+                
+                // Update badge after reload
+                checkCredentialsChanged();
+                updateStatus();
             } catch (e) {
                 console.warn('loadCredentials failed', e);
             }
@@ -1282,6 +1322,10 @@
             const deviceSn = (document.getElementById('credentials_deviceSn')?.value || '').trim();
             const foxessToken = (document.getElementById('credentials_foxessToken')?.value || '').trim();
             const amberKey = (document.getElementById('credentials_amberKey')?.value || '').trim();
+
+            // If token fields are empty, use original values (user didn't change them)
+            const tokenToSend = foxessToken || originalCredentials.foxessToken || null;
+            const amberToSend = amberKey || originalCredentials.amberKey || null;
 
             if (!deviceSn) { showMessage('warning', 'Device Serial Number is required'); return; }
 
@@ -1294,7 +1338,7 @@
                 const resp = await fetch('/api/config/validate-keys', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ device_sn: deviceSn, foxess_token: foxessToken || null, amber_api_key: amberKey || null })
+                    body: JSON.stringify({ device_sn: deviceSn, foxess_token: tokenToSend, amber_api_key: amberToSend })
                 });
                 const data = await resp.json();
                 if (data.errno !== 0) {
@@ -1346,6 +1390,30 @@
                 e.preventDefault();
                 e.returnValue = '';
             }
+        });
+        
+        // Credentials toggles
+        document.getElementById('credentials_toggleFoxess')?.addEventListener('click', () => {
+            const input = document.getElementById('credentials_foxessToken');
+            const btn = document.getElementById('credentials_toggleFoxess');
+            const isPassword = input.type === 'password';
+            input.type = isPassword ? 'text' : 'password';
+            btn.textContent = isPassword ? '🔒' : '👁️';
+        });
+        document.getElementById('credentials_toggleAmber')?.addEventListener('click', () => {
+            const input = document.getElementById('credentials_amberKey');
+            const btn = document.getElementById('credentials_toggleAmber');
+            const isPassword = input.type === 'password';
+            input.type = isPassword ? 'text' : 'password';
+            btn.textContent = isPassword ? '🔒' : '👁️';
+        });
+        
+        // Track changes to credential fields
+        ['credentials_deviceSn', 'credentials_foxessToken', 'credentials_amberKey'].forEach(id => {
+            document.getElementById(id)?.addEventListener('input', () => {
+                checkCredentialsChanged();
+                updateStatus();
+            });
         });
     </script>
 </body>
