@@ -709,10 +709,19 @@ exports.api = functions.https.onRequest(app);
  * Scheduled function that runs every minute
  * Fetches shared API data (Amber, Weather) and processes automation for all active users
  */
-exports.runAutomation = functions.pubsub
-  .schedule('every 1 minutes')
-  .timeZone('Australia/Sydney')
-  .onRun(async (context) => {
+// Create a compatible scheduled function across firebase-functions v4..v7
+// v4 exposed schedule under functions.pubsub.schedule; newer versions may expose
+// schedule under functions.scheduler.schedule. Try both and fall back with a clear error.
+try {
+  const scheduleApi = (functions.pubsub && typeof functions.pubsub.schedule === 'function') ? functions.pubsub : ((functions.scheduler && typeof functions.scheduler.schedule === 'function') ? functions.scheduler : null);
+
+  if (!scheduleApi) {
+    console.warn('[Automation] No schedule API available in firebase-functions package; scheduled automation will be disabled.');
+  } else {
+    exports.runAutomation = scheduleApi
+      .schedule('every 1 minutes')
+      .timeZone('Australia/Sydney')
+      .onRun(async (context) => {
     console.log('[Automation] Starting scheduled automation cycle');
     
     try {
@@ -733,10 +742,11 @@ exports.runAutomation = functions.pubsub
       console.log(`[Automation] Cycle complete. Processed ${promises.length} users.`);
     } catch (error) {
       console.error('[Automation] Error in scheduled run:', error);
+        });
     }
-    
-    return null;
-  });
+  } catch (err) {
+    console.error('[Automation] Failed to configure scheduled function:', err);
+  }
 
 /**
  * Update shared cache with latest API data
