@@ -5653,7 +5653,7 @@
                 const initial = name.charAt(0).toUpperCase();
                 
                 if (user.photoURL) {
-                    avatar.innerHTML = `<img src="${user.photoURL}" alt="${name}">`;
+                    avatar.innerHTML = `<img src="${user.photoURL}" alt="${name}" onerror="this.parentElement.innerHTML='<span>${initial}</span>'; this.style.display='none';">`;
                 } else {
                     initials.textContent = initial;
                 }

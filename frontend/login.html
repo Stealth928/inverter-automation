@@ -629,8 +629,18 @@
             
             if (!result.success) {
                 showError(getAuthErrorMessage(result.code));
+            } else {
+                // Initialize user profile in Firestore
+                try {
+                  const initResp = await firebaseAuth.fetchWithAuth('/api/auth/init-user', { method: 'POST' });
+                  if (!initResp.ok) {
+                    console.warn('Failed to initialize user profile, but account was created');
+                  }
+                } catch (e) {
+                  console.warn('Error calling init-user:', e);
+                }
+                // If success, onAuthStateChanged will redirect
             }
-            // If success, onAuthStateChanged will redirect
         });
 
         // Reset password form
