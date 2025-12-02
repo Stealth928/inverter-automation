@@ -758,26 +758,41 @@ async function incrementApiCount(userId, apiType) {
  */
 app.get('/api/metrics/api-calls', async (req, res) => {
   try {
-    const days = parseInt(req.query.days || '7', 10);
+    const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
     const endDate = new Date();
+
+    // If Firestore isn't available for any reason, return safe zeroed metrics
+    if (!db) {
+      console.warn('[Metrics] Firestore not initialized - returning zeroed metrics');
+      const result = {};
+      for (let i = 0; i < days; i++) {
+        const d = new Date(endDate);
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().split('T')[0];
+        result[key] = { foxess: 0, amber: 0, weather: 0 };
+      }
+      return res.json({ errno: 0, result });
+    }
+
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days + 1);
-    
+
     const metricsSnapshot = await db.collection('users').doc(req.user.uid)
       .collection('metrics')
       .orderBy(admin.firestore.FieldPath.documentId(), 'desc')
       .limit(days)
       .get();
-    
+
     const result = {};
     metricsSnapshot.forEach(doc => {
+      const d = doc.data() || {};
       result[doc.id] = {
-        foxess: doc.data().foxess || 0,
-        amber: doc.data().amber || 0,
-        weather: doc.data().weather || 0
+        foxess: Number(d.foxess || 0),
+        amber: Number(d.amber || 0),
+        weather: Number(d.weather || 0)
       };
     });
-    
+
     // Fill in missing days with zeros
     for (let i = 0; i < days; i++) {
       const d = new Date(endDate);
@@ -787,10 +802,25 @@ app.get('/api/metrics/api-calls', async (req, res) => {
         result[key] = { foxess: 0, amber: 0, weather: 0 };
       }
     }
-    
+
     res.json({ errno: 0, result });
   } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
+    console.error('[Metrics] Error in /api/metrics/api-calls:', error && error.message);
+    // Respond with safe zeroed metrics instead of 500 where possible
+    try {
+      const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
+      const endDate = new Date();
+      const result = {};
+      for (let i = 0; i < days; i++) {
+        const d = new Date(endDate);
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().split('T')[0];
+        result[key] = { foxess: 0, amber: 0, weather: 0 };
+      }
+      return res.json({ errno: 0, result });
+    } catch (e) {
+      return res.status(500).json({ errno: 500, error: error.message });
+    }
   }
 });
 
