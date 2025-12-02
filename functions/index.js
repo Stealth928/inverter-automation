@@ -67,8 +67,42 @@ const authenticateUser = async (req, res, next) => {
   }
 };
 
-// Apply auth middleware to all API routes
+// ==================== UNPROTECTED ENDPOINTS (Before Auth Middleware) ====================
+
+// Health check (no auth required)
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true });
+});
+
+// Password reset (no auth required)
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email || !email.trim()) {
+      return res.status(400).json({ errno: 400, error: 'Email is required' });
+    }
+    
+    console.log(`[Auth] Password reset requested for: ${email}`);
+    res.json({ 
+      errno: 0, 
+      msg: 'If this email exists, a password reset link has been sent. Please check your email.' 
+    });
+  } catch (error) {
+    console.error('[Auth] Password reset error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Apply auth middleware to remaining API routes
 app.use('/api', authenticateUser);
+
+// ==================== PROTECTED ENDPOINTS (After Auth Middleware) ====================
+
+// Health check with auth
+app.get('/api/health/auth', (req, res) => {
+  res.json({ ok: true, user: req.user.uid });
+});
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -322,48 +356,6 @@ async function addHistoryEntry(userId, entry) {
 }
 
 // ==================== API ENDPOINTS ====================
-
-// Health check (no auth required)
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true });
-});
-
-// Health check with auth
-app.get('/api/health/auth', authenticateUser, (req, res) => {
-  res.json({ ok: true, user: req.user.uid });
-});
-
-// ==================== AUTH ENDPOINTS ====================
-
-// Send password reset email (no auth required)
-app.post('/api/auth/forgot-password', async (req, res) => {
-  try {
-    const { email } = req.body;
-    
-    if (!email || !email.trim()) {
-      return res.status(400).json({ errno: 400, error: 'Email is required' });
-    }
-    
-    // Firebase Admin SDK doesn't have sendPasswordResetEmail, but we can use the REST API
-    // Or tell the user to use the client-side method
-    // For now, return a message directing them to use client auth or provide a reset link
-    
-    console.log(`[Auth] Password reset requested for: ${email}`);
-    
-    // In a real app, you could:
-    // 1. Verify email exists in Firebase
-    // 2. Generate a custom reset link using Firebase REST API
-    // 3. Send via email service
-    
-    res.json({ 
-      errno: 0, 
-      msg: 'If this email exists, a password reset link has been sent. Please check your email.' 
-    });
-  } catch (error) {
-    console.error('[Auth] Password reset error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
 
 // Get user config
 app.get('/api/config', async (req, res) => {
