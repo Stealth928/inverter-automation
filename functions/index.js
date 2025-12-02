@@ -245,9 +245,11 @@ app.get('/api/health/auth', (req, res) => {
 
 /**
  * Generate FoxESS API signature
+ * NOTE: FoxESS expects literal backslash-r-backslash-n characters, NOT actual CRLF bytes
+ * This matches the Postman collection which uses escaped \\r\\n
  */
 function generateFoxESSSignature(apiPath, token, timestamp) {
-  const signaturePlain = `${apiPath}\r\n${token}\r\n${timestamp}`;
+  const signaturePlain = `${apiPath}\\r\\n${token}\\r\\n${timestamp}`;
   const signature = crypto.createHash('md5').update(signaturePlain).digest('hex');
   console.log(`[FoxESS] Signature calc: path="${apiPath}" token="${token}" timestamp="${timestamp}"`);
   console.log(`[FoxESS] Plain text (length=${signaturePlain.length}): ${JSON.stringify(signaturePlain)}`);
