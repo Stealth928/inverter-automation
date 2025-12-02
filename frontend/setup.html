@@ -593,6 +593,27 @@
     <script src="js/firebase-config.js"></script>
     <script src="js/firebase-auth.js"></script>
     <script>
+        // Call setup endpoints while attaching an ID token when available
+        async function callSetupApi(path, options = {}) {
+            const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+            const token = await firebaseAuth.getIdToken();
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(path, { ...options, headers });
+            const text = await response.text();
+            let data;
+
+            try {
+                data = text ? JSON.parse(text) : {};
+            } catch (error) {
+                throw new Error(`Unexpected response (${response.status}): ${text.slice(0, 120)}`);
+            }
+
+            return { response, data };
+        }
+
         // Initialize Firebase auth
         document.addEventListener('DOMContentLoaded', async () => {
             await firebaseAuth.init(firebaseConfig);
@@ -601,38 +622,16 @@
             firebaseAuth.onAuthStateChanged(async (user) => {
                 if (!user) {
                     window.location.href = '/login.html';
-                } else {
-                    // Wait for ID token to be available before calling the setup-status endpoint
-                    const waitForIdToken = async (maxRetries = 10, delayMs = 200) => {
-                        for (let i = 0; i < maxRetries; i++) {
-                            const t = await firebaseAuth.getIdToken();
-                            if (t) return t;
-                            await new Promise(r => setTimeout(r, delayMs));
-                        }
-                        return null;
-                    };
+                    return;
+                }
 
-                    try {
-                        const token = await waitForIdToken(12, 250);
-                        if (!token) {
-                            // Token still not available — skip server check for now
-                            console.warn('Auth token not ready, skipping setup-status check');
-                            return;
-                        }
-
-                        // Check if setup is already complete
-                        const response = await firebaseAuth.fetchWithAuth('/api/config/setup-status');
-                        const result = await response.json();
-
-                        if (result.result && result.result.setupComplete) {
-                            // Setup already complete, redirect to dashboard
-                            window.location.href = '/index.html';
-                            return;
-                        }
-                    } catch (error) {
-                        console.error('Error checking setup status:', error);
-                        // Continue to show setup form if we can't check status
+                try {
+                    const { data } = await callSetupApi('/api/config/setup-status');
+                    if (data?.result?.setupComplete) {
+                        window.location.href = '/index.html';
                     }
+                } catch (error) {
+                    console.error('Error checking setup status:', error);
                 }
             });
 
@@ -685,9 +684,8 @@
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<div class="spinner"></div><span>Validating...</span>';
 
-                        try {
-                // Call backend validation endpoint with authentication
-                const response = await firebaseAuth.fetchWithAuth('/api/config/validate-keys', {
+            try {
+                const { response, data } = await callSetupApi('/api/config/validate-keys', {
                     method: 'POST',
                     body: JSON.stringify({
                         device_sn: deviceSn,
@@ -696,12 +694,10 @@
                     })
                 });
 
-                const result = await response.json();
-
-                if (result.errno !== 0) {
-                    // Validation failed
-                    if (result.failed_keys && Array.isArray(result.failed_keys)) {
-                        result.failed_keys.forEach(key => {
+                if (!response.ok || data.errno !== 0) {
+                    const failedKeys = data?.failed_keys;
+                    if (Array.isArray(failedKeys) && failedKeys.length) {
+                        failedKeys.forEach(key => {
                             const fieldMap = {
                                 'device_sn': 'deviceSn',
                                 'foxess_token': 'foxessToken',
@@ -709,12 +705,12 @@
                             };
                             const fieldId = fieldMap[key];
                             if (fieldId) {
-                                const detailed = result.errors && result.errors[key];
-                                setFieldError(fieldId, detailed || result.msg || 'Validation failed');
+                                const detailed = data?.errors?.[key];
+                                setFieldError(fieldId, detailed || data?.msg || 'Validation failed');
                             }
                         });
                     } else {
-                        setFieldError('deviceSn', result.msg || result.error || 'Validation failed. Please check your credentials.');
+                        setFieldError('deviceSn', data?.msg || data?.error || 'Validation failed. Please check your credentials.');
                     }
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = '<span class="btn-text">Validate & Continue</span><span>→</span>';

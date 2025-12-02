@@ -67,6 +67,28 @@ const authenticateUser = async (req, res, next) => {
   }
 };
 
+// Attempt to attach Firebase user info without enforcing auth (used by public endpoints)
+const tryAttachUser = async (req) => {
+  if (req.user) {
+    return req.user;
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const idToken = authHeader.split('Bearer ')[1];
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    req.user = decodedToken;
+    return decodedToken;
+  } catch (error) {
+    console.warn('[Auth] Optional token attach failed:', error.message);
+    return null;
+  }
+};
+
 // ==================== UNPROTECTED ENDPOINTS (Before Auth Middleware) ====================
 
 // Health check (no auth required)
@@ -97,6 +119,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 // Validate API credentials during setup (no auth required for initial validation)
 app.post('/api/config/validate-keys', async (req, res) => {
   try {
+    await tryAttachUser(req);
     const { device_sn, foxess_token, amber_api_key } = req.body;
     const errors = {};
     const failed_keys = [];
@@ -169,6 +192,7 @@ app.post('/api/config/validate-keys', async (req, res) => {
 // Check if user setup is complete (no auth required for initial check during setup flow)
 app.get('/api/config/setup-status', async (req, res) => {
   try {
+    await tryAttachUser(req);
     // If user is authenticated (has ID token), check their Firestore config
     if (req.user?.uid) {
       const config = await getUserConfig(req.user.uid);
@@ -729,13 +753,8 @@ app.get('/api/metrics/api-calls', async (req, res) => {
 });
 
 // ==================== EXPORT EXPRESS APP AS CLOUD FUNCTION (2nd Gen) ====================
-exports.api = functions.https.onRequest(
-  {
-    region: 'us-central1',
-    memory: '512MB'
-  },
-  app
-);
+// Use the supported chaining API to set region and runtime options.
+exports.api = functions.region('us-central1').runWith({ memory: '512MB' }).https.onRequest(app);
 
 // ==================== SCHEDULED AUTOMATION ====================
 /**
