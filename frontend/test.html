@@ -586,9 +586,13 @@
          */
         async function authenticatedFetch(url, options = {}) {
             if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn && firebaseAuth.isSignedIn()) {
-                return await firebaseAuth.fetchWithAuth(url, options);
+                try {
+                    return await firebaseAuth.fetchWithAuth(url, options);
+                } catch (e) {
+                    console.warn('authenticatedFetch: fetchWithAuth failed, falling back to plain fetch for', url, '-', e && e.message ? e.message : e);
+                }
             }
-            console.warn('authenticatedFetch: Not signed in, using plain fetch for', url);
+            console.warn('authenticatedFetch: Not signed in or auth failed, using plain fetch for', url);
             return await fetch(url, options);
         }
 
