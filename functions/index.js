@@ -265,6 +265,32 @@ app.get('/api/amber/sites', async (req, res) => {
   }
 });
 
+// Public-friendly endpoint for current prices (mirror of /api/amber/prices but accepts
+// the '/current' path which the frontend sometimes uses). Returns safe JSON when unauthenticated.
+app.get('/api/amber/prices/current', async (req, res) => {
+  try {
+    await tryAttachUser(req);
+    const userId = req.user?.uid;
+    if (!userId) return res.json({ errno: 0, result: [] });
+
+    const userConfig = await getUserConfig(userId);
+    if (!userConfig || !userConfig.amberApiKey) return res.json({ errno: 0, result: [] });
+
+    const siteId = req.query.siteId;
+    const next = Number(req.query.next || '1') || 1;
+
+    if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
+
+    const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId);
+    // Normalize response to expected array/result structure
+    if (Array.isArray(result)) return res.json(result);
+    return res.json(result);
+  } catch (e) {
+    console.error('[Amber] /prices/current error (pre-auth):', e && e.message ? e.message : e);
+    return res.json({ errno: 0, result: [] });
+  }
+});
+
 // Metrics (platform global or per-user). Allow unauthenticated callers to read global metrics by default.
 app.get('/api/metrics/api-calls', async (req, res) => {
   try {
