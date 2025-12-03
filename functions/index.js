@@ -671,7 +671,11 @@ app.get('/api/amber/sites', async (req, res) => {
     console.log(`[Amber] /sites request from user: ${userId}`);
     
     if (!userId) {
-      return res.status(401).json({ errno: 401, error: 'Not authenticated' });
+      // Prefer to return an empty list (safe JSON) when the caller is not yet
+      // authenticated instead of returning a 401 HTML response which breaks the UI
+      // when the frontend fires this request before auth completes.
+      console.log('[Amber] /sites request without user - returning empty list');
+      return res.json({ errno: 0, result: [] });
     }
     
     const userConfig = await getUserConfig(userId);
@@ -717,7 +721,9 @@ app.get('/api/amber/prices', async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
     if (!userConfig || !userConfig.amberApiKey) {
-      return res.status(400).json({ errno: 400, error: 'Amber not configured' });
+      // If user isn't configured for Amber yet, return a safe JSON error so
+      // the frontend can display a clear message instead of receiving an HTML response.
+      return res.status(400).json({ errno: 400, error: 'Amber not configured', result: [] });
     }
     const siteId = req.query.siteId;
     
