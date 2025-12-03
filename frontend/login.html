@@ -7,40 +7,16 @@
     <link rel="stylesheet" href="css/shared-styles.css" />
     <style>
         /* Page-specific styles */
-        body {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-
-        .login-container {
-            width: 100%;
-            max-width: 440px;
-        }
-
-        .login-card {
-            background: linear-gradient(145deg, rgba(33, 38, 45, 0.95), rgba(22, 27, 34, 0.98));
-            border-radius: 16px;
-            border: 1px solid rgba(48, 54, 61, 0.6);
-            overflow: hidden;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-            animation: slideUp 0.4s ease-out;
-        }
-
-        @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .login-header {
-            padding: 40px 32px 28px;
+                        } else {
+                                // Initialize user profile in the backend after successful sign up
+                                try {
+                                    const initResp = await authenticatedFetch('/api/auth/init-user', { method: 'POST' });
+                                    if (!initResp.ok) {
+                                        console.warn('Failed to initialize user profile, but account was created');
+                                    }
+                                } catch (e) {
+                                    console.warn('Error calling init-user:', e);
+                                }
             text-align: center;
             background: linear-gradient(180deg, rgba(88, 166, 255, 0.08) 0%, transparent 100%);
             border-bottom: 1px solid rgba(48, 54, 61, 0.4);
@@ -376,7 +352,33 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 </head>
-<body>
+<body class="login-page">
+    <nav class="nav-main">
+        <div class="nav-links">
+            <a href="/" class="nav-link">🏠 Overview</a>
+            <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
+            <a href="/control.html" class="nav-link">🧭 Controls</a>
+            <a href="/history.html" class="nav-link">📊 History</a>
+            <a href="/settings.html" class="nav-link">⚙️ Settings</a>
+        </div>
+        <div class="nav-right">
+            <span class="nav-subtitle">Sign in to continue</span>
+            <div class="user-menu" data-user-menu>
+                <button class="user-avatar" type="button" data-user-avatar>
+                    <span data-user-initials>?</span>
+                </button>
+                <div class="user-dropdown" data-user-dropdown>
+                    <div class="user-dropdown-header">
+                        <div class="user-name" data-user-name>Guest</div>
+                        <div class="user-email" data-user-email>Not signed in</div>
+                    </div>
+                    <button class="user-dropdown-item" type="button" data-go-settings>⚙️ Settings</button>
+                    <button class="user-dropdown-item danger" type="button" data-signout>🚪 Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
     <div class="login-container">
         <div class="login-card">
             <div class="login-header">
@@ -513,32 +515,59 @@
     <script src="js/firebase-config.js"></script>
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
+    <script src="js/shared-utils.js"></script>
+    <script src="js/app-shell.js"></script>
     <script>
-        // Initialize Firebase
-        document.addEventListener('DOMContentLoaded', async () => {
-            await firebaseAuth.init(firebaseConfig);
-            
-            // Initialize API Client (updates global apiClient)
-            initAPIClient(firebaseAuth);
-
-            // Check if already signed in
-            firebaseAuth.onAuthStateChanged(async (user) => {
-                if (user) {
-                    // Check if setup is complete before redirecting to dashboard
-                    try {
-                        const response = await apiClient.fetch('/api/config/setup-status');
-                        const data = await response.json();
-                        if (data.errno === 0 && data.result?.setupComplete) {
-                            window.location.href = '/index.html';
-                        } else {
-                            window.location.href = '/setup.html';
-                        }
-                    } catch (e) {
-                        // If API fails, default to setup
-                        window.location.href = '/setup.html';
+        async function authenticatedFetch(url, options = {}) {
+            if (window.AppShell && typeof AppShell.authFetch === 'function') {
+                return AppShell.authFetch(url, options);
+            }
+            try {
+                if (typeof waitForAPIClient === 'function') {
+                    await waitForAPIClient(3000);
+                } else {
+                    const start = Date.now();
+                    while (!apiClient && (Date.now() - start) < 3000) {
+                        await new Promise(r => setTimeout(r, 50));
                     }
                 }
+            } catch (e) {
+                console.warn('[API] apiClient not initialized yet');
+                throw new Error('API client not ready');
+            }
+            return apiClient.fetch(url, options);
+        }
+
+        function registerAuthRedirect() {
+            if (typeof firebaseAuth === 'undefined') return;
+            firebaseAuth.onAuthStateChanged(async (user) => {
+                if (!user) return;
+                await redirectAfterLogin();
             });
+        }
+
+        async function redirectAfterLogin() {
+            try {
+                const response = await authenticatedFetch('/api/config/setup-status');
+                const data = await response.json();
+                if (data.errno === 0 && data.result?.setupComplete) {
+                    safeRedirect('/index.html');
+                } else {
+                    safeRedirect('/setup.html');
+                }
+            } catch (e) {
+                console.warn('[Auth] Could not determine setup status, staying on login (error):', e);
+            }
+        }
+
+        AppShell.init({
+            pageName: 'login',
+            requireAuth: false,
+            checkSetup: false,
+            autoMetrics: false,
+            onReady: () => {
+                registerAuthRedirect();
+            }
         });
 
         // Password toggle functionality
@@ -633,55 +662,18 @@
             
             if (!result.success) {
                 showError(getAuthErrorMessage(result.code));
-            } else {
-                // Initialize user profile in Firestore
-                try {
-                  // Use apiClient (it will be available in scope because it's initialized in DOMContentLoaded, 
-                  // but wait, this event listener is outside DOMContentLoaded scope? No, it's inside the script tag but outside the event listener.
-                  // Ah, apiClient is defined inside DOMContentLoaded. I need to make it global or accessible.)
-                  
-                  // Let's check where I defined apiClient in the previous edit.
-                  // It was const apiClient = ... inside DOMContentLoaded. That's not good for these event listeners.
-                  
-                  // I should fix the scope of apiClient.
-                  
-                  // Actually, initAPIClient returns the singleton instance, and also sets the global variable if I look at api-client.js:
-                  // let apiClient = null;
-                  // function initAPIClient(firebaseAuth) { apiClient = new APIClient(firebaseAuth); return apiClient; }
-                  // So calling initAPIClient sets the module-level variable, but that variable is not exported to window unless I did so.
-                  // In api-client.js:
-                  // if (typeof module !== 'undefined' && module.exports) { ... }
-                  // It doesn't seem to attach to window explicitly, but since it's a script tag, top-level vars are global.
-                  // Wait, `let apiClient = null` is at the top level of api-client.js.
-                  // So `apiClient` (the variable) should be available globally.
-                  
-                  // However, inside `login.html`, I did `const apiClient = initAPIClient(firebaseAuth);` inside the callback.
-                  // This shadows the global `apiClient` (if it exists) or defines a local one.
-                  
-                  // I should rely on the global `apiClient` variable from `api-client.js` if possible, or just use `initAPIClient(firebaseAuth)` again which returns the singleton.
-                  
-                  // Let's look at `api-client.js` again.
-                  // `let apiClient = null;` is at the top level.
-                  // `function initAPIClient(...)` sets that variable.
-                  
-                  // So if I call `initAPIClient` once, `apiClient` global var is set.
-                  
-                  // In `login.html`, I should just call `initAPIClient(firebaseAuth)` in DOMContentLoaded and not assign it to a local const if I want to use the global one.
-                  // Or better, just use `initAPIClient(firebaseAuth)` everywhere I need it, as it's a singleton-ish factory.
-                  
-                  // But `apiClient` variable is what I want to use.
-                  
-                  // Let's fix the previous edit to `login.html` to not use `const apiClient`.
-                  
-                  const initResp = await apiClient.fetch('/api/auth/init-user', { method: 'POST' });
-                  if (!initResp.ok) {
-                    console.warn('Failed to initialize user profile, but account was created');
-                  }
-                } catch (e) {
-                  console.warn('Error calling init-user:', e);
-                }
-                // If success, onAuthStateChanged will redirect
-            }
+                        } else {
+                                // Initialize user profile in the backend after successful sign up
+                                try {
+                                    const initResp = await authenticatedFetch('/api/auth/init-user', { method: 'POST' });
+                                    if (!initResp.ok) {
+                                        console.warn('Failed to initialize user profile, but account was created');
+                                    }
+                                } catch (e) {
+                                    console.warn('Error calling init-user:', e);
+                                }
+                                // If success, onAuthStateChanged will redirect
+                        }
         });
 
         // Reset password form

@@ -82,13 +82,9 @@ class APIClient {
         headers
       });
 
-      // Handle 401 - redirect to login
+      // Handle 401 - return structured error without redirecting
       if (response.status === 401) {
-        console.warn('[API] Unauthorized - redirecting to login');
-        // Check if we are already on login page to avoid loop
-        if (!window.location.pathname.includes('login.html')) {
-             window.location.href = '/login.html';
-        }
+        console.warn('[API] Unauthorized response (401) — returning error to caller');
         return { errno: 401, error: 'Unauthorized' };
       }
 
@@ -127,13 +123,10 @@ class APIClient {
     try {
       const response = await fetch(url, { ...options, headers });
       
-      // Handle 401
+      // Handle 401: return a standard response so callers can decide what to do
       if (response.status === 401) {
-         if (!window.location.pathname.includes('login.html')) {
-             window.location.href = '/login.html';
-         }
-         // Return a safe 401 response
-         return new Response(JSON.stringify({ errno: 401, error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        // Return a safe 401 response with JSON body and leave navigation decision to caller
+        return new Response(JSON.stringify({ errno: 401, error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
       }
 
       // Normalize
@@ -281,6 +274,66 @@ function initAPIClient(firebaseAuth) {
   return apiClient;
 }
 
+/**
+ * Helper: return whether the global apiClient has been initialized
+ */
+function isAPIClientReady() {
+  return apiClient !== null;
+}
+
+/**
+ * Wait for apiClient to be initialized (polling). Rejects after timeoutMs.
+ */
+async function waitForAPIClient(timeoutMs = 3000) {
+  const start = Date.now();
+  while (apiClient === null) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('API client not ready');
+    }
+    await new Promise((res) => setTimeout(res, 50));
+  }
+  return apiClient;
+}
+
+/**
+ * Safe redirect helper to reduce bounce loops between pages.
+ * It stores last redirect info in sessionStorage and prevents immediate reverse redirects
+ */
+function safeRedirect(target, maxBounceMs = 5000) {
+  try {
+    const key = 'lastRedirect';
+    const normalize = (p) => {
+      if (!p) return p;
+      // Normalize root to index.html to avoid mismatch between '/' and '/index.html'
+      if (p === '/' || p === '') return '/index.html';
+      return p.replace(/\/$/, ''); // remove trailing slash
+    };
+    const raw = sessionStorage.getItem(key);
+    if (raw) {
+      try {
+        const last = JSON.parse(raw);
+        if (last && (Date.now() - last.ts) < maxBounceMs) {
+          // Normalize comparators
+          const lastFrom = normalize(last.from);
+          const lastTo = normalize(last.to);
+          const curPath = normalize(window.location.pathname);
+          const tgt = normalize(target);
+          // If the last redirect went from `target` to this page, avoid bouncing back
+          if (lastFrom === tgt && lastTo === curPath) {
+            console.warn('[Redirect] Suppressing bounce redirect to', target);
+            return;
+          }
+        }
+      } catch (e) { /* ignore malformed */ }
+    }
+    sessionStorage.setItem(key, JSON.stringify({ from: window.location.pathname, to: target, ts: Date.now() }));
+    window.location.href = target;
+  } catch (e) {
+    // On any failure, fallback to normal redirect to avoid blocking navigation
+    window.location.href = target;
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { APIClient, initAPIClient };
+  module.exports = { APIClient, initAPIClient, isAPIClientReady, waitForAPIClient };
 }

@@ -5,9 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Automation Testing - Dry Run Mode</title>
     <link rel="stylesheet" href="css/shared-styles.css" />
+    <!-- Firebase SDK (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
+    <script src="js/shared-utils.js"></script>
+    <script src="js/app-shell.js"></script>
     <style>
         /* Page-specific styles */
         body {
@@ -436,12 +442,39 @@
     <nav class="nav-main">
         <div class="nav-links">
             <a href="/" class="nav-link">🏠 Overview</a>
-            <a href="/test.html" class="nav-link active">🧪 Automation Lab</a>
+            <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
             <a href="/control.html" class="nav-link">🧭 Controls</a>
             <a href="/history.html" class="nav-link">📊 History</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
         </div>
+        <div class="nav-right">
+            <span class="nav-info">Simulation mode</span>
+            <div class="user-menu" data-user-menu>
+                <button class="user-avatar" type="button" data-user-avatar>
+                    <span data-user-initials>?</span>
+                </button>
+                <div class="user-dropdown" data-user-dropdown>
+                    <div class="user-dropdown-header">
+                        <div class="user-name" data-user-name>Guest</div>
+                        <div class="user-email" data-user-email>Not signed in</div>
+                    </div>
+                    <button class="user-dropdown-item" type="button" data-go-settings>⚙️ Settings</button>
+                    <button class="user-dropdown-item danger" type="button" data-signout>🚪 Sign Out</button>
+                </div>
+            </div>
+        </div>
     </nav>
+
+    <div id="apiMetricsFooter" class="api-metrics-footer">
+        <div class="metrics-icon">📊 API Calls</div>
+        <div id="metricsDate" class="metrics-date">—</div>
+        <div id="metricsCounts" class="metrics-counts">
+            <div class="metric-fox">Fox: <span id="countFox" class="metric-value">0</span></div>
+            <div class="metric-amber">Amber: <span id="countAmber" class="metric-value">0</span></div>
+            <div class="metric-weather">Weather: <span id="countWeather" class="metric-value">0</span></div>
+        </div>
+        <button class="btn btn-sm" onclick="loadApiMetrics(1)" title="Refresh metrics">🔄</button>
+    </div>
 
     <div class="container">
         <header>
@@ -583,16 +616,43 @@
     </div>
 
     <script>
-        // Initialize API Client
-        const apiClient = initAPIClient(firebaseAuth);
+        // apiClient is declared in api-client.js and initialized after Firebase auth is ready
 
         /**
          * Helper function to make authenticated API calls.
          * Uses apiClient.fetch to include the Authorization header and normalize responses.
          */
         async function authenticatedFetch(url, options = {}) {
+            if (window.AppShell && typeof AppShell.authFetch === 'function') {
+                return AppShell.authFetch(url, options);
+            }
+            try {
+                if (typeof waitForAPIClient === 'function') {
+                    await waitForAPIClient(3000);
+                } else {
+                    const start = Date.now();
+                    while (!apiClient && (Date.now() - start) < 3000) {
+                        await new Promise(r => setTimeout(r, 50));
+                    }
+                }
+            } catch (e) {
+                console.warn('[API] apiClient not initialized yet');
+                throw new Error('API client not ready');
+            }
             return apiClient.fetch(url, options);
         }
+
+        AppShell.init({
+            pageName: 'automation-lab',
+            autoMetrics: true,
+            onReady: () => {
+                try {
+                    loadRules();
+                } catch (error) {
+                    console.warn('[Automation Lab] Failed to load rules', error);
+                }
+            }
+        });
 
         // FAQ toggle
         function toggleFaq(element) {
@@ -1317,10 +1377,7 @@
             }
         }
 
-        // Init
-        document.addEventListener('DOMContentLoaded', () => {
-            loadRules();
-        });
+        // AppShell handles auth lifecycle; no additional bootstrap required here.
     </script>
 </body>
 </html>

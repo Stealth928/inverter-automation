@@ -3040,8 +3040,10 @@ app.post('/api/config', (req, res) => {
             result: CONFIG
         });
     } catch (error) {
-        log('error', 'Failed to update configuration:', error);
-        res.json({ errno: 1, msg: `Failed to update configuration: ${error.message}` });
+        // Log full stack for server-side diagnosis but avoid dumping potentially sensitive config objects
+        log('error', 'Failed to update configuration:', error && error.stack ? error.stack : String(error));
+        // Return HTTP 500 so client sees a server error status and receives a structured error message
+        return res.status(500).json({ errno: 500, msg: `Failed to update configuration`, error: error && error.message ? error.message : String(error) });
     }
 });
 

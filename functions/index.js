@@ -705,11 +705,20 @@ app.get('/api/config', async (req, res) => {
 // Save user config
 app.post('/api/config', async (req, res) => {
   try {
-    const { config } = req.body;
-    await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(config, { merge: true });
-    res.json({ errno: 0, msg: 'Config saved' });
+    // Accept both shapes: { config: {...} } (older functions API) or raw config object in body
+    const newConfig = req.body && typeof req.body === 'object' ? (req.body.config ?? req.body) : null;
+    if (!newConfig || typeof newConfig !== 'object') {
+      return res.status(400).json({ errno: 400, error: 'Invalid payload: expected config object' });
+    }
+
+    console.log('[API] /api/config save called by user:', req.user?.uid, 'payloadKeys=', Object.keys(newConfig || {}).slice(0,20));
+
+    // Persist to Firestore under user's config/main
+    await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(newConfig, { merge: true });
+    res.json({ errno: 0, msg: 'Config saved', result: newConfig });
   } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
+    console.error('[API] /api/config save error:', error && error.stack ? error.stack : String(error));
+    res.status(500).json({ errno: 500, error: error.message || String(error) });
   }
 });
 
