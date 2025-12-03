@@ -785,18 +785,46 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
  */
 async function incrementApiCount(userId, apiType) {
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const docRef = db.collection('users').doc(userId).collection('metrics').doc(today);
-  
+
+  // Only update per-user metrics when we have a valid userId
+  if (userId) {
+    const docRef = db.collection('users').doc(userId).collection('metrics').doc(today);
+    try {
+      await db.runTransaction(async (transaction) => {
+        const doc = await transaction.get(docRef);
+        const data = doc.exists ? doc.data() : { foxess: 0, amber: 0, weather: 0 };
+        data[apiType] = (data[apiType] || 0) + 1;
+        data.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        transaction.set(docRef, data, { merge: true });
+      });
+    } catch (error) {
+      console.error('Error incrementing API count:', error);
+    }
+  }
+    // Also maintain an aggregated global daily metric so the UI (and non-authenticated callers)
+    // can show platform-level API usage (mirrors backend `api_call_counts.json`).
+    try {
+      await incrementGlobalApiCount(apiType);
+    } catch (e) {
+      console.error('[Metrics] incrementGlobalApiCount error:', e && e.message ? e.message : e);
+    }
+}
+
+/**
+ * Increment the global daily counters (top-level `metrics` collection)
+ * This keeps a platform-wide view of API usage similar to the backend file-based counters.
+ */
+async function incrementGlobalApiCount(apiType) {
   try {
-    await db.runTransaction(async (transaction) => {
-      const doc = await transaction.get(docRef);
-      const data = doc.exists ? doc.data() : { foxess: 0, amber: 0, weather: 0 };
-      data[apiType] = (data[apiType] || 0) + 1;
-      data.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-      transaction.set(docRef, data, { merge: true });
-    });
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const docRef = db.collection('metrics').doc(today);
+
+    await docRef.set({
+      [apiType]: admin.firestore.FieldValue.increment(1),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
   } catch (error) {
-    console.error('Error incrementing API count:', error);
+    console.error('[Metrics] Failed to increment global count:', error && error.message ? error.message : error);
   }
 }
 
@@ -805,16 +833,16 @@ async function incrementApiCount(userId, apiType) {
  */
 app.get('/api/metrics/api-calls', async (req, res) => {
   try {
-    const userId = req.user?.uid;
-    console.log(`[Metrics] Request from user: ${userId}`);
-    
+    // By default, return platform-wide (global) aggregated metrics which mirrors
+    // the previous backend implementation that used a single file `api_call_counts.json`.
+    // If caller specifically requests `scope=user` and is authenticated, return per-user metrics.
     const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
-    const endDate = new Date();
+    const scope = String(req.query.scope || 'global');
 
-    // If Firestore isn't available for any reason, return safe zeroed metrics
     if (!db) {
       console.warn('[Metrics] Firestore not initialized - returning zeroed metrics');
       const result = {};
+      const endDate = new Date();
       for (let i = 0; i < days; i++) {
         const d = new Date(endDate);
         d.setDate(d.getDate() - i);
@@ -824,35 +852,56 @@ app.get('/api/metrics/api-calls', async (req, res) => {
       return res.json({ errno: 0, result });
     }
 
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days + 1);
+    const endDate = new Date();
 
-    const metricsSnapshot = await db.collection('users').doc(userId)
-      .collection('metrics')
-      .orderBy(admin.firestore.FieldPath.documentId(), 'desc')
-      .limit(days)
-      .get();
+    if (scope === 'user') {
+      const userId = req.user?.uid;
+      if (!userId) return res.status(401).json({ errno: 401, error: 'Unauthorized: user scope requested' });
 
-    console.log(`[Metrics] Found ${metricsSnapshot.size} documents for user ${userId}`);
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days + 1);
 
+      const metricsSnapshot = await db.collection('users').doc(userId)
+        .collection('metrics')
+        .orderBy(admin.firestore.FieldPath.documentId(), 'desc')
+        .limit(days)
+        .get();
+
+      const result = {};
+      metricsSnapshot.forEach(doc => {
+        const d = doc.data() || {};
+        result[doc.id] = {
+          foxess: Number(d.foxess || 0),
+          amber: Number(d.amber || 0),
+          weather: Number(d.weather || 0)
+        };
+      });
+
+      // Fill in missing days with zeros
+      for (let i = 0; i < days; i++) {
+        const d = new Date(endDate);
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().split('T')[0];
+        if (!result[key]) result[key] = { foxess: 0, amber: 0, weather: 0 };
+      }
+
+      return res.json({ errno: 0, result });
+    }
+
+    // Global scope: read top-level `metrics` collection for each date
     const result = {};
-    metricsSnapshot.forEach(doc => {
-      const d = doc.data() || {};
-      result[doc.id] = {
-        foxess: Number(d.foxess || 0),
-        amber: Number(d.amber || 0),
-        weather: Number(d.weather || 0)
-      };
-    });
-
-    // Fill in missing days with zeros
     for (let i = 0; i < days; i++) {
       const d = new Date(endDate);
       d.setDate(d.getDate() - i);
       const key = d.toISOString().split('T')[0];
-      if (!result[key]) {
-        result[key] = { foxess: 0, amber: 0, weather: 0 };
-      }
+
+      const doc = await db.collection('metrics').doc(key).get();
+      const data = doc.exists ? doc.data() : null;
+      result[key] = {
+        foxess: Number(data?.foxess || 0),
+        amber: Number(data?.amber || 0),
+        weather: Number(data?.weather || 0)
+      };
     }
 
     res.json({ errno: 0, result });
