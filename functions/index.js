@@ -231,6 +231,40 @@ app.get('/api/config/setup-status', async (req, res) => {
   }
 });
 
+// Amber sites (allow unauthenticated calls - return empty list when no user)
+app.get('/api/amber/sites', async (req, res) => {
+  try {
+    // Attach optional user if provided, but don't require auth
+    await tryAttachUser(req);
+    const userId = req.user?.uid;
+    console.log(`[Amber] /sites request (pre-auth-middleware) from user: ${userId}`);
+
+    if (!userId) {
+      // No user signed in - safe empty response for UI
+      return res.json({ errno: 0, result: [] });
+    }
+
+    const userConfig = await getUserConfig(userId);
+    console.log(`[Amber] User config (pre-auth) for ${userId}:`, userConfig ? 'found' : 'not found', userConfig?.amberApiKey ? '(has key)' : '(no key)');
+
+    if (!userConfig || !userConfig.amberApiKey) {
+      return res.json({ errno: 0, result: [] });
+    }
+
+    // Increment user-specific count (if available) and call Amber
+    incrementApiCount(userId, 'amber').catch(err => console.warn('[Amber] Failed to log API call (pre-auth):', err.message));
+    const result = await callAmberAPI('/sites', {}, userConfig, userId);
+
+    if (result && result.data && Array.isArray(result.data)) return res.json({ errno: 0, result: result.data });
+    if (result && result.sites && Array.isArray(result.sites)) return res.json({ errno: 0, result: result.sites });
+    if (Array.isArray(result)) return res.json({ errno: 0, result });
+    return res.json({ errno: 0, result: [] });
+  } catch (e) {
+    console.error('[Amber] Pre-auth /sites error:', e && e.message ? e.message : e);
+    return res.json({ errno: 0, result: [] });
+  }
+});
+
 // Apply auth middleware to remaining API routes
 app.use('/api', authenticateUser);
 
@@ -664,58 +698,7 @@ app.get('/api/inverter/real-time', async (req, res) => {
   }
 });
 
-// Amber endpoints
-app.get('/api/amber/sites', async (req, res) => {
-  try {
-    const userId = req.user?.uid;
-    console.log(`[Amber] /sites request from user: ${userId}`);
-    
-    if (!userId) {
-      // Prefer to return an empty list (safe JSON) when the caller is not yet
-      // authenticated instead of returning a 401 HTML response which breaks the UI
-      // when the frontend fires this request before auth completes.
-      console.log('[Amber] /sites request without user - returning empty list');
-      return res.json({ errno: 0, result: [] });
-    }
-    
-    const userConfig = await getUserConfig(userId);
-    console.log(`[Amber] User config retrieved for ${userId}:`, userConfig ? 'found' : 'not found', userConfig?.amberApiKey ? '(has key)' : '(no key)');
-    
-    if (!userConfig || !userConfig.amberApiKey) {
-      console.log(`[Amber] No Amber API key configured for user ${userId}, returning empty list`);
-      return res.json({ errno: 0, result: [] });
-    }
-    
-    // Increment API call count even before checking response
-    incrementApiCount(userId, 'amber').catch(err => console.warn('[Amber] Failed to log API call:', err.message));
-    
-    const result = await callAmberAPI('/sites', {}, userConfig, userId);
-    console.log(`[Amber] API response for ${userId}:`, result?.errno, result?.data ? 'has data' : result?.sites ? 'has sites' : 'no recognized format');
-    
-    // Extract sites array from Amber API response
-    if (result && result.data && Array.isArray(result.data)) {
-      console.log(`[Amber] Returning ${result.data.length} sites from result.data`);
-      return res.json({ errno: 0, result: result.data });
-    } else if (result && result.sites && Array.isArray(result.sites)) {
-      console.log(`[Amber] Returning ${result.sites.length} sites from result.sites`);
-      return res.json({ errno: 0, result: result.sites });
-    } else if (result && result.errno && result.errno !== 0) {
-      // Amber API error
-      console.warn(`[Amber] API error for ${userId}:`, result.error);
-      return res.json({ errno: result.errno, error: result.error || 'Amber API error', result: [] });
-    }
-    // Fallback: return whole result as array if it's an array
-    if (Array.isArray(result)) {
-      console.log(`[Amber] Returning result as array (${result.length} items)`);
-      return res.json({ errno: 0, result });
-    }
-    console.log(`[Amber] Unrecognized response format:`, typeof result);
-    res.json({ errno: 0, result: [] });
-  } catch (error) {
-    console.error('[Amber] Error fetching sites:', error.message, error.stack);
-    res.json({ errno: 0, result: [] });
-  }
-});
+// (Amber sites handler moved earlier to allow unauthenticated callers)
 
 app.get('/api/amber/prices', async (req, res) => {
   try {
