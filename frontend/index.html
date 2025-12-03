@@ -3203,11 +3203,22 @@
             
             try {
                 const resp = await authenticatedFetch('/api/amber/sites');
-                const data = await resp.json();
-                if (Array.isArray(data) && data.length > 0) {
-                    amberSites = data;
-                    select.innerHTML = data.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
-                    card.innerHTML = `<div style="color:#7ee787">✓ ${data.length} site(s) found</div>`;
+                const json = await resp.json();
+                
+                // Extract sites array from response
+                let sites = [];
+                if (Array.isArray(json)) {
+                    sites = json;
+                } else if (json && json.result) {
+                    sites = Array.isArray(json.result) ? json.result : [];
+                } else if (json && json.sites) {
+                    sites = json.sites;
+                }
+                
+                if (sites.length > 0) {
+                    amberSites = sites;
+                    select.innerHTML = sites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
+                    card.innerHTML = `<div style="color:#7ee787">✓ ${sites.length} site(s) found</div>`;
                     // Auto-fetch current prices
                     setTimeout(getAmberCurrent, 500);
                 } else {
@@ -3215,6 +3226,7 @@
                     card.innerHTML = `<div style="color:#d29922">No sites found</div>`;
                 }
             } catch (e) {
+                console.error('[Amber] Error loading sites:', e);
                 select.innerHTML = '<option value="">Error</option>';
                 card.innerHTML = `<div style="color:#f85149">Error: ${e.message}</div>`;
             }
@@ -4480,6 +4492,14 @@
                 if (!lastUpdateTicker) lastUpdateTicker = setInterval(updateLastUpdateDisplays, 1000);
             } catch (e) { console.warn('Weather refresh timer failed:', e); }
 
+            // API call metrics: every 30 seconds
+            try {
+                if (window.metricsRefreshTimer) clearInterval(window.metricsRefreshTimer);
+                window.metricsRefreshTimer = setInterval(() => {
+                    loadApiMetrics(1);
+                }, 30000);
+            } catch (e) { console.warn('Metrics refresh timer failed:', e); }
+
             // Backend automation status: refresh every 10 seconds
             try {
                 if (window.automationStatusRefreshTimer) clearInterval(window.automationStatusRefreshTimer);
@@ -5628,18 +5648,34 @@
         async function loadApiMetrics(days = 1) {
             try {
                 const resp = await authenticatedFetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+                if (!resp.ok) {
+                    console.warn('[Metrics] HTTP error:', resp.status);
+                    return;
+                }
                 const data = await resp.json();
-                if (!data || data.errno !== 0 || !data.result) return;
+                if (!data || data.errno !== 0 || !data.result) {
+                    console.warn('[Metrics] Invalid response:', data);
+                    return;
+                }
                 const keys = Object.keys(data.result).sort().reverse();
+                if (keys.length === 0) {
+                    console.warn('[Metrics] No data for days:', days);
+                    return;
+                }
                 const todayKey = keys[0];
                 const today = data.result[todayKey] || {};
 
-                document.getElementById('metricsDate').textContent = formatDate(new Date(todayKey), false);
-                document.getElementById('countFox').textContent = today.foxess ?? 0;
-                document.getElementById('countAmber').textContent = today.amber ?? 0;
-                document.getElementById('countWeather').textContent = today.weather ?? 0;
+                const dateEl = document.getElementById('metricsDate');
+                const foxEl = document.getElementById('countFox');
+                const amberEl = document.getElementById('countAmber');
+                const weatherEl = document.getElementById('countWeather');
+                
+                if (dateEl) dateEl.textContent = formatDate(new Date(todayKey), false);
+                if (foxEl) foxEl.textContent = today.foxess ?? 0;
+                if (amberEl) amberEl.textContent = today.amber ?? 0;
+                if (weatherEl) weatherEl.textContent = today.weather ?? 0;
             } catch (e) {
-                console.warn('Failed to load api metrics', e.message);
+                console.warn('[Metrics] Failed to load api metrics:', e.message);
             }
         }
 

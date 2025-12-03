@@ -515,10 +515,15 @@ async function addHistoryEntry(userId, entry) {
 // Get user config
 app.get('/api/config', async (req, res) => {
   try {
+    if (!req.user || !req.user.uid) {
+      return res.status(401).json({ errno: 401, error: 'Unauthorized' });
+    }
     const config = await getUserConfig(req.user.uid);
     res.json({ errno: 0, result: config || {} });
   } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
+    console.error('[Config] Error getting user config:', error.message);
+    // Return safe empty config instead of 500 error
+    res.json({ errno: 0, result: {} });
   }
 });
 
@@ -651,7 +656,7 @@ app.get('/api/inverter/real-time', async (req, res) => {
     
     const result = await callFoxESSAPI('/op/v0/device/real/query', 'POST', {
       sn,
-      variables: ['generationPower', 'pvPower', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'batTemperature', 'ambientTemperation']
+      variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
     }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
@@ -662,17 +667,58 @@ app.get('/api/inverter/real-time', async (req, res) => {
 // Amber endpoints
 app.get('/api/amber/sites', async (req, res) => {
   try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const result = await callAmberAPI('/sites', {}, userConfig, req.user.uid);
-    res.json(result);
+    const userId = req.user?.uid;
+    console.log(`[Amber] /sites request from user: ${userId}`);
+    
+    if (!userId) {
+      return res.status(401).json({ errno: 401, error: 'Not authenticated' });
+    }
+    
+    const userConfig = await getUserConfig(userId);
+    console.log(`[Amber] User config retrieved for ${userId}:`, userConfig ? 'found' : 'not found', userConfig?.amberApiKey ? '(has key)' : '(no key)');
+    
+    if (!userConfig || !userConfig.amberApiKey) {
+      console.log(`[Amber] No Amber API key configured for user ${userId}, returning empty list`);
+      return res.json({ errno: 0, result: [] });
+    }
+    
+    // Increment API call count even before checking response
+    incrementApiCount(userId, 'amber').catch(err => console.warn('[Amber] Failed to log API call:', err.message));
+    
+    const result = await callAmberAPI('/sites', {}, userConfig, userId);
+    console.log(`[Amber] API response for ${userId}:`, result?.errno, result?.data ? 'has data' : result?.sites ? 'has sites' : 'no recognized format');
+    
+    // Extract sites array from Amber API response
+    if (result && result.data && Array.isArray(result.data)) {
+      console.log(`[Amber] Returning ${result.data.length} sites from result.data`);
+      return res.json({ errno: 0, result: result.data });
+    } else if (result && result.sites && Array.isArray(result.sites)) {
+      console.log(`[Amber] Returning ${result.sites.length} sites from result.sites`);
+      return res.json({ errno: 0, result: result.sites });
+    } else if (result && result.errno && result.errno !== 0) {
+      // Amber API error
+      console.warn(`[Amber] API error for ${userId}:`, result.error);
+      return res.json({ errno: result.errno, error: result.error || 'Amber API error', result: [] });
+    }
+    // Fallback: return whole result as array if it's an array
+    if (Array.isArray(result)) {
+      console.log(`[Amber] Returning result as array (${result.length} items)`);
+      return res.json({ errno: 0, result });
+    }
+    console.log(`[Amber] Unrecognized response format:`, typeof result);
+    res.json({ errno: 0, result: [] });
   } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
+    console.error('[Amber] Error fetching sites:', error.message, error.stack);
+    res.json({ errno: 0, result: [] });
   }
 });
 
 app.get('/api/amber/prices', async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
+    if (!userConfig || !userConfig.amberApiKey) {
+      return res.status(400).json({ errno: 400, error: 'Amber not configured' });
+    }
     const siteId = req.query.siteId;
     
     if (!siteId) {
@@ -682,6 +728,7 @@ app.get('/api/amber/prices', async (req, res) => {
     const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 1 }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
+    console.warn('[Amber] Error fetching prices:', error.message);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
@@ -758,6 +805,9 @@ async function incrementApiCount(userId, apiType) {
  */
 app.get('/api/metrics/api-calls', async (req, res) => {
   try {
+    const userId = req.user?.uid;
+    console.log(`[Metrics] Request from user: ${userId}`);
+    
     const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
     const endDate = new Date();
 
@@ -777,11 +827,13 @@ app.get('/api/metrics/api-calls', async (req, res) => {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days + 1);
 
-    const metricsSnapshot = await db.collection('users').doc(req.user.uid)
+    const metricsSnapshot = await db.collection('users').doc(userId)
       .collection('metrics')
       .orderBy(admin.firestore.FieldPath.documentId(), 'desc')
       .limit(days)
       .get();
+
+    console.log(`[Metrics] Found ${metricsSnapshot.size} documents for user ${userId}`);
 
     const result = {};
     metricsSnapshot.forEach(doc => {
