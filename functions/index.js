@@ -265,6 +265,92 @@ app.get('/api/amber/sites', async (req, res) => {
   }
 });
 
+// Metrics (platform global or per-user). Allow unauthenticated callers to read global metrics by default.
+app.get('/api/metrics/api-calls', async (req, res) => {
+  try {
+    // Attach optional user (don't require auth globally here)
+    await tryAttachUser(req);
+
+    const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
+    const scope = String(req.query.scope || 'global');
+
+    if (!db) {
+      console.warn('[Metrics] Firestore not initialized - returning zeroed metrics');
+      const result = {};
+      const endDate = new Date();
+      for (let i = 0; i < days; i++) {
+        const d = new Date(endDate);
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().split('T')[0];
+        result[key] = { foxess: 0, amber: 0, weather: 0 };
+      }
+      return res.json({ errno: 0, result });
+    }
+
+    const endDate = new Date();
+
+    if (scope === 'user') {
+      const userId = req.user?.uid;
+      if (!userId) return res.status(401).json({ errno: 401, error: 'Unauthorized: user scope requested' });
+
+      const metricsSnapshot = await db.collection('users').doc(userId)
+        .collection('metrics')
+        .orderBy(admin.firestore.FieldPath.documentId(), 'desc')
+        .limit(days)
+        .get();
+
+      const result = {};
+      metricsSnapshot.forEach(doc => {
+        const d = doc.data() || {};
+        result[doc.id] = {
+          foxess: Number(d.foxess || 0),
+          amber: Number(d.amber || 0),
+          weather: Number(d.weather || 0)
+        };
+      });
+
+      // Fill in missing days with zeros
+      for (let i = 0; i < days; i++) {
+        const d = new Date(endDate);
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().split('T')[0];
+        if (!result[key]) result[key] = { foxess: 0, amber: 0, weather: 0 };
+      }
+
+      return res.json({ errno: 0, result });
+    }
+
+    // Global scope: read top-level `metrics` collection for each date
+    const result = {};
+    for (let i = 0; i < days; i++) {
+      const d = new Date(endDate);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+
+      const doc = await db.collection('metrics').doc(key).get();
+      const data = doc.exists ? doc.data() : null;
+      result[key] = {
+        foxess: Number(data?.foxess || 0),
+        amber: Number(data?.amber || 0),
+        weather: Number(data?.weather || 0)
+      };
+    }
+
+    res.json({ errno: 0, result });
+  } catch (error) {
+    console.error('[Metrics] Error in /api/metrics/api-calls (pre-auth):', error && error.message);
+    const result = {};
+    const endDate = new Date();
+    for (let i = 0; i < days; i++) {
+      const d = new Date(endDate);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      result[key] = { foxess: 0, amber: 0, weather: 0 };
+    }
+    return res.json({ errno: 0, result });
+  }
+});
+
 // Apply auth middleware to remaining API routes
 app.use('/api', authenticateUser);
 
@@ -817,102 +903,7 @@ async function incrementGlobalApiCount(apiType) {
   }
 }
 
-/**
- * Get API call metrics for a user
- */
-app.get('/api/metrics/api-calls', async (req, res) => {
-  try {
-    // By default, return platform-wide (global) aggregated metrics which mirrors
-    // the previous backend implementation that used a single file `api_call_counts.json`.
-    // If caller specifically requests `scope=user` and is authenticated, return per-user metrics.
-    const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
-    const scope = String(req.query.scope || 'global');
 
-    if (!db) {
-      console.warn('[Metrics] Firestore not initialized - returning zeroed metrics');
-      const result = {};
-      const endDate = new Date();
-      for (let i = 0; i < days; i++) {
-        const d = new Date(endDate);
-        d.setDate(d.getDate() - i);
-        const key = d.toISOString().split('T')[0];
-        result[key] = { foxess: 0, amber: 0, weather: 0 };
-      }
-      return res.json({ errno: 0, result });
-    }
-
-    const endDate = new Date();
-
-    if (scope === 'user') {
-      const userId = req.user?.uid;
-      if (!userId) return res.status(401).json({ errno: 401, error: 'Unauthorized: user scope requested' });
-
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days + 1);
-
-      const metricsSnapshot = await db.collection('users').doc(userId)
-        .collection('metrics')
-        .orderBy(admin.firestore.FieldPath.documentId(), 'desc')
-        .limit(days)
-        .get();
-
-      const result = {};
-      metricsSnapshot.forEach(doc => {
-        const d = doc.data() || {};
-        result[doc.id] = {
-          foxess: Number(d.foxess || 0),
-          amber: Number(d.amber || 0),
-          weather: Number(d.weather || 0)
-        };
-      });
-
-      // Fill in missing days with zeros
-      for (let i = 0; i < days; i++) {
-        const d = new Date(endDate);
-        d.setDate(d.getDate() - i);
-        const key = d.toISOString().split('T')[0];
-        if (!result[key]) result[key] = { foxess: 0, amber: 0, weather: 0 };
-      }
-
-      return res.json({ errno: 0, result });
-    }
-
-    // Global scope: read top-level `metrics` collection for each date
-    const result = {};
-    for (let i = 0; i < days; i++) {
-      const d = new Date(endDate);
-      d.setDate(d.getDate() - i);
-      const key = d.toISOString().split('T')[0];
-
-      const doc = await db.collection('metrics').doc(key).get();
-      const data = doc.exists ? doc.data() : null;
-      result[key] = {
-        foxess: Number(data?.foxess || 0),
-        amber: Number(data?.amber || 0),
-        weather: Number(data?.weather || 0)
-      };
-    }
-
-    res.json({ errno: 0, result });
-  } catch (error) {
-    console.error('[Metrics] Error in /api/metrics/api-calls:', error && error.message);
-    // Respond with safe zeroed metrics instead of 500 where possible
-    try {
-      const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
-      const endDate = new Date();
-      const result = {};
-      for (let i = 0; i < days; i++) {
-        const d = new Date(endDate);
-        d.setDate(d.getDate() - i);
-        const key = d.toISOString().split('T')[0];
-        result[key] = { foxess: 0, amber: 0, weather: 0 };
-      }
-      return res.json({ errno: 0, result });
-    } catch (e) {
-      return res.status(500).json({ errno: 500, error: error.message });
-    }
-  }
-});
 
 // ==================== EXPORT EXPRESS APP AS CLOUD FUNCTION ====================
 // Use the broadly-compatible onRequest export to avoid depending on newer SDK features
