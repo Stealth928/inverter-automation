@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Automation Testing - Dry Run Mode</title>
     <link rel="stylesheet" href="css/shared-styles.css" />
+    <script src="js/firebase-config.js"></script>
+    <script src="js/firebase-auth.js"></script>
+    <script src="js/api-client.js"></script>
     <style>
         /* Page-specific styles */
         body {
@@ -580,40 +583,15 @@
     </div>
 
     <script>
+        // Initialize API Client
+        const apiClient = initAPIClient(firebaseAuth);
+
         /**
          * Helper function to make authenticated API calls.
-         * Uses firebaseAuth.fetchWithAuth to include the Authorization header.
+         * Uses apiClient.fetch to include the Authorization header and normalize responses.
          */
-        async function normalizeFetchResponse(resp) {
-            try {
-                const ct = resp.headers && resp.headers.get ? (resp.headers.get('content-type') || '') : '';
-                if (resp.status === 401) return new Response(JSON.stringify({ errno: 401, error: 'Not authenticated' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-                if (ct.indexOf('application/json') === -1) {
-                    const text = await resp.text();
-                    if (!text || text.trim() === '') return new Response(JSON.stringify({ errno: resp.status || 500, error: resp.statusText || 'Empty response' }), { status: resp.status || 500, headers: { 'Content-Type': 'application/json' } });
-                    try { JSON.parse(text); return new Response(text, { status: resp.status, headers: { 'Content-Type': 'application/json' } }); } catch (e) { return new Response(JSON.stringify({ errno: resp.status || 500, error: 'Non-JSON response', raw: text.substring(0, 1000) }), { status: resp.status || 500, headers: { 'Content-Type': 'application/json' } }); }
-                }
-                return resp;
-            } catch (e) {
-                return new Response(JSON.stringify({ errno: 500, error: 'Response normalization failed', detail: String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-            }
-        }
-
         async function authenticatedFetch(url, options = {}) {
-            if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn && firebaseAuth.isSignedIn()) {
-                try {
-                    const r = await firebaseAuth.fetchWithAuth(url, options);
-                    return await normalizeFetchResponse(r);
-                } catch (e) {
-                    console.warn('authenticatedFetch: fetchWithAuth failed, falling back to plain fetch for', url, '-', e && e.message ? e.message : e);
-                }
-            }
-            try {
-                const r = await fetch(url, options);
-                return await normalizeFetchResponse(r);
-            } catch (e) {
-                return new Response(JSON.stringify({ errno: 500, error: String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-            }
+            return apiClient.fetch(url, options);
         }
 
         // FAQ toggle

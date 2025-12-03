@@ -291,6 +291,35 @@ app.get('/api/amber/prices/current', async (req, res) => {
   }
 });
 
+// Amber prices (standard endpoint) - Allow unauthenticated access (returns empty if no user)
+app.get('/api/amber/prices', async (req, res) => {
+  try {
+    await tryAttachUser(req);
+    const userId = req.user?.uid;
+    
+    if (!userId) {
+      // No user signed in - safe empty response for UI
+      return res.json({ errno: 0, result: [] });
+    }
+
+    const userConfig = await getUserConfig(userId);
+    if (!userConfig || !userConfig.amberApiKey) {
+      return res.status(400).json({ errno: 400, error: 'Amber not configured', result: [] });
+    }
+    const siteId = req.query.siteId;
+    
+    if (!siteId) {
+      return res.status(400).json({ errno: 400, error: 'Site ID is required' });
+    }
+    
+    const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 1 }, userConfig, userId);
+    res.json(result);
+  } catch (error) {
+    console.warn('[Amber] Error fetching prices:', error.message);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // Metrics (platform global or per-user). Allow unauthenticated callers to read global metrics by default.
 app.get('/api/metrics/api-calls', async (req, res) => {
   try {
@@ -811,28 +840,7 @@ app.get('/api/inverter/real-time', async (req, res) => {
 });
 
 // (Amber sites handler moved earlier to allow unauthenticated callers)
-
-app.get('/api/amber/prices', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    if (!userConfig || !userConfig.amberApiKey) {
-      // If user isn't configured for Amber yet, return a safe JSON error so
-      // the frontend can display a clear message instead of receiving an HTML response.
-      return res.status(400).json({ errno: 400, error: 'Amber not configured', result: [] });
-    }
-    const siteId = req.query.siteId;
-    
-    if (!siteId) {
-      return res.status(400).json({ errno: 400, error: 'Site ID is required' });
-    }
-    
-    const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 1 }, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.warn('[Amber] Error fetching prices:', error.message);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
+// (Amber prices handler moved earlier to allow unauthenticated callers)
 
 // Weather endpoint
 app.get('/api/weather', async (req, res) => {
@@ -902,13 +910,14 @@ async function incrementApiCount(userId, apiType) {
       console.error('Error incrementing API count:', error);
     }
   }
-    // Also maintain an aggregated global daily metric so the UI (and non-authenticated callers)
-    // can show platform-level API usage (mirrors backend `api_call_counts.json`).
-    try {
-      await incrementGlobalApiCount(apiType);
-    } catch (e) {
-      console.error('[Metrics] incrementGlobalApiCount error:', e && e.message ? e.message : e);
-    }
+  
+  // Also maintain an aggregated global daily metric so the UI (and non-authenticated callers)
+  // can show platform-level API usage (mirrors backend `api_call_counts.json`).
+  try {
+    await incrementGlobalApiCount(apiType);
+  } catch (e) {
+    console.error('[Metrics] incrementGlobalApiCount error:', e && e.message ? e.message : e);
+  }
 }
 
 /**
@@ -930,6 +939,12 @@ async function incrementGlobalApiCount(apiType) {
 }
 
 
+
+// ==================== 404 HANDLER ====================
+// Catch-all for undefined routes to prevent HTML responses
+app.use((req, res) => {
+  res.status(404).json({ errno: 404, error: 'Endpoint not found' });
+});
 
 // ==================== EXPORT EXPRESS APP AS CLOUD FUNCTION ====================
 // Use the broadly-compatible onRequest export to avoid depending on newer SDK features

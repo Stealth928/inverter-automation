@@ -22,7 +22,22 @@ try {
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// Capture raw request body (for debugging) and provide a more helpful error when JSON parsing fails
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf && buf.toString ? buf.toString() : '';
+  }
+}));
+
+// JSON parse error handler - return structured JSON instead of generic 500
+app.use((err, req, res, next) => {
+  if (err && err.type === 'entity.parse.failed') {
+    console.error('[API] Invalid JSON body:', err.message, 'rawBody=', req.rawBody && req.rawBody.slice ? req.rawBody.slice(0, 1000) : req.rawBody);
+    return res.status(400).json({ errno: 400, error: 'Invalid JSON body', raw: req.rawBody && req.rawBody.slice ? req.rawBody.slice(0, 1000) : req.rawBody });
+  }
+  next(err);
+});
+
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 let FOXESS_TOKEN = process.env.FOXESS_TOKEN;
@@ -3579,6 +3594,14 @@ app.get('/api/meter/list', async (req, res) => {
 // Serve frontend
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/index.html'));
+});
+
+// Catch-all for undefined API routes to prevent HTML responses
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ errno: 404, error: 'Endpoint not found' });
+  }
+  next();
 });
 
 // Catch unhandled promise rejections

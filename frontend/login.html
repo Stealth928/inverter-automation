@@ -512,17 +512,21 @@
 
     <script src="js/firebase-config.js"></script>
     <script src="js/firebase-auth.js"></script>
+    <script src="js/api-client.js"></script>
     <script>
         // Initialize Firebase
         document.addEventListener('DOMContentLoaded', async () => {
             await firebaseAuth.init(firebaseConfig);
+            
+            // Initialize API Client (updates global apiClient)
+            initAPIClient(firebaseAuth);
 
             // Check if already signed in
             firebaseAuth.onAuthStateChanged(async (user) => {
                 if (user) {
                     // Check if setup is complete before redirecting to dashboard
                     try {
-                        const response = await firebaseAuth.fetchWithAuth('/api/config/setup-status');
+                        const response = await apiClient.fetch('/api/config/setup-status');
                         const data = await response.json();
                         if (data.errno === 0 && data.result?.setupComplete) {
                             window.location.href = '/index.html';
@@ -632,7 +636,44 @@
             } else {
                 // Initialize user profile in Firestore
                 try {
-                  const initResp = await firebaseAuth.fetchWithAuth('/api/auth/init-user', { method: 'POST' });
+                  // Use apiClient (it will be available in scope because it's initialized in DOMContentLoaded, 
+                  // but wait, this event listener is outside DOMContentLoaded scope? No, it's inside the script tag but outside the event listener.
+                  // Ah, apiClient is defined inside DOMContentLoaded. I need to make it global or accessible.)
+                  
+                  // Let's check where I defined apiClient in the previous edit.
+                  // It was const apiClient = ... inside DOMContentLoaded. That's not good for these event listeners.
+                  
+                  // I should fix the scope of apiClient.
+                  
+                  // Actually, initAPIClient returns the singleton instance, and also sets the global variable if I look at api-client.js:
+                  // let apiClient = null;
+                  // function initAPIClient(firebaseAuth) { apiClient = new APIClient(firebaseAuth); return apiClient; }
+                  // So calling initAPIClient sets the module-level variable, but that variable is not exported to window unless I did so.
+                  // In api-client.js:
+                  // if (typeof module !== 'undefined' && module.exports) { ... }
+                  // It doesn't seem to attach to window explicitly, but since it's a script tag, top-level vars are global.
+                  // Wait, `let apiClient = null` is at the top level of api-client.js.
+                  // So `apiClient` (the variable) should be available globally.
+                  
+                  // However, inside `login.html`, I did `const apiClient = initAPIClient(firebaseAuth);` inside the callback.
+                  // This shadows the global `apiClient` (if it exists) or defines a local one.
+                  
+                  // I should rely on the global `apiClient` variable from `api-client.js` if possible, or just use `initAPIClient(firebaseAuth)` again which returns the singleton.
+                  
+                  // Let's look at `api-client.js` again.
+                  // `let apiClient = null;` is at the top level.
+                  // `function initAPIClient(...)` sets that variable.
+                  
+                  // So if I call `initAPIClient` once, `apiClient` global var is set.
+                  
+                  // In `login.html`, I should just call `initAPIClient(firebaseAuth)` in DOMContentLoaded and not assign it to a local const if I want to use the global one.
+                  // Or better, just use `initAPIClient(firebaseAuth)` everywhere I need it, as it's a singleton-ish factory.
+                  
+                  // But `apiClient` variable is what I want to use.
+                  
+                  // Let's fix the previous edit to `login.html` to not use `const apiClient`.
+                  
+                  const initResp = await apiClient.fetch('/api/auth/init-user', { method: 'POST' });
                   if (!initResp.ok) {
                     console.warn('Failed to initialize user profile, but account was created');
                   }

@@ -81,14 +81,37 @@ function showInfo(message, duration = 5000) {
  */
 async function loadApiMetrics(days = 1) {
     try {
-        // Use authenticated fetch if firebaseAuth is available
+        // Use apiClient if available, otherwise fallback
         let resp;
-        if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn()) {
+        if (typeof apiClient !== 'undefined' && apiClient) {
+            resp = await apiClient.fetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+        } else if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn()) {
             resp = await firebaseAuth.fetchWithAuth(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
         } else {
             resp = await fetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
         }
-        const data = await resp.json();
+        
+        // Handle response using normalizeFetchResponse logic if available, or manual check
+        let data;
+        if (typeof normalizeFetchResponse === 'function') {
+             // If we have the helper (from api-client.js or inline), use it? 
+             // Actually api-client.js is not imported here.
+             // But apiClient.fetch returns a Response object that might be normalized if it came from apiClient.
+             // If it came from fetchWithAuth, it's raw.
+        }
+        
+        // Just try to parse JSON
+        const contentType = resp.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+             data = await resp.json();
+        } else {
+             // If not JSON, it might be an error page
+             const text = await resp.text();
+             try { data = JSON.parse(text); } catch(e) { 
+                 console.warn('Metrics API returned non-JSON:', text.substring(0, 100));
+                 return; 
+             }
+        }
         
         if (!data || data.errno !== 0 || !data.result) return;
         

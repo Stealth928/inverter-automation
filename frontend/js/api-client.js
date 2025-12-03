@@ -4,6 +4,39 @@
  * Handles all API calls with Firebase authentication
  */
 
+/**
+ * Helper to safely parse fetch responses that might be HTML error pages (404/500)
+ * instead of the expected JSON.
+ */
+async function normalizeFetchResponse(response) {
+  const contentType = response.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    try {
+      return await response.json();
+    } catch (e) {
+      console.warn('[API] JSON parse failed, falling back to text:', e);
+    }
+  }
+  
+  // If we get here, it's not JSON or parsing failed.
+  // It might be an HTML error page from Firebase Hosting or Express.
+  const text = await response.text();
+  
+  // If status is OK but we got text/html, that's unexpected for an API
+  if (response.ok) {
+    console.warn('[API] Received non-JSON response 200 OK:', text.substring(0, 100));
+    // Return a safe empty object or error structure
+    return { errno: -1, error: 'Invalid API response format', raw: text.substring(0, 500) };
+  }
+
+  // For error status codes, return a structured error
+  return { 
+    errno: response.status, 
+    error: `Request failed: ${response.status} ${response.statusText}`,
+    details: text.substring(0, 200) // truncated body
+  };
+}
+
 class APIClient {
   constructor(firebaseAuth) {
     this.auth = firebaseAuth;
@@ -21,7 +54,15 @@ class APIClient {
    * Make authenticated API request
    */
   async request(endpoint, options = {}) {
-    const token = await this.auth.getIdToken();
+    // Get token if user is signed in
+    let token = null;
+    if (this.auth && typeof this.auth.getIdToken === 'function') {
+      try {
+        token = await this.auth.getIdToken();
+      } catch (e) {
+        console.warn('[API] Failed to get ID token:', e);
+      }
+    }
     
     const headers = {
       'Content-Type': 'application/json',
@@ -44,15 +85,77 @@ class APIClient {
       // Handle 401 - redirect to login
       if (response.status === 401) {
         console.warn('[API] Unauthorized - redirecting to login');
-        window.location.href = '/login.html';
+        // Check if we are already on login page to avoid loop
+        if (!window.location.pathname.includes('login.html')) {
+             window.location.href = '/login.html';
+        }
         return { errno: 401, error: 'Unauthorized' };
       }
 
-      const data = await response.json();
-      return data;
+      return await normalizeFetchResponse(response);
     } catch (error) {
       console.error('[API] Request failed:', error);
       return { errno: 500, error: error.message };
+    }
+  }
+
+  /**
+   * Raw authenticated fetch that returns a Response object.
+   * Useful for legacy code expecting a fetch-like API.
+   */
+  async fetch(endpoint, options = {}) {
+    let token = null;
+    if (this.auth && typeof this.auth.getIdToken === 'function') {
+      try {
+        token = await this.auth.getIdToken();
+      } catch (e) {
+        console.warn('[API] Failed to get ID token:', e);
+      }
+    }
+    
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const url = endpoint.startsWith('http') ? endpoint : `${this.baseUrl}${endpoint}`;
+    
+    try {
+      const response = await fetch(url, { ...options, headers });
+      
+      // Handle 401
+      if (response.status === 401) {
+         if (!window.location.pathname.includes('login.html')) {
+             window.location.href = '/login.html';
+         }
+         // Return a safe 401 response
+         return new Response(JSON.stringify({ errno: 401, error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // Normalize
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return response;
+      }
+      
+      // If not JSON, wrap it
+      const text = await response.text();
+      return new Response(JSON.stringify({ 
+        errno: response.ok ? 0 : response.status, 
+        error: response.ok ? null : `Request failed: ${response.status}`,
+        result: null, // or try to parse text if it's actually JSON
+        raw: text.substring(0, 1000)
+      }), { 
+        status: response.status, 
+        headers: { 'Content-Type': 'application/json' } 
+      });
+
+    } catch (error) {
+      return new Response(JSON.stringify({ errno: 500, error: error.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
   }
 

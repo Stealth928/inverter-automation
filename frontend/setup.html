@@ -592,31 +592,14 @@
 
     <script src="js/firebase-config.js"></script>
     <script src="js/firebase-auth.js"></script>
+    <script src="js/api-client.js"></script>
     <script>
-        // Call setup endpoints while attaching an ID token when available
-        async function callSetupApi(path, options = {}) {
-            const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-            const token = await firebaseAuth.getIdToken();
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
-
-            const response = await fetch(path, { ...options, headers });
-            const text = await response.text();
-            let data;
-
-            try {
-                data = text ? JSON.parse(text) : {};
-            } catch (error) {
-                throw new Error(`Unexpected response (${response.status}): ${text.slice(0, 120)}`);
-            }
-
-            return { response, data };
-        }
-
         // Initialize Firebase auth
         document.addEventListener('DOMContentLoaded', async () => {
             await firebaseAuth.init(firebaseConfig);
+            
+            // Initialize API Client (updates global apiClient)
+            initAPIClient(firebaseAuth);
 
             // Redirect to login if not authenticated
             firebaseAuth.onAuthStateChanged(async (user) => {
@@ -626,7 +609,8 @@
                 }
 
                 try {
-                    const { data } = await callSetupApi('/api/config/setup-status');
+                    const response = await apiClient.fetch('/api/config/setup-status');
+                    const data = await response.json();
                     if (data?.result?.setupComplete) {
                         window.location.href = '/index.html';
                     }
@@ -685,7 +669,7 @@
             submitBtn.innerHTML = '<div class="spinner"></div><span>Validating...</span>';
 
             try {
-                const { response, data } = await callSetupApi('/api/config/validate-keys', {
+                const response = await apiClient.fetch('/api/config/validate-keys', {
                     method: 'POST',
                     body: JSON.stringify({
                         device_sn: deviceSn,
@@ -693,6 +677,8 @@
                         amber_api_key: amberApiKey || null
                     })
                 });
+                
+                const data = await response.json();
 
                 if (!response.ok || data.errno !== 0) {
                     const failedKeys = data?.failed_keys;
