@@ -1891,19 +1891,49 @@
          * Uses firebaseAuth.fetchWithAuth to include the Authorization header.
          * Falls back to plain fetch if not authenticated (for debugging).
          */
+        async function normalizeFetchResponse(resp) {
+            try {
+                const ct = resp.headers && resp.headers.get ? (resp.headers.get('content-type') || '') : '';
+                // If 401, return a JSON body instead so callers can safely parse
+                if (resp.status === 401) {
+                    return new Response(JSON.stringify({ errno: 401, error: 'Not authenticated' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+                }
+                // If content-type isn't JSON, attempt to read text and wrap it
+                if (ct.indexOf('application/json') === -1) {
+                    const text = await resp.text();
+                    if (!text || text.trim() === '') {
+                        return new Response(JSON.stringify({ errno: resp.status || 500, error: resp.statusText || 'Empty response' }), { status: resp.status || 500, headers: { 'Content-Type': 'application/json' } });
+                    }
+                    try {
+                        JSON.parse(text);
+                        return new Response(text, { status: resp.status, headers: { 'Content-Type': 'application/json' } });
+                    } catch (e) {
+                        return new Response(JSON.stringify({ errno: resp.status || 500, error: 'Non-JSON response', raw: text.substring(0, 1000) }), { status: resp.status || 500, headers: { 'Content-Type': 'application/json' } });
+                    }
+                }
+                return resp;
+            } catch (e) {
+                return new Response(JSON.stringify({ errno: 500, error: 'Response normalization failed', detail: String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+            }
+        }
+
         async function authenticatedFetch(url, options = {}) {
-            // Prefer authenticated path when possible, but always fall back to plain fetch
-            // if fetchWithAuth throws (e.g. token not available yet).
             if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn && firebaseAuth.isSignedIn()) {
                 try {
-                    return await firebaseAuth.fetchWithAuth(url, options);
+                    const r = await firebaseAuth.fetchWithAuth(url, options);
+                    return await normalizeFetchResponse(r);
                 } catch (e) {
                     console.warn('authenticatedFetch: fetchWithAuth failed, falling back to plain fetch for', url, '-', e && e.message ? e.message : e);
                 }
             }
             // Not signed in or fetchWithAuth failed — fallback to plain fetch
-            console.warn('authenticatedFetch: Not signed in or auth failed, using plain fetch for', url);
-            return await fetch(url, options);
+            try {
+                const r = await fetch(url, options);
+                return await normalizeFetchResponse(r);
+            } catch (e) {
+                // network error — create a safe JSON response
+                return new Response(JSON.stringify({ errno: 500, error: String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+            }
         }
         // Dismiss the weather fallback banner for a given location key
         function dismissWeatherFallback(key) {
