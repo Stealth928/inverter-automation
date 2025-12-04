@@ -346,7 +346,7 @@
             min-width: 100px;
             padding: 12px;
             background: rgba(13, 17, 23, 0.5);
-            border-radius: 8px;
+            background: rgba(13, 17, 23, 0.5);
             text-align: center;
             position: relative;
         }
@@ -364,24 +364,12 @@
             vertical-align: baseline;
         }
         .stat-item .label {
-            font-size: 11px;
-            color: #8b949e;
-            margin-top: 4px;
-        }
-        .stat-item .tile-icon {
-            font-size: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 6px auto;
-            width: 30px;
-            height: 30px;
-            border-radius: 6px;
-            color: inherit;
-            background: rgba(255,255,255,0.02);
-        }
-        .stat-item.warning .value { color: #d29922; }
-        .stat-item.danger .value { color: #f85149; }
+            html += `<div class="stat-item" style="min-width:52px;padding:6px;${isVeryNegative ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}">
+                        ${displayVal > 50 ? '<div class="money-bag-overlay" title="High feed-in price">💰</div>' : ''}
+                        <div style="display:flex;align-items:center;justify-content:center;gap:2px">
+                            <span class="value ${getCls}" style="font-size:13px;font-weight:700">${displayVal}¢</span>
+                        </div>
+                    </div>`;
 
         /* Extreme daily forecast tiles (stronger amber tint for visibility) */
         .stat-item.extreme {
@@ -413,11 +401,33 @@
         /* Money bag indicator for very large feed-in prices */
         .money-bag {
             display:inline-block;
-            font-size:14px;
+            font-size:13px;
+            /* kept for any inline fallbacks */
             margin-left:6px;
             filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6));
             line-height:1;
         }
+
+        /* Overlay badge for feed-in golden tiles to keep symmetry */
+        .stat-item .money-bag-overlay {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border-radius: 999px;
+            background: linear-gradient(180deg, rgba(255,215,59,0.12), rgba(255,215,59,0.06));
+            color: #ffd43b;
+            font-size: 12px;
+            border: 1px solid rgba(255,215,59,0.18);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: transform .12s ease, opacity .12s ease;
+            opacity: 0.98;
+        }
+        .stat-item .money-bag-overlay:hover { transform: translateY(-2px) scale(1.07); }
         @media (max-width: 600px) {
             .weather-days .stat-item { flex: 0 0 120px; }
         }
