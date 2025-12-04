@@ -750,6 +750,38 @@
             </div>
         </div>
 
+        <!-- Preferences (Weather, etc.) -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        🌤️ Preferences
+                        <span class="badge badge-sync" id="preferencesBadge">Synced</span>
+                    </div>
+                </div>
+            </div>
+            <div class="section-description">
+                Configure your personal preferences for the dashboard, including default weather location.
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <div class="setting-label">Default Weather Location</div>
+                    <div class="setting-hint">City and state for local weather forecasts (e.g., "Sydney NSW")</div>
+                    <div class="setting-input">
+                        <input type="text" id="preferences_weatherPlace" data-section="preferences" data-key="weatherPlace" placeholder="e.g., Sydney NSW">
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Default Forecast Days</div>
+                    <div class="setting-hint">Number of days to display in weather forecast (1-16)</div>
+                    <div class="setting-input">
+                        <input type="number" id="preferences_forecastDays" data-section="preferences" data-key="forecastDays" min="1" max="16" step="1" value="6">
+                        <span class="unit">days</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Blackout Windows (Advanced) -->
         <div class="section">
             <div class="section-header">
@@ -1000,22 +1032,42 @@
                     setInput('api_retryDelayMs', currentConfig.api.retryDelayMs);
                 }
 
+                // Preferences
+                if (currentConfig.preferences) {
+                    console.log('Setting preferences values:', currentConfig.preferences);
+                    setInput('preferences_weatherPlace', currentConfig.preferences.weatherPlace || 'Sydney NSW');
+                    setInput('preferences_forecastDays', currentConfig.preferences.forecastDays || 6);
+                } else if (currentConfig.weatherPlace) {
+                    // Fallback: if weatherPlace is at root level, set it
+                    console.log('Setting weatherPlace from root config:', currentConfig.weatherPlace);
+                    setInput('preferences_weatherPlace', currentConfig.weatherPlace);
+                    setInput('preferences_forecastDays', 6);
+                }
+
                 // Credentials: populate device SN if available. Tokens are intentionally not returned by the API for security.
                 try {
                     setInput('credentials_deviceSn', currentConfig.deviceSn || '');
+                    // Initialize originalCredentials to reflect what we just loaded so the
+                    // UI doesn't consider the credentials section "modified" by default.
+                    originalCredentials.deviceSn = currentConfig.deviceSn || '';
+                    originalCredentials.foxessToken = originalCredentials.foxessToken || '';
+                    originalCredentials.amberKey = originalCredentials.amberKey || '';
                     // Check presence of FoxESS token via /health endpoint (returns boolean)
                     try {
                         const healthResp = await authenticatedFetch('/health');
                         const health = await healthResp.json();
                         const credStatusEl = document.getElementById('credentialsStatus');
                         const badge = document.getElementById('credentialsBadge');
-                        if (health && health.FOXESS_TOKEN) {
-                            if (credStatusEl) credStatusEl.textContent = 'FoxESS token is present on server (hidden)';
-                            if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
-                        } else {
-                            if (credStatusEl) credStatusEl.textContent = 'FoxESS token not set';
-                            if (badge) { badge.textContent = 'Modified'; badge.className = 'badge badge-modified'; }
-                        }
+                            if (health && health.FOXESS_TOKEN) {
+                                if (credStatusEl) credStatusEl.textContent = 'FoxESS token is present on server (hidden)';
+                                if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
+                            } else {
+                                // No token present on server — treat as "not set" rather than "modified".
+                                // The badge indicates sync state vs user edits; we should only show
+                                // "Modified" when the user changes fields locally.
+                                if (credStatusEl) credStatusEl.textContent = 'FoxESS token not set';
+                                if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
+                            }
                     } catch (hErr) {
                         console.warn('Health check failed', hErr);
                     }
@@ -1061,7 +1113,7 @@
                 return false;
             }
             
-            const sections = ['automation', 'cache', 'defaults', 'logging', 'api'];
+            const sections = ['automation', 'cache', 'defaults', 'logging', 'api', 'preferences'];
             let hasChanges = false;
             
             // Check credentials for changes
@@ -1081,8 +1133,16 @@
                         const input = document.getElementById(inputId);
                         if (!input) return;
                         
-                        // Handle select vs number inputs
-                        const currentValue = input.tagName === 'SELECT' ? input.value : parseInt(input.value);
+                        // Handle different input types appropriately
+                        let currentValue;
+                        if (input.tagName === 'SELECT') {
+                            currentValue = input.value;
+                        } else if (input.type === 'number') {
+                            currentValue = parseInt(input.value);
+                        } else {
+                            // For text inputs, use the string value as-is
+                            currentValue = input.value;
+                        }
                         const originalValue = originalConfig[section][key];
                         
                         if (currentValue !== originalValue) {
@@ -1162,6 +1222,10 @@
                     api: {
                         retryCount: getInputValue('api_retryCount'),
                         retryDelayMs: getInputValue('api_retryDelayMs')
+                    },
+                    preferences: {
+                        weatherPlace: document.getElementById('preferences_weatherPlace')?.value || 'Sydney NSW',
+                        forecastDays: getInputValue('preferences_forecastDays') || 6
                     }
                 };
 
@@ -1331,6 +1395,11 @@
             // Add change listener for select
             document.querySelectorAll('select').forEach(select => {
                 select.addEventListener('change', updateStatus);
+            });
+            
+            // Add change listener for text inputs (especially preferences section)
+            document.querySelectorAll('input[type="text"]').forEach(input => {
+                input.addEventListener('input', updateStatus);
             });
             
             // Initialize time displays

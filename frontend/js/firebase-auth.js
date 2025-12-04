@@ -331,13 +331,29 @@ class FirebaseAuth {
    * Get ID token for API calls
    */
   async getIdToken(forceRefresh = false) {
-    if (!this.user) {
-      return null;
+    // If we have a user object (either from init listener or external source), use it
+    if (this.user) {
+      if (forceRefresh) {
+        this.idToken = await this.user.getIdToken(true);
+      }
+      return this.idToken;
     }
-    if (forceRefresh) {
-      this.idToken = await this.user.getIdToken(true);
+    
+    // Fallback: try to get current Firebase user directly
+    if (this.auth && typeof firebase !== 'undefined' && firebase.auth) {
+      const currentUser = firebase.auth().currentUser;
+      if (currentUser) {
+        this.user = currentUser; // sync the internal user object
+        if (forceRefresh) {
+          this.idToken = await currentUser.getIdToken(true);
+        } else {
+          this.idToken = await currentUser.getIdToken();
+        }
+        return this.idToken;
+      }
     }
-    return this.idToken;
+    
+    return null;
   }
 
   /**
@@ -368,6 +384,10 @@ class FirebaseAuth {
 
 // Export singleton instance
 const firebaseAuth = new FirebaseAuth();
+// Expose to browser global for scripts that expect `window.firebaseAuth`
+if (typeof window !== 'undefined') {
+  window.firebaseAuth = firebaseAuth;
+}
 
 // Also export class for testing
 if (typeof module !== 'undefined' && module.exports) {

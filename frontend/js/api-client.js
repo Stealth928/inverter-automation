@@ -40,7 +40,7 @@ async function normalizeFetchResponse(response) {
 class APIClient {
   constructor(firebaseAuth) {
     this.auth = firebaseAuth;
-    this.baseUrl = ''; // Empty for same-origin, or set to Cloud Functions URL
+    this.baseUrl = ''; // Same-origin by default; can be overridden via setBaseUrl for local dev
   }
 
   /**
@@ -56,11 +56,26 @@ class APIClient {
   async request(endpoint, options = {}) {
     // Get token if user is signed in
     let token = null;
+    
+    // Try to get token from the API client's auth object first
     if (this.auth && typeof this.auth.getIdToken === 'function') {
       try {
         token = await this.auth.getIdToken();
       } catch (e) {
-        console.warn('[API] Failed to get ID token:', e);
+        console.warn('[API] request() - Failed to get token from auth object:', e);
+      }
+    }
+    
+    // If that failed, try to get it directly from Firebase auth (backup method)
+    if (!token && typeof firebase !== 'undefined' && firebase.auth) {
+      try {
+        const currentUser = firebase.auth().currentUser;
+        if (currentUser) {
+          token = await currentUser.getIdToken();
+          console.log('[API] request() - Got token from Firebase auth directly');
+        }
+      } catch (e) {
+        console.warn('[API] request() - Failed to get token from Firebase:', e);
       }
     }
     
@@ -101,12 +116,38 @@ class APIClient {
    */
   async fetch(endpoint, options = {}) {
     let token = null;
+    
+    // Try to get token from the API client's auth object first
     if (this.auth && typeof this.auth.getIdToken === 'function') {
       try {
         token = await this.auth.getIdToken();
+        if (token) {
+          console.log('[API] Got token from auth object:', token.substring(0, 20) + '...');
+        }
       } catch (e) {
-        console.warn('[API] Failed to get ID token:', e);
+        console.warn('[API] Failed to get token from auth object:', e.message || e);
       }
+    }
+    
+    // If that failed, try to get it directly from Firebase auth (backup method)
+    if (!token && typeof firebase !== 'undefined' && firebase.auth) {
+      try {
+        const currentUser = firebase.auth().currentUser;
+        if (currentUser) {
+          token = await currentUser.getIdToken();
+          console.log('[API] Got token from Firebase auth directly:', token.substring(0, 20) + '...');
+        } else {
+          console.warn('[API] No Firebase auth user available');
+        }
+      } catch (e) {
+        console.warn('[API] Failed to get token from Firebase:', e.message || e);
+      }
+    }
+    
+    if (token) {
+      console.log('[API] Token acquired successfully (length:', token.length + ')');
+    } else {
+      console.warn('[API] Could not acquire token from any source');
     }
     
     const headers = {
@@ -116,12 +157,17 @@ class APIClient {
     
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+      console.log('[API] Added Authorization header to request');
+    } else {
+      console.warn('[API] No token available, request will be unauthenticated');
     }
 
     const url = endpoint.startsWith('http') ? endpoint : `${this.baseUrl}${endpoint}`;
+    console.log('[API] Calling:', url, 'with headers:', Object.keys(headers), 'baseUrl:', this.baseUrl);
     
     try {
       const response = await fetch(url, { ...options, headers });
+      console.log('[API] Response status:', response.status, 'from URL:', url);
       
       // Handle 401: return a standard response so callers can decide what to do
       if (response.status === 401) {

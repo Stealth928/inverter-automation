@@ -443,6 +443,27 @@ body.has-fixed-nav {
     white-space: nowrap;
 }
 
+/* Ensure primary/secondary button classes render correctly even when the
+   base `btn` class is omitted in markup. Some templates use only
+   `btn-primary` / `btn-secondary` on <button> elements — normalize here. */
+.btn-primary,
+.btn-secondary,
+button.btn-primary,
+button.btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 14px;
+    border-radius: var(--radius-lg);
+    font-size: var(--font-size-md);
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
 .btn:hover:not(:disabled) {
     background: var(--border-primary);
     border-color: var(--border-accent);

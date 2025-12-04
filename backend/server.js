@@ -1758,10 +1758,30 @@ async function loadUserCredentials(uid) {
     }
     
     try {
+        // Try modern per-user config location first: users/{uid}/config/main
+        try {
+            const cfgDoc = await db.collection('users').doc(uid).collection('config').doc('main').get();
+            if (cfgDoc.exists) {
+                const d = cfgDoc.data() || {};
+                // Normalize field names into the legacy credentials shape
+                return {
+                    device_sn: d.deviceSn || d.device_sn || '',
+                    foxess_token: d.foxessToken || d.foxess_token || '',
+                    amber_api_key: d.amberApiKey || d.amber_api_key || ''
+                };
+            }
+        } catch (e) {
+            // If collection doesn't exist or permission issues, continue to check legacy field
+            console.warn('[Firestore] Could not read config/main for user:', uid, e && e.message ? e.message : e);
+        }
+
+        // Legacy location: users/{uid} with nested `credentials` object
         const doc = await db.collection('users').doc(uid).get();
         if (doc.exists && doc.data().credentials) {
             return doc.data().credentials;
         }
+
+        // No credentials found
         return null;
     } catch (error) {
         console.warn(`[Firestore] Failed to load credentials for user ${uid}:`, error.message);
@@ -1805,32 +1825,43 @@ app.get('/api/config/setup-status', async (req, res) => {
     let deviceSn = null;
     let foxessToken = null;
     let hasAmberKey = false;
-    let uid = req.uid || 'unknown';
-    
-    // If user is authenticated, load their per-user credentials from Firestore
-    if (req.uid) {
-        const userCreds = await loadUserCredentials(req.uid);
-        console.log(`[Setup Status] UID: ${req.uid}, Creds found:`, !!userCreds, userCreds);
-        if (userCreds) {
-            deviceSn = userCreds.device_sn || null;
-            foxessToken = userCreds.foxess_token || null;
-            hasAmberKey = !!userCreds.amber_api_key;
+    let uid = req.uid || null;
+
+    try {
+        // Prefer per-user credentials when authenticated
+        if (req.uid) {
+            const userCreds = await loadUserCredentials(req.uid);
+            console.log(`[Setup Status] UID: ${req.uid}, Creds found:`, !!userCreds, userCreds);
+            if (userCreds) {
+                deviceSn = userCreds.device_sn || null;
+                foxessToken = userCreds.foxess_token || null;
+                hasAmberKey = !!userCreds.amber_api_key;
+            }
         }
-    } else {
-        console.log('[Setup Status] No UID in request - user not authenticated');
+
+        // If no per-user creds found, fall back to server-wide env vars (useful for single-user deployments)
+        if (!deviceSn || !foxessToken) {
+            if (DEVICE_SN) deviceSn = DEVICE_SN;
+            if (FOXESS_TOKEN) foxessToken = FOXESS_TOKEN;
+            if (AMBER_API_KEY) hasAmberKey = !!AMBER_API_KEY;
+            if (!req.uid) console.log('[Setup Status] Falling back to server environment credentials');
+        }
+
+        // Setup is complete if we have both device SN and FoxESS token (from user or server)
+        const setupComplete = !!(deviceSn && foxessToken);
+        res.json({
+            errno: 0,
+            result: {
+                setupComplete,
+                deviceSn: deviceSn || null,
+                hasAmberKey: hasAmberKey,
+                debug: { uid: uid || 'anonymous', authenticated: !!req.uid }
+            }
+        });
+    } catch (e) {
+        console.error('[Setup Status] Error determining setup status:', e);
+        res.json({ errno: 1, msg: 'Failed to determine setup status' });
     }
-    
-    // Setup is complete if user has both device SN and FoxESS token
-    const setupComplete = !!(deviceSn && foxessToken);
-    res.json({
-        errno: 0,
-        result: {
-            setupComplete,
-            deviceSn: deviceSn || null,
-            hasAmberKey: hasAmberKey,
-            debug: { uid, authenticated: !!req.uid }
-        }
-    });
 });
 
 

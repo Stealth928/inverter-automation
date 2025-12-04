@@ -7,19 +7,32 @@
     <link rel="stylesheet" href="css/shared-styles.css" />
     <style>
         /* Page-specific styles */
-                        } else {
-                                // Initialize user profile in the backend after successful sign up
-                                try {
-                                    const initResp = await authenticatedFetch('/api/auth/init-user', { method: 'POST' });
-                                    if (!initResp.ok) {
-                                        console.warn('Failed to initialize user profile, but account was created');
-                                    }
-                                } catch (e) {
-                                    console.warn('Error calling init-user:', e);
-                                }
+
+        /* Layout containers */
+        .login-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            box-sizing: border-box;
+        }
+
+        .login-card {
+            max-width: 720px;
+            width: 100%;
+            margin: 24px;
+            background: rgba(6, 10, 14, 0.7);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(48, 54, 61, 0.35);
+            box-shadow: 0 8px 32px rgba(2, 8, 23, 0.6);
+        }
+
+        .login-header {
             text-align: center;
             background: linear-gradient(180deg, rgba(88, 166, 255, 0.08) 0%, transparent 100%);
             border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+            padding: 32px;
         }
 
         .logo {
@@ -549,8 +562,31 @@
         async function redirectAfterLogin() {
             try {
                 const response = await authenticatedFetch('/api/config/setup-status');
-                const data = await response.json();
-                if (data.errno === 0 && data.result?.setupComplete) {
+                // response may be a Response or already normalized JSON depending on API client
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch (e) {
+                    // If response is already JSON-like object (api-client.request returned object), use it
+                    data = response;
+                }
+                console.log('[Auth] setup-status response:', data);
+
+                // If we're on the login page, ensure we don't suppress the redirect bounce guard
+                try {
+                    const key = 'lastRedirect';
+                    const raw = sessionStorage.getItem(key);
+                    if (raw) {
+                        const last = JSON.parse(raw);
+                        // If the last redirect was to the login page, clear it so we can navigate onward
+                        if (last && last.to && last.to.includes('/login')) {
+                            sessionStorage.removeItem(key);
+                            console.log('[Redirect] Cleared lastRedirect to allow navigation to next page');
+                        }
+                    }
+                } catch (e) { /* ignore */ }
+
+                if (data && data.errno === 0 && data.result?.setupComplete) {
                     safeRedirect('/index.html');
                 } else {
                     safeRedirect('/setup.html');

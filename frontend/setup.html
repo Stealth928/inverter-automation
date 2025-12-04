@@ -607,6 +607,34 @@
                         </div>
                     </div>
 
+                    <!-- Default Weather Location (Optional) -->
+                    <div class="form-group" id="weatherPlaceGroup">
+                        <label for="weatherPlace">
+                            <span>Default Weather Location</span>
+                            <span class="optional-badge">Optional</span>
+                        </label>
+                        <div class="hint">Enter your city and state to see local weather forecasts (e.g., "Sydney NSW"). Defaults to Sydney if not specified.</div>
+                        <div class="input-wrapper">
+                            <input 
+                                type="text" 
+                                id="weatherPlace" 
+                                name="weatherPlace" 
+                                placeholder="e.g., Sydney NSW"
+                                autocomplete="off"
+                                spellcheck="false"
+                            >
+                            <span class="input-icon">🌤️</span>
+                        </div>
+                        <div class="field-message error-message">
+                            <span>⚠️</span>
+                            <span class="message-text"></span>
+                        </div>
+                        <div class="field-message success-message">
+                            <span>✓</span>
+                            <span class="message-text">Valid</span>
+                        </div>
+                    </div>
+
                     <button type="submit" class="btn-primary" id="submitBtn">
                         <span class="btn-text">Validate & Continue</span>
                         <span>→</span>
@@ -725,6 +753,7 @@
             const deviceSn = sanitizeInput(document.getElementById('deviceSn').value);
             const foxessToken = sanitizeInput(document.getElementById('foxessToken').value);
             const amberApiKey = sanitizeInput(document.getElementById('amberApiKey').value);
+            const weatherPlace = sanitizeInput(document.getElementById('weatherPlace').value);
 
             // Clear previous errors
             clearAllFieldStates();
@@ -751,7 +780,8 @@
                     body: JSON.stringify({
                         device_sn: deviceSn,
                         foxess_token: foxessToken,
-                        amber_api_key: amberApiKey || null
+                        amber_api_key: amberApiKey || null,
+                        weather_place: weatherPlace || 'Sydney NSW'
                     })
                 });
                 

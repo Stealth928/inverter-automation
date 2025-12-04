@@ -20,7 +20,12 @@ const firebaseConfig = {
   measurementId: "G-MWF4ZBMREE"
 };
 
-// Export for use in other modules
+// Expose config to browser global so non-module scripts can access it
+if (typeof window !== 'undefined') {
+  window.firebaseConfig = firebaseConfig;
+}
+
+// Export for use in CommonJS environments
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = firebaseConfig;
 }

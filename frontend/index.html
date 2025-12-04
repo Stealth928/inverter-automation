@@ -1360,10 +1360,11 @@
                                 <option value="">Loading sites...</option>
                             </select>
                         </div>
-                        <div class="input-row">
-                            <input type="number" id="amberNext" class="input" min="1" max="1000" value="12" style="width:110px" title="Intervals">
-                            <button class="btn btn-primary btn-sm" onclick="getAmberRange()" style="width:auto;margin:0;padding:8px 12px;font-size:13px">History</button>
-                            <button class="btn btn-sm" id="amberShowMore" onclick="toggleAmberMore()" style="width:auto;margin:0;padding:6px 10px;font-size:12px">Show more</button>
+                        <div class="input-row" style="align-items:center;gap:8px">
+                            <input type="number" id="amberNext" class="input" min="1" max="1000" value="12" style="width:110px" title="Number of forecast intervals to request (used by the 'Refresh' action). Increase to see more future intervals; very large values may be capped for display." aria-label="Forecast intervals">
+                            <button class="btn btn-primary btn-sm" onclick="getAmberRange()" style="width:auto;margin:0;padding:8px 12px;font-size:13px" title="Load historical Amber prices for yesterday → today">History</button>
+                            <button class="btn btn-sm" id="amberShowMore" onclick="toggleAmberMore()" style="width:auto;margin:0;padding:6px 10px;font-size:12px" title="Quick toggle to request many intervals">Show more</button>
+                            <span style="font-size:12px;color:#8b949e; margin-left:6px" title="'Intervals' controls how many future forecast intervals are requested from Amber. The compact display will cap how many are shown for readability">? Help</span>
                         </div>
                         <div class="data-card" id="amberCard">
                             <div style="color:#8b949e;font-size:12px">Loading Amber sites...</div>
@@ -2690,9 +2691,11 @@
         async function getWeather() {
             const placeEl = document.getElementById('weatherPlace');
             const rawPlace = (placeEl && typeof placeEl.value === 'string') ? placeEl.value.trim() : '';
-            const place = rawPlace || 'Roselands 2196 NSW';
+            // Guard against the literal string 'undefined' (can appear from bad inputs)
+            const cleanRaw = (rawPlace && rawPlace !== 'undefined') ? rawPlace : '';
+            const place = cleanRaw || 'Roselands 2196 NSW';
             // normalize back into the input (helps when using autocomplete)
-            try { if (placeEl) placeEl.value = place; } catch (e) {}
+            try { if (placeEl) placeEl.value = (place === 'Roselands 2196 NSW' ? placeEl.value || place : place); } catch (e) {}
 
             const days = Number(document.getElementById('weatherDays').value || 6);
             const card = document.getElementById('weatherCard');
@@ -2828,11 +2831,12 @@
             // coordinates, prefer a friendly `fallbackResolvedName` (provided by
             // the backend) so we can display a human-readable fallback place.
             let locName = '';
-            if (place) {
-                if (place.fallback && place.fallbackResolvedName) {
-                    locName = place.fallbackResolvedName;
-                } else if (place.resolvedName && !place.fallback) {
-                    locName = place.resolvedName;
+            if (place && typeof place === 'object') {
+                const tryName = (v) => (v === undefined || v === null || String(v).toLowerCase() === 'undefined') ? '' : String(v);
+                if (place.fallback && tryName(place.fallbackResolvedName)) {
+                    locName = tryName(place.fallbackResolvedName);
+                } else if (tryName(place.resolvedName) && !place.fallback) {
+                    locName = tryName(place.resolvedName);
                 }
             }
             const lat = (place.latitude !== undefined && place.latitude !== null) ? Number(place.latitude).toFixed(4) : null;
@@ -2888,7 +2892,8 @@
                 const windDirDeg = (current.winddirection !== undefined && current.winddirection !== null) ? Number(current.winddirection) : null;
                 const windDirName = windDirDeg !== null ? degToCompass(windDirDeg) : '';
 
-                html += `<div class="live-stat"><span class="value">${current.temperature}°</span><span class="unit">C</span><span class="label">Now</span></div>`;
+                const nowTemp = (current.temperature !== undefined && current.temperature !== null && String(current.temperature).toLowerCase() !== 'undefined') ? `${current.temperature}°` : '—';
+                html += `<div class="live-stat"><span class="value">${nowTemp}</span><span class="unit">C</span><span class="label">Now</span></div>`;
                 html += `<div style="margin-top:8px;font-size:13px;color:#8b949e">${todayDesc} • Rain: ${todayRain !== null ? todayRain.toFixed(1) + ' mm' : '—'}`;
                 if (windSpeed !== null) html += ` • Wind: <strong style="color:#c9d1d9">${windSpeed.toFixed(1)} km/h</strong>${windDirName ? ' ' + windDirName : ''}`;
                 html += `</div>`;
@@ -2901,8 +2906,8 @@
                 const showCount = Math.min(daily.time.length, Math.max(1, requestedDays));
                 for (let i = 0; i < showCount; i++) {
                     const d = daily.time[i];
-                    const tmax = daily.temperature_2m_max ? daily.temperature_2m_max[i] : '-';
-                    const tmin = daily.temperature_2m_min ? daily.temperature_2m_min[i] : '-';
+                    const tmax = (daily.temperature_2m_max && daily.temperature_2m_max[i] !== undefined && daily.temperature_2m_max[i] !== null && String(daily.temperature_2m_max[i]).toLowerCase() !== 'undefined') ? daily.temperature_2m_max[i] : '-';
+                    const tmin = (daily.temperature_2m_min && daily.temperature_2m_min[i] !== undefined && daily.temperature_2m_min[i] !== null && String(daily.temperature_2m_min[i]).toLowerCase() !== 'undefined') ? daily.temperature_2m_min[i] : '-';
                     const code = (daily.weathercode && daily.weathercode[i] !== undefined) ? daily.weathercode[i] : null;
                     const desc = code !== null ? weatherCodeToWord(code) : 'Unknown';
                     // precipitation_sum can be named differently depending on API fields
@@ -3250,7 +3255,13 @@
 
             // How many forecasts to show (dynamic based on amberNext)
             const amberNextVal = Number(document.getElementById('amberNext')?.value) || 12;
-            const forecastLimit = amberNextVal > 50 ? 24 : amberNextVal > 20 ? 12 : 6;
+            // Show more items when user requests many intervals, but cap to avoid UI overload
+            // If user requests > 100, show up to 48 points; for 51-100 show 36; for 21-50 show 18; else use 6
+            let forecastLimit = 6;
+            if (amberNextVal > 100) forecastLimit = Math.min(amberNextVal, 48);
+            else if (amberNextVal > 50) forecastLimit = 36;
+            else if (amberNextVal > 20) forecastLimit = 18;
+            else forecastLimit = Math.min(amberNextVal, 12);
 
             let html = '';
 
@@ -4338,9 +4349,14 @@
                 const cfg = await cfgResp.json();
                 if (cfg.errno === 0 && cfg.result) {
                     const wInput = document.getElementById('weatherPlace');
-                    // Only set if empty or default
+                    // Only set if empty or default, and only if we have a valid weatherPlace
                     if (wInput && (wInput.value === '' || wInput.value === 'Roselands 2196 NSW')) {
-                        wInput.value = cfg.result.weatherPlace;
+                        if (cfg.result.weatherPlace && cfg.result.weatherPlace !== 'undefined') {
+                            wInput.value = cfg.result.weatherPlace;
+                        } else {
+                            // Use sensible default if not configured
+                            wInput.value = 'Sydney NSW';
+                        }
                     }
                     const snInput = document.getElementById('deviceSn');
                     if (snInput && !snInput.value && cfg.result.deviceSn) {

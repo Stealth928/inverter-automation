@@ -54,6 +54,13 @@ const getConfig = () => {
 // ==================== EXPRESS APP ====================
 const app = express();
 app.use(cors({ origin: true }));
+// Simple request logger to help debug routing and missing endpoints
+app.use((req, res, next) => {
+  try {
+    console.log('[API REQ] ', req.method, req.originalUrl || req.url, 'headers:', Object.keys(req.headers).slice(0,10));
+  } catch (e) { /* ignore logging errors */ }
+  next();
+});
 // Capture raw request body (for debugging) and provide a more helpful error when JSON parsing fails
 app.use(express.json({
   verify: (req, res, buf) => {
@@ -94,21 +101,25 @@ const authenticateUser = async (req, res, next) => {
 // Attempt to attach Firebase user info without enforcing auth (used by public endpoints)
 const tryAttachUser = async (req) => {
   if (req.user) {
+    console.log('[Auth] User already attached:', req.user.uid);
     return req.user;
   }
 
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log('[Auth] No Authorization header or not Bearer format');
     return null;
   }
 
   const idToken = authHeader.split('Bearer ')[1];
+  console.log('[Auth] Attempting to verify token:', idToken.substring(0, 20) + '...');
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     req.user = decodedToken;
+    console.log('[Auth] Token verified successfully for user:', decodedToken.uid);
     return decodedToken;
   } catch (error) {
-    console.warn('[Auth] Optional token attach failed:', error.message);
+    console.warn('[Auth] Token verification failed:', error.message);
     return null;
   }
 };
@@ -184,8 +195,11 @@ app.post('/api/config/validate-keys', async (req, res) => {
       }
     }
     
-    // If validation passed and user is authenticated, save config
-    if (failed_keys.length === 0 && req.user?.uid) {
+    // If validation passed, persist config.
+    // - If the caller is authenticated, save under their user document.
+    // - If unauthenticated (setup flow), save to a shared server config doc so hosting deployments
+    //   can persist runtime credentials across requests (useful for single-instance installs).
+    if (failed_keys.length === 0) {
       const configData = {
         deviceSn: device_sn,
         foxessToken: foxess_token,
@@ -193,8 +207,15 @@ app.post('/api/config/validate-keys', async (req, res) => {
         setupComplete: true,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
-      await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(configData, { merge: true });
-      console.log(`[Validation] Config saved successfully for user ${req.user.uid}`);
+
+      if (req.user?.uid) {
+        await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(configData, { merge: true });
+        console.log(`[Validation] Config saved successfully for user ${req.user.uid}`);
+      } else {
+        // Persist to shared server config so the setup flow completes for unauthenticated users
+        await db.collection('shared').doc('serverConfig').set(configData, { merge: true });
+        console.log('[Validation] Config saved to shared serverConfig (unauthenticated setup flow)');
+      }
     }
     
     if (failed_keys.length > 0) {
@@ -213,20 +234,101 @@ app.post('/api/config/validate-keys', async (req, res) => {
   }
 });
 
+// DEBUG ENDPOINT: Trace setup-status diagnostics
+app.get('/api/debug/setup-trace', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '(none)';
+    const hasToken = authHeader.startsWith('Bearer ');
+    
+    await tryAttachUser(req);
+    const isAuthenticated = !!req.user?.uid;
+    const userId = req.user?.uid || '(not authenticated)';
+    
+    let configData = null;
+    let error = null;
+    
+    if (isAuthenticated) {
+      try {
+        configData = await getUserConfig(userId);
+      } catch (e) {
+        error = e.message;
+      }
+    }
+    
+    res.json({
+      errno: 0,
+      debug: {
+        authHeader: hasToken ? 'Bearer token present' : authHeader,
+        isAuthenticated,
+        userId,
+        configData: configData ? {
+          deviceSn: configData.deviceSn ? '(present)' : '(missing)',
+          foxessToken: configData.foxessToken ? '(present)' : '(missing)',
+          amberApiKey: configData.amberApiKey ? '(present)' : '(missing)',
+          setupComplete: configData.setupComplete,
+          source: configData._source
+        } : null,
+        error
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // Check if user setup is complete (no auth required for initial check during setup flow)
 app.get('/api/config/setup-status', async (req, res) => {
   try {
+    // Log all request details for debugging
+    const authHeader = req.headers.authorization || '(no auth header)';
+    console.log(`[Setup Status] Request headers:`, {
+      hasAuthHeader: !!req.headers.authorization,
+      authHeaderPrefix: authHeader.substring(0, 20)
+    });
+    
     await tryAttachUser(req);
+    
+    console.log(`[Setup Status] After tryAttachUser - User:`, req.user ? `${req.user.uid} (email: ${req.user.email})` : '(not authenticated)');
+    
     // If user is authenticated (has ID token), check their Firestore config
     if (req.user?.uid) {
       const config = await getUserConfig(req.user.uid);
-      const setupComplete = !!(config?.setupComplete && config?.deviceSn && config?.foxessToken);
-      return res.json({ errno: 0, result: { setupComplete, hasDeviceSn: !!config?.deviceSn, hasFoxessToken: !!config?.foxessToken, hasAmberKey: !!config?.amberApiKey } });
+      console.log(`[Setup Status] getUserConfig result for ${req.user.uid}:`, {
+        found: !!config,
+        deviceSn: config?.deviceSn ? '(present)' : '(missing)',
+        foxessToken: config?.foxessToken ? '(present)' : '(missing)',
+        amberApiKey: config?.amberApiKey ? '(present)' : '(missing)',
+        setupComplete: config?.setupComplete,
+        source: config?._source
+      });
+      
+      // Treat setupComplete as true if explicitly set OR if both critical fields are present
+      const setupComplete = !!((config?.setupComplete === true) || (config?.deviceSn && config?.foxessToken));
+      return res.json({ errno: 0, result: { setupComplete, hasDeviceSn: !!config?.deviceSn, hasFoxessToken: !!config?.foxessToken, hasAmberKey: !!config?.amberApiKey, source: config?._source || 'user' } });
     }
     
-    // Unauthenticated user - setup not complete
+    // Unauthenticated user - fall back to shared server config (if present)
+    console.log(`[Setup Status] No user authenticated, checking shared serverConfig...`);
+    try {
+      const sharedDoc = await db.collection('shared').doc('serverConfig').get();
+      if (sharedDoc.exists) {
+        const cfg = sharedDoc.data() || {};
+        console.log(`[Setup Status] Found shared serverConfig:`, {
+          deviceSn: cfg.deviceSn ? '(present)' : '(missing)',
+          foxessToken: cfg.foxessToken ? '(present)' : '(missing)'
+        });
+        const setupComplete = !!(cfg.setupComplete && cfg.deviceSn && cfg.foxessToken);
+        return res.json({ errno: 0, result: { setupComplete, hasDeviceSn: !!cfg.deviceSn, hasFoxessToken: !!cfg.foxessToken, hasAmberKey: !!cfg.amberApiKey, source: 'shared' } });
+      }
+    } catch (e) {
+      console.warn('[Setup Status] Error reading shared server config:', e.message || e);
+    }
+
+    // No shared config found - setup not complete
+    console.log(`[Setup Status] No shared config found, setup not complete`);
     res.json({ errno: 0, result: { setupComplete: false, hasDeviceSn: false, hasFoxessToken: false, hasAmberKey: false } });
   } catch (error) {
+    console.error('[Setup Status] Error:', error);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
@@ -607,10 +709,50 @@ async function callWeatherAPI(place = 'Sydney', days = 3, userId = null) {
  */
 async function getUserConfig(userId) {
   try {
+    console.log(`[Config] Loading config for user: ${userId}`);
+    
+    // Primary location: users/{uid}/config/main (newer code)
     const configDoc = await db.collection('users').doc(userId).collection('config').doc('main').get();
     if (configDoc.exists) {
-      return configDoc.data();
+      const data = configDoc.data() || {};
+      console.log(`[Config] Found config at users/${userId}/config/main:`, { hasDeviceSn: !!data.deviceSn, hasFoxessToken: !!data.foxessToken });
+      return { ...data, _source: 'config-main' };
     }
+    console.log(`[Config] No config at users/${userId}/config/main`);
+
+    // Backward compatibility: older deployments stored credentials directly on users/{uid}.credentials
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (userDoc.exists) {
+      const data = userDoc.data() || {};
+      console.log(`[Config] Found user doc for ${userId}, has credentials?`, !!data.credentials);
+      
+      // If the older 'credentials' object exists, map its snake_case fields to the config shape
+        if (data.credentials && (data.credentials.device_sn || data.credentials.foxess_token || data.credentials.amber_api_key)) {
+        console.log(`[Config] Found legacy credentials for ${userId}`);
+        return {
+          deviceSn: data.credentials.device_sn || '',
+          foxessToken: data.credentials.foxess_token || '',
+          amberApiKey: data.credentials.amber_api_key || '',
+          // No explicit setupComplete flag in old storage — consider presence of tokens as complete
+          setupComplete: !!(data.credentials.device_sn && data.credentials.foxess_token),
+          _source: 'legacy-credentials'
+        };
+      }
+
+      // If top-level config keys exist directly on the user doc, use them too
+      if (data.deviceSn || data.foxessToken || data.amberApiKey) {
+        console.log(`[Config] Found top-level config keys for ${userId}`);
+        return {
+          deviceSn: data.deviceSn || '',
+          foxessToken: data.foxessToken || '',
+          amberApiKey: data.amberApiKey || '',
+          setupComplete: !!(data.deviceSn && data.foxessToken),
+          _source: 'user-top-level'
+        };
+      }
+    }
+    
+    console.log(`[Config] No config found for user ${userId}`);
     return null;
   } catch (error) {
     console.error('Error getting user config:', error);
@@ -752,6 +894,17 @@ app.post('/api/automation/toggle', async (req, res) => {
   }
 });
 
+// Backwards-compatible alias: some frontends call /api/automation/enable
+app.post('/api/automation/enable', async (req, res) => {
+  try {
+    const { enabled } = req.body;
+    await saveUserAutomationState(req.user.uid, { enabled: !!enabled });
+    res.json({ errno: 0, result: { enabled: !!enabled } });
+  } catch (error) {
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // Create/update automation rule
 app.post('/api/automation/rule/create', async (req, res) => {
   try {
@@ -814,6 +967,94 @@ app.get('/api/automation/history', async (req, res) => {
     
     res.json({ errno: 0, result: history });
   } catch (error) {
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Run automation test with provided mock data (simulation)
+app.post('/api/automation/test', async (req, res) => {
+  try {
+    const mockData = req.body && req.body.mockData ? req.body.mockData : (req.body || {});
+
+    // Load user rules
+    const rules = await getUserRules(req.user.uid);
+    const sorted = Object.entries(rules || {}).filter(([_, r]) => r.enabled).sort((a,b) => (a[1].priority||99) - (b[1].priority||99));
+
+    const allResults = [];
+    // Helper to check time window
+    const timeInWindow = (timeStr, start, end) => {
+      if (!timeStr) return true; // if no test time provided assume match
+      const toMins = t => { const [hh,mm] = (t||'00:00').split(':').map(x=>parseInt(x,10)||0); return hh*60+mm; };
+      const t = toMins(timeStr);
+      const s = toMins(start || '00:00');
+      const e = toMins(end || '23:59');
+      if (s <= e) return t >= s && t <= e;
+      // window spans midnight
+      return t >= s || t <= e;
+    };
+
+    for (const [ruleId, rule] of sorted) {
+      const cond = rule.conditions || {};
+      let met = true;
+      const condDetails = [];
+
+      // feedInPrice
+      if (cond.feedInPrice?.enabled) {
+        const price = Number(mockData.feedInPrice || 0);
+        const target = Number(cond.feedInPrice.value || 0);
+        const cmet = compareValue(price, cond.feedInPrice.operator, target);
+        condDetails.push({ name: 'Feed-in Price', value: price, target, operator: cond.feedInPrice.operator, met: !!cmet });
+        if (!cmet) met = false;
+      }
+
+      // buyPrice
+      if (cond.buyPrice?.enabled) {
+        const price = Number(mockData.buyPrice || 0);
+        const target = Number(cond.buyPrice.value || 0);
+        const cmet = compareValue(price, cond.buyPrice.operator, target);
+        condDetails.push({ name: 'Buy Price', value: price, target, operator: cond.buyPrice.operator, met: !!cmet });
+        if (!cmet) met = false;
+      }
+
+      // soc
+      if (cond.soc?.enabled) {
+        const soc = Number(mockData.soc || 0);
+        const target = Number(cond.soc.value || 0);
+        const cmet = compareValue(soc, cond.soc.operator, target);
+        condDetails.push({ name: 'Battery SoC', value: soc, target, operator: cond.soc.operator, met: !!cmet });
+        if (!cmet) met = false;
+      }
+
+      // temperature
+      if (cond.temperature?.enabled) {
+        const type = cond.temperature.type || 'battery';
+        const tempVal = type === 'ambient' ? Number(mockData.ambientTemp || 0) : Number(mockData.batteryTemp || 0);
+        const target = Number(cond.temperature.value || 0);
+        const cmet = compareValue(tempVal, cond.temperature.operator, target);
+        condDetails.push({ name: (type === 'ambient' ? 'Ambient Temp' : 'Battery Temp'), value: tempVal, target, operator: cond.temperature.operator, met: !!cmet });
+        if (!cmet) met = false;
+      }
+
+      // time
+      const timeCond = cond.time || cond.timeWindow;
+      if (timeCond?.enabled) {
+        const ok = timeInWindow(mockData.testTime || null, timeCond.startTime || timeCond.start, timeCond.endTime || timeCond.end);
+        condDetails.push({ name: 'Time Window', value: mockData.testTime || 'now', target: `${timeCond.startTime || timeCond.start || '00:00'}–${timeCond.endTime || timeCond.end || '23:59'}`, operator: 'in', met: !!ok });
+        if (!ok) met = false;
+      }
+
+      allResults.push({ ruleName: rule.name || ruleId, ruleId, met, priority: rule.priority || 99, conditions: condDetails });
+
+      if (met) {
+        // First match wins
+        return res.json({ errno: 0, triggered: true, result: { ruleName: rule.name || ruleId, ruleId, priority: rule.priority || 99, action: rule.action || {} }, testData: mockData, allResults });
+      }
+    }
+
+    // No rules triggered
+    res.json({ errno: 0, triggered: false, result: null, testData: mockData, allResults });
+  } catch (error) {
+    console.error('[API] /api/automation/test error:', error);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
