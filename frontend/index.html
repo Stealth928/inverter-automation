@@ -399,7 +399,11 @@
         }
         .weather-days .stat-item {
             box-sizing: border-box;
-            flex: 0 0 140px;
+            /* Allow forecast tiles to grow slightly so the last row doesn't leave
+               a large empty gap when there are many items. Also restrict maximum
+               width so items remain card-like on very wide screens. */
+            flex: 1 1 140px;
+            max-width: 180px;
             min-width: 0;
             padding: 8px;
             text-align: left;
@@ -3001,6 +3005,18 @@
                     const mapId = 'weather-map-' + locKey;
                     function tryInitMap() {
                         const mapEl = document.getElementById(mapId);
+                        // Only attempt to initialize when element exists and is laid out
+                        // (non-zero width/height). When forecast count is large the
+                        // element may be present but not yet painted or sized.
+                        if (mapEl && (mapEl.offsetWidth === 0 || mapEl.offsetHeight === 0)) {
+                            // wait longer for layout to stabilise
+                            if (attempts < 60) {
+                                attempts++;
+                                const delay = attempts < 12 ? 100 : 160; // back off a bit
+                                setTimeout(tryInitMap, delay);
+                                return;
+                            }
+                        }
                         if (!mapEl) {
                             // When many tiles are rendered the browser may take longer to
                             // parse/paint the large innerHTML blob. Retry longer to ensure
@@ -3051,10 +3067,15 @@
                                     try { if (m._weatherMarker) m.removeLayer(m._weatherMarker); } catch(e){}
                                     const mark = L.circleMarker([latNum, lonNum], { radius:6, fillColor:'#58a6ff', color:'#fff', weight:1, fillOpacity:0.95 }).addTo(m);
                                     m._weatherMarker = mark;
-                                        // In some cases the container reflow needs multiple ticks — call invalidate repeatedly
-                                        setTimeout(() => { try { m.invalidateSize && m.invalidateSize(); if (m._weatherMarker) m._weatherMarker.setLatLng([latNum, lonNum]); } catch(e){} }, 120);
-                                        setTimeout(() => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} }, 420);
-                                        setTimeout(() => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} }, 1200);
+                                        // In some cases reflow needs multiple ticks — call invalidate repeatedly
+                                        const invalidate = () => {
+                                            try { m.invalidateSize && m.invalidateSize(); if (m._weatherMarker) m._weatherMarker.setLatLng([latNum, lonNum]); } catch(e){}
+                                        };
+                                        requestAnimationFrame(invalidate);
+                                        setTimeout(invalidate, 160);
+                                        setTimeout(invalidate, 420);
+                                        setTimeout(invalidate, 900);
+                                        setTimeout(invalidate, 1600);
                                         // Ensure map invalidates when its container or window resizes
                                         try {
                                             if (!m._resizeObserver && 'ResizeObserver' in window) {
@@ -3117,6 +3138,8 @@
                                         }
                                     } catch(e) {}
                                     setTimeout(() => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} }, 200);
+                                    // Ensure map also invalidates a bit later to handle large DOM updates
+                                    setTimeout(() => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} }, 800);
                                     // Extra diagnostics: log map size and tile container children
                                             setTimeout(() => {
                                         try {
