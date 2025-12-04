@@ -975,6 +975,32 @@ app.post('/api/automation/rule/create', async (req, res) => {
   }
 });
 
+// Update automation rule (backwards-compatible endpoint used by frontend)
+app.post('/api/automation/rule/update', async (req, res) => {
+  try {
+    const { ruleName, name, enabled, priority, conditions, action, cooldownMinutes } = req.body;
+
+    if (!ruleName && !name) {
+      return res.status(400).json({ errno: 400, error: 'Rule name or ruleId is required' });
+    }
+
+    const ruleId = (ruleName || name).toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    const rule = {
+      name: name || ruleId,
+      enabled: enabled !== false,
+      priority: priority || 50,
+      conditions: conditions || {},
+      action: action || {},
+      cooldownMinutes: cooldownMinutes || 5,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).set(rule, { merge: true });
+    res.json({ errno: 0, result: { ruleId, ...rule } });
+  } catch (error) {
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
 // Delete automation rule
 app.post('/api/automation/rule/delete', async (req, res) => {
   try {
