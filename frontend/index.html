@@ -346,7 +346,7 @@
             min-width: 100px;
             padding: 12px;
             background: rgba(13, 17, 23, 0.5);
-            background: rgba(13, 17, 23, 0.5);
+            border-radius: 8px;
             text-align: center;
             position: relative;
         }
@@ -364,12 +364,24 @@
             vertical-align: baseline;
         }
         .stat-item .label {
-            html += `<div class="stat-item" style="min-width:52px;padding:6px;${isVeryNegative ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}">
-                        ${displayVal > 50 ? '<div class="money-bag-overlay" title="High feed-in price">💰</div>' : ''}
-                        <div style="display:flex;align-items:center;justify-content:center;gap:2px">
-                            <span class="value ${getCls}" style="font-size:13px;font-weight:700">${displayVal}¢</span>
-                        </div>
-                    </div>`;
+            font-size: 11px;
+            color: #8b949e;
+            margin-top: 4px;
+        }
+        .stat-item .tile-icon {
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 6px auto;
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            color: inherit;
+            background: rgba(255,255,255,0.02);
+        }
+        .stat-item.warning .value { color: #d29922; }
+        .stat-item.danger .value { color: #f85149; }
 
         /* Extreme daily forecast tiles (stronger amber tint for visibility) */
         .stat-item.extreme {
@@ -398,36 +410,26 @@
             position: relative; /* allow icon overlay */
         }
 
-        /* Money bag indicator for very large feed-in prices */
-        .money-bag {
-            display:inline-block;
-            font-size:13px;
-            /* kept for any inline fallbacks */
-            margin-left:6px;
-            filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6));
-            line-height:1;
-        }
-
-        /* Overlay badge for feed-in golden tiles to keep symmetry */
-        .stat-item .money-bag-overlay {
+        /* Small badge for very large feed-in prices. Positioned so it doesn't
+           affect the tile flow or break symmetry. Uses an inline SVG for
+           crisper rendering across platforms. */
+        .feedin-badge {
             position: absolute;
-            top: 8px;
-            right: 8px;
-            display: flex;
+            top: 6px;
+            right: 6px;
+            width: 18px;
+            height: 18px;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 22px;
-            height: 22px;
-            border-radius: 999px;
-            background: linear-gradient(180deg, rgba(255,215,59,0.12), rgba(255,215,59,0.06));
-            color: #ffd43b;
-            font-size: 12px;
-            border: 1px solid rgba(255,215,59,0.18);
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-            transition: transform .12s ease, opacity .12s ease;
-            opacity: 0.98;
+            border-radius: 4px;
+            background: rgba(255, 215, 64, 0.06);
+            border: 1px solid rgba(255, 215, 64, 0.12);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+            pointer-events: auto;
         }
-        .stat-item .money-bag-overlay:hover { transform: translateY(-2px) scale(1.07); }
+        .feedin-badge svg { width: 14px; height: 14px; display:block; }
+        .stat-item .value { white-space: nowrap; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
         @media (max-width: 600px) {
             .weather-days .stat-item { flex: 0 0 120px; }
         }
@@ -3587,7 +3589,14 @@
                     html += `<div class="stat-item" style="min-width:52px;padding:6px;${isVeryNegative ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}">
                                 <div style="display:flex;align-items:center;justify-content:center;gap:2px">
                                     <span class="value ${getCls}" style="font-size:13px;font-weight:700">${displayVal}¢</span>
-                                    ${displayVal > 50 ? '<span class="money-bag" title="High feed-in price">💰</span>' : ''}
+                                    ${displayVal > 50 ? `
+                                        <span class="feedin-badge" title="High feed-in price">
+                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                                <path d="M12 2C11.4477 2 11 2.44772 11 3V3.5C8.23858 3.5 6 5.73858 6 8.5C6 10.7402 7.16025 12.716 8.97656 13.7312C9.40484 14.0101 9.75435 14.3914 10.0 14.8389V18C10 18.5523 10.4477 19 11 19H13C13.5523 19 14 18.5523 14 18V14.8389C14.2456 14.3914 14.5951 14.0101 15.0234 13.7312C16.8398 12.716 18 10.7402 18 8.5C18 5.73858 15.7614 3.5 13 3.5V3C13 2.44772 12.5523 2 12 2Z" fill="#FFD740"/>
+                                                <path d="M8 20C8 20 8.5 21 12 21C15.5 21 16 20 16 20" stroke="#C57C00" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round"/>
+                                            </svg>
+                                        </span>
+                                    ` : ''}
                         </div>
                         <div class="label" style="font-size:9px">${time}</div>
                     </div>`;
