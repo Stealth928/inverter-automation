@@ -2639,14 +2639,8 @@
                         <div class="label">Inverter Temp</div>
                     </div>
                 </div>`;
-                // Include a small toggleable raw debug view so matching variable names/values are visible
-                const rawHtml = `<div style="margin-top:10px;display:flex;gap:8px;align-items:center">
-                    <button class="btn btn-sm" onclick="(function(){const d=document.getElementById('inverterDebug'); if(d){ d.style.display = (d.style.display === 'none') ? 'block' : 'none'; }})()">🔍 Toggle raw</button>
-                    <div style="font-size:12px;color:#8b949e">Matched variables below — useful for debugging mapping errors</div>
-                </div>
-                <div id="inverterDebug" style="display:none;margin-top:8px;padding:8px;background:rgba(13,17,23,0.4);border-radius:8px;font-size:12px;color:#c9d1d9">
-                    ${items.map(it => `${it.variable || it.name || it.key}: ${it.value} ${it.unit || ''}`).join('<br>')}
-                </div>`;
+                // Debug raw view removed for stable inverter status
+                const rawHtml = '';
 
                 // Display per-PV-string outputs if present (pv1Power..pv4Power)
                 const pvStrings = [];
@@ -2680,9 +2674,9 @@
                         </div>`;
                     });
                     pvHtml += '</div>';
-                    card.innerHTML = html + rawHtml + pvHtml;
+                    card.innerHTML = html + pvHtml;
                 } else {
-                    card.innerHTML = html + rawHtml;
+                    card.innerHTML = html;
                 }
             } else if (name === 'Battery SoC' && data.result) {
                 const r = data.result;
