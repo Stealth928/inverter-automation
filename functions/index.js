@@ -413,7 +413,21 @@ app.get('/api/amber/prices', async (req, res) => {
     if (!siteId) {
       return res.status(400).json({ errno: 400, error: 'Site ID is required' });
     }
-    
+    // If the caller provided startDate/endDate, treat this as a historical range
+    // request and forward the dates to Amber's /sites/{siteId}/prices endpoint.
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+    if (startDate || endDate) {
+      const q = {};
+      if (startDate) q.startDate = startDate;
+      if (endDate) q.endDate = endDate;
+      // optional resolution or other params may be present; copy known params
+      if (req.query.resolution) q.resolution = req.query.resolution;
+      const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices`, q, userConfig, userId);
+      return res.json(result);
+    }
+
+    // Default behavior: return the current forecast/prices
     const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 1 }, userConfig, userId);
     res.json(result);
   } catch (error) {
