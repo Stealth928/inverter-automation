@@ -947,6 +947,147 @@ app.post('/api/automation/enable', async (req, res) => {
   }
 });
 
+// Manually trigger a rule (for testing) - applies the rule's action immediately
+app.post('/api/automation/trigger', async (req, res) => {
+  try {
+    const { ruleName } = req.body;
+    
+    if (!ruleName) {
+      return res.status(400).json({ errno: 400, error: 'Rule name is required' });
+    }
+    
+    // Get the rule
+    const rules = await getUserRules(req.user.uid);
+    const ruleId = ruleName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    const rule = rules[ruleId] || rules[ruleName];
+    
+    if (!rule) {
+      return res.status(400).json({ errno: 400, error: `Unknown rule: ${ruleName}` });
+    }
+    
+    // Get user config
+    const userConfig = await getUserConfig(req.user.uid);
+    
+    // Apply the rule action (uses v1 API, sets flag, does verification)
+    const result = await applyRuleAction(req.user.uid, rule, userConfig);
+    
+    // Update automation state
+    await saveUserAutomationState(req.user.uid, {
+      lastTriggered: Date.now(),
+      activeRule: ruleName
+    });
+    
+    // Update rule's lastTriggered
+    await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).set({
+      lastTriggered: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    
+    res.json({ errno: 0, result, ruleName });
+  } catch (error) {
+    console.error('[Automation] Trigger error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Reset automation state (clear cooldowns, active rule, etc.)
+app.post('/api/automation/reset', async (req, res) => {
+  try {
+    // Reset automation state
+    await saveUserAutomationState(req.user.uid, {
+      lastTriggered: null,
+      activeRule: null,
+      lastCheck: null
+    });
+    
+    // Reset lastTriggered on all rules
+    const rulesSnapshot = await db.collection('users').doc(req.user.uid).collection('rules').get();
+    const batch = db.batch();
+    rulesSnapshot.forEach(doc => {
+      batch.update(doc.ref, { lastTriggered: null });
+    });
+    await batch.commit();
+    
+    console.log(`[Automation] State reset for user ${req.user.uid}`);
+    res.json({ errno: 0, result: 'Automation state reset' });
+  } catch (error) {
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Cancel active automation segment - clears all scheduler segments
+app.post('/api/automation/cancel', async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const userConfig = await getUserConfig(userId);
+    const deviceSN = userConfig?.deviceSn;
+    
+    if (!deviceSN) {
+      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    }
+    
+    console.log(`[Automation] Cancel request for user ${userId}, device ${deviceSN}`);
+    
+    // Create 10 empty/disabled segments (same as clear-all)
+    const emptyGroups = [];
+    for (let i = 0; i < 10; i++) {
+      emptyGroups.push({
+        enable: 0,
+        workMode: 'SelfUse',
+        startHour: 0, startMinute: 0,
+        endHour: 0, endMinute: 0,
+        minSocOnGrid: 10,
+        fdSoc: 10,
+        fdPwr: 0,
+        maxSoc: 100
+      });
+    }
+    
+    // Send to device via v1 API
+    const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: emptyGroups }, userConfig, userId);
+    console.log(`[Automation] Cancel v1 result: errno=${result.errno}`);
+    
+    // Disable the scheduler flag
+    let flagResult = null;
+    try {
+      flagResult = await callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
+      console.log(`[Automation] Cancel flag result: errno=${flagResult?.errno}`);
+    } catch (flagErr) {
+      console.warn('[Automation] Flag disable failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
+    }
+    
+    // Verification read
+    let verify = null;
+    try {
+      verify = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+    } catch (e) {
+      console.warn('[Automation] Verify read failed:', e && e.message ? e.message : e);
+    }
+    
+    // Clear active rule in state
+    await saveUserAutomationState(userId, {
+      activeRule: null
+    });
+    
+    // Log to history
+    try {
+      await addHistoryEntry(userId, {
+        type: 'automation_cancel',
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (e) { /* ignore */ }
+    
+    res.json({
+      errno: result.errno,
+      msg: result.msg || (result.errno === 0 ? 'Automation cancelled' : 'Failed'),
+      flagResult,
+      verify: verify?.result || null
+    });
+  } catch (error) {
+    console.error('[Automation] Cancel error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // Create/update automation rule
 app.post('/api/automation/rule/create', async (req, res) => {
   try {
@@ -1157,6 +1298,194 @@ app.get('/api/inverter/real-time', async (req, res) => {
   }
 });
 
+// Read a specific inverter setting (returns the value for a given key)
+app.get('/api/inverter/settings', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.query.sn || userConfig?.deviceSn;
+    const key = req.query.key;
+    if (!key) return res.status(400).json({ errno: 400, error: 'Missing required parameter: key' });
+    const result = await callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key }, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/inverter/settings error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Battery SoC read endpoint used by control UI
+app.get('/api/device/battery/soc/get', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.query.sn || userConfig?.deviceSn;
+    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    const result = await callFoxESSAPI(`/op/v0/device/battery/soc/get?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/device/battery/soc/get error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Battery SoC set
+app.post('/api/device/battery/soc/set', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.body.sn || userConfig?.deviceSn;
+    const { minSoc, minSocOnGrid } = req.body;
+    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    const result = await callFoxESSAPI('/op/v0/device/battery/soc/set', 'POST', { sn, minSoc, minSocOnGrid }, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/device/battery/soc/set error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Force charge time read
+app.get('/api/device/battery/forceChargeTime/get', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.query.sn || userConfig?.deviceSn;
+    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    const result = await callFoxESSAPI(`/op/v0/device/battery/forceChargeTime/get?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/device/battery/forceChargeTime/get error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Force charge time set
+app.post('/api/device/battery/forceChargeTime/set', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.body.sn || userConfig?.deviceSn;
+    const body = Object.assign({ sn }, req.body);
+    const result = await callFoxESSAPI('/op/v0/device/battery/forceChargeTime/set', 'POST', body, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/device/battery/forceChargeTime/set error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// FoxESS: Get meter reader (legacy endpoint used by UI)
+app.post('/api/device/getMeterReader', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.body.sn || userConfig?.deviceSn;
+    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    const body = Object.assign({ sn }, req.body);
+    const result = await callFoxESSAPI('/op/v0/device/getMeterReader', 'POST', body, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/device/getMeterReader error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Dedicated temperatures endpoint - returns only temperature-related variables
+app.get('/api/inverter/temps', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.query.sn || userConfig?.deviceSn;
+    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    const variables = ['batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation'];
+    const result = await callFoxESSAPI('/op/v0/device/real/query', 'POST', { sn, variables }, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/inverter/temps error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// EMS list
+app.get('/api/ems/list', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const result = await callFoxESSAPI('/op/v0/ems/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/ems/list error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Module list
+app.get('/api/module/list', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const result = await callFoxESSAPI('/op/v0/module/list', 'POST', { currentPage: 1, pageSize: 10, sn: userConfig?.deviceSn }, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/module/list error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Module signal (attempts moduleSN lookup if not provided)
+app.get('/api/module/signal', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    let moduleSN = req.query.moduleSN;
+    if (!moduleSN) {
+      const moduleList = await callFoxESSAPI('/op/v0/module/list', 'POST', { sn: userConfig?.deviceSn, currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
+      if (moduleList?.result?.data?.length > 0) moduleSN = moduleList.result.data[0].moduleSN;
+    }
+    if (!moduleSN) return res.json({ errno: 41037, msg: 'No module found for device', result: null });
+    const result = await callFoxESSAPI('/op/v0/module/getSignal', 'POST', { sn: moduleSN }, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/module/signal error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Meter list
+app.get('/api/meter/list', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const result = await callFoxESSAPI('/op/v0/gw/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/meter/list error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Get work mode setting (default active mode, not scheduler)
+app.get('/api/device/workmode/get', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.query.sn || userConfig?.deviceSn;
+    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+
+    const result = await callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key: 'WorkMode' }, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/device/workmode/get error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Set work mode setting (default active mode, not scheduler)
+app.post('/api/device/workmode/set', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.body.sn || userConfig?.deviceSn;
+    const { workMode } = req.body;
+    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    if (!workMode) return res.status(400).json({ errno: 400, error: 'workMode is required (SelfUse, Feedin, Backup, PeakShaving)' });
+
+    const result = await callFoxESSAPI('/op/v0/device/setting/set', 'POST', { sn, key: 'WorkMode', value: workMode }, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/device/workmode/set error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // (Amber sites handler moved earlier to allow unauthenticated callers)
 // (Amber prices handler moved earlier to allow unauthenticated callers)
 
@@ -1173,11 +1502,61 @@ app.get('/api/weather', async (req, res) => {
 });
 
 // Scheduler endpoints
+// IMPORTANT: Always fetch from the live FoxESS device to ensure UI matches actual device state
+// (not from Firestore cache, which caused segments to appear saved but not sync to manufacturer app)
 app.get('/api/scheduler/v1/get', async (req, res) => {
+  try {
+    await tryAttachUser(req);
+    const userConfig = await getUserConfig(req.user?.uid);
+    const sn = req.query.sn || userConfig?.deviceSn;
+    
+    if (!sn) {
+      // No device SN configured - return sensible defaults
+      const defaultGroups = Array.from({ length: 10 }).map((_, i) => ({
+        startHour: 0, startMinute: 0,
+        endHour: 0, endMinute: 0,
+        enable: 0,
+        workMode: 'SelfUse',
+        minSocOnGrid: 10,
+        fdSoc: 10,
+        fdPwr: 0,
+        maxSoc: 100
+      }));
+      return res.json({ errno: 0, result: { groups: defaultGroups, enable: false }, source: 'defaults' });
+    }
+    
+    // Always fetch live data from the device (this is what the manufacturer app sees)
+    const result = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN: sn }, userConfig, req.user?.uid);
+    
+    // Tag the source so debugging is easier
+    if (result && result.errno === 0) {
+      result.source = 'device';
+    }
+    
+    res.json(result);
+  } catch (error) {
+    console.error('[Scheduler] GET error:', error.message);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Backwards-compat: v0-style scheduler endpoints used by older UIs
+app.get('/api/scheduler/get', async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
     const sn = req.query.sn || userConfig?.deviceSn;
-    const result = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN: sn }, userConfig, req.user.uid);
+    const result = await callFoxESSAPI('/op/v0/device/scheduler/get', 'POST', { deviceSN: sn }, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+app.get('/api/scheduler/flag', async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.query.sn || userConfig?.deviceSn;
+    const result = await callFoxESSAPI('/op/v0/device/scheduler/get/flag', 'POST', { deviceSN: sn }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -1189,8 +1568,30 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
     const userConfig = await getUserConfig(req.user.uid);
     const deviceSN = req.body.sn || req.body.deviceSN || userConfig?.deviceSn;
     const groups = req.body.groups || [];
-    const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups }, userConfig, req.user.uid);
     
+    if (!deviceSN) {
+      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    }
+    
+    console.log('[Scheduler] SET request for device:', deviceSN, 'groups count:', groups.length);
+    console.log('[Scheduler] Groups payload:', JSON.stringify(groups).slice(0, 500));
+    
+    // Primary: v1 API (this is what backend server.js uses and it works)
+    const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups }, userConfig, req.user.uid);
+    console.log('[Scheduler] v1 result:', JSON.stringify(result).slice(0, 300));
+
+    // Determine if we should enable or disable the scheduler flag
+    const shouldEnable = Array.isArray(groups) && groups.some(g => Number(g.enable) === 1);
+    
+    // Set scheduler flag (required for FoxESS app to show the schedule)
+    let flagResult = null;
+    try {
+      flagResult = await callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: shouldEnable ? 1 : 0 }, userConfig, req.user.uid);
+      console.log('[Scheduler] Flag v1 result:', JSON.stringify(flagResult).slice(0, 200));
+    } catch (flagErr) {
+      console.warn('[Scheduler] Flag v1 failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
+    }
+
     // Log action to history
     await addHistoryEntry(req.user.uid, {
       type: 'scheduler_update',
@@ -1198,9 +1599,26 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
       groups,
       result: result.errno === 0 ? 'success' : 'failed'
     });
-    
-    res.json(result);
+
+    // Verification read: fetch what the device actually has now
+    let verify = null;
+    try {
+      verify = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, req.user.uid);
+      console.log('[Scheduler] Verify read:', JSON.stringify(verify).slice(0, 500));
+    } catch (e) { 
+      console.warn('[Scheduler] Verify read failed:', e && e.message ? e.message : e); 
+    }
+
+    // Return the result with verification data
+    res.json({
+      errno: result.errno,
+      msg: result.msg || (result.errno === 0 ? 'Success' : 'Failed'),
+      result: result.result,
+      flagResult,
+      verify: verify?.result || null
+    });
   } catch (error) {
+    console.error('[Scheduler] SET error:', error);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
@@ -1258,10 +1676,93 @@ async function incrementGlobalApiCount(apiType) {
 
 
 
-// ==================== 404 HANDLER ====================
-// Catch-all for undefined routes to prevent HTML responses
-app.use((req, res) => {
-  res.status(404).json({ errno: 404, error: 'Endpoint not found' });
+// NOTE: 404 handler moved to the end of the file so all routes
+// declared below (including scheduler user-scoped endpoints)
+// are reachable. See end-of-file for the catch-all handler.
+
+// ==================== SCHEDULER ENDPOINTS (USER-SCOPED) ====================
+/**
+ * Get scheduler segments for the authenticated user
+ * Response: { errno: 0, result: { groups: [...], enable: boolean } }
+ */
+
+
+/**
+ * Clear all scheduler segments (set to disabled / zeroed).
+ * Sends directly to the device, same pattern as backend/server.js
+ * Body: {}
+ */
+app.post('/api/scheduler/v1/clear-all', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const userConfig = await getUserConfig(userId);
+    const deviceSN = req.body.sn || req.body.deviceSN || userConfig?.deviceSn;
+    
+    if (!deviceSN) {
+      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    }
+    
+    console.log('[Scheduler] CLEAR-ALL request for device:', deviceSN);
+    
+    // Create 10 empty/disabled segments (same as backend/server.js)
+    const emptyGroups = [];
+    for (let i = 0; i < 10; i++) {
+      emptyGroups.push({
+        enable: 0,
+        workMode: 'SelfUse',
+        startHour: 0,
+        startMinute: 0,
+        endHour: 0,
+        endMinute: 0,
+        minSocOnGrid: 10,
+        fdSoc: 10,
+        fdPwr: 0,
+        maxSoc: 100
+      });
+    }
+    
+    // Send to device via v1 API (primary - this is what works in server.js)
+    const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: emptyGroups }, userConfig, userId);
+    console.log('[Scheduler] Clear-all v1 result:', JSON.stringify(result).slice(0, 300));
+    
+    // Disable the scheduler flag
+    let flagResult = null;
+    try {
+      flagResult = await callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
+      console.log('[Scheduler] Clear-all flag result:', JSON.stringify(flagResult).slice(0, 200));
+    } catch (flagErr) {
+      console.warn('[Scheduler] Flag disable failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
+    }
+    
+    // Verification read
+    let verify = null;
+    try {
+      verify = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+      console.log('[Scheduler] Clear-all verify:', JSON.stringify(verify).slice(0, 500));
+    } catch (e) {
+      console.warn('[Scheduler] Verify read failed:', e && e.message ? e.message : e);
+    }
+    
+    // Log to history
+    try {
+      await db.collection('users').doc(userId).collection('history').add({
+        type: 'scheduler_clear',
+        by: userId,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (e) { console.warn('[Scheduler] Failed to write history entry:', e && e.message); }
+
+    res.json({ 
+      errno: result.errno, 
+      msg: result.msg || (result.errno === 0 ? 'Scheduler cleared' : 'Failed'),
+      result: result.result,
+      flagResult,
+      verify: verify?.result || null
+    });
+  } catch (err) {
+    console.error('[Scheduler] clear-all error:', err.message || err);
+    res.status(500).json({ errno: 500, error: err.message || String(err) });
+  }
 });
 
 // ==================== EXPORT EXPRESS APP AS CLOUD FUNCTION ====================
@@ -1427,17 +1928,184 @@ function compareValue(actual, operator, target) {
     case '<=': return actual <= target;
     case '==': return actual == target;
     case '!=': return actual != target;
+    case 'between':
+      // For "between" operator, target should be an object with min/max or an array [min, max]
+      if (Array.isArray(target)) return actual >= target[0] && actual <= target[1];
+      if (target && typeof target === 'object') return actual >= (target.min || 0) && actual <= (target.max || 100);
+      return false;
     default: return false;
   }
 }
 
 /**
- * Apply a rule's action
+ * Helper to get Sydney time components
+ */
+function getSydneyTime() {
+  const now = new Date();
+  const sydneyStr = now.toLocaleString('en-AU', { timeZone: 'Australia/Sydney', hour12: false });
+  // Parse "DD/MM/YYYY, HH:MM:SS" format
+  const [datePart, timePart] = sydneyStr.split(', ');
+  const [day, month, year] = datePart.split('/');
+  const [hour, minute, second] = timePart.split(':');
+  return {
+    hour: parseInt(hour, 10),
+    minute: parseInt(minute, 10),
+    second: parseInt(second, 10),
+    day: parseInt(day, 10),
+    month: parseInt(month, 10),
+    year: parseInt(year, 10),
+    dayOfWeek: now.getDay() // 0 = Sunday, 6 = Saturday
+  };
+}
+
+/**
+ * Helper to add minutes to a time
+ */
+function addMinutes(hour, minute, addMins) {
+  const totalMins = hour * 60 + minute + addMins;
+  return {
+    hour: Math.floor(totalMins / 60) % 24,
+    minute: totalMins % 60
+  };
+}
+
+/**
+ * Apply a rule's action - creates/updates scheduler segment on device
+ * Uses the same v1 API pattern as the manual scheduler endpoints
  */
 async function applyRuleAction(userId, rule, userConfig) {
-  // TODO: Implement scheduler update logic
-  // This should create/update scheduler segments based on rule.action
-  console.log(`[Automation] Applying action for user ${userId}:`, rule.action);
+  const action = rule.action || {};
+  const deviceSN = userConfig?.deviceSn;
+  
+  if (!deviceSN) {
+    console.warn(`[Automation] Cannot apply rule action - no deviceSN for user ${userId}`);
+    return { errno: -1, msg: 'No device SN configured' };
+  }
+  
+  console.log(`[Automation] Applying action for user ${userId}:`, JSON.stringify(action).slice(0, 300));
+  
+  // Get current time in Sydney timezone
+  const sydney = getSydneyTime();
+  const startHour = sydney.hour;
+  const startMinute = sydney.minute;
+  
+  // Calculate end time based on duration
+  const durationMins = action.durationMinutes || 30;
+  const endTimeObj = addMinutes(startHour, startMinute, durationMins);
+  const endHour = endTimeObj.hour;
+  const endMinute = endTimeObj.minute;
+  
+  console.log(`[Automation] Creating segment: ${String(startHour).padStart(2,'0')}:${String(startMinute).padStart(2,'0')} - ${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} (${durationMins}min)`);
+  
+  // Get current scheduler from device (v1 API)
+  let currentGroups = [];
+  try {
+    const currentScheduler = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+    if (currentScheduler.errno === 0 && currentScheduler.result?.groups) {
+      currentGroups = JSON.parse(JSON.stringify(currentScheduler.result.groups)); // Deep copy
+    }
+  } catch (e) {
+    console.warn('[Automation] Failed to get current scheduler:', e && e.message ? e.message : e);
+  }
+  
+  // Ensure we have 10 groups
+  while (currentGroups.length < 10) {
+    currentGroups.push({
+      enable: 0,
+      workMode: 'SelfUse',
+      startHour: 0, startMinute: 0,
+      endHour: 0, endMinute: 0,
+      minSocOnGrid: 10,
+      fdSoc: 10,
+      fdPwr: 0,
+      maxSoc: 100
+    });
+  }
+  
+  // Clear all existing enabled segments (same as backend server.js does)
+  // This avoids FoxESS reordering issues and ensures clean state
+  let clearedCount = 0;
+  currentGroups.forEach((group, idx) => {
+    if (group.enable === 1 || group.startHour !== 0 || group.startMinute !== 0 || group.endHour !== 0 || group.endMinute !== 0) {
+      currentGroups[idx] = {
+        enable: 0,
+        workMode: 'SelfUse',
+        startHour: 0, startMinute: 0,
+        endHour: 0, endMinute: 0,
+        minSocOnGrid: 10,
+        fdSoc: 10,
+        fdPwr: 0,
+        maxSoc: 100
+      };
+      clearedCount++;
+    }
+  });
+  if (clearedCount > 0) {
+    console.log(`[Automation] Cleared ${clearedCount} existing segment(s)`);
+  }
+  
+  // Build the new segment (V1 flat structure)
+  const segment = {
+    enable: 1,
+    workMode: action.workMode || 'SelfUse',
+    startHour,
+    startMinute,
+    endHour,
+    endMinute,
+    minSocOnGrid: action.minSocOnGrid ?? 20,
+    fdSoc: action.fdSoc ?? 35,
+    fdPwr: action.fdPwr ?? 0,
+    maxSoc: action.maxSoc ?? 90
+  };
+  
+  // Always use Group 1 (index 0) for automation - clean slate approach
+  currentGroups[0] = segment;
+  
+  console.log(`[Automation] Applying segment to Time Period 1:`, JSON.stringify(segment));
+  
+  // Send to device via v1 API (same as manual scheduler)
+  const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: currentGroups }, userConfig, userId);
+  console.log(`[Automation] v1 result: errno=${result.errno}, msg=${result.msg || ''}`);
+  
+  // Set the scheduler flag to enabled (required for FoxESS app to show schedule)
+  let flagResult = null;
+  try {
+    flagResult = await callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 1 }, userConfig, userId);
+    console.log(`[Automation] Flag result: errno=${flagResult?.errno}`);
+  } catch (flagErr) {
+    console.warn('[Automation] Flag set failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
+  }
+  
+  // Verification read to confirm device accepted the segment
+  let verify = null;
+  try {
+    verify = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+    console.log(`[Automation] Verify read: groups count=${verify?.result?.groups?.length || 0}`);
+  } catch (e) {
+    console.warn('[Automation] Verify read failed:', e && e.message ? e.message : e);
+  }
+  
+  // Log to user history
+  try {
+    await addHistoryEntry(userId, {
+      type: 'automation_action',
+      ruleName: rule.name,
+      action,
+      segment,
+      result: result.errno === 0 ? 'success' : 'failed',
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    console.warn('[Automation] Failed to log history:', e && e.message ? e.message : e);
+  }
+  
+  return {
+    errno: result.errno,
+    msg: result.msg || (result.errno === 0 ? 'Segment applied' : 'Failed'),
+    segment,
+    flagResult,
+    verify: verify?.result || null
+  };
 }
 
 // ==================== USER CREATION TRIGGER ====================
@@ -1518,4 +2186,10 @@ app.post('/api/auth/cleanup-user', authenticateUser, async (req, res) => {
     console.error(`[Auth] Error cleaning up user:`, error);
     res.status(500).json({ errno: 500, error: error.message });
   }
+});
+
+// ==================== 404 HANDLER ====================
+// Catch-all for undefined routes to prevent HTML responses
+app.use((req, res) => {
+  res.status(404).json({ errno: 404, error: 'Endpoint not found' });
 });

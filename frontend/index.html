@@ -96,7 +96,11 @@
         .left-panel {
             flex: 1;
             padding: 20px;
-            overflow-y: auto;
+            /* Allow child panels to manage their own scrolling. This prevents the
+               left-panel's scrollbar from capturing scroll events intended for the
+               automation panel's internal scroller (FAQ worked because it set its
+               inner card-body to scroll). */
+            overflow-y: visible;
             transition: margin-right 0.3s ease;
         }
         .left-panel.panel-open {
@@ -328,9 +332,9 @@
             color: #8b949e;
         }
         .live-stat .label {
-            font-size: 12px;
+            font-size:12px;
             color: #8b949e;
-            margin-left: auto;
+            margin-left: 6px;
         }
         .stat-row {
             display: flex;
@@ -438,7 +442,9 @@
         .left-panel {
             display: flex;
             gap: 16px;
-            align-items: flex-start;
+            /* Stretch children so the automation panel can fill available height
+               and its internal scrollbar becomes reachable when content is long. */
+            align-items: stretch;
         }
         .main-content {
             flex: 1 1 auto;
@@ -452,12 +458,14 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
-            position: relative;
-            /* ensure the automation panel itself can scroll when its content exceeds the viewport
-               so users can reach all rules without the main content blocking scroll */
-            max-height: calc(100vh - 120px);
-            overflow-y: auto;
-            overscroll-behavior: contain;
+            /* Fixed height panel that doesn't scroll itself; children scroll */
+            position: -webkit-sticky;
+            position: sticky;
+            top: 80px;
+            /* Increase the available vertical space by 20% so cards appear larger */
+            height: calc((100vh - 100px) * 1.2);
+            overflow: hidden; /* panel itself doesn't scroll */
+            padding-bottom: 12px;
         }
         .automation-panel.collapsed {
             width: 0 !important;
@@ -465,28 +473,41 @@
             overflow: hidden;
             transform: translateX(100%);
         }
-        /* Make the backend automation content scrollable so users can access
-           many rules even when the panel grows tall. Keep a comfortable
-           max-height so the panel doesn't extend past the top/nav area. */
-        #backendAutomationStatus {
-            max-height: calc(100vh - 220px);
+        /* Make the Active Automation card expand to fill available space and scroll internally */
+        .automation-panel > .card:first-child {
+            flex: 1 1 auto;
+            min-height: 0; /* critical for flex child to shrink and enable scrolling */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .automation-panel > .card:first-child > .card-body {
+            flex: 1 1 auto;
+            min-height: 0;
             overflow-y: auto;
-            padding-right: 6px; /* small padding to prevent content from being cut off by the scrollbar */
+            -webkit-overflow-scrolling: touch;
             overscroll-behavior: contain;
+            padding-right: 6px;
+        }
+        /* Keep the FAQ card at fixed small size */
+        .automation-panel > .card.faq-card {
+            flex: 0 0 auto;
         }
 
         /* FAQ card in automation panel - small default size and scrollable content */
         .automation-panel .faq-card {
-            /* Make the FAQ card take less vertical space by default */
-            max-height: 220px;
+            /* Make the FAQ card a bit larger vertically (approx +20%) */
+            max-height: 264px; /* 220 * 1.2 = 264 */
+            min-height: 144px; /* 120 * 1.2 = 144 */
             overflow: hidden; /* prevent the FAQ card from expanding the automation panel */
         }
         .automation-panel .faq-card .card-body {
             /* Allow only the inner FAQ area to scroll */
-            max-height: calc(220px - 66px); /* account for header height */
+            max-height: calc(264px - 50px); /* account for header height */
             overflow-y: auto;
             padding-right: 6px;
             overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
         }
         /* Force Manual Scheduler into row 2 and span full width */
         .manual-scheduler-card {
@@ -1385,36 +1406,12 @@
                             <select id="amberSiteId" class="input">
                                 <option value="">Loading sites...</option>
                             </select>
+                            <button class="btn btn-sm" id="amberShowMore" onclick="toggleAmberMore()" style="width:auto;margin:0;padding:6px 12px;font-size:12px">Show all</button>
                         </div>
-                        <div class="input-row" style="align-items:center;gap:8px">
-                            <input type="number" id="amberNext" class="input" min="1" max="1000" value="12" style="width:110px" title="Number of forecast intervals to request (used by the 'Refresh' action). Increase to see more future intervals; very large values may be capped for display." aria-label="Forecast intervals">
-                            <div style="display:flex;flex-direction:column;gap:4px">
-                                <button class="btn btn-primary btn-sm" onclick="openAmberHistoryModal()" style="width:auto;margin:0;padding:8px 12px;font-size:13px" title="Open history date selector">History</button>
-                                <div id="amberNextHelp" style="font-size:11px;color:#8b949e;text-align:center">Intervals requested when refreshing</div>
-                            </div>
-                            <button class="btn btn-sm" id="amberShowMore" onclick="toggleAmberMore()" style="width:auto;margin:0;padding:6px 10px;font-size:12px" title="Quick toggle to request many intervals">Show more</button>
-                            <span style="font-size:12px;color:#8b949e; margin-left:6px" title="'Intervals' controls how many future forecast intervals are requested from Amber. The compact display will cap how many are shown for readability">? Help</span>
-                        </div>
+                        <!-- Hidden input for compatibility with existing code -->
+                        <input type="hidden" id="amberNext" value="288">
                         <div class="data-card" id="amberCard">
                             <div style="color:#8b949e;font-size:12px">Loading Amber sites...</div>
-                        </div>
-                        <!-- Amber History Modal -->
-                        <div id="amberHistoryModal" class="modal-backdrop" aria-hidden="true">
-                            <div class="modal" role="dialog" aria-modal="true">
-                                <h3>Amber Price History</h3>
-                                <div class="row">
-                                    <label style="min-width:60px;color:#8b949e">From</label>
-                                    <input type="date" id="amberHistoryStart">
-                                </div>
-                                <div class="row">
-                                    <label style="min-width:60px;color:#8b949e">To</label>
-                                    <input type="date" id="amberHistoryEnd">
-                                </div>
-                                <div class="actions">
-                                    <button class="btn btn-sm" onclick="closeAmberHistoryModal()">Cancel</button>
-                                    <button class="btn btn-primary btn-sm" onclick="(function(){ const s=document.getElementById('amberHistoryStart').value; const e=document.getElementById('amberHistoryEnd').value; closeAmberHistoryModal(); getAmberRange(s,e); })()">Load</button>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -1895,6 +1892,12 @@
                 const statusBar = document.getElementById('status-bar');
                 if (statusBar) statusBar.style.border = '';
             } catch (e) {}
+
+            // Ensure the toggle button remains clickable; keep pointer events enabled
+            try {
+                const tbtn = document.getElementById('automationToggleBtn');
+                if (tbtn) tbtn.style.pointerEvents = 'auto';
+            } catch (e) { /* ignore */ }
         }
         // Dynamically load Leaflet CSS+JS once and return a Promise when ready
         function ensureLeafletLoaded() {
@@ -3298,7 +3301,7 @@
                 document.getElementById('status-bar').style.display = 'flex';
                 document.getElementById('status-bar').querySelector('.endpoint').textContent = 'Amber Raw Response';
             } else {
-                alert('Debug panel not available. Response has ' + resp.length + ' intervals');
+                alert('Debug panel not available. Response has ' + resp.length + ' items');
             }
         }
         
@@ -3356,17 +3359,22 @@
         }
 
         function toggleAmberMore() {
-            const el = document.getElementById('amberNext');
             const btn = document.getElementById('amberShowMore');
-            const cur = Number(el.value) || 12;
-            if (cur < 100) {
-                el.value = '200';
-                btn.textContent = 'Show less';
+            if (!btn) return;
+            const isShowingAll = btn.dataset.showAll === '1';
+            // Toggle state and request appropriate number of intervals
+            if (isShowingAll) {
+                btn.dataset.showAll = '0';
+                // restore to default smaller fetch
+                const nextEl = document.getElementById('amberNext');
+                if (nextEl) nextEl.value = '288';
             } else {
-                el.value = '12';
-                btn.textContent = 'Show more';
+                btn.dataset.showAll = '1';
+                // request a larger window to see more intervals
+                const nextEl = document.getElementById('amberNext');
+                if (nextEl) nextEl.value = '500';
             }
-            // refetch with new window
+            // Fetch fresh data so count/limits are accurate
             getAmberCurrent();
         }
 
@@ -3392,32 +3400,27 @@
             const minBuyPrice = forecasts.length ? Math.min(...forecasts.map(i => i.perKwh)) : 0;
             const minFeedSpot = feedForecasts.length ? Math.min(...feedForecasts.map(i => i.spotPerKwh)) : 0;
 
-            // How many forecasts to show (dynamic based on amberNext and show-all toggle)
-            const amberNextVal = Number(document.getElementById('amberNext')?.value) || 12;
-            const showAll = document.getElementById('amberShowAll')?.checked || false;
-            // If show-all is enabled, display everything returned; otherwise apply smart cap
-            let forecastLimit = forecasts.length;
-            if (!showAll) {
-                if (amberNextVal > 100) forecastLimit = Math.min(forecasts.length, 48);
-                else if (amberNextVal > 50) forecastLimit = Math.min(forecasts.length, 36);
-                else if (amberNextVal > 20) forecastLimit = Math.min(forecasts.length, 18);
-                else forecastLimit = Math.min(forecasts.length, 12);
-            }
+            // How many forecasts to show (use button dataset for show-all state)
+            const showAllBtn = document.getElementById('amberShowMore');
+            const showAll = showAllBtn?.dataset?.showAll === '1';
+            // If show-all is enabled, display everything returned; otherwise show 12
+            const forecastLimit = showAll ? forecasts.length : Math.min(forecasts.length, 12);
 
             let html = '';
 
-            // Diagnostic info: show requested vs returned intervals for debugging
+            // Compact info row: forecast count and time range
             try {
-                const req = amberNextVal;
                 const returned = forecasts.length;
                 const lastInterval = forecasts.length ? new Date(forecasts[forecasts.length-1].startTime).toLocaleString('en-AU', {hour:'2-digit',minute:'2-digit', day:'2-digit', month:'2-digit', timeZone:'Australia/Sydney'}) : '—';
-                html += `<div style="font-size:12px;color:#8b949e;margin-bottom:8px;display:flex;align-items:center;gap:8px;justify-content:space-between">
-                    <span>Requested: <strong>${req}</strong> — Returned: <strong>${returned}</strong> — Last: <strong>${lastInterval}</strong></span>
-                    <div style="display:flex;gap:4px">
-                        <button class="btn btn-sm" onclick="dumpAmberRaw()" style="margin:0;padding:4px 8px;font-size:11px" title="Show full API response">📋 Raw</button>
-                        <button class="btn btn-sm" onclick="exportAmberData('csv')" style="margin:0;padding:4px 8px;font-size:11px" title="Export as CSV">📥 CSV</button>
-                    </div>
+                html += `<div style="font-size:11px;color:#8b949e;margin-bottom:8px">
+                    <strong>${returned}</strong> forecast intervals available — until <strong>${lastInterval}</strong>
                 </div>`;
+                // Update the external show-all button label
+                const btn = document.getElementById('amberShowMore');
+                if (btn) {
+                    const isShowingAll = btn.dataset.showAll === '1';
+                    btn.textContent = isShowingAll ? 'Show less' : `Show all (${returned})`;
+                }
             } catch(e) { /* ignore diagnostics errors */ }
 
             // Spike Alert Banner (if any forecasted spikes)
@@ -3442,11 +3445,9 @@
                     const spot = currentGen.spotPerKwh;
                     const cls = p > 30 ? 'price-high' : p > 20 ? 'price-mid' : 'price-low';
                     const spike = currentGen.spikeStatus && currentGen.spikeStatus !== 'none';
-                    const desc = currentGen.descriptor || '';
-                    html += `<div style="min-width:80px">
+                    html += `<div style="min-width:100px">
                         <div style="font-size:11px;color:#8b949e">Buy Now ${spike ? '<span style="color:#f85149">⚠️</span>' : ''}</div>
                         <div class="value ${cls}" style="font-size:28px;font-weight:700">${p.toFixed(1)}¢</div>
-                        <div style="font-size:10px;color:#8b949e">${desc} · spot ${spot?.toFixed(1) || '?'}¢</div>
                     </div>`;
                 }
                 if (currentFeed) {
@@ -3463,16 +3464,20 @@
                         return 'price-neutral';
                     }
                     const getCls = feedClassFromVal(displayVal);
-                    html += `<div style="min-width:120px">
+                    html += `<div style="min-width:100px">
                         <div style="font-size:11px;color:#8b949e">Feed-In Price</div>
-                        <div class="value ${getCls}" style="font-size:36px;font-weight:700">${displayVal}¢</div>
+                        <div class="value ${getCls}" style="font-size:28px;font-weight:700">${displayVal}¢</div>
                     </div>`;
                 }
                 if (currentGen && currentGen.renewables !== undefined) {
                     const renew = currentGen.renewables;
-                    html += `<div style="min-width:80px">
-                        <div style="font-size:11px;color:#8b949e">Renewables</div>
-                        <div class="value" style="font-size:28px;font-weight:700;color:#8b949e">${renew.toFixed(0)}%</div>
+                    // Map renewable descriptor to emoji and color
+                    const renewDesc = currentGen.descriptor || '';
+                    const renewEmoji = { best: '🌱', great: '🌿', ok: '☁️', notGreat: '🏭', worst: '💨' }[renewDesc] || '';
+                    const renewColor = renew > 60 ? '#7ee787' : renew > 40 ? '#ffd43b' : '#f85149';
+                    html += `<div style="min-width:100px">
+                        <div style="font-size:11px;color:#8b949e">Renewables ${renewEmoji}</div>
+                        <div class="value" style="font-size:28px;font-weight:700;color:${renewColor}">${renew.toFixed(0)}%</div>
                     </div>`;
                 }
                 html += '</div>';
@@ -3483,20 +3488,17 @@
                 html += `<div style="display:flex;gap:12px;margin-bottom:12px;padding:8px;background:rgba(33,38,45,0.6);border-radius:6px;font-size:11px">
                     <div><span style="color:#8b949e">Forecast range:</span> <span class="price-low" style="font-weight:600">${minBuyPrice.toFixed(0)}¢</span> — <span class="price-high" style="font-weight:600">${maxBuyPrice.toFixed(0)}¢</span></div>
                     ${minFeedSpot < 0 ? `<div><span style="color:#8b949e">Feed-in low:</span> <span class="price-high" style="font-weight:600">${minFeedSpot.toFixed(1)}¢</span></div>` : ''}
-                    <div style="margin-left:auto;color:#8b949e">${forecasts.length} intervals</div>
                 </div>`;
             }
 
             // Buy price forecasts with advanced pricing and tariff info
             const displayForecasts = forecasts.slice(0, forecastLimit);
             if (displayForecasts.length) {
-                html += '<div style="font-size:11px;color:#8b949e;margin-bottom:6px;margin-top:8px;font-weight:600;display:flex;justify-content:space-between;align-items:center">\n                    <span>📈 Buy Price Forecast</span>\n                    <label style="font-size:10px;color:#7ee787;display:flex;align-items:center;gap:4px;margin:0;font-weight:400"><input type="checkbox" id="amberShowAll" onchange="getAmberCurrent()" style="margin:0;cursor:pointer"> Show all</label>\n                </div>';
+                html += '<div style="font-size:11px;color:#8b949e;margin-bottom:6px;margin-top:8px;font-weight:600">📈 Buy Price Forecast</div>';
                 html += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
                 displayForecasts.forEach(it => {
                     const startDate = new Date(it.startTime);
                     const time = startDate.toLocaleTimeString('en-AU', {hour:'numeric', minute:'2-digit', hour12:false, timeZone:'Australia/Sydney'});
-                    const period = it.tariffInformation?.period || '';
-                    const periodLabel = period ? (period === 'peak' ? '[PEAK]' : '[OFF]') : '';
                     const p = it.perKwh;
                     const cls = p > 30 ? 'price-high' : p > 20 ? 'price-mid' : 'price-low';
                     const spike = it.spikeStatus && it.spikeStatus !== 'none';
@@ -3508,7 +3510,7 @@
                             <span class="value ${cls}" style="font-size:12px;font-weight:600">${p.toFixed(0)}¢</span>
                             ${spike ? '<span style="font-size:10px">⚠️</span>' : ''}
                         </div>
-                        <div class="label" style="font-size:9px;color:#8b949e">${time}${periodLabel ? ' ' + periodLabel : ''}</div>
+                        <div class="label" style="font-size:9px;color:#8b949e">${time}</div>
                     </div>`;
                 });
                 html += '</div>';
@@ -3545,30 +3547,9 @@
                 html += '</div>';
             }
 
-            // Add cost estimator section
-            html += `<div style="margin-top:12px;padding:10px;background:rgba(33,38,45,0.6);border-radius:6px">
-                <div style="font-size:11px;color:#8b949e;margin-bottom:6px;font-weight:600">💰 Cost Estimator</div>
-                <div style="display:flex;gap:6px;align-items:center">
-                    <input type="number" id="amberEstimateKwh" value="1" min="0.1" step="0.1" style="width:60px;padding:4px;background:transparent;border:1px solid rgba(255,255,255,0.1);color:#e6edf3;font-size:12px" placeholder="kWh">
-                    <span style="font-size:12px;color:#8b949e">kWh →</span>
-                    <span id="amberEstimateCost" style="font-size:13px;color:#7ee787;font-weight:600">—</span>
-                </div>
-            </div>`;
-
             // Add chart canvas to HTML before rendering
             html += '<div style="margin-top:16px;position:relative;height:200px;width:100%"><canvas id="amberPriceChart" style="width:100%;height:200px"></canvas></div>';
             card.innerHTML = html;
-            
-            // Setup cost estimator listener
-            const kwhInput = document.getElementById('amberEstimateKwh');
-            if (kwhInput) {
-                kwhInput.addEventListener('input', () => {
-                    const kwh = Number(kwhInput.value) || 0;
-                    const totalCost = displayForecasts.reduce((sum, it) => sum + (it.perKwh * kwh / 100), 0);
-                    document.getElementById('amberEstimateCost').textContent = totalCost.toFixed(2) + '¢';
-                });
-                kwhInput.dispatchEvent(new Event('input'));
-            }
 
             // Schedule chart rendering after DOM is ready
             setTimeout(() => renderAmberChart(displayForecasts, displayFeedForecasts), 100);
@@ -3703,11 +3684,20 @@
                 
                 if (data.errno === 0) {
                     statusEl.style.background = '#238636';
-                    statusEl.textContent = '✅ All segments cleared successfully!';
+                    let msg = '✅ All segments cleared successfully!';
+                    // Show flag result if available
+                    if (data.flagResult) {
+                        msg += data.flagResult.errno === 0 ? ' (flag disabled)' : ' (flag warning)';
+                    }
+                    statusEl.textContent = msg;
+                    // Show full response including verify info so user can see device state
+                    try { document.getElementById('result').className = 'info'; document.getElementById('result').textContent = JSON.stringify(data, null, 2); } catch(e) {}
                     setTimeout(() => loadSchedulerSegments(), CONFIG.ui.schedulerReloadDelayMs);
                 } else {
                     statusEl.style.background = '#da3633';
                     statusEl.textContent = `❌ Failed: ${data.msg || 'Unknown error'}`;
+                    // Show error response for debugging
+                    try { document.getElementById('result').className = 'error'; document.getElementById('result').textContent = JSON.stringify(data, null, 2); } catch(e) {}
                 }
             } catch (err) {
                 statusEl.style.background = '#da3633';
@@ -3865,7 +3855,13 @@
                 if (data.errno === 0) {
                     statusDiv.style.background = '#238636';
                     statusDiv.style.color = '#fff';
-                    statusDiv.textContent = `✅ Segment ${index + 1} cleared successfully`;
+                    let msg = `✅ Segment ${index + 1} cleared successfully`;
+                    if (data.flagResult) {
+                        msg += data.flagResult.errno === 0 ? ' (flag updated)' : '';
+                    }
+                    statusDiv.textContent = msg;
+                    // Show full response including verify info so user can see device state
+                    try { document.getElementById('result').className = 'info'; document.getElementById('result').textContent = JSON.stringify(data, null, 2); } catch(e) {}
                     // Reload segments to reflect changes
                     setTimeout(() => loadSchedulerSegments(), CONFIG.ui.schedulerReloadDelayMs);
                 } else {
@@ -3981,13 +3977,22 @@
                 if (data.errno === 0) {
                     statusDiv.style.background = '#238636';
                     statusDiv.style.color = '#fff';
-                    statusDiv.textContent = `✅ Segment ${index + 1} saved successfully`;
-                    // Reload segments to reflect changes
+                    let msg = `✅ Segment ${index + 1} saved successfully`;
+                    // Show flag status
+                    if (data.flagResult) {
+                        msg += data.flagResult.errno === 0 ? ' (flag set)' : ' (flag warning)';
+                    }
+                    statusDiv.textContent = msg;
+                    // Show full response including verify info so user can see device state
+                    try { document.getElementById('result').className = 'info'; document.getElementById('result').textContent = JSON.stringify(data, null, 2); } catch(e) {}
+                    // Reload segments to reflect changes (this now reads from device, not Firestore)
                     setTimeout(() => loadSchedulerSegments(), CONFIG.ui.schedulerReloadDelayMs);
                 } else {
                     statusDiv.style.background = '#da3633';
                     statusDiv.style.color = '#fff';
                     statusDiv.textContent = `❌ Failed to save segment: ${data.msg || 'Unknown error'}`;
+                    // Show error response for debugging
+                    try { document.getElementById('result').className = 'error'; document.getElementById('result').textContent = JSON.stringify(data, null, 2); } catch(e) {}
                 }
             } catch (error) {
                 statusDiv.style.background = '#da3633';
@@ -4333,7 +4338,8 @@
                     if (targetCollapsed) {
                     panel.classList.add('collapsed');
                     if (resizer) resizer.style.display = 'none';
-                    if (btn) btn.innerHTML = '<span class="automation-toggle-icon">' +
+                    if (btn) {
+                        btn.innerHTML = '<span class="automation-toggle-icon">' +
                         '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">' +
                         '<defs><linearGradient id="robotBody" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" style="stop-color:#667eea;stop-opacity:1" /><stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" /></linearGradient></defs>' +
                         '<rect x="5" y="8" width="14" height="10" rx="3" fill="url(#robotBody)" stroke="#5567d8" stroke-width="0.5" />' +
@@ -4345,10 +4351,14 @@
                         '<rect x="10" y="15" width="4" height="1.5" rx="0.7" fill="#764ba2" />' +
                         '<circle cx="6" cy="4" r="0.8" fill="#ffd700" />' +
                         '</svg></span><span class="automation-toggle-arrow">◀</span>';
+                        // When collapsed, allow the toggle to receive pointer events (so it can be clicked)
+                        try { btn.style.pointerEvents = 'auto'; } catch(e) {}
+                    }
                 } else {
                     panel.classList.remove('collapsed');
                     if (resizer) resizer.style.display = 'flex';
-                    if (btn) btn.innerHTML = '<span class="automation-toggle-icon">' +
+                    if (btn) {
+                        btn.innerHTML = '<span class="automation-toggle-icon">' +
                         '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">' +
                         '<defs><linearGradient id="robotBody" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" style="stop-color:#667eea;stop-opacity:1" /><stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" /></linearGradient></defs>' +
                         '<rect x="5" y="8" width="14" height="10" rx="3" fill="url(#robotBody)" stroke="#5567d8" stroke-width="0.5" />' +
@@ -4360,6 +4370,9 @@
                         '<rect x="10" y="15" width="4" height="1.5" rx="0.7" fill="#764ba2" />' +
                         '<circle cx="6" cy="4" r="0.8" fill="#ffd700" />' +
                         '</svg></span><span class="automation-toggle-arrow">▶</span>';
+                        // Keep the toggle clickable even when expanded
+                        try { btn.style.pointerEvents = 'auto'; } catch(e) {}
+                    }
                 }
                 try { localStorage.setItem('automationPanelCollapsed', targetCollapsed ? 'true' : 'false'); } catch(e) {}
             } catch (e) { console.warn('toggleAutomationPanel error', e); }
@@ -4381,7 +4394,10 @@
                     panel.classList.add('collapsed');
                     // hide resizer if collapsed
                     try { resizer.style.display = 'none'; } catch(e) {}
-                    try { document.getElementById('automationToggleBtn').innerHTML = '<span class="automation-toggle-icon">' +
+                    try {
+                        const tbtn = document.getElementById('automationToggleBtn');
+                        if (tbtn) {
+                            tbtn.innerHTML = '<span class="automation-toggle-icon">' +
                         '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">' +
                         '<defs><linearGradient id="robotBody" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" style="stop-color:#667eea;stop-opacity:1" /><stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" /></linearGradient></defs>' +
                         '<rect x="5" y="8" width="14" height="10" rx="3" fill="url(#robotBody)" stroke="#5567d8" stroke-width="0.5" />' +
@@ -4392,7 +4408,10 @@
                         '<circle cx="14.5" cy="11" r="0.7" fill="#667eea" />' +
                         '<rect x="10" y="15" width="4" height="1.5" rx="0.7" fill="#764ba2" />' +
                         '<circle cx="6" cy="4" r="0.8" fill="#ffd700" />' +
-                        '</svg></span><span class="automation-toggle-arrow">◀</span>';} catch(e) {}
+                        '</svg></span><span class="automation-toggle-arrow">◀</span>';
+                            try { tbtn.style.pointerEvents = 'auto'; } catch(e) {}
+                        }
+                    } catch(e) {}
                 }
             } catch (e) {}
 
@@ -4769,6 +4788,10 @@
                         <div class="automation-toggle ${masterEnabled ? 'active' : ''}" onclick="toggleBackendAutomation()" style="width:48px;height:26px"></div>
                     </div>
                 </div>
+                <!-- Compact Add Rule button placed under Master Switch for quick access -->
+                <div style="display:flex;justify-content:flex-start;gap:8px;margin-bottom:12px">
+                    <button class="btn btn-primary btn-sm" onclick="showAddRuleModal()" style="padding:6px 10px;font-size:12px">➕ Add Rule</button>
+                </div>
             `;
             
             // Render all automation rules (sorted by priority)
@@ -4841,14 +4864,8 @@
                 `;
             }
             
-            // Add New Rule Button
-            html += `
-                <div style="margin-top:16px;padding:16px;background:#21262d;border:2px dashed #30363d;border-radius:8px;text-align:center;cursor:pointer" onclick="showAddRuleModal()">
-                    <div style="font-size:24px;margin-bottom:8px">➕</div>
-                    <div style="font-size:13px;font-weight:600;color:#58a6ff">Add New Automation Rule</div>
-                    <div style="font-size:11px;color:#8b949e;margin-top:4px">Create custom price-based triggers</div>
-                </div>
-            `;
+            // Small placeholder to keep layout/anchors stable (hidden)
+            html += `<div class="add-rule-card" style="display:none"></div>`;
             
             // Test Link
             html += `
@@ -5079,6 +5096,11 @@
                 </div>
             `;
             document.body.insertAdjacentHTML('beforeend', modalHtml);
+            // Hide the floating automation toggle while modal is open so it doesn't overlay the dialog
+            try {
+                const t = document.getElementById('automationToggleBtn');
+                if (t) t.style.display = 'none';
+            } catch (e) {}
             
             // Add event listeners for "between" operator toggle
             ['FeedIn', 'Buy', 'Soc'].forEach(type => {
@@ -5095,6 +5117,10 @@
         function closeAddRuleModal() {
             const modal = document.getElementById('addRuleModal');
             if (modal) modal.remove();
+            try {
+                const t = document.getElementById('automationToggleBtn');
+                if (t) t.style.display = '';
+            } catch (e) {}
         }
         
         async function createBackendRule() {
@@ -5594,10 +5620,19 @@
             }
             
             modal.classList.add('show');
+            // Hide floating toggle to avoid it overlapping the modal
+            try {
+                const t = document.getElementById('automationToggleBtn');
+                if (t) t.style.display = 'none';
+            } catch (e) {}
         }
 
         function closeRuleModal() {
             document.getElementById('ruleModal').classList.remove('show');
+            try {
+                const t = document.getElementById('automationToggleBtn');
+                if (t) t.style.display = '';
+            } catch (e) {}
         }
 
         function populateRuleForm(rule) {
