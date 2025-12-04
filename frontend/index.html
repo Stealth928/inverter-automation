@@ -5739,7 +5739,6 @@
                         value2: parseInt(document.getElementById('condTempValue2').value) || null
                     },
                     weather: {
-                        width: 100%;
                         type: document.getElementById('condWeatherType').value,
                         solarOp: document.getElementById('condWeatherSolarOp').value,
                         solarValue: parseFloat(document.getElementById('condWeatherSolarValue').value) || null
@@ -5748,12 +5747,10 @@
                         enabled: document.getElementById('condTimeEnabled').checked,
                         start: document.getElementById('condTimeStart').value,
                         end: document.getElementById('condTimeEnd').value
-                        max-width: 100%;
                     }
                 },
                 action: {
                     workMode: document.getElementById('actionWorkMode').value || null,
-                        width: 100% !important;
                     minSoC: parseInt(document.getElementById('actionMinSoC').value) || null,
                     maxSoC: parseInt(document.getElementById('actionMaxSoC').value) || null,
                     fdPwr: parseInt(document.getElementById('actionFdPwr').value) || null
