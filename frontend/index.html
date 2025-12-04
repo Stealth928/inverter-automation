@@ -3366,6 +3366,14 @@
 
             let html = '';
 
+            // Diagnostic info: show requested vs returned intervals for debugging
+            try {
+                const req = amberNextVal;
+                const returned = forecasts.length;
+                const lastInterval = forecasts.length ? new Date(forecasts[forecasts.length-1].startTime).toLocaleString('en-AU', {hour:'2-digit',minute:'2-digit', day:'2-digit', month:'2-digit', timeZone:'Australia/Sydney'}) : '—';
+                html += `<div style="font-size:12px;color:#8b949e;margin-bottom:8px">Requested: <strong>${req}</strong> intervals — Returned: <strong>${returned}</strong> — Last interval: <strong>${lastInterval}</strong></div>`;
+            } catch(e) { /* ignore diagnostics errors */ }
+
             // Spike Alert Banner (if any forecasted spikes)
             if (hasSpikes) {
                 const nextSpike = spikeForecasts[0];
