@@ -3287,6 +3287,49 @@
             document.getElementById('amberHistoryModal').classList.add('show');
         }
         function closeAmberHistoryModal() { document.getElementById('amberHistoryModal').classList.remove('show'); }
+        
+        // Dump full Amber response to debug panel
+        function dumpAmberRaw() {
+            const resp = window.lastAmberResponse || [];
+            const json = JSON.stringify(resp, null, 2);
+            const debugEl = document.getElementById('result');
+            if (debugEl) {
+                debugEl.textContent = json;
+                document.getElementById('status-bar').style.display = 'flex';
+                document.getElementById('status-bar').querySelector('.endpoint').textContent = 'Amber Raw Response';
+            } else {
+                alert('Debug panel not available. Response has ' + resp.length + ' intervals');
+            }
+        }
+        
+        // Export Amber data as CSV or JSON
+        function exportAmberData(format) {
+            const resp = window.lastAmberResponse || [];
+            if (!resp.length) { alert('No data to export'); return; }
+            let content, filename, mime;
+            if (format === 'csv') {
+                const headers = ['type','date','startTime','perKwh','spotPerKwh','renewables','spikeStatus','descriptor','channelType','period'];
+                const rows = resp.map(r => [
+                    r.type, r.date, r.startTime, r.perKwh, r.spotPerKwh, r.renewables, r.spikeStatus, r.descriptor, r.channelType, r.tariffInformation?.period || ''
+                ].map(v => typeof v === 'string' && v.includes(',') ? `"${v}"` : v).join(','));
+                content = [headers.join(','), ...rows].join('\n');
+                filename = 'amber_' + new Date().toISOString().slice(0,10) + '.csv';
+                mime = 'text/csv';
+            } else {
+                content = JSON.stringify(resp, null, 2);
+                filename = 'amber_' + new Date().toISOString().slice(0,19).replace(/[-T:]/g, '') + '.json';
+                mime = 'application/json';
+            }
+            const blob = new Blob([content], {type: mime});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
 
         async function getAmberRange(startDate, endDate) {
             const siteId = document.getElementById('amberSiteId').value;
@@ -3331,6 +3374,7 @@
             const card = document.getElementById('amberCard');
             const intervals = Array.isArray(data) ? data : [];
             if (!intervals.length) { card.innerHTML = '<div style="color:#d29922">No data</div>'; return; }
+            window.lastAmberResponse = intervals; // Store for raw dump and export
 
             const general = intervals.filter(i => i.channelType === 'general');
             const feedIn = intervals.filter(i => i.channelType === 'feedIn');
@@ -3348,15 +3392,17 @@
             const minBuyPrice = forecasts.length ? Math.min(...forecasts.map(i => i.perKwh)) : 0;
             const minFeedSpot = feedForecasts.length ? Math.min(...feedForecasts.map(i => i.spotPerKwh)) : 0;
 
-            // How many forecasts to show (dynamic based on amberNext)
+            // How many forecasts to show (dynamic based on amberNext and show-all toggle)
             const amberNextVal = Number(document.getElementById('amberNext')?.value) || 12;
-            // Show more items when user requests many intervals, but cap to avoid UI overload
-            // If user requests > 100, show up to 48 points; for 51-100 show 36; for 21-50 show 18; else use 6
-            let forecastLimit = 6;
-            if (amberNextVal > 100) forecastLimit = Math.min(amberNextVal, 48);
-            else if (amberNextVal > 50) forecastLimit = 36;
-            else if (amberNextVal > 20) forecastLimit = 18;
-            else forecastLimit = Math.min(amberNextVal, 12);
+            const showAll = document.getElementById('amberShowAll')?.checked || false;
+            // If show-all is enabled, display everything returned; otherwise apply smart cap
+            let forecastLimit = forecasts.length;
+            if (!showAll) {
+                if (amberNextVal > 100) forecastLimit = Math.min(forecasts.length, 48);
+                else if (amberNextVal > 50) forecastLimit = Math.min(forecasts.length, 36);
+                else if (amberNextVal > 20) forecastLimit = Math.min(forecasts.length, 18);
+                else forecastLimit = Math.min(forecasts.length, 12);
+            }
 
             let html = '';
 
@@ -3365,7 +3411,13 @@
                 const req = amberNextVal;
                 const returned = forecasts.length;
                 const lastInterval = forecasts.length ? new Date(forecasts[forecasts.length-1].startTime).toLocaleString('en-AU', {hour:'2-digit',minute:'2-digit', day:'2-digit', month:'2-digit', timeZone:'Australia/Sydney'}) : '—';
-                html += `<div style="font-size:12px;color:#8b949e;margin-bottom:8px">Requested: <strong>${req}</strong> intervals — Returned: <strong>${returned}</strong> — Last interval: <strong>${lastInterval}</strong></div>`;
+                html += `<div style="font-size:12px;color:#8b949e;margin-bottom:8px;display:flex;align-items:center;gap:8px;justify-content:space-between">
+                    <span>Requested: <strong>${req}</strong> — Returned: <strong>${returned}</strong> — Last: <strong>${lastInterval}</strong></span>
+                    <div style="display:flex;gap:4px">
+                        <button class="btn btn-sm" onclick="dumpAmberRaw()" style="margin:0;padding:4px 8px;font-size:11px" title="Show full API response">📋 Raw</button>
+                        <button class="btn btn-sm" onclick="exportAmberData('csv')" style="margin:0;padding:4px 8px;font-size:11px" title="Export as CSV">📥 CSV</button>
+                    </div>
+                </div>`;
             } catch(e) { /* ignore diagnostics errors */ }
 
             // Spike Alert Banner (if any forecasted spikes)
@@ -3435,26 +3487,28 @@
                 </div>`;
             }
 
-            // Buy price forecasts
+            // Buy price forecasts with advanced pricing and tariff info
             const displayForecasts = forecasts.slice(0, forecastLimit);
             if (displayForecasts.length) {
-                html += '<div style="font-size:11px;color:#8b949e;margin-bottom:6px;margin-top:8px;font-weight:600">📈 Buy Price Forecast</div>';
+                html += '<div style="font-size:11px;color:#8b949e;margin-bottom:6px;margin-top:8px;font-weight:600;display:flex;justify-content:space-between;align-items:center">\n                    <span>📈 Buy Price Forecast</span>\n                    <label style="font-size:10px;color:#7ee787;display:flex;align-items:center;gap:4px;margin:0;font-weight:400"><input type="checkbox" id="amberShowAll" onchange="getAmberCurrent()" style="margin:0;cursor:pointer"> Show all</label>\n                </div>';
                 html += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
                 displayForecasts.forEach(it => {
-                    // Use startTime converted to AEST - Amber shows interval START time
                     const startDate = new Date(it.startTime);
                     const time = startDate.toLocaleTimeString('en-AU', {hour:'numeric', minute:'2-digit', hour12:false, timeZone:'Australia/Sydney'});
+                    const period = it.tariffInformation?.period || '';
+                    const periodLabel = period ? (period === 'peak' ? '[PEAK]' : '[OFF]') : '';
                     const p = it.perKwh;
                     const cls = p > 30 ? 'price-high' : p > 20 ? 'price-mid' : 'price-low';
                     const spike = it.spikeStatus && it.spikeStatus !== 'none';
-                    const highPrice = it.advancedPrice?.high;
-                    const tooltip = spike ? `SPIKE: ${it.spikeStatus}` : (highPrice ? `High est: ${highPrice.toFixed(0)}¢` : '');
+                    const ap = it.advancedPrice;
+                    const bandInfo = ap ? `Low: ${ap.low.toFixed(0)}¢ | Pred: ${ap.predicted.toFixed(0)}¢ | High: ${ap.high.toFixed(0)}¢` : '';
+                    const tooltip = spike ? `SPIKE: ${it.spikeStatus}` : bandInfo;
                     html += `<div class="stat-item" style="min-width:52px;padding:5px;${spike ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}" title="${tooltip}">
                         <div style="display:flex;align-items:center;justify-content:center;gap:2px">
                             <span class="value ${cls}" style="font-size:12px;font-weight:600">${p.toFixed(0)}¢</span>
                             ${spike ? '<span style="font-size:10px">⚠️</span>' : ''}
                         </div>
-                        <div class="label" style="font-size:9px">${time}</div>
+                        <div class="label" style="font-size:9px;color:#8b949e">${time}${periodLabel ? ' ' + periodLabel : ''}</div>
                     </div>`;
                 });
                 html += '</div>';
@@ -3491,9 +3545,30 @@
                 html += '</div>';
             }
 
+            // Add cost estimator section
+            html += `<div style="margin-top:12px;padding:10px;background:rgba(33,38,45,0.6);border-radius:6px">
+                <div style="font-size:11px;color:#8b949e;margin-bottom:6px;font-weight:600">💰 Cost Estimator</div>
+                <div style="display:flex;gap:6px;align-items:center">
+                    <input type="number" id="amberEstimateKwh" value="1" min="0.1" step="0.1" style="width:60px;padding:4px;background:transparent;border:1px solid rgba(255,255,255,0.1);color:#e6edf3;font-size:12px" placeholder="kWh">
+                    <span style="font-size:12px;color:#8b949e">kWh →</span>
+                    <span id="amberEstimateCost" style="font-size:13px;color:#7ee787;font-weight:600">—</span>
+                </div>
+            </div>`;
+
             // Add chart canvas to HTML before rendering
             html += '<div style="margin-top:16px;position:relative;height:200px;width:100%"><canvas id="amberPriceChart" style="width:100%;height:200px"></canvas></div>';
             card.innerHTML = html;
+            
+            // Setup cost estimator listener
+            const kwhInput = document.getElementById('amberEstimateKwh');
+            if (kwhInput) {
+                kwhInput.addEventListener('input', () => {
+                    const kwh = Number(kwhInput.value) || 0;
+                    const totalCost = displayForecasts.reduce((sum, it) => sum + (it.perKwh * kwh / 100), 0);
+                    document.getElementById('amberEstimateCost').textContent = totalCost.toFixed(2) + '¢';
+                });
+                kwhInput.dispatchEvent(new Event('input'));
+            }
 
             // Schedule chart rendering after DOM is ready
             setTimeout(() => renderAmberChart(displayForecasts, displayFeedForecasts), 100);

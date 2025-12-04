@@ -51,6 +51,13 @@ const getConfig = () => {
   };
 };
 
+// ==================== RATE LIMIT STATE ====================
+const amberRateLimitState = {
+  retryAfter: 0,
+  lastError: null,
+  resetTime: 0
+};
+
 // ==================== EXPRESS APP ====================
 const app = express();
 app.use(cors({ origin: true }));
@@ -628,6 +635,11 @@ async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
     return { errno: 401, error: 'Amber API key not configured' };
   }
   
+  // Check if we're rate-limited
+  if (amberRateLimitState.retryAfter > Date.now()) {
+    return { errno: 429, error: `Rate limited by Amber API. Retry after ${new Date(amberRateLimitState.retryAfter).toISOString()}`, retryAfter: amberRateLimitState.retryAfter };
+  }
+  
   // Track API call if userId provided
   if (userId) {
     incrementApiCount(userId, 'amber').catch(() => {});
@@ -652,6 +664,22 @@ async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
     const resp = await fetch(url.toString(), { headers, signal: controller.signal });
     clearTimeout(timeout);
     const text = await resp.text();
+    
+    // Handle rate limiting (429 Too Many Requests)
+    if (resp.status === 429) {
+      const retryAfterHeader = resp.headers.get('retry-after');
+      const delaySeconds = retryAfterHeader ? parseInt(retryAfterHeader) : 60;
+      const delayMs = delaySeconds * 1000;
+      amberRateLimitState.retryAfter = Date.now() + delayMs;
+      amberRateLimitState.lastError = `Rate limited: retry after ${delaySeconds}s`;
+      console.warn('[Amber] Rate limited (429). Retry after:', delaySeconds, 'seconds');
+      return { errno: 429, error: `Rate limited. Retry after ${delaySeconds}s`, retryAfter: amberRateLimitState.retryAfter };
+    }
+    
+    // Clear rate limit on success
+    if (resp.status === 200) {
+      amberRateLimitState.retryAfter = 0;
+    }
     
     try {
       return JSON.parse(text);
