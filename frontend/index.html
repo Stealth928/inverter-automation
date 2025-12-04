@@ -3029,7 +3029,12 @@
                                     try {
                                         const currentContainer = m.getContainer && m.getContainer();
                                         if (!currentContainer || currentContainer !== mapEl) {
-                                            try { m.remove && m.remove(); } catch (err) { /* ignore */ }
+                                            try {
+                                                // disconnect any attached observers/listeners before removing
+                                                try { if (m._resizeObserver) m._resizeObserver.disconnect(); } catch(e){}
+                                                try { if (m._resizeListener) window.removeEventListener('resize', m._resizeListener); } catch(e){}
+                                                m.remove && m.remove();
+                                            } catch (err) { /* ignore */ }
                                             // drop stale instance so we create a fresh one below
                                             delete window.weatherMaps[mapId];
                                             m = null;
@@ -3049,6 +3054,18 @@
                                         setTimeout(() => { try { m.invalidateSize && m.invalidateSize(); if (m._weatherMarker) m._weatherMarker.setLatLng([latNum, lonNum]); } catch(e){} }, 120);
                                         setTimeout(() => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} }, 420);
                                         setTimeout(() => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} }, 1200);
+                                        // Ensure map invalidates when its container or window resizes
+                                        try {
+                                            if (!m._resizeObserver && 'ResizeObserver' in window) {
+                                                const ro = new ResizeObserver(() => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} });
+                                                ro.observe(mapEl);
+                                                m._resizeObserver = ro;
+                                            } else if (!m._resizeListener) {
+                                                const onWin = () => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} };
+                                                window.addEventListener('resize', onWin);
+                                                m._resizeListener = onWin;
+                                            }
+                                        } catch(e) {}
                                     console.log('Leaflet map updated:', mapId);
                                     } else {
                                         // Removed stale map instance — fall through to create a new map below
@@ -3083,6 +3100,21 @@
                                     const mark = L.circleMarker([latNum, lonNum], { radius:6, fillColor:'#58a6ff', color:'#fff', weight:1, fillOpacity:0.95 }).addTo(m);
                                     m._weatherMarker = mark;
                                     window.weatherMaps[mapId] = m;
+                                    // Attach a ResizeObserver so the map adapts to the card/panel width
+                                    try {
+                                        if ('ResizeObserver' in window) {
+                                            const ro2 = new ResizeObserver(() => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} });
+                                            const mapElNow = document.getElementById(mapId);
+                                            if (mapElNow) {
+                                                ro2.observe(mapElNow);
+                                                m._resizeObserver = ro2;
+                                            }
+                                        } else {
+                                            const onWin2 = () => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} };
+                                            window.addEventListener('resize', onWin2);
+                                            m._resizeListener = onWin2;
+                                        }
+                                    } catch(e) {}
                                     setTimeout(() => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} }, 200);
                                     // Extra diagnostics: log map size and tile container children
                                             setTimeout(() => {
@@ -5630,7 +5662,7 @@
                         value2: parseInt(document.getElementById('condTempValue2').value) || null
                     },
                     weather: {
-                        enabled: document.getElementById('condWeatherEnabled').checked,
+                        width: 100%;
                         type: document.getElementById('condWeatherType').value,
                         solarOp: document.getElementById('condWeatherSolarOp').value,
                         solarValue: parseFloat(document.getElementById('condWeatherSolarValue').value) || null
@@ -5639,10 +5671,12 @@
                         enabled: document.getElementById('condTimeEnabled').checked,
                         start: document.getElementById('condTimeStart').value,
                         end: document.getElementById('condTimeEnd').value
+                        max-width: 100%;
                     }
                 },
                 action: {
                     workMode: document.getElementById('actionWorkMode').value || null,
+                        width: 100% !important;
                     minSoC: parseInt(document.getElementById('actionMinSoC').value) || null,
                     maxSoC: parseInt(document.getElementById('actionMaxSoC').value) || null,
                     fdPwr: parseInt(document.getElementById('actionFdPwr').value) || null
