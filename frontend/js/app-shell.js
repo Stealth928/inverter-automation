@@ -276,6 +276,15 @@
                             }
                             return;
                         }
+                        // If a redirect to login was scheduled because we were briefly signed out,
+                        // cancel it now that we have a valid user.
+                        try {
+                            if (state.redirectTimer) {
+                                clearTimeout(state.redirectTimer);
+                                state.redirectTimer = null;
+                            }
+                        } catch (e) { /* ignore */ }
+
                         state.user = user;
                         updateUserIdentity(user);
                         const setupOk = await ensureSetupComplete();

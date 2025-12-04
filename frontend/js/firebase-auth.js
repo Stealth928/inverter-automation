@@ -237,17 +237,57 @@ class FirebaseAuth {
   /**
    * Send password reset email
    */
-  async sendPasswordResetEmail(email) {
+  // Send password reset email. Optional `continueUrl` will be used as the
+  // action URL where users land to complete the reset (e.g. '/reset-password.html').
+  // Calls return an object { success: true } or { success: false, error, code }.
+  async sendPasswordResetEmail(email, continueUrl = null) {
     if (this.mock) {
       // pretend email sent
       return { success: true };
     }
     try {
-      await this.auth.sendPasswordResetEmail(email);
+      if (continueUrl) {
+        const actionCodeSettings = {
+          url: continueUrl,
+          // Force the redirect to be handled in the web app
+          handleCodeInApp: true
+        };
+        await this.auth.sendPasswordResetEmail(email, actionCodeSettings);
+      } else {
+        await this.auth.sendPasswordResetEmail(email);
+      }
       console.log('[FirebaseAuth] Password reset email sent to:', email);
       return { success: true };
     } catch (error) {
       console.error('[FirebaseAuth] Password reset error:', error);
+      return { success: false, error: error.message, code: error.code };
+    }
+  }
+
+  // Verify a password reset code and return the email associated with it.
+  async verifyPasswordResetCode(oobCode) {
+    if (this.mock) {
+      return { success: true, email: 'mock@local' };
+    }
+    try {
+      const email = await this.auth.verifyPasswordResetCode(oobCode);
+      return { success: true, email };
+    } catch (error) {
+      console.error('[FirebaseAuth] verifyPasswordResetCode error:', error);
+      return { success: false, error: error.message, code: error.code };
+    }
+  }
+
+  // Confirm the password reset using the code from the email and the new password
+  async confirmPasswordReset(oobCode, newPassword) {
+    if (this.mock) {
+      return { success: true };
+    }
+    try {
+      await this.auth.confirmPasswordReset(oobCode, newPassword);
+      return { success: true };
+    } catch (error) {
+      console.error('[FirebaseAuth] confirmPasswordReset error:', error);
       return { success: false, error: error.message, code: error.code };
     }
   }

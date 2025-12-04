@@ -720,7 +720,9 @@
             setLoading('resetBtn', true);
             hideMessages();
             
-            const result = await firebaseAuth.sendPasswordResetEmail(email);
+            // Provide a redirect URL so the email points back to our app reset page
+            const continueUrl = window.location.origin + '/reset-password.html';
+            const result = await firebaseAuth.sendPasswordResetEmail(email, continueUrl);
             
             setLoading('resetBtn', false);
             

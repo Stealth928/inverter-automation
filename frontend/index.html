@@ -4349,10 +4349,12 @@
                 const cfg = await cfgResp.json();
                 if (cfg.errno === 0 && cfg.result) {
                     const wInput = document.getElementById('weatherPlace');
-                    // Only set if empty or default, and only if we have a valid weatherPlace
+                    // Prefer explicit preferences.weatherPlace (user preference), then top-level weatherPlace
+                    const preferredWeather = (cfg.result.preferences && cfg.result.preferences.weatherPlace) || cfg.result.weatherPlace;
+                    // Only set if input is empty or still holds the placeholder/default value
                     if (wInput && (wInput.value === '' || wInput.value === 'Roselands 2196 NSW')) {
-                        if (cfg.result.weatherPlace && cfg.result.weatherPlace !== 'undefined') {
-                            wInput.value = cfg.result.weatherPlace;
+                        if (preferredWeather && String(preferredWeather).trim() !== '' && preferredWeather !== 'undefined') {
+                            wInput.value = preferredWeather;
                         } else {
                             // Use sensible default if not configured
                             wInput.value = 'Sydney NSW';
@@ -4396,7 +4398,23 @@
             
             // 3) Set up weather request
             try {
-                document.getElementById('weatherDays').value = 6;
+                // Determine default forecast days from backend preferences or top-level config
+                try {
+                    const daysEl = document.getElementById('weatherDays');
+                    let defaultDays = 6;
+                    if (cfg.result) {
+                        if (cfg.result.preferences && typeof cfg.result.preferences.forecastDays === 'number') {
+                            defaultDays = Number(cfg.result.preferences.forecastDays);
+                        } else if (typeof cfg.result.forecastDays === 'number') {
+                            defaultDays = Number(cfg.result.forecastDays);
+                        }
+                    }
+                    // Clamp to allowed range
+                    defaultDays = Math.max(1, Math.min(16, defaultDays || 6));
+                    if (daysEl) daysEl.value = defaultDays;
+                } catch (e) {
+                    try { document.getElementById('weatherDays').value = 6; } catch (ee) {}
+                }
                 updateWeatherRequestedLabel();
                 document.getElementById('weatherDays').addEventListener('input', updateWeatherRequestedLabel);
                 getWeather();
