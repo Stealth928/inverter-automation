@@ -496,14 +496,18 @@
 
         /* FAQ card in automation panel - small default size and scrollable content */
         .automation-panel .faq-card {
-            /* Make the FAQ card a bit larger vertically (approx +20%) */
-            max-height: 264px; /* 220 * 1.2 = 264 */
-            min-height: 144px; /* 120 * 1.2 = 144 */
+            /* Make the FAQ card considerably taller so 'How It Works' can display
+               more content without requiring the user to open the modal or scroll
+               the entire page. Keep a reasonable maximum so the panel doesn't
+               dominate the layout on very tall screens. */
+            max-height: 520px; /* increased from 264px -> gives about twice the height */
+            min-height: 200px; /* slightly taller minimum */
             overflow: hidden; /* prevent the FAQ card from expanding the automation panel */
         }
         .automation-panel .faq-card .card-body {
-            /* Allow only the inner FAQ area to scroll */
-            max-height: calc(264px - 50px); /* account for header height */
+            /* Allow only the inner FAQ area to scroll — height adjusted to match
+               the larger FAQ card container so content inside has more room */
+            max-height: calc(520px - 50px); /* account for header height */
             overflow-y: auto;
             padding-right: 6px;
             overscroll-behavior: contain;
