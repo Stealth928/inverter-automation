@@ -1273,6 +1273,14 @@
             border: 1px solid rgba(48, 54, 61, 0.5) !important;
             position: relative;
         }
+        /* Simple modal for Amber history date selection */
+        .modal-backdrop { position: fixed; inset: 0; background: rgba(3,6,9,0.6); display:none; align-items:center; justify-content:center; z-index:1200 }
+        .modal-backdrop.show { display:flex }
+        .modal { background: #0d1117; border:1px solid rgba(48,54,61,0.6); padding:16px; border-radius:8px; width:360px; max-width:92%; box-shadow:0 10px 30px rgba(2,6,23,0.6) }
+        .modal h3 { margin:0 0 8px 0; font-size:16px }
+        .modal .row { display:flex; gap:8px; align-items:center; margin-bottom:8px }
+        .modal .row input[type=date] { flex:1; padding:8px; background:transparent; border:1px solid rgba(255,255,255,0.04); color:#e6edf3 }
+        .modal .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:8px }
         .leaflet-container {
             min-height: 120px !important;
             background: #1a1f26 !important;
@@ -1380,12 +1388,33 @@
                         </div>
                         <div class="input-row" style="align-items:center;gap:8px">
                             <input type="number" id="amberNext" class="input" min="1" max="1000" value="12" style="width:110px" title="Number of forecast intervals to request (used by the 'Refresh' action). Increase to see more future intervals; very large values may be capped for display." aria-label="Forecast intervals">
-                            <button class="btn btn-primary btn-sm" onclick="getAmberRange()" style="width:auto;margin:0;padding:8px 12px;font-size:13px" title="Load historical Amber prices for yesterday → today">History</button>
+                            <div style="display:flex;flex-direction:column;gap:4px">
+                                <button class="btn btn-primary btn-sm" onclick="openAmberHistoryModal()" style="width:auto;margin:0;padding:8px 12px;font-size:13px" title="Open history date selector">History</button>
+                                <div id="amberNextHelp" style="font-size:11px;color:#8b949e;text-align:center">Intervals requested when refreshing</div>
+                            </div>
                             <button class="btn btn-sm" id="amberShowMore" onclick="toggleAmberMore()" style="width:auto;margin:0;padding:6px 10px;font-size:12px" title="Quick toggle to request many intervals">Show more</button>
                             <span style="font-size:12px;color:#8b949e; margin-left:6px" title="'Intervals' controls how many future forecast intervals are requested from Amber. The compact display will cap how many are shown for readability">? Help</span>
                         </div>
                         <div class="data-card" id="amberCard">
                             <div style="color:#8b949e;font-size:12px">Loading Amber sites...</div>
+                        </div>
+                        <!-- Amber History Modal -->
+                        <div id="amberHistoryModal" class="modal-backdrop" aria-hidden="true">
+                            <div class="modal" role="dialog" aria-modal="true">
+                                <h3>Amber Price History</h3>
+                                <div class="row">
+                                    <label style="min-width:60px;color:#8b949e">From</label>
+                                    <input type="date" id="amberHistoryStart">
+                                </div>
+                                <div class="row">
+                                    <label style="min-width:60px;color:#8b949e">To</label>
+                                    <input type="date" id="amberHistoryEnd">
+                                </div>
+                                <div class="actions">
+                                    <button class="btn btn-sm" onclick="closeAmberHistoryModal()">Cancel</button>
+                                    <button class="btn btn-primary btn-sm" onclick="(function(){ const s=document.getElementById('amberHistoryStart').value; const e=document.getElementById('amberHistoryEnd').value; closeAmberHistoryModal(); getAmberRange(s,e); })()">Load</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -3221,17 +3250,34 @@
             }
         }
 
-        async function getAmberRange() {
-            const siteId = document.getElementById('amberSiteId').value;
-            if (!siteId) return;
-            
+        // Open the Amber history modal
+        function openAmberHistoryModal() {
             const today = new Date();
             const yesterday = new Date(today.getTime() - 24*60*60*1000);
+            const elStart = document.getElementById('amberHistoryStart');
+            const elEnd = document.getElementById('amberHistoryEnd');
+            if (elStart) elStart.value = yesterday.toISOString().slice(0,10);
+            if (elEnd) elEnd.value = today.toISOString().slice(0,10);
+            document.getElementById('amberHistoryModal').classList.add('show');
+        }
+        function closeAmberHistoryModal() { document.getElementById('amberHistoryModal').classList.remove('show'); }
+
+        async function getAmberRange(startDate, endDate) {
+            const siteId = document.getElementById('amberSiteId').value;
+            if (!siteId) return;
+
             const card = document.getElementById('amberCard');
             card.innerHTML = '<div style="color:#8b949e">Loading history...</div>';
-            
+
             try {
-                const resp = await authenticatedFetch(`/api/amber/prices?siteId=${siteId}&startDate=${yesterday.toISOString().slice(0,10)}&endDate=${today.toISOString().slice(0,10)}`);
+                let s = startDate, e = endDate;
+                if (!s || !e) {
+                    const today = new Date();
+                    const yesterday = new Date(today.getTime() - 24*60*60*1000);
+                    s = yesterday.toISOString().slice(0,10);
+                    e = today.toISOString().slice(0,10);
+                }
+                const resp = await authenticatedFetch(`/api/amber/prices?siteId=${siteId}&startDate=${s}&endDate=${e}`);
                 const data = await resp.json();
                 renderAmberCard(data);
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
