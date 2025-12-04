@@ -407,6 +407,16 @@
             min-width: 0;
             padding: 8px;
             text-align: left;
+            position: relative; /* allow icon overlay */
+        }
+
+        /* Money bag indicator for very large feed-in prices */
+        .money-bag {
+            display:inline-block;
+            font-size:14px;
+            margin-left:6px;
+            filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6));
+            line-height:1;
         }
         @media (max-width: 600px) {
             .weather-days .stat-item { flex: 0 0 120px; }
@@ -3565,8 +3575,9 @@
                     const getCls = feedClassFromVal(displayVal);
                     const isVeryNegative = displayVal < -2;
                     html += `<div class="stat-item" style="min-width:52px;padding:6px;${isVeryNegative ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}">
-                        <div style="display:flex;align-items:center;justify-content:center;gap:2px">
-                            <span class="value ${getCls}" style="font-size:13px;font-weight:700">${displayVal}¢</span>
+                                <div style="display:flex;align-items:center;justify-content:center;gap:2px">
+                                    <span class="value ${getCls}" style="font-size:13px;font-weight:700">${displayVal}¢</span>
+                                    ${displayVal > 50 ? '<span class="money-bag" title="High feed-in price">💰</span>' : ''}
                         </div>
                         <div class="label" style="font-size:9px">${time}</div>
                     </div>`;
