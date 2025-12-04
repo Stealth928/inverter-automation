@@ -386,6 +386,24 @@
             box-shadow: 0 8px 28px rgba(255,176,32,0.12), inset 0 1px 0 rgba(255,255,255,0.02);
         }
 
+        /* Weather days specific layout: override default .stat-item flex for day tiles */
+        .weather-days {
+            display:flex;
+            gap:6px;
+            flex-wrap:wrap;
+            margin-top:10px;
+        }
+        .weather-days .stat-item {
+            box-sizing: border-box;
+            flex: 0 0 140px;
+            min-width: 0;
+            padding: 8px;
+            text-align: left;
+        }
+        @media (max-width: 600px) {
+            .weather-days .stat-item { flex: 0 0 120px; }
+        }
+
         /* Price Colors */
         .price-low { color: #7ee787 !important; }
         .price-mid { color: #d29922 !important; }
@@ -2900,7 +2918,7 @@
             }
 
             if (daily && daily.time) {
-                html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">';
+                html += '<div class="weather-days">';
                 // Respect the user's requested days (fallback to available daily length)
                 const requestedDays = Number(document.getElementById('weatherDays')?.value) || daily.time.length;
                 const showCount = Math.min(daily.time.length, Math.max(1, requestedDays));
@@ -2928,7 +2946,7 @@
                     const extremeClass = isExtreme ? ' extreme' : '';
                     const extremeTitle = isExtreme ? ` title="${extremeReasons.join('; ')}"` : '';
 
-                    html += `<div class="stat-item${extremeClass}" style="min-width:90px;padding:8px;text-align:left"${extremeTitle}>
+                    html += `<div class="stat-item${extremeClass}"${extremeTitle}>
                         <div style="font-size:12px;font-weight:700;color:#e6edf3">${formatDate(d, false)}</div>
                         <div style="font-size:13px;color:#58a6ff;font-weight:600;margin-top:4px">${desc}</div>
                         <div style="font-size:12px;color:#8b949e;margin-top:4px">High ${tmax}° / Low ${tmin}°</div>
@@ -2954,12 +2972,17 @@
                     function tryInitMap() {
                         const mapEl = document.getElementById(mapId);
                         if (!mapEl) {
-                            if (attempts < 8) {
+                            // When many tiles are rendered the browser may take longer to
+                            // parse/paint the large innerHTML blob. Retry longer to ensure
+                            // the container appears before giving up.
+                            if (attempts < 40) {
                                 attempts++;
-                                setTimeout(tryInitMap, 80);
+                                // progressive backoff: start fast then slow down
+                                const delay = attempts < 8 ? 80 : 120;
+                                setTimeout(tryInitMap, delay);
                             } else {
-                                console.warn('Leaflet map container not found:', mapId);
-                                // Show error in container
+                                console.warn('Leaflet map container not found after retries:', mapId);
+                                // Show error in container if the element exists later
                                 if (mapEl) mapEl.innerHTML = '<div style="color:#f85149;font-size:13px;padding:8px">Map container not found</div>';
                             }
                             return;
