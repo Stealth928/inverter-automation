@@ -2662,7 +2662,8 @@
                                     const innerH = 28;
                                     const fillH = Math.round((socPct / 100) * innerH);
                                     const y = 4 + (innerH - fillH);
-                                    const fillColor = socPct >= 80 ? '#16a34a' : (socPct >= 40 ? '#7ee787' : '#d29922');
+                                    // Conditional coloring: green >=45%, amber 25-44%, red <25%
+                                    const fillColor = socPct >= 45 ? '#16a34a' : (socPct >= 25 ? '#d29922' : '#dc2626');
                                     return `
                                     <svg viewBox="0 0 24 40" aria-hidden="true">
                                         <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"></rect>
