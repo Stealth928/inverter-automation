@@ -1441,9 +1441,11 @@
 
             console.log('[Prices] Chart data - general:', generalPrices.length, 'feedIn:', feedinPrices.length);
 
-            // Create common timestamps for both datasets
-            const timestamps = generalPrices.map(p => {
-                const date = new Date(p.startTime);
+            // Build a unified, sorted list of timestamps from all prices so each dataset aligns
+            const allTimestamps = Array.from(new Set(prices.map(p => p.startTime))).sort((a, b) => new Date(a) - new Date(b));
+
+            const timestamps = allTimestamps.map(ts => {
+                const date = new Date(ts);
                 return date.toLocaleTimeString('en-AU', {
                     hour: '2-digit',
                     minute: '2-digit',
@@ -1451,9 +1453,13 @@
                 });
             });
 
-            // Extract price data
-            const buyData = generalPrices.map(p => p.perKwh);
-            const feedData = feedinPrices.map(p => -Math.round(p.perKwh)); // Display as positive
+            // Build maps for fast lookup so we can align values to the unified timestamps
+            const generalMap = new Map(generalPrices.map(p => [p.startTime, p.perKwh]));
+            const feedMap = new Map(feedinPrices.map(p => [p.startTime, -Math.round(p.perKwh)])); // Display as positive
+
+            // Extract price data aligned with timestamps; use null for missing points
+            const buyData = allTimestamps.map(ts => generalMap.has(ts) ? generalMap.get(ts) : null);
+            const feedData = allTimestamps.map(ts => feedMap.has(ts) ? feedMap.get(ts) : null);
 
             console.log('[Prices] Price data - buy samples:', buyData.slice(0, 3), 'feed samples:', feedData.slice(0, 3));
 
