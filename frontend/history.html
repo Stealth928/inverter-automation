@@ -1444,8 +1444,7 @@
             // Build a unified, sorted list of timestamps from all prices so each dataset aligns
             const allTimestamps = Array.from(new Set(prices.map(p => p.startTime))).sort((a, b) => new Date(a) - new Date(b));
 
-            // Create labels with both date and time, showing date only when it changes
-            let lastDate = '';
+            // Create labels with both date and time for every interval
             const timestamps = allTimestamps.map(ts => {
                 const date = new Date(ts);
                 const dateStr = date.toLocaleDateString('en-AU', { 
@@ -1459,14 +1458,8 @@
                     minute: '2-digit',
                     timeZone: 'Australia/Sydney'
                 });
-                
-                // Show date when it changes, otherwise just time
-                let label = timeStr;
-                if (dateStr !== lastDate) {
-                    label = `${dateStr}\n${timeStr}`;
-                    lastDate = dateStr;
-                }
-                return label;
+                // Always include date and time (date on first line, time on second)
+                return `${dateStr}\n${timeStr}`;
             });
 
             // Build maps for fast lookup so we can align values to the unified timestamps
