@@ -448,14 +448,31 @@ app.get('/api/amber/prices', async (req, res) => {
     if (startDate || endDate) {
       const resolution = req.query.resolution || 30;
       
-      console.log(`[Prices] Fetching historical prices with caching for ${siteId}:`, {
+      console.log(`[Prices] Fetching historical prices - caching DISABLED for debug`);
+      
+      // TEMP: Bypass caching to test raw Amber response
+      const q = {
         startDate,
         endDate,
         resolution
-      });
+      };
+      const result = await callAmberAPIDirect(`/sites/${encodeURIComponent(siteId)}/prices`, q, userConfig, userId);
       
-      const result = await fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, resolution, userConfig, userId);
-      return res.json(result);
+      // Log channel breakdown
+      let prices = [];
+      if (Array.isArray(result)) {
+        prices = result;
+      } else if (result && Array.isArray(result.result)) {
+        prices = result.result;
+      }
+      
+      const channels = {};
+      prices.forEach(p => {
+        channels[p.channelType] = (channels[p.channelType] || 0) + 1;
+      });
+      console.log(`[Prices] Raw Amber response: ${prices.length} prices - channels:`, channels);
+      
+      return res.json({ errno: 0, result: prices });
     }
 
     // Default behavior: return the current forecast/prices
