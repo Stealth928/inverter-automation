@@ -228,6 +228,37 @@ function formatValue(value, unit = '', decimals = 1) {
     return unit ? `${formatted}${unit}` : formatted;
 }
 
+/**
+ * Convert a per-kWh price (in cents) to the displayed feed-in integer value
+ * used by the tiles. Matches the transform used throughout the UI.
+ * @param {number} perKwh - price in cents per kWh (may be decimal)
+ * @returns {number|null} - display value (rounded and sign flipped), or null
+ */
+function feedDisplayValue(perKwh) {
+    if (perKwh === null || perKwh === undefined || isNaN(perKwh)) return null;
+    return -Math.round(perKwh);
+}
+
+/**
+ * Map a feed-in display value to a CSS class name for tile colouring/highlight.
+ * Keep thresholds conservative and easy to adjust in one place.
+ * @param {number} displayVal - value returned by `feedDisplayValue`
+ * @returns {string} - CSS class to apply (without the dot)
+ */
+function getFeedColour(displayVal) {
+    if (displayVal === null || displayVal === undefined) return '';
+    // Bright highlight for very high export rates (>= 50¢)
+    if (displayVal >= 50) return 'feedin-highlight';
+    // Extreme positive export (>= 30¢)
+    if (displayVal >= 30) return 'extreme';
+    // Good export (>= 10¢)
+    if (displayVal >= 10) return 'success';
+    // Low export or neutral
+    if (displayVal >= 0) return '';
+    // Negative values (shouldn't normally happen) mark as danger
+    return 'danger';
+}
+
 /* ============================================
    DOM UTILITIES
    ============================================ */
@@ -435,6 +466,21 @@ if (typeof module !== 'undefined' && module.exports) {
         storageSet,
         storageRemove,
         debounce,
-        throttle
+        throttle,
+        // Pricing/format helpers
+        feedDisplayValue,
+        getFeedColour
     };
+}
+
+// Expose helpers to browser global for non-module usage
+if (typeof window !== 'undefined') {
+    window.sharedUtils = window.sharedUtils || {};
+    Object.assign(window.sharedUtils, {
+        feedDisplayValue,
+        getFeedColour,
+        formatValue,
+        formatDate,
+        formatTimeAgo
+    });
 }

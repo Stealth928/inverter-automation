@@ -369,6 +369,86 @@
             </div>
         </div>
 
+        <!-- Amber Historical Prices Info Banner -->
+        <div class="info-banner" style="background: linear-gradient(135deg, rgba(240,136,62,0.1), rgba(88,166,255,0.1)); border-color: rgba(88,166,255,0.2);">
+            <span class="icon">💡</span>
+            <div class="text">
+                <strong>Amber Price Analysis:</strong> View historical electricity prices to find patterns. Orange = buy price (cost to import), Blue = feed-in price (earnings from export). Use these insights to optimize your battery charging and solar export strategy.
+            </div>
+        </div>
+
+        <!-- Amber Historical Prices Section -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">💰 Amber Price History</div>
+                <div style="font-size:11px;color:var(--text-muted)" id="pricesTimestamp">Not loaded</div>
+            </div>
+            <div class="card-body">
+                <div class="controls-row">
+                    <div class="control-group" style="min-width:120px">
+                        <label>Start Date</label>
+                        <input type="date" id="priceStartDate" class="input" />
+                    </div>
+                    <div class="control-group" style="min-width:120px">
+                        <label>End Date</label>
+                        <input type="date" id="priceEndDate" class="input" />
+                    </div>
+                    <div class="control-group">
+                        <label>Resolution</label>
+                        <select id="priceResolution" class="input">
+                            <option value="5">5-minute</option>
+                            <option value="30" selected>30-minute</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="fetchAmberHistoricalPrices()" id="btnFetchPrices">
+                        📈 Fetch Prices
+                    </button>
+                </div>
+
+                <div id="pricesStatus" class="status"></div>
+
+                <div id="pricesStats" style="display:none;margin-bottom:16px">
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div class="label">Buy Price (Min)</div>
+                            <div><span class="value" id="statBuyMin" style="color:#7ee787">—</span><span class="unit">¢</span></div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="label">Buy Price (Avg)</div>
+                            <div><span class="value" id="statBuyAvg">—</span><span class="unit">¢</span></div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="label">Buy Price (Max)</div>
+                            <div><span class="value" id="statBuyMax" style="color:#f85149">—</span><span class="unit">¢</span></div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="label">Feed-in (Min)</div>
+                            <div><span class="value" id="statFeedMin" style="color:#f85149">—</span><span class="unit">¢</span></div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="label">Feed-in (Avg)</div>
+                            <div><span class="value" id="statFeedAvg">—</span><span class="unit">¢</span></div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="label">Feed-in (Max)</div>
+                            <div><span class="value" id="statFeedMax" style="color:#7ee787">—</span><span class="unit">¢</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <canvas id="amberHistoricalChart"></canvas>
+                </div>
+
+                <div id="pricesContent">
+                    <div class="empty-state">
+                        <div class="icon">💰</div>
+                        <p>Select a date range and click "Fetch Prices" to view historical Amber prices</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- History Section (24h time-series) -->
         <div class="card">
             <div class="card-header">
@@ -1140,6 +1220,355 @@
             }
             return dateStr;
         }
+
+        // ==================== AMBER HISTORICAL PRICES ====================
+
+        let amberHistoricalChart = null;
+
+        // Initialize date pickers with sensible defaults (last 7 days)
+        function initPriceDatepickers() {
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - 7);
+            
+            document.getElementById('priceStartDate').value = startDate.toISOString().split('T')[0];
+            document.getElementById('priceEndDate').value = endDate.toISOString().split('T')[0];
+        }
+
+        // Validate date inputs and return structured validation result
+        function validatePriceDateRange() {
+            const startInput = document.getElementById('priceStartDate').value;
+            const endInput = document.getElementById('priceEndDate').value;
+
+            if (!startInput) return { valid: false, error: 'Start date is required' };
+            if (!endInput) return { valid: false, error: 'End date is required' };
+
+            // Parse dates in local timezone (not UTC) to avoid timezone issues
+            const startDate = new Date(startInput);
+            const endDate = new Date(endInput);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Start of today in local time
+
+            if (startDate > endDate) {
+                return { valid: false, error: 'Start date must be before end date' };
+            }
+
+            // Allow today's date (tomorrow is when it becomes future)
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            if (endDate >= tomorrow) {
+                return { valid: false, error: 'End date cannot be in the future' };
+            }
+
+            // Check maximum range (90 days for API stability)
+            const maxRangeDays = 90;
+            const rangeDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+            if (rangeDays > maxRangeDays) {
+                return { valid: false, error: `Maximum range is ${maxRangeDays} days (you selected ${rangeDays} days)` };
+            }
+
+            // Warn if range is large (>14 days)
+            if (rangeDays > 14) {
+                return { 
+                    valid: true, 
+                    warning: `Large range (${rangeDays} days) may take a moment to load`,
+                    dates: { startDate, endDate, rangeDays }
+                };
+            }
+
+            return { valid: true, dates: { startDate, endDate, rangeDays } };
+        }
+
+        async function fetchAmberHistoricalPrices() {
+            const btn = document.getElementById('btnFetchPrices');
+            const status = document.getElementById('pricesStatus');
+            const content = document.getElementById('pricesContent');
+            const statsContainer = document.getElementById('pricesStats');
+            const timestamp = document.getElementById('pricesTimestamp');
+
+            // Validate inputs
+            const validation = validatePriceDateRange();
+            if (!validation.valid) {
+                status.className = 'status error';
+                status.textContent = `✗ ${validation.error}`;
+                return;
+            }
+
+            if (validation.warning) {
+                console.log(`[Prices] Warning: ${validation.warning}`);
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Loading prices...';
+            status.className = 'status loading';
+            status.textContent = '⏳ Fetching historical prices...';
+            statsContainer.style.display = 'none';
+            content.innerHTML = '';
+
+            try {
+                // Get site ID first (with debug info)
+                const sitesResp = await apiClient.getAmberSites();
+                console.log('[Prices] getAmberSites response:', sitesResp);
+                
+                // Extract sites from response - handle both array and {errno, result} formats
+                let sites = [];
+                if (Array.isArray(sitesResp)) {
+                    sites = sitesResp;
+                } else if (sitesResp && sitesResp.result && Array.isArray(sitesResp.result)) {
+                    sites = sitesResp.result;
+                } else if (sitesResp && sitesResp.errno === 401) {
+                    throw new Error('Not authenticated. Please log in first.');
+                }
+                
+                if (sites.length === 0) {
+                    // Try to get more debug info
+                    const debugResp = await apiClient.fetch('/api/amber/sites?debug=true');
+                    const debugJson = await debugResp.json();
+                    console.log('[Prices] Debug response:', debugJson);
+                    throw new Error('No Amber sites available. Please configure your Amber API key in Settings → Integrations → Amber API.');
+                }
+                
+                const siteId = sites[0].id;
+                const { dates } = validation;
+                const resolution = document.getElementById('priceResolution').value;
+
+                // Format dates as YYYY-MM-DD
+                const startDate = dates.startDate.toISOString().split('T')[0];
+                const endDate = dates.endDate.toISOString().split('T')[0];
+
+                status.textContent = `⏳ Fetching prices for ${dates.rangeDays} days at ${resolution}-minute resolution...`;
+
+                // Fetch historical prices
+                const pricesResp = await apiClient.getAmberHistoricalPrices(siteId, startDate, endDate, resolution);
+                
+                if (pricesResp.errno && pricesResp.errno !== 0) {
+                    throw new Error(pricesResp.error || 'Failed to fetch prices');
+                }
+
+                const prices = Array.isArray(pricesResp) ? pricesResp : pricesResp.result || [];
+                if (prices.length === 0) {
+                    throw new Error('No price data available for this date range');
+                }
+
+                // Process and display data
+                renderAmberHistoricalChart(prices);
+                renderPriceStatistics(prices);
+
+                status.className = 'status success';
+                status.textContent = `✓ Loaded ${prices.length} price intervals`;
+                timestamp.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+
+                setTimeout(() => { status.style.display = 'none'; }, 3000);
+            } catch (e) {
+                status.className = 'status error';
+                status.textContent = `✗ Error: ${e.message}`;
+                content.innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>${e.message}</p></div>`;
+                console.error('[Prices] Error:', e);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '📈 Fetch Prices';
+            }
+        }
+
+        function renderPriceStatistics(prices) {
+            // Separate buy and feed-in prices
+            const buyPrices = prices
+                .filter(p => p.channelType === 'general')
+                .map(p => p.perKwh)
+                .filter(v => typeof v === 'number');
+
+            const feedPrices = prices
+                .filter(p => p.channelType === 'feedIn')
+                .map(p => -Math.round(p.perKwh)) // Convert to display format (negative = you earn)
+                .filter(v => typeof v === 'number');
+
+            if (buyPrices.length === 0 || feedPrices.length === 0) {
+                console.warn('[Prices] Insufficient data for statistics');
+                return;
+            }
+
+            // Calculate statistics
+            const calc = {
+                buyMin: Math.min(...buyPrices),
+                buyMax: Math.max(...buyPrices),
+                buyAvg: (buyPrices.reduce((a, b) => a + b, 0) / buyPrices.length),
+                feedMin: Math.min(...feedPrices),
+                feedMax: Math.max(...feedPrices),
+                feedAvg: (feedPrices.reduce((a, b) => a + b, 0) / feedPrices.length)
+            };
+
+            // Update stat boxes with coloring
+            document.getElementById('statBuyMin').textContent = calc.buyMin.toFixed(1);
+            document.getElementById('statBuyAvg').textContent = calc.buyAvg.toFixed(1);
+            document.getElementById('statBuyMax').textContent = calc.buyMax.toFixed(1);
+            document.getElementById('statFeedMin').textContent = calc.feedMin.toFixed(1);
+            document.getElementById('statFeedAvg').textContent = calc.feedAvg.toFixed(1);
+            document.getElementById('statFeedMax').textContent = calc.feedMax.toFixed(1);
+
+            document.getElementById('pricesStats').style.display = 'block';
+        }
+
+        function renderAmberHistoricalChart(prices) {
+            // Separate data by channel type
+            const generalPrices = prices.filter(p => p.channelType === 'general');
+            const feedinPrices = prices.filter(p => p.channelType === 'feedIn');
+
+            // Create common timestamps for both datasets
+            const timestamps = generalPrices.map(p => {
+                const date = new Date(p.startTime);
+                return date.toLocaleTimeString('en-AU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZone: 'Australia/Sydney'
+                });
+            });
+
+            // Extract price data
+            const buyData = generalPrices.map(p => p.perKwh);
+            const feedData = feedinPrices.map(p => -Math.round(p.perKwh)); // Display as positive
+
+            // Get canvas element
+            const canvas = document.getElementById('amberHistoricalChart');
+            const ctx = canvas.getContext('2d');
+
+            // Destroy previous chart if exists
+            if (amberHistoricalChart) {
+                amberHistoricalChart.destroy();
+            }
+
+            // Create new chart
+            amberHistoricalChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timestamps,
+                    datasets: [
+                        {
+                            label: 'Buy Price (¢/kWh)',
+                            data: buyData,
+                            borderColor: '#f0883e',
+                            backgroundColor: 'rgba(240, 136, 62, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 1,
+                            pointHoverRadius: 4,
+                            pointBackgroundColor: '#f0883e',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Feed-in Price (¢/kWh)',
+                            data: feedData,
+                            borderColor: '#58a6ff',
+                            backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 1,
+                            pointHoverRadius: 4,
+                            pointBackgroundColor: '#58a6ff',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 1,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {
+                                color: '#8b949e',
+                                boxWidth: 12,
+                                padding: 12,
+                                font: { size: 12, weight: '500' }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#e6edf3',
+                            bodyColor: '#e6edf3',
+                            borderColor: '#30363d',
+                            borderWidth: 1,
+                            padding: 8,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}¢`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            ticks: {
+                                color: '#8b949e',
+                                font: { size: 11 },
+                                callback: function(value) {
+                                    return value.toFixed(1) + '¢';
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(48, 54, 61, 0.3)',
+                                drawBorder: false
+                            },
+                            title: {
+                                display: true,
+                                text: 'Buy Price',
+                                color: '#e6edf3'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            ticks: {
+                                color: '#8b949e',
+                                font: { size: 11 },
+                                callback: function(value) {
+                                    return value.toFixed(1) + '¢';
+                                }
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                                drawBorder: false
+                            },
+                            title: {
+                                display: true,
+                                text: 'Feed-in Price',
+                                color: '#e6edf3'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#8b949e',
+                                font: { size: 10 },
+                                maxTicksLimit: 15
+                            },
+                            grid: {
+                                color: 'rgba(48, 54, 61, 0.2)',
+                                drawBorder: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize price datepickers on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            try { initPriceDatepickers(); } catch (error) { console.warn('Failed to init price datepickers', error); }
+        });
 
         // Initialize Firebase on page load
         AppShell.init({

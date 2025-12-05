@@ -346,31 +346,52 @@ app.get('/api/amber/sites', async (req, res) => {
     // Attach optional user if provided, but don't require auth
     await tryAttachUser(req);
     const userId = req.user?.uid;
+    const debug = req.query.debug === 'true';
+    
     console.log(`[Amber] /sites request (pre-auth-middleware) from user: ${userId}`);
 
     if (!userId) {
       // No user signed in - safe empty response for UI
-      return res.json({ errno: 0, result: [] });
+      const response = { errno: 0, result: [] };
+      if (debug) response._debug = 'Not authenticated';
+      return res.json(response);
     }
 
     const userConfig = await getUserConfig(userId);
-    console.log(`[Amber] User config (pre-auth) for ${userId}:`, userConfig ? 'found' : 'not found', userConfig?.amberApiKey ? '(has key)' : '(no key)');
+    const hasKey = userConfig?.amberApiKey;
+    console.log(`[Amber] User config (pre-auth) for ${userId}:`, userConfig ? 'found' : 'not found', hasKey ? '(has key)' : '(no key)');
 
-    if (!userConfig || !userConfig.amberApiKey) {
-      return res.json({ errno: 0, result: [] });
+    if (!userConfig || !hasKey) {
+      const response = { errno: 0, result: [] };
+      if (debug) {
+        response._debug = `Config issue: userConfig=${!!userConfig}, hasAmberKey=${hasKey}`;
+      }
+      return res.json(response);
     }
 
     // Increment user-specific count (if available) and call Amber
     incrementApiCount(userId, 'amber').catch(err => console.warn('[Amber] Failed to log API call (pre-auth):', err.message));
     const result = await callAmberAPI('/sites', {}, userConfig, userId);
 
+    console.log(`[Amber] API result for ${userId}:`, result && result.errno === 0 ? 'success' : `error(${result?.errno}): ${result?.error || result?.msg}`);
+
     if (result && result.data && Array.isArray(result.data)) return res.json({ errno: 0, result: result.data });
     if (result && result.sites && Array.isArray(result.sites)) return res.json({ errno: 0, result: result.sites });
     if (Array.isArray(result)) return res.json({ errno: 0, result });
+    
+    // If there's an error from Amber API, pass it through with debug info if requested
+    if (result && result.errno && result.errno !== 0) {
+      const response = { errno: 0, result: [] };
+      if (debug) response._debug = `Amber API error: ${result.error || result.msg}`;
+      return res.json(response);
+    }
+    
     return res.json({ errno: 0, result: [] });
   } catch (e) {
     console.error('[Amber] Pre-auth /sites error:', e && e.message ? e.message : e);
-    return res.json({ errno: 0, result: [] });
+    const response = { errno: 0, result: [] };
+    if (req.query.debug === 'true') response._debug = `Exception: ${e?.message || String(e)}`;
+    return res.json(response);
   }
 });
 
@@ -459,7 +480,7 @@ app.get('/api/metrics/api-calls', async (req, res) => {
       for (let i = 0; i < days; i++) {
         const d = new Date(endDate);
         d.setDate(d.getDate() - i);
-        const key = d.toISOString().split('T')[0];
+        const key = getAusDateKey(d);
         result[key] = { foxess: 0, amber: 0, weather: 0 };
       }
       return res.json({ errno: 0, result });
@@ -487,11 +508,11 @@ app.get('/api/metrics/api-calls', async (req, res) => {
         };
       });
 
-      // Fill in missing days with zeros
+      // Fill in missing days with zeros (Australia/Sydney local date)
       for (let i = 0; i < days; i++) {
         const d = new Date(endDate);
         d.setDate(d.getDate() - i);
-        const key = d.toISOString().split('T')[0];
+        const key = getAusDateKey(d);
         if (!result[key]) result[key] = { foxess: 0, amber: 0, weather: 0 };
       }
 
@@ -503,7 +524,7 @@ app.get('/api/metrics/api-calls', async (req, res) => {
     for (let i = 0; i < days; i++) {
       const d = new Date(endDate);
       d.setDate(d.getDate() - i);
-      const key = d.toISOString().split('T')[0];
+      const key = getAusDateKey(d);
 
       const doc = await db.collection('metrics').doc(key).get();
       const data = doc.exists ? doc.data() : null;
@@ -522,7 +543,7 @@ app.get('/api/metrics/api-calls', async (req, res) => {
     for (let i = 0; i < days; i++) {
       const d = new Date(endDate);
       d.setDate(d.getDate() - i);
-      const key = d.toISOString().split('T')[0];
+      const key = getAusDateKey(d);
       result[key] = { foxess: 0, amber: 0, weather: 0 };
     }
     return res.json({ errno: 0, result });
@@ -911,13 +932,47 @@ app.get('/api/automation/status', async (req, res) => {
   try {
     const state = await getUserAutomationState(req.user.uid);
     const rules = await getUserRules(req.user.uid);
+    const userConfig = await getUserConfig(req.user.uid);
+    
+    // Check for blackout windows
+    const blackoutWindows = userConfig?.automation?.blackoutWindows || [];
+    const sydney = getSydneyTime();
+    const currentMinutes = sydney.hour * 60 + sydney.minute;
+    
+    let inBlackout = false;
+    let currentBlackoutWindow = null;
+    for (const window of blackoutWindows) {
+      if (!window.enabled) continue;
+      const [startH, startM] = (window.start || '00:00').split(':').map(Number);
+      const [endH, endM] = (window.end || '00:00').split(':').map(Number);
+      const startMins = startH * 60 + startM;
+      const endMins = endH * 60 + endM;
+      
+      // Handle windows that cross midnight
+      if (startMins <= endMins) {
+        if (currentMinutes >= startMins && currentMinutes < endMins) {
+          inBlackout = true;
+          currentBlackoutWindow = window;
+          break;
+        }
+      } else {
+        if (currentMinutes >= startMins || currentMinutes < endMins) {
+          inBlackout = true;
+          currentBlackoutWindow = window;
+          break;
+        }
+      }
+    }
+    
     res.json({
       errno: 0,
       result: {
         ...state,
         rules,
         serverTime: Date.now(),
-        nextCheckIn: getConfig().automation.intervalMs
+        nextCheckIn: getConfig().automation.intervalMs,
+        inBlackout,
+        currentBlackoutWindow
       }
     });
   } catch (error) {
@@ -1014,6 +1069,229 @@ app.post('/api/automation/reset', async (req, res) => {
   }
 });
 
+// Run automation cycle - evaluates all rules and triggers if conditions met
+// This is called by the frontend timer every 60 seconds
+app.post('/api/automation/cycle', async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    console.log(`[Automation] Running cycle for user ${userId}`);
+    
+    // Get user's automation state
+    const state = await getUserAutomationState(userId);
+    if (!state || !state.enabled) {
+      await saveUserAutomationState(userId, { lastCheck: Date.now() });
+      return res.json({ errno: 0, result: { skipped: true, reason: 'Automation disabled' } });
+    }
+    
+    // Check for blackout windows
+    const userConfig = await getUserConfig(userId);
+    const blackoutWindows = userConfig?.automation?.blackoutWindows || [];
+    const sydney = getSydneyTime();
+    const currentMinutes = sydney.hour * 60 + sydney.minute;
+    
+    let inBlackout = false;
+    let currentBlackoutWindow = null;
+    for (const window of blackoutWindows) {
+      if (!window.enabled) continue;
+      const [startH, startM] = (window.start || '00:00').split(':').map(Number);
+      const [endH, endM] = (window.end || '00:00').split(':').map(Number);
+      const startMins = startH * 60 + startM;
+      const endMins = endH * 60 + endM;
+      
+      // Handle windows that cross midnight
+      if (startMins <= endMins) {
+        if (currentMinutes >= startMins && currentMinutes < endMins) {
+          inBlackout = true;
+          currentBlackoutWindow = window;
+          break;
+        }
+      } else {
+        if (currentMinutes >= startMins || currentMinutes < endMins) {
+          inBlackout = true;
+          currentBlackoutWindow = window;
+          break;
+        }
+      }
+    }
+    
+    if (inBlackout) {
+      await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: true, currentBlackoutWindow });
+      return res.json({ errno: 0, result: { skipped: true, reason: 'In blackout window', blackoutWindow: currentBlackoutWindow } });
+    }
+    
+    // Get user's rules
+    const rules = await getUserRules(userId);
+    const totalRules = Object.keys(rules).length;
+    console.log(`[Automation] Found ${totalRules} total rules`);
+    
+    if (totalRules === 0) {
+      await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
+      return res.json({ errno: 0, result: { skipped: true, reason: 'No rules configured' } });
+    }
+    
+    // Get live data for evaluation
+    const deviceSN = userConfig?.deviceSn;
+    let inverterData = null;
+    let amberData = null;
+    
+    // Fetch inverter data
+    if (deviceSN) {
+      try {
+        inverterData = await callFoxESSAPI('/op/v0/device/real/query', 'POST', {
+          sn: deviceSN,
+          variables: ['SoC', 'batTemperature', 'ambientTemperation', 'pvPower', 'loadsPower', 'gridConsumptionPower', 'feedinPower']
+        }, userConfig, userId);
+        console.log(`[Automation] Inverter data fetched successfully`);
+      } catch (e) {
+        console.warn('[Automation] Failed to get inverter data:', e.message);
+      }
+    }
+    
+    // Fetch Amber data
+    if (userConfig?.amberApiKey) {
+      try {
+        const sites = await callAmberAPI('/sites', {}, userConfig);
+        if (Array.isArray(sites) && sites.length > 0) {
+          const siteId = userConfig.amberSiteId || sites[0].id;
+          amberData = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 1 }, userConfig);
+          console.log(`[Automation] Amber data fetched: ${Array.isArray(amberData) ? amberData.length : 0} intervals`);
+        }
+      } catch (e) {
+        console.warn('[Automation] Failed to get Amber data:', e.message);
+      }
+    }
+    
+    // Build cache object for rule evaluation
+    const cache = { amber: amberData };
+    
+    // Evaluate rules (sorted by priority - lower number = higher priority)
+    const enabledRules = Object.entries(rules).filter(([_, rule]) => rule.enabled);
+    console.log(`[Automation] ${enabledRules.length} of ${totalRules} rules are enabled`);
+    
+    if (enabledRules.length === 0) {
+      await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
+      return res.json({ errno: 0, result: { skipped: true, reason: 'No rules enabled', totalRules } });
+    }
+    
+    const sortedRules = enabledRules.sort((a, b) => (a[1].priority || 99) - (b[1].priority || 99));
+    
+    let triggeredRule = null;
+    let triggerResult = null;
+    const evaluationResults = [];
+    
+    for (const [ruleId, rule] of sortedRules) {
+      console.log(`[Automation] Checking rule '${rule.name}' (priority ${rule.priority})`);
+      console.log(`[Automation] Rule conditions:`, JSON.stringify(rule.conditions || {}).slice(0, 500));
+      
+      // Check cooldown
+      const lastTriggered = rule.lastTriggered;
+      const cooldownMs = (rule.cooldownMinutes || 5) * 60 * 1000;
+      if (lastTriggered) {
+        const lastTriggeredMs = typeof lastTriggered === 'object' 
+          ? (lastTriggered._seconds || lastTriggered.seconds || 0) * 1000 
+          : lastTriggered;
+        if (Date.now() - lastTriggeredMs < cooldownMs) {
+          const remaining = Math.round((cooldownMs - (Date.now() - lastTriggeredMs)) / 1000);
+          console.log(`[Automation] Rule '${rule.name}' in cooldown (${remaining}s remaining)`);
+          evaluationResults.push({ rule: rule.name, result: 'cooldown', remaining });
+          continue;
+        }
+      }
+      
+      const result = await evaluateRule(userId, ruleId, rule, cache, inverterData, userConfig);
+      evaluationResults.push({ rule: rule.name, result: result.triggered ? 'triggered' : 'not_met', details: result });
+      
+      if (result.triggered) {
+        console.log(`[Automation] ✅ Rule '${rule.name}' TRIGGERED! Applying action...`);
+        triggeredRule = { ruleId, ...rule };
+        triggerResult = result;
+        
+        // Actually apply the rule action (create scheduler segment)
+        let actionResult = null;
+        try {
+          actionResult = await applyRuleAction(userId, rule, userConfig);
+          console.log(`[Automation] Action result: errno=${actionResult?.errno}, msg=${actionResult?.msg}`);
+        } catch (actionError) {
+          console.error(`[Automation] Action failed:`, actionError);
+          actionResult = { errno: -1, msg: actionError.message || 'Action failed' };
+        }
+        
+        // Update rule's lastTriggered
+        await db.collection('users').doc(userId).collection('rules').doc(ruleId).set({
+          lastTriggered: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        
+        // Update automation state
+        await saveUserAutomationState(userId, {
+          lastCheck: Date.now(),
+          lastTriggered: Date.now(),
+          activeRule: rule.name,
+          inBlackout: false,
+          lastActionResult: actionResult
+        });
+        
+        // Store action result for response
+        triggeredRule.actionResult = actionResult;
+        
+        break; // First matching rule wins
+      }
+    }
+    
+    if (!triggeredRule) {
+      console.log(`[Automation] No rules triggered this cycle`);
+      
+      // Check if there was an active rule and it just stopped being met - cancel automation
+      if (state.activeRule) {
+        console.log(`[Automation] Previous active rule '${state.activeRule}' is no longer met - canceling automation`);
+        try {
+          // Clear all scheduler segments
+          const deviceSN = userConfig?.deviceSn;
+          if (deviceSN) {
+            const clearedGroups = [];
+            for (let i = 0; i < 10; i++) {
+              clearedGroups.push({
+                enable: 0,
+                workMode: 'SelfUse',
+                startHour: 0, startMinute: 0,
+                endHour: 0, endMinute: 0,
+                minSocOnGrid: 10,
+                fdSoc: 10,
+                fdPwr: 0,
+                maxSoc: 100
+              });
+            }
+            await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+            console.log(`[Automation] Cleared all scheduler segments after rule '${state.activeRule}' ended`);
+          }
+        } catch (cancelError) {
+          console.warn(`[Automation] Failed to cancel segments:`, cancelError.message);
+        }
+      }
+      
+      await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false, activeRule: null });
+    }
+    
+    res.json({
+      errno: 0,
+      result: {
+        triggered: !!triggeredRule,
+        rule: triggeredRule ? { name: triggeredRule.name, priority: triggeredRule.priority, actionResult: triggeredRule.actionResult } : null,
+        rulesEvaluated: sortedRules.length,
+        totalRules,
+        evaluationResults,
+        lastCheck: Date.now()
+      }
+    });
+  } catch (error) {
+    console.error('[Automation] Cycle error:', error);
+    // Still update lastCheck even on error
+    try {
+      await saveUserAutomationState(req.user.uid, { lastCheck: Date.now() });
+    } catch (e) { /* ignore */ }
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // Cancel active automation segment - clears all scheduler segments
 app.post('/api/automation/cancel', async (req, res) => {
   try {
@@ -1088,7 +1366,7 @@ app.post('/api/automation/cancel', async (req, res) => {
   }
 });
 
-// Create/update automation rule
+// Create automation rule
 app.post('/api/automation/rule/create', async (req, res) => {
   try {
     const { name, enabled, priority, conditions, action, cooldownMinutes } = req.body;
@@ -1101,15 +1379,15 @@ app.post('/api/automation/rule/create', async (req, res) => {
     const rule = {
       name,
       enabled: enabled !== false,
-      priority: priority || 50,
+      priority: typeof priority === 'number' ? priority : 5, // Default to priority 5 for new rules
       conditions: conditions || {},
       action: action || {},
-      cooldownMinutes: cooldownMinutes || 5,
+      cooldownMinutes: typeof cooldownMinutes === 'number' ? cooldownMinutes : 5,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
     
-    await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).set(rule, { merge: true });
+    await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).set(rule);
     res.json({ errno: 0, result: { ruleId, ...rule } });
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -1117,6 +1395,7 @@ app.post('/api/automation/rule/create', async (req, res) => {
 });
 
 // Update automation rule (backwards-compatible endpoint used by frontend)
+// IMPORTANT: Only updates provided fields - does NOT overwrite with defaults
 app.post('/api/automation/rule/update', async (req, res) => {
   try {
     const { ruleName, name, enabled, priority, conditions, action, cooldownMinutes } = req.body;
@@ -1126,19 +1405,39 @@ app.post('/api/automation/rule/update', async (req, res) => {
     }
 
     const ruleId = (ruleName || name).toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    const rule = {
-      name: name || ruleId,
-      enabled: enabled !== false,
-      priority: priority || 50,
-      conditions: conditions || {},
-      action: action || {},
-      cooldownMinutes: cooldownMinutes || 5,
+    
+    // Build update object with ONLY provided fields to avoid overwriting existing data
+    const update = {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
+    
+    // Only include fields that were explicitly provided in the request
+    if (name !== undefined) update.name = name;
+    if (enabled !== undefined) update.enabled = !!enabled;
+    if (typeof priority === 'number') update.priority = priority;
+    if (conditions !== undefined) update.conditions = conditions;
+    if (cooldownMinutes !== undefined) update.cooldownMinutes = cooldownMinutes;
+    
+    // Handle action - merge with existing if partial update
+    if (action !== undefined) {
+      // Get existing rule to merge action properly
+      const existingDoc = await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).get();
+      if (existingDoc.exists && existingDoc.data().action) {
+        // Merge new action fields with existing action
+        update.action = { ...existingDoc.data().action, ...action };
+      } else {
+        update.action = action;
+      }
+    }
 
-    await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).set(rule, { merge: true });
-    res.json({ errno: 0, result: { ruleId, ...rule } });
+    console.log(`[Rule Update] Updating rule ${ruleId} with fields:`, Object.keys(update));
+    await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).set(update, { merge: true });
+    
+    // Return the updated rule
+    const updatedDoc = await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).get();
+    res.json({ errno: 0, result: { ruleId, ...updatedDoc.data() } });
   } catch (error) {
+    console.error('[Rule Update] Error:', error);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
@@ -1628,8 +1927,13 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
 /**
  * Increment API call count for a user
  */
+// Helper: returns YYYY-MM-DD for Australia/Sydney local date (handles DST)
+function getAusDateKey(date = new Date()) {
+  return date.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' }); // YYYY-MM-DD
+}
+
 async function incrementApiCount(userId, apiType) {
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const today = getAusDateKey(); // YYYY-MM-DD (Australia/Sydney)
 
   // Only update per-user metrics when we have a valid userId
   if (userId) {
@@ -1662,7 +1966,7 @@ async function incrementApiCount(userId, apiType) {
  */
 async function incrementGlobalApiCount(apiType) {
   try {
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const today = getAusDateKey(); // YYYY-MM-DD (Australia/Sydney)
     const docRef = db.collection('metrics').doc(today);
 
     await docRef.set({
@@ -1872,48 +2176,199 @@ async function processUserAutomation(userId) {
 }
 
 /**
- * Evaluate a single automation rule
+ * Evaluate a single automation rule - checks ALL conditions
+ * ALL enabled conditions must be met for the rule to trigger
  */
 async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfig) {
-  // TODO: Implement full rule evaluation logic
-  // This is a simplified version - expand based on your existing server.js logic
-  
   const conditions = rule.conditions || {};
-  let allMet = true;
+  const enabledConditions = [];
+  const results = [];
   
-  // Check SoC condition
-  if (conditions.soc?.enabled && inverterData?.result) {
-    const socData = inverterData.result[0]?.datas?.find(d => d.variable === 'SoC');
-    const soc = socData?.value;
+  // Get current Sydney time for time-based conditions
+  const sydney = getSydneyTime();
+  const currentMinutes = sydney.hour * 60 + sydney.minute;
+  
+  // Parse inverter data
+  let soc = null;
+  let batTemp = null;
+  let ambientTemp = null;
+  if (inverterData?.result?.[0]?.datas) {
+    const datas = inverterData.result[0].datas;
+    const socData = datas.find(d => d.variable === 'SoC');
+    const batTempData = datas.find(d => d.variable === 'batTemperature');
+    const ambientTempData = datas.find(d => d.variable === 'ambientTemperation');
+    soc = socData?.value ?? null;
+    batTemp = batTempData?.value ?? null;
+    ambientTemp = ambientTempData?.value ?? null;
+  }
+  
+  // Parse Amber prices
+  let feedInPrice = null;
+  let buyPrice = null;
+  if (Array.isArray(cache.amber)) {
+    const feedInInterval = cache.amber.find(ch => ch.channelType === 'feedIn' && ch.type === 'CurrentInterval');
+    const generalInterval = cache.amber.find(ch => ch.channelType === 'general' && ch.type === 'CurrentInterval');
+    if (feedInInterval) feedInPrice = -feedInInterval.perKwh; // Convert to positive (what you earn)
+    if (generalInterval) buyPrice = generalInterval.perKwh;
+  }
+  
+  console.log(`[Automation] Evaluating rule '${rule.name}' - Live data: SoC=${soc}%, BatTemp=${batTemp}°C, FeedIn=${feedInPrice?.toFixed(1)}¢, Buy=${buyPrice?.toFixed(1)}¢`);
+  
+  // Check SoC condition (support both 'op' and 'operator' field names)
+  if (conditions.soc?.enabled) {
+    enabledConditions.push('soc');
     if (soc !== null) {
-      const met = compareValue(soc, conditions.soc.operator, conditions.soc.value);
-      if (!met) allMet = false;
+      const operator = conditions.soc.op || conditions.soc.operator;
+      const value = conditions.soc.value;
+      const value2 = conditions.soc.value2;
+      let met = false;
+      if (operator === 'between' && value2 !== undefined) {
+        met = soc >= value && soc <= value2;
+      } else {
+        met = compareValue(soc, operator, value);
+      }
+      results.push({ condition: 'soc', met, actual: soc, operator, target: value });
+      if (!met) {
+        console.log(`[Automation] Rule '${rule.name}' - SoC condition NOT met: ${soc} ${operator} ${value} = false`);
+      }
+    } else {
+      results.push({ condition: 'soc', met: false, reason: 'No SoC data' });
+      console.log(`[Automation] Rule '${rule.name}' - SoC condition NOT met: No SoC data available`);
     }
   }
   
-  // Check price conditions
-  if (conditions.feedInPrice?.enabled && Array.isArray(cache.amber)) {
-    const feedIn = cache.amber.find(ch => ch.channelType === 'feedIn' && ch.type === 'CurrentInterval');
-    if (feedIn) {
-      const price = -feedIn.perKwh;
-      const met = compareValue(price, conditions.feedInPrice.operator, conditions.feedInPrice.value);
-      if (!met) allMet = false;
+  // Check price condition (support both 'price' and 'feedInPrice/buyPrice' formats)
+  // Frontend saves as conditions.price with 'type' field (feedIn or buy)
+  const priceCondition = conditions.price;
+  if (priceCondition?.enabled && priceCondition?.type) {
+    const priceType = priceCondition.type; // 'feedIn' or 'buy'
+    const actualPrice = priceType === 'feedIn' ? feedInPrice : buyPrice;
+    enabledConditions.push('price');
+    if (actualPrice !== null) {
+      const operator = priceCondition.op || priceCondition.operator;
+      const value = priceCondition.value;
+      const value2 = priceCondition.value2;
+      let met = false;
+      if (operator === 'between' && value2 !== undefined) {
+        met = actualPrice >= value && actualPrice <= value2;
+      } else {
+        met = compareValue(actualPrice, operator, value);
+      }
+      results.push({ condition: 'price', met, actual: actualPrice, operator, target: value, type: priceType });
+      if (!met) {
+        console.log(`[Automation] Rule '${rule.name}' - Price (${priceType}) condition NOT met: ${actualPrice?.toFixed(1)} ${operator} ${value} = false`);
+      }
+    } else {
+      results.push({ condition: 'price', met: false, reason: 'No Amber price data' });
+      console.log(`[Automation] Rule '${rule.name}' - Price condition NOT met: No Amber data available`);
     }
   }
   
-  // If all conditions met, apply action
-  if (allMet && Object.keys(conditions).length > 0) {
-    await applyRuleAction(userId, rule, userConfig);
-    await addHistoryEntry(userId, {
-      type: 'rule_triggered',
-      ruleName: rule.name,
-      ruleId,
-      action: rule.action
-    });
-    return { triggered: true };
+  // Legacy: Check feed-in price condition (for old format rules)
+  if (conditions.feedInPrice?.enabled) {
+    enabledConditions.push('feedInPrice');
+    if (feedInPrice !== null) {
+      const operator = conditions.feedInPrice.op || conditions.feedInPrice.operator;
+      const value = conditions.feedInPrice.value;
+      const value2 = conditions.feedInPrice.value2;
+      let met = false;
+      if (operator === 'between' && value2 !== undefined) {
+        met = feedInPrice >= value && feedInPrice <= value2;
+      } else {
+        met = compareValue(feedInPrice, operator, value);
+      }
+      results.push({ condition: 'feedInPrice', met, actual: feedInPrice, operator, target: value });
+      if (!met) {
+        console.log(`[Automation] Rule '${rule.name}' - FeedIn condition NOT met: ${feedInPrice.toFixed(1)} ${operator} ${value} = false`);
+      }
+    } else {
+      results.push({ condition: 'feedInPrice', met: false, reason: 'No Amber data' });
+      console.log(`[Automation] Rule '${rule.name}' - FeedIn condition NOT met: No Amber data available`);
+    }
   }
   
-  return { triggered: false };
+  // Check buy price condition
+  if (conditions.buyPrice?.enabled) {
+    enabledConditions.push('buyPrice');
+    if (buyPrice !== null) {
+      const operator = conditions.buyPrice.op || conditions.buyPrice.operator;
+      const value = conditions.buyPrice.value;
+      const value2 = conditions.buyPrice.value2;
+      let met = false;
+      if (operator === 'between' && value2 !== undefined) {
+        met = buyPrice >= value && buyPrice <= value2;
+      } else {
+        met = compareValue(buyPrice, operator, value);
+      }
+      results.push({ condition: 'buyPrice', met, actual: buyPrice, operator, target: value });
+      if (!met) {
+        console.log(`[Automation] Rule '${rule.name}' - BuyPrice condition NOT met: ${buyPrice.toFixed(1)} ${operator} ${value} = false`);
+      }
+    } else {
+      results.push({ condition: 'buyPrice', met: false, reason: 'No Amber data' });
+      console.log(`[Automation] Rule '${rule.name}' - BuyPrice condition NOT met: No Amber data available`);
+    }
+  }
+  
+  // Check temperature condition (support both 'temp' and 'temperature' with 'op' and 'operator')
+  const tempCondition = conditions.temp || conditions.temperature;
+  if (tempCondition?.enabled) {
+    enabledConditions.push('temperature');
+    const tempType = tempCondition.type || 'battery';
+    const actualTemp = tempType === 'battery' ? batTemp : ambientTemp;
+    if (actualTemp !== null) {
+      const operator = tempCondition.op || tempCondition.operator;
+      const value = tempCondition.value;
+      const met = compareValue(actualTemp, operator, value);
+      results.push({ condition: 'temperature', met, actual: actualTemp, operator, target: value, type: tempType });
+      if (!met) {
+        console.log(`[Automation] Rule '${rule.name}' - Temperature condition NOT met: ${actualTemp} ${operator} ${value} = false`);
+      }
+    } else {
+      results.push({ condition: 'temperature', met: false, reason: `No ${tempType} temperature data` });
+      console.log(`[Automation] Rule '${rule.name}' - Temperature condition NOT met: No ${tempType} temp data available`);
+    }
+  }
+  
+  // Check time window condition
+  const timeCondition = conditions.time || conditions.timeWindow;
+  if (timeCondition?.enabled) {
+    enabledConditions.push('time');
+    const startTime = timeCondition.startTime || timeCondition.start || '00:00';
+    const endTime = timeCondition.endTime || timeCondition.end || '23:59';
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    const startMins = startH * 60 + startM;
+    const endMins = endH * 60 + endM;
+    
+    let met = false;
+    // Handle windows that cross midnight
+    if (startMins <= endMins) {
+      met = currentMinutes >= startMins && currentMinutes < endMins;
+    } else {
+      met = currentMinutes >= startMins || currentMinutes < endMins;
+    }
+    results.push({ condition: 'time', met, actual: `${sydney.hour}:${String(sydney.minute).padStart(2,'0')}`, window: `${startTime}-${endTime}` });
+    if (!met) {
+      console.log(`[Automation] Rule '${rule.name}' - Time condition NOT met: ${sydney.hour}:${String(sydney.minute).padStart(2,'0')} not in ${startTime}-${endTime}`);
+    }
+  }
+  
+  // Determine if all conditions are met
+  const allMet = results.length > 0 && results.every(r => r.met);
+  
+  if (enabledConditions.length === 0) {
+    console.log(`[Automation] Rule '${rule.name}' - No conditions enabled, skipping`);
+    return { triggered: false, reason: 'No conditions enabled' };
+  }
+  
+  if (allMet) {
+    console.log(`[Automation] Rule '${rule.name}' - ALL ${enabledConditions.length} conditions MET!`);
+    return { triggered: true, results };
+  }
+  
+  console.log(`[Automation] Rule '${rule.name}' - Not all conditions met (${results.filter(r => r.met).length}/${results.length})`);
+  return { triggered: false, results };
 }
 
 /**
@@ -2081,6 +2536,9 @@ async function applyRuleAction(userId, rule, userConfig) {
   try {
     verify = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
     console.log(`[Automation] Verify read: groups count=${verify?.result?.groups?.length || 0}`);
+    if (verify?.result?.groups?.[0]) {
+      console.log(`[Automation] Verify Group 1:`, JSON.stringify(verify.result.groups[0]).slice(0, 200));
+    }
   } catch (e) {
     console.warn('[Automation] Verify read failed:', e && e.message ? e.message : e);
   }
@@ -2187,6 +2645,202 @@ app.post('/api/auth/cleanup-user', authenticateUser, async (req, res) => {
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
+
+// ==================== INVERTER HISTORY ENDPOINT ====================
+/**
+ * Get inverter history data from FoxESS API
+ * Handles large date ranges by splitting into 24-hour chunks
+ * Caches results in Firestore to reduce API calls
+ */
+app.get('/api/inverter/history', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const userConfig = await getUserConfig(userId);
+    const sn = req.query.sn || userConfig?.deviceSn;
+    
+    if (!sn) {
+      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    }
+    
+    let begin = Number(req.query.begin);
+    let end = Number(req.query.end);
+
+    const DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000;
+
+    if (!Number.isFinite(begin)) begin = Date.now() - DEFAULT_RANGE_MS;
+    if (!Number.isFinite(end)) end = Date.now();
+
+    // Normalize to milliseconds (FoxESS expects ms)
+    if (begin < 1e12) begin *= 1000;
+    if (end < 1e12) end *= 1000;
+
+    begin = Math.floor(begin);
+    end = Math.floor(end);
+    
+    console.log(`[History] Requesting: begin=${begin} (${new Date(begin).toISOString()}), end=${end} (${new Date(end).toISOString()}), sn=${sn}`);
+    
+    // Set a strict timeout for the FoxESS call
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Request timeout')), 9000)
+    );
+    
+    try {
+      const MAX_RANGE_MS = 24 * 60 * 60 * 1000; // 24 hours per FoxESS request
+
+      // If the requested window is small, call FoxESS once. For larger windows, split into chunks and merge results.
+      if ((end - begin) <= MAX_RANGE_MS) {
+        // Check cache first
+        const cachedResult = await getHistoryFromCacheFirestore(userId, sn, begin, end);
+        if (cachedResult) {
+          console.log(`[History] Cache HIT for single chunk ${new Date(begin).toISOString()} - ${new Date(end).toISOString()}`);
+          return res.json(cachedResult);
+        }
+        
+        const result = await Promise.race([
+          callFoxESSAPI('/op/v0/device/history/query', 'POST', {
+            sn,
+            begin,
+            end,
+            variables: ['generationPower', 'feedinPower', 'gridConsumptionPower']
+          }, userConfig, userId),
+          timeoutPromise
+        ]);
+        
+        // Cache successful response
+        if (result && result.errno === 0) {
+          await setHistoryToCacheFirestore(userId, sn, begin, end, result).catch(e => console.warn('[History] Cache write failed:', e.message));
+        }
+        
+        return res.json(result);
+      }
+
+      // Build chunk ranges
+      const chunks = [];
+      let cursor = begin;
+      while (cursor < end) {
+        const chunkEnd = Math.min(end, cursor + MAX_RANGE_MS - 1);
+        chunks.push({ cbeg: cursor, cend: chunkEnd });
+        cursor = chunkEnd + 1;
+      }
+
+      // Aggregate results per variable
+      const aggMap = {}; // variable -> array of {time, value}
+      let deviceSN = sn;
+
+      for (const ch of chunks) {
+        // Check cache for this chunk
+        let chunkResp = await getHistoryFromCacheFirestore(userId, sn, ch.cbeg, ch.cend);
+        if (chunkResp) {
+          console.log(`[History] Cache HIT for chunk ${new Date(ch.cbeg).toISOString()} - ${new Date(ch.cend).toISOString()}`);
+        } else {
+          chunkResp = await callFoxESSAPI('/op/v0/device/history/query', 'POST', {
+            sn,
+            begin: ch.cbeg,
+            end: ch.cend,
+            variables: ['generationPower', 'feedinPower', 'gridConsumptionPower']
+          }, userConfig, userId);
+          
+          // Cache successful chunk response
+          if (chunkResp && chunkResp.errno === 0) {
+            await setHistoryToCacheFirestore(userId, sn, ch.cbeg, ch.cend, chunkResp).catch(e => console.warn('[History] Cache write failed:', e.message));
+          }
+        }
+
+        if (!chunkResp || chunkResp.errno !== 0) {
+          // Bubble up the upstream error
+          const errMsg = chunkResp && chunkResp.msg ? chunkResp.msg : 'Unknown FoxESS error';
+          console.warn(`[History] FoxESS chunk error for ${new Date(ch.cbeg).toISOString()} - ${new Date(ch.cend).toISOString()}: ${errMsg}`);
+          return res.status(500).json({ errno: chunkResp?.errno || 500, msg: `FoxESS API error: ${errMsg}` });
+        }
+
+        const r = Array.isArray(chunkResp.result) && chunkResp.result[0] ? chunkResp.result[0] : null;
+        if (!r) continue;
+        deviceSN = r.deviceSN || deviceSN;
+
+        const datas = Array.isArray(r.datas) ? r.datas : [];
+        for (const item of datas) {
+          const variable = item.variable || item.name || 'unknown';
+          if (!Array.isArray(item.data)) continue;
+          if (!aggMap[variable]) aggMap[variable] = [];
+          // Append all points (chunks are non-overlapping)
+          aggMap[variable].push(...item.data);
+        }
+
+        // Small delay to be kind to upstream when many chunks requested
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+
+      // Merge & dedupe per-variable by time, then sort chronologically
+      const mergedDatas = [];
+      for (const [variable, points] of Object.entries(aggMap)) {
+        const mapByTime = new Map();
+        for (const p of points) {
+          // Use the time string prefix (YYYY-MM-DD HH:MM:SS) as key when available
+          const tKey = (typeof p.time === 'string' && p.time.length >= 19) ? p.time.substr(0, 19) : String(p.time);
+          mapByTime.set(tKey, p);
+        }
+        // Convert back to array and sort by key (YYYY-MM-DD HH:MM:SS sorts lexicographically)
+        const merged = Array.from(mapByTime.values()).sort((a, b) => {
+          const ta = (typeof a.time === 'string' ? a.time.substr(0,19) : String(a.time));
+          const tb = (typeof b.time === 'string' ? b.time.substr(0,19) : String(b.time));
+          return ta < tb ? -1 : (ta > tb ? 1 : 0);
+        });
+        mergedDatas.push({ unit: 'kW', data: merged, name: variable, variable });
+      }
+
+      return res.json({ errno: 0, msg: 'Operation successful', result: [{ datas: mergedDatas, deviceSN }] });
+    } catch (apiError) {
+      console.warn(`[History] API error: ${apiError.message}`);
+      res.status(500).json({ errno: 500, msg: `FoxESS API error: ${apiError.message}` });
+    }
+  } catch (error) {
+    console.error(`[History] Request error: ${error.message}`);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+/**
+ * Get inverter history from Firestore cache
+ * Cache TTL: 30 minutes
+ */
+async function getHistoryFromCacheFirestore(userId, sn, begin, end) {
+  try {
+    const cacheKey = `history_${sn}_${begin}_${end}`;
+    const docRef = db.collection('users').doc(userId).collection('cache').doc(cacheKey);
+    const doc = await docRef.get();
+    
+    if (doc.exists) {
+      const entry = doc.data();
+      const ttl = 30 * 60 * 1000; // 30 minutes
+      if (entry.timestamp && (Date.now() - entry.timestamp) < ttl) {
+        return entry.data;
+      }
+      // Delete expired entry
+      await docRef.delete().catch(() => {});
+    }
+    return null;
+  } catch (error) {
+    console.warn('[History] Cache get error:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Set inverter history to Firestore cache
+ */
+async function setHistoryToCacheFirestore(userId, sn, begin, end, data) {
+  try {
+    const cacheKey = `history_${sn}_${begin}_${end}`;
+    const docRef = db.collection('users').doc(userId).collection('cache').doc(cacheKey);
+    await docRef.set({
+      timestamp: Date.now(),
+      data: data
+    });
+  } catch (error) {
+    console.warn('[History] Cache set error:', error.message);
+    // Don't throw - cache is optional
+  }
+}
 
 // ==================== 404 HANDLER ====================
 // Catch-all for undefined routes to prevent HTML responses

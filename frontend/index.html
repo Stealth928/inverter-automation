@@ -380,6 +380,16 @@
             color: inherit;
             background: rgba(255,255,255,0.02);
         }
+        /* Battery SVG sizing and charging animation */
+        /* Larger battery tile for improved alignment */
+        .stat-item.battery-tile { min-width: 180px; padding: 12px 18px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+        .tile-icon.battery { width: 54px; height: 60px; padding-top: 2px; }
+        .tile-icon.battery svg { width: 36px; height: 52px; display:block; }
+        .tile-icon.battery .level { transition: all 600ms cubic-bezier(.2,.9,.2,1); }
+        .tile-icon.battery.charging { box-shadow: 0 6px 18px rgba(88,166,255,0.12); }
+        .tile-icon.battery.charging svg { filter: drop-shadow(0 4px 8px rgba(88,166,255,0.18)); }
+        @keyframes batt-pulse { 0% { opacity: 0.95 } 50% { opacity: 1 } 100% { opacity: 0.95 } }
+        .tile-icon.battery.charging { animation: batt-pulse 1.2s infinite ease-in-out; }
         .stat-item.warning .value { color: #d29922; }
         .stat-item.danger .value { color: #f85149; }
 
@@ -410,26 +420,14 @@
             position: relative; /* allow icon overlay */
         }
 
-        /* Small badge for very large feed-in prices. Positioned so it doesn't
-           affect the tile flow or break symmetry. Uses an inline SVG for
-           crisper rendering across platforms. */
-        .feedin-badge {
-            position: absolute;
-            top: 6px;
-            right: 6px;
-            width: 18px;
-            height: 18px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-            background: rgba(255, 215, 64, 0.06);
-            border: 1px solid rgba(255, 215, 64, 0.12);
-            box-shadow: 0 2px 6px rgba(0,0,0,0.35);
-            pointer-events: auto;
+        /* Money bag indicator for very large feed-in prices */
+        .money-bag {
+            display:inline-block;
+            font-size:14px;
+            margin-left:6px;
+            filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6));
+            line-height:1;
         }
-        .feedin-badge svg { width: 14px; height: 14px; display:block; }
-        .stat-item .value { white-space: nowrap; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
         @media (max-width: 600px) {
             .weather-days .stat-item { flex: 0 0 120px; }
         }
@@ -440,6 +438,15 @@
         .price-high { color: #f85149 !important; }
         .price-neutral { color: #8b949e !important; }
         .price-darkgreen { color: #238636 !important; }
+
+        /* Feed-in highlight for very large export prices (bright green tile) */
+        .stat-item.feedin-highlight {
+            background: linear-gradient(180deg, #e6ffef, #bff6d4);
+            border: 1px solid rgba(34,139,34,0.35);
+            box-shadow: 0 8px 20px rgba(34,139,34,0.06);
+            color: #053012;
+        }
+        .stat-item.feedin-highlight .value { color: #053012 !important; }
 
         /* Button Grid */
         .btn-grid {
@@ -2647,7 +2654,24 @@
                     <div class="stat-item"><div class="tile-icon">☀️</div><div class="value">${solarDisplay}</div><div class="label">Solar Production</div></div>
                     <div class="stat-item"><div class="tile-icon">🏠</div><div class="value">${loadDisplay}</div><div class="label">House Load</div></div>
                     <div class="stat-item"><div class="tile-icon">🔌</div><div class="value ${gridClass}">${gridDisplay}</div><div class="label">Grid Import/Export</div></div>
-                    <div class="stat-item"><div class="tile-icon">🔋</div><div class="value ${batteryClass}" style="font-size:20px;font-weight:600">${batteryDisplay}</div>
+                    <div class="stat-item battery-tile"><div class="tile-icon battery ${batteryIsCharging ? 'charging' : ''}">
+                                <!-- Inline SVG battery: fill level reflects SoC -->
+                                ${(() => {
+                                    const socPct = (socNum !== null && !isNaN(Number(socNum))) ? Math.max(0, Math.min(100, Number(socNum))) : 0;
+                                    // innerHeight = 28 (y from 4..32). Compute rect y and height so fill starts at bottom
+                                    const innerH = 28;
+                                    const fillH = Math.round((socPct / 100) * innerH);
+                                    const y = 4 + (innerH - fillH);
+                                    const fillColor = socPct >= 80 ? '#16a34a' : (socPct >= 40 ? '#7ee787' : '#d29922');
+                                    return `
+                                    <svg viewBox="0 0 24 40" aria-hidden="true">
+                                        <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"></rect>
+                                        <rect x="3" y="${y}" width="18" height="${fillH}" rx="2" ry="2" class="level" fill="${fillColor}"></rect>
+                                        <rect x="9" y="1" width="6" height="2" rx="1" ry="1" fill="rgba(255,255,255,0.12)"></rect>
+                                    </svg>`;
+                                })()}
+                            </div>
+                            <div class="value ${batteryClass}" style="font-size:20px;font-weight:600">${batteryDisplay}</div>
                         <div style="font-size:28px;font-weight:700;color:#58a6ff;margin-top:4px">${socNum !== null ? socNum.toFixed(0) + '%' : '-'}</div>
                         <div style="font-size:12px;color:#8b949e;margin-top:2px">${currentEnergyKWh !== null ? (currentEnergyKWh.toFixed(2) + ' kWh') : ''}</div>
                         <div style="font-size:11px;color:#8b949e;margin-top:4px">${batteryTimeText || ''}</div>
@@ -3444,16 +3468,32 @@
             const spikeForecasts = forecasts.filter(i => i.spikeStatus && i.spikeStatus !== 'none');
             const hasSpikes = spikeForecasts.length > 0;
             
-            // Find price extremes in forecasts
-            const maxBuyPrice = forecasts.length ? Math.max(...forecasts.map(i => i.perKwh)) : 0;
-            const minBuyPrice = forecasts.length ? Math.min(...forecasts.map(i => i.perKwh)) : 0;
-            const minFeedSpot = feedForecasts.length ? Math.min(...feedForecasts.map(i => i.spotPerKwh)) : 0;
-
             // How many forecasts to show (use button dataset for show-all state)
             const showAllBtn = document.getElementById('amberShowMore');
             const showAll = showAllBtn?.dataset?.showAll === '1';
             // If show-all is enabled, display everything returned; otherwise show 12
             const forecastLimit = showAll ? forecasts.length : Math.min(forecasts.length, 12);
+
+            // Find price extremes in DISPLAYED forecasts only (to align with tiles)
+            const displayForecasts = forecasts.slice(0, forecastLimit);
+            const displayFeedForecasts = feedForecasts.slice(0, forecastLimit);
+            
+            const maxBuyPrice = displayForecasts.length ? Math.max(...displayForecasts.map(i => i.perKwh)) : 0;
+            const minBuyPrice = displayForecasts.length ? Math.min(...displayForecasts.map(i => i.perKwh)) : 0;
+            // Compute feed-in display values using the same transform as the feed-in tiles
+            // (displayVal = -Math.round(perKwh)) so summary matches tiles exactly
+            const feedDisplayValues = displayFeedForecasts.length ? displayFeedForecasts.map(it => {
+                try {
+                    if (window.sharedUtils && typeof window.sharedUtils.feedDisplayValue === 'function') {
+                        return window.sharedUtils.feedDisplayValue(it.perKwh);
+                    }
+                } catch (e) {
+                    // fall through to inline transform
+                }
+                return -Math.round(it.perKwh);
+            }) : [];
+            const minFeedSpot = feedDisplayValues.length ? Math.min(...feedDisplayValues) : 0;
+            const maxFeedSpot = feedDisplayValues.length ? Math.max(...feedDisplayValues) : 0;
 
             let html = '';
 
@@ -3532,16 +3572,31 @@
                 html += '</div>';
             }
 
-            // Price Range Summary
+            // Price Range Summary with consistent coloring logic
             if (forecasts.length > 1) {
+                // Buy price coloring (low=cheap, high=expensive)
+                const minBuyCls = minBuyPrice > 30 ? 'price-high' : minBuyPrice > 20 ? 'price-mid' : 'price-low';
+                const maxBuyCls = maxBuyPrice > 30 ? 'price-high' : maxBuyPrice > 20 ? 'price-mid' : 'price-low';
+                
+                // Feed-in coloring (high=you earn money, low=you pay)
+                function feedClassFromVal(v) {
+                    if (v < -5) return 'price-high';
+                    if (v >= -5 && v < 0) return 'price-mid';
+                    if (v >= 0 && v < 6) return 'price-neutral';
+                    if (v >= 6 && v <= 15) return 'price-low';
+                    if (v > 15) return 'price-darkgreen';
+                    return 'price-neutral';
+                }
+                const minFeedCls = feedClassFromVal(minFeedSpot);
+                const maxFeedCls = feedClassFromVal(maxFeedSpot);
+                
                 html += `<div style="display:flex;gap:12px;margin-bottom:12px;padding:8px;background:rgba(33,38,45,0.6);border-radius:6px;font-size:11px">
-                    <div><span style="color:#8b949e">Forecast range:</span> <span class="price-low" style="font-weight:600">${minBuyPrice.toFixed(0)}¢</span> — <span class="price-high" style="font-weight:600">${maxBuyPrice.toFixed(0)}¢</span></div>
-                    ${minFeedSpot < 0 ? `<div><span style="color:#8b949e">Feed-in low:</span> <span class="price-high" style="font-weight:600">${minFeedSpot.toFixed(1)}¢</span></div>` : ''}
+                    <div><span style="color:#8b949e">Forecast range:</span> <span class="${minBuyCls}" style="font-weight:600">${minBuyPrice.toFixed(0)}¢</span> — <span class="${maxBuyCls}" style="font-weight:600">${maxBuyPrice.toFixed(0)}¢</span></div>
+                    ${feedForecasts.length ? `<div><span style="color:#8b949e">Feed-in range:</span> <span class="${minFeedCls}" style="font-weight:600">${minFeedSpot}¢</span> — <span class="${maxFeedCls}" style="font-weight:600">${maxFeedSpot}¢</span></div>` : ''}
                 </div>`;
             }
 
             // Buy price forecasts with advanced pricing and tariff info
-            const displayForecasts = forecasts.slice(0, forecastLimit);
             if (displayForecasts.length) {
                 html += '<div style="font-size:11px;color:#8b949e;margin-bottom:6px;margin-top:8px;font-weight:600">📈 Buy Price Forecast</div>';
                 html += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
@@ -3566,7 +3621,6 @@
             }
 
             // Feed-in price forecasts - Amber app shows spotPerKwh rounded to whole cents
-            const displayFeedForecasts = feedForecasts.slice(0, forecastLimit);
             if (displayFeedForecasts.length) {
                 html += '<div style="font-size:11px;color:#8b949e;margin-bottom:6px;margin-top:12px;font-weight:600">📉 Feed-in Spot Forecast</div>';
                 html += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
@@ -3586,17 +3640,10 @@
                     }
                     const getCls = feedClassFromVal(displayVal);
                     const isVeryNegative = displayVal < -2;
-                    html += `<div class="stat-item" style="min-width:52px;padding:6px;${isVeryNegative ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}">
+                    const feedHighlightCls = displayVal > 50 ? 'feedin-highlight' : '';
+                    html += `<div class="stat-item ${feedHighlightCls}" style="min-width:52px;padding:6px;${isVeryNegative ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}">
                                 <div style="display:flex;align-items:center;justify-content:center;gap:2px">
                                     <span class="value ${getCls}" style="font-size:13px;font-weight:700">${displayVal}¢</span>
-                                    ${displayVal > 50 ? `
-                                        <span class="feedin-badge" title="High feed-in price">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                                <path d="M12 2C11.4477 2 11 2.44772 11 3V3.5C8.23858 3.5 6 5.73858 6 8.5C6 10.7402 7.16025 12.716 8.97656 13.7312C9.40484 14.0101 9.75435 14.3914 10.0 14.8389V18C10 18.5523 10.4477 19 11 19H13C13.5523 19 14 18.5523 14 18V14.8389C14.2456 14.3914 14.5951 14.0101 15.0234 13.7312C16.8398 12.716 18 10.7402 18 8.5C18 5.73858 15.7614 3.5 13 3.5V3C13 2.44772 12.5523 2 12 2Z" fill="#FFD740"/>
-                                                <path d="M8 20C8 20 8.5 21 12 21C15.5 21 16 20 16 20" stroke="#C57C00" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round"/>
-                                            </svg>
-                                        </span>
-                                    ` : ''}
                         </div>
                         <div class="label" style="font-size:9px">${time}</div>
                     </div>`;
@@ -4723,13 +4770,9 @@
                 }, 30000);
             } catch (e) { console.warn('Metrics refresh timer failed:', e); }
 
-            // Backend automation status: refresh every 10 seconds
-            try {
-                if (window.automationStatusRefreshTimer) clearInterval(window.automationStatusRefreshTimer);
-                window.automationStatusRefreshTimer = setInterval(() => {
-                    loadBackendAutomationStatus();
-                }, 10000);
-            } catch (e) { console.warn('Automation status refresh failed:', e); }
+            // Note: Automation status is NOT refreshed on a timer anymore
+            // The countdown timer handles calling runAutomationCycle() when it hits 0
+            // Status is only refreshed after specific actions (toggle, rule changes, cycle complete)
             
             // Start the 'since' ticker
             try {
@@ -4813,7 +4856,26 @@
                 const masterEnabled = status.enabled;
                 const inBlackout = status.inBlackout || false;
                 const blackoutWindow = status.currentBlackoutWindow;
-                const lastCheck = status.lastCheck || Date.now();
+                // Normalize lastCheck (handle Firestore Timestamp shapes and seconds/ms ambiguity)
+                let lastCheckRaw = status.lastCheck;
+                let lastCheck = Date.now();
+                if (lastCheckRaw !== null && lastCheckRaw !== undefined) {
+                    if (typeof lastCheckRaw === 'number') {
+                        lastCheck = lastCheckRaw > 1e12 ? lastCheckRaw : lastCheckRaw * 1000;
+                    } else if (typeof lastCheckRaw === 'object') {
+                        const sec = lastCheckRaw._seconds ?? lastCheckRaw.seconds;
+                        const nsec = lastCheckRaw._nanoseconds ?? lastCheckRaw.nanos ?? 0;
+                        if (typeof sec === 'number') {
+                            lastCheck = (sec * 1000) + Math.floor((nsec || 0) / 1e6);
+                        } else {
+                            const parsed = Number(lastCheckRaw);
+                            lastCheck = !isNaN(parsed) ? (parsed > 1e12 ? parsed : parsed * 1000) : Date.now();
+                        }
+                    } else {
+                        const parsed = Number(lastCheckRaw);
+                        lastCheck = !isNaN(parsed) ? (parsed > 1e12 ? parsed : parsed * 1000) : Date.now();
+                    }
+                }
                 const automationIntervalSec = CONFIG.automation.intervalMs / 1000;
                 const nextCheckIn = Math.max(0, automationIntervalSec - Math.floor((Date.now() - lastCheck) / 1000));
                 
@@ -4943,43 +5005,160 @@
             container.innerHTML = html;
             
             // Store lastCheck, enabled state, and blackout info for countdown timer
-            window.automationLastCheck = status.lastCheck || Date.now();
-            window.automationEnabled = status.enabled;
-            window.automationInBlackout = status.inBlackout || false;
+            // Normalize lastCheck: Firestore may return a Timestamp object or seconds-only value.
+            (function(){
+                const raw = status.lastCheck;
+                let lastMs = Date.now();
+                if (raw !== null && raw !== undefined) {
+                    if (typeof raw === 'number') {
+                        // If small number, treat as seconds, otherwise milliseconds
+                        lastMs = raw > 1e12 ? raw : raw * 1000;
+                    } else if (typeof raw === 'object') {
+                        // Firestore Timestamp shape: {_seconds, _nanoseconds} or {seconds, nanos}
+                        const sec = raw._seconds ?? raw.seconds;
+                        const nsec = raw._nanoseconds ?? raw.nanos ?? 0;
+                        if (typeof sec === 'number') {
+                            lastMs = (sec * 1000) + Math.floor((nsec || 0) / 1e6);
+                        } else {
+                            const parsed = Number(raw);
+                            lastMs = !isNaN(parsed) ? (parsed > 1e12 ? parsed : parsed * 1000) : Date.now();
+                        }
+                    } else {
+                        const parsed = Number(raw);
+                        lastMs = !isNaN(parsed) ? (parsed > 1e12 ? parsed : parsed * 1000) : Date.now();
+                    }
+                }
+                window.automationLastCheck = lastMs;
+            })();
+            window.automationEnabled = !!status.enabled;
+            window.automationInBlackout = !!status.inBlackout;
             
-            // Update countdown timer every second (only if enabled and not in blackout)
-            if (window.automationCountdownInterval) clearInterval(window.automationCountdownInterval);
-            if (window.automationEnabled && !window.automationInBlackout) {
-                window.automationCountdownInterval = setInterval(() => {
-                    const countdownEl = document.getElementById('automationCountdown');
-                    if (!countdownEl) {
-                        clearInterval(window.automationCountdownInterval);
-                        return;
-                    }
-                    // If we're now in blackout, stop countdown and refresh status
-                    if (window.automationInBlackout) {
-                        countdownEl.textContent = 'BLACKOUT';
-                        return;
-                    }
-                    const elapsed = Math.floor((Date.now() - window.automationLastCheck) / 1000);
-                    const intervalSec = CONFIG.automation.intervalMs / 1000;
-                    const remaining = Math.max(0, intervalSec - elapsed);
-                    countdownEl.textContent = remaining + 's';
-                    if (remaining === 0 && window.automationEnabled) {
+            // Start countdown timer if not already running (or restart if state changed)
+            const shouldRun = window.automationEnabled && !window.automationInBlackout;
+            const wasRunning = !!window.automationCountdownInterval;
+            const stateChanged = (shouldRun !== wasRunning) || !window.automationCountdownStarted;
+            
+            if (stateChanged) {
+                if (window.automationCountdownInterval) {
+                    clearInterval(window.automationCountdownInterval);
+                    window.automationCountdownInterval = null;
+                }
+                
+                if (shouldRun) {
+                    // Initialize lastCheck if not set
+                    if (!window.automationLastCheck) {
                         window.automationLastCheck = Date.now();
-                        loadBackendAutomationStatus();
                     }
-                }, CONFIG.automation.countdownUpdateMs);
-            } else {
-                // Keep PAUSED or BLACKOUT visible when automation disabled or in blackout
-                const countdownEl = document.getElementById('automationCountdown');
-                if (countdownEl) countdownEl.textContent = window.automationInBlackout ? 'BLACKOUT' : 'PAUSED';
+                    window.automationCountdownStarted = true;
+                    
+                    window.automationCountdownInterval = setInterval(() => {
+                        const countdownEl = document.getElementById('automationCountdown');
+                        if (!countdownEl) {
+                            clearInterval(window.automationCountdownInterval);
+                            window.automationCountdownInterval = null;
+                            return;
+                        }
+                        // If we're now in blackout, stop countdown
+                        if (window.automationInBlackout) {
+                            countdownEl.textContent = 'BLACKOUT';
+                            return;
+                        }
+                        const elapsed = Math.floor((Date.now() - window.automationLastCheck) / 1000);
+                        const intervalSec = CONFIG.automation.intervalMs / 1000;
+                        const remaining = Math.max(0, intervalSec - elapsed);
+                        countdownEl.textContent = remaining + 's';
+                        if (remaining === 0 && window.automationEnabled && !window.automationCycleRunning) {
+                            // Run the actual automation cycle on the backend
+                            runAutomationCycle();
+                        }
+                    }, CONFIG.automation.countdownUpdateMs);
+                } else {
+                    window.automationCountdownStarted = false;
+                    // Keep PAUSED or BLACKOUT visible
+                    const countdownEl = document.getElementById('automationCountdown');
+                    if (countdownEl) countdownEl.textContent = window.automationInBlackout ? 'BLACKOUT' : 'PAUSED';
+                }
             }
             } catch (e) {
                 console.error('[Automation] updateBackendAutomationUI failed:', e);
                 const container = document.getElementById('backendAutomationStatus');
                 if (container) {
                     container.innerHTML = '<div style="color:#f85149;font-size:12px">⚠️ UI Error: ' + e.message + '</div>';
+                }
+            }
+        }
+        
+        // Run the automation cycle - called by the countdown timer when it hits 0
+        async function runAutomationCycle() {
+            // Prevent multiple simultaneous calls
+            if (window.automationCycleRunning) {
+                console.log('[Automation] Cycle already running, skipping');
+                return;
+            }
+            window.automationCycleRunning = true;
+            
+            // Immediately update lastCheck to reset the countdown
+            window.automationLastCheck = Date.now();
+            
+            const countdownEl = document.getElementById('automationCountdown');
+            if (countdownEl) countdownEl.textContent = '⏳';
+            
+            try {
+                console.log('[Automation] Running automation cycle...');
+                const resp = await authenticatedFetch('/api/automation/cycle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await resp.json();
+                
+                if (data.errno === 0) {
+                    console.log('[Automation] Cycle complete:', data.result);
+                    
+                    // If a rule was triggered, show a notification and refresh status to show it as active
+                    if (data.result?.triggered && data.result?.rule) {
+                        const ruleName = data.result.rule.name || 'Unknown';
+                        showMessage('success', `🤖 Automation triggered: ${ruleName}`, 5000);
+                        
+                        // Refresh automation status to show the active rule
+                        try {
+                            const statusResp = await authenticatedFetch('/api/automation/status');
+                            const statusData = await statusResp.json();
+                            if (statusData.errno === 0) {
+                                window.automationStatus = statusData.result;
+                                console.log('[Automation] Status refreshed after trigger:', statusData.result);
+                                // Trigger UI update
+                                const tab = document.querySelector('[data-tab-content="automation"]');
+                                if (tab && tab.style.display !== 'none') {
+                                    renderAutomationRulesPanel();
+                                }
+                            }
+                        } catch (statusErr) {
+                            console.warn('[Automation] Failed to refresh status:', statusErr);
+                        }
+                    } else if (data.result?.skipped) {
+                        console.log('[Automation] Cycle skipped:', data.result.reason);
+                    } else {
+                        console.log('[Automation] No rules triggered this cycle');
+                    }
+                    
+                    // Update lastCheck from server response (ensures sync)
+                    if (data.result?.lastCheck) {
+                        window.automationLastCheck = data.result.lastCheck;
+                    }
+                } else {
+                    console.warn('[Automation] Cycle error:', data.error);
+                    showMessage('warning', `Automation cycle error: ${data.error}`, 5000);
+                }
+            } catch (e) {
+                console.error('[Automation] Cycle failed:', e);
+                showMessage('error', `Automation cycle failed: ${e.message}`, 5000);
+            } finally {
+                window.automationCycleRunning = false;
+                // Reset countdown display
+                if (countdownEl) {
+                    const intervalSec = CONFIG.automation.intervalMs / 1000;
+                    countdownEl.textContent = intervalSec + 's';
                 }
             }
         }

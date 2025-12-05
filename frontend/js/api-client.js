@@ -299,6 +299,16 @@ class APIClient {
     return this.get('/api/amber/prices', { siteId });
   }
 
+  async getAmberHistoricalPrices(siteId, startDate, endDate, resolution = 30) {
+    // startDate and endDate should be YYYY-MM-DD format
+    return this.get('/api/amber/prices', { 
+      siteId, 
+      startDate, 
+      endDate, 
+      resolution 
+    });
+  }
+
   // ==================== WEATHER ====================
 
   async getWeather(place, days = 3) {
