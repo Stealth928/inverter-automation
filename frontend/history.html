@@ -73,7 +73,8 @@
             display: flex;
             flex-wrap: wrap;
             gap: 12px;
-            align-items: center;
+            /* Align controls to the bottom so buttons line up with inputs */
+            align-items: flex-end;
             margin-bottom: 16px;
         }
         .control-group {
@@ -456,6 +457,9 @@
                 <div style="font-size:11px;color:var(--text-muted)" id="historyTimestamp">Not loaded</div>
             </div>
             <div class="card-body">
+                <div style="padding: 12px; background: rgba(184, 134, 11, 0.15); border: 1px solid rgba(184, 134, 11, 0.3); border-radius: 6px; margin-bottom: 16px; font-size: 13px; color: #d4af37;">
+                    <strong>⚠️ API Usage Note:</strong> Ranges >24h require multiple API calls (48h=2, 7 days=7). Results are cached for 30 days to minimize repeat calls.
+                </div>
                 <div class="controls-row">
                     <div class="control-group">
                         <label>Time Range</label>
