@@ -687,6 +687,9 @@ async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
     }
   });
   
+  console.log(`[Amber] Full URL being called: ${url.toString()}`);
+  console.log(`[Amber] Query params object:`, queryParams);
+  
   const headers = {
     'Authorization': `Bearer ${apiKey}`,
     'Accept': 'application/json'
@@ -715,7 +718,11 @@ async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
     
     // Handle other HTTP errors
     if (!resp.ok) {
-      console.warn(`[Amber] HTTP ${resp.status}: ${text.substring(0, 500)}`);
+      console.warn(`[Amber] HTTP ${resp.status} Error:`, {
+        statusText: resp.statusText,
+        contentType: resp.headers.get('content-type'),
+        responseText: text.substring(0, 1000)
+      });
       return { errno: resp.status, error: `HTTP ${resp.status}: ${resp.statusText}` };
     }
     
