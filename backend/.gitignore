@@ -1,3 +1,0 @@
-# Ignore runtime and PID files
-backend/server.log
-backend/server.pid

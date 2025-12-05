@@ -1,5 +1,6 @@
 /**
  * Firebase Cloud Functions for Inverter App
+ * Version: 2.2.0 - Fix segment group count (use 8, not 10)
  * 
  * This module provides:
  * - API endpoints (proxied from frontend)
@@ -1342,10 +1343,11 @@ app.post('/api/automation/trigger', async (req, res) => {
     // Apply the rule action (uses v1 API, sets flag, does verification)
     const result = await applyRuleAction(req.user.uid, rule, userConfig);
     
-    // Update automation state
+    // Update automation state - use ruleId for UI matching
     await saveUserAutomationState(req.user.uid, {
       lastTriggered: Date.now(),
-      activeRule: ruleName
+      activeRule: ruleId,
+      activeRuleName: rule.name || ruleName
     });
     
     // Update rule's lastTriggered
@@ -1463,13 +1465,13 @@ app.post('/api/automation/cycle', async (req, res) => {
       }
     }
     
-    // Fetch Amber data
+    // Fetch Amber data (with forecast for next 12 intervals = 1 hour)
     if (userConfig?.amberApiKey) {
       try {
         const sites = await callAmberAPI('/sites', {}, userConfig);
         if (Array.isArray(sites) && sites.length > 0) {
           const siteId = userConfig.amberSiteId || sites[0].id;
-          amberData = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 1 }, userConfig);
+          amberData = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 12 }, userConfig);
           console.log(`[Automation] Amber data fetched: ${Array.isArray(amberData) ? amberData.length : 0} intervals`);
         }
       } catch (e) {
@@ -1477,8 +1479,20 @@ app.post('/api/automation/cycle', async (req, res) => {
       }
     }
     
+    // Fetch Weather data
+    let weatherData = null;
+    try {
+      const place = userConfig?.location || 'Sydney';
+      weatherData = await callWeatherAPI(place, 1, userId);
+      if (weatherData?.current_weather) {
+        console.log(`[Automation] Weather data fetched: ${weatherData.current_weather.temperature}°C, code=${weatherData.current_weather.weathercode}`);
+      }
+    } catch (e) {
+      console.warn('[Automation] Failed to get weather data:', e.message);
+    }
+    
     // Build cache object for rule evaluation
-    const cache = { amber: amberData };
+    const cache = { amber: amberData, weather: weatherData };
     
     // Evaluate rules (sorted by priority - lower number = higher priority)
     const enabledRules = Object.entries(rules).filter(([_, rule]) => rule.enabled);
@@ -1538,10 +1552,14 @@ app.post('/api/automation/cycle', async (req, res) => {
         }, { merge: true });
         
         // Update automation state
+        // IMPORTANT: Save ruleId (doc key) not rule.name so UI can match activeRule with rule keys
         await saveUserAutomationState(userId, {
           lastCheck: Date.now(),
           lastTriggered: Date.now(),
-          activeRule: rule.name,
+          activeRule: ruleId,
+          activeRuleName: rule.name, // Keep display name for reference
+          activeSegment: actionResult?.segment || null, // Store segment details for verification
+          activeSegmentEnabled: actionResult?.errno === 0,
           inBlackout: false,
           lastActionResult: actionResult
         });
@@ -1556,35 +1574,118 @@ app.post('/api/automation/cycle', async (req, res) => {
     if (!triggeredRule) {
       console.log(`[Automation] No rules triggered this cycle`);
       
-      // Check if there was an active rule and it just stopped being met - cancel automation
+      // Check if there was an active rule - we need to verify if its conditions still hold
       if (state.activeRule) {
-        console.log(`[Automation] Previous active rule '${state.activeRule}' is no longer met - canceling automation`);
-        try {
-          // Clear all scheduler segments
-          const deviceSN = userConfig?.deviceSn;
-          if (deviceSN) {
-            const clearedGroups = [];
-            for (let i = 0; i < 10; i++) {
-              clearedGroups.push({
-                enable: 0,
-                workMode: 'SelfUse',
-                startHour: 0, startMinute: 0,
-                endHour: 0, endMinute: 0,
-                minSocOnGrid: 10,
-                fdSoc: 10,
-                fdPwr: 0,
-                maxSoc: 100
-              });
+        const activeRuleId = state.activeRule;
+        const activeRule = rules[activeRuleId];
+        
+        if (activeRule && activeRule.enabled) {
+          // Re-evaluate the active rule's conditions WITHOUT cooldown check
+          // to see if the segment should continue or be cancelled
+          console.log(`[Automation] Re-evaluating active rule '${activeRuleId}' conditions...`);
+          const conditionCheck = await evaluateRule(userId, activeRuleId, activeRule, cache, inverterData, userConfig, true /* skipCooldown */);
+          
+          if (conditionCheck.triggered) {
+            // Conditions still hold - but verify the segment actually exists!
+            // If activeSegment is missing (stale state from old code), we need to re-create the segment
+            if (!state.activeSegment || !state.activeSegmentEnabled) {
+              console.log(`[Automation] Active rule '${activeRuleId}' conditions met but NO SEGMENT DATA - re-applying action...`);
+              try {
+                const actionResult = await applyRuleAction(userId, activeRule, userConfig);
+                console.log(`[Automation] Re-apply action result: errno=${actionResult?.errno}, msg=${actionResult?.msg}`);
+                await saveUserAutomationState(userId, { 
+                  lastCheck: Date.now(), 
+                  inBlackout: false,
+                  activeSegment: actionResult?.segment || null,
+                  activeSegmentEnabled: actionResult?.errno === 0,
+                  lastActionResult: actionResult
+                });
+              } catch (reapplyError) {
+                console.error(`[Automation] Failed to re-apply action:`, reapplyError.message);
+                await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
+              }
+            } else {
+              // Segment exists and conditions still hold - just update lastCheck
+              console.log(`[Automation] Active rule '${activeRuleId}' conditions still met - segment continues`);
+              await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
             }
-            await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
-            console.log(`[Automation] Cleared all scheduler segments after rule '${state.activeRule}' ended`);
+          } else {
+            // Conditions no longer hold - cancel the segment
+            console.log(`[Automation] Active rule '${activeRuleId}' conditions NO LONGER MET - canceling segment`);
+            try {
+              // Clear all scheduler segments
+              const deviceSN = userConfig?.deviceSn;
+              if (deviceSN) {
+                const clearedGroups = [];
+                for (let i = 0; i < 8; i++) {
+                  clearedGroups.push({
+                    enable: 0,
+                    workMode: 'SelfUse',
+                    startHour: 0, startMinute: 0,
+                    endHour: 0, endMinute: 0,
+                    minSocOnGrid: 10,
+                    fdSoc: 10,
+                    fdPwr: 0,
+                    maxSoc: 100
+                  });
+                }
+                await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+                console.log(`[Automation] Cleared all scheduler segments after rule '${activeRuleId}' ended`);
+              }
+              // Also clear lastTriggered on the rule to reset cooldown
+              await db.collection('users').doc(userId).collection('rules').doc(activeRuleId).set({
+                lastTriggered: null
+              }, { merge: true });
+              console.log(`[Automation] Reset cooldown for rule '${activeRuleId}'`);
+            } catch (cancelError) {
+              console.warn(`[Automation] Failed to cancel segments:`, cancelError.message);
+            }
+            await saveUserAutomationState(userId, { 
+              lastCheck: Date.now(), 
+              inBlackout: false, 
+              activeRule: null,
+              activeRuleName: null,
+              activeSegment: null,
+              activeSegmentEnabled: false
+            });
           }
-        } catch (cancelError) {
-          console.warn(`[Automation] Failed to cancel segments:`, cancelError.message);
+        } else {
+          // Active rule was disabled or deleted - cancel segment
+          console.log(`[Automation] Active rule '${activeRuleId}' no longer exists or disabled - canceling segment`);
+          try {
+            const deviceSN = userConfig?.deviceSn;
+            if (deviceSN) {
+              const clearedGroups = [];
+              for (let i = 0; i < 8; i++) {
+                clearedGroups.push({
+                  enable: 0,
+                  workMode: 'SelfUse',
+                  startHour: 0, startMinute: 0,
+                  endHour: 0, endMinute: 0,
+                  minSocOnGrid: 10,
+                  fdSoc: 10,
+                  fdPwr: 0,
+                  maxSoc: 100
+                });
+              }
+              await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+            }
+          } catch (cancelError) {
+            console.warn(`[Automation] Failed to cancel segments:`, cancelError.message);
+          }
+          await saveUserAutomationState(userId, { 
+            lastCheck: Date.now(), 
+            inBlackout: false, 
+            activeRule: null,
+            activeRuleName: null,
+            activeSegment: null,
+            activeSegmentEnabled: false
+          });
         }
+      } else {
+        // No active rule - just update lastCheck
+        await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
       }
-      
-      await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false, activeRule: null });
     }
     
     res.json({
@@ -1620,10 +1721,10 @@ app.post('/api/automation/cancel', async (req, res) => {
     }
     
     console.log(`[Automation] Cancel request for user ${userId}, device ${deviceSN}`);
-    
-    // Create 10 empty/disabled segments (same as clear-all)
+
+    // Create 8 empty/disabled segments (matching device's actual group count)
     const emptyGroups = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 8; i++) {
       emptyGroups.push({
         enable: 0,
         workMode: 'SelfUse',
@@ -1747,6 +1848,26 @@ app.post('/api/automation/rule/update', async (req, res) => {
     }
 
     console.log(`[Rule Update] Updating rule ${ruleId} with fields:`, Object.keys(update));
+    
+    // If rule is being DISABLED, clear lastTriggered to reset cooldown
+    // This ensures the rule can trigger immediately when re-enabled
+    if (enabled === false) {
+      update.lastTriggered = null;
+      console.log(`[Rule Update] Rule ${ruleId} disabled - clearing lastTriggered to reset cooldown`);
+      
+      // Also check if this was the active rule and clear automation state
+      const state = await getUserAutomationState(req.user.uid);
+      if (state && state.activeRule === ruleId) {
+        console.log(`[Rule Update] Disabled rule was active - clearing automation state`);
+        await saveUserAutomationState(req.user.uid, {
+          activeRule: null,
+          activeRuleName: null,
+          activeSegment: null,
+          activeSegmentEnabled: false
+        });
+      }
+    }
+    
     await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).set(update, { merge: true });
     
     // Return the updated rule
@@ -2381,10 +2502,10 @@ app.post('/api/scheduler/v1/clear-all', authenticateUser, async (req, res) => {
     }
     
     console.log('[Scheduler] CLEAR-ALL request for device:', deviceSN);
-    
-    // Create 10 empty/disabled segments (same as backend/server.js)
+
+    // Create 8 empty/disabled segments (matching device's actual group count)
     const emptyGroups = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 8; i++) {
       emptyGroups.push({
         enable: 0,
         workMode: 'SelfUse',
@@ -2553,7 +2674,8 @@ async function processUserAutomation(userId) {
  * Evaluate a single automation rule - checks ALL conditions
  * ALL enabled conditions must be met for the rule to trigger
  */
-async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfig) {
+async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfig, skipCooldown = false) {
+  // skipCooldown: if true, we skip the cooldown check (used for re-evaluating active rules)
   const conditions = rule.conditions || {};
   const enabledConditions = [];
   const results = [];
@@ -2728,6 +2850,96 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
     }
   }
   
+  // Check weather condition
+  if (conditions.weather?.enabled) {
+    enabledConditions.push('weather');
+    const weatherData = cache.weather;
+    if (weatherData?.current_weather) {
+      const currentCode = weatherData.current_weather.weathercode;
+      const weatherType = conditions.weather.condition || 'any';
+      
+      // Weather code mapping:
+      // 0: Clear sky, 1-3: Mainly clear/partly cloudy, 45-48: Fog
+      // 51-67: Rain/drizzle, 71-77: Snow, 80-82: Rain showers, 95-99: Thunderstorm
+      let met = false;
+      if (weatherType === 'any') {
+        met = true;
+      } else if (weatherType === 'sunny' || weatherType === 'clear') {
+        met = currentCode <= 1; // Clear or mainly clear
+      } else if (weatherType === 'cloudy') {
+        met = currentCode >= 2 && currentCode <= 48; // Partly cloudy to fog
+      } else if (weatherType === 'rainy') {
+        met = currentCode >= 51; // Any precipitation
+      }
+      
+      const codeDesc = currentCode <= 1 ? 'Clear' : currentCode <= 3 ? 'Partly Cloudy' : currentCode <= 48 ? 'Cloudy/Fog' : currentCode <= 67 ? 'Rain' : 'Storm';
+      results.push({ condition: 'weather', met, actual: codeDesc, target: weatherType, weatherCode: currentCode });
+      if (!met) {
+        console.log(`[Automation] Rule '${rule.name}' - Weather condition NOT met: ${codeDesc} (code ${currentCode}) != ${weatherType}`);
+      }
+    } else {
+      results.push({ condition: 'weather', met: false, reason: 'No weather data' });
+      console.log(`[Automation] Rule '${rule.name}' - Weather condition NOT met: No weather data available`);
+    }
+  }
+  
+  // Check forecast price condition (future amber prices)
+  if (conditions.forecastPrice?.enabled) {
+    enabledConditions.push('forecastPrice');
+    const amberData = cache.amber;
+    if (Array.isArray(amberData)) {
+      const priceType = conditions.forecastPrice.type || 'general'; // 'general' (buy) or 'feedIn'
+      const channelType = priceType === 'feedIn' ? 'feedIn' : 'general';
+      const lookAhead = conditions.forecastPrice.lookAhead || 30; // minutes
+      const intervalsNeeded = Math.ceil(lookAhead / 5); // 5-min intervals
+      
+      // Get forecast intervals for the specified channel
+      const forecasts = amberData.filter(p => p.channelType === channelType && p.type === 'ForecastInterval');
+      const relevantForecasts = forecasts.slice(0, intervalsNeeded);
+      
+      if (relevantForecasts.length > 0) {
+        // Calculate average or check specific criteria
+        const checkType = conditions.forecastPrice.checkType || 'average'; // 'average', 'min', 'max', 'any'
+        const prices = relevantForecasts.map(f => priceType === 'feedIn' ? -f.perKwh : f.perKwh);
+        let actualValue;
+        if (checkType === 'min') {
+          actualValue = Math.min(...prices);
+        } else if (checkType === 'max') {
+          actualValue = Math.max(...prices);
+        } else if (checkType === 'any') {
+          actualValue = prices.find(p => compareValue(p, conditions.forecastPrice.operator, conditions.forecastPrice.value));
+        } else {
+          actualValue = prices.reduce((a, b) => a + b, 0) / prices.length; // average
+        }
+        
+        const operator = conditions.forecastPrice.operator;
+        const value = conditions.forecastPrice.value;
+        const met = checkType === 'any' ? actualValue !== undefined : compareValue(actualValue, operator, value);
+        
+        results.push({ 
+          condition: 'forecastPrice', 
+          met, 
+          actual: actualValue?.toFixed(1), 
+          operator, 
+          target: value, 
+          type: priceType, 
+          lookAhead,
+          checkType,
+          intervalsChecked: relevantForecasts.length
+        });
+        if (!met) {
+          console.log(`[Automation] Rule '${rule.name}' - Forecast ${priceType} condition NOT met: ${checkType} ${actualValue?.toFixed(1)}¢ ${operator} ${value}¢`);
+        }
+      } else {
+        results.push({ condition: 'forecastPrice', met: false, reason: 'No forecast data' });
+        console.log(`[Automation] Rule '${rule.name}' - Forecast price condition NOT met: No forecast data available`);
+      }
+    } else {
+      results.push({ condition: 'forecastPrice', met: false, reason: 'No Amber data' });
+      console.log(`[Automation] Rule '${rule.name}' - Forecast price condition NOT met: No Amber data available`);
+    }
+  }
+  
   // Determine if all conditions are met
   const allMet = results.length > 0 && results.every(r => r.met);
   
@@ -2832,13 +3044,14 @@ async function applyRuleAction(userId, rule, userConfig) {
     const currentScheduler = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
     if (currentScheduler.errno === 0 && currentScheduler.result?.groups) {
       currentGroups = JSON.parse(JSON.stringify(currentScheduler.result.groups)); // Deep copy
+      console.log(`[Automation] Got ${currentGroups.length} groups from device`);
     }
   } catch (e) {
     console.warn('[Automation] Failed to get current scheduler:', e && e.message ? e.message : e);
   }
   
-  // Ensure we have 10 groups
-  while (currentGroups.length < 10) {
+  // Ensure we have at least one group (don't pad to 10 - use device's actual count)
+  if (currentGroups.length === 0) {
     currentGroups.push({
       enable: 0,
       workMode: 'SelfUse',
@@ -2891,10 +3104,13 @@ async function applyRuleAction(userId, rule, userConfig) {
   currentGroups[0] = segment;
   
   console.log(`[Automation] Applying segment to Time Period 1:`, JSON.stringify(segment));
+  console.log(`[Automation] Full payload groups[0]:`, JSON.stringify(currentGroups[0]));
+  console.log(`[Automation] Sending ${currentGroups.length} groups to device ${deviceSN}`);
+  console.log(`[Automation] FULL GROUPS PAYLOAD:`, JSON.stringify(currentGroups));
   
   // Send to device via v1 API (same as manual scheduler)
   const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: currentGroups }, userConfig, userId);
-  console.log(`[Automation] v1 result: errno=${result.errno}, msg=${result.msg || ''}`);
+  console.log(`[Automation] v1 result: errno=${result.errno}, msg=${result.msg || ''}, full response:`, JSON.stringify(result).slice(0, 300));
   
   // Set the scheduler flag to enabled (required for FoxESS app to show schedule)
   let flagResult = null;
@@ -2905,6 +3121,9 @@ async function applyRuleAction(userId, rule, userConfig) {
     console.warn('[Automation] Flag set failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
   }
   
+  // Wait 2 seconds for FoxESS to process the request before verification
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
   // Verification read to confirm device accepted the segment
   let verify = null;
   try {
@@ -2912,6 +3131,14 @@ async function applyRuleAction(userId, rule, userConfig) {
     console.log(`[Automation] Verify read: groups count=${verify?.result?.groups?.length || 0}`);
     if (verify?.result?.groups?.[0]) {
       console.log(`[Automation] Verify Group 1:`, JSON.stringify(verify.result.groups[0]).slice(0, 200));
+    }
+    // Log ALL groups for debugging
+    if (verify?.result?.groups) {
+      verify.result.groups.forEach((g, idx) => {
+        if (g.enable === 1) {
+          console.log(`[Automation] Verify Group ${idx+1} ENABLED:`, JSON.stringify(g).slice(0, 200));
+        }
+      });
     }
   } catch (e) {
     console.warn('[Automation] Verify read failed:', e && e.message ? e.message : e);

@@ -1,8 +1,0 @@
-node_modules
-npm-debug.log
-# Local firebase runtime config
-.runtimeconfig.json
-
-# Logs
-logs
-*.log

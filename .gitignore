@@ -22,3 +22,6 @@ tmp_docker_check/
 
 # Firebase cache and deployment artifacts
 .firebase/
+
+# Archived/deprecated files
+archive/

@@ -369,24 +369,22 @@
             margin-top: 4px;
         }
         .stat-item .tile-icon {
-            font-size: 28px;
+            font-size: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin: 0 auto 6px auto;
-            width: 54px;
-            height: 54px;
-            border-radius: 8px;
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
             color: inherit;
             background: rgba(255,255,255,0.02);
-            overflow: hidden;
         }
         /* Battery SVG sizing and charging animation */
         /* Larger battery tile for improved alignment */
         .stat-item.battery-tile { min-width: 180px; padding: 12px 18px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-        /* Battery icon should match other tile icons visually; scale SVG to fit */
-        .tile-icon.battery { width: 54px; height: 54px; padding-top: 0; }
-        .tile-icon.battery svg { width: 70%; height: 70%; display:block; }
+        .tile-icon.battery { width: 54px; height: 60px; padding-top: 2px; }
+        .tile-icon.battery svg { width: 36px; height: 52px; display:block; }
         .tile-icon.battery .level { transition: all 600ms cubic-bezier(.2,.9,.2,1); }
         .tile-icon.battery.charging { box-shadow: 0 6px 18px rgba(88,166,255,0.12); }
         .tile-icon.battery.charging svg { filter: drop-shadow(0 4px 8px rgba(88,166,255,0.18)); }
@@ -497,8 +495,8 @@
             position: -webkit-sticky;
             position: sticky;
             top: 80px;
-            /* Increase the available vertical space by 20% so cards appear larger */
-            height: calc((100vh - 100px) * 1.2);
+            /* Increase the available vertical space by 40% (was 20%, now +20% more) */
+            height: calc((100vh - 100px) * 1.44);
             overflow: hidden; /* panel itself doesn't scroll */
             padding-bottom: 12px;
         }
@@ -4370,6 +4368,73 @@
             }
             return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
         }
+        
+        // Format automation cycle result for debug display
+        function formatCycleResult(result) {
+            if (!result) return '<span style="color:#6e7681">No data</span>';
+            
+            let html = '';
+            
+            if (result.skipped) {
+                html += `<div style="color:#f0883e">⏭️ Skipped: ${result.reason || 'Unknown'}</div>`;
+                return html;
+            }
+            
+            if (result.triggered && result.rule) {
+                html += `<div style="color:#7ee787">✅ <b>Triggered:</b> ${result.rule.name || 'Unknown'}</div>`;
+                if (result.rule.actionResult) {
+                    const ar = result.rule.actionResult;
+                    html += `<div style="color:#58a6ff;margin-left:12px">→ API: errno=${ar.errno} ${ar.msg ? '(' + ar.msg + ')' : ''}</div>`;
+                }
+            } else {
+                html += `<div style="color:#8b949e">ℹ️ No rules triggered</div>`;
+            }
+            
+            // Show evaluation summary with condition details
+            if (result.evaluationResults && result.evaluationResults.length > 0) {
+                html += `<div style="margin-top:6px;font-size:10px">`;
+                result.evaluationResults.forEach(er => {
+                    const icon = er.result === 'triggered' ? '✅' : er.result === 'cooldown' ? '⏳' : '❌';
+                    const color = er.result === 'triggered' ? '#7ee787' : er.result === 'cooldown' ? '#f0883e' : '#8b949e';
+                    html += `<div style="color:${color};margin-bottom:4px">${icon} <b>${er.rule}</b>: ${er.result}${er.remaining ? ' (' + er.remaining + 's)' : ''}`;
+                    
+                    // Show individual condition details if available
+                    if (er.details?.results && er.details.results.length > 0) {
+                        html += `<div style="margin-left:16px;color:#6e7681">`;
+                        er.details.results.forEach(cond => {
+                            const condIcon = cond.met ? '✓' : '✗';
+                            const condColor = cond.met ? '#7ee787' : '#f85149';
+                            let condText = '';
+                            if (cond.condition === 'soc') {
+                                condText = `SoC: ${cond.actual}% ${cond.operator} ${cond.target}%`;
+                            } else if (cond.condition === 'feedInPrice') {
+                                condText = `Feed-in: ${cond.actual?.toFixed(1)}¢ ${cond.operator} ${cond.target}¢`;
+                            } else if (cond.condition === 'buyPrice') {
+                                condText = `Buy: ${cond.actual?.toFixed(1)}¢ ${cond.operator} ${cond.target}¢`;
+                            } else if (cond.condition === 'temperature') {
+                                condText = `${cond.type || 'battery'} Temp: ${cond.actual}°C ${cond.operator} ${cond.target}°C`;
+                            } else if (cond.condition === 'time') {
+                                condText = `Time: ${cond.actual} in ${cond.window}`;
+                            } else if (cond.condition === 'weather') {
+                                condText = `Weather: ${cond.actual || 'N/A'} (want: ${cond.target || 'any'})`;
+                            } else if (cond.condition === 'forecastPrice') {
+                                condText = `Forecast ${cond.type || 'buy'}: ${cond.checkType || 'avg'} ${cond.actual}¢ ${cond.operator} ${cond.target}¢ (${cond.lookAhead || 30}m)`;
+                            } else {
+                                condText = `${cond.condition}: ${cond.actual} ${cond.operator || ''} ${cond.target || ''}`;
+                            }
+                            html += `<span style="color:${condColor}">${condIcon}</span> ${condText}<br>`;
+                        });
+                        html += `</div>`;
+                    }
+                    html += `</div>`;
+                });
+                html += `</div>`;
+            }
+            
+            html += `<div style="margin-top:4px;color:#6e7681;font-size:10px">Evaluated: ${result.rulesEvaluated || 0}/${result.totalRules || 0} rules</div>`;
+            
+            return html;
+        }
 
         // Parse FoxESS cloud time strings like "2025-11-29 19:01:57 AEDT+1100" into epoch ms.
         function parseFoxESSCloudTime(s) {
@@ -4930,7 +4995,10 @@
                     if (conditions.feedInPrice?.enabled) condBadges += `<span style="background:#238636;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">Feed-in ${conditions.feedInPrice.operator} ${conditions.feedInPrice.value}¢</span>`;
                     if (conditions.buyPrice?.enabled) condBadges += `<span style="background:#1f6feb;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">Buy ${conditions.buyPrice.operator} ${conditions.buyPrice.value}¢</span>`;
                     if (conditions.soc?.enabled) condBadges += `<span style="background:#8957e5;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">SoC ${conditions.soc.operator} ${conditions.soc.value}%</span>`;
-                    if (conditions.temperature?.enabled) condBadges += `<span style="background:#f0883e;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">Temp ${conditions.temperature.operator} ${conditions.temperature.value}°C</span>`;
+                    const tempCond = conditions.temperature || conditions.temp;
+                    if (tempCond?.enabled) condBadges += `<span style="background:#f0883e;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">${tempCond.type || 'Bat'} Temp ${tempCond.operator} ${tempCond.value}°C</span>`;
+                    if (conditions.weather?.enabled) condBadges += `<span style="background:#79c0ff;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">☀️ ${conditions.weather.condition || 'Weather'}</span>`;
+                    if (conditions.forecastPrice?.enabled) condBadges += `<span style="background:#f778ba;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">📈 ${conditions.forecastPrice.type === 'feedIn' ? 'FI' : 'Buy'} ${conditions.forecastPrice.checkType || 'avg'} ${conditions.forecastPrice.operator} ${conditions.forecastPrice.value}¢ (${conditions.forecastPrice.lookAhead || 30}m)</span>`;
                     if (conditions.time?.enabled || conditions.timeWindow?.enabled) {
                         const tw = conditions.time || conditions.timeWindow;
                         condBadges += `<span style="background:#6e7681;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">${tw.start || tw.startTime}-${tw.end || tw.endTime}</span>`;
@@ -5000,10 +5068,23 @@
             if (status.lastTriggered) {
                 html += `
                     <div style="margin-top:12px;padding:8px;background:#161b22;border-radius:6px;font-size:11px;color:#8b949e;text-align:center">
-                        Last automation: ${formatDate(status.lastTriggered, true)} (${status.activeRule || 'unknown'})
+                        Last automation: ${formatDate(status.lastTriggered, true)} (${status.activeRuleName || status.activeRule || 'unknown'})
                     </div>
                 `;
             }
+            
+            // Debug Info Box - shows last cycle outcome
+            html += `
+                <div id="automationDebugBox" style="margin-top:12px;padding:10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;font-size:11px;font-family:'Courier New',monospace">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                        <span style="color:#8b949e;font-weight:600">📊 Last Cycle Debug</span>
+                        <span id="debugTimestamp" style="color:#6e7681">${status.lastCheck ? formatDate(status.lastCheck, true) : 'N/A'}</span>
+                    </div>
+                    <div id="debugContent" style="color:#8b949e">
+                        ${window.lastCycleResult ? formatCycleResult(window.lastCycleResult) : '<span style="color:#6e7681">Waiting for automation cycle...</span>'}
+                    </div>
+                </div>
+            `;
             
             container.innerHTML = html;
             
@@ -5118,31 +5199,40 @@
                 if (data.errno === 0) {
                     console.log('[Automation] Cycle complete:', data.result);
                     
-                    // If a rule was triggered, show a notification and refresh status to show it as active
+                    // Store cycle result for debug display
+                    window.lastCycleResult = data.result;
+                    
+                    // Immediately update debug box if visible
+                    const debugContent = document.getElementById('debugContent');
+                    const debugTimestamp = document.getElementById('debugTimestamp');
+                    if (debugContent) {
+                        debugContent.innerHTML = formatCycleResult(data.result);
+                    }
+                    if (debugTimestamp) {
+                        debugTimestamp.textContent = formatDate(Date.now(), true, true);
+                    }
+                    
+                    // If a rule was triggered, show a notification
                     if (data.result?.triggered && data.result?.rule) {
                         const ruleName = data.result.rule.name || 'Unknown';
                         showMessage('success', `🤖 Automation triggered: ${ruleName}`, 5000);
-                        
-                        // Refresh automation status to show the active rule
-                        try {
-                            const statusResp = await authenticatedFetch('/api/automation/status');
-                            const statusData = await statusResp.json();
-                            if (statusData.errno === 0) {
-                                window.automationStatus = statusData.result;
-                                console.log('[Automation] Status refreshed after trigger:', statusData.result);
-                                // Trigger UI update
-                                const tab = document.querySelector('[data-tab-content="automation"]');
-                                if (tab && tab.style.display !== 'none') {
-                                    renderAutomationRulesPanel();
-                                }
-                            }
-                        } catch (statusErr) {
-                            console.warn('[Automation] Failed to refresh status:', statusErr);
-                        }
                     } else if (data.result?.skipped) {
                         console.log('[Automation] Cycle skipped:', data.result.reason);
                     } else {
                         console.log('[Automation] No rules triggered this cycle');
+                    }
+                    
+                    // ALWAYS refresh automation status after cycle to show current state (active rule, etc.)
+                    try {
+                        const statusResp = await authenticatedFetch('/api/automation/status');
+                        const statusData = await statusResp.json();
+                        if (statusData.errno === 0) {
+                            window.automationStatus = statusData.result;
+                            console.log('[Automation] Status refreshed after cycle:', statusData.result.activeRule ? `Active: ${statusData.result.activeRule}` : 'No active rule');
+                            updateBackendAutomationUI(statusData.result);
+                        }
+                    } catch (statusErr) {
+                        console.warn('[Automation] Failed to refresh status:', statusErr);
                     }
                     
                     // Update lastCheck from server response (ensures sync)
@@ -5267,6 +5357,52 @@
                                 </select>
                                 <input type="number" id="condTempVal" placeholder="°C" value="40" style="width:70px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
                                 <span style="color:#8b949e;font-size:11px">°C</span>
+                            </div>
+                            
+                            <!-- Weather Forecast -->
+                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:#161b22;border-radius:6px;margin-bottom:8px">
+                                <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
+                                    <input type="checkbox" id="condWeatherEnabled" style="width:16px;height:16px">
+                                    <span style="color:#e6edf3;font-size:13px">🌤️ Weather</span>
+                                </label>
+                                <select id="condWeatherCond" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                    <option value="sunny">Sunny/Clear</option>
+                                    <option value="cloudy">Cloudy</option>
+                                    <option value="rainy">Rainy</option>
+                                    <option value="any">Any</option>
+                                </select>
+                                <span style="color:#6e7681;font-size:11px">Current weather</span>
+                            </div>
+                            
+                            <!-- Forecast Price -->
+                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:#161b22;border-radius:6px;margin-bottom:8px">
+                                <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
+                                    <input type="checkbox" id="condForecastEnabled" style="width:16px;height:16px">
+                                    <span style="color:#e6edf3;font-size:13px">📈 Forecast Price</span>
+                                </label>
+                                <select id="condForecastType" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                    <option value="feedIn">Feed-in</option>
+                                    <option value="general">Buy</option>
+                                </select>
+                                <select id="condForecastCheck" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                    <option value="average">Avg</option>
+                                    <option value="min">Min</option>
+                                    <option value="max">Max</option>
+                                    <option value="any">Any</option>
+                                </select>
+                                <select id="condForecastOp" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                    <option value=">">&gt;</option>
+                                    <option value=">=">&gt;=</option>
+                                    <option value="<">&lt;</option>
+                                    <option value="<=">&lt;=</option>
+                                </select>
+                                <input type="number" id="condForecastVal" placeholder="¢" value="30" style="width:60px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                <span style="color:#8b949e;font-size:11px">¢ in next</span>
+                                <select id="condForecastLookAhead" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                    <option value="15">15m</option>
+                                    <option value="30" selected>30m</option>
+                                    <option value="60">1hr</option>
+                                </select>
                             </div>
                             
                             <!-- Time Window -->
@@ -5408,6 +5544,18 @@
                     operator: document.getElementById('condTempOp').value,
                     value: parseFloat(document.getElementById('condTempVal').value) || 40
                 },
+                weather: {
+                    enabled: document.getElementById('condWeatherEnabled')?.checked || false,
+                    condition: document.getElementById('condWeatherCond')?.value || 'any'
+                },
+                forecastPrice: {
+                    enabled: document.getElementById('condForecastEnabled')?.checked || false,
+                    type: document.getElementById('condForecastType')?.value || 'feedIn',
+                    checkType: document.getElementById('condForecastCheck')?.value || 'average',
+                    operator: document.getElementById('condForecastOp')?.value || '>',
+                    value: parseFloat(document.getElementById('condForecastVal')?.value) || 0,
+                    lookAhead: parseInt(document.getElementById('condForecastLookAhead')?.value) || 30
+                },
                 time: {
                     enabled: modal?.querySelector('#condTimeEnabled')?.checked || false,
                     startTime: modal?.querySelector('#condTimeStart')?.value || '00:00',
@@ -5417,7 +5565,8 @@
             
             // Check at least one condition is enabled
             const hasCondition = conditions.feedInPrice.enabled || conditions.buyPrice.enabled || 
-                                 conditions.soc.enabled || conditions.temperature.enabled || conditions.time.enabled;
+                                 conditions.soc.enabled || conditions.temperature.enabled || 
+                                 conditions.weather.enabled || conditions.forecastPrice.enabled || conditions.time.enabled;
             if (!hasCondition) {
                 alert('Please enable at least one condition');
                 return;
@@ -5509,6 +5658,18 @@
                     document.getElementById('condTempType').value = conditions.temperature.type || 'battery';
                     document.getElementById('condTempOp').value = conditions.temperature.operator || '<';
                     document.getElementById('condTempVal').value = conditions.temperature.value || 40;
+                }
+                if (conditions.weather) {
+                    document.getElementById('condWeatherEnabled').checked = conditions.weather.enabled || false;
+                    document.getElementById('condWeatherCond').value = conditions.weather.condition || 'any';
+                }
+                if (conditions.forecastPrice) {
+                    document.getElementById('condForecastEnabled').checked = conditions.forecastPrice.enabled || false;
+                    document.getElementById('condForecastType').value = conditions.forecastPrice.type || 'feedIn';
+                    document.getElementById('condForecastCheck').value = conditions.forecastPrice.checkType || 'average';
+                    document.getElementById('condForecastOp').value = conditions.forecastPrice.operator || '>';
+                    document.getElementById('condForecastVal').value = conditions.forecastPrice.value || 0;
+                    document.getElementById('condForecastLookAhead').value = conditions.forecastPrice.lookAhead || 30;
                 }
                 const timeCondition = conditions.time || conditions.timeWindow;
                 // Use querySelector scoped to the addRuleModal to avoid conflicts with the old ruleModal
