@@ -837,14 +837,27 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
           resolution: resolution || 30
         }, userConfig, userId);
         
-        if (result.errno && result.errno !== 0) {
+        // Handle error responses (have errno property)
+        if (result && result.errno && result.errno !== 0) {
           console.warn(`[Cache] API error for chunk ${chunk.start} to ${chunk.end}:`, result.error);
           // Don't fail entirely; continue with what we have
           continue;
         }
         
         // Extract prices from result
-        const prices = result.result || [];
+        // Amber API returns raw array on success, but we might have wrapped it
+        let prices = [];
+        if (Array.isArray(result)) {
+          // Direct array from Amber
+          prices = result;
+        } else if (result && Array.isArray(result.result)) {
+          // Wrapped response
+          prices = result.result;
+        } else if (result && result.data && Array.isArray(result.data)) {
+          // Alternative wrapper
+          prices = result.data;
+        }
+        
         console.log(`[Cache] Chunk returned ${prices.length} prices`);
         newPrices = newPrices.concat(prices);
       }
