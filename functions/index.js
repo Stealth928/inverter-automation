@@ -858,7 +858,13 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
           prices = result.data;
         }
         
-        console.log(`[Cache] Chunk returned ${prices.length} prices`);
+        // Debug: log channel types in this chunk
+        const channelCounts = {};
+        prices.forEach(p => {
+          channelCounts[p.channelType] = (channelCounts[p.channelType] || 0) + 1;
+        });
+        console.log(`[Cache] Chunk ${chunk.start} to ${chunk.end} returned ${prices.length} prices - channels:`, channelCounts);
+        
         newPrices = newPrices.concat(prices);
       }
     }
@@ -883,7 +889,12 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
     new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
   );
   
-  console.log(`[Cache] Returning ${finalPrices.length} total prices from cache + API`);
+  // Debug: log final channel breakdown
+  const finalChannels = {};
+  finalPrices.forEach(p => {
+    finalChannels[p.channelType] = (finalChannels[p.channelType] || 0) + 1;
+  });
+  console.log(`[Cache] Final result: ${finalPrices.length} total prices - channels:`, finalChannels);
   
   return { errno: 0, result: finalPrices };
 }
