@@ -661,6 +661,7 @@ async function getCachedAmberPrices(siteId, startDate, endDate) {
     const snap = await cacheRef.get();
     
     if (!snap.exists) {
+      console.log(`[Cache] No cached data found for site ${siteId}`);
       return [];
     }
     
@@ -669,10 +670,13 @@ async function getCachedAmberPrices(siteId, startDate, endDate) {
     const endMs = new Date(endDate).getTime();
     
     // Filter prices within the requested range
-    return cached.filter(p => {
+    const filtered = cached.filter(p => {
       const priceMs = new Date(p.startTime).getTime();
       return priceMs >= startMs && priceMs <= endMs;
     });
+    
+    console.log(`[Cache] Found ${cached.length} cached prices total, ${filtered.length} in requested range`);
+    return filtered;
   } catch (error) {
     console.warn(`[Cache] Error reading prices for ${siteId}:`, error.message);
     return [];
@@ -688,11 +692,22 @@ function findGaps(startDate, endDate, existingPrices) {
   const startMs = new Date(startDate).getTime();
   const endMs = new Date(endDate).getTime();
   
+  console.log(`[Cache] findGaps: looking for gaps between ${startDate} and ${endDate}, have ${existingPrices.length} cached prices`);
+  
   if (existingPrices.length === 0) {
     // No cached data, entire range is a gap
     gaps.push({ start: startDate, end: endDate });
+    console.log(`[Cache] No cached prices - entire range is a gap`);
     return gaps;
   }
+  
+  // Group prices by channel to check coverage per channel
+  const byChannel = {};
+  existingPrices.forEach(p => {
+    if (!byChannel[p.channelType]) byChannel[p.channelType] = [];
+    byChannel[p.channelType].push(p);
+  });
+  console.log(`[Cache] Cached prices by channel:`, Object.keys(byChannel).map(ch => `${ch}: ${byChannel[ch].length}`).join(', '));
   
   // Sort prices by startTime
   const sorted = [...existingPrices].sort((a, b) => 
@@ -704,6 +719,7 @@ function findGaps(startDate, endDate, existingPrices) {
   if (startMs < firstMs) {
     const gapEnd = new Date(firstMs - 1).toISOString().split('T')[0];
     gaps.push({ start: startDate, end: gapEnd });
+    console.log(`[Cache] Found gap before first cached price: ${startDate} to ${gapEnd}`);
   }
   
   // Check gaps between consecutive prices
@@ -715,6 +731,7 @@ function findGaps(startDate, endDate, existingPrices) {
       const gapStart = new Date(curr + 1).toISOString().split('T')[0];
       const gapEnd = new Date(next - 1).toISOString().split('T')[0];
       gaps.push({ start: gapStart, end: gapEnd });
+      console.log(`[Cache] Found gap between prices: ${gapStart} to ${gapEnd}`);
     }
   }
   
@@ -723,8 +740,10 @@ function findGaps(startDate, endDate, existingPrices) {
   if (lastMs < endMs) {
     const gapStart = new Date(lastMs + 1).toISOString().split('T')[0];
     gaps.push({ start: gapStart, end: endDate });
+    console.log(`[Cache] Found gap after last cached price: ${gapStart} to ${endDate}`);
   }
   
+  console.log(`[Cache] Total gaps found: ${gaps.length}`);
   return gaps;
 }
 
