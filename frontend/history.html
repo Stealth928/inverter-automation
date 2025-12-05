@@ -1350,6 +1350,9 @@
                     throw new Error('No price data available for this date range');
                 }
 
+                // Ensure Chart.js is loaded before rendering
+                await ensureChartJs();
+
                 // Process and display data
                 renderAmberHistoricalChart(prices);
                 renderPriceStatistics(prices);
