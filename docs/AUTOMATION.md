@@ -124,12 +124,71 @@ temperature: { enabled: true, type: 'battery', operator: '>', value: 40 }
 ```
 
 ### 5. Weather Condition (`weather`)
-Triggers based on current weather from Open-Meteo API.
+Triggers based on weather forecasts from Open-Meteo API. Supports three modes: **Solar Radiation**, **Cloud Cover**, and **Legacy Weather Code**.
+
+#### Solar Radiation Mode (`type: 'solar'`)
+Uses shortwave radiation (W/m²) to determine solar energy availability. More accurate than weather codes.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `enabled` | boolean | Whether this condition is active |
-| `condition` | string | `sunny`, `cloudy`, `rainy`, `any` |
+| `type` | string | `'solar'` for radiation-based checking |
+| `radiationOp` | string | `'avg>'`, `'avg<'`, `'min>'`, `'max<'` |
+| `radiationThreshold` | number | Radiation threshold in W/m² |
+| `lookAheadHours` | number | Hours to check ahead (1-72) |
+
+**Radiation Values**:
+- 0-100 W/m²: Heavily overcast, minimal solar
+- 100-300 W/m²: Partly cloudy, moderate solar
+- 300-600 W/m²: Mostly clear, good solar
+- 600+ W/m²: Clear sunny day, excellent solar
+
+**Example**: Force discharge if avg solar radiation > 300 W/m² in next 6 hours
+```javascript
+weather: { 
+  enabled: true, 
+  type: 'solar', 
+  radiationOp: 'avg>', 
+  radiationThreshold: 300, 
+  lookAheadHours: 6 
+}
+```
+
+#### Cloud Cover Mode (`type: 'cloudcover'`)
+Uses cloud cover percentage to determine sky conditions.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Whether this condition is active |
+| `type` | string | `'cloudcover'` for cloud-based checking |
+| `cloudcoverOp` | string | `'avg<'`, `'avg>'`, `'min<'`, `'max>'` |
+| `cloudcoverThreshold` | number | Cloud cover percentage (0-100) |
+| `lookAheadHours` | number | Hours to check ahead (1-72) |
+
+**Cloud Cover Values**:
+- 0-30%: Clear skies, good solar expected
+- 30-70%: Partly cloudy, moderate solar
+- 70-100%: Overcast, minimal solar
+
+**Example**: Allow discharge only if avg cloud cover < 50% in next 24 hours
+```javascript
+weather: { 
+  enabled: true, 
+  type: 'cloudcover', 
+  cloudcoverOp: 'avg<', 
+  cloudcoverThreshold: 50, 
+  lookAheadHours: 24 
+}
+```
+
+#### Legacy Weather Code Mode (`type: 'sunny' | 'cloudy' | 'rainy'`)
+Simple weather condition matching based on current weather codes.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Whether this condition is active |
+| `type` | string | `'sunny'`, `'cloudy'`, `'rainy'` |
+| `condition` | string | (deprecated, use `type` instead) |
 
 **Weather Code Mapping**:
 | Condition | Weather Codes | Description |
@@ -137,15 +196,14 @@ Triggers based on current weather from Open-Meteo API.
 | `sunny` | 0-1 | Clear sky, mainly clear |
 | `cloudy` | 2-48 | Partly cloudy, overcast, fog |
 | `rainy` | 51+ | Drizzle, rain, snow, thunderstorm |
-| `any` | All | Always matches |
 
-**Example**: Force discharge on sunny days (good solar production)
+**Example**: Force discharge on sunny days
 ```javascript
-weather: { enabled: true, condition: 'sunny' }
+weather: { enabled: true, type: 'sunny' }
 ```
 
 ### 6. Forecast Price (`forecastPrice`)
-Triggers based on **future** Amber prices (not current).
+Triggers based on **future** Amber prices (not current). Now supports extended lookAhead periods.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -154,7 +212,8 @@ Triggers based on **future** Amber prices (not current).
 | `checkType` | string | `average`, `min`, `max`, `any` |
 | `operator` | string | `>`, `>=`, `<`, `<=` |
 | `value` | number | Price threshold in ¢/kWh |
-| `lookAhead` | number | Minutes to look ahead (15, 30, 60) |
+| `lookAhead` | number | Amount of time to look ahead |
+| `lookAheadUnit` | string | `'minutes'` (1-60), `'hours'` (1-48), `'days'` (1-7) |
 
 **Check Types**:
 - `average`: Average price across all intervals
@@ -162,7 +221,7 @@ Triggers based on **future** Amber prices (not current).
 - `max`: Maximum price in the period
 - `any`: Any single interval meets the threshold
 
-**Example**: Pre-discharge if avg feed-in in next 30min > 25¢
+**Example**: Pre-discharge if avg feed-in in next 2 hours > 25¢
 ```javascript
 forecastPrice: { 
   enabled: true, 
@@ -170,7 +229,21 @@ forecastPrice: {
   checkType: 'average', 
   operator: '>', 
   value: 25, 
-  lookAhead: 30 
+  lookAhead: 2,
+  lookAheadUnit: 'hours'
+}
+```
+
+**Example**: Charge if min buy price in next 3 days < 5¢
+```javascript
+forecastPrice: { 
+  enabled: true, 
+  type: 'general', 
+  checkType: 'min', 
+  operator: '<', 
+  value: 5, 
+  lookAhead: 3,
+  lookAheadUnit: 'days'
 }
 ```
 

@@ -1034,16 +1034,21 @@ async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
 
 /**
  * Call Weather API (Open-Meteo)
+ * Fetches extended forecast with solar radiation, cloud cover, and other useful fields
+ * Max forecast_days is 16 for Open-Meteo free tier
  */
-async function callWeatherAPI(place = 'Sydney', days = 3, userId = null) {
+async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
   // Track API call if userId provided
   if (userId) {
     incrementApiCount(userId, 'weather').catch(() => {});
   }
   
+  // Clamp days to Open-Meteo max of 16
+  const forecastDays = Math.min(Math.max(1, days), 16);
+  
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 15000); // Increased timeout for larger payload
     
     // Geocode place
     const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=1&language=en`;
@@ -1065,8 +1070,36 @@ async function callWeatherAPI(place = 'Sydney', days = 3, userId = null) {
       country = 'AU';
     }
     
-    // Get forecast
-    const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,precipitation,precipitation_probability,weathercode&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&current_weather=true&temperature_unit=celsius&timezone=auto&forecast_days=${days}`;
+    // Extended hourly variables including solar radiation and cloud cover
+    const hourlyVars = [
+      'temperature_2m',
+      'precipitation',
+      'precipitation_probability',
+      'weathercode',
+      'shortwave_radiation',      // Solar irradiance W/m² - key for PV production
+      'direct_radiation',         // Direct solar radiation W/m²
+      'diffuse_radiation',        // Diffuse solar radiation W/m²
+      'cloudcover',               // Total cloud cover %
+      'windspeed_10m',
+      'relativehumidity_2m',
+      'uv_index'
+    ].join(',');
+    
+    // Extended daily variables including sunrise/sunset
+    const dailyVars = [
+      'temperature_2m_max',
+      'temperature_2m_min',
+      'precipitation_sum',
+      'weathercode',
+      'shortwave_radiation_sum',  // Total daily solar radiation MJ/m²
+      'uv_index_max',
+      'sunrise',
+      'sunset',
+      'precipitation_probability_max'
+    ].join(',');
+    
+    // Get forecast with extended variables
+    const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=${hourlyVars}&daily=${dailyVars}&current_weather=true&temperature_unit=celsius&timezone=auto&forecast_days=${forecastDays}`;
     const forecastResp = await fetch(forecastUrl, { signal: controller.signal });
     const forecastJson = await forecastResp.json();
     clearTimeout(timeout);
@@ -1077,7 +1110,8 @@ async function callWeatherAPI(place = 'Sydney', days = 3, userId = null) {
       current: forecastJson.current_weather || null,
       hourly: forecastJson.hourly || null,
       daily: forecastJson.daily || null,
-      raw: forecastJson
+      raw: forecastJson,
+      forecastDays: forecastDays
     };
   } catch (error) {
     return { errno: 500, error: error.message };
@@ -1465,13 +1499,13 @@ app.post('/api/automation/cycle', async (req, res) => {
       }
     }
     
-    // Fetch Amber data (with forecast for next 12 intervals = 1 hour)
+    // Fetch Amber data (with forecast for next 288 intervals = 24 hours, Amber provides up to ~48hrs)
     if (userConfig?.amberApiKey) {
       try {
         const sites = await callAmberAPI('/sites', {}, userConfig);
         if (Array.isArray(sites) && sites.length > 0) {
           const siteId = userConfig.amberSiteId || sites[0].id;
-          amberData = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 12 }, userConfig);
+          amberData = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig);
           console.log(`[Automation] Amber data fetched: ${Array.isArray(amberData) ? amberData.length : 0} intervals`);
         }
       } catch (e) {
@@ -2850,11 +2884,128 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
     }
   }
   
-  // Check weather condition
+  // Check weather condition (supports both simple weathercode and solar radiation threshold)
   if (conditions.weather?.enabled) {
     enabledConditions.push('weather');
     const weatherData = cache.weather;
-    if (weatherData?.current_weather) {
+    
+    // New: Solar radiation-based condition
+    if (conditions.weather.type === 'radiation' || conditions.weather.radiationEnabled) {
+      const hourly = weatherData?.hourly;
+      if (hourly?.shortwave_radiation && hourly?.time) {
+        const lookAheadHours = conditions.weather.radiationHours || 6; // default 6 hours
+        const threshold = conditions.weather.radiationThreshold || 200; // W/m² default
+        const operator = conditions.weather.radiationOp || '>';
+        
+        // Find current hour index
+        const now = new Date();
+        const currentHour = now.getHours();
+        let startIdx = 0;
+        for (let i = 0; i < hourly.time.length; i++) {
+          const t = new Date(hourly.time[i]);
+          if (t.getHours() >= currentHour && t.getDate() === now.getDate()) {
+            startIdx = i;
+            break;
+          }
+        }
+        
+        // Get radiation values for next N hours
+        const endIdx = Math.min(startIdx + lookAheadHours, hourly.shortwave_radiation.length);
+        const radiationValues = hourly.shortwave_radiation.slice(startIdx, endIdx);
+        
+        if (radiationValues.length > 0) {
+          const checkType = conditions.weather.radiationCheck || 'average'; // average, min, max, any
+          let actualValue;
+          if (checkType === 'min') {
+            actualValue = Math.min(...radiationValues);
+          } else if (checkType === 'max') {
+            actualValue = Math.max(...radiationValues);
+          } else if (checkType === 'any') {
+            actualValue = radiationValues.find(v => compareValue(v, operator, threshold));
+          } else {
+            actualValue = radiationValues.reduce((a, b) => a + b, 0) / radiationValues.length;
+          }
+          
+          const met = checkType === 'any' ? actualValue !== undefined : compareValue(actualValue, operator, threshold);
+          results.push({ 
+            condition: 'weather', 
+            met, 
+            type: 'radiation',
+            actual: actualValue?.toFixed(0), 
+            operator,
+            target: threshold,
+            unit: 'W/m²',
+            lookAheadHours,
+            checkType,
+            hoursChecked: radiationValues.length
+          });
+          if (!met) {
+            console.log(`[Automation] Rule '${rule.name}' - Solar radiation NOT met: ${checkType} ${actualValue?.toFixed(0)} W/m² ${operator} ${threshold} W/m²`);
+          }
+        } else {
+          results.push({ condition: 'weather', met: false, reason: 'No radiation data for timeframe' });
+        }
+      } else {
+        results.push({ condition: 'weather', met: false, reason: 'No hourly radiation data' });
+      }
+    }
+    // Cloud cover condition
+    else if (conditions.weather.type === 'cloudcover') {
+      const hourly = weatherData?.hourly;
+      if (hourly?.cloudcover && hourly?.time) {
+        const lookAheadHours = conditions.weather.cloudcoverHours || 6;
+        const threshold = conditions.weather.cloudcoverThreshold || 50; // %
+        const operator = conditions.weather.cloudcoverOp || '<';
+        
+        const now = new Date();
+        const currentHour = now.getHours();
+        let startIdx = 0;
+        for (let i = 0; i < hourly.time.length; i++) {
+          const t = new Date(hourly.time[i]);
+          if (t.getHours() >= currentHour && t.getDate() === now.getDate()) {
+            startIdx = i;
+            break;
+          }
+        }
+        
+        const endIdx = Math.min(startIdx + lookAheadHours, hourly.cloudcover.length);
+        const cloudValues = hourly.cloudcover.slice(startIdx, endIdx);
+        
+        if (cloudValues.length > 0) {
+          const checkType = conditions.weather.cloudcoverCheck || 'average';
+          let actualValue;
+          if (checkType === 'min') {
+            actualValue = Math.min(...cloudValues);
+          } else if (checkType === 'max') {
+            actualValue = Math.max(...cloudValues);
+          } else {
+            actualValue = cloudValues.reduce((a, b) => a + b, 0) / cloudValues.length;
+          }
+          
+          const met = compareValue(actualValue, operator, threshold);
+          results.push({ 
+            condition: 'weather', 
+            met, 
+            type: 'cloudcover',
+            actual: actualValue?.toFixed(0), 
+            operator,
+            target: threshold,
+            unit: '%',
+            lookAheadHours,
+            checkType
+          });
+          if (!met) {
+            console.log(`[Automation] Rule '${rule.name}' - Cloud cover NOT met: ${checkType} ${actualValue?.toFixed(0)}% ${operator} ${threshold}%`);
+          }
+        } else {
+          results.push({ condition: 'weather', met: false, reason: 'No cloud cover data' });
+        }
+      } else {
+        results.push({ condition: 'weather', met: false, reason: 'No hourly cloud data' });
+      }
+    }
+    // Legacy weathercode-based condition (sunny/cloudy/rainy)
+    else if (weatherData?.current_weather) {
       const currentCode = weatherData.current_weather.weathercode;
       const weatherType = conditions.weather.condition || 'any';
       
@@ -2873,7 +3024,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       }
       
       const codeDesc = currentCode <= 1 ? 'Clear' : currentCode <= 3 ? 'Partly Cloudy' : currentCode <= 48 ? 'Cloudy/Fog' : currentCode <= 67 ? 'Rain' : 'Storm';
-      results.push({ condition: 'weather', met, actual: codeDesc, target: weatherType, weatherCode: currentCode });
+      results.push({ condition: 'weather', met, type: 'weathercode', actual: codeDesc, target: weatherType, weatherCode: currentCode });
       if (!met) {
         console.log(`[Automation] Rule '${rule.name}' - Weather condition NOT met: ${codeDesc} (code ${currentCode}) != ${weatherType}`);
       }
@@ -2883,15 +3034,26 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
     }
   }
   
-  // Check forecast price condition (future amber prices)
+  // Check forecast price condition (future amber prices - supports minutes, hours, or days)
   if (conditions.forecastPrice?.enabled) {
     enabledConditions.push('forecastPrice');
     const amberData = cache.amber;
     if (Array.isArray(amberData)) {
       const priceType = conditions.forecastPrice.type || 'general'; // 'general' (buy) or 'feedIn'
       const channelType = priceType === 'feedIn' ? 'feedIn' : 'general';
-      const lookAhead = conditions.forecastPrice.lookAhead || 30; // minutes
-      const intervalsNeeded = Math.ceil(lookAhead / 5); // 5-min intervals
+      
+      // Support different time units: minutes (default), hours, days
+      const lookAheadUnit = conditions.forecastPrice.lookAheadUnit || 'minutes';
+      let lookAheadMinutes;
+      if (lookAheadUnit === 'days') {
+        lookAheadMinutes = (conditions.forecastPrice.lookAhead || 1) * 24 * 60;
+      } else if (lookAheadUnit === 'hours') {
+        lookAheadMinutes = (conditions.forecastPrice.lookAhead || 1) * 60;
+      } else {
+        lookAheadMinutes = conditions.forecastPrice.lookAhead || 30;
+      }
+      
+      const intervalsNeeded = Math.ceil(lookAheadMinutes / 5); // 5-min intervals
       
       // Get forecast intervals for the specified channel
       const forecasts = amberData.filter(p => p.channelType === channelType && p.type === 'ForecastInterval');
@@ -2916,6 +3078,13 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
         const value = conditions.forecastPrice.value;
         const met = checkType === 'any' ? actualValue !== undefined : compareValue(actualValue, operator, value);
         
+        // Format lookAhead for display
+        const lookAheadDisplay = lookAheadUnit === 'days' 
+          ? `${conditions.forecastPrice.lookAhead}d`
+          : lookAheadUnit === 'hours'
+          ? `${conditions.forecastPrice.lookAhead}h`
+          : `${conditions.forecastPrice.lookAhead}m`;
+        
         results.push({ 
           condition: 'forecastPrice', 
           met, 
@@ -2923,12 +3092,14 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           operator, 
           target: value, 
           type: priceType, 
-          lookAhead,
+          lookAhead: lookAheadDisplay,
+          lookAheadMinutes,
           checkType,
-          intervalsChecked: relevantForecasts.length
+          intervalsChecked: relevantForecasts.length,
+          intervalsAvailable: forecasts.length
         });
         if (!met) {
-          console.log(`[Automation] Rule '${rule.name}' - Forecast ${priceType} condition NOT met: ${checkType} ${actualValue?.toFixed(1)}¢ ${operator} ${value}¢`);
+          console.log(`[Automation] Rule '${rule.name}' - Forecast ${priceType} condition NOT met: ${checkType} ${actualValue?.toFixed(1)}¢ ${operator} ${value}¢ (${lookAheadDisplay})`);
         }
       } else {
         results.push({ condition: 'forecastPrice', met: false, reason: 'No forecast data' });
