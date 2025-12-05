@@ -369,22 +369,24 @@
             margin-top: 4px;
         }
         .stat-item .tile-icon {
-            font-size: 18px;
+            font-size: 28px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin: 0 auto 6px auto;
-            width: 30px;
-            height: 30px;
-            border-radius: 6px;
+            width: 54px;
+            height: 54px;
+            border-radius: 8px;
             color: inherit;
             background: rgba(255,255,255,0.02);
+            overflow: hidden;
         }
         /* Battery SVG sizing and charging animation */
         /* Larger battery tile for improved alignment */
         .stat-item.battery-tile { min-width: 180px; padding: 12px 18px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-        .tile-icon.battery { width: 54px; height: 60px; padding-top: 2px; }
-        .tile-icon.battery svg { width: 36px; height: 52px; display:block; }
+        /* Battery icon should match other tile icons visually; scale SVG to fit */
+        .tile-icon.battery { width: 54px; height: 54px; padding-top: 0; }
+        .tile-icon.battery svg { width: 70%; height: 70%; display:block; }
         .tile-icon.battery .level { transition: all 600ms cubic-bezier(.2,.9,.2,1); }
         .tile-icon.battery.charging { box-shadow: 0 6px 18px rgba(88,166,255,0.12); }
         .tile-icon.battery.charging svg { filter: drop-shadow(0 4px 8px rgba(88,166,255,0.18)); }
