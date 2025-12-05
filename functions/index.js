@@ -697,6 +697,12 @@ async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
       return { errno: 429, error: `Rate limited. Retry after ${delaySeconds}s`, retryAfter: amberRateLimitState.retryAfter };
     }
     
+    // Handle other HTTP errors
+    if (!resp.ok) {
+      console.warn(`[Amber] HTTP ${resp.status}: ${text.substring(0, 200)}`);
+      return { errno: resp.status, error: `HTTP ${resp.status}: ${resp.statusText}` };
+    }
+    
     // Clear rate limit on success
     if (resp.status === 200) {
       amberRateLimitState.retryAfter = 0;
@@ -705,7 +711,8 @@ async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
     try {
       return JSON.parse(text);
     } catch (e) {
-      return { errno: -1, error: 'Non-JSON response', raw: text };
+      console.warn('[Amber] Failed to parse response as JSON:', e.message);
+      return { errno: 500, error: 'Invalid JSON response from Amber API' };
     }
   } catch (error) {
     if (error.name === 'AbortError') {
