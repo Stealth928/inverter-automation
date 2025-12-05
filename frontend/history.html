@@ -1305,6 +1305,9 @@
             content.innerHTML = '';
 
             try {
+                // Ensure Chart.js is loaded before rendering
+                await ensureChartJs();
+                
                 // Get site ID first (with debug info)
                 const sitesResp = await apiClient.getAmberSites();
                 console.log('[Prices] getAmberSites response:', sitesResp);
