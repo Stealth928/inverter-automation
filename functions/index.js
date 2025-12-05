@@ -448,31 +448,14 @@ app.get('/api/amber/prices', async (req, res) => {
     if (startDate || endDate) {
       const resolution = req.query.resolution || 30;
       
-      console.log(`[Prices] Fetching historical prices - caching DISABLED for debug`);
-      
-      // TEMP: Bypass caching to test raw Amber response
-      const q = {
+      console.log(`[Prices] Fetching historical prices with caching for ${siteId}:`, {
         startDate,
         endDate,
         resolution
-      };
-      const result = await callAmberAPIDirect(`/sites/${encodeURIComponent(siteId)}/prices`, q, userConfig, userId);
-      
-      // Log channel breakdown
-      let prices = [];
-      if (Array.isArray(result)) {
-        prices = result;
-      } else if (result && Array.isArray(result.result)) {
-        prices = result.result;
-      }
-      
-      const channels = {};
-      prices.forEach(p => {
-        channels[p.channelType] = (channels[p.channelType] || 0) + 1;
       });
-      console.log(`[Prices] Raw Amber response: ${prices.length} prices - channels:`, channels);
       
-      return res.json({ errno: 0, result: prices });
+      const result = await fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, resolution, userConfig, userId);
+      return res.json(result);
     }
 
     // Default behavior: return the current forecast/prices
@@ -756,17 +739,19 @@ async function cacheAmberPrices(siteId, newPrices) {
     
     const existing = snap.exists ? (snap.data().prices || []) : [];
     
-    // Merge: remove duplicates by startTime, keep newest data
+    // Merge: remove duplicates by (startTime, channelType) composite key
     const priceMap = new Map();
     
     // Add existing prices
     existing.forEach(p => {
-      priceMap.set(p.startTime, p);
+      const key = `${p.startTime}|${p.channelType}`;
+      priceMap.set(key, p);
     });
     
     // Add/override with new prices
     newPrices.forEach(p => {
-      priceMap.set(p.startTime, p);
+      const key = `${p.startTime}|${p.channelType}`;
+      priceMap.set(key, p);
     });
     
     const merged = Array.from(priceMap.values());
@@ -895,10 +880,11 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
   // Step 5: Return merged result (cached + new)
   const allPrices = [...cachedPrices, ...newPrices];
   
-  // Remove duplicates and sort
+  // Remove duplicates by (startTime, channelType) composite key and sort
   const priceMap = new Map();
   allPrices.forEach(p => {
-    priceMap.set(p.startTime, p);
+    const key = `${p.startTime}|${p.channelType}`;
+    priceMap.set(key, p);
   });
   
   const finalPrices = Array.from(priceMap.values());
