@@ -1710,6 +1710,64 @@ app.get('/api/inverter/temps', async (req, res) => {
   }
 });
 
+// Device report (daily, monthly, yearly, hourly data)
+app.get('/api/inverter/report', authenticateUser, async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.query.sn || userConfig?.deviceSn;
+    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    
+    const dimension = req.query.dimension || 'day'; // day, month, year, hour
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
+    const day = parseInt(req.query.day) || new Date().getDate();
+    
+    // Build request body based on dimension
+    const body = {
+      sn,
+      dimension,
+      variables: ['generation', 'feedin', 'gridConsumption', 'chargeEnergyToTal', 'dischargeEnergyToTal']
+    };
+    
+    // Add year for month/year dimensions
+    if (dimension === 'month' || dimension === 'year') {
+      body.year = year;
+    }
+    // Add month and year for day dimension
+    if (dimension === 'day') {
+      body.month = month;
+      body.year = year;
+    }
+    // Add month, day, year for hour dimension
+    if (dimension === 'hour') {
+      body.month = month;
+      body.day = day;
+      body.year = year;
+    }
+    
+    const result = await callFoxESSAPI('/op/v0/device/report/query', 'POST', body, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/inverter/report error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Device generation summary
+app.get('/api/inverter/generation', authenticateUser, async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.query.sn || userConfig?.deviceSn;
+    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    
+    const result = await callFoxESSAPI(`/op/v0/device/generation?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/inverter/generation error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // EMS list
 app.get('/api/ems/list', async (req, res) => {
   try {
