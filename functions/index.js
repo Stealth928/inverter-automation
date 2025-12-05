@@ -442,30 +442,19 @@ app.get('/api/amber/prices', async (req, res) => {
       return res.status(400).json({ errno: 400, error: 'Site ID is required' });
     }
     // If the caller provided startDate/endDate, treat this as a historical range
-    // request and forward the dates to Amber's /sites/{siteId}/prices endpoint.
+    // request and use intelligent caching to avoid repeated API calls.
     const startDate = req.query.startDate;
     const endDate = req.query.endDate;
     if (startDate || endDate) {
-      const q = {};
-      if (startDate) q.startDate = startDate;
-      if (endDate) q.endDate = endDate;
-      // optional resolution or other params may be present; copy known params
-      // resolution should be numeric: 5 or 30
-      if (req.query.resolution) {
-        const res_val = parseInt(req.query.resolution, 10);
-        if (res_val === 5 || res_val === 30) {
-          q.resolution = res_val;
-        }
-      }
+      const resolution = req.query.resolution || 30;
       
-      console.log(`[Amber] Fetching prices for site ${siteId}:`, {
+      console.log(`[Prices] Fetching historical prices with caching for ${siteId}:`, {
         startDate,
         endDate,
-        resolution: q.resolution,
-        path: `/sites/${encodeURIComponent(siteId)}/prices`
+        resolution
       });
       
-      const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices`, q, userConfig, userId);
+      const result = await fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, resolution, userConfig, userId);
       return res.json(result);
     }
 
@@ -662,6 +651,231 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, u
 /**
  * Call Amber API
  */
+/**
+ * Get cached Amber price data from Firestore for a given date range.
+ * Returns prices that fall within [startDate, endDate] inclusive.
+ */
+async function getCachedAmberPrices(siteId, startDate, endDate) {
+  try {
+    const cacheRef = db.collection('amber_prices').doc(siteId);
+    const snap = await cacheRef.get();
+    
+    if (!snap.exists) {
+      return [];
+    }
+    
+    const cached = snap.data().prices || [];
+    const startMs = new Date(startDate).getTime();
+    const endMs = new Date(endDate).getTime();
+    
+    // Filter prices within the requested range
+    return cached.filter(p => {
+      const priceMs = new Date(p.startTime).getTime();
+      return priceMs >= startMs && priceMs <= endMs;
+    });
+  } catch (error) {
+    console.warn(`[Cache] Error reading prices for ${siteId}:`, error.message);
+    return [];
+  }
+}
+
+/**
+ * Find gaps in coverage between startDate and endDate.
+ * Returns array of { start, end } objects for gaps that need API calls.
+ */
+function findGaps(startDate, endDate, existingPrices) {
+  const gaps = [];
+  const startMs = new Date(startDate).getTime();
+  const endMs = new Date(endDate).getTime();
+  
+  if (existingPrices.length === 0) {
+    // No cached data, entire range is a gap
+    gaps.push({ start: startDate, end: endDate });
+    return gaps;
+  }
+  
+  // Sort prices by startTime
+  const sorted = [...existingPrices].sort((a, b) => 
+    new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+  );
+  
+  // Check gap before first price
+  const firstMs = new Date(sorted[0].startTime).getTime();
+  if (startMs < firstMs) {
+    const gapEnd = new Date(firstMs - 1).toISOString().split('T')[0];
+    gaps.push({ start: startDate, end: gapEnd });
+  }
+  
+  // Check gaps between consecutive prices
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const curr = new Date(sorted[i].startTime).getTime();
+    const next = new Date(sorted[i + 1].startTime).getTime();
+    // If gap > 1 day, flag it
+    if (next - curr > 86400000) {
+      const gapStart = new Date(curr + 1).toISOString().split('T')[0];
+      const gapEnd = new Date(next - 1).toISOString().split('T')[0];
+      gaps.push({ start: gapStart, end: gapEnd });
+    }
+  }
+  
+  // Check gap after last price
+  const lastMs = new Date(sorted[sorted.length - 1].startTime).getTime();
+  if (lastMs < endMs) {
+    const gapStart = new Date(lastMs + 1).toISOString().split('T')[0];
+    gaps.push({ start: gapStart, end: endDate });
+  }
+  
+  return gaps;
+}
+
+/**
+ * Cache Amber prices in Firestore for persistent storage.
+ * Merges new prices with existing cached prices.
+ */
+async function cacheAmberPrices(siteId, newPrices) {
+  try {
+    const cacheRef = db.collection('amber_prices').doc(siteId);
+    const snap = await cacheRef.get();
+    
+    const existing = snap.exists ? (snap.data().prices || []) : [];
+    
+    // Merge: remove duplicates by startTime, keep newest data
+    const priceMap = new Map();
+    
+    // Add existing prices
+    existing.forEach(p => {
+      priceMap.set(p.startTime, p);
+    });
+    
+    // Add/override with new prices
+    newPrices.forEach(p => {
+      priceMap.set(p.startTime, p);
+    });
+    
+    const merged = Array.from(priceMap.values());
+    
+    // Sort by startTime for consistency
+    merged.sort((a, b) => 
+      new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+    
+    console.log(`[Cache] Storing ${merged.length} total prices for site ${siteId}`);
+    
+    await cacheRef.set({
+      siteId,
+      prices: merged,
+      lastUpdated: new Date().toISOString(),
+      priceCount: merged.length
+    });
+  } catch (error) {
+    console.warn(`[Cache] Error caching prices for ${siteId}:`, error.message);
+  }
+}
+
+/**
+ * Split a date range into chunks of max 30 days for API calls.
+ * Returns array of { start, end } objects.
+ */
+function splitRangeIntoChunks(startDate, endDate, maxDaysPerChunk = 30) {
+  const chunks = [];
+  let currentStart = new Date(startDate);
+  const end = new Date(endDate);
+  
+  while (currentStart < end) {
+    let currentEnd = new Date(currentStart);
+    currentEnd.setDate(currentEnd.getDate() + maxDaysPerChunk);
+    
+    if (currentEnd > end) {
+      currentEnd = end;
+    }
+    
+    chunks.push({
+      start: currentStart.toISOString().split('T')[0],
+      end: currentEnd.toISOString().split('T')[0]
+    });
+    
+    currentStart = new Date(currentEnd);
+    currentStart.setDate(currentStart.getDate() + 1);
+  }
+  
+  return chunks;
+}
+
+/**
+ * Fetch Amber historical prices with intelligent caching.
+ * - Checks Firestore for existing data
+ * - Only fetches gaps from API
+ * - Merges cached + new data
+ * - Returns complete dataset for the requested range
+ */
+async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, resolution, userConfig, userId) {
+  console.log(`[Cache] Fetching prices with cache for ${siteId}:`, { startDate, endDate, resolution });
+  
+  // Step 1: Get cached prices
+  const cachedPrices = await getCachedAmberPrices(siteId, startDate, endDate);
+  console.log(`[Cache] Found ${cachedPrices.length} cached prices in range`);
+  
+  // Step 2: Find gaps
+  const gaps = findGaps(startDate, endDate, cachedPrices);
+  console.log(`[Cache] Found ${gaps.length} gaps to fetch from API`);
+  
+  let newPrices = [];
+  
+  // Step 3: Fetch gaps from API (split into 30-day chunks)
+  if (gaps.length > 0) {
+    for (const gap of gaps) {
+      const chunks = splitRangeIntoChunks(gap.start, gap.end, 30);
+      console.log(`[Cache] Fetching gap ${gap.start} to ${gap.end} in ${chunks.length} chunk(s)`);
+      
+      for (const chunk of chunks) {
+        console.log(`[Cache] Fetching chunk: ${chunk.start} to ${chunk.end}`);
+        
+        const q = {
+          startDate: chunk.start,
+          endDate: chunk.end,
+          resolution: resolution || 30
+        };
+        
+        const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices`, q, userConfig, userId);
+        
+        if (result.errno && result.errno !== 0) {
+          console.warn(`[Cache] API error for chunk ${chunk.start} to ${chunk.end}:`, result.error);
+          // Don't fail entirely; continue with what we have
+          continue;
+        }
+        
+        // Extract prices from result
+        const prices = result.result || [];
+        console.log(`[Cache] Chunk returned ${prices.length} prices`);
+        newPrices = newPrices.concat(prices);
+      }
+    }
+  }
+  
+  // Step 4: Cache the new prices
+  if (newPrices.length > 0) {
+    await cacheAmberPrices(siteId, newPrices);
+  }
+  
+  // Step 5: Return merged result (cached + new)
+  const allPrices = [...cachedPrices, ...newPrices];
+  
+  // Remove duplicates and sort
+  const priceMap = new Map();
+  allPrices.forEach(p => {
+    priceMap.set(p.startTime, p);
+  });
+  
+  const finalPrices = Array.from(priceMap.values());
+  finalPrices.sort((a, b) => 
+    new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+  );
+  
+  console.log(`[Cache] Returning ${finalPrices.length} total prices from cache + API`);
+  
+  return { errno: 0, result: finalPrices };
+}
+
 async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
   const config = getConfig();
   const apiKey = userConfig?.amberApiKey || config.amber.apiKey;
