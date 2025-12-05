@@ -836,8 +836,26 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
   const cachedPrices = await getCachedAmberPrices(siteId, startDate, endDate);
   console.log(`[Cache] Found ${cachedPrices.length} cached prices in range`);
   
-  // Step 2: Find gaps
-  const gaps = findGaps(startDate, endDate, cachedPrices);
+  // Step 2: Check if we have BOTH channels for the full range
+  const channelCounts = {};
+  cachedPrices.forEach(p => {
+    channelCounts[p.channelType] = (channelCounts[p.channelType] || 0) + 1;
+  });
+  const hasGeneral = channelCounts['general'] || 0;
+  const hasFeedin = channelCounts['feedIn'] || 0;
+  console.log(`[Cache] Cached channels - general: ${hasGeneral}, feedIn: ${hasFeedin}`);
+  
+  // If either channel is missing or imbalanced (one significantly less than other), 
+  // treat entire range as gap to force fresh fetch
+  let gaps = [];
+  if (!hasGeneral || !hasFeedin || Math.abs(hasGeneral - hasFeedin) > 50) {
+    console.log(`[Cache] Imbalanced or missing channels, fetching full range fresh`);
+    gaps = [{ start: startDate, end: endDate }];
+  } else {
+    // Both channels present and balanced, use normal gap detection
+    gaps = findGaps(startDate, endDate, cachedPrices);
+  }
+  
   console.log(`[Cache] Found ${gaps.length} gaps to fetch from API`);
   
   let newPrices = [];
