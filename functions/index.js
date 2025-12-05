@@ -450,7 +450,21 @@ app.get('/api/amber/prices', async (req, res) => {
       if (startDate) q.startDate = startDate;
       if (endDate) q.endDate = endDate;
       // optional resolution or other params may be present; copy known params
-      if (req.query.resolution) q.resolution = req.query.resolution;
+      // resolution should be numeric: 5 or 30
+      if (req.query.resolution) {
+        const res_val = parseInt(req.query.resolution, 10);
+        if (res_val === 5 || res_val === 30) {
+          q.resolution = res_val;
+        }
+      }
+      
+      console.log(`[Amber] Fetching prices for site ${siteId}:`, {
+        startDate,
+        endDate,
+        resolution: q.resolution,
+        path: `/sites/${encodeURIComponent(siteId)}/prices`
+      });
+      
       const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices`, q, userConfig, userId);
       return res.json(result);
     }
