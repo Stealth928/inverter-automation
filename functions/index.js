@@ -2884,153 +2884,245 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
     }
   }
   
-  // Check weather condition (supports both simple weathercode and solar radiation threshold)
+  // Check solar radiation condition (new separate condition)
+  if (conditions.solarRadiation?.enabled) {
+    enabledConditions.push('solarRadiation');
+    const weatherData = cache.weather;
+    const hourly = weatherData?.hourly;
+    
+    if (hourly?.shortwave_radiation && hourly?.time) {
+      // Support lookAheadUnit: hours or days
+      const lookAheadUnit = conditions.solarRadiation.lookAheadUnit || 'hours';
+      const lookAheadValue = conditions.solarRadiation.lookAhead || 6;
+      const lookAheadHours = lookAheadUnit === 'days' ? lookAheadValue * 24 : lookAheadValue;
+      
+      const threshold = conditions.solarRadiation.value || 200; // W/m² default
+      const operator = conditions.solarRadiation.operator || '>';
+      const checkType = conditions.solarRadiation.checkType || 'average';
+      
+      // Find current hour index
+      const now = new Date();
+      const currentHour = now.getHours();
+      let startIdx = 0;
+      for (let i = 0; i < hourly.time.length; i++) {
+        const t = new Date(hourly.time[i]);
+        if (t.getHours() >= currentHour && t.getDate() === now.getDate()) {
+          startIdx = i;
+          break;
+        }
+      }
+      
+      // Get radiation values for next N hours
+      const endIdx = Math.min(startIdx + lookAheadHours, hourly.shortwave_radiation.length);
+      const radiationValues = hourly.shortwave_radiation.slice(startIdx, endIdx);
+      
+      if (radiationValues.length > 0) {
+        let actualValue;
+        if (checkType === 'min') {
+          actualValue = Math.min(...radiationValues);
+        } else if (checkType === 'max') {
+          actualValue = Math.max(...radiationValues);
+        } else {
+          actualValue = radiationValues.reduce((a, b) => a + b, 0) / radiationValues.length;
+        }
+        
+        const met = compareValue(actualValue, operator, threshold);
+        const lookAheadDisplay = lookAheadUnit === 'days' ? `${lookAheadValue}d` : `${lookAheadValue}h`;
+        results.push({ 
+          condition: 'solarRadiation', 
+          met, 
+          actual: actualValue?.toFixed(0), 
+          operator,
+          target: threshold,
+          unit: 'W/m²',
+          lookAhead: lookAheadDisplay,
+          checkType,
+          hoursChecked: radiationValues.length
+        });
+        if (!met) {
+          console.log(`[Automation] Rule '${rule.name}' - Solar radiation NOT met: ${checkType} ${actualValue?.toFixed(0)} W/m² ${operator} ${threshold} W/m²`);
+        }
+      } else {
+        results.push({ condition: 'solarRadiation', met: false, reason: 'No radiation data for timeframe' });
+      }
+    } else {
+      results.push({ condition: 'solarRadiation', met: false, reason: 'No hourly radiation data' });
+    }
+  }
+  
+  // Check cloud cover condition (new separate condition)
+  if (conditions.cloudCover?.enabled) {
+    enabledConditions.push('cloudCover');
+    const weatherData = cache.weather;
+    const hourly = weatherData?.hourly;
+    
+    if (hourly?.cloudcover && hourly?.time) {
+      // Support lookAheadUnit: hours or days
+      const lookAheadUnit = conditions.cloudCover.lookAheadUnit || 'hours';
+      const lookAheadValue = conditions.cloudCover.lookAhead || 6;
+      const lookAheadHours = lookAheadUnit === 'days' ? lookAheadValue * 24 : lookAheadValue;
+      
+      const threshold = conditions.cloudCover.value || 50; // % default
+      const operator = conditions.cloudCover.operator || '<';
+      const checkType = conditions.cloudCover.checkType || 'average';
+      
+      const now = new Date();
+      const currentHour = now.getHours();
+      let startIdx = 0;
+      for (let i = 0; i < hourly.time.length; i++) {
+        const t = new Date(hourly.time[i]);
+        if (t.getHours() >= currentHour && t.getDate() === now.getDate()) {
+          startIdx = i;
+          break;
+        }
+      }
+      
+      const endIdx = Math.min(startIdx + lookAheadHours, hourly.cloudcover.length);
+      const cloudValues = hourly.cloudcover.slice(startIdx, endIdx);
+      
+      if (cloudValues.length > 0) {
+        let actualValue;
+        if (checkType === 'min') {
+          actualValue = Math.min(...cloudValues);
+        } else if (checkType === 'max') {
+          actualValue = Math.max(...cloudValues);
+        } else {
+          actualValue = cloudValues.reduce((a, b) => a + b, 0) / cloudValues.length;
+        }
+        
+        const met = compareValue(actualValue, operator, threshold);
+        const lookAheadDisplay = lookAheadUnit === 'days' ? `${lookAheadValue}d` : `${lookAheadValue}h`;
+        results.push({ 
+          condition: 'cloudCover', 
+          met, 
+          actual: actualValue?.toFixed(0), 
+          operator,
+          target: threshold,
+          unit: '%',
+          lookAhead: lookAheadDisplay,
+          checkType,
+          hoursChecked: cloudValues.length
+        });
+        if (!met) {
+          console.log(`[Automation] Rule '${rule.name}' - Cloud cover NOT met: ${checkType} ${actualValue?.toFixed(0)}% ${operator} ${threshold}%`);
+        }
+      } else {
+        results.push({ condition: 'cloudCover', met: false, reason: 'No cloud cover data' });
+      }
+    } else {
+      results.push({ condition: 'cloudCover', met: false, reason: 'No hourly cloud data' });
+    }
+  }
+  
+  // Legacy weather condition (for backward compatibility with old rules)
   if (conditions.weather?.enabled) {
     enabledConditions.push('weather');
     const weatherData = cache.weather;
     
-    // New: Solar radiation-based condition
-    if (conditions.weather.type === 'radiation' || conditions.weather.radiationEnabled) {
-      const hourly = weatherData?.hourly;
-      if (hourly?.shortwave_radiation && hourly?.time) {
-        const lookAheadHours = conditions.weather.radiationHours || 6; // default 6 hours
-        const threshold = conditions.weather.radiationThreshold || 200; // W/m² default
-        const operator = conditions.weather.radiationOp || '>';
-        
-        // Find current hour index
-        const now = new Date();
-        const currentHour = now.getHours();
-        let startIdx = 0;
-        for (let i = 0; i < hourly.time.length; i++) {
-          const t = new Date(hourly.time[i]);
-          if (t.getHours() >= currentHour && t.getDate() === now.getDate()) {
-            startIdx = i;
-            break;
-          }
-        }
-        
-        // Get radiation values for next N hours
-        const endIdx = Math.min(startIdx + lookAheadHours, hourly.shortwave_radiation.length);
-        const radiationValues = hourly.shortwave_radiation.slice(startIdx, endIdx);
-        
-        if (radiationValues.length > 0) {
-          const checkType = conditions.weather.radiationCheck || 'average'; // average, min, max, any
-          let actualValue;
-          if (checkType === 'min') {
-            actualValue = Math.min(...radiationValues);
-          } else if (checkType === 'max') {
-            actualValue = Math.max(...radiationValues);
-          } else if (checkType === 'any') {
-            actualValue = radiationValues.find(v => compareValue(v, operator, threshold));
-          } else {
-            actualValue = radiationValues.reduce((a, b) => a + b, 0) / radiationValues.length;
+    // Check if this is an old-style radiation/cloudcover rule (migrate to new format)
+    if (conditions.weather.type === 'radiation' || conditions.weather.radiationEnabled ||
+        conditions.weather.type === 'solar' || conditions.weather.type === 'cloudcover') {
+      // This is a legacy rule using the old weather.type format - evaluate it for compatibility
+      if (conditions.weather.type === 'solar' || conditions.weather.type === 'radiation' || conditions.weather.radiationEnabled) {
+        const hourly = weatherData?.hourly;
+        if (hourly?.shortwave_radiation && hourly?.time) {
+          const lookAheadHours = conditions.weather.radiationHours || conditions.weather.lookAheadHours || 6;
+          const threshold = conditions.weather.radiationThreshold || 200;
+          const rawOp = conditions.weather.radiationOp || '>';
+          // Parse operator from combined string like 'avg>' or simple '>'
+          const operator = rawOp.replace('avg', '').replace('min', '').replace('max', '') || '>';
+          const checkType = rawOp.includes('min') ? 'min' : rawOp.includes('max') ? 'max' : 'average';
+          
+          const now = new Date();
+          const currentHour = now.getHours();
+          let startIdx = 0;
+          for (let i = 0; i < hourly.time.length; i++) {
+            const t = new Date(hourly.time[i]);
+            if (t.getHours() >= currentHour && t.getDate() === now.getDate()) {
+              startIdx = i;
+              break;
+            }
           }
           
-          const met = checkType === 'any' ? actualValue !== undefined : compareValue(actualValue, operator, threshold);
-          results.push({ 
-            condition: 'weather', 
-            met, 
-            type: 'radiation',
-            actual: actualValue?.toFixed(0), 
-            operator,
-            target: threshold,
-            unit: 'W/m²',
-            lookAheadHours,
-            checkType,
-            hoursChecked: radiationValues.length
-          });
-          if (!met) {
-            console.log(`[Automation] Rule '${rule.name}' - Solar radiation NOT met: ${checkType} ${actualValue?.toFixed(0)} W/m² ${operator} ${threshold} W/m²`);
+          const endIdx = Math.min(startIdx + lookAheadHours, hourly.shortwave_radiation.length);
+          const radiationValues = hourly.shortwave_radiation.slice(startIdx, endIdx);
+          
+          if (radiationValues.length > 0) {
+            let actualValue;
+            if (checkType === 'min') actualValue = Math.min(...radiationValues);
+            else if (checkType === 'max') actualValue = Math.max(...radiationValues);
+            else actualValue = radiationValues.reduce((a, b) => a + b, 0) / radiationValues.length;
+            
+            const met = compareValue(actualValue, operator, threshold);
+            results.push({ condition: 'weather', met, type: 'radiation', actual: actualValue?.toFixed(0), operator, target: threshold, unit: 'W/m²', legacy: true });
+          } else {
+            results.push({ condition: 'weather', met: false, reason: 'No radiation data' });
           }
         } else {
-          results.push({ condition: 'weather', met: false, reason: 'No radiation data for timeframe' });
+          results.push({ condition: 'weather', met: false, reason: 'No hourly data' });
         }
-      } else {
-        results.push({ condition: 'weather', met: false, reason: 'No hourly radiation data' });
-      }
-    }
-    // Cloud cover condition
-    else if (conditions.weather.type === 'cloudcover') {
-      const hourly = weatherData?.hourly;
-      if (hourly?.cloudcover && hourly?.time) {
-        const lookAheadHours = conditions.weather.cloudcoverHours || 6;
-        const threshold = conditions.weather.cloudcoverThreshold || 50; // %
-        const operator = conditions.weather.cloudcoverOp || '<';
-        
-        const now = new Date();
-        const currentHour = now.getHours();
-        let startIdx = 0;
-        for (let i = 0; i < hourly.time.length; i++) {
-          const t = new Date(hourly.time[i]);
-          if (t.getHours() >= currentHour && t.getDate() === now.getDate()) {
-            startIdx = i;
-            break;
-          }
-        }
-        
-        const endIdx = Math.min(startIdx + lookAheadHours, hourly.cloudcover.length);
-        const cloudValues = hourly.cloudcover.slice(startIdx, endIdx);
-        
-        if (cloudValues.length > 0) {
-          const checkType = conditions.weather.cloudcoverCheck || 'average';
-          let actualValue;
-          if (checkType === 'min') {
-            actualValue = Math.min(...cloudValues);
-          } else if (checkType === 'max') {
-            actualValue = Math.max(...cloudValues);
-          } else {
-            actualValue = cloudValues.reduce((a, b) => a + b, 0) / cloudValues.length;
+      } else if (conditions.weather.type === 'cloudcover') {
+        const hourly = weatherData?.hourly;
+        if (hourly?.cloudcover && hourly?.time) {
+          const lookAheadHours = conditions.weather.cloudcoverHours || conditions.weather.lookAheadHours || 6;
+          const threshold = conditions.weather.cloudcoverThreshold || 50;
+          const rawOp = conditions.weather.cloudcoverOp || '<';
+          const operator = rawOp.replace('avg', '').replace('min', '').replace('max', '') || '<';
+          const checkType = rawOp.includes('min') ? 'min' : rawOp.includes('max') ? 'max' : 'average';
+          
+          const now = new Date();
+          const currentHour = now.getHours();
+          let startIdx = 0;
+          for (let i = 0; i < hourly.time.length; i++) {
+            const t = new Date(hourly.time[i]);
+            if (t.getHours() >= currentHour && t.getDate() === now.getDate()) {
+              startIdx = i;
+              break;
+            }
           }
           
-          const met = compareValue(actualValue, operator, threshold);
-          results.push({ 
-            condition: 'weather', 
-            met, 
-            type: 'cloudcover',
-            actual: actualValue?.toFixed(0), 
-            operator,
-            target: threshold,
-            unit: '%',
-            lookAheadHours,
-            checkType
-          });
-          if (!met) {
-            console.log(`[Automation] Rule '${rule.name}' - Cloud cover NOT met: ${checkType} ${actualValue?.toFixed(0)}% ${operator} ${threshold}%`);
+          const endIdx = Math.min(startIdx + lookAheadHours, hourly.cloudcover.length);
+          const cloudValues = hourly.cloudcover.slice(startIdx, endIdx);
+          
+          if (cloudValues.length > 0) {
+            let actualValue;
+            if (checkType === 'min') actualValue = Math.min(...cloudValues);
+            else if (checkType === 'max') actualValue = Math.max(...cloudValues);
+            else actualValue = cloudValues.reduce((a, b) => a + b, 0) / cloudValues.length;
+            
+            const met = compareValue(actualValue, operator, threshold);
+            results.push({ condition: 'weather', met, type: 'cloudcover', actual: actualValue?.toFixed(0), operator, target: threshold, unit: '%', legacy: true });
+          } else {
+            results.push({ condition: 'weather', met: false, reason: 'No cloud data' });
           }
         } else {
-          results.push({ condition: 'weather', met: false, reason: 'No cloud cover data' });
+          results.push({ condition: 'weather', met: false, reason: 'No hourly data' });
         }
-      } else {
-        results.push({ condition: 'weather', met: false, reason: 'No hourly cloud data' });
       }
     }
     // Legacy weathercode-based condition (sunny/cloudy/rainy)
     else if (weatherData?.current_weather) {
       const currentCode = weatherData.current_weather.weathercode;
-      const weatherType = conditions.weather.condition || 'any';
+      const weatherType = conditions.weather.condition || conditions.weather.type || 'any';
       
-      // Weather code mapping:
-      // 0: Clear sky, 1-3: Mainly clear/partly cloudy, 45-48: Fog
-      // 51-67: Rain/drizzle, 71-77: Snow, 80-82: Rain showers, 95-99: Thunderstorm
       let met = false;
       if (weatherType === 'any') {
         met = true;
       } else if (weatherType === 'sunny' || weatherType === 'clear') {
-        met = currentCode <= 1; // Clear or mainly clear
+        met = currentCode <= 1;
       } else if (weatherType === 'cloudy') {
-        met = currentCode >= 2 && currentCode <= 48; // Partly cloudy to fog
+        met = currentCode >= 2 && currentCode <= 48;
       } else if (weatherType === 'rainy') {
-        met = currentCode >= 51; // Any precipitation
+        met = currentCode >= 51;
       }
       
       const codeDesc = currentCode <= 1 ? 'Clear' : currentCode <= 3 ? 'Partly Cloudy' : currentCode <= 48 ? 'Cloudy/Fog' : currentCode <= 67 ? 'Rain' : 'Storm';
-      results.push({ condition: 'weather', met, type: 'weathercode', actual: codeDesc, target: weatherType, weatherCode: currentCode });
+      results.push({ condition: 'weather', met, type: 'weathercode', actual: codeDesc, target: weatherType, weatherCode: currentCode, legacy: true });
       if (!met) {
         console.log(`[Automation] Rule '${rule.name}' - Weather condition NOT met: ${codeDesc} (code ${currentCode}) != ${weatherType}`);
       }
     } else {
       results.push({ condition: 'weather', met: false, reason: 'No weather data' });
-      console.log(`[Automation] Rule '${rule.name}' - Weather condition NOT met: No weather data available`);
     }
   }
   

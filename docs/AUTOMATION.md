@@ -43,8 +43,9 @@ Each automation rule has the following structure:
     buyPrice: { enabled, operator, value, value2 },
     soc: { enabled, operator, value, value2 },
     temperature: { enabled, type, operator, value },
-    weather: { enabled, condition },
-    forecastPrice: { enabled, type, checkType, operator, value, lookAhead },
+    solarRadiation: { enabled, checkType, operator, value, lookAhead, lookAheadUnit },
+    cloudCover: { enabled, checkType, operator, value, lookAhead, lookAheadUnit },
+    forecastPrice: { enabled, type, checkType, operator, value, lookAhead, lookAheadUnit },
     time: { enabled, startTime, endTime }
   },
   
@@ -123,19 +124,17 @@ Triggers based on battery, ambient, or inverter temperature.
 temperature: { enabled: true, type: 'battery', operator: '>', value: 40 }
 ```
 
-### 5. Weather Condition (`weather`)
-Triggers based on weather forecasts from Open-Meteo API. Supports three modes: **Solar Radiation**, **Cloud Cover**, and **Legacy Weather Code**.
-
-#### Solar Radiation Mode (`type: 'solar'`)
-Uses shortwave radiation (W/m²) to determine solar energy availability. More accurate than weather codes.
+### 5. Solar Radiation (`solarRadiation`)
+Triggers based on forecast shortwave radiation (W/m²) from Open-Meteo API. This is more accurate than simple weather codes for predicting solar energy availability.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `enabled` | boolean | Whether this condition is active |
-| `type` | string | `'solar'` for radiation-based checking |
-| `radiationOp` | string | `'avg>'`, `'avg<'`, `'min>'`, `'max<'` |
-| `radiationThreshold` | number | Radiation threshold in W/m² |
-| `lookAheadHours` | number | Hours to check ahead (1-72) |
+| `checkType` | string | `'average'`, `'min'`, `'max'` |
+| `operator` | string | `>`, `>=`, `<`, `<=` |
+| `value` | number | Radiation threshold in W/m² |
+| `lookAhead` | number | Amount of time to look ahead |
+| `lookAheadUnit` | string | `'hours'` (1-168) or `'days'` (1-7) |
 
 **Radiation Values**:
 - 0-100 W/m²: Heavily overcast, minimal solar
@@ -145,64 +144,71 @@ Uses shortwave radiation (W/m²) to determine solar energy availability. More ac
 
 **Example**: Force discharge if avg solar radiation > 300 W/m² in next 6 hours
 ```javascript
-weather: { 
+solarRadiation: { 
   enabled: true, 
-  type: 'solar', 
-  radiationOp: 'avg>', 
-  radiationThreshold: 300, 
-  lookAheadHours: 6 
+  checkType: 'average',
+  operator: '>', 
+  value: 300, 
+  lookAhead: 6,
+  lookAheadUnit: 'hours'
 }
 ```
 
-#### Cloud Cover Mode (`type: 'cloudcover'`)
-Uses cloud cover percentage to determine sky conditions.
+**Example**: Prepare battery charge if max radiation < 200 W/m² in next 2 days
+```javascript
+solarRadiation: { 
+  enabled: true, 
+  checkType: 'max',
+  operator: '<', 
+  value: 200, 
+  lookAhead: 2,
+  lookAheadUnit: 'days'
+}
+```
+
+### 6. Cloud Cover (`cloudCover`)
+Triggers based on forecast cloud cover percentage from Open-Meteo API.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `enabled` | boolean | Whether this condition is active |
-| `type` | string | `'cloudcover'` for cloud-based checking |
-| `cloudcoverOp` | string | `'avg<'`, `'avg>'`, `'min<'`, `'max>'` |
-| `cloudcoverThreshold` | number | Cloud cover percentage (0-100) |
-| `lookAheadHours` | number | Hours to check ahead (1-72) |
+| `checkType` | string | `'average'`, `'min'`, `'max'` |
+| `operator` | string | `>`, `>=`, `<`, `<=` |
+| `value` | number | Cloud cover percentage (0-100) |
+| `lookAhead` | number | Amount of time to look ahead |
+| `lookAheadUnit` | string | `'hours'` (1-168) or `'days'` (1-7) |
 
 **Cloud Cover Values**:
 - 0-30%: Clear skies, good solar expected
 - 30-70%: Partly cloudy, moderate solar
 - 70-100%: Overcast, minimal solar
 
-**Example**: Allow discharge only if avg cloud cover < 50% in next 24 hours
+**Example**: Allow discharge only if avg cloud cover < 50% in next 12 hours
 ```javascript
-weather: { 
+cloudCover: { 
   enabled: true, 
-  type: 'cloudcover', 
-  cloudcoverOp: 'avg<', 
-  cloudcoverThreshold: 50, 
-  lookAheadHours: 24 
+  checkType: 'average',
+  operator: '<', 
+  value: 50, 
+  lookAhead: 12,
+  lookAheadUnit: 'hours'
 }
 ```
 
-#### Legacy Weather Code Mode (`type: 'sunny' | 'cloudy' | 'rainy'`)
-Simple weather condition matching based on current weather codes.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Whether this condition is active |
-| `type` | string | `'sunny'`, `'cloudy'`, `'rainy'` |
-| `condition` | string | (deprecated, use `type` instead) |
-
-**Weather Code Mapping**:
-| Condition | Weather Codes | Description |
-|-----------|--------------|-------------|
-| `sunny` | 0-1 | Clear sky, mainly clear |
-| `cloudy` | 2-48 | Partly cloudy, overcast, fog |
-| `rainy` | 51+ | Drizzle, rain, snow, thunderstorm |
-
-**Example**: Force discharge on sunny days
+**Example**: Force charge if min cloud cover > 70% (overcast day ahead)
 ```javascript
-weather: { enabled: true, type: 'sunny' }
+cloudCover: { 
+  enabled: true, 
+  checkType: 'min',
+  operator: '>', 
+  value: 70, 
+  lookAhead: 1,
+  lookAheadUnit: 'days'
+}
 ```
 
-### 6. Forecast Price (`forecastPrice`)
+### 7. Forecast Price (`forecastPrice`)
+Triggers based on **future** Amber prices (not current). Supports extended lookAhead periods.
 Triggers based on **future** Amber prices (not current). Now supports extended lookAhead periods.
 
 | Field | Type | Description |
@@ -247,7 +253,7 @@ forecastPrice: {
 }
 ```
 
-### 7. Time Window (`time`)
+### 8. Time Window (`time`)
 Restricts rule to specific hours of the day.
 
 | Field | Type | Description |

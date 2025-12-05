@@ -5040,21 +5040,22 @@
                     if (conditions.soc?.enabled) condBadges += `<span style="background:#8957e5;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">SoC ${conditions.soc.operator} ${conditions.soc.value}%</span>`;
                     const tempCond = conditions.temperature || conditions.temp;
                     if (tempCond?.enabled) condBadges += `<span style="background:#f0883e;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">${tempCond.type || 'Bat'} Temp ${tempCond.operator} ${tempCond.value}°C</span>`;
+                    // Solar Radiation condition
+                    if (conditions.solarRadiation?.enabled) {
+                        const unit = conditions.solarRadiation.lookAheadUnit || 'hours';
+                        const unitLabel = unit === 'hours' ? 'h' : 'd';
+                        condBadges += `<span style="background:#f9d71c;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">☀️ ${conditions.solarRadiation.checkType || 'avg'} ${conditions.solarRadiation.operator} ${conditions.solarRadiation.value}W/m² (${conditions.solarRadiation.lookAhead}${unitLabel})</span>`;
+                    }
+                    // Cloud Cover condition
+                    if (conditions.cloudCover?.enabled) {
+                        const unit = conditions.cloudCover.lookAheadUnit || 'hours';
+                        const unitLabel = unit === 'hours' ? 'h' : 'd';
+                        condBadges += `<span style="background:#79c0ff;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">☁️ ${conditions.cloudCover.checkType || 'avg'} ${conditions.cloudCover.operator} ${conditions.cloudCover.value}% (${conditions.cloudCover.lookAhead}${unitLabel})</span>`;
+                    }
+                    // Legacy weather condition (for backward compatibility)
                     if (conditions.weather?.enabled) {
                         const wType = conditions.weather.type || conditions.weather.condition || 'sunny';
-                        let wBadge = '';
-                        if (wType === 'solar') {
-                            const op = conditions.weather.radiationOp || 'avg>';
-                            const opLabel = op.replace('avg', 'Avg ').replace('min', 'Min ').replace('max', 'Max ');
-                            wBadge = `☀️ Radiation ${opLabel} ${conditions.weather.radiationThreshold || 300}W/m² (${conditions.weather.lookAheadHours || 24}h)`;
-                        } else if (wType === 'cloudcover') {
-                            const op = conditions.weather.cloudcoverOp || 'avg<';
-                            const opLabel = op.replace('avg', 'Avg ').replace('min', 'Min ').replace('max', 'Max ');
-                            wBadge = `☁️ Cloud ${opLabel} ${conditions.weather.cloudcoverThreshold || 50}% (${conditions.weather.lookAheadHours || 24}h)`;
-                        } else {
-                            wBadge = `🌤️ ${wType}`;
-                        }
-                        condBadges += `<span style="background:#79c0ff;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">${wBadge}</span>`;
+                        condBadges += `<span style="background:#79c0ff;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">🌤️ ${wType}</span>`;
                     }
                     if (conditions.forecastPrice?.enabled) {
                         const unit = conditions.forecastPrice.lookAheadUnit || 'minutes';
@@ -5421,71 +5422,56 @@
                                 <span style="color:#8b949e;font-size:11px">°C</span>
                             </div>
                             
-                            <!-- Weather Forecast -->
-                            <div style="padding:10px;background:#161b22;border-radius:6px;margin-bottom:8px">
-                                <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                                    <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
-                                        <input type="checkbox" id="condWeatherEnabled" style="width:16px;height:16px" onchange="toggleWeatherConditionType()">
-                                        <span style="color:#e6edf3;font-size:13px">🌤️ Weather</span>
-                                    </label>
-                                    <select id="condWeatherType" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px" onchange="toggleWeatherConditionType()">
-                                        <option value="solar">☀️ Solar Radiation</option>
-                                        <option value="cloudcover">☁️ Cloud Cover</option>
-                                        <option value="sunny">🌤️ Sunny/Clear</option>
-                                        <option value="cloudy">🌥️ Cloudy</option>
-                                        <option value="rainy">🌧️ Rainy</option>
-                                    </select>
-                                </div>
-                                <!-- Solar Radiation threshold fields -->
-                                <div id="weatherSolarFields" style="display:none;margin-left:166px;gap:8px;align-items:center;flex-wrap:wrap">
-                                    <select id="condWeatherRadiationOp" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
-                                        <option value="avg>">Avg &gt;</option>
-                                        <option value="avg<">Avg &lt;</option>
-                                        <option value="min>">Min &gt;</option>
-                                        <option value="max<">Max &lt;</option>
-                                    </select>
-                                    <input type="number" id="condWeatherRadiationVal" placeholder="W/m²" value="300" style="width:70px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
-                                    <span style="color:#8b949e;font-size:11px">W/m² in next</span>
-                                    <select id="condWeatherLookAhead" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
-                                        <option value="1">1hr</option>
-                                        <option value="2">2hr</option>
-                                        <option value="3">3hr</option>
-                                        <option value="4">4hr</option>
-                                        <option value="6">6hr</option>
-                                        <option value="12">12hr</option>
-                                        <option value="24" selected>24hr</option>
-                                        <option value="48">48hr</option>
-                                        <option value="72">3 days</option>
-                                    </select>
-                                    <span style="color:#6e7681;font-size:10px;display:block;width:100%;margin-top:4px">💡 Shortwave radiation (W/m²) indicates solar energy. Higher = sunnier.</span>
-                                </div>
-                                <!-- Cloud Cover threshold fields -->
-                                <div id="weatherCloudFields" style="display:none;margin-left:166px;gap:8px;align-items:center;flex-wrap:wrap">
-                                    <select id="condWeatherCloudOp" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
-                                        <option value="avg<">Avg &lt;</option>
-                                        <option value="avg>">Avg &gt;</option>
-                                        <option value="min<">Min &lt;</option>
-                                        <option value="max>">Max &gt;</option>
-                                    </select>
-                                    <input type="number" id="condWeatherCloudVal" placeholder="%" value="50" min="0" max="100" style="width:60px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
-                                    <span style="color:#8b949e;font-size:11px">% in next</span>
-                                    <select id="condWeatherCloudLookAhead" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
-                                        <option value="1">1hr</option>
-                                        <option value="2">2hr</option>
-                                        <option value="3">3hr</option>
-                                        <option value="4">4hr</option>
-                                        <option value="6">6hr</option>
-                                        <option value="12">12hr</option>
-                                        <option value="24" selected>24hr</option>
-                                        <option value="48">48hr</option>
-                                        <option value="72">3 days</option>
-                                    </select>
-                                    <span style="color:#6e7681;font-size:10px;display:block;width:100%;margin-top:4px">💡 Cloud cover %. Lower = clearer skies.</span>
-                                </div>
-                                <!-- Legacy weather code helper -->
-                                <div id="weatherLegacyHint" style="display:none;margin-left:166px">
-                                    <span style="color:#6e7681;font-size:10px">Current weather code from forecast</span>
-                                </div>
+                            <!-- Solar Radiation Forecast -->
+                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:#161b22;border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
+                                <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
+                                    <input type="checkbox" id="condSolarEnabled" style="width:16px;height:16px">
+                                    <span style="color:#e6edf3;font-size:13px">☀️ Solar Radiation</span>
+                                </label>
+                                <select id="condSolarCheck" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                    <option value="average">Avg</option>
+                                    <option value="min">Min</option>
+                                    <option value="max">Max</option>
+                                </select>
+                                <select id="condSolarOp" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                    <option value=">">&gt;</option>
+                                    <option value=">=">&gt;=</option>
+                                    <option value="<">&lt;</option>
+                                    <option value="<=">&lt;=</option>
+                                </select>
+                                <input type="number" id="condSolarVal" placeholder="W/m²" value="300" style="width:70px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                <span style="color:#8b949e;font-size:11px">W/m² in next</span>
+                                <input type="number" id="condSolarLookAhead" value="6" min="1" max="168" style="width:50px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                <select id="condSolarLookAheadUnit" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                    <option value="hours" selected>hrs</option>
+                                    <option value="days">days</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Cloud Cover Forecast -->
+                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:#161b22;border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
+                                <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
+                                    <input type="checkbox" id="condCloudEnabled" style="width:16px;height:16px">
+                                    <span style="color:#e6edf3;font-size:13px">☁️ Cloud Cover</span>
+                                </label>
+                                <select id="condCloudCheck" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                    <option value="average">Avg</option>
+                                    <option value="min">Min</option>
+                                    <option value="max">Max</option>
+                                </select>
+                                <select id="condCloudOp" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                    <option value="<">&lt;</option>
+                                    <option value="<=">&lt;=</option>
+                                    <option value=">">&gt;</option>
+                                    <option value=">=">&gt;=</option>
+                                </select>
+                                <input type="number" id="condCloudVal" placeholder="%" value="50" min="0" max="100" style="width:60px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                <span style="color:#8b949e;font-size:11px">% in next</span>
+                                <input type="number" id="condCloudLookAhead" value="6" min="1" max="168" style="width:50px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                <select id="condCloudLookAheadUnit" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                    <option value="hours" selected>hrs</option>
+                                    <option value="days">days</option>
+                                </select>
                             </div>
                             
                             <!-- Forecast Price -->
@@ -5613,19 +5599,6 @@
             } catch (e) {}
         }
         
-        // Toggle weather condition fields based on type
-        function toggleWeatherConditionType() {
-            const type = document.getElementById('condWeatherType')?.value || 'solar';
-            const enabled = document.getElementById('condWeatherEnabled')?.checked || false;
-            const solarFields = document.getElementById('weatherSolarFields');
-            const cloudFields = document.getElementById('weatherCloudFields');
-            const legacyHint = document.getElementById('weatherLegacyHint');
-            
-            if (solarFields) solarFields.style.display = (enabled && type === 'solar') ? 'flex' : 'none';
-            if (cloudFields) cloudFields.style.display = (enabled && type === 'cloudcover') ? 'flex' : 'none';
-            if (legacyHint) legacyHint.style.display = (enabled && ['sunny', 'cloudy', 'rainy'].includes(type)) ? 'block' : 'none';
-        }
-        
         // Update forecast lookAhead range based on unit
         function updateForecastLookAheadRange() {
             const unit = document.getElementById('condForecastLookAheadUnit')?.value || 'minutes';
@@ -5694,27 +5667,22 @@
                     operator: document.getElementById('condTempOp').value,
                     value: parseFloat(document.getElementById('condTempVal').value) || 40
                 },
-                weather: (function() {
-                    const enabled = document.getElementById('condWeatherEnabled')?.checked || false;
-                    const type = document.getElementById('condWeatherType')?.value || 'solar';
-                    const base = { enabled, type };
-                    
-                    if (type === 'solar') {
-                        const radiationOp = document.getElementById('condWeatherRadiationOp')?.value || 'avg>';
-                        base.radiationOp = radiationOp;
-                        base.radiationThreshold = parseFloat(document.getElementById('condWeatherRadiationVal')?.value) || 300;
-                        base.lookAheadHours = parseInt(document.getElementById('condWeatherLookAhead')?.value) || 24;
-                    } else if (type === 'cloudcover') {
-                        const cloudOp = document.getElementById('condWeatherCloudOp')?.value || 'avg<';
-                        base.cloudcoverOp = cloudOp;
-                        base.cloudcoverThreshold = parseFloat(document.getElementById('condWeatherCloudVal')?.value) || 50;
-                        base.lookAheadHours = parseInt(document.getElementById('condWeatherCloudLookAhead')?.value) || 24;
-                    } else {
-                        // Legacy weathercode types (sunny/cloudy/rainy)
-                        base.condition = type;
-                    }
-                    return base;
-                })(),
+                solarRadiation: {
+                    enabled: document.getElementById('condSolarEnabled')?.checked || false,
+                    checkType: document.getElementById('condSolarCheck')?.value || 'average',
+                    operator: document.getElementById('condSolarOp')?.value || '>',
+                    value: parseFloat(document.getElementById('condSolarVal')?.value) || 300,
+                    lookAhead: parseInt(document.getElementById('condSolarLookAhead')?.value) || 6,
+                    lookAheadUnit: document.getElementById('condSolarLookAheadUnit')?.value || 'hours'
+                },
+                cloudCover: {
+                    enabled: document.getElementById('condCloudEnabled')?.checked || false,
+                    checkType: document.getElementById('condCloudCheck')?.value || 'average',
+                    operator: document.getElementById('condCloudOp')?.value || '<',
+                    value: parseFloat(document.getElementById('condCloudVal')?.value) || 50,
+                    lookAhead: parseInt(document.getElementById('condCloudLookAhead')?.value) || 6,
+                    lookAheadUnit: document.getElementById('condCloudLookAheadUnit')?.value || 'hours'
+                },
                 forecastPrice: {
                     enabled: document.getElementById('condForecastEnabled')?.checked || false,
                     type: document.getElementById('condForecastType')?.value || 'feedIn',
@@ -5734,7 +5702,8 @@
             // Check at least one condition is enabled
             const hasCondition = conditions.feedInPrice.enabled || conditions.buyPrice.enabled || 
                                  conditions.soc.enabled || conditions.temperature.enabled || 
-                                 conditions.weather.enabled || conditions.forecastPrice.enabled || conditions.time.enabled;
+                                 conditions.solarRadiation.enabled || conditions.cloudCover.enabled ||
+                                 conditions.forecastPrice.enabled || conditions.time.enabled;
             if (!hasCondition) {
                 alert('Please enable at least one condition');
                 return;
@@ -5827,26 +5796,23 @@
                     document.getElementById('condTempOp').value = conditions.temperature.operator || '<';
                     document.getElementById('condTempVal').value = conditions.temperature.value || 40;
                 }
-                if (conditions.weather) {
-                    document.getElementById('condWeatherEnabled').checked = conditions.weather.enabled || false;
-                    // Support new type field or legacy condition field
-                    const wType = conditions.weather.type || conditions.weather.condition || 'solar';
-                    document.getElementById('condWeatherType').value = wType;
-                    
-                    // Solar radiation fields
-                    if (wType === 'solar') {
-                        document.getElementById('condWeatherRadiationOp').value = conditions.weather.radiationOp || 'avg>';
-                        document.getElementById('condWeatherRadiationVal').value = conditions.weather.radiationThreshold || 300;
-                        document.getElementById('condWeatherLookAhead').value = conditions.weather.lookAheadHours || 24;
-                    }
-                    // Cloud cover fields
-                    if (wType === 'cloudcover') {
-                        document.getElementById('condWeatherCloudOp').value = conditions.weather.cloudcoverOp || 'avg<';
-                        document.getElementById('condWeatherCloudVal').value = conditions.weather.cloudcoverThreshold || 50;
-                        document.getElementById('condWeatherCloudLookAhead').value = conditions.weather.lookAheadHours || 24;
-                    }
-                    // Trigger field visibility update
-                    toggleWeatherConditionType();
+                // Solar Radiation condition
+                if (conditions.solarRadiation) {
+                    document.getElementById('condSolarEnabled').checked = conditions.solarRadiation.enabled || false;
+                    document.getElementById('condSolarCheck').value = conditions.solarRadiation.checkType || 'average';
+                    document.getElementById('condSolarOp').value = conditions.solarRadiation.operator || '>';
+                    document.getElementById('condSolarVal').value = conditions.solarRadiation.value || 300;
+                    document.getElementById('condSolarLookAhead').value = conditions.solarRadiation.lookAhead || 6;
+                    document.getElementById('condSolarLookAheadUnit').value = conditions.solarRadiation.lookAheadUnit || 'hours';
+                }
+                // Cloud Cover condition
+                if (conditions.cloudCover) {
+                    document.getElementById('condCloudEnabled').checked = conditions.cloudCover.enabled || false;
+                    document.getElementById('condCloudCheck').value = conditions.cloudCover.checkType || 'average';
+                    document.getElementById('condCloudOp').value = conditions.cloudCover.operator || '<';
+                    document.getElementById('condCloudVal').value = conditions.cloudCover.value || 50;
+                    document.getElementById('condCloudLookAhead').value = conditions.cloudCover.lookAhead || 6;
+                    document.getElementById('condCloudLookAheadUnit').value = conditions.cloudCover.lookAheadUnit || 'hours';
                 }
                 if (conditions.forecastPrice) {
                     document.getElementById('condForecastEnabled').checked = conditions.forecastPrice.enabled || false;
