@@ -5640,57 +5640,57 @@
                 return;
             }
             
-            // Collect conditions - use modal scoping for time fields to avoid duplicate ID conflicts
+            // Collect conditions - use modal scoping to avoid duplicate ID conflicts with old modal
             const modal = document.getElementById('addRuleModal');
             const conditions = {
                 feedInPrice: {
-                    enabled: document.getElementById('condFeedInEnabled').checked,
-                    operator: document.getElementById('condFeedInOp').value,
-                    value: parseFloat(document.getElementById('condFeedInVal').value) || 0,
-                    value2: parseFloat(document.getElementById('condFeedInVal2')?.value) || 0
+                    enabled: modal?.querySelector('#condFeedInEnabled')?.checked || false,
+                    operator: modal?.querySelector('#condFeedInOp')?.value || '>',
+                    value: parseFloat(modal?.querySelector('#condFeedInVal')?.value) || 0,
+                    value2: parseFloat(modal?.querySelector('#condFeedInVal2')?.value) || 0
                 },
                 buyPrice: {
-                    enabled: document.getElementById('condBuyEnabled').checked,
-                    operator: document.getElementById('condBuyOp').value,
-                    value: parseFloat(document.getElementById('condBuyVal').value) || 0,
-                    value2: parseFloat(document.getElementById('condBuyVal2')?.value) || 0
+                    enabled: modal?.querySelector('#condBuyEnabled')?.checked || false,
+                    operator: modal?.querySelector('#condBuyOp')?.value || '>',
+                    value: parseFloat(modal?.querySelector('#condBuyVal')?.value) || 0,
+                    value2: parseFloat(modal?.querySelector('#condBuyVal2')?.value) || 0
                 },
                 soc: {
-                    enabled: document.getElementById('condSocEnabled').checked,
-                    operator: document.getElementById('condSocOp').value,
-                    value: parseFloat(document.getElementById('condSocVal').value) || 50,
-                    value2: parseFloat(document.getElementById('condSocVal2')?.value) || 100
+                    enabled: modal?.querySelector('#condSocEnabled')?.checked || false,
+                    operator: modal?.querySelector('#condSocOp')?.value || '<',
+                    value: parseFloat(modal?.querySelector('#condSocVal')?.value) || 50,
+                    value2: parseFloat(modal?.querySelector('#condSocVal2')?.value) || 100
                 },
                 temperature: {
-                    enabled: document.getElementById('condTempEnabled').checked,
-                    type: document.getElementById('condTempType').value,
-                    operator: document.getElementById('condTempOp').value,
-                    value: parseFloat(document.getElementById('condTempVal').value) || 40
+                    enabled: modal?.querySelector('#condTempEnabled')?.checked || false,
+                    type: modal?.querySelector('#condTempType')?.value || 'current',
+                    operator: modal?.querySelector('#condTempOp')?.value || '>',
+                    value: parseFloat(modal?.querySelector('#condTempVal')?.value) || 40
                 },
                 solarRadiation: {
-                    enabled: document.getElementById('condSolarEnabled')?.checked || false,
-                    checkType: document.getElementById('condSolarCheck')?.value || 'average',
-                    operator: document.getElementById('condSolarOp')?.value || '>',
-                    value: parseFloat(document.getElementById('condSolarVal')?.value) || 300,
-                    lookAhead: parseInt(document.getElementById('condSolarLookAhead')?.value) || 6,
-                    lookAheadUnit: document.getElementById('condSolarLookAheadUnit')?.value || 'hours'
+                    enabled: modal?.querySelector('#condSolarEnabled')?.checked || false,
+                    checkType: modal?.querySelector('#condSolarCheck')?.value || 'average',
+                    operator: modal?.querySelector('#condSolarOp')?.value || '>',
+                    value: parseFloat(modal?.querySelector('#condSolarVal')?.value) || 300,
+                    lookAhead: parseInt(modal?.querySelector('#condSolarLookAhead')?.value) || 6,
+                    lookAheadUnit: modal?.querySelector('#condSolarLookAheadUnit')?.value || 'hours'
                 },
                 cloudCover: {
-                    enabled: document.getElementById('condCloudEnabled')?.checked || false,
-                    checkType: document.getElementById('condCloudCheck')?.value || 'average',
-                    operator: document.getElementById('condCloudOp')?.value || '<',
-                    value: parseFloat(document.getElementById('condCloudVal')?.value) || 50,
-                    lookAhead: parseInt(document.getElementById('condCloudLookAhead')?.value) || 6,
-                    lookAheadUnit: document.getElementById('condCloudLookAheadUnit')?.value || 'hours'
+                    enabled: modal?.querySelector('#condCloudEnabled')?.checked || false,
+                    checkType: modal?.querySelector('#condCloudCheck')?.value || 'average',
+                    operator: modal?.querySelector('#condCloudOp')?.value || '<',
+                    value: parseFloat(modal?.querySelector('#condCloudVal')?.value) || 50,
+                    lookAhead: parseInt(modal?.querySelector('#condCloudLookAhead')?.value) || 6,
+                    lookAheadUnit: modal?.querySelector('#condCloudLookAheadUnit')?.value || 'hours'
                 },
                 forecastPrice: {
-                    enabled: document.getElementById('condForecastEnabled')?.checked || false,
-                    type: document.getElementById('condForecastType')?.value || 'feedIn',
-                    checkType: document.getElementById('condForecastCheck')?.value || 'average',
-                    operator: document.getElementById('condForecastOp')?.value || '>',
-                    value: parseFloat(document.getElementById('condForecastVal')?.value) || 0,
-                    lookAhead: parseInt(document.getElementById('condForecastLookAhead')?.value) || 30,
-                    lookAheadUnit: document.getElementById('condForecastLookAheadUnit')?.value || 'minutes'
+                    enabled: modal?.querySelector('#condForecastEnabled')?.checked || false,
+                    type: modal?.querySelector('#condForecastType')?.value || 'feedIn',
+                    checkType: modal?.querySelector('#condForecastCheck')?.value || 'average',
+                    operator: modal?.querySelector('#condForecastOp')?.value || '>',
+                    value: parseFloat(modal?.querySelector('#condForecastVal')?.value) || 0,
+                    lookAhead: parseInt(modal?.querySelector('#condForecastLookAhead')?.value) || 30,
+                    lookAheadUnit: modal?.querySelector('#condForecastLookAheadUnit')?.value || 'minutes'
                 },
                 time: {
                     enabled: modal?.querySelector('#condTimeEnabled')?.checked || false,
@@ -5761,72 +5761,73 @@
                 // Wait for modal to render
                 await new Promise(r => setTimeout(r, 50));
                 
+                // Get modal reference for scoped queries
+                const modal = document.getElementById('addRuleModal');
+                
                 // Change modal title
-                const modalTitle = document.querySelector('#addRuleModal h3');
+                const modalTitle = modal?.querySelector('h3');
                 if (modalTitle) modalTitle.innerHTML = '✏️ Edit Automation Rule';
                 
                 // Set editing flag
                 document.getElementById('editingRuleId').value = ruleName;
                 
-                // Fill in basic info
+                // Fill in basic info (these have unique IDs, OK to use getElementById)
                 document.getElementById('newRuleName').value = rule.name || ruleName;
                 document.getElementById('newRulePriority').value = rule.priority || 5;
                 document.getElementById('newRuleCooldown').value = rule.cooldownMinutes || 5;
                 
-                // Fill in conditions
+                // Fill in conditions using modal-scoped queries
                 const conditions = rule.conditions || {};
                 if (conditions.feedInPrice) {
-                    document.getElementById('condFeedInEnabled').checked = conditions.feedInPrice.enabled || false;
-                    document.getElementById('condFeedInOp').value = conditions.feedInPrice.operator || '>';
-                    document.getElementById('condFeedInVal').value = conditions.feedInPrice.value || 0;
+                    const el = modal?.querySelector('#condFeedInEnabled'); if (el) el.checked = conditions.feedInPrice.enabled || false;
+                    const op = modal?.querySelector('#condFeedInOp'); if (op) op.value = conditions.feedInPrice.operator || '>';
+                    const val = modal?.querySelector('#condFeedInVal'); if (val) val.value = conditions.feedInPrice.value || 0;
                 }
                 if (conditions.buyPrice) {
-                    document.getElementById('condBuyEnabled').checked = conditions.buyPrice.enabled || false;
-                    document.getElementById('condBuyOp').value = conditions.buyPrice.operator || '<';
-                    document.getElementById('condBuyVal').value = conditions.buyPrice.value || 0;
+                    const el = modal?.querySelector('#condBuyEnabled'); if (el) el.checked = conditions.buyPrice.enabled || false;
+                    const op = modal?.querySelector('#condBuyOp'); if (op) op.value = conditions.buyPrice.operator || '<';
+                    const val = modal?.querySelector('#condBuyVal'); if (val) val.value = conditions.buyPrice.value || 0;
                 }
                 if (conditions.soc) {
-                    document.getElementById('condSocEnabled').checked = conditions.soc.enabled || false;
-                    document.getElementById('condSocOp').value = conditions.soc.operator || '>';
-                    document.getElementById('condSocVal').value = conditions.soc.value || 50;
+                    const el = modal?.querySelector('#condSocEnabled'); if (el) el.checked = conditions.soc.enabled || false;
+                    const op = modal?.querySelector('#condSocOp'); if (op) op.value = conditions.soc.operator || '>';
+                    const val = modal?.querySelector('#condSocVal'); if (val) val.value = conditions.soc.value || 50;
                 }
                 if (conditions.temperature) {
-                    document.getElementById('condTempEnabled').checked = conditions.temperature.enabled || false;
-                    document.getElementById('condTempType').value = conditions.temperature.type || 'battery';
-                    document.getElementById('condTempOp').value = conditions.temperature.operator || '<';
-                    document.getElementById('condTempVal').value = conditions.temperature.value || 40;
+                    const el = modal?.querySelector('#condTempEnabled'); if (el) el.checked = conditions.temperature.enabled || false;
+                    const tp = modal?.querySelector('#condTempType'); if (tp) tp.value = conditions.temperature.type || 'battery';
+                    const op = modal?.querySelector('#condTempOp'); if (op) op.value = conditions.temperature.operator || '<';
+                    const val = modal?.querySelector('#condTempVal'); if (val) val.value = conditions.temperature.value || 40;
                 }
                 // Solar Radiation condition
                 if (conditions.solarRadiation) {
-                    document.getElementById('condSolarEnabled').checked = conditions.solarRadiation.enabled || false;
-                    document.getElementById('condSolarCheck').value = conditions.solarRadiation.checkType || 'average';
-                    document.getElementById('condSolarOp').value = conditions.solarRadiation.operator || '>';
-                    document.getElementById('condSolarVal').value = conditions.solarRadiation.value || 300;
-                    document.getElementById('condSolarLookAhead').value = conditions.solarRadiation.lookAhead || 6;
-                    document.getElementById('condSolarLookAheadUnit').value = conditions.solarRadiation.lookAheadUnit || 'hours';
+                    const el = modal?.querySelector('#condSolarEnabled'); if (el) el.checked = conditions.solarRadiation.enabled || false;
+                    const chk = modal?.querySelector('#condSolarCheck'); if (chk) chk.value = conditions.solarRadiation.checkType || 'average';
+                    const op = modal?.querySelector('#condSolarOp'); if (op) op.value = conditions.solarRadiation.operator || '>';
+                    const val = modal?.querySelector('#condSolarVal'); if (val) val.value = conditions.solarRadiation.value || 300;
+                    const la = modal?.querySelector('#condSolarLookAhead'); if (la) la.value = conditions.solarRadiation.lookAhead || 6;
+                    const lau = modal?.querySelector('#condSolarLookAheadUnit'); if (lau) lau.value = conditions.solarRadiation.lookAheadUnit || 'hours';
                 }
                 // Cloud Cover condition
                 if (conditions.cloudCover) {
-                    document.getElementById('condCloudEnabled').checked = conditions.cloudCover.enabled || false;
-                    document.getElementById('condCloudCheck').value = conditions.cloudCover.checkType || 'average';
-                    document.getElementById('condCloudOp').value = conditions.cloudCover.operator || '<';
-                    document.getElementById('condCloudVal').value = conditions.cloudCover.value || 50;
-                    document.getElementById('condCloudLookAhead').value = conditions.cloudCover.lookAhead || 6;
-                    document.getElementById('condCloudLookAheadUnit').value = conditions.cloudCover.lookAheadUnit || 'hours';
+                    const el = modal?.querySelector('#condCloudEnabled'); if (el) el.checked = conditions.cloudCover.enabled || false;
+                    const chk = modal?.querySelector('#condCloudCheck'); if (chk) chk.value = conditions.cloudCover.checkType || 'average';
+                    const op = modal?.querySelector('#condCloudOp'); if (op) op.value = conditions.cloudCover.operator || '<';
+                    const val = modal?.querySelector('#condCloudVal'); if (val) val.value = conditions.cloudCover.value || 50;
+                    const la = modal?.querySelector('#condCloudLookAhead'); if (la) la.value = conditions.cloudCover.lookAhead || 6;
+                    const lau = modal?.querySelector('#condCloudLookAheadUnit'); if (lau) lau.value = conditions.cloudCover.lookAheadUnit || 'hours';
                 }
                 if (conditions.forecastPrice) {
-                    document.getElementById('condForecastEnabled').checked = conditions.forecastPrice.enabled || false;
-                    document.getElementById('condForecastType').value = conditions.forecastPrice.type || 'feedIn';
-                    document.getElementById('condForecastCheck').value = conditions.forecastPrice.checkType || 'average';
-                    document.getElementById('condForecastOp').value = conditions.forecastPrice.operator || '>';
-                    document.getElementById('condForecastVal').value = conditions.forecastPrice.value || 0;
-                    document.getElementById('condForecastLookAhead').value = conditions.forecastPrice.lookAhead || 30;
-                    document.getElementById('condForecastLookAheadUnit').value = conditions.forecastPrice.lookAheadUnit || 'minutes';
+                    const el = modal?.querySelector('#condForecastEnabled'); if (el) el.checked = conditions.forecastPrice.enabled || false;
+                    const tp = modal?.querySelector('#condForecastType'); if (tp) tp.value = conditions.forecastPrice.type || 'feedIn';
+                    const chk = modal?.querySelector('#condForecastCheck'); if (chk) chk.value = conditions.forecastPrice.checkType || 'average';
+                    const op = modal?.querySelector('#condForecastOp'); if (op) op.value = conditions.forecastPrice.operator || '>';
+                    const val = modal?.querySelector('#condForecastVal'); if (val) val.value = conditions.forecastPrice.value || 0;
+                    const la = modal?.querySelector('#condForecastLookAhead'); if (la) la.value = conditions.forecastPrice.lookAhead || 30;
+                    const lau = modal?.querySelector('#condForecastLookAheadUnit'); if (lau) lau.value = conditions.forecastPrice.lookAheadUnit || 'minutes';
                     updateForecastLookAheadRange();
                 }
                 const timeCondition = conditions.time || conditions.timeWindow;
-                // Use querySelector scoped to the addRuleModal to avoid conflicts with the old ruleModal
-                const modal = document.getElementById('addRuleModal');
                 if (timeCondition && modal) {
                     const timeEnabledEl = modal.querySelector('#condTimeEnabled');
                     const timeStartEl = modal.querySelector('#condTimeStart');
@@ -5847,7 +5848,7 @@
                 document.getElementById('newRuleMaxSoc').value = action.maxSoc || 100;
                 
                 // Change button text
-                const createBtn = document.querySelector('#addRuleModal button[onclick="createBackendRule()"]');
+                const createBtn = modal?.querySelector('button[onclick="createBackendRule()"]');
                 if (createBtn) createBtn.textContent = 'Save Changes';
             } catch (e) {
                 alert('Error loading rule: ' + e.message);
