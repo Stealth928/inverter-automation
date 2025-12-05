@@ -1339,15 +1339,20 @@
                 const endDate = dates.endDate.toISOString().split('T')[0];
 
                 status.textContent = `⏳ Fetching prices for ${dates.rangeDays} days at ${resolution}-minute resolution...`;
+                console.log('[Prices] Request details:', { siteId, startDate, endDate, resolution });
 
                 // Fetch historical prices
                 const pricesResp = await apiClient.getAmberHistoricalPrices(siteId, startDate, endDate, resolution);
                 
+                console.log('[Prices] Response from API:', pricesResp);
+                
                 if (pricesResp.errno && pricesResp.errno !== 0) {
-                    throw new Error(pricesResp.error || 'Failed to fetch prices');
+                    throw new Error(pricesResp.error || `API Error ${pricesResp.errno}`);
                 }
 
                 const prices = Array.isArray(pricesResp) ? pricesResp : pricesResp.result || [];
+                console.log('[Prices] Parsed prices array:', { count: prices.length, sample: prices.slice(0, 2) });
+                
                 if (prices.length === 0) {
                     throw new Error('No price data available for this date range');
                 }
@@ -1373,6 +1378,12 @@
         }
 
         function renderPriceStatistics(prices) {
+            console.log('[Prices] renderPriceStatistics called with', prices.length, 'prices');
+            
+            // Log unique channel types to debug
+            const uniqueChannels = [...new Set(prices.map(p => p.channelType))];
+            console.log('[Prices] Unique channel types:', uniqueChannels);
+            
             // Separate buy and feed-in prices
             const buyPrices = prices
                 .filter(p => p.channelType === 'general')
@@ -1384,8 +1395,10 @@
                 .map(p => -Math.round(p.perKwh)) // Convert to display format (negative = you earn)
                 .filter(v => typeof v === 'number');
 
+            console.log('[Prices] Separated data:', { buyCount: buyPrices.length, feedCount: feedPrices.length });
+
             if (buyPrices.length === 0 || feedPrices.length === 0) {
-                console.warn('[Prices] Insufficient data for statistics');
+                console.warn('[Prices] Insufficient data for statistics - buy:', buyPrices.length, 'feed:', feedPrices.length);
                 return;
             }
 
@@ -1408,12 +1421,17 @@
             document.getElementById('statFeedMax').textContent = calc.feedMax.toFixed(1);
 
             document.getElementById('pricesStats').style.display = 'block';
+            console.log('[Prices] Statistics rendered successfully');
         }
 
         function renderAmberHistoricalChart(prices) {
+            console.log('[Prices] renderAmberHistoricalChart called with', prices.length, 'prices');
+            
             // Separate data by channel type
             const generalPrices = prices.filter(p => p.channelType === 'general');
             const feedinPrices = prices.filter(p => p.channelType === 'feedIn');
+
+            console.log('[Prices] Chart data - general:', generalPrices.length, 'feedIn:', feedinPrices.length);
 
             // Create common timestamps for both datasets
             const timestamps = generalPrices.map(p => {
@@ -1428,6 +1446,8 @@
             // Extract price data
             const buyData = generalPrices.map(p => p.perKwh);
             const feedData = feedinPrices.map(p => -Math.round(p.perKwh)); // Display as positive
+
+            console.log('[Prices] Price data - buy samples:', buyData.slice(0, 3), 'feed samples:', feedData.slice(0, 3));
 
             // Get canvas element
             const canvas = document.getElementById('amberHistoricalChart');
