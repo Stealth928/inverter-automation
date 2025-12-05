@@ -143,11 +143,20 @@
             border-radius: 6px;
             font-size: 14px;
             font-family: 'Courier New', monospace;
+            transition: border-color 0.2s;
         }
         .setting-input input:focus {
             outline: none;
             border-color: #58a6ff;
             box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+        }
+        .setting-input input[style*="border-color: #f85149"] {
+            background-color: rgba(248, 81, 73, 0.1);
+            border-color: #f85149 !important;
+        }
+        .setting-input input[style*="border-color: #f85149"]:focus {
+            box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.2);
+        }
         }
         .setting-input .unit {
             color: #8b949e;
@@ -1229,9 +1238,57 @@
                     }
                 };
 
-                // Validate
-                if (newConfig.automation.intervalMs < 10000) {
-                    showMessage('warning', 'Automation interval must be at least 10 seconds');
+                // Comprehensive validation
+                const validationErrors = [];
+                
+                // Automation settings validation
+                if (newConfig.automation.intervalMs < 10000 || newConfig.automation.intervalMs > 300000) {
+                    validationErrors.push('Automation cycle: must be 10s-5m (10,000-300,000ms)');
+                }
+                if (newConfig.automation.startDelayMs < 0 || newConfig.automation.startDelayMs > 30000) {
+                    validationErrors.push('Startup delay: must be 0-30s (0-30,000ms)');
+                }
+                if (newConfig.automation.gatherDataTimeoutMs < 5000 || newConfig.automation.gatherDataTimeoutMs > 30000) {
+                    validationErrors.push('Data timeout: must be 5-30s (5,000-30,000ms)');
+                }
+                
+                // Cache settings validation
+                if (newConfig.cache.amber < 30000 || newConfig.cache.amber > 300000) {
+                    validationErrors.push('Amber cache: must be 30s-5m (30,000-300,000ms)');
+                }
+                if (newConfig.cache.inverter < 60000 || newConfig.cache.inverter > 600000) {
+                    validationErrors.push('Inverter cache: must be 1m-10m (60,000-600,000ms) - respect API rate limits');
+                }
+                if (newConfig.cache.weather < 300000 || newConfig.cache.weather > 3600000) {
+                    validationErrors.push('Weather cache: must be 5m-1h (300,000-3,600,000ms)');
+                }
+                
+                // Defaults validation
+                if (newConfig.defaults.cooldownMinutes < 0 || newConfig.defaults.cooldownMinutes > 60) {
+                    validationErrors.push('Default cooldown: must be 0-60 minutes');
+                }
+                if (newConfig.defaults.durationMinutes < 5 || newConfig.defaults.durationMinutes > 120) {
+                    validationErrors.push('Default duration: must be 5-120 minutes');
+                }
+                if (newConfig.defaults.fdPwr < 1000 || newConfig.defaults.fdPwr > 10000) {
+                    validationErrors.push('Force discharge power: must be 1000-10000 watts');
+                }
+                
+                // API retry validation
+                if (newConfig.api.retryCount < 0 || newConfig.api.retryCount > 10) {
+                    validationErrors.push('Retry count: must be 0-10 attempts');
+                }
+                if (newConfig.api.retryDelayMs < 100 || newConfig.api.retryDelayMs > 10000) {
+                    validationErrors.push('Retry delay: must be 100-10000ms (0.1-10 seconds)');
+                }
+                
+                // Preferences validation
+                if (newConfig.preferences.forecastDays < 1 || newConfig.preferences.forecastDays > 16) {
+                    validationErrors.push('Forecast days: must be 1-16 days');
+                }
+                
+                if (validationErrors.length > 0) {
+                    showMessage('warning', 'Validation errors:\n• ' + validationErrors.join('\n• '));
                     return;
                 }
 
@@ -1380,6 +1437,84 @@
             }
         }
 
+        // Define validation rules for each input
+        const validationRules = {
+            'automation_intervalMs': {
+                min: 10000, max: 300000,
+                errorMsg: 'Automation cycle must be 10s-5m (10,000-300,000ms)'
+            },
+            'automation_startDelayMs': {
+                min: 0, max: 30000,
+                errorMsg: 'Startup delay must be 0-30s (0-30,000ms)'
+            },
+            'automation_gatherDataTimeoutMs': {
+                min: 5000, max: 30000,
+                errorMsg: 'Data timeout must be 5-30s (5,000-30,000ms)'
+            },
+            'cache_amber': {
+                min: 30000, max: 300000,
+                errorMsg: 'Amber cache must be 30s-5m (30,000-300,000ms)'
+            },
+            'cache_inverter': {
+                min: 60000, max: 600000,
+                errorMsg: 'Inverter cache must be 1m-10m (60,000-600,000ms) - respect API rate limits'
+            },
+            'cache_weather': {
+                min: 300000, max: 3600000,
+                errorMsg: 'Weather cache must be 5m-1h (300,000-3,600,000ms)'
+            },
+            'defaults_cooldownMinutes': {
+                min: 0, max: 60,
+                errorMsg: 'Cooldown must be 0-60 minutes'
+            },
+            'defaults_durationMinutes': {
+                min: 5, max: 120,
+                errorMsg: 'Duration must be 5-120 minutes'
+            },
+            'defaults_fdPwr': {
+                min: 1000, max: 10000,
+                errorMsg: 'Force discharge power must be 1000-10000 watts'
+            },
+            'api_retryCount': {
+                min: 0, max: 10,
+                errorMsg: 'Retry count must be 0-10 attempts'
+            },
+            'api_retryDelayMs': {
+                min: 100, max: 10000,
+                errorMsg: 'Retry delay must be 100-10000ms (0.1-10 seconds)'
+            },
+            'preferences_forecastDays': {
+                min: 1, max: 16,
+                errorMsg: 'Forecast days must be 1-16 days'
+            }
+        };
+
+        // Validate a numeric input against its rules
+        function validateInput(input) {
+            const id = input.id;
+            const rules = validationRules[id];
+            
+            if (!rules) return true; // No validation rules defined
+            
+            const value = parseFloat(input.value);
+            if (isNaN(value)) {
+                input.style.borderColor = '#f85149';
+                input.title = 'Invalid number';
+                return false;
+            }
+            
+            if (value < rules.min || value > rules.max) {
+                input.style.borderColor = '#f85149';
+                input.title = rules.errorMsg;
+                return false;
+            }
+            
+            // Valid
+            input.style.borderColor = '';
+            input.title = '';
+            return true;
+        }
+
         // Add change listeners to all inputs
         document.addEventListener('DOMContentLoaded', () => {
             console.log('DOM Content Loaded - initializing settings page');
@@ -1387,9 +1522,15 @@
             // Add change listeners for status and time displays
             document.querySelectorAll('input[type="number"]').forEach(input => {
                 input.addEventListener('input', () => {
+                    validateInput(input);
                     updateStatus();
                     updateTimeDisplay(input.id);
                 });
+                input.addEventListener('blur', () => {
+                    validateInput(input);
+                });
+                // Validate on page load
+                validateInput(input);
             });
             
             // Add change listener for select
