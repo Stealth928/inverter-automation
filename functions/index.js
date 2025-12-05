@@ -686,6 +686,8 @@ async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
     clearTimeout(timeout);
     const text = await resp.text();
     
+    console.log(`[Amber] ${path} - HTTP ${resp.status}, Content-Type: ${resp.headers.get('content-type')}, Length: ${text.length}`);
+    
     // Handle rate limiting (429 Too Many Requests)
     if (resp.status === 429) {
       const retryAfterHeader = resp.headers.get('retry-after');
@@ -699,7 +701,7 @@ async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
     
     // Handle other HTTP errors
     if (!resp.ok) {
-      console.warn(`[Amber] HTTP ${resp.status}: ${text.substring(0, 200)}`);
+      console.warn(`[Amber] HTTP ${resp.status}: ${text.substring(0, 500)}`);
       return { errno: resp.status, error: `HTTP ${resp.status}: ${resp.statusText}` };
     }
     
@@ -709,10 +711,12 @@ async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
     }
     
     try {
-      return JSON.parse(text);
+      const json = JSON.parse(text);
+      console.log(`[Amber] Successfully parsed JSON response from ${path}`);
+      return json;
     } catch (e) {
-      console.warn('[Amber] Failed to parse response as JSON:', e.message);
-      return { errno: 500, error: 'Invalid JSON response from Amber API' };
+      console.warn(`[Amber] Failed to parse JSON from ${path}:`, e.message, 'Response preview:', text.substring(0, 500));
+      return { errno: 500, error: 'Invalid JSON response from Amber API', details: text.substring(0, 200) };
     }
   } catch (error) {
     if (error.name === 'AbortError') {
