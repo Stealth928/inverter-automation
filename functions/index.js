@@ -830,13 +830,12 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
       for (const chunk of chunks) {
         console.log(`[Cache] Fetching chunk: ${chunk.start} to ${chunk.end}`);
         
-        const q = {
+        // Call Amber API directly (NOT through caching to avoid recursion)
+        const result = await callAmberAPIDirect(`/sites/${encodeURIComponent(siteId)}/prices`, {
           startDate: chunk.start,
           endDate: chunk.end,
           resolution: resolution || 30
-        };
-        
-        const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices`, q, userConfig, userId);
+        }, userConfig, userId);
         
         if (result.errno && result.errno !== 0) {
           console.warn(`[Cache] API error for chunk ${chunk.start} to ${chunk.end}:`, result.error);
@@ -874,6 +873,13 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
   console.log(`[Cache] Returning ${finalPrices.length} total prices from cache + API`);
   
   return { errno: 0, result: finalPrices };
+}
+
+/**
+ * Direct API call without caching (used internally by caching layer)
+ */
+async function callAmberAPIDirect(path, queryParams = {}, userConfig, userId = null) {
+  return callAmberAPI(path, queryParams, userConfig, userId);
 }
 
 async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
