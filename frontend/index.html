@@ -2860,8 +2860,16 @@
             const WEATHER_TTL = 30 * 60 * 1000;
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
             if (cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL) {
-                console.log('[Cache] Weather cache is fresh, skipping API call');
-                return; // Use cached data
+                console.log('[Cache] Weather cache is fresh, loading from cache');
+                // Load cached weather into UI
+                try {
+                    const wxCache = JSON.parse(localStorage.getItem('cachedWeather') || '{}');
+                    if (wxCache.solarRadiation !== undefined || wxCache.cloudCover !== undefined) {
+                        renderWeatherCard(wxCache);
+                        setLastUpdated('weather');
+                        return;
+                    }
+                } catch (e) { console.error('[Cache] Error loading weather cache:', e); }
             }
             
             const card = document.getElementById('weatherCard');
@@ -3509,8 +3517,20 @@
             const AMBER_TTL = 60 * 1000;
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
             if (cacheState.amberTime && (Date.now() - cacheState.amberTime) < AMBER_TTL) {
-                console.log('[Cache] Amber cache is fresh, skipping API call');
-                return; // Use cached data
+                console.log('[Cache] Amber cache is fresh, loading from cache');
+                // Load cached prices and render
+                try {
+                    const priceCache = JSON.parse(localStorage.getItem('cachedPrices') || '{}');
+                    if (priceCache.general || priceCache.feedIn || priceCache.forecastHigh) {
+                        // Build prices array from cache for rendering
+                        const cachedPrices = [];
+                        if (priceCache.general) cachedPrices.push({...priceCache.general, channelType: 'general', type: 'CurrentInterval'});
+                        if (priceCache.feedIn) cachedPrices.push({...priceCache.feedIn, channelType: 'feedIn', type: 'CurrentInterval'});
+                        renderAmberCard(cachedPrices);
+                        setLastUpdated('amber');
+                        return;
+                    }
+                } catch (e) { console.error('[Cache] Error loading Amber cache:', e); }
             }
             
             const card = document.getElementById('amberCard');

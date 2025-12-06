@@ -965,7 +965,9 @@
                 
                 if (!needsInverter && !needsAmber && !needsWeather) {
                     log('info', '✨ All data fresh from cache (< 30 min old)');
-                    console.log('[Cache] All caches are fresh, skipping API calls');
+                    console.log('[Cache] All caches are fresh, loading from cache');
+                    // Load cached data into UI
+                    loadCachedDataIntoUI();
                     return;
                 }
                 
@@ -976,6 +978,32 @@
             } catch (e) {
                 log('error', `❌ Error: ${e.message}`);
                 console.error('fetchRealConditions error:', e);
+            }
+        }
+        
+        function loadCachedDataIntoUI() {
+            try {
+                // Load inverter data
+                const invCache = JSON.parse(localStorage.getItem('cachedInverter') || '{}');
+                if (invCache.SoC !== undefined) document.getElementById('simSoC').value = invCache.SoC;
+                if (invCache.batTemperature !== undefined) document.getElementById('simBatteryTemp').value = invCache.batTemperature.toFixed(1);
+                if (invCache.ambientTemperation !== undefined) document.getElementById('simAmbientTemp').value = invCache.ambientTemperation.toFixed(1);
+                if (invCache.invTemperation !== undefined) document.getElementById('simInverterTemp').value = invCache.invTemperation.toFixed(1);
+                
+                // Load Amber prices
+                const priceCache = JSON.parse(localStorage.getItem('cachedPrices') || '{}');
+                if (priceCache.general?.perKwh !== undefined) document.getElementById('simBuy').value = priceCache.general.perKwh.toFixed(1);
+                if (priceCache.feedIn?.perKwh !== undefined) document.getElementById('simFeedIn').value = (-priceCache.feedIn.perKwh).toFixed(1);
+                if (priceCache.forecastHigh !== undefined) document.getElementById('simForecastHigh').value = priceCache.forecastHigh.toFixed(1);
+                
+                // Load weather
+                const wxCache = JSON.parse(localStorage.getItem('cachedWeather') || '{}');
+                if (wxCache.solarRadiation !== undefined) document.getElementById('simSolarRadiation').value = Math.round(wxCache.solarRadiation);
+                if (wxCache.cloudCover !== undefined) document.getElementById('simCloudCover').value = Math.round(wxCache.cloudCover);
+                
+                log('success', '✅ Loaded cached values');
+            } catch (e) {
+                console.error('[Cache] Error loading cached data:', e);
             }
         }
         
