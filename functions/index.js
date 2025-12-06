@@ -605,7 +605,11 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, u
   
   try {
     const timestamp = Date.now();
-    const signature = generateFoxESSSignature(apiPath, token, timestamp);
+    
+    // Split apiPath into base path and query string for signature calculation
+    // Signature should be calculated on the path WITHOUT query parameters
+    const [basePath, queryString] = apiPath.split('?');
+    const signature = generateFoxESSSignature(basePath, token, timestamp);
     
     const url = new URL(`${config.foxess.baseUrl}${apiPath}`);
     
@@ -1513,20 +1517,8 @@ app.post('/api/automation/cycle', async (req, res) => {
       }
     }
     
-    // Fetch Weather data
-    let weatherData = null;
-    try {
-      const place = userConfig?.location || 'Sydney';
-      weatherData = await callWeatherAPI(place, 1, userId);
-      if (weatherData?.current_weather) {
-        console.log(`[Automation] Weather data fetched: ${weatherData.current_weather.temperature}°C, code=${weatherData.current_weather.weathercode}`);
-      }
-    } catch (e) {
-      console.warn('[Automation] Failed to get weather data:', e.message);
-    }
-    
     // Build cache object for rule evaluation
-    const cache = { amber: amberData, weather: weatherData };
+    const cache = { amber: amberData, weather: null };
     
     // Evaluate rules (sorted by priority - lower number = higher priority)
     const enabledRules = Object.entries(rules).filter(([_, rule]) => rule.enabled);
@@ -1535,6 +1527,29 @@ app.post('/api/automation/cycle', async (req, res) => {
     if (enabledRules.length === 0) {
       await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
       return res.json({ errno: 0, result: { skipped: true, reason: 'No rules enabled', totalRules } });
+    }
+    
+    // Check if any enabled rule uses weather-dependent conditions (solar radiation, cloud cover, UV)
+    const needsWeatherData = enabledRules.some(([_, rule]) => {
+      const cond = rule.conditions || {};
+      return cond.solarRadiation?.enabled || cond.cloudCover?.enabled || cond.uvIndex?.enabled;
+    });
+    
+    // Only fetch weather if a rule actually needs it
+    let weatherData = null;
+    if (needsWeatherData) {
+      try {
+        const place = userConfig?.location || 'Sydney';
+        weatherData = await callWeatherAPI(place, 1, userId);
+        if (weatherData?.current_weather) {
+          console.log(`[Automation] Weather data fetched: ${weatherData.current_weather.temperature}°C, code=${weatherData.current_weather.weathercode}`);
+        }
+        cache.weather = weatherData;
+      } catch (e) {
+        console.warn('[Automation] Failed to get weather data:', e.message);
+      }
+    } else {
+      console.log(`[Automation] Skipping weather fetch - no rules use weather conditions`);
     }
     
     const sortedRules = enabledRules.sort((a, b) => (a[1].priority || 99) - (b[1].priority || 99));
@@ -2177,33 +2192,26 @@ app.get('/api/inverter/report', authenticateUser, async (req, res) => {
     const sn = req.query.sn || userConfig?.deviceSn;
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     
-    const dimension = req.query.dimension || 'day'; // day, month, year, hour
+    const dimension = req.query.dimension || 'month';
     const year = parseInt(req.query.year) || new Date().getFullYear();
     const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
-    const day = parseInt(req.query.day) || new Date().getDate();
     
-    // Build request body based on dimension
+    // FoxESS API dimensions:
+    // 'year' = monthly data for the year (needs: year)
+    // 'month' = daily data for the month (needs: year, month)
     const body = {
       sn,
       dimension,
+      year,
       variables: ['generation', 'feedin', 'gridConsumption', 'chargeEnergyToTal', 'dischargeEnergyToTal']
     };
     
-    // Add year for month/year dimensions
-    if (dimension === 'month' || dimension === 'year') {
-      body.year = year;
-    }
-    // Add month and year for day dimension
-    if (dimension === 'day') {
+    // Add month for 'month' dimension
+    if (dimension === 'month') {
       body.month = month;
-      body.year = year;
     }
-    // Add month, day, year for hour dimension
-    if (dimension === 'hour') {
-      body.month = month;
-      body.day = day;
-      body.year = year;
-    }
+    
+    console.log(`[API] /api/inverter/report - dimension: ${dimension}, body: ${JSON.stringify(body)}`);
     
     const result = await callFoxESSAPI('/op/v0/device/report/query', 'POST', body, userConfig, req.user.uid);
     res.json(result);

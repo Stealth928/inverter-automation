@@ -21,6 +21,21 @@
         }
         .container { max-width: 1600px; margin: 0 auto; }
         
+        h2 {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 0;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        
+        h2 .icon {
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+        
         header {
             display: flex;
             justify-content: space-between;
@@ -58,6 +73,8 @@
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
             gap: 16px;
+            position: relative;
+            z-index: 1;
         }
         @media (max-width: 1200px) {
             .grid { grid-template-columns: 1fr 1fr; }
@@ -83,79 +100,108 @@
         /* Mock Data Section */
         .sim-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+        @media (min-width: 600px) {
+            .sim-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        @media (min-width: 900px) {
+            .sim-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
         .sim-field label {
             display: block;
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             color: var(--text-secondary);
-            margin-bottom: 4px;
+            margin-bottom: 6px;
+            font-weight: 500;
         }
         .sim-field input {
             width: 100%;
+            margin-bottom: 4px;
         }
         .sim-field .hint {
-            font-size: 0.65rem;
+            font-size: 0.7rem;
             color: var(--text-secondary);
-            margin-top: 2px;
+            margin-top: 4px;
+            font-style: italic;
         }
 
         /* Presets */
         .presets {
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 12px;
+            gap: 10px;
+            margin-top: 18px;
+            margin-bottom: 18px;
+            align-items: center;
         }
         .presets button {
-            padding: 6px 10px;
-            font-size: 0.75rem;
+            padding: 8px 14px;
+            font-size: 0.8rem;
+            font-weight: 500;
         }
 
         /* Rules Display */
         .rule-card {
             background: var(--bg-secondary);
             border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 10px;
-            border-left: 3px solid var(--accent-blue);
+            padding: 16px;
+            margin-bottom: 14px;
+            border: 1px solid rgba(48, 54, 61, 0.6);
+            border-left: 4px solid #58a6ff;
         }
         .rule-card.disabled { 
-            opacity: 0.5; 
-            border-left-color: var(--text-secondary);
+            opacity: 0.6; 
+            border-left-color: #6e7681;
         }
         .rule-card.triggered {
-            border-left-color: var(--accent);
+            border-left-color: #7ee787;
             background: rgba(126, 231, 135, 0.1);
         }
         .rule-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 8px;
+            margin-bottom: 14px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.4);
         }
-        .rule-name { font-weight: 600; font-size: 0.9rem; }
+        .rule-name { font-weight: 600; font-size: 1rem; display: flex; align-items: center; gap: 10px; }
         .rule-status {
-            padding: 3px 8px;
-            border-radius: 10px;
+            padding: 4px 12px;
+            border-radius: 12px;
             font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
         }
-        .rule-status.enabled { background: var(--accent); color: #000; }
-        .rule-status.disabled { background: var(--text-secondary); color: #000; }
+        .rule-status.enabled { background: #1f6feb; color: #fff; }
+        .rule-status.disabled { background: #6e7681; color: #fff; }
         .rule-params {
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
-            font-size: 0.8rem;
+            gap: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.3);
         }
         .rule-param {
-            background: var(--bg-card);
-            padding: 4px 8px;
+            background: rgba(88, 166, 255, 0.12);
+            padding: 6px 10px;
             border-radius: 4px;
+            border: 1px solid #58a6ff;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
-        .rule-param .label { color: var(--text-secondary); font-size: 0.7rem; }
-        .rule-param .value { font-weight: 600; color: var(--accent); }
+        .rule-param .label { color: #58a6ff; font-weight: 600; font-size: 0.75rem; }
+        .rule-param .value { font-weight: 600; color: #79c0ff; font-size: 0.85rem; }
         
         .cond-badge {
             display: inline-block;
@@ -248,11 +294,40 @@
         .result-title {
             font-weight: 600;
             font-size: 1rem;
-            margin-bottom: 8px;
+            margin-bottom: 14px;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.3);
         }
+
+        /* Condition Highlight Styles */
+        .condition-met {
+            background: rgba(126, 231, 135, 0.15);
+            border-left: 3px solid #7ee787;
+        }
+        .condition-not-met {
+            background: rgba(248, 81, 73, 0.15);
+            border-left: 3px solid #f85149;
+        }
+        .condition-blocked {
+            background: rgba(240, 136, 62, 0.15);
+            border-left: 3px solid #f0883e;
+        }
+
+        /* Rule Card Highlighting */
+        .rule-triggered-card {
+            background: rgba(126, 231, 135, 0.1);
+            border: 2px solid #7ee787;
+        }
+        .rule-blocked-card {
+            background: rgba(240, 136, 62, 0.1);
+            border: 2px solid #f0883e;
+        }
+        .rule-not-met-card {
+            background: rgba(248, 81, 73, 0.1);
+            border: 2px solid #f85149;
 
         /* Log Output */
         .log-area {
@@ -278,9 +353,11 @@
         /* Run Button */
         .run-btn {
             width: 100%;
-            padding: 14px;
-            font-size: 1rem;
-            margin-top: 12px;
+            padding: 16px;
+            font-size: 1.1rem;
+            margin-top: 20px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
         }
 
         .full-width { grid-column: 1 / -1; }
@@ -290,34 +367,35 @@
             background: rgba(88, 166, 255, 0.1);
             border: 1px solid var(--accent-blue);
             border-radius: 8px;
-            padding: 10px 14px;
-            margin-bottom: 16px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
             font-size: 0.85rem;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            line-height: 1.5;
         }
-        .info-banner .icon { font-size: 1.2rem; }
+        .info-banner .icon { font-size: 1.3rem; flex-shrink: 0; }
 
-        /* Modal */
+        /* Modal - all positioning handled via JavaScript inline styles */
         .modal-overlay {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.85);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10000;
+            display: none;
         }
         .modal-content {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-            width: 95%;
-            max-width: 700px;
+            background: linear-gradient(145deg, #21262d, #161b22);
+            border: 1px solid rgba(48, 54, 61, 0.8);
+            border-radius: 16px;
+            width: calc(100vw - 80px) !important;
+            max-width: 1200px !important;
             max-height: 90vh;
             overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            padding: 24px;
+        }
+
+        /* Prevent body scroll while modal open */
+        body.modal-open {
+            overflow: hidden;
         }
         .modal-header {
             display: flex;
@@ -424,12 +502,22 @@
 
         .rule-actions {
             display: flex;
-            gap: 4px;
-            margin-top: 8px;
+            gap: 6px;
+            margin-top: 10px;
         }
         .rule-actions button {
-            padding: 4px 8px;
+            padding: 5px 10px;
             font-size: 0.7rem;
+            border-radius: 4px;
+            background: rgba(88, 166, 255, 0.15);
+            border: 1px solid #58a6ff;
+            color: #79c0ff;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .rule-actions button:hover {
+            background: rgba(88, 166, 255, 0.25);
+            border-color: #79c0ff;
         }
 
         @keyframes spin {
@@ -497,33 +585,52 @@
         <div class="grid">
             <!-- Column 1: Mock Data Input -->
             <div class="card">
-                <h2><span class="icon">📊</span> Simulated Conditions</h2>
+                <h2 style="text-align: center;">Simulated Conditions</h2>
                 <div class="sim-grid">
                     <div class="sim-field">
-                        <label>Feed-in Price (¢/kWh)</label>
+                        <label>💰 Feed-in Price (¢/kWh)</label>
                         <input type="number" id="simFeedIn" value="25" min="-100" max="500" step="0.5">
                         <div class="hint">What you earn exporting</div>
                     </div>
                     <div class="sim-field">
-                        <label>Buy Price (¢/kWh)</label>
+                        <label>📥 Buy Price (¢/kWh)</label>
                         <input type="number" id="simBuy" value="30" min="-100" max="500" step="0.5">
                         <div class="hint">Cost to import</div>
                     </div>
                     <div class="sim-field">
-                        <label>Battery SoC (%)</label>
+                        <label>🔋 Battery SoC (%)</label>
                         <input type="number" id="simSoC" value="75" min="0" max="100">
                     </div>
                     <div class="sim-field">
-                        <label>Battery Temp (°C)</label>
+                        <label>🌡️ Battery Temp (°C)</label>
                         <input type="number" id="simBatteryTemp" value="28" min="-40" max="80" step="0.5">
                     </div>
                     <div class="sim-field">
-                        <label>Ambient Temp (°C)</label>
+                        <label>🌍 Ambient Temp (°C)</label>
                         <input type="number" id="simAmbientTemp" value="22" min="-40" max="80" step="0.5">
                     </div>
                     <div class="sim-field">
-                        <label>Simulated Time</label>
+                        <label>⚙️ Inverter Temp (°C)</label>
+                        <input type="number" id="simInverterTemp" value="35" min="-40" max="80" step="0.5">
+                    </div>
+                    <div class="sim-field">
+                        <label>🕐 Simulated Time</label>
                         <input type="time" id="simTime" value="">
+                    </div>
+                    <div class="sim-field">
+                        <label>☀️ Solar Radiation (W/m²)</label>
+                        <input type="number" id="simSolarRadiation" value="500" min="0" max="1500" step="10">
+                        <div class="hint">Current/forecast sunlight</div>
+                    </div>
+                    <div class="sim-field">
+                        <label>☁️ Cloud Cover (%)</label>
+                        <input type="number" id="simCloudCover" value="25" min="0" max="100">
+                        <div class="hint">0=clear, 100=overcast</div>
+                    </div>
+                    <div class="sim-field">
+                        <label>📊 Forecast High Price (¢)</label>
+                        <input type="number" id="simForecastHigh" value="50" min="-100" max="500" step="0.5">
+                        <div class="hint">Max upcoming price</div>
                     </div>
                 </div>
                 
@@ -534,8 +641,13 @@
                     <button class="btn-secondary" onclick="loadPreset('spike')">Price Spike ⚡</button>
                     <button class="btn-secondary" onclick="loadPreset('lowSoc')">Low Battery 🔋</button>
                     <button class="btn-secondary" onclick="loadPreset('hotBattery')">Hot Battery 🔥</button>
+                    <button class="btn-secondary" onclick="loadPreset('cloudyDay')">Cloudy Day ☁️</button>
+                    <button class="btn-secondary" onclick="loadPreset('sunnyPeak')">Sunny Peak ☀️</button>
                 </div>
                 
+                <button class="btn-secondary run-btn" onclick="fetchRealConditions(); return false;" style="margin-bottom:10px;background:rgba(88,166,255,0.15);border-color:var(--accent-blue)">
+                    📡 Fetch Real Conditions
+                </button>
                 <button class="btn-primary run-btn" onclick="runTest()">
                     🚀 Run Automation Test
                 </button>
@@ -544,10 +656,11 @@
             <!-- Column 2: Rules -->
             <div class="card">
                 <h2>
-                    <span class="icon">⚙️</span> Automation Rules
-                    <button class="btn-blue" style="margin-left:auto;padding:4px 10px;font-size:0.75rem" onclick="showAddRuleModal()">➕ Add Rule</button>
+                    <span class="icon">⚙️</span>
+                    <span>Automation Rules</span>
+                    <button class="btn btn-primary btn-sm" onclick="showAddRuleModal()" style="margin-left:auto;padding:8px 16px;font-size:0.85rem">➕ Add Rule</button>
                 </h2>
-                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:8px;padding:4px 8px;background:rgba(88,166,255,0.1);border-radius:4px">
+                <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:14px;margin-bottom:16px;padding:8px 12px;background:rgba(88,166,255,0.1);border-radius:4px;border-left:3px solid #58a6ff">
                     📋 Sorted by priority • Lower number = Higher priority • First match wins
                 </div>
                 <div id="rulesDisplay">
@@ -612,6 +725,13 @@
                     <!-- FAQ items are rendered from the `automationFaq` config in the script. -->
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Static Rule Modal (populated dynamically, shown/hidden via class) -->
+    <div class="modal-overlay" id="ruleModal" onclick="if(event.target===this) closeRuleModal()">
+        <div class="modal-content" id="ruleModalContent">
+            <!-- Content populated by showAddRuleModal() -->
         </div>
     </div>
 
@@ -716,14 +836,49 @@
             {
                 question: 'What conditions can I use?',
                 answer: `<ul>
-                        <li><code>feedInPrice</code> – Amber feed-in price (¢/kWh) with min/max</li>
-                        <li><code>buyPrice</code> – Amber import price (¢/kWh) with min/max</li>
-                        <li><code>batterySoC</code> – Battery state of charge (%) with min/max</li>
-                        <li><code>batteryTemp</code> – Battery temperature (°C) with min/max</li>
-                        <li><code>ambientTemp</code> – Weather/ambient temperature (°C) with min/max</li>
+                        <li><code>feedInPrice</code> – Amber feed-in price (¢/kWh) with operators &gt;, &lt;, or <em>between</em></li>
+                        <li><code>buyPrice</code> – Amber import price (¢/kWh) with operators &gt;, &lt;, or <em>between</em></li>
+                        <li><code>batterySoC</code> – Battery state of charge (%) with operators &gt;, &lt;, or <em>between</em></li>
+                        <li><code>temperature</code> – Battery, Ambient, or Inverter temperature (°C)</li>
+                        <li><code>solarRadiation</code> – Forecasted solar radiation (W/m²) - avg/min/max</li>
+                        <li><code>cloudCover</code> – Forecasted cloud cover (%) - avg/min/max</li>
+                        <li><code>forecastPrice</code> – Upcoming Amber prices with lookAhead period</li>
                         <li><code>timeWindow</code> – Time of day range (e.g., 14:00-18:00)</li>
                     </ul>
-                    All specified conditions must be met (AND logic) for the rule to trigger.`
+                    <div class="faq-highlight">💡 All specified conditions must be met (AND logic) for the rule to trigger.</div>`
+            },
+            {
+                question: 'What are the weather-based conditions?',
+                answer: `<strong>Solar Radiation (☀️)</strong>
+                    <ul>
+                        <li>Measures expected sunlight intensity in W/m²</li>
+                        <li>High values (800+) = sunny day, great for solar generation</li>
+                        <li>Low values (&lt;200) = cloudy/overcast, limited solar</li>
+                        <li>Use to charge battery when solar production will be low</li>
+                    </ul>
+                    <strong>Cloud Cover (☁️)</strong>
+                    <ul>
+                        <li>Percentage of sky covered by clouds (0-100%)</li>
+                        <li>0% = clear sky, 100% = completely overcast</li>
+                        <li>Combine with solar radiation for weather-aware rules</li>
+                    </ul>
+                    <div class="faq-highlight">💡 <strong>Example:</strong> "If cloud cover &gt; 80% AND solar &lt; 150 W/m², charge from grid during cheap periods"</div>`
+            },
+            {
+                question: 'How does forecast price work?',
+                answer: `The <strong>Forecast Price</strong> condition checks upcoming Amber prices:
+                    <ul>
+                        <li><strong>Type:</strong> Feed-in (export) or Buy (import) prices</li>
+                        <li><strong>Check:</strong> Average, Min, Max, or Any value in the period</li>
+                        <li><strong>LookAhead:</strong> How far ahead to check (minutes/hours/days)</li>
+                    </ul>
+                    <strong>Use Cases:</strong>
+                    <ul>
+                        <li>Charge battery now if prices will spike in the next 2 hours</li>
+                        <li>Hold charge if high feed-in prices are coming</li>
+                        <li>Discharge before cheap import prices arrive</li>
+                    </ul>
+                    <div class="faq-highlight">💡 This lets you make proactive decisions based on upcoming market conditions rather than just reacting to current prices.</div>`
             }
         ];
 
@@ -752,11 +907,13 @@
 
         // Presets
         const presets = {
-            highFeedIn: { feedIn: 40, buy: 25, soc: 85, batteryTemp: 28, ambientTemp: 22 },
-            cheapBuy: { feedIn: 8, buy: 5, soc: 30, batteryTemp: 25, ambientTemp: 20 },
-            spike: { feedIn: 150, buy: 180, soc: 70, batteryTemp: 32, ambientTemp: 25 },
-            lowSoc: { feedIn: 15, buy: 35, soc: 18, batteryTemp: 26, ambientTemp: 22 },
-            hotBattery: { feedIn: 20, buy: 30, soc: 60, batteryTemp: 48, ambientTemp: 35 }
+            highFeedIn: { feedIn: 40, buy: 25, soc: 85, batteryTemp: 28, ambientTemp: 22, inverterTemp: 35, solarRadiation: 600, cloudCover: 20, forecastHigh: 50 },
+            cheapBuy: { feedIn: 8, buy: 5, soc: 30, batteryTemp: 25, ambientTemp: 20, inverterTemp: 32, solarRadiation: 300, cloudCover: 40, forecastHigh: 15 },
+            spike: { feedIn: 150, buy: 180, soc: 70, batteryTemp: 32, ambientTemp: 25, inverterTemp: 38, solarRadiation: 500, cloudCover: 30, forecastHigh: 200 },
+            lowSoc: { feedIn: 15, buy: 35, soc: 18, batteryTemp: 26, ambientTemp: 22, inverterTemp: 34, solarRadiation: 400, cloudCover: 35, forecastHigh: 40 },
+            hotBattery: { feedIn: 20, buy: 30, soc: 60, batteryTemp: 48, ambientTemp: 35, inverterTemp: 52, solarRadiation: 800, cloudCover: 10, forecastHigh: 35 },
+            cloudyDay: { feedIn: 5, buy: 25, soc: 45, batteryTemp: 22, ambientTemp: 18, inverterTemp: 28, solarRadiation: 80, cloudCover: 90, forecastHigh: 30 },
+            sunnyPeak: { feedIn: 35, buy: 20, soc: 90, batteryTemp: 30, ambientTemp: 28, inverterTemp: 40, solarRadiation: 1100, cloudCover: 5, forecastHigh: 45 }
         };
 
         function loadPreset(name) {
@@ -767,7 +924,291 @@
             document.getElementById('simSoC').value = p.soc;
             document.getElementById('simBatteryTemp').value = p.batteryTemp;
             document.getElementById('simAmbientTemp').value = p.ambientTemp;
+            document.getElementById('simInverterTemp').value = p.inverterTemp;
+            document.getElementById('simSolarRadiation').value = p.solarRadiation;
+            document.getElementById('simCloudCover').value = p.cloudCover;
+            document.getElementById('simForecastHigh').value = p.forecastHigh;
             log('info', `Loaded preset: ${name}`);
+        }
+
+        async function fetchRealConditions() {
+            console.log('[DEBUG] fetchRealConditions called');
+            log('info', '📦 Loading conditions from cache (may fetch live data if cache empty)...');
+            
+            try {
+                let updated = [];
+                let hasInverterCache = false;
+                let hasAmberCache = false;
+                let hasWeatherCache = false;
+                
+                // Try to get cached prices from localStorage
+                const cachedPrices = localStorage.getItem('cachedPrices');
+                if (cachedPrices) {
+                    try {
+                        const prices = JSON.parse(cachedPrices);
+                        if (prices.general?.perKwh !== undefined) {
+                            document.getElementById('simBuy').value = prices.general.perKwh.toFixed(1);
+                            updated.push('Buy price');
+                            hasAmberCache = true;
+                        }
+                        if (prices.feedIn?.perKwh !== undefined) {
+                            document.getElementById('simFeedIn').value = prices.feedIn.perKwh.toFixed(1);
+                            updated.push('Feed-in price');
+                            hasAmberCache = true;
+                        }
+                        if (prices.forecastHigh !== undefined) {
+                            document.getElementById('simForecastHigh').value = prices.forecastHigh.toFixed(1);
+                            updated.push('Forecast high');
+                            hasAmberCache = true;
+                        }
+                    } catch (e) { 
+                        log('warning', `Parse error on prices: ${e.message}`);
+                    }
+                }
+                
+                // Try to get cached inverter data from localStorage
+                const cachedInverter = localStorage.getItem('cachedInverter');
+                if (cachedInverter) {
+                    try {
+                        const inv = JSON.parse(cachedInverter);
+                        if (inv.SoC !== undefined) {
+                            document.getElementById('simSoC').value = inv.SoC;
+                            updated.push('SoC');
+                            hasInverterCache = true;
+                        }
+                        if (inv.batTemperature !== undefined) {
+                            document.getElementById('simBatteryTemp').value = inv.batTemperature.toFixed(1);
+                            updated.push('Battery temp');
+                            hasInverterCache = true;
+                        }
+                        if (inv.ambientTemperation !== undefined) {
+                            document.getElementById('simAmbientTemp').value = inv.ambientTemperation.toFixed(1);
+                            updated.push('Ambient temp');
+                            hasInverterCache = true;
+                        }
+                        if (inv.invTemperation !== undefined) {
+                            document.getElementById('simInverterTemp').value = inv.invTemperation.toFixed(1);
+                            updated.push('Inverter temp');
+                            hasInverterCache = true;
+                        }
+                    } catch (e) { 
+                        log('warning', `Parse error on inverter: ${e.message}`);
+                    }
+                }
+                
+                // Try to get cached weather from localStorage
+                const cachedWeather = localStorage.getItem('cachedWeather');
+                if (cachedWeather) {
+                    try {
+                        const wx = JSON.parse(cachedWeather);
+                        if (wx.solarRadiation !== undefined) {
+                            document.getElementById('simSolarRadiation').value = wx.solarRadiation;
+                            updated.push('Solar radiation');
+                            hasWeatherCache = true;
+                        }
+                        if (wx.cloudCover !== undefined) {
+                            document.getElementById('simCloudCover').value = wx.cloudCover;
+                            updated.push('Cloud cover');
+                            hasWeatherCache = true;
+                        }
+                    } catch (e) { 
+                        log('warning', `Parse error on weather: ${e.message}`);
+                    }
+                }
+                
+                // Always set time to current
+                const now = new Date();
+                document.getElementById('simTime').value = now.toTimeString().slice(0, 5);
+                updated.push('Time');
+                
+                if (hasInverterCache && hasAmberCache && hasWeatherCache) {
+                    log('success', `✅ Loaded from cache: ${updated.join(', ')}`);
+                } else {
+                    const missing = [];
+                    if (!hasAmberCache) missing.push('Amber prices');
+                    if (!hasWeatherCache) missing.push('Weather');
+                    log('info', `📋 Cache missing: ${missing.join(', ')}. Attempting to fetch live data...`);
+                    console.log('[DEBUG] Calling fetchLiveConditionsOnce, missing:', missing);
+                    await fetchLiveConditionsOnce();
+                }
+            } catch (e) {
+                log('error', `❌ Error: ${e.message}`);
+                console.error('fetchRealConditions error:', e);
+            }
+        }
+        
+        async function fetchLiveConditionsOnce() {
+            try {
+                let updated = [];
+                
+                // Get user config for siteId
+                let userConfig = null;
+                try {
+                    const configResp = await authenticatedFetch('/api/user/config');
+                    if (configResp.ok) {
+                        const configData = await configResp.json();
+                        if (configData.errno === 0 && configData.result) {
+                            userConfig = configData.result;
+                        }
+                    }
+                } catch (e) { /* ignore */ }
+                
+                // Fetch inverter data
+                try {
+                    const invResp = await authenticatedFetch('/api/inverter/real-time');
+                    if (invResp.ok) {
+                        const invData = await invResp.json();
+                        if (invData.errno === 0 && invData.result) {
+                            const r = invData.result;
+                            const items = [];
+                            if (Array.isArray(r) && r.length > 0 && Array.isArray(r[0].datas)) {
+                                r.forEach(frame => { if (Array.isArray(frame.datas)) items.push(...frame.datas); });
+                            }
+                            const invCache = {};
+                            items.forEach(item => {
+                                if (item.variable && item.value !== undefined) {
+                                    invCache[item.variable] = item.value;
+                                }
+                            });
+                            if (invCache.SoC !== undefined) {
+                                document.getElementById('simSoC').value = invCache.SoC;
+                                updated.push('SoC');
+                            }
+                            if (invCache.batTemperature !== undefined) {
+                                document.getElementById('simBatteryTemp').value = invCache.batTemperature.toFixed(1);
+                                updated.push('Battery temp');
+                            }
+                            if (invCache.ambientTemperation !== undefined) {
+                                document.getElementById('simAmbientTemp').value = invCache.ambientTemperation.toFixed(1);
+                                updated.push('Ambient temp');
+                            }
+                            if (invCache.invTemperation !== undefined) {
+                                document.getElementById('simInverterTemp').value = invCache.invTemperation.toFixed(1);
+                                updated.push('Inverter temp');
+                            }
+                            localStorage.setItem('cachedInverter', JSON.stringify(invCache));
+                        }
+                    }
+                } catch (e) { log('warning', `Inverter fetch failed: ${e.message}`); }
+                
+                // Fetch Amber prices
+                try {
+                    console.log('[Fetch] userConfig:', userConfig);
+                    let siteId = userConfig?.amberSiteId;
+                    console.log('[Fetch] Initial siteId from config:', siteId);
+                    
+                    // If no siteId in config, fetch sites to get first one
+                    if (!siteId && userConfig?.amberApiKey) {
+                        try {
+                            console.log('[Fetch] Fetching Amber sites...');
+                            const sitesResp = await authenticatedFetch('/api/amber/sites');
+                            console.log('[Fetch] Sites response status:', sitesResp.status);
+                            if (sitesResp.ok) {
+                                const sites = await sitesResp.json();
+                                console.log('[Fetch] Sites data:', sites);
+                                const sitesList = Array.isArray(sites) ? sites : (sites.result || []);
+                                if (sitesList.length > 0) {
+                                    siteId = sitesList[0].id;
+                                    console.log('[Fetch] Found siteId:', siteId);
+                                }
+                            }
+                        } catch (e) { console.error('[Fetch] Sites error:', e); }
+                    }
+                    
+                    if (siteId) {
+                        console.log('[Fetch] Fetching prices with siteId:', siteId);
+                        const amberResp = await authenticatedFetch(`/api/amber/prices/current?siteId=${siteId}&next=48`);
+                        console.log('[Fetch] Prices response status:', amberResp.status);
+                        if (amberResp.ok) {
+                            const amberData = await amberResp.json();
+                            console.log('[Fetch] Amber data:', amberData);
+                            // API can return array directly OR wrapped in {errno, result}
+                            let prices = [];
+                            if (Array.isArray(amberData)) {
+                                prices = amberData;
+                            } else if (amberData.errno === 0 && amberData.result) {
+                                prices = Array.isArray(amberData.result) ? amberData.result : [];
+                            }
+                            console.log('[Fetch] Prices array:', prices);
+                            const general = prices.find(p => p.channelType === 'general' && p.type === 'CurrentInterval');
+                            const feedIn = prices.find(p => p.channelType === 'feedIn' && p.type === 'CurrentInterval');
+                            console.log('[Fetch] General:', general, 'FeedIn:', feedIn);
+                            const forecasts = prices.filter(p => p.type === 'ForecastInterval');
+                            if (general?.perKwh !== undefined) {
+                                document.getElementById('simBuy').value = general.perKwh.toFixed(1);
+                                updated.push('Buy price');
+                            }
+                            if (feedIn?.perKwh !== undefined) {
+                                document.getElementById('simFeedIn').value = feedIn.perKwh.toFixed(1);
+                                updated.push('Feed-in price');
+                            }
+                            if (forecasts.length > 0) {
+                                const maxPrice = Math.max(...forecasts.map(f => f.perKwh || 0));
+                                document.getElementById('simForecastHigh').value = maxPrice.toFixed(1);
+                                updated.push('Forecast high');
+                            }
+                            const priceCache = {
+                                general: general ? { perKwh: general.perKwh } : null,
+                                feedIn: feedIn ? { perKwh: feedIn.perKwh } : null,
+                                forecastHigh: forecasts.length > 0 ? Math.max(...forecasts.map(f => f.perKwh || 0)) : null
+                            };
+                            localStorage.setItem('cachedPrices', JSON.stringify(priceCache));
+                            }
+                        }
+                    } else {
+                        log('info', `Amber: No site ID or API key configured`);
+                    }
+                } catch (e) { console.error('[Fetch] Amber error:', e); log('warning', `Amber fetch failed: ${e.message}`); }
+                
+                // Fetch Weather
+                try {
+                    console.log('[Fetch] Fetching weather...');
+                    const wxResp = await authenticatedFetch('/api/weather?days=1');
+                    console.log('[Fetch] Weather response status:', wxResp.status);
+                    if (wxResp.ok) {
+                        const wxData = await wxResp.json();
+                        console.log('[Fetch] Weather data:', wxData);
+                        // API returns either wrapped {errno, result} or direct {source, hourly, ...}
+                        let hourly = null;
+                        if (wxData.errno === 0 && wxData.result?.hourly) {
+                            hourly = wxData.result.hourly;
+                        } else if (wxData.hourly) {
+                            hourly = wxData.hourly;
+                        }
+                        
+                        if (hourly) {
+                            console.log('[Fetch] Hourly data:', hourly);
+                            if (hourly.shortwave_radiation && Array.isArray(hourly.shortwave_radiation) && hourly.shortwave_radiation.length > 0) {
+                                document.getElementById('simSolarRadiation').value = Math.round(hourly.shortwave_radiation[0]);
+                                updated.push('Solar radiation');
+                                console.log('[Fetch] Set solar radiation:', hourly.shortwave_radiation[0]);
+                            }
+                            if (hourly.cloudcover && Array.isArray(hourly.cloudcover) && hourly.cloudcover.length > 0) {
+                                document.getElementById('simCloudCover').value = Math.round(hourly.cloudcover[0]);
+                                updated.push('Cloud cover');
+                                console.log('[Fetch] Set cloud cover:', hourly.cloudcover[0]);
+                            }
+                            const wxCache = {
+                                solarRadiation: (hourly?.shortwave_radiation && hourly.shortwave_radiation[0]) || 0,
+                                cloudCover: (hourly?.cloudcover && hourly.cloudcover[0]) || 0
+                            };
+                            localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
+                        } else {
+                            console.log('[Fetch] Weather response missing hourly data');
+                        }
+                    } else {
+                        console.log('[Fetch] Weather response not OK:', wxResp.status);
+                    }
+                } catch (e) { console.error('[Fetch] Weather error:', e); log('warning', `Weather fetch failed: ${e.message}`); }
+                
+                if (updated.length > 1) {
+                    log('success', `✅ Fetched and cached: ${updated.join(', ')}`);
+                } else {
+                    log('warning', `⚠️ Could not fetch all data. Check your config and API connections.`);
+                }
+            } catch (e) {
+                log('error', `❌ Live fetch error: ${e.message}`);
+            }
         }
 
         async function loadRules() {
@@ -803,13 +1244,54 @@
             for (const [key, rule] of rules) {
                 const conditions = rule.conditions || {};
                 let condHtml = '';
-                if (conditions.feedInPrice?.enabled) condHtml += `<span class="cond-badge">Feed ${conditions.feedInPrice.operator} ${conditions.feedInPrice.value}¢</span>`;
-                if (conditions.buyPrice?.enabled) condHtml += `<span class="cond-badge">Buy ${conditions.buyPrice.operator} ${conditions.buyPrice.value}¢</span>`;
-                if (conditions.soc?.enabled) condHtml += `<span class="cond-badge">SoC ${conditions.soc.operator} ${conditions.soc.value}%</span>`;
-                if (conditions.temperature?.enabled) condHtml += `<span class="cond-badge">${conditions.temperature.type || 'Bat'} ${conditions.temperature.operator} ${conditions.temperature.value}°C</span>`;
+                
+                // Helper to create styled condition badges
+                const condBadge = (label, color, bgColor) => `<span style="display:inline-block;padding:4px 8px;border-radius:4px;font-size:0.7rem;background:${bgColor};color:${color};border:1px solid ${color};margin-right:4px;margin-bottom:4px;font-weight:600">${label}</span>`;
+                
+                // Price conditions with between support and colors
+                if (conditions.feedInPrice?.enabled) {
+                    const label = conditions.feedInPrice.operator === 'between' 
+                        ? `Feed > ${conditions.feedInPrice.value}¢-${conditions.feedInPrice.value2}¢` 
+                        : `Feed > ${conditions.feedInPrice.value}¢`;
+                    condHtml += condBadge(label, '#7ee787', 'rgba(126, 231, 135, 0.15)');
+                }
+                if (conditions.buyPrice?.enabled) {
+                    const label = conditions.buyPrice.operator === 'between'
+                        ? `Buy < ${conditions.buyPrice.value}¢-${conditions.buyPrice.value2}¢`
+                        : `Buy < ${conditions.buyPrice.value}¢`;
+                    condHtml += condBadge(label, '#a371f7', 'rgba(163, 113, 247, 0.15)');
+                }
+                if (conditions.soc?.enabled) {
+                    const label = conditions.soc.operator === 'between'
+                        ? `SoC ${conditions.soc.value}%-${conditions.soc.value2}%`
+                        : `SoC ${conditions.soc.operator} ${conditions.soc.value}%`;
+                    condHtml += condBadge(label, '#ffd43b', 'rgba(255, 212, 59, 0.15)');
+                }
+                if (conditions.temperature?.enabled) {
+                    const label = `${conditions.temperature.type === 'battery' ? 'bat' : conditions.temperature.type === 'ambient' ? 'ambient' : 'inv'} ${conditions.temperature.operator} ${conditions.temperature.value}°C`;
+                    condHtml += condBadge(label, '#ff922b', 'rgba(255, 146, 43, 0.15)');
+                }
+                if (conditions.solarRadiation?.enabled) {
+                    const sr = conditions.solarRadiation;
+                    const label = `☀️ ${sr.check || 'avg'} ${sr.operator} ${sr.value}W/m²`;
+                    condHtml += condBadge(label, '#ffd43b', 'rgba(255, 212, 59, 0.15)');
+                }
+                if (conditions.cloudCover?.enabled) {
+                    const cc = conditions.cloudCover;
+                    const label = `☁️ ${cc.check || 'avg'} ${cc.operator} ${cc.value}%`;
+                    condHtml += condBadge(label, '#58a6ff', 'rgba(88, 166, 255, 0.15)');
+                }
+                if (conditions.forecastPrice?.enabled) {
+                    const fp = conditions.forecastPrice;
+                    const label = `📈 ${fp.type === 'feedIn' ? 'FI' : 'Buy'} ${fp.check || 'max'} ${fp.operator} ${fp.value}¢`;
+                    condHtml += condBadge(label, '#79c0ff', 'rgba(121, 192, 255, 0.15)');
+                }
                 // Handle both 'time' and legacy 'timeWindow' formats
                 const timeCond = conditions.time || conditions.timeWindow;
-                if (timeCond?.enabled) condHtml += `<span class="cond-badge">${timeCond.startTime || timeCond.start}-${timeCond.endTime || timeCond.end}</span>`;
+                if (timeCond?.enabled) {
+                    const label = `${timeCond.startTime || timeCond.start}-${timeCond.endTime || timeCond.end}`;
+                    condHtml += condBadge(label, '#79c0ff', 'rgba(121, 192, 255, 0.15)');
+                }
                 
                 const action = rule.action || {};
                 const priorityClass = rule.priority <= 1 ? 'p1' : rule.priority === 2 ? 'p2' : rule.priority === 3 ? 'p3' : (rule.priority === 4 || rule.priority === 5) ? 'p4' : 'p-low';
@@ -846,11 +1328,15 @@
                 soc: parseFloat(document.getElementById('simSoC').value) || 50,
                 batteryTemp: parseFloat(document.getElementById('simBatteryTemp').value) || 25,
                 ambientTemp: parseFloat(document.getElementById('simAmbientTemp').value) || 20,
+                inverterTemp: parseFloat(document.getElementById('simInverterTemp').value) || 35,
+                solarRadiation: parseFloat(document.getElementById('simSolarRadiation').value) || 0,
+                cloudCover: parseFloat(document.getElementById('simCloudCover').value) || 0,
+                forecastHigh: parseFloat(document.getElementById('simForecastHigh').value) || 0,
                 testTime: document.getElementById('simTime').value || null
             };
             
             const timeStr = mockData.testTime ? ` Time=${mockData.testTime}` : '';
-            log('info', `Testing: Feed-in=${mockData.feedInPrice}¢, Buy=${mockData.buyPrice}¢, SoC=${mockData.soc}%, BatTemp=${mockData.batteryTemp}°C${timeStr}`);
+            log('info', `Testing: FI=${mockData.feedInPrice}¢, Buy=${mockData.buyPrice}¢, SoC=${mockData.soc}%, BatTemp=${mockData.batteryTemp}°C, Solar=${mockData.solarRadiation}W/m², Cloud=${mockData.cloudCover}%${timeStr}`);
             
             // Show loading state
             const resultsContainer = document.getElementById('testResults');
@@ -929,65 +1415,195 @@
             // allResults can be returned at top-level or under data.result depending on backend shape
             const allResults = data.allResults || (data.result && data.result.allResults) || [];
 
-            function renderConditionList(condArr) {
+            function renderConditionList(condArr, ruleMatched = false) {
                 if (!condArr || condArr.length === 0) return '<div style="color:var(--text-secondary);font-size:0.85rem">No conditions</div>';
-                return `<div style="display:flex;flex-direction:column;gap:6px">` + condArr.map(c => {
-                    const color = c.met ? 'var(--accent)' : 'var(--accent-red)';
-                    const right = c.met ? '✓' : '✗';
+                
+                // Define the order of conditions to match renderRules
+                const conditionOrder = ['feedInPrice', 'buyPrice', 'soc', 'temperature', 'solarRadiation', 'cloudCover', 'forecastPrice', 'timeWindow', 'time'];
+                
+                // Sort conditions array by their type/name according to the defined order
+                const sortedConds = condArr.slice().sort((a, b) => {
+                    // Try to determine condition type from name
+                    let aType = '', bType = '';
+                    
+                    // Match condition names to types
+                    if (a.name.includes('Feed')) aType = 'feedInPrice';
+                    else if (a.name.includes('Buy')) aType = 'buyPrice';
+                    else if (a.name.includes('SoC') || a.name.includes('Battery')) aType = 'soc';
+                    else if (a.name.includes('Temp') || a.name.includes('Temperature')) aType = 'temperature';
+                    else if (a.name.includes('Solar') || a.name.includes('Radiation')) aType = 'solarRadiation';
+                    else if (a.name.includes('Cloud') || a.name.includes('Cover')) aType = 'cloudCover';
+                    else if (a.name.includes('Forecast') || a.name.includes('Price')) aType = 'forecastPrice';
+                    else if (a.name.includes('Time')) aType = 'timeWindow';
+                    
+                    if (b.name.includes('Feed')) bType = 'feedInPrice';
+                    else if (b.name.includes('Buy')) bType = 'buyPrice';
+                    else if (b.name.includes('SoC') || b.name.includes('Battery')) bType = 'soc';
+                    else if (b.name.includes('Temp') || b.name.includes('Temperature')) bType = 'temperature';
+                    else if (b.name.includes('Solar') || b.name.includes('Radiation')) bType = 'solarRadiation';
+                    else if (b.name.includes('Cloud') || b.name.includes('Cover')) bType = 'cloudCover';
+                    else if (b.name.includes('Forecast') || b.name.includes('Price')) bType = 'forecastPrice';
+                    else if (b.name.includes('Time')) bType = 'timeWindow';
+                    
+                    const aIndex = conditionOrder.indexOf(aType);
+                    const bIndex = conditionOrder.indexOf(bType);
+                    
+                    return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+                });
+                
+                return `<div style="display:flex;flex-direction:column;gap:8px">` + sortedConds.map(c => {
+                    const isMet = c.met;
+                    const bgColor = isMet ? 'rgba(126, 231, 135, 0.15)' : 'rgba(248, 81, 73, 0.15)';
+                    const borderColor = isMet ? '#7ee787' : '#f85149';
+                    const textColor = isMet ? '#7ee787' : '#f85149';
+                    const icon = isMet ? '✓' : '✗';
                     const target = (c.target !== undefined && c.target !== null) ? c.target : '';
+                    
                     return `
-                        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px;background:var(--bg-card);border-radius:6px">
-                            <div style="font-size:0.9rem"><strong style="margin-right:8px">${c.name}</strong>
-                                <span style="color:var(--text-secondary);font-size:0.85rem">actual: <strong style="color:${color}">${c.value}</strong></span>
-                                ${target ? `<span style="color:var(--text-secondary);font-size:0.85rem;margin-left:8px">target: <strong>${target}</strong></span>` : ''}
+                        <div style="display:flex;align-items:stretch;gap:0;border-radius:6px;overflow:hidden;border-left:3px solid ${borderColor}">
+                            <div style="display:flex;align-items:center;justify-content:center;width:36px;background:${bgColor};padding:8px;flex-shrink:0">
+                                <span style="font-weight:700;color:${textColor};font-size:1.1rem">${icon}</span>
                             </div>
-                            <div style="font-weight:700;color:${color};min-width:36px;text-align:right">${right}</div>
+                            <div style="flex:1;padding:10px;background:${bgColor};display:flex;align-items:center;justify-content:space-between">
+                                <div style="flex:1">
+                                    <div style="font-weight:600;color:#e6edf3;font-size:0.9rem;margin-bottom:3px">${c.name}</div>
+                                    <div style="font-size:0.8rem;color:var(--text-secondary);display:flex;gap:12px;flex-wrap:wrap">
+                                        <span>Actual: <strong style="color:${textColor}">${c.value}</strong></span>
+                                        ${target ? `<span>Target: <strong>${target}</strong></span>` : ''}
+                                    </div>
+                                </div>
+                            </div>
                         </div>`;
                 }).join('') + `</div>`;
+            }
+
+            function renderRuleCard(ruleInfo, isTriggered = false, triggeredRuleName = null) {
+                const isTrigRule = ruleInfo.ruleName === triggeredRuleName;
+                const allCondsMet = ruleInfo.conditions && ruleInfo.conditions.every(c => c.met);
+                
+                const cardBg = isTrigRule ? 'rgba(126, 231, 135, 0.1)' : 'rgba(248, 81, 73, 0.1)';
+                const headerBg = isTrigRule ? 'rgba(126, 231, 135, 0.25)' : 'rgba(248, 81, 73, 0.15)';
+                const borderColor = isTrigRule ? '#7ee787' : allCondsMet ? '#f0883e' : '#f85149';
+                const statusIcon = isTrigRule ? '✅ TRIGGERED' : allCondsMet ? '⏳ BLOCKED' : '❌ NOT MET';
+                const statusColor = isTrigRule ? '#7ee787' : allCondsMet ? '#f0883e' : '#f85149';
+                
+                return `
+                    <div style="background:${cardBg};border:2px solid ${borderColor};border-radius:8px;padding:12px;margin-bottom:12px;overflow:hidden">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid ${borderColor}">
+                            <div style="display:flex;align-items:center;gap:12px;flex:1">
+                                <div style="font-size:1.2rem;font-weight:700">${isTrigRule ? '🎯' : '📋'}</div>
+                                <div>
+                                    <div style="font-weight:700;color:#e6edf3;font-size:0.95rem">${ruleInfo.ruleName}</div>
+                                    <div style="font-size:0.75rem;color:var(--text-secondary)">Priority P${ruleInfo.priority}</div>
+                                </div>
+                            </div>
+                            <div style="text-align:right">
+                                <div style="font-weight:700;color:${statusColor};font-size:0.9rem">${statusIcon}</div>
+                                <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:2px">${ruleInfo.conditions ? ruleInfo.conditions.filter(c => c.met).length : 0}/${ruleInfo.conditions ? ruleInfo.conditions.length : 0} conditions met</div>
+                            </div>
+                        </div>
+                        <div style="margin-bottom:12px">
+                            ${renderConditionList(ruleInfo.conditions || [], isTrigRule)}
+                        </div>
+                        ${isTrigRule ? `
+                            <div style="background:rgba(126, 231, 135, 0.2);border-left:3px solid #7ee787;padding:10px;border-radius:4px;font-size:0.85rem">
+                                <strong style="color:#7ee787">⚡ Action:</strong> ${ruleInfo.action ? ruleInfo.action.workMode + ' for ' + ruleInfo.action.durationMinutes + ' min' : 'N/A'}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
             }
 
             let detailsHtml = '';
             if (type === 'triggered' && data.result) {
                 const r = data.result;
                 const a = r.action || {};
+                const triggeredRuleName = r.ruleName || r.ruleId;
+                
                 detailsHtml = `
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
-                        <div>
-                            <h4 style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">Triggered Rule</h4>
-                            <p><strong>Name:</strong> ${r.ruleName}</p>
-                            <p><strong>Priority:</strong> P${r.priority || '?'}</p>
+                    <div style="background:rgba(126, 231, 135, 0.2);border:2px solid #7ee787;border-radius:8px;padding:14px;margin-bottom:16px">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+                            <span style="font-size:1.5rem">🎯</span>
+                            <div>
+                                <div style="font-weight:700;color:#7ee787;font-size:1rem">RULE TRIGGERED!</div>
+                                <div style="font-size:0.85rem;color:var(--text-secondary)">${r.ruleName} (P${r.priority})</div>
+                            </div>
                         </div>
-                        <div>
-                            <h4 style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">Action Details</h4>
-                            <p><strong>Mode:</strong> <span style="color:var(--accent)">${a.workMode}</span></p>
-                            <p><strong>Duration:</strong> ${a.durationMinutes} minutes</p>
-                            <p><strong>FD Power:</strong> ${a.fdPwr}W</p>
-                            <p><strong>Min SoC:</strong> ${a.minSocOnGrid}%</p>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                            <div>
+                                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px">WORK MODE</div>
+                                <div style="font-weight:700;color:#58a6ff;font-size:0.95rem">${a.workMode}</div>
+                            </div>
+                            <div>
+                                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px">DURATION</div>
+                                <div style="font-weight:700;color:#58a6ff;font-size:0.95rem">${a.durationMinutes} minutes</div>
+                            </div>
+                            <div>
+                                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px">FD POWER</div>
+                                <div style="font-weight:700;color:#58a6ff;font-size:0.95rem">${a.fdPwr}W</div>
+                            </div>
+                            <div>
+                                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px">MIN SOC GRID</div>
+                                <div style="font-weight:700;color:#58a6ff;font-size:0.95rem">${a.minSocOnGrid}%</div>
+                            </div>
                         </div>
                     </div>
-                    <div style="margin-top:12px;padding:10px;background:rgba(126,231,135,0.1);border-radius:6px;font-size:0.85rem">
-                        <strong style="color:var(--accent)">✓ In production:</strong>
-                        FoxESS scheduler segment would be created for ${a.workMode} mode
+                    
+                    <div style="margin-bottom:16px">
+                        <h4 style="font-size:0.9rem;color:#e6edf3;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+                            <span>✓</span> Triggered Rule Details
+                        </h4>
+                        ${renderRuleCard(allResults.find(x => x.ruleName === triggeredRuleName) || {ruleName: r.ruleName, priority: r.priority, action: a}, true, triggeredRuleName)}
                     </div>
-                    <div style="margin-top:12px">
-                        <h4 style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">Per-Rule Condition Results</h4>
-                        ${renderConditionList(allResults.find(x => x.ruleName === (r.ruleName || r.ruleId))?.conditions || [])}
-                    </div>
+                    
+                    ${allResults.length > 1 ? `
+                        <div>
+                            <h4 style="font-size:0.9rem;color:#e6edf3;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+                                <span>❌</span> Other Rules (Not Evaluated)
+                            </h4>
+                            ${allResults.filter(x => x.ruleName !== triggeredRuleName).map(r => renderRuleCard(r, false, triggeredRuleName)).join('')}
+                        </div>
+                    ` : ''}
                 `;
             } else if (type === 'not-triggered') {
                 // Show all rules checked and why they didn't match
                 let ruleDetails = '';
                 if (allResults && allResults.length > 0) {
-                    ruleDetails = allResults.map(r => {
-                        return `<div style="margin-bottom:10px">` +
-                            `<div style="font-weight:700;margin-bottom:6px">${r.ruleName} <span style=\"font-weight:600;color:var(--text-secondary);font-size:0.85rem;\">(P${r.priority})</span></div>` +
-                            `${renderConditionList(r.conditions)}
-                        </div>`;
-                    }).join('');
+                    // Separate rules by whether all conditions were met
+                    const blocked = allResults.filter(r => r.conditions && r.conditions.every(c => c.met));
+                    const notMet = allResults.filter(r => !r.conditions || !r.conditions.every(c => c.met));
+                    
+                    if (blocked.length > 0) {
+                        ruleDetails += `
+                            <div style="margin-bottom:16px">
+                                <h4 style="font-size:0.9rem;color:#f0883e;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+                                    <span>⏳</span> All Conditions Met (Cooldown/Other Blocking)
+                                </h4>
+                                ${blocked.map(r => renderRuleCard(r, false)).join('')}
+                            </div>
+                        `;
+                    }
+                    
+                    if (notMet.length > 0) {
+                        ruleDetails += `
+                            <div>
+                                <h4 style="font-size:0.9rem;color:#f85149;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+                                    <span>❌</span> Conditions Not Met
+                                </h4>
+                                ${notMet.map(r => renderRuleCard(r, false)).join('')}
+                            </div>
+                        `;
+                    }
                 }
                 detailsHtml = `
-                    <p style="color:var(--text-secondary)">The simulated conditions did not match any enabled rule.</p>
-                    ${ruleDetails ? `<div style="margin:12px 0">${ruleDetails}</div>` : ''}
+                    <div style="background:rgba(248, 81, 73, 0.15);border:2px solid #f85149;border-radius:8px;padding:14px;margin-bottom:16px">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                            <span style="font-size:1.5rem">⚠️</span>
+                            <div style="font-weight:700;color:#f85149;font-size:1rem">No Rules Triggered</div>
+                        </div>
+                        <div style="font-size:0.9rem;color:var(--text-secondary)">The simulated conditions did not match any enabled rule. See rule details below.</div>
+                    </div>
+                    ${ruleDetails ? `<div>${ruleDetails}</div>` : ''}
                     <div style="margin-top:12px">
                         <h4 style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">Test Conditions Used:</h4>
                         <pre style="background:var(--bg-card);padding:10px;border-radius:6px;font-size:0.8rem;overflow-x:auto">${JSON.stringify(data.testData, null, 2)}</pre>
@@ -1125,9 +1741,13 @@
             const timeStart = timeCond?.startTime || timeCond?.start || '06:00';
             const timeEnd = timeCond?.endTime || timeCond?.end || '18:00';
             
-            const modalHtml = `
-                <div id="ruleModal" class="modal-overlay">
-                    <div class="modal-content">
+            // Pre-process other conditions
+            const solarCond = editData?.conditions?.solarRadiation || {};
+            const cloudCond = editData?.conditions?.cloudCover || {};
+            const forecastCond = editData?.conditions?.forecastPrice || {};
+            
+            // Build modal inner content (outer structure is static in HTML)
+            const modalInnerHtml = `
                         <div class="modal-header">
                             <h3>${isEdit ? '✏️ Edit Rule' : '➕ Create Test Rule'}</h3>
                             <button class="modal-close" onclick="closeRuleModal()">×</button>
@@ -1152,61 +1772,133 @@
                             
                             <div style="display:flex;flex-direction:column;gap:10px">
                                 <!-- Feed-in Price -->
-                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px">
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap">
                                     <input type="checkbox" id="condFeedIn" ${editData?.conditions?.feedInPrice?.enabled ? 'checked' : ''}>
                                     <label style="min-width:120px;font-size:0.85rem">💰 Feed-in Price</label>
-                                    <select id="condFeedInOp" style="width:70px">
+                                    <select id="condFeedInOp" style="width:80px" onchange="toggleBetween('FeedIn')">
                                         <option value=">" ${editData?.conditions?.feedInPrice?.operator === '>' ? 'selected' : ''}>&gt;</option>
                                         <option value=">=" ${editData?.conditions?.feedInPrice?.operator === '>=' ? 'selected' : ''}>&gt;=</option>
                                         <option value="<" ${editData?.conditions?.feedInPrice?.operator === '<' ? 'selected' : ''}>&lt;</option>
                                         <option value="<=" ${editData?.conditions?.feedInPrice?.operator === '<=' ? 'selected' : ''}>&lt;=</option>
+                                        <option value="between" ${editData?.conditions?.feedInPrice?.operator === 'between' ? 'selected' : ''}>between</option>
                                     </select>
-                                    <input type="number" id="condFeedInVal" value="${editData?.conditions?.feedInPrice?.value || 25}" min="-100" max="500" style="width:70px"> ¢
+                                    <input type="number" id="condFeedInVal" value="${editData?.conditions?.feedInPrice?.value || 25}" min="-100" max="500" style="width:70px">
+                                    <span id="condFeedInVal2Wrap" style="display:${editData?.conditions?.feedInPrice?.operator === 'between' ? 'inline' : 'none'}">and <input type="number" id="condFeedInVal2" value="${editData?.conditions?.feedInPrice?.value2 || 50}" min="-100" max="500" style="width:60px"></span>
+                                    <span>¢</span>
                                 </div>
                                 
                                 <!-- Buy Price -->
-                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px">
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap">
                                     <input type="checkbox" id="condBuy" ${editData?.conditions?.buyPrice?.enabled ? 'checked' : ''}>
                                     <label style="min-width:120px;font-size:0.85rem">🛒 Buy Price</label>
-                                    <select id="condBuyOp" style="width:70px">
+                                    <select id="condBuyOp" style="width:80px" onchange="toggleBetween('Buy')">
                                         <option value="<" ${editData?.conditions?.buyPrice?.operator === '<' ? 'selected' : ''}>&lt;</option>
                                         <option value="<=" ${editData?.conditions?.buyPrice?.operator === '<=' ? 'selected' : ''}>&lt;=</option>
                                         <option value=">" ${editData?.conditions?.buyPrice?.operator === '>' ? 'selected' : ''}>&gt;</option>
                                         <option value=">=" ${editData?.conditions?.buyPrice?.operator === '>=' ? 'selected' : ''}>&gt;=</option>
+                                        <option value="between" ${editData?.conditions?.buyPrice?.operator === 'between' ? 'selected' : ''}>between</option>
                                     </select>
-                                    <input type="number" id="condBuyVal" value="${editData?.conditions?.buyPrice?.value || 10}" min="-100" max="500" style="width:70px"> ¢
+                                    <input type="number" id="condBuyVal" value="${editData?.conditions?.buyPrice?.value || 10}" min="-100" max="500" style="width:70px">
+                                    <span id="condBuyVal2Wrap" style="display:${editData?.conditions?.buyPrice?.operator === 'between' ? 'inline' : 'none'}">and <input type="number" id="condBuyVal2" value="${editData?.conditions?.buyPrice?.value2 || 20}" min="-100" max="500" style="width:60px"></span>
+                                    <span>¢</span>
                                 </div>
                                 
                                 <!-- SoC -->
-                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px">
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap">
                                     <input type="checkbox" id="condSoc" ${editData?.conditions?.soc?.enabled ? 'checked' : ''}>
                                     <label style="min-width:120px;font-size:0.85rem">🔋 Battery SoC</label>
-                                    <select id="condSocOp" style="width:70px">
+                                    <select id="condSocOp" style="width:80px" onchange="toggleBetween('Soc')">
                                         <option value=">" ${editData?.conditions?.soc?.operator === '>' ? 'selected' : ''}>&gt;</option>
                                         <option value=">=" ${editData?.conditions?.soc?.operator === '>=' ? 'selected' : ''}>&gt;=</option>
                                         <option value="<" ${editData?.conditions?.soc?.operator === '<' ? 'selected' : ''}>&lt;</option>
                                         <option value="<=" ${editData?.conditions?.soc?.operator === '<=' ? 'selected' : ''}>&lt;=</option>
+                                        <option value="between" ${editData?.conditions?.soc?.operator === 'between' ? 'selected' : ''}>between</option>
                                     </select>
-                                    <input type="number" id="condSocVal" value="${editData?.conditions?.soc?.value || 50}" min="0" max="100" style="width:70px"> %
+                                    <input type="number" id="condSocVal" value="${editData?.conditions?.soc?.value || 50}" min="0" max="100" style="width:70px">
+                                    <span id="condSocVal2Wrap" style="display:${editData?.conditions?.soc?.operator === 'between' ? 'inline' : 'none'}">and <input type="number" id="condSocVal2" value="${editData?.conditions?.soc?.value2 || 80}" min="0" max="100" style="width:60px"></span>
+                                    <span>%</span>
                                 </div>
                                 
                                 <!-- Temperature -->
-                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px">
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap">
                                     <input type="checkbox" id="condTemp" ${editData?.conditions?.temperature?.enabled ? 'checked' : ''}>
                                     <label style="min-width:120px;font-size:0.85rem">🌡️ Temperature</label>
                                     <select id="condTempType" style="width:80px">
                                         <option value="battery" ${editData?.conditions?.temperature?.type === 'battery' ? 'selected' : ''}>Battery</option>
                                         <option value="ambient" ${editData?.conditions?.temperature?.type === 'ambient' ? 'selected' : ''}>Ambient</option>
+                                        <option value="inverter" ${editData?.conditions?.temperature?.type === 'inverter' ? 'selected' : ''}>Inverter</option>
                                     </select>
                                     <select id="condTempOp" style="width:70px">
                                         <option value="<" ${editData?.conditions?.temperature?.operator === '<' ? 'selected' : ''}>&lt;</option>
+                                        <option value="<=" ${editData?.conditions?.temperature?.operator === '<=' ? 'selected' : ''}>&lt;=</option>
                                         <option value=">" ${editData?.conditions?.temperature?.operator === '>' ? 'selected' : ''}>&gt;</option>
+                                        <option value=">=" ${editData?.conditions?.temperature?.operator === '>=' ? 'selected' : ''}>&gt;=</option>
                                     </select>
                                     <input type="number" id="condTempVal" value="${editData?.conditions?.temperature?.value || 40}" min="-40" max="80" style="width:60px"> °C
                                 </div>
                                 
-                                <!-- Time - handle both 'time' and legacy 'timeWindow' formats -->
-                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px">
+                                <!-- Solar Radiation -->
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap">
+                                    <input type="checkbox" id="condSolar" ${solarCond.enabled ? 'checked' : ''}>
+                                    <label style="min-width:120px;font-size:0.85rem">☀️ Solar Radiation</label>
+                                    <select id="condSolarCheck" style="width:70px">
+                                        <option value="average" ${solarCond.check === 'average' ? 'selected' : ''}>Avg</option>
+                                        <option value="min" ${solarCond.check === 'min' ? 'selected' : ''}>Min</option>
+                                        <option value="max" ${solarCond.check === 'max' ? 'selected' : ''}>Max</option>
+                                    </select>
+                                    <select id="condSolarOp" style="width:70px">
+                                        <option value=">" ${solarCond.operator === '>' ? 'selected' : ''}>&gt;</option>
+                                        <option value=">=" ${solarCond.operator === '>=' ? 'selected' : ''}>&gt;=</option>
+                                        <option value="<" ${solarCond.operator === '<' ? 'selected' : ''}>&lt;</option>
+                                        <option value="<=" ${solarCond.operator === '<=' ? 'selected' : ''}>&lt;=</option>
+                                    </select>
+                                    <input type="number" id="condSolarVal" value="${solarCond.value || 300}" min="0" max="1500" step="10" style="width:70px">
+                                    <span style="font-size:0.8rem;color:var(--text-secondary)">W/m²</span>
+                                </div>
+                                
+                                <!-- Cloud Cover -->
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap">
+                                    <input type="checkbox" id="condCloud" ${cloudCond.enabled ? 'checked' : ''}>
+                                    <label style="min-width:120px;font-size:0.85rem">☁️ Cloud Cover</label>
+                                    <select id="condCloudCheck" style="width:70px">
+                                        <option value="average" ${cloudCond.check === 'average' ? 'selected' : ''}>Avg</option>
+                                        <option value="min" ${cloudCond.check === 'min' ? 'selected' : ''}>Min</option>
+                                        <option value="max" ${cloudCond.check === 'max' ? 'selected' : ''}>Max</option>
+                                    </select>
+                                    <select id="condCloudOp" style="width:70px">
+                                        <option value="<" ${cloudCond.operator === '<' ? 'selected' : ''}>&lt;</option>
+                                        <option value="<=" ${cloudCond.operator === '<=' ? 'selected' : ''}>&lt;=</option>
+                                        <option value=">" ${cloudCond.operator === '>' ? 'selected' : ''}>&gt;</option>
+                                        <option value=">=" ${cloudCond.operator === '>=' ? 'selected' : ''}>&gt;=</option>
+                                    </select>
+                                    <input type="number" id="condCloudVal" value="${cloudCond.value || 50}" min="0" max="100" style="width:60px"> %
+                                </div>
+                                
+                                <!-- Forecast Price -->
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap">
+                                    <input type="checkbox" id="condForecast" ${forecastCond.enabled ? 'checked' : ''}>
+                                    <label style="min-width:120px;font-size:0.85rem">📈 Forecast Price</label>
+                                    <select id="condForecastType" style="width:70px">
+                                        <option value="feedIn" ${forecastCond.type === 'feedIn' ? 'selected' : ''}>Feed-in</option>
+                                        <option value="general" ${forecastCond.type === 'general' || !forecastCond.type ? 'selected' : ''}>Buy</option>
+                                    </select>
+                                    <select id="condForecastCheck" style="width:70px">
+                                        <option value="average" ${forecastCond.check === 'average' ? 'selected' : ''}>Avg</option>
+                                        <option value="min" ${forecastCond.check === 'min' ? 'selected' : ''}>Min</option>
+                                        <option value="max" ${forecastCond.check === 'max' || !forecastCond.check ? 'selected' : ''}>Max</option>
+                                        <option value="any" ${forecastCond.check === 'any' ? 'selected' : ''}>Any</option>
+                                    </select>
+                                    <select id="condForecastOp" style="width:70px">
+                                        <option value=">" ${forecastCond.operator === '>' ? 'selected' : ''}>&gt;</option>
+                                        <option value=">=" ${forecastCond.operator === '>=' ? 'selected' : ''}>&gt;=</option>
+                                        <option value="<" ${forecastCond.operator === '<' ? 'selected' : ''}>&lt;</option>
+                                        <option value="<=" ${forecastCond.operator === '<=' ? 'selected' : ''}>&lt;=</option>
+                                    </select>
+                                    <input type="number" id="condForecastVal" value="${forecastCond.value || 30}" min="-100" max="500" style="width:60px"> ¢
+                                </div>
+                                
+                                <!-- Time Window -->
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap">
                                     <input type="checkbox" id="condTime" ${timeEnabled ? 'checked' : ''}>
                                     <label style="min-width:120px;font-size:0.85rem">🕐 Time Window</label>
                                     <input type="time" id="condTimeStart" value="${timeStart}">
@@ -1228,6 +1920,7 @@
                                         <option value="ForceCharge" ${editData?.action?.workMode === 'ForceCharge' ? 'selected' : ''}>Force Charge</option>
                                         <option value="SelfUse" ${editData?.action?.workMode === 'SelfUse' ? 'selected' : ''}>Self Use</option>
                                         <option value="Feedin" ${editData?.action?.workMode === 'Feedin' ? 'selected' : ''}>Feed In</option>
+                                        <option value="Backup" ${editData?.action?.workMode === 'Backup' ? 'selected' : ''}>Backup</option>
                                     </select>
                                 </div>
                                 <div>
@@ -1264,15 +1957,64 @@
                             <button class="btn-secondary" style="flex:1" onclick="closeRuleModal()">Cancel</button>
                             <button class="btn-primary" style="flex:1" onclick="saveRule()">${isEdit ? 'Update Rule' : 'Create Rule'}</button>
                         </div>
-                    </div>
-                </div>
             `;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            // Populate the static modal container and show it using direct style manipulation
+            const modalContent = document.getElementById('ruleModalContent');
+            const modalOverlay = document.getElementById('ruleModal');
+            
+            modalContent.innerHTML = modalInnerHtml;
+            
+            // Force modal to display centered with inline styles (bypasses any CSS conflicts)
+            modalOverlay.style.cssText = `
+                display: flex !important;
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                bottom: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                align-items: center !important;
+                justify-content: center !important;
+                background: rgba(0, 0, 0, 0.85) !important;
+                backdrop-filter: blur(4px) !important;
+                z-index: 999999 !important;
+                padding: 20px !important;
+                box-sizing: border-box !important;
+                margin: 0 !important;
+            `;
+            
+            // Lock background scroll
+            document.body.classList.add('modal-open');
+            
+            // Close on Esc key
+            const escHandler = (e) => { if (e.key === 'Escape') closeRuleModal(); };
+            document.addEventListener('keydown', escHandler);
+            modalOverlay._escHandler = escHandler;
+        }
+
+        // Toggle between value display for range operators
+        function toggleBetween(type) {
+            const op = document.getElementById('cond' + type + 'Op').value;
+            const wrap = document.getElementById('cond' + type + 'Val2Wrap');
+            if (wrap) {
+                wrap.style.display = op === 'between' ? 'inline' : 'none';
+            }
         }
 
         function closeRuleModal() {
             const modal = document.getElementById('ruleModal');
-            if (modal) modal.remove();
+            if (modal) {
+                // remove any Esc listener
+                try {
+                    const handler = modal._escHandler;
+                    if (handler) document.removeEventListener('keydown', handler);
+                } catch (e) {}
+                // Hide the modal by clearing inline styles and setting display none
+                modal.style.cssText = 'display: none !important;';
+            }
+            document.body.classList.remove('modal-open');
         }
 
         async function saveRule() {
@@ -1286,27 +2028,54 @@
             
             const ruleName = editingId || name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || ('rule_' + Date.now());
             
+            // Build conditions including new types
+            const feedInOp = document.getElementById('condFeedInOp').value;
+            const buyOp = document.getElementById('condBuyOp').value;
+            const socOp = document.getElementById('condSocOp').value;
+            
             const conditions = {
                 feedInPrice: {
                     enabled: document.getElementById('condFeedIn').checked,
-                    operator: document.getElementById('condFeedInOp').value,
-                    value: parseFloat(document.getElementById('condFeedInVal').value) || 0
+                    operator: feedInOp,
+                    value: parseFloat(document.getElementById('condFeedInVal').value) || 0,
+                    ...(feedInOp === 'between' && { value2: parseFloat(document.getElementById('condFeedInVal2').value) || 50 })
                 },
                 buyPrice: {
                     enabled: document.getElementById('condBuy').checked,
-                    operator: document.getElementById('condBuyOp').value,
-                    value: parseFloat(document.getElementById('condBuyVal').value) || 0
+                    operator: buyOp,
+                    value: parseFloat(document.getElementById('condBuyVal').value) || 0,
+                    ...(buyOp === 'between' && { value2: parseFloat(document.getElementById('condBuyVal2').value) || 20 })
                 },
                 soc: {
                     enabled: document.getElementById('condSoc').checked,
-                    operator: document.getElementById('condSocOp').value,
-                    value: parseFloat(document.getElementById('condSocVal').value) || 50
+                    operator: socOp,
+                    value: parseFloat(document.getElementById('condSocVal').value) || 50,
+                    ...(socOp === 'between' && { value2: parseFloat(document.getElementById('condSocVal2').value) || 80 })
                 },
                 temperature: {
                     enabled: document.getElementById('condTemp').checked,
                     type: document.getElementById('condTempType').value,
                     operator: document.getElementById('condTempOp').value,
                     value: parseFloat(document.getElementById('condTempVal').value) || 40
+                },
+                solarRadiation: {
+                    enabled: document.getElementById('condSolar').checked,
+                    check: document.getElementById('condSolarCheck').value,
+                    operator: document.getElementById('condSolarOp').value,
+                    value: parseFloat(document.getElementById('condSolarVal').value) || 300
+                },
+                cloudCover: {
+                    enabled: document.getElementById('condCloud').checked,
+                    check: document.getElementById('condCloudCheck').value,
+                    operator: document.getElementById('condCloudOp').value,
+                    value: parseFloat(document.getElementById('condCloudVal').value) || 50
+                },
+                forecastPrice: {
+                    enabled: document.getElementById('condForecast').checked,
+                    type: document.getElementById('condForecastType').value,
+                    check: document.getElementById('condForecastCheck').value,
+                    operator: document.getElementById('condForecastOp').value,
+                    value: parseFloat(document.getElementById('condForecastVal').value) || 30
                 },
                 time: {
                     enabled: document.getElementById('condTime').checked,

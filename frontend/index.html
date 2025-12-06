@@ -2064,6 +2064,48 @@
                 resultEl.className = (data.errno === 0 || data.result) ? 'success' : 'error';
                 resultEl.textContent = JSON.stringify(data, null, 2);
                 
+                // Cache data for automation test page (no API calls there)
+                if (data.errno === 0) {
+                    if (endpoint.includes('/inverter/real-time') || name === 'Real-time Data') {
+                        try {
+                            const items = [];
+                            const result = data.result || [];
+                            if (Array.isArray(result) && result.length > 0 && Array.isArray(result[0].datas)) {
+                                result.forEach(r => { if (Array.isArray(r.datas)) items.push(...r.datas); });
+                            }
+                            const invCache = {};
+                            items.forEach(item => {
+                                if (item.variable && item.value !== undefined) {
+                                    invCache[item.variable] = item.value;
+                                }
+                            });
+                            localStorage.setItem('cachedInverter', JSON.stringify(invCache));
+                        } catch (e) { /* ignore cache errors */ }
+                    } else if (endpoint.includes('/amber/prices/current')) {
+                        try {
+                            const prices = data.result || [];
+                            const general = prices.find(p => p.channelType === 'general');
+                            const feedIn = prices.find(p => p.channelType === 'feedIn');
+                            const forecasts = prices.filter(p => p.type === 'ForecastInterval');
+                            const priceCache = {
+                                general: general ? { perKwh: general.perKwh } : null,
+                                feedIn: feedIn ? { perKwh: feedIn.perKwh } : null,
+                                forecastHigh: forecasts.length > 0 ? Math.max(...forecasts.map(f => f.perKwh || 0)) : null
+                            };
+                            localStorage.setItem('cachedPrices', JSON.stringify(priceCache));
+                        } catch (e) { /* ignore cache errors */ }
+                    } else if (endpoint.includes('/weather')) {
+                        try {
+                            const hourly = data.result?.hourly || {};
+                            const wxCache = {
+                                solarRadiation: hourly.shortwave_radiation?.[0] || 0,
+                                cloudCover: hourly.cloud_cover?.[0] || 0
+                            };
+                            localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
+                        } catch (e) { /* ignore cache errors */ }
+                    }
+                }
+                
                 // Update inverter card if relevant
                 if (endpoint.includes('/inverter/')) {
                     updateInverterCard(data, name);
@@ -2818,6 +2860,19 @@
             try {
                 const resp = await authenticatedFetch(`/api/weather?place=${encodeURIComponent(place)}&days=${days}`);
                 const data = await resp.json();
+                
+                // Cache weather data for automation test page
+                if (data.errno === 0 && data.result?.hourly) {
+                    try {
+                        const hourly = data.result.hourly;
+                        const wxCache = {
+                            solarRadiation: hourly.shortwave_radiation?.[0] || 0,
+                            cloudCover: hourly.cloud_cover?.[0] || 0
+                        };
+                        localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
+                    } catch (e) { /* ignore cache errors */ }
+                }
+                
                 renderWeatherCard(data);
                 // mark last updated for weather
                 setLastUpdated('weather');
@@ -3437,6 +3492,23 @@
                 const next = Number(document.getElementById('amberNext')?.value) || 12;
                 const resp = await authenticatedFetch(`/api/amber/prices/current?siteId=${siteId}&next=${next}`);
                 const data = await resp.json();
+                
+                // Cache Amber prices for automation test page
+                if (data.errno === 0 && Array.isArray(data.result)) {
+                    try {
+                        const prices = data.result;
+                        const general = prices.find(p => p.channelType === 'general');
+                        const feedIn = prices.find(p => p.channelType === 'feedIn');
+                        const forecasts = prices.filter(p => p.type === 'ForecastInterval');
+                        const priceCache = {
+                            general: general ? { perKwh: general.perKwh } : null,
+                            feedIn: feedIn ? { perKwh: feedIn.perKwh } : null,
+                            forecastHigh: forecasts.length > 0 ? Math.max(...forecasts.map(f => f.perKwh || 0)) : null
+                        };
+                        localStorage.setItem('cachedPrices', JSON.stringify(priceCache));
+                    } catch (e) { /* ignore cache errors */ }
+                }
+                
                 renderAmberCard(data);
                 // Also set last-updated for amber (history query counts as an update)
                 setLastUpdated('amber');

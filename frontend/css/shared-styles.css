@@ -561,7 +561,7 @@ button.btn-secondary {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 18px;
+    padding: 16px 20px;
     background: rgba(0, 0, 0, 0.2);
     border-bottom: 1px solid rgba(48, 54, 61, 0.4);
 }
@@ -572,19 +572,19 @@ button.btn-secondary {
     color: var(--text-primary);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
 
 .card-title .icon {
-    font-size: 1.1em;
+    font-size: 1.2em;
 }
 
 .card-body {
-    padding: 16px 18px;
+    padding: 20px 22px;
 }
 
 .card-footer {
-    padding: 14px 18px;
+    padding: 16px 20px;
     background: rgba(0, 0, 0, 0.1);
     border-top: 1px solid rgba(48, 54, 61, 0.4);
 }

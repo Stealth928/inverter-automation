@@ -494,9 +494,8 @@
                     <div class="control-group">
                         <label>Report Type</label>
                         <select id="reportDimension">
-                            <option value="day">Daily (this month)</option>
-                            <option value="month">Monthly (this year)</option>
-                            <option value="year">Yearly</option>
+                            <option value="month">Daily (this month)</option>
+                            <option value="year">Monthly (this year)</option>
                         </select>
                     </div>
                     <div class="control-group">
@@ -626,10 +625,13 @@
             // Set current month
             document.getElementById('reportMonth').value = new Date().getMonth() + 1;
             
+            // Initialize month group visibility (show by default since default is "Daily")
+            const monthGroup = document.getElementById('reportMonthGroup');
+            monthGroup.style.display = 'flex';
+            
             // Handle dimension change
             document.getElementById('reportDimension').addEventListener('change', (e) => {
-                const monthGroup = document.getElementById('reportMonthGroup');
-                monthGroup.style.display = e.target.value === 'day' ? 'flex' : 'none';
+                monthGroup.style.display = e.target.value === 'month' ? 'none' : 'flex';
             });
             
             // Try to get device SN from localStorage (no API call)
@@ -951,13 +953,23 @@
                 return;
             }
             
-            // Parse variables
+            // Parse variables - API returns {variable, values: [...], unit}
             const variables = {};
             result.forEach(item => {
-                if (item.variable && item.data) {
-                    variables[item.variable] = item;
+                if (item.variable && item.values && Array.isArray(item.values)) {
+                    // Convert values array to objects with value and index
+                    variables[item.variable] = {
+                        ...item,
+                        data: item.values.map((value, index) => ({
+                            value: value,
+                            index: index + 1  // 1-indexed
+                        }))
+                    };
                 }
             });
+            
+            console.log('[Report] Parsed variables:', Object.keys(variables));
+            console.log('[Report] Generation data count:', variables.generation?.data.length, 'values:', variables.generation?.values.slice(0, 5));
             
             const genData = variables.generation?.data || [];
             const feedData = variables.feedin?.data || [];
@@ -1012,46 +1024,74 @@
                 reportChart.destroy();
             }
             
-            const ctx = document.getElementById('reportChartCanvas').getContext('2d');
+            // Wait for canvas to be available in DOM
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            const canvas = document.getElementById('reportChartCanvas');
+            if (!canvas) {
+                console.error('Chart canvas not found in DOM');
+                content.innerHTML += '<div style="color:red">Error: Chart canvas not available</div>';
+                return;
+            }
+            const ctx = canvas.getContext('2d');
             
             // Labels based on dimension
-            const labels = genData.map(d => {
-                if (dimension === 'day') return `Day ${d.index || d.day || '?'}`;
-                if (dimension === 'month') return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.index - 1] || `M${d.index}`;
-                return `${d.index || d.year || '?'}`;
-            });
+            let labels = [];
+            if (dimension === 'month') {
+                // For month view, show day numbers (1-31)
+                labels = genData.map((d, i) => `Day ${i + 1}`);
+            } else if (dimension === 'day') {
+                // For day view, show hour numbers (0-23)
+                labels = genData.map((d, i) => `${String(i).padStart(2, '0')}:00`);
+            } else {
+                // For year view, show month names
+                labels = genData.map((d, i) => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][i] || `M${i + 1}`);
+            }
             
             reportChart = new Chart(ctx, {
-                type: 'bar',
+                type: 'line',
                 data: {
                     labels,
                     datasets: [
                         {
                             label: 'Generation (kWh)',
                             data: genData.map(d => d.value || 0),
-                            backgroundColor: 'rgba(255, 212, 59, 0.7)',
                             borderColor: '#ffd43b',
-                            borderWidth: 1
+                            backgroundColor: 'rgba(255, 212, 59, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: '#ffd43b'
                         },
                         {
                             label: 'Feed-in (kWh)',
                             data: feedData.map(d => d.value || 0),
-                            backgroundColor: 'rgba(126, 231, 135, 0.7)',
                             borderColor: '#7ee787',
-                            borderWidth: 1
+                            backgroundColor: 'rgba(126, 231, 135, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: '#7ee787'
                         },
                         {
                             label: 'Grid Import (kWh)',
                             data: gridData.map(d => d.value || 0),
-                            backgroundColor: 'rgba(88, 166, 255, 0.7)',
                             borderColor: '#58a6ff',
-                            borderWidth: 1
+                            backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: '#58a6ff'
                         }
                     ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { 
                             labels: { color: '#c9d1d9', usePointStyle: true }
@@ -1059,12 +1099,14 @@
                         tooltip: {
                             backgroundColor: 'rgba(22, 27, 34, 0.95)',
                             titleColor: '#e6edf3',
-                            bodyColor: '#8b949e'
+                            bodyColor: '#8b949e',
+                            borderColor: '#30363d',
+                            borderWidth: 1
                         }
                     },
                     scales: {
                         x: {
-                            ticks: { color: '#8b949e' },
+                            ticks: { color: '#8b949e', maxTicksLimit: 12 },
                             grid: { color: 'rgba(48, 54, 61, 0.3)' }
                         },
                         y: {
