@@ -142,13 +142,36 @@ async function loadApiMetrics(days = 1) {
     }
 }
 
+// Global metrics timer (singleton to prevent multiple concurrent timers)
+let metricsTimerId = null;
+
 /**
- * Start automatic API metrics refresh
+ * Start automatic API metrics refresh (singleton pattern)
  * @param {number} intervalMs - Refresh interval in milliseconds
+ * @returns {number|null} Timer ID if started, null if already running
  */
 function startMetricsAutoRefresh(intervalMs = 60000) {
+    // If timer already running, don't start another
+    if (metricsTimerId) {
+        console.log('[Metrics] Auto-refresh already running');
+        return null;
+    }
+    
+    // Initial load
     loadApiMetrics(1);
-    return setInterval(() => loadApiMetrics(1), intervalMs);
+    
+    // Start interval timer
+    metricsTimerId = setInterval(() => loadApiMetrics(1), intervalMs);
+    
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+        if (metricsTimerId) {
+            clearInterval(metricsTimerId);
+            metricsTimerId = null;
+        }
+    });
+    
+    return metricsTimerId;
 }
 
 /* ============================================

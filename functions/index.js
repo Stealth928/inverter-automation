@@ -242,48 +242,6 @@ app.post('/api/config/validate-keys', async (req, res) => {
   }
 });
 
-// DEBUG ENDPOINT: Trace setup-status diagnostics
-app.get('/api/debug/setup-trace', async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization || '(none)';
-    const hasToken = authHeader.startsWith('Bearer ');
-    
-    await tryAttachUser(req);
-    const isAuthenticated = !!req.user?.uid;
-    const userId = req.user?.uid || '(not authenticated)';
-    
-    let configData = null;
-    let error = null;
-    
-    if (isAuthenticated) {
-      try {
-        configData = await getUserConfig(userId);
-      } catch (e) {
-        error = e.message;
-      }
-    }
-    
-    res.json({
-      errno: 0,
-      debug: {
-        authHeader: hasToken ? 'Bearer token present' : authHeader,
-        isAuthenticated,
-        userId,
-        configData: configData ? {
-          deviceSn: configData.deviceSn ? '(present)' : '(missing)',
-          foxessToken: configData.foxessToken ? '(present)' : '(missing)',
-          amberApiKey: configData.amberApiKey ? '(present)' : '(missing)',
-          setupComplete: configData.setupComplete,
-          source: configData._source
-        } : null,
-        error
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
 // Check if user setup is complete (no auth required for initial check during setup flow)
 app.get('/api/config/setup-status', async (req, res) => {
   try {
@@ -413,10 +371,9 @@ app.get('/api/amber/prices/current', async (req, res) => {
     if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
 
     const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId);
-    // Always wrap in {errno, result} format
-    if (Array.isArray(result)) return res.json({ errno: 0, result });
-    if (result?.errno === 0) return res.json(result);  // Already wrapped
-    return res.json({ errno: result?.errno || 500, result: [] });  // Error or unexpected format
+    // Normalize response to expected array/result structure
+    if (Array.isArray(result)) return res.json(result);
+    return res.json(result);
   } catch (e) {
     console.error('[Amber] /prices/current error (pre-auth):', e && e.message ? e.message : e);
     return res.json({ errno: 0, result: [] });
@@ -876,7 +833,7 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
         console.log(`[Cache] Fetching chunk: ${chunk.start} to ${chunk.end}`);
         
         // Call Amber API directly (NOT through caching to avoid recursion)
-        const result = await callAmberAPIDirect(`/sites/${encodeURIComponent(siteId)}/prices`, {
+        const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices`, {
           startDate: chunk.start,
           endDate: chunk.end,
           resolution: resolution || 30
@@ -943,13 +900,6 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
   console.log(`[Cache] Final result: ${finalPrices.length} total prices - channels:`, finalChannels);
   
   return { errno: 0, result: finalPrices };
-}
-
-/**
- * Direct API call without caching (used internally by caching layer)
- */
-async function callAmberAPIDirect(path, queryParams = {}, userConfig, userId = null) {
-  return callAmberAPI(path, queryParams, userConfig, userId);
 }
 
 async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
@@ -1110,13 +1060,16 @@ async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
     clearTimeout(timeout);
     
     return {
-      source: 'open-meteo',
-      place: { query: place, resolvedName, country, latitude, longitude },
-      current: forecastJson.current_weather || null,
-      hourly: forecastJson.hourly || null,
-      daily: forecastJson.daily || null,
-      raw: forecastJson,
-      forecastDays: forecastDays
+      errno: 0,
+      result: {
+        source: 'open-meteo',
+        place: { query: place, resolvedName, country, latitude, longitude },
+        current: forecastJson.current_weather || null,
+        hourly: forecastJson.hourly || null,
+        daily: forecastJson.daily || null,
+        raw: forecastJson,
+        forecastDays: forecastDays
+      }
     };
   } catch (error) {
     return { errno: 500, error: error.message };
@@ -2261,16 +2214,16 @@ app.get('/api/module/list', async (req, res) => {
   }
 });
 
-// Module signal (attempts moduleSN lookup if not provided)
+// Module signal (requires moduleSN parameter)
 app.get('/api/module/signal', async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
-    let moduleSN = req.query.moduleSN;
+    const moduleSN = req.query.moduleSN;
+    
     if (!moduleSN) {
-      const moduleList = await callFoxESSAPI('/op/v0/module/list', 'POST', { sn: userConfig?.deviceSn, currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
-      if (moduleList?.result?.data?.length > 0) moduleSN = moduleList.result.data[0].moduleSN;
+      return res.status(400).json({ errno: 400, error: 'moduleSN parameter is required' });
     }
-    if (!moduleSN) return res.json({ errno: 41037, msg: 'No module found for device', result: null });
+    
     const result = await callFoxESSAPI('/op/v0/module/getSignal', 'POST', { sn: moduleSN }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
@@ -2332,12 +2285,7 @@ app.get('/api/weather', async (req, res) => {
     const place = req.query.place || 'Sydney';
     const days = parseInt(req.query.days || '3', 10);
     const result = await callWeatherAPI(place, days, req.user.uid);
-    // Wrap response in standard format
-    if (result?.errno) {
-      res.json(result);  // Error response
-    } else {
-      res.json({ errno: 0, result });  // Success - wrap the data
-    }
+    res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
   }
@@ -2382,28 +2330,7 @@ app.get('/api/scheduler/v1/get', async (req, res) => {
   }
 });
 
-// Backwards-compat: v0-style scheduler endpoints used by older UIs
-app.get('/api/scheduler/get', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    const result = await callFoxESSAPI('/op/v0/device/scheduler/get', 'POST', { deviceSN: sn }, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
 
-app.get('/api/scheduler/flag', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    const result = await callFoxESSAPI('/op/v0/device/scheduler/get/flag', 'POST', { deviceSN: sn }, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
 
 app.post('/api/scheduler/v1/set', async (req, res) => {
   try {
@@ -2618,105 +2545,9 @@ exports.api = functions.https.onRequest(app);
 
 // ==================== SCHEDULED AUTOMATION ====================
 /**
- * Scheduled function that runs every minute
- * Fetches shared API data (Amber, Weather) and processes automation for all active users
- * Note: Using Firestore document trigger instead of Cloud Scheduler for 1st Gen compatibility
+ * Scheduled automation is handled by the backend server.js in 1st Gen
+ * Cloud Functions here only provides the API proxy and per-user endpoints
  */
-// Scheduled automation is handled by the backend server.js in 1st Gen
-// Cloud Functions here only provides the API proxy and per-user endpoints
-
-/**
- * Update shared cache with latest API data
- */
-async function updateSharedCache() {
-  const now = Date.now();
-  const config = getConfig();
-  
-  try {
-    // Check if cache is stale
-    const cacheDoc = await db.collection('cache').doc('shared').get();
-    const cache = cacheDoc.exists ? cacheDoc.data() : {};
-    
-    // Update Amber cache if stale
-    if (!cache.amberUpdatedAt || (now - cache.amberUpdatedAt) > config.automation.cacheTtl.amber) {
-      console.log('[Cache] Updating Amber prices...');
-      const amberData = await callAmberAPI('/sites', {}, {});
-      if (Array.isArray(amberData) && amberData.length > 0) {
-        const siteId = amberData[0].id;
-        const prices = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 1 }, {});
-        await db.collection('cache').doc('shared').set({
-          amber: prices,
-          amberUpdatedAt: now
-        }, { merge: true });
-      }
-    }
-    
-    // Update Weather cache if stale
-    if (!cache.weatherUpdatedAt || (now - cache.weatherUpdatedAt) > config.automation.cacheTtl.weather) {
-      console.log('[Cache] Updating Weather...');
-      const weatherData = await callWeatherAPI('Sydney', 3);
-      await db.collection('cache').doc('shared').set({
-        weather: weatherData,
-        weatherUpdatedAt: now
-      }, { merge: true });
-    }
-  } catch (error) {
-    console.error('[Cache] Error updating shared cache:', error);
-  }
-}
-
-/**
- * Process automation for a single user
- */
-async function processUserAutomation(userId) {
-  try {
-    // Get user's automation state
-    const state = await getUserAutomationState(userId);
-    if (!state || !state.enabled) {
-      return; // Automation disabled for this user
-    }
-    
-    // Get user's config and rules
-    const userConfig = await getUserConfig(userId);
-    const rules = await getUserRules(userId);
-    
-    if (Object.keys(rules).length === 0) {
-      return; // No rules configured
-    }
-    
-    // Get shared cache data
-    const cacheDoc = await db.collection('cache').doc('shared').get();
-    const cache = cacheDoc.exists ? cacheDoc.data() : {};
-    
-    // Get user's inverter data
-    let inverterData = null;
-    if (userConfig?.deviceSn) {
-      inverterData = await callFoxESSAPI('/op/v0/device/real/query', 'POST', {
-        sn: userConfig.deviceSn,
-        variables: ['SoC', 'batTemperature', 'ambientTemperation', 'pvPower', 'loadsPower']
-      }, userConfig);
-    }
-    
-    // Evaluate rules (sorted by priority)
-    const sortedRules = Object.entries(rules)
-      .filter(([_, rule]) => rule.enabled)
-      .sort((a, b) => (a[1].priority || 99) - (b[1].priority || 99));
-    
-    for (const [ruleId, rule] of sortedRules) {
-      const result = await evaluateRule(userId, ruleId, rule, cache, inverterData, userConfig);
-      if (result.triggered) {
-        console.log(`[Automation] User ${userId}: Rule '${rule.name}' triggered`);
-        break; // First triggered rule wins
-      }
-    }
-    
-    // Update last check time
-    await saveUserAutomationState(userId, { lastCheck: Date.now() });
-    
-  } catch (error) {
-    console.error(`[Automation] Error processing user ${userId}:`, error);
-  }
-}
 
 /**
  * Evaluate a single automation rule - checks ALL conditions
