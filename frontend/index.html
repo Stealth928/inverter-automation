@@ -3677,14 +3677,13 @@
             const feedDisplayValues = displayFeedForecasts.length ? displayFeedForecasts.map(it => {
                 try {
                     if (window.sharedUtils && typeof window.sharedUtils.feedDisplayValue === 'function') {
-                        // Note: shared-utils still uses negation, but that's wrong for current Amber data
-                        // Just use the value directly
-                        return Math.round(it.perKwh);
+                        // Negate to convert Amber's negative values to positive display
+                        return -Math.round(it.perKwh);
                     }
                 } catch (e) {
                     // fall through to inline transform
                 }
-                return Math.round(it.perKwh);
+                return -Math.round(it.perKwh);  // Negate Amber's negative values
             }) : [];
             const minFeedSpot = feedDisplayValues.length ? Math.min(...feedDisplayValues) : 0;
             const maxFeedSpot = feedDisplayValues.length ? Math.max(...feedDisplayValues) : 0;
@@ -3740,10 +3739,11 @@
                     const displayVal = -Math.round(currentFeed.perKwh);
                     function feedClassFromVal(v) {
                         // v is display value in cents (positive = you earn at this rate)
-                        if (v > 50) return 'price-darkgreen'; // dark green - excellent rate (you earn a lot)
-                        if (v >= 15 && v <= 50) return 'price-low'; // light green - good rate
-                        if (v >= 6 && v < 15) return 'price-mid'; // amber - ok rate
-                        if (v < 6) return 'price-neutral'; // grey - low rate
+                        if (v < -6) return 'price-high'; // red - paying money (negative feed-in)
+                        if (v < 0) return 'price-mid'; // amber - slightly negative
+                        if (v < 5) return 'price-neutral'; // grey - very low earnings
+                        if (v < 20) return 'price-low'; // green - good rate
+                        if (v >= 20) return 'price-darkgreen'; // dark green - excellent rate
                         return 'price-neutral';
                     }
                     const getCls = feedClassFromVal(displayVal);
@@ -3774,11 +3774,11 @@
                 
                 // Feed-in coloring (high=you earn money, low=you pay)
                 function feedClassFromVal(v) {
-                    if (v < -5) return 'price-high';
-                    if (v >= -5 && v < 0) return 'price-mid';
-                    if (v >= 0 && v < 6) return 'price-neutral';
-                    if (v >= 6 && v <= 15) return 'price-low';
-                    if (v > 15) return 'price-darkgreen';
+                    if (v < -6) return 'price-high'; // red - paying money
+                    if (v < 0) return 'price-mid'; // amber - slightly negative
+                    if (v < 5) return 'price-neutral'; // grey - very low earnings
+                    if (v < 20) return 'price-low'; // green - good rate
+                    if (v >= 20) return 'price-darkgreen'; // dark green - excellent rate
                     return 'price-neutral';
                 }
                 const minFeedCls = feedClassFromVal(minFeedSpot);
@@ -3826,11 +3826,11 @@
                     const displayVal = -Math.round(it.perKwh);
                     function feedClassFromVal(v) {
                         // v is display value in cents (positive = you earn at this rate)
-                        if (v > 50) return 'price-darkgreen'; // dark green - excellent rate
-                        if (v >= 15 && v <= 50) return 'price-low'; // light green - good rate
-                        if (v >= 6 && v < 15) return 'price-mid'; // amber - ok rate
-                        if (v > 0 && v < 6) return 'price-neutral'; // grey - low rate
-                        if (v <= 0) return 'price-neutral'; // grey - very low/no earnings
+                        if (v < -6) return 'price-high'; // red - paying money
+                        if (v < 0) return 'price-mid'; // amber - slightly negative
+                        if (v < 5) return 'price-neutral'; // grey - very low earnings
+                        if (v < 20) return 'price-low'; // green - good rate
+                        if (v >= 20) return 'price-darkgreen'; // dark green - excellent rate
                         return 'price-neutral';
                     }
                     const getCls = feedClassFromVal(displayVal);
