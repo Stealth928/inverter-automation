@@ -2862,19 +2862,25 @@
                 const resp = await authenticatedFetch(`/api/weather?place=${encodeURIComponent(place)}&days=${days}`);
                 const data = await resp.json();
                 
+                // Handle wrapped {errno, result} response format
+                let weatherData = data;
+                if (data.errno === 0 && data.result) {
+                    weatherData = data.result;
+                }
+                
                 // Cache weather data for automation test page
-                if (data.errno === 0 && data.result?.hourly) {
+                if (weatherData?.hourly) {
                     try {
-                        const hourly = data.result.hourly;
+                        const hourly = weatherData.hourly;
                         const wxCache = {
                             solarRadiation: hourly.shortwave_radiation?.[0] || 0,
-                            cloudCover: hourly.cloud_cover?.[0] || 0
+                            cloudCover: hourly.cloud_cover?.[0] || hourly.cloudcover?.[0] || 0
                         };
                         localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
                     } catch (e) { /* ignore cache errors */ }
                 }
                 
-                renderWeatherCard(data);
+                renderWeatherCard(weatherData);
                 // mark last updated for weather
                 setLastUpdated('weather');
 
@@ -3494,10 +3500,19 @@
                 const resp = await authenticatedFetch(`/api/amber/prices/current?siteId=${siteId}&next=${next}`);
                 const data = await resp.json();
                 
+                // Handle both wrapped {errno, result} and unwrapped array formats
+                let prices = [];
+                if (Array.isArray(data)) {
+                    prices = data;
+                } else if (data?.errno === 0 && Array.isArray(data.result)) {
+                    prices = data.result;
+                } else if (data?.result && Array.isArray(data.result)) {
+                    prices = data.result;
+                }
+                
                 // Cache Amber prices for automation test page
-                if (data.errno === 0 && Array.isArray(data.result)) {
+                if (prices.length > 0) {
                     try {
-                        const prices = data.result;
                         const general = prices.find(p => p.channelType === 'general');
                         const feedIn = prices.find(p => p.channelType === 'feedIn');
                         const forecasts = prices.filter(p => p.type === 'ForecastInterval');
@@ -3510,7 +3525,7 @@
                     } catch (e) { /* ignore cache errors */ }
                 }
                 
-                renderAmberCard(data.result || []);
+                renderAmberCard(prices);
                 // Also set last-updated for amber (history query counts as an update)
                 setLastUpdated('amber');
                 // mark last updated for amber prices

@@ -371,9 +371,16 @@ app.get('/api/amber/prices/current', async (req, res) => {
     if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
 
     const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId);
-    // Normalize response to expected array/result structure
-    if (Array.isArray(result)) return res.json(result);
-    return res.json(result);
+    // Normalize response to wrapped format
+    if (Array.isArray(result)) {
+      return res.json({ errno: 0, result });
+    }
+    // If already wrapped, return as-is
+    if (result?.errno !== undefined) {
+      return res.json(result);
+    }
+    // Fallback: wrap whatever we got
+    return res.json({ errno: 0, result });
   } catch (e) {
     console.error('[Amber] /prices/current error (pre-auth):', e && e.message ? e.message : e);
     return res.json({ errno: 0, result: [] });
