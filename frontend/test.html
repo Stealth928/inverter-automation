@@ -984,18 +984,33 @@
                 let updated = [];
                 const now = Date.now();
                 
-                // Get user config for siteId (needed for Amber)
-                let userConfig = null;
-                if (fetchAmber) {
+                // Get stored Amber site ID (needed for Amber prices)
+                let siteId = null;
+                try {
+                    const stored = localStorage.getItem('amberSiteId');
+                    if (stored) {
+                        siteId = stored;
+                        console.log('[Fetch] Using stored Amber siteId:', siteId);
+                    }
+                } catch (e) { /* ignore */ }
+                
+                // If no stored siteId and Amber fetch requested, try to get from Amber sites endpoint
+                if (!siteId && fetchAmber) {
                     try {
-                        const configResp = await authenticatedFetch('/api/user/config');
-                        if (configResp.ok) {
-                            const configData = await configResp.json();
-                            if (configData.errno === 0 && configData.result) {
-                                userConfig = configData.result;
+                        console.log('[Fetch] No stored siteId, attempting to fetch from /api/amber/sites');
+                        const sitesResp = await authenticatedFetch('/api/amber/sites');
+                        if (sitesResp.ok) {
+                            const sites = await sitesResp.json();
+                            const sitesList = Array.isArray(sites) ? sites : (sites.result || []);
+                            if (sitesList.length > 0) {
+                                siteId = sitesList[0].id;
+                                localStorage.setItem('amberSiteId', siteId);
+                                console.log('[Fetch] Got siteId from API:', siteId);
                             }
                         }
-                    } catch (e) { /* ignore */ }
+                    } catch (e) { 
+                        console.log('[Fetch] Could not fetch sites:', e.message);
+                    }
                 }
                 
                 // Fetch inverter data only if needed
@@ -1044,21 +1059,6 @@
                 // Fetch Amber prices only if needed
                 if (fetchAmber) {
                     try {
-                        let siteId = userConfig?.amberSiteId;
-                        
-                        if (!siteId && userConfig?.amberApiKey) {
-                            try {
-                                const sitesResp = await authenticatedFetch('/api/amber/sites');
-                                if (sitesResp.ok) {
-                                    const sites = await sitesResp.json();
-                                    const sitesList = Array.isArray(sites) ? sites : (sites.result || []);
-                                    if (sitesList.length > 0) {
-                                        siteId = sitesList[0].id;
-                                    }
-                                }
-                            } catch (e) { /* ignore */ }
-                        }
-                        
                         if (siteId) {
                             const amberResp = await authenticatedFetch(`/api/amber/prices/current?siteId=${siteId}&next=48`);
                             if (amberResp.ok) {
@@ -1098,6 +1098,8 @@
                                 cacheState.amberTime = now;
                                 localStorage.setItem('cacheState', JSON.stringify(cacheState));
                             }
+                        } else {
+                            console.log('[Fetch] No Amber siteId stored, skipping prices fetch');
                         }
                     } catch (e) { log('warning', `Amber fetch failed: ${e.message}`); }
                 }
