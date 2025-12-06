@@ -533,14 +533,14 @@
                more content without requiring the user to open the modal or scroll
                the entire page. Keep a reasonable maximum so the panel doesn't
                dominate the layout on very tall screens. */
-            max-height: 520px; /* increased from 264px -> gives about twice the height */
-            min-height: 200px; /* slightly taller minimum */
+            max-height: 728px; /* increased from 520px (40% more vertical space) */
+            min-height: 280px; /* increased from 200px proportionally */
             overflow: hidden; /* prevent the FAQ card from expanding the automation panel */
         }
         .automation-panel .faq-card .card-body {
             /* Allow only the inner FAQ area to scroll — height adjusted to match
                the larger FAQ card container so content inside has more room */
-            max-height: calc(520px - 50px); /* account for header height */
+            max-height: calc(728px - 50px); /* account for header height */
             overflow-y: auto;
             padding-right: 6px;
             overscroll-behavior: contain;
@@ -878,31 +878,46 @@
         }
         .automation-toggle {
             position: relative;
-            width: 52px;
+            width: 48px;
             height: 28px;
-            background: rgba(48, 54, 61, 0.8);
+            background: rgba(255, 255, 255, 0.15);
             border-radius: 14px;
             cursor: pointer;
-            transition: all 0.3s ease;
-            border: 1px solid rgba(48, 54, 61, 0.8);
+            transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+            border: 1.5px solid rgba(255, 255, 255, 0.25);
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+        .automation-toggle:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.35);
         }
         .automation-toggle.active {
-            background: linear-gradient(135deg, #238636, #1a7f37);
-            border-color: #238636;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.85));
+            border-color: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+        }
+        .automation-toggle.active:hover {
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.5);
         }
         .automation-toggle::after {
             content: '';
             position: absolute;
-            width: 22px;
-            height: 22px;
-            background: #e6edf3;
+            width: 20px;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.35);
             border-radius: 50%;
-            top: 2px;
+            top: 3px;
             left: 3px;
-            transition: all 0.3s ease;
+            transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
         .automation-toggle.active::after {
-            left: 26px;
+            left: 24px;
+            background: #1f6feb;
+            box-shadow: 0 2px 6px rgba(31, 111, 235, 0.4);
+        }
+        .automation-toggle.active::after:hover {
+            box-shadow: 0 2px 8px rgba(31, 111, 235, 0.6);
         }
         .automation-status-text {
             font-size: 12px;
@@ -1406,12 +1421,12 @@
 
                                 <!-- API call metrics footer -->
                                 <div id="apiMetricsFooter" class="api-metrics-footer">
-                                    <div class="metrics-icon">📊 API Calls</div>
+                                    <div class="metrics-icon">📊</div>
                                     <div id="metricsDate" class="metrics-date">—</div>
                                     <div id="metricsCounts" class="metrics-counts">
-                                        <div class="metric-fox">FoxESS: <span id="countFox" class="metric-value">0</span></div>
-                                        <div class="metric-amber">Amber: <span id="countAmber" class="metric-value">0</span></div>
-                                        <div class="metric-weather">Weather: <span id="countWeather" class="metric-value">0</span></div>
+                                        <div class="metric-fox">Fox: <span id="countFox" class="metric-value">0</span></div>
+                                        <div class="metric-amber">Amb: <span id="countAmber" class="metric-value">0</span></div>
+                                        <div class="metric-weather">Wea: <span id="countWeather" class="metric-value">0</span></div>
                                     </div>
                                     <button class="btn btn-sm" onclick="loadApiMetrics(1)" title="Refresh metrics">🔄</button>
                                 </div>
@@ -2662,8 +2677,8 @@
                                     const innerH = 28;
                                     const fillH = Math.round((socPct / 100) * innerH);
                                     const y = 4 + (innerH - fillH);
-                                    // Conditional coloring: green >=45%, amber 25-44%, red <25%
-                                    const fillColor = socPct >= 45 ? '#16a34a' : (socPct >= 25 ? '#d29922' : '#dc2626');
+                                    // Conditional coloring: green >=50%, amber 25-44%, red <25%
+                                    const fillColor = socPct >= 50 ? '#16a34a' : (socPct >= 25 ? '#d29922' : '#dc2626');
                                     return `
                                     <svg viewBox="0 0 24 40" aria-hidden="true">
                                         <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"></rect>
@@ -2993,8 +3008,49 @@
 
                 const nowTemp = (current.temperature !== undefined && current.temperature !== null && String(current.temperature).toLowerCase() !== 'undefined') ? `${current.temperature}°` : '—';
                 html += `<div class="live-stat"><span class="value">${nowTemp}</span><span class="unit">C</span><span class="label">Now</span></div>`;
+
+                // Determine current shortwave radiation and cloudcover.
+                let currentRad = null;
+                let currentCloud = null;
+                try {
+                    if (current.shortwave_radiation !== undefined && current.shortwave_radiation !== null) {
+                        currentRad = current.shortwave_radiation;
+                    } else if (data.hourly && Array.isArray(data.hourly.time) && Array.isArray(data.hourly.shortwave_radiation)) {
+                        const times = data.hourly.time;
+                        const radArr = data.hourly.shortwave_radiation;
+                        let idx = -1;
+                        if (current.time) idx = times.indexOf(current.time);
+                        if (idx === -1) {
+                            const nowHour = (current.time ? current.time.substring(0,13) : new Date().toISOString().substring(0,13));
+                            for (let k = 0; k < times.length; k++) {
+                                if (times[k] && times[k].substring(0,13) === nowHour) { idx = k; break; }
+                            }
+                        }
+                        if (idx !== -1) currentRad = radArr[idx];
+                    }
+
+                    if (current.cloudcover !== undefined && current.cloudcover !== null) {
+                        currentCloud = current.cloudcover;
+                    } else if (data.hourly && Array.isArray(data.hourly.time) && Array.isArray(data.hourly.cloudcover)) {
+                        const times = data.hourly.time;
+                        const cloudArr = data.hourly.cloudcover;
+                        let idx = -1;
+                        if (current.time) idx = times.indexOf(current.time);
+                        if (idx === -1) {
+                            const nowHour = (current.time ? current.time.substring(0,13) : new Date().toISOString().substring(0,13));
+                            for (let k = 0; k < times.length; k++) {
+                                if (times[k] && times[k].substring(0,13) === nowHour) { idx = k; break; }
+                            }
+                        }
+                        if (idx !== -1) currentCloud = cloudArr[idx];
+                    }
+                } catch (e) { /* ignore */ }
+
                 html += `<div style="margin-top:8px;font-size:13px;color:#8b949e">${todayDesc} • Rain: ${todayRain !== null ? todayRain.toFixed(1) + ' mm' : '—'}`;
                 if (windSpeed !== null) html += ` • Wind: <strong style="color:#c9d1d9">${windSpeed.toFixed(1)} km/h</strong>${windDirName ? ' ' + windDirName : ''}`;
+                // Add current radiance/cloud values (use units W/m² for radiation)
+                html += ` • <span title="Current shortwave radiation">☀️ ${currentRad !== null ? String(currentRad) + ' W/m²' : '—'}</span>`;
+                html += ` • <span title="Current cloud cover">☁️ ${currentCloud !== null ? String(currentCloud) + '%' : '—'}</span>`;
                 html += `</div>`;
             }
 
@@ -3074,7 +3130,6 @@
                             <span style="font-size:10px;color:${radColor}" title="Avg solar radiation (W/m²)">☀️${radAvg !== null ? radAvg : '—'}</span>
                             <span style="font-size:10px;color:${cloudColor}" title="Avg cloud cover %">☁️${cloudAvg !== null ? cloudAvg + '%' : '—'}</span>
                         </div>
-                        ${sunrise && sunset ? `<div style="font-size:10px;color:#6e7681;margin-top:2px">🌅${sunrise} 🌇${sunset}</div>` : ''}
                     </div>`;
                 }
                 html += '</div>';
@@ -3738,11 +3793,25 @@
                 }
 
                 const ctx = canvas.getContext('2d');
+                // Prepare a constant zero series so we can draw a horizontal dotted line at 0
+                const zeroSeries = labels.map(() => 0);
+
                 window.amberChartInst = new Chart(ctx, {
                     type: 'line',
                     data: {
                         labels,
                         datasets: [
+                            // invisible legend entry (empty label) used to draw dotted zero line
+                            {
+                                label: '',
+                                data: zeroSeries,
+                                borderColor: 'rgba(255,255,255,0.25)',
+                                borderWidth: 1,
+                                pointRadius: 0,
+                                tension: 0,
+                                borderDash: [4, 4],
+                                fill: false
+                            },
                             {
                                 label: 'Buy Price (¢/kWh)',
                                 data: buySeries,
@@ -4414,67 +4483,76 @@
         
         // Format automation cycle result for debug display
         function formatCycleResult(result) {
-            if (!result) return '<span style="color:#6e7681">No data</span>';
+            if (!result) return '<span style="color:#6e7681;font-size:11px">No data</span>';
             
             let html = '';
             
             if (result.skipped) {
-                html += `<div style="color:#f0883e">⏭️ Skipped: ${result.reason || 'Unknown'}</div>`;
+                html += `<span style="color:#f0883e;font-size:11px">⏭️ Skipped: ${result.reason || 'Unknown'}</span>`;
                 return html;
             }
             
+            // Main result section - triggered or not
             if (result.triggered && result.rule) {
-                html += `<div style="color:#7ee787">✅ <b>Triggered:</b> ${result.rule.name || 'Unknown'}</div>`;
+                html += `<span style="color:#7ee787;font-weight:600;font-size:11px">✅ <strong>${result.rule.name || 'Unknown'}</strong>`;
                 if (result.rule.actionResult) {
                     const ar = result.rule.actionResult;
-                    html += `<div style="color:#58a6ff;margin-left:12px">→ API: errno=${ar.errno} ${ar.msg ? '(' + ar.msg + ')' : ''}</div>`;
+                    const statusColor = ar.errno === 0 ? '#7ee787' : '#f85149';
+                    const statusText = ar.errno === 0 ? '✓' : '✗';
+                    html += ` • API ${statusText} (errno=${ar.errno})`;
                 }
+                html += `</span>`;
             } else {
-                html += `<div style="color:#8b949e">ℹ️ No rules triggered</div>`;
+                html += `<span style="color:#8b949e;font-size:11px">ℹ️ No rules triggered</span>`;
             }
             
-            // Show evaluation summary with condition details
+            // Show evaluation summary with condition details - inline
             if (result.evaluationResults && result.evaluationResults.length > 0) {
-                html += `<div style="margin-top:6px;font-size:10px">`;
+                html += `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start">`;
+                
                 result.evaluationResults.forEach(er => {
                     const icon = er.result === 'triggered' ? '✅' : er.result === 'cooldown' ? '⏳' : '❌';
-                    const color = er.result === 'triggered' ? '#7ee787' : er.result === 'cooldown' ? '#f0883e' : '#8b949e';
-                    html += `<div style="color:${color};margin-bottom:4px">${icon} <b>${er.rule}</b>: ${er.result}${er.remaining ? ' (' + er.remaining + 's)' : ''}`;
+                    const bgColor = er.result === 'triggered' ? 'rgba(126,231,135,0.1)' : er.result === 'cooldown' ? 'rgba(240,136,62,0.1)' : 'rgba(248,81,73,0.1)';
+                    const borderColor = er.result === 'triggered' ? '#7ee787' : er.result === 'cooldown' ? '#f0883e' : '#f85149';
+                    const textColor = er.result === 'triggered' ? '#7ee787' : er.result === 'cooldown' ? '#f0883e' : '#f85149';
                     
-                    // Show individual condition details if available
+                    html += `<div style="background:${bgColor};border:1px solid ${borderColor};border-radius:3px;padding:4px 6px;display:inline-flex;align-items:center;gap:3px;font-size:10px">`;
+                    html += `<span style="color:${textColor};font-weight:600">${icon} ${er.rule}</span>`;
+                    
+                    // Show individual condition details inline if available
                     if (er.details?.results && er.details.results.length > 0) {
-                        html += `<div style="margin-left:16px;color:#6e7681">`;
-                        er.details.results.forEach(cond => {
+                        const condSummary = er.details.results.map(cond => {
                             const condIcon = cond.met ? '✓' : '✗';
                             const condColor = cond.met ? '#7ee787' : '#f85149';
-                            let condText = '';
+                            let short = '';
                             if (cond.condition === 'soc') {
-                                condText = `SoC: ${cond.actual}% ${cond.operator} ${cond.target}%`;
+                                short = `SoC: ${cond.actual}%`;
                             } else if (cond.condition === 'feedInPrice') {
-                                condText = `Feed-in: ${cond.actual?.toFixed(1)}¢ ${cond.operator} ${cond.target}¢`;
+                                short = `FI: ${cond.actual?.toFixed(1)}¢`;
                             } else if (cond.condition === 'buyPrice') {
-                                condText = `Buy: ${cond.actual?.toFixed(1)}¢ ${cond.operator} ${cond.target}¢`;
+                                short = `Buy: ${cond.actual?.toFixed(1)}¢`;
                             } else if (cond.condition === 'temperature') {
-                                condText = `${cond.type || 'battery'} Temp: ${cond.actual}°C ${cond.operator} ${cond.target}°C`;
+                                short = `${cond.type || 'T'}: ${cond.actual}°C`;
                             } else if (cond.condition === 'time') {
-                                condText = `Time: ${cond.actual} in ${cond.window}`;
-                            } else if (cond.condition === 'weather') {
-                                condText = `Weather: ${cond.actual || 'N/A'} (want: ${cond.target || 'any'})`;
-                            } else if (cond.condition === 'forecastPrice') {
-                                condText = `Forecast ${cond.type || 'buy'}: ${cond.checkType || 'avg'} ${cond.actual}¢ ${cond.operator} ${cond.target}¢ (${cond.lookAhead || 30}m)`;
+                                short = `Time: ${cond.actual}`;
+                            } else if (cond.condition === 'solarRadiation') {
+                                short = `☀️ ${cond.actual}W/m²`;
+                            } else if (cond.condition === 'cloudCover') {
+                                short = `☁️ ${cond.actual}%`;
                             } else {
-                                condText = `${cond.condition}: ${cond.actual} ${cond.operator || ''} ${cond.target || ''}`;
+                                short = `${cond.condition}: ${cond.actual}`;
                             }
-                            html += `<span style="color:${condColor}">${condIcon}</span> ${condText}<br>`;
-                        });
-                        html += `</div>`;
+                            return `<span style="color:${condColor}">${condIcon} ${short}</span>`;
+                        }).join(' • ');
+                        html += `<span style="color:#6e7681;font-size:9px"> | ${condSummary}</span>`;
                     }
                     html += `</div>`;
                 });
                 html += `</div>`;
             }
             
-            html += `<div style="margin-top:4px;color:#6e7681;font-size:10px">Evaluated: ${result.rulesEvaluated || 0}/${result.totalRules || 0} rules</div>`;
+            // Footer summary inline
+            html += `<div style="margin-top:6px;color:#6e7681;font-size:10px">📊 ${result.rulesEvaluated || 0}/${result.totalRules || 0} rules</div>`;
             
             return html;
         }
@@ -5001,24 +5079,24 @@
                 const gradientColors = inBlackout ? '#f0883e 0%, #da3633 100%' : (masterEnabled ? '#1f6feb 0%, #238636 100%' : '#6e7681 0%, #8b949e 100%');
             
             let html = `
-                <!-- Countdown Timer -->
-                <div style="background:linear-gradient(135deg, ${gradientColors});border-radius:8px;padding:14px;margin-bottom:14px;text-align:center;box-shadow:0 4px 12px rgba(31,111,235,0.3);opacity:${effectivelyPaused ? 0.85 : 1}">
-                    <div style="font-size:11px;color:rgba(255,255,255,0.85);margin-bottom:6px;font-weight:500;letter-spacing:0.5px">${inBlackout ? '🚫 AUTOMATION BLACKOUT' : '⏱️ NEXT AUTOMATION CYCLE'}</div>
-                    <div id="automationCountdown" style="font-size:32px;font-weight:700;color:#fff;font-family:'Courier New',monospace;letter-spacing:3px;text-shadow:0 2px 8px rgba(0,0,0,0.3)">${countdownText}</div>
-                    <div style="font-size:10px;color:rgba(255,255,255,0.6);margin-top:4px">${subtitleText}</div>
-                </div>
-                
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #30363d">
-                    <div>
-                        <div style="font-size:14px;font-weight:600;color:#e6edf3">🤖 Master Switch</div>
-                        <div style="font-size:11px;color:#6e7681;margin-top:2px">${inBlackout ? '⚠️ Blackout active - automation paused' : 'Controls all automation rules'}</div>
+                <!-- Unified Countdown Timer + Master Switch -->
+                <div style="background:linear-gradient(135deg, ${gradientColors});border-radius:12px;padding:14px 16px;margin-bottom:12px;box-shadow:0 6px 20px rgba(0,0,0,0.4)">
+                    <div style="display:flex;align-items:center;justify-content:center;gap:16px">
+                        <div style="flex:0 0 auto;text-align:center">
+                            <div style="font-size:10px;color:rgba(255,255,255,0.9);font-weight:600;letter-spacing:1px;text-transform:uppercase">${inBlackout ? '🚫 BLACKOUT' : '⏱️ NEXT CYCLE'}</div>
+                            <div id="automationCountdown" style="font-size:32px;font-weight:800;color:#fff;font-family:'Courier New',monospace;letter-spacing:3px;text-shadow:0 3px 10px rgba(0,0,0,0.4);margin-top:4px">${countdownText}</div>
+                        </div>
+                        <div style="width:2px;height:50px;background:rgba(255,255,255,0.25);border-radius:1px"></div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;min-width:90px">
+                            <div style="font-size:12px;color:rgba(255,255,255,0.9);font-weight:600;letter-spacing:0.5px">🤖 Master</div>
+                            <div class="automation-toggle ${masterEnabled ? 'active' : ''}" onclick="toggleBackendAutomation()" style="width:48px;height:28px;cursor:pointer;transition:all 0.3s ease"></div>
+                            <span style="font-size:11px;font-weight:700;letter-spacing:0.5px;color:#fff;text-transform:uppercase;text-shadow:0 1px 3px rgba(0,0,0,0.3)">${statusText}</span>
+                        </div>
                     </div>
-                    <div style="display:flex;align-items:center;gap:8px">
-                        <span style="font-size:12px;font-weight:600;color:${statusColor}">${statusText}</span>
-                        <div class="automation-toggle ${masterEnabled ? 'active' : ''}" onclick="toggleBackendAutomation()" style="width:48px;height:26px"></div>
-                    </div>
+                    <div style="font-size:10px;color:rgba(255,255,255,0.75);text-align:center;margin-top:8px;font-weight:500">${subtitleText}</div>
                 </div>
-                <!-- Compact Add Rule button placed under Master Switch for quick access -->
+                </div>
+                <!-- Compact Add Rule button placed under master section for quick access -->
                 <div style="display:flex;justify-content:flex-start;gap:8px;margin-bottom:12px">
                     <button class="btn btn-primary btn-sm" onclick="showAddRuleModal()" style="padding:6px 10px;font-size:12px">➕ Add Rule</button>
                 </div>
@@ -5138,13 +5216,13 @@
             
             // Debug Info Box - shows last cycle outcome
             html += `
-                <div id="automationDebugBox" style="margin-top:12px;padding:10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;font-size:11px;font-family:'Courier New',monospace">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                        <span style="color:#8b949e;font-weight:600">📊 Last Cycle Debug</span>
-                        <span id="debugTimestamp" style="color:#6e7681">${status.lastCheck ? formatDate(status.lastCheck, true) : 'N/A'}</span>
-                    </div>
-                    <div id="debugContent" style="color:#8b949e">
-                        ${window.lastCycleResult ? formatCycleResult(window.lastCycleResult) : '<span style="color:#6e7681">Waiting for automation cycle...</span>'}
+                <div id="automationDebugBox" style="margin-top:12px;padding:8px 10px;background:rgba(13,17,23,0.8);border:1px solid #30363d;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.2)">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+                        <span style="color:#58a6ff;font-weight:600;font-size:11px;white-space:nowrap">📊 Last Cycle</span>
+                        <div id="debugContent" style="color:#e6edf3;font-size:11px;flex:1;min-width:250px">
+                            ${window.lastCycleResult ? formatCycleResult(window.lastCycleResult) : '<span style="color:#6e7681;font-size:10px">⏳ Waiting...</span>'}
+                        </div>
+                        <span id="debugTimestamp" style="color:#6e7681;font-size:9px;white-space:nowrap;background:#0d1117;padding:2px 6px;border-radius:3px">${status.lastCheck ? formatDate(status.lastCheck, true) : 'N/A'}</span>
                     </div>
                 </div>
             `;
@@ -5286,11 +5364,22 @@
                     }
                     
                     // ALWAYS refresh automation status after cycle to show current state (active rule, etc.)
+                    let triggeredRuleName = null;
                     try {
                         const statusResp = await authenticatedFetch('/api/automation/status');
                         const statusData = await statusResp.json();
                         if (statusData.errno === 0) {
                             window.automationStatus = statusData.result;
+                            // If a rule was triggered, ensure its lastTriggered is set to now
+                            if (data.result?.triggered && data.result?.rule) {
+                                triggeredRuleName = data.result.rule.name || 'Unknown';
+                                for (const [name, rule] of Object.entries(statusData.result.rules || {})) {
+                                    if (name === triggeredRuleName) {
+                                        rule.lastTriggered = Date.now();
+                                        break;
+                                    }
+                                }
+                            }
                             console.log('[Automation] Status refreshed after cycle:', statusData.result.activeRule ? `Active: ${statusData.result.activeRule}` : 'No active rule');
                             updateBackendAutomationUI(statusData.result);
                         }
@@ -6297,9 +6386,162 @@
             const ruleId = document.getElementById('ruleId').value;
             const ruleName = document.getElementById('ruleName').value.trim();
             
+            // Validate rule name
             if (!ruleName) {
-                alert('Please enter a rule name');
+                alert('❌ Please enter a rule name');
                 return;
+            }
+            if (ruleName.length < 3) {
+                alert('❌ Rule name must be at least 3 characters');
+                return;
+            }
+            if (ruleName.length > 100) {
+                alert('❌ Rule name must be less than 100 characters');
+                return;
+            }
+            
+            // Validate at least one condition is enabled
+            const condPriceEnabled = document.getElementById('condPriceEnabled').checked;
+            const condSoCEnabled = document.getElementById('condSoCEnabled').checked;
+            const condTempEnabled = document.getElementById('condTempEnabled').checked;
+            const condWeatherEnabled = document.getElementById('condWeatherEnabled').checked;
+            const condTimeEnabled = document.getElementById('condTimeEnabled').checked;
+            
+            if (!condPriceEnabled && !condSoCEnabled && !condTempEnabled && !condWeatherEnabled && !condTimeEnabled) {
+                alert('❌ Please enable at least one condition');
+                return;
+            }
+            
+            // Validate enabled conditions
+            if (condPriceEnabled) {
+                const priceValue = parseFloat(document.getElementById('condPriceValue').value);
+                const priceOp = document.getElementById('condPriceOp').value;
+                const priceValue2 = parseFloat(document.getElementById('condPriceValue2').value);
+                
+                if (isNaN(priceValue) || priceValue < 0 || priceValue > 100) {
+                    alert('❌ Price value must be between 0 and 100 ¢');
+                    document.getElementById('condPriceValue').focus();
+                    return;
+                }
+                if (priceOp === 'between') {
+                    if (isNaN(priceValue2) || priceValue2 < 0 || priceValue2 > 100) {
+                        alert('❌ Price range end value must be between 0 and 100 ¢');
+                        document.getElementById('condPriceValue2').focus();
+                        return;
+                    }
+                    if (priceValue >= priceValue2) {
+                        alert('❌ Price range: first value must be less than second value');
+                        return;
+                    }
+                }
+            }
+            
+            if (condSoCEnabled) {
+                const socValue = parseInt(document.getElementById('condSoCValue').value);
+                const socOp = document.getElementById('condSoCOp').value;
+                const socValue2 = parseInt(document.getElementById('condSoCValue2').value);
+                
+                if (isNaN(socValue) || socValue < 0 || socValue > 100) {
+                    alert('❌ SoC value must be between 0% and 100%');
+                    document.getElementById('condSoCValue').focus();
+                    return;
+                }
+                if (socOp === 'between') {
+                    if (isNaN(socValue2) || socValue2 < 0 || socValue2 > 100) {
+                        alert('❌ SoC range end value must be between 0% and 100%');
+                        document.getElementById('condSoCValue2').focus();
+                        return;
+                    }
+                    if (socValue >= socValue2) {
+                        alert('❌ SoC range: first value must be less than second value');
+                        return;
+                    }
+                }
+            }
+            
+            if (condTempEnabled) {
+                const tempValue = parseInt(document.getElementById('condTempValue').value);
+                const tempOp = document.getElementById('condTempOp').value;
+                const tempValue2 = parseInt(document.getElementById('condTempValue2').value);
+                
+                if (isNaN(tempValue) || tempValue < -20 || tempValue > 80) {
+                    alert('❌ Temperature must be between -20°C and 80°C');
+                    document.getElementById('condTempValue').focus();
+                    return;
+                }
+                if (tempOp === 'between') {
+                    if (isNaN(tempValue2) || tempValue2 < -20 || tempValue2 > 80) {
+                        alert('❌ Temperature range end must be between -20°C and 80°C');
+                        document.getElementById('condTempValue2').focus();
+                        return;
+                    }
+                    if (tempValue >= tempValue2) {
+                        alert('❌ Temperature range: first value must be less than second value');
+                        return;
+                    }
+                }
+            }
+            
+            // Validate time window if enabled
+            if (condTimeEnabled) {
+                const timeStart = document.getElementById('condTimeStart').value;
+                const timeEnd = document.getElementById('condTimeEnd').value;
+                
+                if (!timeStart || !timeEnd) {
+                    alert('❌ Please set both start and end times for time window');
+                    return;
+                }
+                if (timeStart >= timeEnd) {
+                    alert('❌ Start time must be before end time');
+                    return;
+                }
+            }
+            
+            // Validate action fields
+            const actionWorkMode = document.getElementById('actionWorkMode').value;
+            const actionMinSoC = document.getElementById('actionMinSoC').value;
+            const actionMaxSoC = document.getElementById('actionMaxSoC').value;
+            const actionFdPwr = document.getElementById('actionFdPwr').value;
+            
+            if (!actionWorkMode && !actionMinSoC && !actionMaxSoC && !actionFdPwr) {
+                alert('❌ Please configure at least one action (Work Mode or settings)');
+                return;
+            }
+            
+            if (actionMinSoC) {
+                const minSoC = parseInt(actionMinSoC);
+                if (isNaN(minSoC) || minSoC < 0 || minSoC > 100) {
+                    alert('❌ Min SoC must be between 0% and 100%');
+                    document.getElementById('actionMinSoC').focus();
+                    return;
+                }
+            }
+            
+            if (actionMaxSoC) {
+                const maxSoC = parseInt(actionMaxSoC);
+                if (isNaN(maxSoC) || maxSoC < 0 || maxSoC > 100) {
+                    alert('❌ Max SoC must be between 0% and 100%');
+                    document.getElementById('actionMaxSoC').focus();
+                    return;
+                }
+            }
+            
+            if (actionMinSoC && actionMaxSoC) {
+                const minSoC = parseInt(actionMinSoC);
+                const maxSoC = parseInt(actionMaxSoC);
+                if (minSoC >= maxSoC) {
+                    alert('❌ Min SoC must be less than Max SoC');
+                    return;
+                }
+            }
+            
+            if (actionFdPwr) {
+                const fdPwr = parseInt(actionFdPwr);
+                if (isNaN(fdPwr) || fdPwr < 0 || fdPwr > 10500) {
+                    alert('❌ FD Power must be between 0W and 10500W');
+                    document.getElementById('actionFdPwr').focus();
+                    return;
+                }
             }
             
             const rule = {
@@ -6345,12 +6587,6 @@
                     fdPwr: parseInt(document.getElementById('actionFdPwr').value) || null
                 }
             };
-            
-            // Validate at least one action
-            if (!rule.action.workMode && !rule.action.minSoC && !rule.action.maxSoC) {
-                alert('Please configure at least one action (Work Mode or SoC limits)');
-                return;
-            }
             
             // Update or add rule
             if (ruleId) {

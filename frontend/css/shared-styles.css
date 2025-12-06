@@ -866,12 +866,12 @@ textarea.input {
     right: 12px;
     background: rgba(13, 17, 23, 0.95);
     border: 1px solid var(--border-secondary);
-    padding: 7px 12px;
+    padding: 4px 8px;
     border-radius: var(--radius-lg);
     display: flex;
-    gap: 12px;
+    gap: 8px;
     align-items: center;
-    font-size: var(--font-size-sm);
+    font-size: 0.7rem;
     color: var(--text-secondary);
     z-index: var(--z-fixed);
     backdrop-filter: blur(10px);
@@ -881,17 +881,17 @@ textarea.input {
 .api-metrics-footer .metrics-icon {
     font-weight: 600;
     color: var(--accent-blue);
-    font-size: var(--font-size-md);
+    font-size: 0.75rem;
 }
 
 .api-metrics-footer .metrics-date {
-    min-width: 90px;
-    font-size: var(--font-size-sm);
+    min-width: 60px;
+    font-size: 0.65rem;
 }
 
 .api-metrics-footer .metrics-counts {
     display: flex;
-    gap: 12px;
+    gap: 6px;
     align-items: center;
 }
 

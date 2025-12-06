@@ -603,3 +603,33 @@ Discharge before predicted high prices.
 1. Check cache TTLs (Amber: 60s, Weather: 30min)
 2. Force refresh with automation cycle trigger
 3. Verify API keys are valid
+
+---
+
+## Recent Updates (December 2025)
+
+### UI/UX Improvements
+- **Condensed Debug Info Box**: Redesigned the automation debug display to be more compact and horizontal, showing rule evaluation results inline with color-coded badges (green for triggered, red for failed, orange for cooldown)
+- **Expanded Automation Panel**: Increased vertical height by 40% to provide better visibility of rules, debug info, and automation status
+- **Enhanced Master Switch**: Improved visual prominence with gradient backgrounds, smooth animations, and clear active/inactive states
+- **Unified Automation Card**: Consolidated countdown timer and master switch into a single centered card with better visual hierarchy
+
+### Form Validations
+- **Comprehensive Input Validation**: Added strict validation for all rule creation/edit form fields:
+  - Rule name: 3-100 characters required
+  - Price values: 0-100¢ range
+  - SoC values: 0-100% range
+  - Temperature: -20 to +80°C range
+  - FD Power: 0-10500W range (realistic inverter limits)
+  - Time window: Start time must be before end time
+  - Range conditions: First value must be less than second value
+- **User Feedback**: Clear error messages with emoji indicators, auto-focus on invalid fields
+- **Condition Requirements**: At least one condition must be enabled, at least one action must be configured
+
+### Bug Fixes
+- **Last Triggered Timestamp**: Fixed issue where rule's "Last triggered" indicator wasn't displaying when a rule was activated - now updates immediately after automation cycle completes
+
+### Technical Details
+- Debug display now uses flexible layout with wrapping badges instead of stacked containers
+- Form validation runs before server submission to prevent invalid rule creation
+- All validations provide specific, actionable error messages to guide users
