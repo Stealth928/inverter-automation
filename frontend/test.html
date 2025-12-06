@@ -645,7 +645,7 @@
                     <button class="btn-secondary" onclick="loadPreset('sunnyPeak')">Sunny Peak ☀️</button>
                 </div>
                 
-                <button class="btn-secondary run-btn" onclick="fetchRealConditions(); return false;" style="margin-bottom:10px;background:rgba(88,166,255,0.15);border-color:var(--accent-blue)">
+                <button id="fetchRealConditionsBtn" class="btn-secondary run-btn" onclick="fetchRealConditions(); return false;" style="margin-bottom:10px;background:rgba(88,166,255,0.15);border-color:var(--accent-blue)">
                     📡 Fetch Real Conditions
                 </button>
                 <button class="btn-primary run-btn" onclick="runTest()">
@@ -935,9 +935,15 @@
 
         async function fetchRealConditions() {
             console.log('[DEBUG] fetchRealConditions called');
-            log('info', '📦 Checking if cached data is still fresh...');
+            
+            const btn = document.getElementById('fetchRealConditionsBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '⏳ Fetching...';
+            btn.disabled = true;
             
             try {
+                log('info', '📦 Checking if cached data is still fresh...');
+                
                 // Cache TTLs (must match backend)
                 const INVERTER_TTL = 5 * 60 * 1000;   // 5 minutes
                 const AMBER_TTL = 60 * 1000;           // 60 seconds
@@ -970,16 +976,18 @@
                     console.log('[Cache] All caches are fresh, loading from cache');
                     // Load cached data into UI
                     loadCachedDataIntoUI();
-                    return;
+                } else {
+                    console.log(`[DEBUG] Need to fetch: Inverter=${needsInverter}, Amber=${needsAmber}, Weather=${needsWeather}`);
+                    log('info', '🔄 Fetching fresh data for stale caches...');
+                    
+                    await fetchLiveConditionsOnce(needsInverter, needsAmber, needsWeather);
                 }
-                
-                console.log(`[DEBUG] Need to fetch: Inverter=${needsInverter}, Amber=${needsAmber}, Weather=${needsWeather}`);
-                log('info', '🔄 Fetching fresh data for stale caches...');
-                
-                await fetchLiveConditionsOnce(needsInverter, needsAmber, needsWeather);
             } catch (e) {
                 log('error', `❌ Error: ${e.message}`);
                 console.error('fetchRealConditions error:', e);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
             }
         }
         
