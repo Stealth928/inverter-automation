@@ -2855,6 +2855,15 @@
             try { if (placeEl) placeEl.value = (place === 'Roselands 2196 NSW' ? placeEl.value || place : place); } catch (e) {}
 
             const days = Number(document.getElementById('weatherDays').value || 6);
+            
+            // Check if cached weather is still fresh (30 minutes TTL matches backend)
+            const WEATHER_TTL = 30 * 60 * 1000;
+            const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+            if (cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL) {
+                console.log('[Cache] Weather cache is fresh, skipping API call');
+                return; // Use cached data
+            }
+            
             const card = document.getElementById('weatherCard');
             card.innerHTML = '<div style="color:#8b949e">Loading weather...</div>';
 
@@ -2877,6 +2886,10 @@
                             cloudCover: hourly.cloud_cover?.[0] || hourly.cloudcover?.[0] || 0
                         };
                         localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
+                        // Update cache timestamp
+                        const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                        cacheState.weatherTime = Date.now();
+                        localStorage.setItem('cacheState', JSON.stringify(cacheState));
                     } catch (e) { /* ignore cache errors */ }
                 }
                 
@@ -3492,6 +3505,14 @@
             const siteId = document.getElementById('amberSiteId').value;
             if (!siteId) { document.getElementById('amberCard').innerHTML = '<div style="color:#d29922">Select a site</div>'; return; }
             
+            // Check if cached data is still fresh (60 seconds TTL matches backend)
+            const AMBER_TTL = 60 * 1000;
+            const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+            if (cacheState.amberTime && (Date.now() - cacheState.amberTime) < AMBER_TTL) {
+                console.log('[Cache] Amber cache is fresh, skipping API call');
+                return; // Use cached data
+            }
+            
             const card = document.getElementById('amberCard');
             card.innerHTML = '<div style="color:#8b949e">Loading prices...</div>';
             
@@ -3522,6 +3543,10 @@
                             forecastHigh: forecasts.length > 0 ? Math.max(...forecasts.map(f => f.perKwh || 0)) : null
                         };
                         localStorage.setItem('cachedPrices', JSON.stringify(priceCache));
+                        // Update cache timestamp
+                        const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                        cacheState.amberTime = Date.now();
+                        localStorage.setItem('cacheState', JSON.stringify(cacheState));
                     } catch (e) { /* ignore cache errors */ }
                 }
                 
