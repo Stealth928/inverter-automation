@@ -1450,7 +1450,7 @@
                         <div style="display:flex;align-items:center;gap:8px">
                             <span class="card-badge">Amber</span>
                             <div id="amberLastUpdate" style="font-size:11px;color:#8b949e;">—</div>
-                            <button class="btn btn-icon" onclick="getAmberCurrent(true)" title="Refresh prices (force fresh)">🔄</button>
+                            <button class="btn btn-icon" onclick="getAmberCurrent()" title="Refresh prices">🔄</button>
                         </div>
                     </div>
                     <div class="card-body">
@@ -1475,7 +1475,7 @@
                         <div style="display:flex;align-items:center;gap:8px">
                             <span class="card-badge">Open-Meteo</span>
                             <div id="weatherLastUpdate" style="font-size:11px;color:#8b949e;">—</div>
-                            <button class="btn btn-icon" onclick="getWeather(true)" title="Refresh weather (force fresh)">🔄</button>
+                            <button class="btn btn-icon" onclick="getWeather()" title="Refresh weather">🔄</button>
                         </div>
                     </div>
                     <div class="card-body">
@@ -1484,7 +1484,7 @@
                             <input type="number" id="weatherDays" class="input" min="1" max="16" value="6" style="width:70px" title="Days">
                             <div id="weatherRequestedLabel" style="min-width:110px;color:#8b949e;font-size:12px;display:flex;align-items:center;justify-content:center;margin-left:8px">Requested: 6</div>
                         </div>
-                        <button id="getWeatherBtn" class="btn btn-primary btn-sm" onclick="getWeather(true)" style="width:auto;align-self:flex-start;padding:8px 16px">Get Forecast</button>
+                        <button id="getWeatherBtn" class="btn btn-primary btn-sm" onclick="getWeather()" style="width:auto;align-self:flex-start;padding:8px 16px">Get Forecast</button>
                         <div class="data-card" id="weatherCard">
                             <div style="color:#8b949e;font-size:12px">Enter a location and click Get Forecast</div>
                         </div>
@@ -1588,6 +1588,7 @@
                 <div class="card" style="margin-bottom:16px">
                     <div class="card-header">
                         <div class="card-title"><span class="icon">⚡</span> Active Automation</div>
+                        <button class="btn btn-sm" onclick="loadBackendAutomationStatus()" style="padding:4px 10px;width:auto;margin:0">🔄</button>
                     </div>
                     <div class="card-body" id="backendAutomationStatus">
                         <div style="color:#8b949e;font-size:12px">Loading automation status...</div>
@@ -2844,7 +2845,7 @@
         }
 
         // Weather
-        async function getWeather(bypassCache = false) {
+        async function getWeather() {
             const placeEl = document.getElementById('weatherPlace');
             const rawPlace = (placeEl && typeof placeEl.value === 'string') ? placeEl.value.trim() : '';
             // Guard against the literal string 'undefined' (can appear from bad inputs)
@@ -2856,22 +2857,19 @@
             const days = Number(document.getElementById('weatherDays').value || 6);
             
             // Check if cached weather is still fresh (30 minutes TTL matches backend)
-            // Unless bypassCache is true (user clicked refresh button)
-            if (!bypassCache) {
-                const WEATHER_TTL = 30 * 60 * 1000;
-                const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
-                if (cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL) {
-                    console.log('[Cache] Weather cache is fresh, loading from cache');
-                    // Load cached full weather object and render it
-                    try {
-                        const cachedWeatherFull = JSON.parse(localStorage.getItem('cachedWeatherFull') || '{}');
-                        if (cachedWeatherFull.place || cachedWeatherFull.current) {
-                            renderWeatherCard(cachedWeatherFull);
-                            setLastUpdated('weather');
-                            return;
-                        }
-                    } catch (e) { console.error('[Cache] Error loading weather cache:', e); }
-                }
+            const WEATHER_TTL = 30 * 60 * 1000;
+            const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+            if (cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL) {
+                console.log('[Cache] Weather cache is fresh, loading from cache');
+                // Load cached full weather object and render it
+                try {
+                    const cachedWeatherFull = JSON.parse(localStorage.getItem('cachedWeatherFull') || '{}');
+                    if (cachedWeatherFull.place || cachedWeatherFull.current) {
+                        renderWeatherCard(cachedWeatherFull);
+                        setLastUpdated('weather');
+                        return;
+                    }
+                } catch (e) { console.error('[Cache] Error loading weather cache:', e); }
             }
             
             const card = document.getElementById('weatherCard');
@@ -3516,27 +3514,24 @@
             }
         }
 
-        async function getAmberCurrent(bypassCache = false) {
+        async function getAmberCurrent() {
             const siteId = document.getElementById('amberSiteId').value;
             if (!siteId) { document.getElementById('amberCard').innerHTML = '<div style="color:#d29922">Select a site</div>'; return; }
             
             // Check if cached data is still fresh (60 seconds TTL matches backend)
-            // Unless bypassCache is true (user clicked refresh button)
-            if (!bypassCache) {
-                const AMBER_TTL = 60 * 1000;
-                const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
-                if (cacheState.amberTime && (Date.now() - cacheState.amberTime) < AMBER_TTL) {
-                    console.log('[Cache] Amber cache is fresh, loading from cache');
-                    // Load cached full prices array and render
-                    try {
-                        const cachedPricesFull = JSON.parse(localStorage.getItem('cachedPricesFull') || '[]');
-                        if (cachedPricesFull.length > 0) {
-                            renderAmberCard(cachedPricesFull);
-                            setLastUpdated('amber');
-                            return;
-                        }
-                    } catch (e) { console.error('[Cache] Error loading Amber cache:', e); }
-                }
+            const AMBER_TTL = 60 * 1000;
+            const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+            if (cacheState.amberTime && (Date.now() - cacheState.amberTime) < AMBER_TTL) {
+                console.log('[Cache] Amber cache is fresh, loading from cache');
+                // Load cached full prices array and render
+                try {
+                    const cachedPricesFull = JSON.parse(localStorage.getItem('cachedPricesFull') || '[]');
+                    if (cachedPricesFull.length > 0) {
+                        renderAmberCard(cachedPricesFull);
+                        setLastUpdated('amber');
+                        return;
+                    }
+                } catch (e) { console.error('[Cache] Error loading Amber cache:', e); }
             }
             
             const card = document.getElementById('amberCard');
