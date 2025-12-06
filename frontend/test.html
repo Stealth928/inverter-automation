@@ -767,9 +767,11 @@
             autoMetrics: true,
             onReady: () => {
                 try {
+                    // Load cached data into UI on page load
+                    loadCachedDataIntoUI();
                     loadRules();
                 } catch (error) {
-                    console.warn('[Automation Lab] Failed to load rules', error);
+                    console.warn('[Automation Lab] Failed to initialize', error);
                 }
             }
         });
