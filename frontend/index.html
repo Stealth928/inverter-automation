@@ -2861,11 +2861,11 @@
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
             if (cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL) {
                 console.log('[Cache] Weather cache is fresh, loading from cache');
-                // Load cached weather into UI
+                // Load cached full weather object and render it
                 try {
-                    const wxCache = JSON.parse(localStorage.getItem('cachedWeather') || '{}');
-                    if (wxCache.solarRadiation !== undefined || wxCache.cloudCover !== undefined) {
-                        renderWeatherCard(wxCache);
+                    const cachedWeatherFull = JSON.parse(localStorage.getItem('cachedWeatherFull') || '{}');
+                    if (cachedWeatherFull.place || cachedWeatherFull.current) {
+                        renderWeatherCard(cachedWeatherFull);
                         setLastUpdated('weather');
                         return;
                     }
@@ -2885,15 +2885,20 @@
                     weatherData = data.result;
                 }
                 
-                // Cache weather data for automation test page
+                // Cache weather data - full object for dashboard, simplified for test.html
                 if (weatherData?.hourly) {
                     try {
+                        // Cache FULL weather object for rendering on dashboard
+                        localStorage.setItem('cachedWeatherFull', JSON.stringify(weatherData));
+                        
+                        // Also cache simplified data for automation test page
                         const hourly = weatherData.hourly;
                         const wxCache = {
                             solarRadiation: hourly.shortwave_radiation?.[0] || 0,
                             cloudCover: hourly.cloud_cover?.[0] || hourly.cloudcover?.[0] || 0
                         };
                         localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
+                        
                         // Update cache timestamp
                         const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
                         cacheState.weatherTime = Date.now();
@@ -3518,15 +3523,11 @@
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
             if (cacheState.amberTime && (Date.now() - cacheState.amberTime) < AMBER_TTL) {
                 console.log('[Cache] Amber cache is fresh, loading from cache');
-                // Load cached prices and render
+                // Load cached full prices array and render
                 try {
-                    const priceCache = JSON.parse(localStorage.getItem('cachedPrices') || '{}');
-                    if (priceCache.general || priceCache.feedIn || priceCache.forecastHigh) {
-                        // Build prices array from cache for rendering
-                        const cachedPrices = [];
-                        if (priceCache.general) cachedPrices.push({...priceCache.general, channelType: 'general', type: 'CurrentInterval'});
-                        if (priceCache.feedIn) cachedPrices.push({...priceCache.feedIn, channelType: 'feedIn', type: 'CurrentInterval'});
-                        renderAmberCard(cachedPrices);
+                    const cachedPricesFull = JSON.parse(localStorage.getItem('cachedPricesFull') || '[]');
+                    if (cachedPricesFull.length > 0) {
+                        renderAmberCard(cachedPricesFull);
                         setLastUpdated('amber');
                         return;
                     }
@@ -3551,9 +3552,13 @@
                     prices = data.result;
                 }
                 
-                // Cache Amber prices for automation test page
+                // Cache Amber prices - full array for dashboard, summary for test.html
                 if (prices.length > 0) {
                     try {
+                        // Cache FULL prices array for rendering on dashboard
+                        localStorage.setItem('cachedPricesFull', JSON.stringify(prices));
+                        
+                        // Also cache simplified data for automation test page
                         const general = prices.find(p => p.channelType === 'general');
                         const feedIn = prices.find(p => p.channelType === 'feedIn');
                         const forecasts = prices.filter(p => p.type === 'ForecastInterval');
@@ -3563,6 +3568,7 @@
                             forecastHigh: forecasts.length > 0 ? Math.max(...forecasts.map(f => f.perKwh || 0)) : null
                         };
                         localStorage.setItem('cachedPrices', JSON.stringify(priceCache));
+                        
                         // Update cache timestamp
                         const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
                         cacheState.amberTime = Date.now();
