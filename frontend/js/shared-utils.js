@@ -236,7 +236,8 @@ function formatValue(value, unit = '', decimals = 1) {
  */
 function feedDisplayValue(perKwh) {
     if (perKwh === null || perKwh === undefined || isNaN(perKwh)) return null;
-    return -Math.round(perKwh);
+    // Amber API returns positive values when you earn money
+    return Math.round(perKwh);
 }
 
 /**

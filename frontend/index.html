@@ -2096,10 +2096,11 @@
                         } catch (e) { /* ignore cache errors */ }
                     } else if (endpoint.includes('/weather')) {
                         try {
-                            const hourly = data.result?.hourly || {};
+                            // API now returns {errno, result: {source, hourly, ...}}
+                            const hourly = data.result?.hourly || data.hourly || {};
                             const wxCache = {
                                 solarRadiation: hourly.shortwave_radiation?.[0] || 0,
-                                cloudCover: hourly.cloud_cover?.[0] || 0
+                                cloudCover: hourly.cloudcover?.[0] || 0
                             };
                             localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
                         } catch (e) { /* ignore cache errors */ }
@@ -3509,7 +3510,7 @@
                     } catch (e) { /* ignore cache errors */ }
                 }
                 
-                renderAmberCard(data);
+                renderAmberCard(data.result || []);
                 // Also set last-updated for amber (history query counts as an update)
                 setLastUpdated('amber');
                 // mark last updated for amber prices
@@ -3624,7 +3625,13 @@
 
         function renderAmberCard(data) {
             const card = document.getElementById('amberCard');
-            const intervals = Array.isArray(data) ? data : [];
+            // Handle both wrapped {errno, result} and unwrapped array formats
+            let intervals = [];
+            if (Array.isArray(data)) {
+                intervals = data;
+            } else if (data?.result && Array.isArray(data.result)) {
+                intervals = data.result;
+            }
             if (!intervals.length) { card.innerHTML = '<div style="color:#d29922">No data</div>'; return; }
             window.lastAmberResponse = intervals; // Store for raw dump and export
 
@@ -3651,17 +3658,18 @@
             
             const maxBuyPrice = displayForecasts.length ? Math.max(...displayForecasts.map(i => i.perKwh)) : 0;
             const minBuyPrice = displayForecasts.length ? Math.min(...displayForecasts.map(i => i.perKwh)) : 0;
-            // Compute feed-in display values using the same transform as the feed-in tiles
-            // (displayVal = -Math.round(perKwh)) so summary matches tiles exactly
+            // Compute feed-in display values (positive = earning money)
             const feedDisplayValues = displayFeedForecasts.length ? displayFeedForecasts.map(it => {
                 try {
                     if (window.sharedUtils && typeof window.sharedUtils.feedDisplayValue === 'function') {
-                        return window.sharedUtils.feedDisplayValue(it.perKwh);
+                        // Note: shared-utils still uses negation, but that's wrong for current Amber data
+                        // Just use the value directly
+                        return Math.round(it.perKwh);
                     }
                 } catch (e) {
                     // fall through to inline transform
                 }
-                return -Math.round(it.perKwh);
+                return Math.round(it.perKwh);
             }) : [];
             const minFeedSpot = feedDisplayValues.length ? Math.min(...feedDisplayValues) : 0;
             const maxFeedSpot = feedDisplayValues.length ? Math.max(...feedDisplayValues) : 0;
@@ -3711,16 +3719,15 @@
                     </div>`;
                 }
                 if (currentFeed) {
-                    // Display feed-in price (formatted similar to Amber app)
-                    // Amber shows the inverse of perKwh: positive perKwh (you owe) shows negative, negative perKwh (you earn) shows positive
-                    const displayVal = -Math.round(currentFeed.perKwh);
+                    // Display feed-in price (what you earn when exporting)
+                    // Amber returns positive values when you earn money
+                    const displayVal = Math.round(currentFeed.perKwh);
                     function feedClassFromVal(v) {
-                        // v is display value in cents (may be negative when you earn money)
-                        if (v < -5) return 'price-high'; // red
-                        if (v >= -5 && v < 0) return 'price-mid'; // amber (includes -5 to -0.01)
-                        if (v >= 0 && v < 6) return 'price-neutral'; // grey (only for 0 to 5.99)
-                        if (v >= 6 && v <= 15) return 'price-low'; // light green
-                        if (v > 15) return 'price-darkgreen'; // dark green
+                        // v is display value in cents (positive when you earn)
+                        if (v >= 30) return 'price-darkgreen'; // dark green - excellent rate
+                        if (v >= 15 && v < 30) return 'price-low'; // light green - good rate
+                        if (v >= 6 && v < 15) return 'price-mid'; // amber - ok rate
+                        if (v < 6) return 'price-neutral'; // grey - low rate
                         return 'price-neutral';
                     }
                     const getCls = feedClassFromVal(displayVal);
