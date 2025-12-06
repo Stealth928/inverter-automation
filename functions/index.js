@@ -413,9 +413,10 @@ app.get('/api/amber/prices/current', async (req, res) => {
     if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
 
     const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId);
-    // Normalize response to expected array/result structure
-    if (Array.isArray(result)) return res.json(result);
-    return res.json(result);
+    // Always wrap in {errno, result} format
+    if (Array.isArray(result)) return res.json({ errno: 0, result });
+    if (result?.errno === 0) return res.json(result);  // Already wrapped
+    return res.json({ errno: result?.errno || 500, result: [] });  // Error or unexpected format
   } catch (e) {
     console.error('[Amber] /prices/current error (pre-auth):', e && e.message ? e.message : e);
     return res.json({ errno: 0, result: [] });
@@ -2331,7 +2332,12 @@ app.get('/api/weather', async (req, res) => {
     const place = req.query.place || 'Sydney';
     const days = parseInt(req.query.days || '3', 10);
     const result = await callWeatherAPI(place, days, req.user.uid);
-    res.json(result);
+    // Wrap response in standard format
+    if (result?.errno) {
+      res.json(result);  // Error response
+    } else {
+      res.json({ errno: 0, result });  // Success - wrap the data
+    }
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
   }

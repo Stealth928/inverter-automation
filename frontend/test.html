@@ -368,7 +368,7 @@
             border: 1px solid var(--accent-blue);
             border-radius: 8px;
             padding: 12px 16px;
-            margin-bottom: 20px;
+            margin-bottom: 40px;
             font-size: 0.85rem;
             display: flex;
             align-items: center;
@@ -1183,11 +1183,12 @@
                     if (wxResp.ok) {
                         const wxData = await wxResp.json();
                         console.log('[Fetch] Weather data:', wxData);
-                        // API returns either wrapped {errno, result} or direct {source, hourly, ...}
+                        // API returns wrapped {errno: 0, result: {source, hourly, ...}}
                         let hourly = null;
                         if (wxData.errno === 0 && wxData.result?.hourly) {
                             hourly = wxData.result.hourly;
                         } else if (wxData.hourly) {
+                            // Fallback for unwrapped format
                             hourly = wxData.hourly;
                         }
                         
