@@ -3518,7 +3518,7 @@
                         const forecasts = prices.filter(p => p.type === 'ForecastInterval');
                         const priceCache = {
                             general: general ? { perKwh: general.perKwh } : null,
-                            feedIn: feedIn ? { perKwh: feedIn.perKwh } : null,
+                            feedIn: feedIn ? { perKwh: -feedIn.perKwh } : null,  // Negate for display (Amber returns negative)
                             forecastHigh: forecasts.length > 0 ? Math.max(...forecasts.map(f => f.perKwh || 0)) : null
                         };
                         localStorage.setItem('cachedPrices', JSON.stringify(priceCache));
@@ -3735,12 +3735,13 @@
                 }
                 if (currentFeed) {
                     // Display feed-in price (what you earn when exporting)
-                    // Amber returns positive values when you earn money
-                    const displayVal = Math.round(currentFeed.perKwh);
+                    // Amber returns NEGATIVE values for feed-in (negative = you earn)
+                    // Display as positive for user clarity: -9¢ displays as 9¢
+                    const displayVal = -Math.round(currentFeed.perKwh);
                     function feedClassFromVal(v) {
-                        // v is display value in cents (positive when you earn)
-                        if (v >= 30) return 'price-darkgreen'; // dark green - excellent rate
-                        if (v >= 15 && v < 30) return 'price-low'; // light green - good rate
+                        // v is display value in cents (positive = you earn at this rate)
+                        if (v > 50) return 'price-darkgreen'; // dark green - excellent rate (you earn a lot)
+                        if (v >= 15 && v <= 50) return 'price-low'; // light green - good rate
                         if (v >= 6 && v < 15) return 'price-mid'; // amber - ok rate
                         if (v < 6) return 'price-neutral'; // grey - low rate
                         return 'price-neutral';
@@ -3771,13 +3772,13 @@
                 const minBuyCls = minBuyPrice > 30 ? 'price-high' : minBuyPrice > 20 ? 'price-mid' : 'price-low';
                 const maxBuyCls = maxBuyPrice > 30 ? 'price-high' : maxBuyPrice > 20 ? 'price-mid' : 'price-low';
                 
-                // Feed-in coloring (positive values = earning money)
+                // Feed-in coloring (high=you earn money, low=you pay)
                 function feedClassFromVal(v) {
-                    if (v >= 30) return 'price-darkgreen'; // excellent earning rate
-                    if (v >= 15 && v < 30) return 'price-low'; // good earning rate
-                    if (v >= 6 && v < 15) return 'price-mid'; // ok earning rate
-                    if (v >= 0 && v < 6) return 'price-neutral'; // low earning rate
-                    if (v < 0) return 'price-high'; // paying to export
+                    if (v < -5) return 'price-high';
+                    if (v >= -5 && v < 0) return 'price-mid';
+                    if (v >= 0 && v < 6) return 'price-neutral';
+                    if (v >= 6 && v <= 15) return 'price-low';
+                    if (v > 15) return 'price-darkgreen';
                     return 'price-neutral';
                 }
                 const minFeedCls = feedClassFromVal(minFeedSpot);
@@ -3821,19 +3822,19 @@
                     // Use startTime converted to AEST - Amber shows interval START time
                     const startDate = new Date(it.startTime);
                     const time = startDate.toLocaleTimeString('en-AU', {hour:'numeric', minute:'2-digit', hour12:false, timeZone:'Australia/Sydney'});
-                    // Amber API returns positive values when you earn money
-                    const displayVal = Math.round(it.perKwh);
+                    // Display -Round(perKwh) to match Amber app (negative perKwh = you earn, shown positive)
+                    const displayVal = -Math.round(it.perKwh);
                     function feedClassFromVal(v) {
-                        // v is positive when earning money
-                        if (v >= 30) return 'price-darkgreen'; // dark green - excellent rate
-                        if (v >= 15 && v < 30) return 'price-low'; // light green - good rate
+                        // v is display value in cents (positive = you earn at this rate)
+                        if (v > 50) return 'price-darkgreen'; // dark green - excellent rate
+                        if (v >= 15 && v <= 50) return 'price-low'; // light green - good rate
                         if (v >= 6 && v < 15) return 'price-mid'; // amber - ok rate
-                        if (v >= 0 && v < 6) return 'price-neutral'; // grey - low rate
-                        if (v < 0) return 'price-high'; // red - paying to export
+                        if (v > 0 && v < 6) return 'price-neutral'; // grey - low rate
+                        if (v <= 0) return 'price-neutral'; // grey - very low/no earnings
                         return 'price-neutral';
                     }
                     const getCls = feedClassFromVal(displayVal);
-                    const isVeryNegative = displayVal < 0;
+                    const isVeryNegative = displayVal < -2;
                     const feedHighlightCls = displayVal > 50 ? 'feedin-highlight' : '';
                     html += `<div class="stat-item ${feedHighlightCls}" style="min-width:52px;padding:6px;${isVeryNegative ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}">
                                 <div style="display:flex;align-items:center;justify-content:center;gap:2px">

@@ -952,7 +952,7 @@
                             hasAmberCache = true;
                         }
                         if (prices.feedIn?.perKwh !== undefined) {
-                            document.getElementById('simFeedIn').value = prices.feedIn.perKwh.toFixed(1);
+                            document.getElementById('simFeedIn').value = prices.feedIn.perKwh.toFixed(1);  // Already negated when cached
                             updated.push('Feed-in price');
                             hasAmberCache = true;
                         }
@@ -1152,7 +1152,7 @@
                                 updated.push('Buy price');
                             }
                             if (feedIn?.perKwh !== undefined) {
-                                document.getElementById('simFeedIn').value = feedIn.perKwh.toFixed(1);
+                                document.getElementById('simFeedIn').value = (-feedIn.perKwh).toFixed(1);  // Negate for display
                                 updated.push('Feed-in price');
                             }
                             if (forecasts.length > 0) {
