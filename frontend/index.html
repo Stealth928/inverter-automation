@@ -4466,7 +4466,23 @@
         // Format a date/timestamp to DD/MM/YYYY optionally with time
         function formatDate(ts, withTime = false, withSeconds = false) {
             if (!ts) return '—';
-            const d = (ts instanceof Date) ? ts : new Date(Number(ts) || ts);
+            
+            // Handle Firestore Timestamp objects
+            let timestamp = ts;
+            if (typeof ts === 'object' && ts !== null) {
+                // Firestore Timestamp: {_seconds, _nanoseconds} or {seconds, nanos}
+                const sec = ts._seconds ?? ts.seconds;
+                if (typeof sec === 'number') {
+                    timestamp = sec * 1000;
+                } else if (ts.toMillis) {
+                    // Firestore client SDK Timestamp
+                    timestamp = ts.toMillis();
+                } else if (ts.toDate) {
+                    timestamp = ts.toDate().getTime();
+                }
+            }
+            
+            const d = (timestamp instanceof Date) ? timestamp : new Date(Number(timestamp) || timestamp);
             if (isNaN(d.getTime())) return '—';
             const dd = String(d.getDate()).padStart(2, '0');
             const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -5449,8 +5465,8 @@
                                     <option value="<=">&lt;=</option>
                                     <option value="between">between</option>
                                 </select>
-                                <input type="number" id="condFeedInVal" placeholder="¢/kWh" value="20" style="width:80px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
-                                <span id="condFeedInVal2Wrap" style="display:none;color:#8b949e;font-size:12px">and <input type="number" id="condFeedInVal2" value="50" style="width:60px;padding:4px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px"></span>
+                                <input type="number" id="condFeedInVal" placeholder="¢/kWh" value="20" min="-100" max="500" step="0.1" style="width:80px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                <span id="condFeedInVal2Wrap" style="display:none;color:#8b949e;font-size:12px">and <input type="number" id="condFeedInVal2" value="50" min="-100" max="500" step="0.1" style="width:60px;padding:4px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px"></span>
                                 <span style="color:#8b949e;font-size:11px">¢/kWh</span>
                             </div>
                             
@@ -5467,8 +5483,8 @@
                                     <option value=">=">&gt;=</option>
                                     <option value="between">between</option>
                                 </select>
-                                <input type="number" id="condBuyVal" placeholder="¢/kWh" value="10" style="width:80px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
-                                <span id="condBuyVal2Wrap" style="display:none;color:#8b949e;font-size:12px">and <input type="number" id="condBuyVal2" value="20" style="width:60px;padding:4px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px"></span>
+                                <input type="number" id="condBuyVal" placeholder="¢/kWh" value="10" min="-100" max="500" step="0.1" style="width:80px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                <span id="condBuyVal2Wrap" style="display:none;color:#8b949e;font-size:12px">and <input type="number" id="condBuyVal2" value="20" min="-100" max="500" step="0.1" style="width:60px;padding:4px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px"></span>
                                 <span style="color:#8b949e;font-size:11px">¢/kWh</span>
                             </div>
                             
@@ -5507,7 +5523,7 @@
                                     <option value=">">&gt;</option>
                                     <option value=">=">&gt;=</option>
                                 </select>
-                                <input type="number" id="condTempVal" placeholder="°C" value="40" style="width:70px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                <input type="number" id="condTempVal" placeholder="°C" value="40" min="-40" max="80" step="1" style="width:70px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
                                 <span style="color:#8b949e;font-size:11px">°C</span>
                             </div>
                             
@@ -5528,7 +5544,7 @@
                                     <option value="<">&lt;</option>
                                     <option value="<=">&lt;=</option>
                                 </select>
-                                <input type="number" id="condSolarVal" placeholder="W/m²" value="300" style="width:70px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                <input type="number" id="condSolarVal" placeholder="W/m²" value="300" min="0" max="1500" step="10" style="width:70px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
                                 <span style="color:#8b949e;font-size:11px">W/m² in next</span>
                                 <input type="number" id="condSolarLookAhead" value="6" min="1" max="168" style="width:50px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
                                 <select id="condSolarLookAheadUnit" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
@@ -5585,7 +5601,7 @@
                                     <option value="<">&lt;</option>
                                     <option value="<=">&lt;=</option>
                                 </select>
-                                <input type="number" id="condForecastVal" placeholder="¢" value="30" style="width:60px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                <input type="number" id="condForecastVal" placeholder="¢" value="30" min="-100" max="500" step="0.1" style="width:60px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
                                 <span style="color:#8b949e;font-size:11px">¢ in next</span>
                                 <input type="number" id="condForecastLookAhead" value="30" min="1" max="168" style="width:50px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
                                 <select id="condForecastLookAheadUnit" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px" onchange="updateForecastLookAheadRange()">
@@ -5710,7 +5726,267 @@
             }
         }
         
+        // Comprehensive rule validation function
+        function validateRuleForm() {
+            const errors = [];
+            const modal = document.getElementById('addRuleModal');
+            if (!modal) return { valid: false, errors: ['Modal not found'] };
+            
+            // Helper to show field error (adds red border and stores error)
+            const setFieldError = (elementId, message) => {
+                const el = modal.querySelector('#' + elementId) || document.getElementById(elementId);
+                if (el) {
+                    el.style.borderColor = '#f85149';
+                    el.style.boxShadow = '0 0 0 2px rgba(248,81,73,0.3)';
+                }
+                errors.push(message);
+            };
+            
+            // Helper to clear field error styling
+            const clearFieldError = (elementId) => {
+                const el = modal.querySelector('#' + elementId) || document.getElementById(elementId);
+                if (el) {
+                    el.style.borderColor = '#30363d';
+                    el.style.boxShadow = 'none';
+                }
+            };
+            
+            // Clear all previous error styles first
+            ['newRuleName', 'newRulePriority', 'newRuleDuration', 'newRuleCooldown', 'newRuleFdPwr', 
+             'newRuleFdSoc', 'newRuleMinSoc', 'newRuleMaxSoc', 'condFeedInVal', 'condFeedInVal2',
+             'condBuyVal', 'condBuyVal2', 'condSocVal', 'condSocVal2', 'condTempVal', 'condSolarVal',
+             'condSolarLookAhead', 'condCloudVal', 'condCloudLookAhead', 'condForecastVal', 
+             'condForecastLookAhead', 'condTimeStart', 'condTimeEnd'].forEach(clearFieldError);
+            
+            // === BASIC INFO VALIDATION ===
+            const name = document.getElementById('newRuleName')?.value?.trim();
+            if (!name) {
+                setFieldError('newRuleName', '📝 Rule name is required');
+            } else if (name.length < 3) {
+                setFieldError('newRuleName', '📝 Rule name must be at least 3 characters');
+            } else if (name.length > 100) {
+                setFieldError('newRuleName', '📝 Rule name must be under 100 characters');
+            }
+            
+            const priority = parseInt(document.getElementById('newRulePriority')?.value);
+            if (isNaN(priority) || priority < 1 || priority > 99) {
+                setFieldError('newRulePriority', '🎯 Priority must be between 1 (highest) and 99 (lowest)');
+            }
+            
+            // === CONDITION VALIDATION ===
+            const condFeedInEnabled = modal.querySelector('#condFeedInEnabled')?.checked;
+            const condBuyEnabled = modal.querySelector('#condBuyEnabled')?.checked;
+            const condSocEnabled = modal.querySelector('#condSocEnabled')?.checked;
+            const condTempEnabled = modal.querySelector('#condTempEnabled')?.checked;
+            const condSolarEnabled = modal.querySelector('#condSolarEnabled')?.checked;
+            const condCloudEnabled = modal.querySelector('#condCloudEnabled')?.checked;
+            const condForecastEnabled = modal.querySelector('#condForecastEnabled')?.checked;
+            const condTimeEnabled = modal.querySelector('#condTimeEnabled')?.checked;
+            
+            const hasAnyCondition = condFeedInEnabled || condBuyEnabled || condSocEnabled || 
+                                    condTempEnabled || condSolarEnabled || condCloudEnabled ||
+                                    condForecastEnabled || condTimeEnabled;
+            
+            if (!hasAnyCondition) {
+                errors.push('📋 At least one condition must be enabled for the rule to trigger');
+            }
+            
+            // Feed-in Price validation (prices can be -100 to 500 ¢/kWh in Australia)
+            if (condFeedInEnabled) {
+                const val = parseFloat(modal.querySelector('#condFeedInVal')?.value);
+                const op = modal.querySelector('#condFeedInOp')?.value;
+                if (isNaN(val) || val < -100 || val > 500) {
+                    setFieldError('condFeedInVal', '💰 Feed-in price must be between -100 and 500 ¢/kWh');
+                }
+                if (op === 'between') {
+                    const val2 = parseFloat(modal.querySelector('#condFeedInVal2')?.value);
+                    if (isNaN(val2) || val2 < -100 || val2 > 500) {
+                        setFieldError('condFeedInVal2', '💰 Feed-in price range end must be between -100 and 500 ¢/kWh');
+                    } else if (val >= val2) {
+                        setFieldError('condFeedInVal2', '💰 Feed-in "between" range: first value must be less than second');
+                    }
+                }
+            }
+            
+            // Buy Price validation
+            if (condBuyEnabled) {
+                const val = parseFloat(modal.querySelector('#condBuyVal')?.value);
+                const op = modal.querySelector('#condBuyOp')?.value;
+                if (isNaN(val) || val < -100 || val > 500) {
+                    setFieldError('condBuyVal', '🛒 Buy price must be between -100 and 500 ¢/kWh');
+                }
+                if (op === 'between') {
+                    const val2 = parseFloat(modal.querySelector('#condBuyVal2')?.value);
+                    if (isNaN(val2) || val2 < -100 || val2 > 500) {
+                        setFieldError('condBuyVal2', '🛒 Buy price range end must be between -100 and 500 ¢/kWh');
+                    } else if (val >= val2) {
+                        setFieldError('condBuyVal2', '🛒 Buy "between" range: first value must be less than second');
+                    }
+                }
+            }
+            
+            // Battery SoC validation (0-100%)
+            if (condSocEnabled) {
+                const val = parseFloat(modal.querySelector('#condSocVal')?.value);
+                const op = modal.querySelector('#condSocOp')?.value;
+                if (isNaN(val) || val < 0 || val > 100) {
+                    setFieldError('condSocVal', '🔋 Battery SoC must be between 0% and 100%');
+                }
+                if (op === 'between') {
+                    const val2 = parseFloat(modal.querySelector('#condSocVal2')?.value);
+                    if (isNaN(val2) || val2 < 0 || val2 > 100) {
+                        setFieldError('condSocVal2', '🔋 SoC range end must be between 0% and 100%');
+                    } else if (val >= val2) {
+                        setFieldError('condSocVal2', '🔋 SoC "between" range: first value must be less than second');
+                    }
+                }
+            }
+            
+            // Temperature validation (-40°C to 80°C reasonable range for batteries/environment)
+            if (condTempEnabled) {
+                const val = parseFloat(modal.querySelector('#condTempVal')?.value);
+                if (isNaN(val) || val < -40 || val > 80) {
+                    setFieldError('condTempVal', '🌡️ Temperature must be between -40°C and 80°C');
+                }
+            }
+            
+            // Solar Radiation validation (0-1500 W/m², lookAhead 1-168 hours or 1-7 days)
+            if (condSolarEnabled) {
+                const val = parseFloat(modal.querySelector('#condSolarVal')?.value);
+                if (isNaN(val) || val < 0 || val > 1500) {
+                    setFieldError('condSolarVal', '☀️ Solar radiation must be between 0 and 1500 W/m²');
+                }
+                const lookAhead = parseInt(modal.querySelector('#condSolarLookAhead')?.value);
+                const unit = modal.querySelector('#condSolarLookAheadUnit')?.value;
+                if (unit === 'hours' && (isNaN(lookAhead) || lookAhead < 1 || lookAhead > 168)) {
+                    setFieldError('condSolarLookAhead', '☀️ Look-ahead must be 1-168 hours');
+                } else if (unit === 'days' && (isNaN(lookAhead) || lookAhead < 1 || lookAhead > 7)) {
+                    setFieldError('condSolarLookAhead', '☀️ Look-ahead must be 1-7 days');
+                }
+            }
+            
+            // Cloud Cover validation (0-100%, lookAhead 1-168 hours or 1-7 days)
+            if (condCloudEnabled) {
+                const val = parseFloat(modal.querySelector('#condCloudVal')?.value);
+                if (isNaN(val) || val < 0 || val > 100) {
+                    setFieldError('condCloudVal', '☁️ Cloud cover must be between 0% and 100%');
+                }
+                const lookAhead = parseInt(modal.querySelector('#condCloudLookAhead')?.value);
+                const unit = modal.querySelector('#condCloudLookAheadUnit')?.value;
+                if (unit === 'hours' && (isNaN(lookAhead) || lookAhead < 1 || lookAhead > 168)) {
+                    setFieldError('condCloudLookAhead', '☁️ Look-ahead must be 1-168 hours');
+                } else if (unit === 'days' && (isNaN(lookAhead) || lookAhead < 1 || lookAhead > 7)) {
+                    setFieldError('condCloudLookAhead', '☁️ Look-ahead must be 1-7 days');
+                }
+            }
+            
+            // Forecast Price validation
+            if (condForecastEnabled) {
+                const val = parseFloat(modal.querySelector('#condForecastVal')?.value);
+                if (isNaN(val) || val < -100 || val > 500) {
+                    setFieldError('condForecastVal', '📈 Forecast price must be between -100 and 500 ¢/kWh');
+                }
+                const lookAhead = parseInt(modal.querySelector('#condForecastLookAhead')?.value);
+                const unit = modal.querySelector('#condForecastLookAheadUnit')?.value;
+                if (unit === 'minutes' && (isNaN(lookAhead) || lookAhead < 1 || lookAhead > 60)) {
+                    setFieldError('condForecastLookAhead', '📈 Look-ahead must be 1-60 minutes');
+                } else if (unit === 'hours' && (isNaN(lookAhead) || lookAhead < 1 || lookAhead > 48)) {
+                    setFieldError('condForecastLookAhead', '📈 Look-ahead must be 1-48 hours');
+                } else if (unit === 'days' && (isNaN(lookAhead) || lookAhead < 1 || lookAhead > 7)) {
+                    setFieldError('condForecastLookAhead', '📈 Look-ahead must be 1-7 days');
+                }
+            }
+            
+            // Time Window validation
+            if (condTimeEnabled) {
+                const start = modal.querySelector('#condTimeStart')?.value;
+                const end = modal.querySelector('#condTimeEnd')?.value;
+                if (!start) {
+                    setFieldError('condTimeStart', '🕐 Start time is required');
+                }
+                if (!end) {
+                    setFieldError('condTimeEnd', '🕐 End time is required');
+                }
+                // Note: Don't validate start < end since overnight windows like 22:00-06:00 are valid
+            }
+            
+            // === ACTION VALIDATION ===
+            const duration = parseInt(document.getElementById('newRuleDuration')?.value);
+            if (isNaN(duration) || duration < 5 || duration > 1440) {
+                setFieldError('newRuleDuration', '⏱️ Duration must be 5-1440 minutes (max 24 hours)');
+            }
+            
+            const cooldown = parseInt(document.getElementById('newRuleCooldown')?.value);
+            if (isNaN(cooldown) || cooldown < 1 || cooldown > 60) {
+                setFieldError('newRuleCooldown', '🔄 Cooldown must be 1-60 minutes');
+            }
+            
+            const fdPwr = parseInt(document.getElementById('newRuleFdPwr')?.value);
+            if (isNaN(fdPwr) || fdPwr < 0 || fdPwr > 10500) {
+                setFieldError('newRuleFdPwr', '⚡ FD Power must be 0-10500W (inverter max output)');
+            }
+            
+            const fdSoc = parseInt(document.getElementById('newRuleFdSoc')?.value);
+            if (isNaN(fdSoc) || fdSoc < 5 || fdSoc > 100) {
+                setFieldError('newRuleFdSoc', '🔋 FD SoC must be 5-100% (min discharge threshold)');
+            }
+            
+            const minSoc = parseInt(document.getElementById('newRuleMinSoc')?.value);
+            if (isNaN(minSoc) || minSoc < 5 || minSoc > 100) {
+                setFieldError('newRuleMinSoc', '🔋 Min SoC Grid must be 5-100%');
+            }
+            
+            const maxSoc = parseInt(document.getElementById('newRuleMaxSoc')?.value);
+            if (isNaN(maxSoc) || maxSoc < 10 || maxSoc > 100) {
+                setFieldError('newRuleMaxSoc', '🔋 Max SoC must be 10-100%');
+            }
+            
+            // Cross-field validations for SoC
+            if (!isNaN(minSoc) && !isNaN(maxSoc) && minSoc >= maxSoc) {
+                setFieldError('newRuleMinSoc', '🔋 Min SoC Grid must be less than Max SoC');
+                setFieldError('newRuleMaxSoc', '🔋 Max SoC must be greater than Min SoC Grid');
+            }
+            
+            if (!isNaN(fdSoc) && !isNaN(minSoc) && fdSoc > minSoc + 50) {
+                // Warning but not error - FD SoC much higher than Min might be intentional
+            }
+            
+            return { valid: errors.length === 0, errors };
+        }
+        
+        // Show validation errors in a user-friendly modal
+        function showValidationErrors(errors) {
+            const errorHtml = `
+                <div id="validationErrorModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:10001">
+                    <div style="background:#161b22;border:2px solid #f85149;border-radius:12px;padding:20px;width:90%;max-width:450px;max-height:80vh;overflow-y:auto">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+                            <span style="font-size:28px">⚠️</span>
+                            <h3 style="margin:0;color:#f85149;font-size:16px">Please fix the following issues:</h3>
+                        </div>
+                        <ul style="margin:0;padding:0 0 0 20px;color:#e6edf3;font-size:13px;line-height:1.8">
+                            ${errors.map(e => `<li style="margin-bottom:6px">${e}</li>`).join('')}
+                        </ul>
+                        <button onclick="document.getElementById('validationErrorModal').remove()" 
+                                style="width:100%;margin-top:16px;padding:12px;background:#21262d;border:1px solid #30363d;border-radius:6px;color:#e6edf3;cursor:pointer;font-size:14px">
+                            Got it, let me fix
+                        </button>
+                    </div>
+                </div>
+            `;
+            // Remove any existing error modal
+            const existing = document.getElementById('validationErrorModal');
+            if (existing) existing.remove();
+            document.body.insertAdjacentHTML('beforeend', errorHtml);
+        }
+        
         async function createBackendRule() {
+            // Run comprehensive validation first
+            const validation = validateRuleForm();
+            if (!validation.valid) {
+                showValidationErrors(validation.errors);
+                return;
+            }
+            
             const editingId = document.getElementById('editingRuleId')?.value;
             const name = document.getElementById('newRuleName').value.trim();
             // Auto-generate rule ID from name if not editing
@@ -5723,11 +5999,6 @@
             const fdSoc = parseInt(document.getElementById('newRuleFdSoc').value) || 10;
             const minSocOnGrid = parseInt(document.getElementById('newRuleMinSoc').value) || 10;
             const maxSoc = parseInt(document.getElementById('newRuleMaxSoc').value) || 100;
-            
-            if (!name) {
-                alert('Please enter a rule name');
-                return;
-            }
             
             // Collect conditions - use modal scoping to avoid duplicate ID conflicts with old modal
             const modal = document.getElementById('addRuleModal');
@@ -5788,16 +6059,6 @@
                 }
             };
             
-            // Check at least one condition is enabled
-            const hasCondition = conditions.feedInPrice.enabled || conditions.buyPrice.enabled || 
-                                 conditions.soc.enabled || conditions.temperature.enabled || 
-                                 conditions.solarRadiation.enabled || conditions.cloudCover.enabled ||
-                                 conditions.forecastPrice.enabled || conditions.time.enabled;
-            if (!hasCondition) {
-                alert('Please enable at least one condition');
-                return;
-            }
-            
             try {
                 // Use update endpoint if editing, create if new
                 const endpoint = editingId ? '/api/automation/rule/update' : '/api/automation/rule/create';
@@ -5819,11 +6080,12 @@
                 if (data.errno === 0) {
                     closeAddRuleModal();
                     loadBackendAutomationStatus();
+                    showMessage('success', `✅ Rule "${name}" ${editingId ? 'updated' : 'created'} successfully!`, 3000);
                 } else {
-                    alert('Failed to ' + (editingId ? 'update' : 'create') + ' rule: ' + (data.error || 'Unknown error'));
+                    showValidationErrors([`Server error: ${data.error || 'Unknown error'}`]);
                 }
             } catch (e) {
-                alert('Error ' + (editingId ? 'updating' : 'creating') + ' rule: ' + e.message);
+                showValidationErrors([`Network error: ${e.message}`]);
             }
         }
         
