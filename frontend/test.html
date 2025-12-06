@@ -933,221 +933,220 @@
 
         async function fetchRealConditions() {
             console.log('[DEBUG] fetchRealConditions called');
-            log('info', '📦 Fetching real conditions from live sources...');
+            log('info', '📦 Checking if cached data is still fresh...');
             
             try {
-                let updated = [];
+                // Cache TTLs (must match backend)
+                const INVERTER_TTL = 5 * 60 * 1000;   // 5 minutes
+                const AMBER_TTL = 60 * 1000;           // 60 seconds
+                const WEATHER_TTL = 30 * 60 * 1000;    // 30 minutes
                 
-                // Always fetch live weather (don't rely on stale cache)
-                console.log('[DEBUG] Always fetching fresh weather data');
-                await fetchLiveConditionsOnce();
+                // Get cache timestamps
+                const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                const now = Date.now();
+                
+                let needsInverter = true;
+                let needsAmber = true;
+                let needsWeather = true;
+                
+                // Check if cached data is still fresh
+                if (cacheState.inverterTime && (now - cacheState.inverterTime) < INVERTER_TTL) {
+                    console.log('[Cache] Inverter cache is fresh');
+                    needsInverter = false;
+                }
+                if (cacheState.amberTime && (now - cacheState.amberTime) < AMBER_TTL) {
+                    console.log('[Cache] Amber cache is fresh');
+                    needsAmber = false;
+                }
+                if (cacheState.weatherTime && (now - cacheState.weatherTime) < WEATHER_TTL) {
+                    console.log('[Cache] Weather cache is fresh');
+                    needsWeather = false;
+                }
+                
+                if (!needsInverter && !needsAmber && !needsWeather) {
+                    log('info', '✨ All data fresh from cache (< 30 min old)');
+                    console.log('[Cache] All caches are fresh, skipping API calls');
+                    return;
+                }
+                
+                console.log(`[DEBUG] Need to fetch: Inverter=${needsInverter}, Amber=${needsAmber}, Weather=${needsWeather}`);
+                log('info', '🔄 Fetching fresh data for stale caches...');
+                
+                await fetchLiveConditionsOnce(needsInverter, needsAmber, needsWeather);
             } catch (e) {
                 log('error', `❌ Error: ${e.message}`);
                 console.error('fetchRealConditions error:', e);
             }
         }
         
-        async function fetchLiveConditionsOnce() {
+        async function fetchLiveConditionsOnce(fetchInverter = true, fetchAmber = true, fetchWeather = true) {
             try {
                 let updated = [];
+                const now = Date.now();
                 
-                // Get user config for siteId
+                // Get user config for siteId (needed for Amber)
                 let userConfig = null;
-                try {
-                    const configResp = await authenticatedFetch('/api/user/config');
-                    if (configResp.ok) {
-                        const configData = await configResp.json();
-                        if (configData.errno === 0 && configData.result) {
-                            userConfig = configData.result;
+                if (fetchAmber) {
+                    try {
+                        const configResp = await authenticatedFetch('/api/user/config');
+                        if (configResp.ok) {
+                            const configData = await configResp.json();
+                            if (configData.errno === 0 && configData.result) {
+                                userConfig = configData.result;
+                            }
                         }
-                    }
-                } catch (e) { /* ignore */ }
-                
-                // Fetch inverter data
-                try {
-                    const invResp = await authenticatedFetch('/api/inverter/real-time');
-                    if (invResp.ok) {
-                        const invData = await invResp.json();
-                        if (invData.errno === 0 && invData.result) {
-                            const r = invData.result;
-                            const items = [];
-                            if (Array.isArray(r) && r.length > 0 && Array.isArray(r[0].datas)) {
-                                r.forEach(frame => { if (Array.isArray(frame.datas)) items.push(...frame.datas); });
-                            }
-                            const invCache = {};
-                            items.forEach(item => {
-                                if (item.variable && item.value !== undefined) {
-                                    invCache[item.variable] = item.value;
-                                }
-                            });
-                            if (invCache.SoC !== undefined) {
-                                document.getElementById('simSoC').value = invCache.SoC;
-                                updated.push('SoC');
-                            }
-                            if (invCache.batTemperature !== undefined) {
-                                document.getElementById('simBatteryTemp').value = invCache.batTemperature.toFixed(1);
-                                updated.push('Battery temp');
-                            }
-                            if (invCache.ambientTemperation !== undefined) {
-                                document.getElementById('simAmbientTemp').value = invCache.ambientTemperation.toFixed(1);
-                                updated.push('Ambient temp');
-                            }
-                            if (invCache.invTemperation !== undefined) {
-                                document.getElementById('simInverterTemp').value = invCache.invTemperation.toFixed(1);
-                                updated.push('Inverter temp');
-                            }
-                            localStorage.setItem('cachedInverter', JSON.stringify(invCache));
-                        }
-                    }
-                } catch (e) { log('warning', `Inverter fetch failed: ${e.message}`); }
-                
-                // Fetch Amber prices
-                try {
-                    console.log('[Fetch] userConfig:', userConfig);
-                    let siteId = userConfig?.amberSiteId;
-                    console.log('[Fetch] Initial siteId from config:', siteId);
-                    
-                    // If no siteId in config, fetch sites to get first one
-                    if (!siteId && userConfig?.amberApiKey) {
-                        try {
-                            console.log('[Fetch] Fetching Amber sites...');
-                            const sitesResp = await authenticatedFetch('/api/amber/sites');
-                            console.log('[Fetch] Sites response status:', sitesResp.status);
-                            if (sitesResp.ok) {
-                                const sites = await sitesResp.json();
-                                console.log('[Fetch] Sites data:', sites);
-                                const sitesList = Array.isArray(sites) ? sites : (sites.result || []);
-                                if (sitesList.length > 0) {
-                                    siteId = sitesList[0].id;
-                                    console.log('[Fetch] Found siteId:', siteId);
-                                }
-                            }
-                        } catch (e) { console.error('[Fetch] Sites error:', e); }
-                    }
-                    
-                    if (siteId) {
-                        console.log('[Fetch] Fetching prices with siteId:', siteId);
-                        const amberResp = await authenticatedFetch(`/api/amber/prices/current?siteId=${siteId}&next=48`);
-                        console.log('[Fetch] Prices response status:', amberResp.status);
-                        if (amberResp.ok) {
-                            const amberData = await amberResp.json();
-                            console.log('[Fetch] Amber data:', amberData);
-                            // API can return array directly OR wrapped in {errno, result}
-                            let prices = [];
-                            if (Array.isArray(amberData)) {
-                                prices = amberData;
-                                console.log('[Fetch] Amber response is direct array, length:', prices.length);
-                            } else if (amberData.errno === 0 && amberData.result) {
-                                prices = Array.isArray(amberData.result) ? amberData.result : [];
-                                console.log('[Fetch] Amber response is wrapped, extracted', prices.length, 'items');
-                            } else {
-                                console.log('[Fetch] Amber response format unknown:', {isArray: Array.isArray(amberData), errno: amberData?.errno, hasResult: !!amberData?.result});
-                            }
-                            console.log('[Fetch] Prices array length:', prices.length, 'isArray:', Array.isArray(prices));
-                            if (prices.length > 0) {
-                                console.log('[Fetch] First price item:', JSON.stringify(prices[0]).substring(0, 150));
-                            }
-                            const general = prices.find(p => p.channelType === 'general' && p.type === 'CurrentInterval');
-                            const feedIn = prices.find(p => p.channelType === 'feedIn' && p.type === 'CurrentInterval');
-                            console.log('[Fetch] Searching for current prices - General found:', !!general, 'FeedIn found:', !!feedIn);
-                            if (general) {
-                                console.log('[Fetch] General perKwh:', general.perKwh);
-                            }
-                            if (feedIn) {
-                                console.log('[Fetch] FeedIn perKwh:', feedIn.perKwh);
-                            }
-                            const forecasts = prices.filter(p => p.type === 'ForecastInterval');
-                            if (general?.perKwh !== undefined) {
-                                document.getElementById('simBuy').value = general.perKwh.toFixed(1);
-                                updated.push('Buy price');
-                            }
-                            if (feedIn?.perKwh !== undefined) {
-                                document.getElementById('simFeedIn').value = (-feedIn.perKwh).toFixed(1);  // Negate for display
-                                updated.push('Feed-in price');
-                            }
-                            if (forecasts.length > 0) {
-                                const maxPrice = Math.max(...forecasts.map(f => f.perKwh || 0));
-                                document.getElementById('simForecastHigh').value = maxPrice.toFixed(1);
-                                updated.push('Forecast high');
-                            }
-                            const priceCache = {
-                                general: general ? { perKwh: general.perKwh } : null,
-                                feedIn: feedIn ? { perKwh: feedIn.perKwh } : null,
-                                forecastHigh: forecasts.length > 0 ? Math.max(...forecasts.map(f => f.perKwh || 0)) : null
-                            };
-                            localStorage.setItem('cachedPrices', JSON.stringify(priceCache));
-                        }
-                    } else {
-                        log('info', `Amber: No site ID or API key configured`);
-                    }
-                } catch (e) { 
-                    console.error('[Fetch] Amber error caught:', e.message, e.stack); 
-                    log('warning', `Amber fetch failed: ${e.message}`); 
+                    } catch (e) { /* ignore */ }
                 }
                 
-                // Fetch Weather
-                try {
-                    console.log('[Fetch] Fetching weather...');
-                    const wxResp = await authenticatedFetch('/api/weather?days=1');
-                    console.log('[Fetch] Weather response status:', wxResp.status);
-                    if (wxResp.ok) {
-                        const wxData = await wxResp.json();
-                        console.log('[Fetch] Weather raw response:', JSON.stringify(wxData).substring(0, 500));
-                        
-                        // API returns wrapped {errno, result: {hourly, ...}}
-                        let weatherObj = null;
-                        if (wxData.errno === 0 && wxData.result) {
-                            weatherObj = wxData.result;
-                            console.log('[Fetch] Weather is wrapped format, extracted result');
-                        } else if (wxData.source === 'open-meteo') {
-                            weatherObj = wxData;
-                            console.log('[Fetch] Weather is unwrapped format');
-                        } else {
-                            console.log('[Fetch] Weather response format unknown:', {errno: wxData?.errno, hasResult: !!wxData?.result, hasSource: !!wxData?.source});
-                        }
-                        
-                        if (weatherObj && weatherObj.hourly) {
-                            const hourly = weatherObj.hourly;
-                            console.log('[Fetch] Hourly data exists, keys:', Object.keys(hourly));
-                            console.log('[Fetch] Has shortwave_radiation?', !!hourly.shortwave_radiation, 'Has cloudcover?', !!hourly.cloudcover, 'Has cloud_cover?', !!hourly.cloud_cover);
-                            
-                            if (hourly.shortwave_radiation && Array.isArray(hourly.shortwave_radiation) && hourly.shortwave_radiation.length > 0) {
-                                document.getElementById('simSolarRadiation').value = Math.round(hourly.shortwave_radiation[0]);
-                                updated.push('Solar radiation');
-                                console.log('[Fetch] Set solar radiation:', hourly.shortwave_radiation[0]);
-                            } else {
-                                console.log('[Fetch] Solar radiation not found or not array');
+                // Fetch inverter data only if needed
+                if (fetchInverter) {
+                    try {
+                        const invResp = await authenticatedFetch('/api/inverter/real-time');
+                        if (invResp.ok) {
+                            const invData = await invResp.json();
+                            if (invData.errno === 0 && invData.result) {
+                                const r = invData.result;
+                                const items = [];
+                                if (Array.isArray(r) && r.length > 0 && Array.isArray(r[0].datas)) {
+                                    r.forEach(frame => { if (Array.isArray(frame.datas)) items.push(...frame.datas); });
+                                }
+                                const invCache = {};
+                                items.forEach(item => {
+                                    if (item.variable && item.value !== undefined) {
+                                        invCache[item.variable] = item.value;
+                                    }
+                                });
+                                if (invCache.SoC !== undefined) {
+                                    document.getElementById('simSoC').value = invCache.SoC;
+                                    updated.push('SoC');
+                                }
+                                if (invCache.batTemperature !== undefined) {
+                                    document.getElementById('simBatteryTemp').value = invCache.batTemperature.toFixed(1);
+                                    updated.push('Battery temp');
+                                }
+                                if (invCache.ambientTemperation !== undefined) {
+                                    document.getElementById('simAmbientTemp').value = invCache.ambientTemperation.toFixed(1);
+                                    updated.push('Ambient temp');
+                                }
+                                if (invCache.invTemperation !== undefined) {
+                                    document.getElementById('simInverterTemp').value = invCache.invTemperation.toFixed(1);
+                                    updated.push('Inverter temp');
+                                }
+                                localStorage.setItem('cachedInverter', JSON.stringify(invCache));
+                                const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                                cacheState.inverterTime = now;
+                                localStorage.setItem('cacheState', JSON.stringify(cacheState));
                             }
-                            
-                            // Check both cloudcover and cloud_cover (API might return either)
-                            const cloudcoverArray = hourly.cloudcover || hourly.cloud_cover;
-                            if (cloudcoverArray && Array.isArray(cloudcoverArray) && cloudcoverArray.length > 0) {
-                                const cloudValue = cloudcoverArray[0];
-                                document.getElementById('simCloudCover').value = Math.round(cloudValue);
-                                updated.push('Cloud cover');
-                                console.log('[Fetch] Set cloud cover:', cloudValue);
-                            } else {
-                                console.log('[Fetch] Cloud cover not found or not array. cloudcover:', hourly.cloudcover, 'cloud_cover:', hourly.cloud_cover);
-                            }
-                            
-                            const wxCache = {
-                                solarRadiation: (hourly?.shortwave_radiation && hourly.shortwave_radiation[0]) || 0,
-                                cloudCover: ((hourly?.cloudcover || hourly?.cloud_cover) && (hourly.cloudcover || hourly.cloud_cover)[0]) || 0
-                            };
-                            localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
-                            console.log('[Fetch] Cached weather:', wxCache);
-                        } else {
-                            console.log('[Fetch] Weather object or hourly missing');
                         }
-                    } else {
-                        console.log('[Fetch] Weather response not OK:', wxResp.status);
-                    }
-                } catch (e) { console.error('[Fetch] Weather error caught:', e.message, e.stack); log('warning', `Weather fetch failed: ${e.message}`); }
+                    } catch (e) { log('warning', `Inverter fetch failed: ${e.message}`); }
+                }
                 
-                if (updated.length > 1) {
-                    log('success', `✅ Fetched and cached: ${updated.join(', ')}`);
-                } else {
-                    log('warning', `⚠️ Could not fetch all data. Check your config and API connections.`);
+                // Fetch Amber prices only if needed
+                if (fetchAmber) {
+                    try {
+                        let siteId = userConfig?.amberSiteId;
+                        
+                        if (!siteId && userConfig?.amberApiKey) {
+                            try {
+                                const sitesResp = await authenticatedFetch('/api/amber/sites');
+                                if (sitesResp.ok) {
+                                    const sites = await sitesResp.json();
+                                    const sitesList = Array.isArray(sites) ? sites : (sites.result || []);
+                                    if (sitesList.length > 0) {
+                                        siteId = sitesList[0].id;
+                                    }
+                                }
+                            } catch (e) { /* ignore */ }
+                        }
+                        
+                        if (siteId) {
+                            const amberResp = await authenticatedFetch(`/api/amber/prices/current?siteId=${siteId}&next=48`);
+                            if (amberResp.ok) {
+                                const amberData = await amberResp.json();
+                                let prices = [];
+                                if (Array.isArray(amberData)) {
+                                    prices = amberData;
+                                } else if (amberData.errno === 0 && amberData.result) {
+                                    prices = Array.isArray(amberData.result) ? amberData.result : [];
+                                }
+                                
+                                const general = prices.find(p => p.channelType === 'general' && p.type === 'CurrentInterval');
+                                const feedIn = prices.find(p => p.channelType === 'feedIn' && p.type === 'CurrentInterval');
+                                const forecasts = prices.filter(p => p.type === 'ForecastInterval');
+                                
+                                if (general?.perKwh !== undefined) {
+                                    document.getElementById('simBuy').value = general.perKwh.toFixed(1);
+                                    updated.push('Buy price');
+                                }
+                                if (feedIn?.perKwh !== undefined) {
+                                    document.getElementById('simFeedIn').value = (-feedIn.perKwh).toFixed(1);
+                                    updated.push('Feed-in price');
+                                }
+                                if (forecasts.length > 0) {
+                                    const maxPrice = Math.max(...forecasts.map(f => f.perKwh || 0));
+                                    document.getElementById('simForecastHigh').value = maxPrice.toFixed(1);
+                                    updated.push('Forecast high');
+                                }
+                                
+                                const priceCache = {
+                                    general: general ? { perKwh: general.perKwh } : null,
+                                    feedIn: feedIn ? { perKwh: feedIn.perKwh } : null,
+                                    forecastHigh: forecasts.length > 0 ? Math.max(...forecasts.map(f => f.perKwh || 0)) : null
+                                };
+                                localStorage.setItem('cachedPrices', JSON.stringify(priceCache));
+                                const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                                cacheState.amberTime = now;
+                                localStorage.setItem('cacheState', JSON.stringify(cacheState));
+                            }
+                        }
+                    } catch (e) { log('warning', `Amber fetch failed: ${e.message}`); }
+                }
+                
+                // Fetch Weather only if needed
+                if (fetchWeather) {
+                    try {
+                        const wxResp = await authenticatedFetch('/api/weather?days=1');
+                        if (wxResp.ok) {
+                            const wxData = await wxResp.json();
+                            
+                            let weatherObj = null;
+                            if (wxData.errno === 0 && wxData.result) {
+                                weatherObj = wxData.result;
+                            } else if (wxData.source === 'open-meteo') {
+                                weatherObj = wxData;
+                            }
+                            
+                            if (weatherObj && weatherObj.hourly) {
+                                const hourly = weatherObj.hourly;
+                                
+                                if (hourly.shortwave_radiation && Array.isArray(hourly.shortwave_radiation) && hourly.shortwave_radiation.length > 0) {
+                                    document.getElementById('simSolarRadiation').value = Math.round(hourly.shortwave_radiation[0]);
+                                    updated.push('Solar radiation');
+                                }
+                                
+                                const cloudcoverArray = hourly.cloudcover || hourly.cloud_cover;
+                                if (cloudcoverArray && Array.isArray(cloudcoverArray) && cloudcoverArray.length > 0) {
+                                    document.getElementById('simCloudCover').value = Math.round(cloudcoverArray[0]);
+                                    updated.push('Cloud cover');
+                                }
+                                
+                                const wxCache = {
+                                    solarRadiation: (hourly?.shortwave_radiation && hourly.shortwave_radiation[0]) || 0,
+                                    cloudCover: ((hourly?.cloudcover || hourly?.cloud_cover) && (hourly.cloudcover || hourly.cloud_cover)[0]) || 0
+                                };
+                                localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
+                                const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                                cacheState.weatherTime = now;
+                                localStorage.setItem('cacheState', JSON.stringify(cacheState));
+                            }
+                        }
+                    } catch (e) { log('warning', `Weather fetch failed: ${e.message}`); }
+                }
+                
+                if (updated.length > 0) {
+                    log('success', `✅ Updated: ${updated.join(', ')}`);
+                } else if (fetchInverter || fetchAmber || fetchWeather) {
+                    log('warning', `⚠️ No data updated. Check your config and API connections.`);
                 }
             } catch (e) {
                 log('error', `❌ Live fetch error: ${e.message}`);
