@@ -1198,14 +1198,16 @@
                                 updated.push('Solar radiation');
                                 console.log('[Fetch] Set solar radiation:', hourly.shortwave_radiation[0]);
                             }
-                            if (hourly.cloudcover && Array.isArray(hourly.cloudcover) && hourly.cloudcover.length > 0) {
-                                document.getElementById('simCloudCover').value = Math.round(hourly.cloudcover[0]);
+                            // Check both cloudcover and cloud_cover (API might return either)
+                            const cloudcoverArray = hourly.cloudcover || hourly.cloud_cover;
+                            if (cloudcoverArray && Array.isArray(cloudcoverArray) && cloudcoverArray.length > 0) {
+                                document.getElementById('simCloudCover').value = Math.round(cloudcoverArray[0]);
                                 updated.push('Cloud cover');
-                                console.log('[Fetch] Set cloud cover:', hourly.cloudcover[0]);
+                                console.log('[Fetch] Set cloud cover:', cloudcoverArray[0]);
                             }
                             const wxCache = {
                                 solarRadiation: (hourly?.shortwave_radiation && hourly.shortwave_radiation[0]) || 0,
-                                cloudCover: (hourly?.cloudcover && hourly.cloudcover[0]) || 0
+                                cloudCover: (cloudcoverArray && cloudcoverArray[0]) || 0
                             };
                             localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
                         } else {
