@@ -1126,13 +1126,26 @@
                             let prices = [];
                             if (Array.isArray(amberData)) {
                                 prices = amberData;
+                                console.log('[Fetch] Amber response is direct array, length:', prices.length);
                             } else if (amberData.errno === 0 && amberData.result) {
                                 prices = Array.isArray(amberData.result) ? amberData.result : [];
+                                console.log('[Fetch] Amber response is wrapped, extracted', prices.length, 'items');
+                            } else {
+                                console.log('[Fetch] Amber response format unknown:', {isArray: Array.isArray(amberData), errno: amberData?.errno, hasResult: !!amberData?.result});
                             }
-                            console.log('[Fetch] Prices array:', prices);
+                            console.log('[Fetch] Prices array length:', prices.length, 'isArray:', Array.isArray(prices));
+                            if (prices.length > 0) {
+                                console.log('[Fetch] First price item:', JSON.stringify(prices[0]).substring(0, 150));
+                            }
                             const general = prices.find(p => p.channelType === 'general' && p.type === 'CurrentInterval');
                             const feedIn = prices.find(p => p.channelType === 'feedIn' && p.type === 'CurrentInterval');
-                            console.log('[Fetch] General:', general, 'FeedIn:', feedIn);
+                            console.log('[Fetch] Searching for current prices - General found:', !!general, 'FeedIn found:', !!feedIn);
+                            if (general) {
+                                console.log('[Fetch] General perKwh:', general.perKwh);
+                            }
+                            if (feedIn) {
+                                console.log('[Fetch] FeedIn perKwh:', feedIn.perKwh);
+                            }
                             const forecasts = prices.filter(p => p.type === 'ForecastInterval');
                             if (general?.perKwh !== undefined) {
                                 document.getElementById('simBuy').value = general.perKwh.toFixed(1);
@@ -1153,12 +1166,14 @@
                                 forecastHigh: forecasts.length > 0 ? Math.max(...forecasts.map(f => f.perKwh || 0)) : null
                             };
                             localStorage.setItem('cachedPrices', JSON.stringify(priceCache));
-                            }
                         }
                     } else {
                         log('info', `Amber: No site ID or API key configured`);
                     }
-                } catch (e) { console.error('[Fetch] Amber error:', e); log('warning', `Amber fetch failed: ${e.message}`); }
+                } catch (e) { 
+                    console.error('[Fetch] Amber error caught:', e.message, e.stack); 
+                    log('warning', `Amber fetch failed: ${e.message}`); 
+                }
                 
                 // Fetch Weather
                 try {
