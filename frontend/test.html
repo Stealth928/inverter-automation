@@ -933,104 +933,14 @@
 
         async function fetchRealConditions() {
             console.log('[DEBUG] fetchRealConditions called');
-            log('info', '📦 Loading conditions from cache (may fetch live data if cache empty)...');
+            log('info', '📦 Fetching real conditions from live sources...');
             
             try {
                 let updated = [];
-                let hasInverterCache = false;
-                let hasAmberCache = false;
-                let hasWeatherCache = false;
                 
-                // Try to get cached prices from localStorage
-                const cachedPrices = localStorage.getItem('cachedPrices');
-                if (cachedPrices) {
-                    try {
-                        const prices = JSON.parse(cachedPrices);
-                        if (prices.general?.perKwh !== undefined) {
-                            document.getElementById('simBuy').value = prices.general.perKwh.toFixed(1);
-                            updated.push('Buy price');
-                            hasAmberCache = true;
-                        }
-                        if (prices.feedIn?.perKwh !== undefined) {
-                            document.getElementById('simFeedIn').value = prices.feedIn.perKwh.toFixed(1);  // Already negated when cached
-                            updated.push('Feed-in price');
-                            hasAmberCache = true;
-                        }
-                        if (prices.forecastHigh !== undefined) {
-                            document.getElementById('simForecastHigh').value = prices.forecastHigh.toFixed(1);
-                            updated.push('Forecast high');
-                            hasAmberCache = true;
-                        }
-                    } catch (e) { 
-                        log('warning', `Parse error on prices: ${e.message}`);
-                    }
-                }
-                
-                // Try to get cached inverter data from localStorage
-                const cachedInverter = localStorage.getItem('cachedInverter');
-                if (cachedInverter) {
-                    try {
-                        const inv = JSON.parse(cachedInverter);
-                        if (inv.SoC !== undefined) {
-                            document.getElementById('simSoC').value = inv.SoC;
-                            updated.push('SoC');
-                            hasInverterCache = true;
-                        }
-                        if (inv.batTemperature !== undefined) {
-                            document.getElementById('simBatteryTemp').value = inv.batTemperature.toFixed(1);
-                            updated.push('Battery temp');
-                            hasInverterCache = true;
-                        }
-                        if (inv.ambientTemperation !== undefined) {
-                            document.getElementById('simAmbientTemp').value = inv.ambientTemperation.toFixed(1);
-                            updated.push('Ambient temp');
-                            hasInverterCache = true;
-                        }
-                        if (inv.invTemperation !== undefined) {
-                            document.getElementById('simInverterTemp').value = inv.invTemperation.toFixed(1);
-                            updated.push('Inverter temp');
-                            hasInverterCache = true;
-                        }
-                    } catch (e) { 
-                        log('warning', `Parse error on inverter: ${e.message}`);
-                    }
-                }
-                
-                // Try to get cached weather from localStorage
-                const cachedWeather = localStorage.getItem('cachedWeather');
-                if (cachedWeather) {
-                    try {
-                        const wx = JSON.parse(cachedWeather);
-                        if (wx.solarRadiation !== undefined) {
-                            document.getElementById('simSolarRadiation').value = wx.solarRadiation;
-                            updated.push('Solar radiation');
-                            hasWeatherCache = true;
-                        }
-                        if (wx.cloudCover !== undefined) {
-                            document.getElementById('simCloudCover').value = wx.cloudCover;
-                            updated.push('Cloud cover');
-                            hasWeatherCache = true;
-                        }
-                    } catch (e) { 
-                        log('warning', `Parse error on weather: ${e.message}`);
-                    }
-                }
-                
-                // Always set time to current
-                const now = new Date();
-                document.getElementById('simTime').value = now.toTimeString().slice(0, 5);
-                updated.push('Time');
-                
-                if (hasInverterCache && hasAmberCache && hasWeatherCache) {
-                    log('success', `✅ Loaded from cache: ${updated.join(', ')}`);
-                } else {
-                    const missing = [];
-                    if (!hasAmberCache) missing.push('Amber prices');
-                    if (!hasWeatherCache) missing.push('Weather');
-                    log('info', `📋 Cache missing: ${missing.join(', ')}. Attempting to fetch live data...`);
-                    console.log('[DEBUG] Calling fetchLiveConditionsOnce, missing:', missing);
-                    await fetchLiveConditionsOnce();
-                }
+                // Always fetch live weather (don't rely on stale cache)
+                console.log('[DEBUG] Always fetching fresh weather data');
+                await fetchLiveConditionsOnce();
             } catch (e) {
                 log('error', `❌ Error: ${e.message}`);
                 console.error('fetchRealConditions error:', e);
@@ -1182,41 +1092,57 @@
                     console.log('[Fetch] Weather response status:', wxResp.status);
                     if (wxResp.ok) {
                         const wxData = await wxResp.json();
-                        console.log('[Fetch] Weather data:', wxData);
-                        // API returns either wrapped {errno, result} or direct {source, hourly, ...}
-                        let hourly = null;
-                        if (wxData.errno === 0 && wxData.result?.hourly) {
-                            hourly = wxData.result.hourly;
-                        } else if (wxData.hourly) {
-                            hourly = wxData.hourly;
+                        console.log('[Fetch] Weather raw response:', JSON.stringify(wxData).substring(0, 500));
+                        
+                        // API returns wrapped {errno, result: {hourly, ...}}
+                        let weatherObj = null;
+                        if (wxData.errno === 0 && wxData.result) {
+                            weatherObj = wxData.result;
+                            console.log('[Fetch] Weather is wrapped format, extracted result');
+                        } else if (wxData.source === 'open-meteo') {
+                            weatherObj = wxData;
+                            console.log('[Fetch] Weather is unwrapped format');
+                        } else {
+                            console.log('[Fetch] Weather response format unknown:', {errno: wxData?.errno, hasResult: !!wxData?.result, hasSource: !!wxData?.source});
                         }
                         
-                        if (hourly) {
-                            console.log('[Fetch] Hourly data:', hourly);
+                        if (weatherObj && weatherObj.hourly) {
+                            const hourly = weatherObj.hourly;
+                            console.log('[Fetch] Hourly data exists, keys:', Object.keys(hourly));
+                            console.log('[Fetch] Has shortwave_radiation?', !!hourly.shortwave_radiation, 'Has cloudcover?', !!hourly.cloudcover, 'Has cloud_cover?', !!hourly.cloud_cover);
+                            
                             if (hourly.shortwave_radiation && Array.isArray(hourly.shortwave_radiation) && hourly.shortwave_radiation.length > 0) {
                                 document.getElementById('simSolarRadiation').value = Math.round(hourly.shortwave_radiation[0]);
                                 updated.push('Solar radiation');
                                 console.log('[Fetch] Set solar radiation:', hourly.shortwave_radiation[0]);
+                            } else {
+                                console.log('[Fetch] Solar radiation not found or not array');
                             }
+                            
                             // Check both cloudcover and cloud_cover (API might return either)
                             const cloudcoverArray = hourly.cloudcover || hourly.cloud_cover;
                             if (cloudcoverArray && Array.isArray(cloudcoverArray) && cloudcoverArray.length > 0) {
-                                document.getElementById('simCloudCover').value = Math.round(cloudcoverArray[0]);
+                                const cloudValue = cloudcoverArray[0];
+                                document.getElementById('simCloudCover').value = Math.round(cloudValue);
                                 updated.push('Cloud cover');
-                                console.log('[Fetch] Set cloud cover:', cloudcoverArray[0]);
+                                console.log('[Fetch] Set cloud cover:', cloudValue);
+                            } else {
+                                console.log('[Fetch] Cloud cover not found or not array. cloudcover:', hourly.cloudcover, 'cloud_cover:', hourly.cloud_cover);
                             }
+                            
                             const wxCache = {
                                 solarRadiation: (hourly?.shortwave_radiation && hourly.shortwave_radiation[0]) || 0,
-                                cloudCover: (cloudcoverArray && cloudcoverArray[0]) || 0
+                                cloudCover: ((hourly?.cloudcover || hourly?.cloud_cover) && (hourly.cloudcover || hourly.cloud_cover)[0]) || 0
                             };
                             localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
+                            console.log('[Fetch] Cached weather:', wxCache);
                         } else {
-                            console.log('[Fetch] Weather response missing hourly data');
+                            console.log('[Fetch] Weather object or hourly missing');
                         }
                     } else {
                         console.log('[Fetch] Weather response not OK:', wxResp.status);
                     }
-                } catch (e) { console.error('[Fetch] Weather error:', e); log('warning', `Weather fetch failed: ${e.message}`); }
+                } catch (e) { console.error('[Fetch] Weather error caught:', e.message, e.stack); log('warning', `Weather fetch failed: ${e.message}`); }
                 
                 if (updated.length > 1) {
                     log('success', `✅ Fetched and cached: ${updated.join(', ')}`);
