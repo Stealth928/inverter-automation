@@ -1009,6 +1009,7 @@
                     setInput('automation_intervalMs', currentConfig.automation.intervalMs);
                     setInput('automation_startDelayMs', currentConfig.automation.startDelayMs);
                     setInput('automation_gatherDataTimeoutMs', currentConfig.automation.gatherDataTimeoutMs);
+
                 }
                 
                 // Cache
@@ -1213,6 +1214,7 @@
                         intervalMs: getInputValue('automation_intervalMs'),
                         startDelayMs: getInputValue('automation_startDelayMs'),
                         gatherDataTimeoutMs: getInputValue('automation_gatherDataTimeoutMs'),
+
                         blackoutWindows: getBlackoutWindowsFromUI()
                     },
                     cache: {

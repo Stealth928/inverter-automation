@@ -523,8 +523,11 @@ Authorization: Bearer <token>
 
 ## Rate Limits
 
-| API | Limit | Cache TTL |
-|-----|-------|-----------|
-| FoxESS | ~60 req/hour | 5 minutes |
-| Amber | ~100 req/hour | 60 seconds |
-| Weather | Unlimited | 30 minutes |
+| API | Limit | Cache TTL | Location |
+|-----|-------|-----------|----------|
+| FoxESS (Telemetry) | ~60 req/hour | 5 minutes | `users/{uid}/cache/inverter` |
+| FoxESS (History) | ~60 req/hour | 30 minutes | `users/{uid}/cache/history_*` (per 24h chunk) |
+| Amber (Prices) | ~100 req/hour | 24 hours | `amber_prices/{siteId}` (global, shared) |
+| Open-Meteo (Weather) | Unlimited | 30 minutes | `users/{uid}/cache/weather` |
+
+All caches use Firestore TTL field for auto-cleanup. Enable TTL policy in Firestore console for automatic document expiration.

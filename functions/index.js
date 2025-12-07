@@ -52,6 +52,139 @@ const getConfig = () => {
   };
 };
 
+// ==================== CACHED INVERTER DATA HELPER ====================
+/**
+ * Get inverter data with per-user Firestore cache.
+ * Respects TTL (default 5 minutes, configurable via user config).
+ * Only fetches fresh data if cache is expired.
+ */
+async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh = false) {
+  const config = getConfig();
+  // Use user's custom TTL if set, otherwise fall back to default
+  const ttlMs = (userConfig?.automation?.inverterCacheTtlMs) || config.automation.cacheTtl.inverter;
+  
+  try {
+    // Check cache if not forcing refresh
+    if (!forceRefresh) {
+      const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('inverter').get();
+      if (cacheDoc.exists) {
+        const { data, timestamp } = cacheDoc.data();
+        const ageMs = Date.now() - timestamp;
+        if (ageMs < ttlMs) {
+          console.log(`[Cache] Inverter data fresh (age: ${ageMs}ms, TTL: ${ttlMs}ms)`);
+          return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
+        } else {
+          console.log(`[Cache] Inverter data expired (age: ${ageMs}ms, TTL: ${ttlMs}ms) - fetching fresh`);
+        }
+      } else {
+        console.log(`[Cache] No cached inverter data - fetching fresh`);
+      }
+    } else {
+      console.log(`[Cache] Force refresh requested for inverter data`);
+    }
+    
+    // Fetch fresh data from FoxESS
+    const data = await callFoxESSAPI('/op/v0/device/real/query', 'POST', {
+      sn: deviceSN,
+      variables: ['SoC', 'batTemperature', 'ambientTemperation', 'pvPower', 'loadsPower', 'gridConsumptionPower', 'feedinPower']
+    }, userConfig, userId);
+    
+    // Store in cache if successful
+    if (data?.errno === 0) {
+      await db.collection('users').doc(userId).collection('cache').doc('inverter').set({
+        data,
+        timestamp: Date.now(),
+        ttlMs,
+        ttl: Math.floor(Date.now() / 1000) + Math.floor(ttlMs / 1000) // Firestore TTL in seconds
+      }, { merge: true }).catch(cacheErr => {
+        console.warn(`[Cache] Failed to store inverter cache: ${cacheErr.message}`);
+      });
+      console.log(`[Cache] Stored fresh inverter data in cache (TTL: ${ttlMs}ms)`);
+    }
+    
+    return { ...data, __cacheHit: false, __cacheAgeMs: 0, __cacheTtlMs: ttlMs };
+  } catch (err) {
+    console.error(`[Cache] Error in getCachedInverterData: ${err.message}`);
+    return { errno: 500, error: err.message };
+  }
+}
+
+// ==================== AUTOMATION AUDIT LOG HELPERS ====================
+/**
+ * Log a single automation cycle to the audit trail.
+ * Stores in users/{uid}/automationAudit/{docId} with 48-hour TTL.
+ */
+async function addAutomationAuditEntry(userId, cycleData) {
+  try {
+    const docId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const auditEntry = {
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      epochMs: Date.now(),
+      cycleId: cycleData.cycleId || docId,
+      
+      // Evaluation results
+      triggered: cycleData.triggered || false,
+      ruleName: cycleData.ruleName || null,
+      ruleId: cycleData.ruleId || null,
+      rulesEvaluated: cycleData.rulesEvaluated || 0,
+      
+      // Condition evaluation details
+      evaluationResults: cycleData.evaluationResults || [],
+      
+      // Action taken (if any)
+      actionTaken: cycleData.actionTaken || null,
+      segmentApplied: cycleData.segmentApplied || null,
+      
+      // Cache info
+      inverterCacheHit: cycleData.inverterCacheHit || false,
+      inverterCacheAgeMs: cycleData.inverterCacheAgeMs || null,
+      
+      // Timing
+      cycleDurationMs: cycleData.cycleDurationMs || 0,
+      
+      // State transitions
+      activeRuleBefore: cycleData.activeRuleBefore || null,
+      activeRuleAfter: cycleData.activeRuleAfter || null,
+      
+      // Errors
+      error: cycleData.error || null,
+      
+      // TTL for 48-hour auto-cleanup (Firestore TTL policy must be enabled)
+      ttl: Math.floor((Date.now() + 48 * 60 * 60 * 1000) / 1000)
+    };
+    
+    await db.collection('users').doc(userId).collection('automationAudit').doc(docId).set(auditEntry);
+    console.log(`[Audit] Logged automation cycle: ${docId}`);
+  } catch (err) {
+    console.warn(`[Audit] Failed to log automation entry: ${err.message}`);
+  }
+}
+
+/**
+ * Get recent automation audit logs (last 48 hours).
+ * Returns entries sorted by timestamp descending.
+ */
+async function getAutomationAuditLogs(userId, limitEntries = 100) {
+  try {
+    const snapshot = await db
+      .collection('users').doc(userId).collection('automationAudit')
+      .orderBy('epochMs', 'desc')
+      .limit(limitEntries)
+      .get();
+    
+    const entries = [];
+    snapshot.forEach(doc => {
+      entries.push({ docId: doc.id, ...doc.data() });
+    });
+    
+    console.log(`[Audit] Retrieved ${entries.length} audit logs for user ${userId}`);
+    return entries;
+  } catch (err) {
+    console.error(`[Audit] Failed to retrieve audit logs: ${err.message}`);
+    return [];
+  }
+}
+
 // ==================== RATE LIMIT STATE ====================
 const amberRateLimitState = {
   retryAfter: 0,
@@ -756,7 +889,8 @@ async function cacheAmberPrices(siteId, newPrices) {
       siteId,
       prices: merged,
       lastUpdated: new Date().toISOString(),
-      priceCount: merged.length
+      priceCount: merged.length,
+      ttl: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // Firestore TTL in seconds (24 hours)
     });
   } catch (error) {
     console.warn(`[Cache] Error caching prices for ${siteId}:`, error.message);
@@ -1080,6 +1214,55 @@ async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
     };
   } catch (error) {
     return { errno: 500, error: error.message };
+  }
+}
+
+/**
+ * Cache weather data in Firestore (per-user)
+ * TTL: 30 minutes
+ */
+async function getCachedWeatherData(userId, place = 'Sydney', days = 16) {
+  const config = getConfig();
+  const ttlMs = config.automation.cacheTtl.weather; // 30 minutes
+  
+  try {
+    const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('weather').get();
+    
+    if (cacheDoc.exists) {
+      const { data, timestamp } = cacheDoc.data();
+      const ageMs = Date.now() - timestamp;
+      
+      if (ageMs < ttlMs) {
+        console.log(`[Cache] Weather data fresh (age: ${ageMs}ms, TTL: ${ttlMs}ms)`);
+        return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
+      } else {
+        console.log(`[Cache] Weather data expired (age: ${ageMs}ms, TTL: ${ttlMs}ms) - fetching fresh`);
+      }
+    } else {
+      console.log(`[Cache] No cached weather data - fetching fresh`);
+    }
+    
+    // Fetch fresh data from Open-Meteo
+    const data = await callWeatherAPI(place, days, userId);
+    
+    // Store in cache if successful
+    if (data?.errno === 0) {
+      await db.collection('users').doc(userId).collection('cache').doc('weather').set({
+        data,
+        timestamp: Date.now(),
+        ttlMs,
+        place,
+        ttl: Math.floor(Date.now() / 1000) + Math.floor(ttlMs / 1000) // Firestore TTL in seconds
+      }, { merge: true }).catch(cacheErr => {
+        console.warn(`[Cache] Failed to store weather cache: ${cacheErr.message}`);
+      });
+      console.log(`[Cache] Stored fresh weather data in cache (TTL: ${ttlMs}ms)`);
+    }
+    
+    return { ...data, __cacheHit: false, __cacheAgeMs: 0, __cacheTtlMs: ttlMs };
+  } catch (err) {
+    console.error(`[Cache] Error in getCachedWeatherData: ${err.message}`);
+    return { errno: 500, error: err.message };
   }
 }
 
@@ -1450,15 +1633,12 @@ app.post('/api/automation/cycle', async (req, res) => {
     const deviceSN = userConfig?.deviceSn;
     let inverterData = null;
     let amberData = null;
+    const cycleStartTime = Date.now();
     
-    // Fetch inverter data
+    // Fetch inverter data (with per-user cache TTL)
     if (deviceSN) {
       try {
-        inverterData = await callFoxESSAPI('/op/v0/device/real/query', 'POST', {
-          sn: deviceSN,
-          variables: ['SoC', 'batTemperature', 'ambientTemperation', 'pvPower', 'loadsPower', 'gridConsumptionPower', 'feedinPower']
-        }, userConfig, userId);
-        console.log(`[Automation] Inverter data fetched successfully`);
+        inverterData = await getCachedInverterData(userId, deviceSN, userConfig, false);
       } catch (e) {
         console.warn('[Automation] Failed to get inverter data:', e.message);
       }
@@ -1501,11 +1681,11 @@ app.post('/api/automation/cycle', async (req, res) => {
     if (needsWeatherData) {
       try {
         const place = userConfig?.location || 'Sydney';
-        weatherData = await callWeatherAPI(place, 1, userId);
-        if (weatherData?.current_weather) {
-          console.log(`[Automation] Weather data fetched: ${weatherData.current_weather.temperature}°C, code=${weatherData.current_weather.weathercode}`);
+        weatherData = await getCachedWeatherData(userId, place, 1);
+        if (weatherData?.result?.current_weather) {
+          console.log(`[Automation] Weather data fetched: ${weatherData.result.current_weather.temperature}°C, code=${weatherData.result.current_weather.weathercode}`);
         }
-        cache.weather = weatherData;
+        cache.weather = weatherData.result || weatherData;
       } catch (e) {
         console.warn('[Automation] Failed to get weather data:', e.message);
       }
@@ -1596,10 +1776,11 @@ app.post('/api/automation/cycle', async (req, res) => {
           const conditionCheck = await evaluateRule(userId, activeRuleId, activeRule, cache, inverterData, userConfig, true /* skipCooldown */);
           
           if (conditionCheck.triggered) {
-            // Conditions still hold - but verify the segment actually exists!
-            // If activeSegment is missing (stale state from old code), we need to re-create the segment
-            if (!state.activeSegment || !state.activeSegmentEnabled) {
-              console.log(`[Automation] Active rule '${activeRuleId}' conditions met but NO SEGMENT DATA - re-applying action...`);
+            // Conditions still hold - verify the segment exists and is active
+            // Only re-apply if the segment is explicitly marked as failed/disabled
+            if (state.activeSegmentEnabled === false) {
+              // Segment explicitly failed - try to re-apply
+              console.log(`[Automation] Active rule '${activeRuleId}' - segment was marked as failed, re-applying...`);
               try {
                 const actionResult = await applyRuleAction(userId, activeRule, userConfig);
                 console.log(`[Automation] Re-apply action result: errno=${actionResult?.errno}, msg=${actionResult?.msg}`);
@@ -1616,8 +1797,8 @@ app.post('/api/automation/cycle', async (req, res) => {
               }
             } else {
               // Segment exists and conditions still hold - just update lastCheck
-              console.log(`[Automation] Active rule '${activeRuleId}' conditions still met - segment continues`);
-              await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
+              console.log(`[Automation] Active rule '${activeRuleId}' conditions still met - segment continues (no re-apply needed)`);
+              await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false, activeSegmentEnabled: true });
             }
           } else {
             // Conditions no longer hold - cancel the segment
@@ -1698,6 +1879,29 @@ app.post('/api/automation/cycle', async (req, res) => {
       }
     }
     
+    // Calculate cycle duration
+    const cycleDurationMs = Date.now() - cycleStartTime;
+    
+    // Prepare audit entry data
+    const auditData = {
+      cycleId: `${userId}_${cycleStartTime}`,
+      triggered: !!triggeredRule,
+      ruleName: triggeredRule?.name || null,
+      ruleId: triggeredRule?.ruleId || null,
+      rulesEvaluated: sortedRules.length,
+      evaluationResults,
+      actionTaken: triggeredRule?.actionResult?.errno === 0 ? triggeredRule.actionResult : null,
+      segmentApplied: triggeredRule?.actionResult?.segment || null,
+
+      cycleDurationMs,
+      activeRuleBefore: state?.activeRule || null,
+      activeRuleAfter: triggeredRule ? triggeredRule.ruleId : (state?.activeRule || null),
+      error: null
+    };
+    
+    // Log to audit trail
+
+    
     res.json({
       errno: 0,
       result: {
@@ -1706,11 +1910,24 @@ app.post('/api/automation/cycle', async (req, res) => {
         rulesEvaluated: sortedRules.length,
         totalRules,
         evaluationResults,
-        lastCheck: Date.now()
+        lastCheck: Date.now(),
+        // Performance
+        cycleDurationMs
       }
     });
   } catch (error) {
     console.error('[Automation] Cycle error:', error);
+    
+    // Log error to audit trail
+    const auditData = {
+      cycleId: `${userId}_${cycleStartTime}`,
+      triggered: false,
+      rulesEvaluated: 0,
+      error: error.message,
+      cycleDurationMs: Date.now() - cycleStartTime
+    };
+
+    
     // Still update lastCheck even on error
     try {
       await saveUserAutomationState(req.user.uid, { lastCheck: Date.now() });
@@ -1921,6 +2138,26 @@ app.get('/api/automation/history', async (req, res) => {
     });
     
     res.json({ errno: 0, result: history });
+  } catch (error) {
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Get automation audit logs (cycle history with cache & performance metrics)
+app.get('/api/automation/audit', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit || '100', 10);
+    const auditLogs = await getAutomationAuditLogs(req.user.uid, limit);
+    
+    res.json({ 
+      errno: 0, 
+      result: {
+        entries: auditLogs,
+        count: auditLogs.length,
+        period: '48 hours',
+        note: 'Logs older than 48 hours are automatically deleted'
+      }
+    });
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
   }
@@ -2189,8 +2426,39 @@ app.get('/api/inverter/generation', authenticateUser, async (req, res) => {
     const sn = req.query.sn || userConfig?.deviceSn;
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     
-    const result = await callFoxESSAPI(`/op/v0/device/generation?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
-    res.json(result);
+    // Get point-in-time generation data (today, month, cumulative)
+    const genResult = await callFoxESSAPI(`/op/v0/device/generation?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
+    
+    // Enhance with yearly data from report endpoint
+    try {
+      const year = new Date().getFullYear();
+      const reportBody = {
+        sn,
+        dimension: 'year',
+        year,
+        variables: ['generation']
+      };
+      const reportResult = await callFoxESSAPI('/op/v0/device/report/query', 'POST', reportBody, userConfig, req.user.uid);
+      
+      // Extract yearly generation from report (array of monthly values for the year)
+      if (reportResult.result && Array.isArray(reportResult.result) && reportResult.result.length > 0) {
+        const genVar = reportResult.result.find(v => v.variable === 'generation');
+        if (genVar && Array.isArray(genVar.values)) {
+          // Sum all monthly values to get year-to-date generation
+          const yearGeneration = genVar.values.reduce((sum, val) => sum + (val || 0), 0);
+          // Add to the generation data if it's a valid number
+          if (genResult.result && typeof genResult.result === 'object') {
+            genResult.result.year = yearGeneration;
+            genResult.result.yearGeneration = yearGeneration;
+          }
+        }
+      }
+    } catch (reportError) {
+      // Log but don't fail - report endpoint might not be available
+      console.warn('[API] /api/inverter/generation - report endpoint failed:', reportError.message);
+    }
+    
+    res.json(genResult);
   } catch (error) {
     console.error('[API] /api/inverter/generation error:', error);
     res.status(500).json({ errno: 500, error: error.message });
@@ -2289,9 +2557,10 @@ app.post('/api/device/workmode/set', async (req, res) => {
 // Weather endpoint
 app.get('/api/weather', async (req, res) => {
   try {
+    await tryAttachUser(req);
     const place = req.query.place || 'Sydney';
     const days = parseInt(req.query.days || '3', 10);
-    const result = await callWeatherAPI(place, days, req.user.uid);
+    const result = await getCachedWeatherData(req.user?.uid || 'anonymous', place, days);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -2638,7 +2907,9 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       }
       results.push({ condition: 'price', met, actual: actualPrice, operator, target: value, type: priceType });
       if (!met) {
-        console.log(`[Automation] Rule '${rule.name}' - Price (${priceType}) condition NOT met: ${actualPrice?.toFixed(1)} ${operator} ${value} = false`);
+        console.log(`[Automation] Rule '${rule.name}' - Price (${priceType}) condition NOT met: actual=${actualPrice} (type: ${typeof actualPrice}), target=${value} (type: ${typeof value}), operator=${operator}, result: ${actualPrice} ${operator} ${value} = false`);
+      } else {
+        console.log(`[Automation] Rule '${rule.name}' - Price (${priceType}) condition MET: ${actualPrice} ${operator} ${value} = true`);
       }
     } else {
       results.push({ condition: 'price', met: false, reason: 'No Amber price data' });
@@ -2661,7 +2932,9 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       }
       results.push({ condition: 'feedInPrice', met, actual: feedInPrice, operator, target: value });
       if (!met) {
-        console.log(`[Automation] Rule '${rule.name}' - FeedIn condition NOT met: ${feedInPrice.toFixed(1)} ${operator} ${value} = false`);
+        console.log(`[Automation] Rule '${rule.name}' - FeedIn condition NOT met: actual=${feedInPrice} (type: ${typeof feedInPrice}), target=${value} (type: ${typeof value}), operator=${operator}, result: ${feedInPrice} ${operator} ${value} = false`);
+      } else {
+        console.log(`[Automation] Rule '${rule.name}' - FeedIn condition MET: ${feedInPrice} ${operator} ${value} = true`);
       }
     } else {
       results.push({ condition: 'feedInPrice', met: false, reason: 'No Amber data' });
@@ -2684,7 +2957,9 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       }
       results.push({ condition: 'buyPrice', met, actual: buyPrice, operator, target: value });
       if (!met) {
-        console.log(`[Automation] Rule '${rule.name}' - BuyPrice condition NOT met: ${buyPrice.toFixed(1)} ${operator} ${value} = false`);
+        console.log(`[Automation] Rule '${rule.name}' - BuyPrice condition NOT met: actual=${buyPrice} (type: ${typeof buyPrice}), target=${value} (type: ${typeof value}), operator=${operator}, result: ${buyPrice} ${operator} ${value} = false`);
+      } else {
+        console.log(`[Automation] Rule '${rule.name}' - BuyPrice condition MET: ${buyPrice} ${operator} ${value} = true`);
       }
     } else {
       results.push({ condition: 'buyPrice', met: false, reason: 'No Amber data' });
@@ -2740,7 +3015,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   if (conditions.solarRadiation?.enabled) {
     enabledConditions.push('solarRadiation');
     const weatherData = cache.weather;
-    const hourly = weatherData?.hourly;
+    const hourly = weatherData?.result?.hourly || weatherData?.hourly;
     
     if (hourly?.shortwave_radiation && hourly?.time) {
       // Support lookAheadUnit: hours or days
@@ -2806,7 +3081,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   if (conditions.cloudCover?.enabled) {
     enabledConditions.push('cloudCover');
     const weatherData = cache.weather;
-    const hourly = weatherData?.hourly;
+    const hourly = weatherData?.result?.hourly || weatherData?.hourly;
     
     if (hourly?.cloudcover && hourly?.time) {
       // Support lookAheadUnit: hours or days
@@ -2876,7 +3151,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
         conditions.weather.type === 'solar' || conditions.weather.type === 'cloudcover') {
       // This is a legacy rule using the old weather.type format - evaluate it for compatibility
       if (conditions.weather.type === 'solar' || conditions.weather.type === 'radiation' || conditions.weather.radiationEnabled) {
-        const hourly = weatherData?.hourly;
+        const hourly = weatherData?.result?.hourly || weatherData?.hourly;
         if (hourly?.shortwave_radiation && hourly?.time) {
           const lookAheadHours = conditions.weather.radiationHours || conditions.weather.lookAheadHours || 6;
           const threshold = conditions.weather.radiationThreshold || 200;
@@ -2914,7 +3189,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           results.push({ condition: 'weather', met: false, reason: 'No hourly data' });
         }
       } else if (conditions.weather.type === 'cloudcover') {
-        const hourly = weatherData?.hourly;
+        const hourly = weatherData?.result?.hourly || weatherData?.hourly;
         if (hourly?.cloudcover && hourly?.time) {
           const lookAheadHours = conditions.weather.cloudcoverHours || conditions.weather.lookAheadHours || 6;
           const threshold = conditions.weather.cloudcoverThreshold || 50;
@@ -3550,7 +3825,8 @@ async function setHistoryToCacheFirestore(userId, sn, begin, end, data) {
     const docRef = db.collection('users').doc(userId).collection('cache').doc(cacheKey);
     await docRef.set({
       timestamp: Date.now(),
-      data: data
+      data: data,
+      ttl: Math.floor(Date.now() / 1000) + (30 * 60) // Firestore TTL in seconds (30 min from now)
     });
   } catch (error) {
     console.warn('[History] Cache set error:', error.message);

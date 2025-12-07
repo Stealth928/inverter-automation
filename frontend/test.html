@@ -229,11 +229,18 @@
             margin-right: 8px;
             min-width: 24px;
         }
-        .priority-badge.p1 { background: #ff6b6b; color: #fff; } /* High priority - Red */
-        .priority-badge.p2 { background: #ff922b; color: #000; } /* Medium-high - Orange */
-        .priority-badge.p3 { background: #ffd43b; color: #000; } /* Medium - Yellow */
-        .priority-badge.p4, .priority-badge.p5 { background: #51cf66; color: #000; } /* Lower - Green */
-        .priority-badge.p-low { background: var(--text-secondary); color: #000; } /* Very low */
+        /* Priority color scale: Red (P1) → Orange → Yellow → Green (P10) */
+        .priority-badge.p1 { background: #ff4757; color: #fff; } /* P1: Critical Red */
+        .priority-badge.p2 { background: #ff6b6b; color: #fff; } /* P2: Red */
+        .priority-badge.p3 { background: #ff8c42; color: #fff; } /* P3: Red-Orange */
+        .priority-badge.p4 { background: #ffa24d; color: #000; } /* P4: Orange-Red */
+        .priority-badge.p5 { background: #ffb84d; color: #000; } /* P5: Orange */
+        .priority-badge.p6 { background: #ffd43b; color: #000; } /* P6: Yellow-Orange */
+        .priority-badge.p7 { background: #ffe066; color: #000; } /* P7: Yellow */
+        .priority-badge.p8 { background: #a8d400; color: #000; } /* P8: Lime */
+        .priority-badge.p9 { background: #69db4d; color: #000; } /* P9: Light Green */
+        .priority-badge.p10 { background: #51cf66; color: #000; } /* P10: Green */
+        .priority-badge.p-low { background: var(--text-secondary); color: #000; } /* P>10: Very low / Gray */
 
         /* Scheduler Mock */
         .scheduler-segment {
@@ -628,7 +635,7 @@
                         <div class="hint">0=clear, 100=overcast</div>
                     </div>
                     <div class="sim-field">
-                        <label>📊 Forecast High Price (¢)</label>
+                        <label>📊 Forecast High Price (BUY) (¢)</label>
                         <input type="number" id="simForecastHigh" value="50" min="-100" max="500" step="0.5">
                         <div class="hint">Max upcoming price</div>
                     </div>
@@ -1151,20 +1158,30 @@
                             if (weatherObj && weatherObj.hourly) {
                                 const hourly = weatherObj.hourly;
                                 
-                                if (hourly.shortwave_radiation && Array.isArray(hourly.shortwave_radiation) && hourly.shortwave_radiation.length > 0) {
-                                    document.getElementById('simSolarRadiation').value = Math.round(hourly.shortwave_radiation[0]);
+                                // Find current hour index from time array
+                                // Use API's current time (which is in local timezone) instead of JS Date (which is UTC)
+                                let currentHourIdx = 0;
+                                if (hourly.time && Array.isArray(hourly.time)) {
+                                    const currentTime = weatherObj.current?.time || new Date().toISOString();
+                                    const currentHourStr = currentTime.substring(0, 13); // YYYY-MM-DDTHH
+                                    currentHourIdx = hourly.time.findIndex(t => t && t.substring(0, 13) === currentHourStr);
+                                    if (currentHourIdx < 0) currentHourIdx = 0; // Fallback to index 0 if not found
+                                }
+                                
+                                if (hourly.shortwave_radiation && Array.isArray(hourly.shortwave_radiation) && hourly.shortwave_radiation.length > currentHourIdx) {
+                                    document.getElementById('simSolarRadiation').value = Math.round(hourly.shortwave_radiation[currentHourIdx]);
                                     updated.push('Solar radiation');
                                 }
                                 
                                 const cloudcoverArray = hourly.cloudcover || hourly.cloud_cover;
-                                if (cloudcoverArray && Array.isArray(cloudcoverArray) && cloudcoverArray.length > 0) {
-                                    document.getElementById('simCloudCover').value = Math.round(cloudcoverArray[0]);
+                                if (cloudcoverArray && Array.isArray(cloudcoverArray) && cloudcoverArray.length > currentHourIdx) {
+                                    document.getElementById('simCloudCover').value = Math.round(cloudcoverArray[currentHourIdx]);
                                     updated.push('Cloud cover');
                                 }
                                 
                                 const wxCache = {
-                                    solarRadiation: (hourly?.shortwave_radiation && hourly.shortwave_radiation[0]) || 0,
-                                    cloudCover: ((hourly?.cloudcover || hourly?.cloud_cover) && (hourly.cloudcover || hourly.cloud_cover)[0]) || 0
+                                    solarRadiation: (hourly?.shortwave_radiation && hourly.shortwave_radiation[currentHourIdx]) || 0,
+                                    cloudCover: ((hourly?.cloudcover || hourly?.cloud_cover) && (hourly.cloudcover || hourly.cloud_cover)[currentHourIdx]) || 0
                                 };
                                 localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
                                 const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
@@ -1268,9 +1285,9 @@
                 }
                 
                 const action = rule.action || {};
-                const priorityClass = rule.priority <= 1 ? 'p1' : rule.priority === 2 ? 'p2' : rule.priority === 3 ? 'p3' : (rule.priority === 4 || rule.priority === 5) ? 'p4' : 'p-low';
+                const priorityClass = rule.priority >= 1 && rule.priority <= 10 ? `p${rule.priority}` : 'p-low';
                 html += `
-                <div class="rule-card ${rule.enabled ? '' : 'disabled'}" id="rule-${key}">
+                <div class="rule-card ${rule.enabled ? '' : 'disabled'}" id="rule-${key}" data-ruletitle="${rule.name || key}">
                     <div class="rule-header">
                         <span class="rule-name">
                             <span class="priority-badge ${priorityClass}" title="Priority ${rule.priority || '?'} (lower number = higher priority)">P${rule.priority || '?'}</span>
@@ -1346,8 +1363,11 @@
                         const ruleName = result.result.ruleName;
                         log('success', `✓ TRIGGERED: ${ruleName} → ${result.result.action?.workMode}`);
                         
-                        // Highlight triggered rule
-                        const ruleEl = document.getElementById(`rule-${ruleName}`);
+                        // Highlight triggered rule (match by display name stored in data-ruletitle)
+                        let ruleEl = null;
+                        document.querySelectorAll('.rule-card').forEach(el => {
+                            if ((el.dataset.ruletitle || '').trim() === (ruleName || '').trim()) ruleEl = el;
+                        });
                         if (ruleEl) ruleEl.classList.add('triggered');
                         
                         // Add to mock scheduler

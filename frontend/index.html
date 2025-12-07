@@ -129,24 +129,6 @@
         .priority-badge {
             display: inline-flex;
             align-items: center;
-
-        }
-
-        /* Small info tooltip icon used next to location headers when fallback coords are used */
-        .info-tip {
-            display: inline-block;
-            width:18px;
-            height:18px;
-            line-height:18px;
-            text-align:center;
-            border-radius:50%;
-            background:rgba(88,166,255,0.08);
-            color:#58a6ff;
-            font-size:12px;
-            margin-left:8px;
-            cursor:help;
-            border:1px solid rgba(88,166,255,0.06);
-        }
             justify-content: center;
             font-weight: 700;
             font-size: 10px;
@@ -154,11 +136,19 @@
             border-radius: 3px;
             min-width: 24px;
         }
-        .priority-badge.p1 { background: #ff6b6b; color: #fff; } /* High priority - Red */
-        .priority-badge.p2 { background: #ff922b; color: #000; } /* Medium-high - Orange */
-        .priority-badge.p3 { background: #ffd43b; color: #000; } /* Medium - Yellow */
-        .priority-badge.p4, .priority-badge.p5 { background: #51cf66; color: #000; } /* Lower - Green */
-        .priority-badge.p-low { background: #30363d; color: #8b949e; } /* Very low */
+
+        /* Priority color scale: Red (P1) → Orange → Yellow → Green (P10) */
+        .priority-badge.p1 { background: #ff4757; color: #fff; } /* P1: Critical Red */
+        .priority-badge.p2 { background: #ff6b6b; color: #fff; } /* P2: Red */
+        .priority-badge.p3 { background: #ff8c42; color: #fff; } /* P3: Red-Orange */
+        .priority-badge.p4 { background: #ffa24d; color: #000; } /* P4: Orange-Red */
+        .priority-badge.p5 { background: #ffb84d; color: #000; } /* P5: Orange */
+        .priority-badge.p6 { background: #ffd43b; color: #000; } /* P6: Yellow-Orange */
+        .priority-badge.p7 { background: #ffe066; color: #000; } /* P7: Yellow */
+        .priority-badge.p8 { background: #a8d400; color: #000; } /* P8: Lime */
+        .priority-badge.p9 { background: #69db4d; color: #000; } /* P9: Light Green */
+        .priority-badge.p10 { background: #51cf66; color: #000; } /* P10: Green */
+        .priority-badge.p-low { background: #30363d; color: #8b949e; } /* P>10: Very low / Gray */
 
         /* Secondary Grid */
         .secondary-grid {
@@ -369,13 +359,13 @@
             margin-top: 4px;
         }
         .stat-item .tile-icon {
-            font-size: 18px;
+            font-size: 36px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin: 0 auto 6px auto;
-            width: 30px;
-            height: 30px;
+            width: 54px;
+            height: 54px;
             border-radius: 6px;
             color: inherit;
             background: rgba(255,255,255,0.02);
@@ -2096,11 +2086,22 @@
                         } catch (e) { /* ignore cache errors */ }
                     } else if (endpoint.includes('/weather')) {
                         try {
-                            // API now returns {errno, result: {source, hourly, ...}}
-                            const hourly = data.result?.hourly || data.hourly || {};
+                            // API now returns {errno, result: {source, hourly, current, ...}}
+                            const weatherData = data.result || data;
+                            const hourly = weatherData?.hourly || {};
+                            const current = weatherData?.current || {};
+                            // Find current hour index for accurate solar radiation
+                            // Use API's current time (which is in local timezone) instead of JS Date (which is UTC)
+                            let currentHourIdx = 0;
+                            if (hourly.time && Array.isArray(hourly.time)) {
+                                const currentTime = current?.time || new Date().toISOString();
+                                const currentHourStr = currentTime.substring(0, 13); // YYYY-MM-DDTHH
+                                currentHourIdx = hourly.time.findIndex(t => t && t.substring(0, 13) === currentHourStr);
+                                if (currentHourIdx < 0) currentHourIdx = 0;
+                            }
                             const wxCache = {
-                                solarRadiation: hourly.shortwave_radiation?.[0] || 0,
-                                cloudCover: hourly.cloudcover?.[0] || 0
+                                solarRadiation: hourly.shortwave_radiation?.[currentHourIdx] || 0,
+                                cloudCover: hourly.cloudcover?.[currentHourIdx] || hourly.cloud_cover?.[currentHourIdx] || 0
                             };
                             localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
                         } catch (e) { /* ignore cache errors */ }
@@ -2857,10 +2858,17 @@
             const days = Number(document.getElementById('weatherDays').value || 6);
             
             // Check if cached weather is still fresh (30 minutes TTL matches backend)
+            // IMPORTANT: Cache key must include the requested days so we don't return stale cache
+            // when user requests a different number of forecast days
+            // ALSO: Invalidate cache if the calendar day has changed to get fresh forecasts
             const WEATHER_TTL = 30 * 60 * 1000;
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
-            if (cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL) {
-                console.log('[Cache] Weather cache is fresh, loading from cache');
+            const cachedDays = cacheState.weatherDays || 0;
+            const cachedDate = cacheState.weatherDate || null;  // Track the calendar day
+            const today = new Date().toISOString().substring(0, 10);  // YYYY-MM-DD
+            
+            if (cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL && cachedDays === days && cachedDate === today) {
+                console.log('[Cache] Weather cache is fresh, has correct forecast days, and is from today - loading from cache');
                 // Load cached full weather object and render it
                 try {
                     const cachedWeatherFull = JSON.parse(localStorage.getItem('cachedWeatherFull') || '{}');
@@ -2893,15 +2901,27 @@
                         
                         // Also cache simplified data for automation test page
                         const hourly = weatherData.hourly;
+                        const current = weatherData.current || {};
+                        // Find current hour index for accurate solar radiation
+                        // Use API's current time (which is in local timezone) instead of JS Date (which is UTC)
+                        let currentHourIdx = 0;
+                        if (hourly.time && Array.isArray(hourly.time)) {
+                            const currentTime = current?.time || new Date().toISOString();
+                            const currentHourStr = currentTime.substring(0, 13); // YYYY-MM-DDTHH
+                            currentHourIdx = hourly.time.findIndex(t => t && t.substring(0, 13) === currentHourStr);
+                            if (currentHourIdx < 0) currentHourIdx = 0;
+                        }
                         const wxCache = {
-                            solarRadiation: hourly.shortwave_radiation?.[0] || 0,
-                            cloudCover: hourly.cloud_cover?.[0] || hourly.cloudcover?.[0] || 0
+                            solarRadiation: hourly.shortwave_radiation?.[currentHourIdx] || 0,
+                            cloudCover: hourly.cloud_cover?.[currentHourIdx] || hourly.cloudcover?.[currentHourIdx] || 0
                         };
                         localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
                         
-                        // Update cache timestamp
+                        // Update cache timestamp AND store the requested days and date so we know if cache is valid
                         const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
                         cacheState.weatherTime = Date.now();
+                        cacheState.weatherDays = days;  // Store the days count for cache validation
+                        cacheState.weatherDate = new Date().toISOString().substring(0, 10);  // Store today's date (YYYY-MM-DD)
                         localStorage.setItem('cacheState', JSON.stringify(cacheState));
                     } catch (e) { /* ignore cache errors */ }
                 }
@@ -3049,6 +3069,11 @@
             let locExtra = '';
             if (country) locExtra += country;
             if (lat !== null && lon !== null) locExtra += (locExtra ? ' • ' : '') + `${lat}, ${lon}`;
+            // Show weather source (Open-Meteo)
+            const source = data.source || 'open-meteo';
+            if (locExtra) locExtra += ` • <span style="opacity:0.7">${source}</span>`;
+            else if (lat !== null && lon !== null) locExtra = `${lat}, ${lon} • <span style="opacity:0.7">${source}</span>`;
+            else locExtra = `<span style="opacity:0.7">${source}</span>`;
             // If the API resolved a location name, show it. If not, show a friendly
             // label and include an info icon when the server fell back to coordinates.
             let headerTooltip = '';
@@ -3095,7 +3120,14 @@
                 const windDirName = windDirDeg !== null ? degToCompass(windDirDeg) : '';
 
                 const nowTemp = (current.temperature !== undefined && current.temperature !== null && String(current.temperature).toLowerCase() !== 'undefined') ? `${current.temperature}°` : '—';
-                html += `<div class="live-stat"><span class="value">${nowTemp}</span><span class="unit">C</span><span class="label">Now</span></div>`;
+                // Extract time from current.time (ISO format: YYYY-MM-DDTHH:MM)
+                let nowTimeStr = '';
+                if (current.time && typeof current.time === 'string') {
+                    const timePart = current.time.split('T')[1];
+                    if (timePart) nowTimeStr = timePart.substring(0, 5); // HH:MM
+                }
+                const nowLabel = nowTimeStr ? `Now (${nowTimeStr})` : 'Now';
+                html += `<div class="live-stat"><span class="value">${nowTemp}</span><span class="unit">C</span><span class="label">${nowLabel}</span></div>`;
 
                 // Determine current shortwave radiation and cloudcover.
                 let currentRad = null;
@@ -3210,7 +3242,7 @@
                     const cloudColor = cloudAvg === null ? '#8b949e' : cloudAvg < 30 ? '#7ee787' : cloudAvg < 70 ? '#f0883e' : '#f85149';
 
                     html += `<div class="stat-item${extremeClass}"${extremeTitle}>
-                        <div style="font-size:12px;font-weight:700;color:#e6edf3">${formatDate(d, false)}</div>
+                        <div style="font-size:12px;font-weight:700;color:#e6edf3">${formatForecastDay(d)}</div>
                         <div style="font-size:13px;color:#58a6ff;font-weight:600;margin-top:4px">${desc}</div>
                         <div style="font-size:12px;color:#8b949e;margin-top:4px">High ${tmax}° / Low ${tmin}°</div>
                         <div style="font-size:11px;color:#7ee787;margin-top:3px">Rain: ${rain !== null ? rain.toFixed(1) + ' mm' : '—'}</div>
@@ -4614,6 +4646,14 @@
         function formatDate(ts, withTime = false, withSeconds = false) {
             if (!ts) return '—';
             
+            // Handle date-only strings (YYYY-MM-DD) from weather API
+            // These should be treated as LOCAL dates, not UTC
+            if (typeof ts === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ts)) {
+                const [yyyy, mm, dd] = ts.split('-');
+                if (!withTime) return `${dd}/${mm}/${yyyy}`;
+                return `${dd}/${mm}/${yyyy} --:--`;
+            }
+            
             // Handle Firestore Timestamp objects
             let timestamp = ts;
             if (typeof ts === 'object' && ts !== null) {
@@ -4642,6 +4682,42 @@
                 return `${dd}/${mm}/${yyyy} ${hh}:${min}:${sec}`;
             }
             return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+        }
+
+        /**
+         * Format a forecast day (YYYY-MM-DD) with a human-readable label like "Today", "Tomorrow", "In 2 days"
+         * @param {string} dateStr - YYYY-MM-DD date string
+         * @returns {string} e.g. "Today • 07/12/2025" or "Tomorrow • 08/12/2025"
+         */
+        function formatForecastDay(dateStr) {
+            if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                return formatDate(dateStr, false);
+            }
+            
+            const [yyyy, mm, dd] = dateStr.split('-').map(Number);
+            const forecastDate = new Date(yyyy, mm - 1, dd);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const diffDays = Math.floor((forecastDate - today) / (1000 * 60 * 60 * 24));
+            
+            let label = '';
+            if (diffDays === 0) {
+                label = 'Today';
+            } else if (diffDays === 1) {
+                label = 'Tomorrow';
+            } else if (diffDays === 2) {
+                label = 'In 2 days';
+            } else if (diffDays === 3) {
+                label = 'In 3 days';
+            } else if (diffDays > 0) {
+                label = `In ${diffDays} days`;
+            } else if (diffDays === -1) {
+                label = 'Yesterday';
+            } else {
+                label = `${Math.abs(diffDays)} days ago`;
+            }
+            
+            return `${label} • ${dd}/${mm}/${yyyy}`;
         }
         
         // Format automation cycle result for debug display
@@ -5309,7 +5385,7 @@
                     }
                     if (!condBadges) condBadges = '<span style="color:#8b949e;font-size:10px">No conditions set</span>';
                     
-                    const priorityClass = rule.priority <= 1 ? 'p1' : rule.priority === 2 ? 'p2' : rule.priority === 3 ? 'p3' : (rule.priority === 4 || rule.priority === 5) ? 'p4' : 'p-low';
+                    const priorityClass = rule.priority >= 1 && rule.priority <= 10 ? `p${rule.priority}` : 'p-low';
                     const isActive = status.activeRule === ruleName;
                     html += `
                     <div style="background:${isActive ? 'rgba(126,231,135,0.1)' : '#21262d'};border:1px solid ${isActive ? '#7ee787' : (rule.enabled && masterEnabled ? '#58a6ff' : '#30363d')};border-radius:8px;padding:12px;margin-bottom:8px;opacity:${masterEnabled ? 1 : 0.6};border-left:${isActive ? '3px solid #7ee787' : '1px solid ' + (rule.enabled && masterEnabled ? '#58a6ff' : '#30363d')}">

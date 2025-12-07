@@ -225,12 +225,13 @@ users/{userId}/
       ├── rule
       └── result
 
-cache/
-  └── shared                # Shared API cache
-      ├── amber
-      ├── amberUpdatedAt
-      ├── weather
-      └── weatherUpdatedAt
+Per-user caches at `users/{uid}/cache/`:
+  ├── inverter               # Real-time inverter telemetry (5-min TTL)
+  ├── weather                # Weather forecast data (30-min TTL)
+  └── history_*              # Historical power data chunks (30-min TTL)
+
+Global caches:
+  └── amber_prices/{siteId}  # Electricity pricing by site (24-hr TTL)
 ```
 
 ---

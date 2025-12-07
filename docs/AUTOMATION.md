@@ -400,7 +400,7 @@ Users can cancel an active rule via the UI:
 ### Weather API (Open-Meteo)
 - **Current conditions**: Temperature, weather code
 - **Forecast**: Daily forecasts for 3 days
-- **Update frequency**: Every 30 minutes (cached)
+- **Update frequency**: Every 30 minutes (via `getCachedWeatherData()`, 30-min cache TTL)
 
 ### FoxESS API
 - **Real-time data**: SoC, temperatures, power flows
@@ -600,7 +600,7 @@ Discharge before predicted high prices.
 4. Review scheduler read-back (may be in different group)
 
 ### Stale Data
-1. Check cache TTLs (Amber: 60s, Weather: 30min)
+1. Check cache TTLs (FoxESS Telemetry: 5min, Amber: 24hr, Weather: 30min, History: 30min)
 2. Force refresh with automation cycle trigger
 3. Verify API keys are valid
 
