@@ -1002,7 +1002,7 @@
                 // Load Amber prices
                 const priceCache = JSON.parse(localStorage.getItem('cachedPrices') || '{}');
                 if (priceCache.general?.perKwh !== undefined) document.getElementById('simBuy').value = priceCache.general.perKwh.toFixed(1);
-                if (priceCache.feedIn?.perKwh !== undefined) document.getElementById('simFeedIn').value = (-priceCache.feedIn.perKwh).toFixed(1);
+                if (priceCache.feedIn?.perKwh !== undefined) document.getElementById('simFeedIn').value = priceCache.feedIn.perKwh.toFixed(1);
                 if (priceCache.forecastHigh !== undefined) document.getElementById('simForecastHigh').value = priceCache.forecastHigh.toFixed(1);
                 
                 // Load weather
@@ -1116,7 +1116,7 @@
                                     updated.push('Buy price');
                                 }
                                 if (feedIn?.perKwh !== undefined) {
-                                    document.getElementById('simFeedIn').value = (-feedIn.perKwh).toFixed(1);
+                                    document.getElementById('simFeedIn').value = feedIn.perKwh.toFixed(1);
                                     updated.push('Feed-in price');
                                 }
                                 if (forecasts.length > 0) {
