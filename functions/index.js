@@ -504,6 +504,30 @@ app.get('/api/amber/prices/current', async (req, res) => {
     if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
 
     const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId);
+    
+    // LOG: Detailed Amber response analysis
+    if (Array.isArray(result)) {
+      console.log(`[Amber /prices/current] Received ${result.length} total intervals`);
+      const forecastIntervals = result.filter(p => p.type === 'ForecastInterval');
+      const feedInForecasts = forecastIntervals.filter(p => p.channelType === 'feedIn');
+      console.log(`[Amber /prices/current] ${forecastIntervals.length} forecast intervals (${feedInForecasts.length} feedIn)`);
+      if (feedInForecasts.length > 0) {
+        // Show feed-in price range
+        const feedInPrices = feedInForecasts.map(f => f.perKwh);
+        const minFeedIn = Math.min(...feedInPrices);
+        const maxFeedIn = Math.max(...feedInPrices);
+        const firstTime = new Date(feedInForecasts[0].startTime).toLocaleString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+        const lastTime = new Date(feedInForecasts[feedInForecasts.length - 1].startTime).toLocaleString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+        console.log(`[Amber /prices/current] Feed-in range: ${minFeedIn.toFixed(2)} to ${maxFeedIn.toFixed(2)} ¢/kWh`);
+        console.log(`[Amber /prices/current] Time range: ${firstTime} to ${lastTime}`);
+        // Show actual prices if max is > 100 (to catch spikes)
+        if (maxFeedIn > 100 || maxFeedIn < -100) {
+          const allPricesWithTime = feedInForecasts.map(f => `${new Date(f.startTime).toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Australia/Sydney'})}=${f.perKwh.toFixed(1)}¢`);
+          console.log(`[Amber /prices/current] ALL FEED-IN PRICES: ${allPricesWithTime.join(', ')}`);
+        }
+      }
+    }
+    
     // Normalize response to wrapped format
     if (Array.isArray(result)) {
       return res.json({ errno: 0, result });
@@ -1229,14 +1253,20 @@ async function getCachedWeatherData(userId, place = 'Sydney', days = 16) {
     const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('weather').get();
     
     if (cacheDoc.exists) {
-      const { data, timestamp } = cacheDoc.data();
+      const { data, timestamp, cachedDays, cachedPlace } = cacheDoc.data();
       const ageMs = Date.now() - timestamp;
+      const cachedDayCount = data?.result?.daily?.time?.length || 0;
       
-      if (ageMs < ttlMs) {
-        console.log(`[Cache] Weather data fresh (age: ${ageMs}ms, TTL: ${ttlMs}ms)`);
+      // Compare places case-insensitively and handle undefined/null
+      const placesMatch = (cachedPlace || '').toLowerCase().trim() === (place || '').toLowerCase().trim();
+      
+      // Validate cache is still fresh AND has enough days AND is for the same place
+      // Use cache if it has >= requested days (e.g., cached 7 days can serve a request for 6 days)
+      if (ageMs < ttlMs && cachedDays >= days && placesMatch && cachedDayCount >= days) {
+        console.log(`[Cache] Weather HIT - age: ${Math.round(ageMs/1000)}s, cached ${cachedDays} days, requested ${days}, place: ${cachedPlace}`);
         return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
       } else {
-        console.log(`[Cache] Weather data expired (age: ${ageMs}ms, TTL: ${ttlMs}ms) - fetching fresh`);
+        console.log(`[Cache] Weather MISS - TTL ok=${ageMs < ttlMs}, enough days=${cachedDays >= days} (cached=${cachedDays}, requested=${days}), place match=${placesMatch} (cached="${cachedPlace}", requested="${place}"), data count=${cachedDayCount}`);
       }
     } else {
       console.log(`[Cache] No cached weather data - fetching fresh`);
@@ -1246,17 +1276,30 @@ async function getCachedWeatherData(userId, place = 'Sydney', days = 16) {
     const data = await callWeatherAPI(place, days, userId);
     
     // Store in cache if successful
+    // NOTE: Only store the daily data and metadata, not full hourly (reduces Firestore document size)
     if (data?.errno === 0) {
+      const cacheData = {
+        errno: data.errno,
+        result: {
+          source: data.result?.source,
+          place: data.result?.place,
+          current: data.result?.current,
+          daily: data.result?.daily,  // Include daily forecast
+          hourly: data.result?.hourly,  // Include hourly forecast
+          forecastDays: data.result?.forecastDays
+        }
+      };
       await db.collection('users').doc(userId).collection('cache').doc('weather').set({
-        data,
+        data: cacheData,
         timestamp: Date.now(),
         ttlMs,
-        place,
+        cachedPlace: place,  // Store the place parameter exactly as received for comparison
+        cachedDays: days,  // Store requested days for cache validation
         ttl: Math.floor(Date.now() / 1000) + Math.floor(ttlMs / 1000) // Firestore TTL in seconds
       }, { merge: true }).catch(cacheErr => {
         console.warn(`[Cache] Failed to store weather cache: ${cacheErr.message}`);
       });
-      console.log(`[Cache] Stored fresh weather data in cache (TTL: ${ttlMs}ms)`);
+      console.log(`[Cache] Stored fresh weather data in cache (TTL: ${ttlMs}ms, stored days: ${data.result?.daily?.time?.length || 0}, place: ${place})`);
     }
     
     return { ...data, __cacheHit: false, __cacheAgeMs: 0, __cacheTtlMs: ttlMs };
@@ -1652,6 +1695,28 @@ app.post('/api/automation/cycle', async (req, res) => {
           const siteId = userConfig.amberSiteId || sites[0].id;
           amberData = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig);
           console.log(`[Automation] Amber data fetched: ${Array.isArray(amberData) ? amberData.length : 0} intervals`);
+          if (Array.isArray(amberData) && amberData.length > 0) {
+            const forecastCount = amberData.filter(p => p.type === 'ForecastInterval').length;
+            const currentCount = amberData.filter(p => p.type === 'CurrentInterval').length;
+            const generalForecasts = amberData.filter(p => p.type === 'ForecastInterval' && p.channelType === 'general');
+            const feedInForecasts = amberData.filter(p => p.type === 'ForecastInterval' && p.channelType === 'feedIn');
+            console.log(`[Automation] Breakdown: ${currentCount} current, ${forecastCount} forecast (${generalForecasts.length} general, ${feedInForecasts.length} feedIn)`);
+            // Show time range and price extremes for BOTH channels
+            if (generalForecasts.length > 0) {
+              const generalPrices = generalForecasts.map(f => f.perKwh);
+              const maxGeneral = Math.max(...generalPrices);
+              const firstTime = new Date(generalForecasts[0].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+              const lastTime = new Date(generalForecasts[generalForecasts.length - 1].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+              console.log(`[Automation] General (buy) forecasts: ${firstTime} to ${lastTime}, max=${maxGeneral.toFixed(1)}¢`);
+            }
+            if (feedInForecasts.length > 0) {
+              const feedInPrices = feedInForecasts.map(f => -f.perKwh); // Negate for display (you earn positive)
+              const maxFeedIn = Math.max(...feedInPrices);
+              const firstTime = new Date(feedInForecasts[0].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+              const lastTime = new Date(feedInForecasts[feedInForecasts.length - 1].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+              console.log(`[Automation] FeedIn forecasts: ${firstTime} to ${lastTime}, max=${maxFeedIn.toFixed(1)}¢`);
+            }
+          }
         }
       } catch (e) {
         console.warn('[Automation] Failed to get Amber data:', e.message);
@@ -1681,7 +1746,37 @@ app.post('/api/automation/cycle', async (req, res) => {
     if (needsWeatherData) {
       try {
         const place = userConfig?.location || 'Sydney';
-        weatherData = await getCachedWeatherData(userId, place, 1);
+        
+        // Calculate maximum lookAhead days needed across all enabled rules
+        let maxDaysNeeded = 1;
+        for (const [_, rule] of enabledRules) {
+          const cond = rule.conditions || {};
+          
+          // Check solar radiation lookAhead
+          if (cond.solarRadiation?.enabled) {
+            const unit = cond.solarRadiation.lookAheadUnit || 'hours';
+            const value = cond.solarRadiation.lookAhead || 6;
+            const days = unit === 'days' ? value : Math.ceil(value / 24);
+            maxDaysNeeded = Math.max(maxDaysNeeded, days);
+          }
+          
+          // Check cloud cover lookAhead
+          if (cond.cloudCover?.enabled) {
+            const unit = cond.cloudCover.lookAheadUnit || 'hours';
+            const value = cond.cloudCover.lookAhead || 6;
+            const days = unit === 'days' ? value : Math.ceil(value / 24);
+            maxDaysNeeded = Math.max(maxDaysNeeded, days);
+          }
+        }
+        
+        // Cap at 7 days (Open-Meteo free tier limit)
+        maxDaysNeeded = Math.min(maxDaysNeeded, 7);
+        
+        // Always fetch 7 days to maximize cache hits - any rule requesting ≤7 days will use cached data
+        // This prevents cache busting when different rules request different day counts
+        const daysToFetch = 7;
+        console.log(`[Automation] Rules need ${maxDaysNeeded} days, fetching ${daysToFetch} days for optimal caching`);
+        weatherData = await getCachedWeatherData(userId, place, daysToFetch);
         if (weatherData?.result?.current_weather) {
           console.log(`[Automation] Weather data fetched: ${weatherData.result.current_weather.temperature}°C, code=${weatherData.result.current_weather.weathercode}`);
         }
@@ -2560,7 +2655,9 @@ app.get('/api/weather', async (req, res) => {
     await tryAttachUser(req);
     const place = req.query.place || 'Sydney';
     const days = parseInt(req.query.days || '3', 10);
+    console.log(`[Weather API] Request for place="${place}", days=${days}`);
     const result = await getCachedWeatherData(req.user?.uid || 'anonymous', place, days);
+    console.log(`[Weather API] Returning: errno=${result.errno}, daily days=${result.result?.daily?.time?.length || 0}, cache hit=${result.__cacheHit || false}`);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -3027,21 +3124,29 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const operator = conditions.solarRadiation.operator || '>';
       const checkType = conditions.solarRadiation.checkType || 'average';
       
-      // Find current hour index
+      // Find NEXT hour index (skip current hour since it's partially elapsed)
       const now = new Date();
-      const currentHour = now.getHours();
-      let startIdx = 0;
+      const nowTimestamp = now.getTime();
+      let startIdx = -1;
       for (let i = 0; i < hourly.time.length; i++) {
         const t = new Date(hourly.time[i]);
-        if (t.getHours() >= currentHour && t.getDate() === now.getDate()) {
+        // Find first hour that's in the future (not restricted to same day)
+        if (t.getTime() > nowTimestamp) {
           startIdx = i;
           break;
         }
       }
       
-      // Get radiation values for next N hours
+      // If no future hours found, start from beginning (should not happen with proper weather data)
+      if (startIdx === -1 && hourly.time.length > 0) {
+        startIdx = 0;
+      }
+      
+      // Get radiation values for next N hours (starting from NEXT hour, not current)
       const endIdx = Math.min(startIdx + lookAheadHours, hourly.shortwave_radiation.length);
       const radiationValues = hourly.shortwave_radiation.slice(startIdx, endIdx);
+      const hoursRequested = lookAheadHours;
+      const hoursRetrieved = radiationValues.length;
       
       if (radiationValues.length > 0) {
         let actualValue;
@@ -3055,6 +3160,13 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
         
         const met = compareValue(actualValue, operator, threshold);
         const lookAheadDisplay = lookAheadUnit === 'days' ? `${lookAheadValue}d` : `${lookAheadValue}h`;
+        
+        // Warn if we got fewer hours than requested (incomplete timeframe)
+        const hasIncompleteData = hoursRetrieved < hoursRequested;
+        if (hasIncompleteData) {
+          console.warn(`[Automation] Rule '${rule.name}' - Solar radiation: Only got ${hoursRetrieved} of ${hoursRequested} hours requested`);
+        }
+        
         results.push({ 
           condition: 'solarRadiation', 
           met, 
@@ -3064,7 +3176,9 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           unit: 'W/m²',
           lookAhead: lookAheadDisplay,
           checkType,
-          hoursChecked: radiationValues.length
+          hoursChecked: radiationValues.length,
+          hoursRequested,
+          incomplete: hasIncompleteData
         });
         if (!met) {
           console.log(`[Automation] Rule '${rule.name}' - Solar radiation NOT met: ${checkType} ${actualValue?.toFixed(0)} W/m² ${operator} ${threshold} W/m²`);
@@ -3093,19 +3207,28 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const operator = conditions.cloudCover.operator || '<';
       const checkType = conditions.cloudCover.checkType || 'average';
       
+      // Find NEXT hour index (skip current hour since it's partially elapsed)
       const now = new Date();
-      const currentHour = now.getHours();
-      let startIdx = 0;
+      const nowTimestamp = now.getTime();
+      let startIdx = -1;
       for (let i = 0; i < hourly.time.length; i++) {
         const t = new Date(hourly.time[i]);
-        if (t.getHours() >= currentHour && t.getDate() === now.getDate()) {
+        // Find first hour that's in the future (not restricted to same day)
+        if (t.getTime() > nowTimestamp) {
           startIdx = i;
           break;
         }
       }
       
+      // If no future hours found, start from beginning (should not happen with proper weather data)
+      if (startIdx === -1 && hourly.time.length > 0) {
+        startIdx = 0;
+      }
+      
       const endIdx = Math.min(startIdx + lookAheadHours, hourly.cloudcover.length);
       const cloudValues = hourly.cloudcover.slice(startIdx, endIdx);
+      const hoursRequested = lookAheadHours;
+      const hoursRetrieved = cloudValues.length;
       
       if (cloudValues.length > 0) {
         let actualValue;
@@ -3119,6 +3242,13 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
         
         const met = compareValue(actualValue, operator, threshold);
         const lookAheadDisplay = lookAheadUnit === 'days' ? `${lookAheadValue}d` : `${lookAheadValue}h`;
+        
+        // Warn if we got fewer hours than requested (incomplete timeframe)
+        const hasIncompleteData = hoursRetrieved < hoursRequested;
+        if (hasIncompleteData) {
+          console.warn(`[Automation] Rule '${rule.name}' - Cloud cover: Only got ${hoursRetrieved} of ${hoursRequested} hours requested`);
+        }
+        
         results.push({ 
           condition: 'cloudCover', 
           met, 
@@ -3128,7 +3258,9 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           unit: '%',
           lookAhead: lookAheadDisplay,
           checkType,
-          hoursChecked: cloudValues.length
+          hoursChecked: cloudValues.length,
+          hoursRequested,
+          incomplete: hasIncompleteData
         });
         if (!met) {
           console.log(`[Automation] Rule '${rule.name}' - Cloud cover NOT met: ${checkType} ${actualValue?.toFixed(0)}% ${operator} ${threshold}%`);
@@ -3278,10 +3410,36 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const forecasts = amberData.filter(p => p.channelType === channelType && p.type === 'ForecastInterval');
       const relevantForecasts = forecasts.slice(0, intervalsNeeded);
       
+      // LOG: Show what forecast data we have
+      console.log(`[ForecastPrice] Rule '${rule.name}' - Type: ${priceType}, CheckType: ${conditions.forecastPrice.checkType || 'average'}`);
+      console.log(`[ForecastPrice] Requested: ${lookAheadMinutes} minutes (${intervalsNeeded} intervals)`);
+      console.log(`[ForecastPrice] Found ${forecasts.length} forecast intervals in Amber data`);
+      if (forecasts.length > 0) {
+        const firstTime = new Date(forecasts[0].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+        const lastTime = new Date(forecasts[forecasts.length - 1].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+        console.log(`[ForecastPrice] Time range: ${firstTime} to ${lastTime}`);
+        // Show first 5 prices to see what we're working with
+        const firstPrices = forecasts.slice(0, 5).map(f => `${new Date(f.startTime).toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Australia/Sydney'})}=${(priceType === 'feedIn' ? -f.perKwh : f.perKwh).toFixed(1)}¢`);
+        console.log(`[ForecastPrice] First 5 prices: ${firstPrices.join(', ')}`);
+      }
+      
+      // Check if we got fewer intervals than requested (Amber API limit is ~12 intervals = 1 hour)
+      const intervalsRequested = intervalsNeeded;
+      const intervalsActuallyAvailable = forecasts.length;
+      const hasIncompleteData = relevantForecasts.length < intervalsNeeded;
+      
+      if (hasIncompleteData && intervalsActuallyAvailable < intervalsNeeded) {
+        console.warn(`[Automation] Rule '${rule.name}' - Forecast ${priceType}: Only ${intervalsActuallyAvailable} intervals available in Amber API (limit ~1 hour), but requested ${lookAheadMinutes} minutes`);
+      }
+      
       if (relevantForecasts.length > 0) {
         // Calculate average or check specific criteria
         const checkType = conditions.forecastPrice.checkType || 'average'; // 'average', 'min', 'max', 'any'
         const prices = relevantForecasts.map(f => priceType === 'feedIn' ? -f.perKwh : f.perKwh);
+        
+        // LOG: Show all prices being considered
+        console.log(`[ForecastPrice] Evaluating ${relevantForecasts.length} intervals, prices: ${prices.map(p => p.toFixed(1)).join(', ')}`);
+        
         let actualValue;
         if (checkType === 'min') {
           actualValue = Math.min(...prices);
@@ -3292,6 +3450,9 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
         } else {
           actualValue = prices.reduce((a, b) => a + b, 0) / prices.length; // average
         }
+        
+        console.log(`[ForecastPrice] Calculated ${checkType}: ${actualValue?.toFixed(1)}¢ (comparing ${conditions.forecastPrice.operator} ${conditions.forecastPrice.value}¢)`);
+
         
         const operator = conditions.forecastPrice.operator;
         const value = conditions.forecastPrice.value;
@@ -3315,7 +3476,8 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           lookAheadMinutes,
           checkType,
           intervalsChecked: relevantForecasts.length,
-          intervalsAvailable: forecasts.length
+          intervalsAvailable: forecasts.length,
+          incomplete: hasIncompleteData
         });
         if (!met) {
           console.log(`[Automation] Rule '${rule.name}' - Forecast ${priceType} condition NOT met: ${checkType} ${actualValue?.toFixed(1)}¢ ${operator} ${value}¢ (${lookAheadDisplay})`);

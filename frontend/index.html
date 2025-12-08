@@ -2867,17 +2867,22 @@
             const cachedDate = cacheState.weatherDate || null;  // Track the calendar day
             const today = new Date().toISOString().substring(0, 10);  // YYYY-MM-DD
             
+            console.log(`[Cache] Checking weather cache: cached=${cachedDays} days, requested=${days}, date match=${cachedDate === today}, TTL ok=${cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL}`);
+            
             if (cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL && cachedDays === days && cachedDate === today) {
                 console.log('[Cache] Weather cache is fresh, has correct forecast days, and is from today - loading from cache');
                 // Load cached full weather object and render it
                 try {
                     const cachedWeatherFull = JSON.parse(localStorage.getItem('cachedWeatherFull') || '{}');
                     if (cachedWeatherFull.place || cachedWeatherFull.current) {
+                        console.log(`[Cache] Loaded cached weather with ${cachedWeatherFull.daily?.time?.length || 0} days`);
                         renderWeatherCard(cachedWeatherFull);
                         setLastUpdated('weather');
                         return;
                     }
                 } catch (e) { console.error('[Cache] Error loading weather cache:', e); }
+            } else {
+                console.log('[Cache] Weather cache INVALID - will fetch fresh from API');
             }
             
             const card = document.getElementById('weatherCard');
@@ -2892,6 +2897,9 @@
                 if (data.errno === 0 && data.result) {
                     weatherData = data.result;
                 }
+                
+                console.log(`[Weather] API returned ${days} days, got daily.time length: ${weatherData?.daily?.time?.length || 0}`);
+                console.log(`[Weather] Full API response:`, data);
                 
                 // Cache weather data - full object for dashboard, simplified for test.html
                 if (weatherData?.hourly) {
@@ -3181,6 +3189,9 @@
                 const hourlyRadiation = hourly.shortwave_radiation || [];
                 const hourlyCloudcover = hourly.cloudcover || [];
                 
+                console.log(`[Weather] Daily data available: ${daily.time.length} days`);
+                console.log(`[Weather] Daily.time array:`, daily.time);
+                
                 // Group hourly data by day (YYYY-MM-DD)
                 const dailyRadiationAvg = {};
                 const dailyCloudcoverAvg = {};
@@ -3200,9 +3211,12 @@
                 }
                 
                 html += '<div class="weather-days">';
-                // Respect the user's requested days (fallback to available daily length)
-                const requestedDays = Number(document.getElementById('weatherDays')?.value) || daily.time.length;
+                // Get the user's requested number of days from the input field
+                const weatherDaysInput = document.getElementById('weatherDays');
+                const requestedDays = weatherDaysInput ? Number(weatherDaysInput.value) : 6;
+                // Show up to the requested number of days, but not more than available
                 const showCount = Math.min(daily.time.length, Math.max(1, requestedDays));
+                console.log(`[Weather] Rendering forecast: requested=${requestedDays}, available=${daily.time.length}, showing=${showCount}`);
                 for (let i = 0; i < showCount; i++) {
                     const d = daily.time[i];
                     const dayKey = d?.substring(0, 10);
@@ -5660,7 +5674,7 @@
                         <!-- Basic Info -->
                         <input type="hidden" id="newRuleId" value="">
                         <input type="hidden" id="editingRuleId" value="">
-                        <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:16px">
+                        <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:16px;align-items:end">
                             <div>
                                 <label style="display:block;font-size:12px;color:#8b949e;margin-bottom:4px">Rule Name</label>
                                 <input type="text" id="newRuleName" placeholder="e.g., Low Buy Cost Charge" style="width:100%;padding:8px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px">
@@ -5669,6 +5683,15 @@
                                 <label style="display:block;font-size:12px;color:#8b949e;margin-bottom:4px">Priority (1=highest)</label>
                                 <input type="number" id="newRulePriority" value="5" min="1" max="99" style="width:100%;padding:8px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px">
                             </div>
+                        </div>
+                        
+                        <!-- Rule Status Toggle -->
+                        <div style="display:flex;align-items:center;gap:8px;padding:10px;background:#161b22;border-radius:6px;margin-bottom:16px">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0">
+                                <input type="checkbox" id="newRuleEnabled" checked style="width:16px;height:16px">
+                                <span style="color:#e6edf3;font-size:13px;font-weight:500">🟢 Rule Enabled</span>
+                            </label>
+                            <span style="color:#8b949e;font-size:11px;margin-left:auto">Disable to pause this rule temporarily</span>
                         </div>
                         
                         <!-- CONDITIONS SECTION -->
@@ -5826,10 +5849,9 @@
                                 </select>
                                 <input type="number" id="condForecastVal" placeholder="¢" value="30" min="-100" max="500" step="0.1" style="width:60px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
                                 <span style="color:#8b949e;font-size:11px">¢ in next</span>
-                                <input type="number" id="condForecastLookAhead" value="30" min="1" max="168" style="width:50px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
+                                <input type="number" id="condForecastLookAhead" value="1" min="1" max="24" style="width:50px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">
                                 <select id="condForecastLookAheadUnit" style="padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px" onchange="updateForecastLookAheadRange()">
-                                    <option value="minutes">min</option>
-                                    <option value="hours">hrs</option>
+                                    <option value="hours" selected>hrs</option>
                                     <option value="days">days</option>
                                 </select>
                             </div>
@@ -5929,22 +5951,19 @@
         
         // Update forecast lookAhead range based on unit
         function updateForecastLookAheadRange() {
-            const unit = document.getElementById('condForecastLookAheadUnit')?.value || 'minutes';
+            const unit = document.getElementById('condForecastLookAheadUnit')?.value || 'hours';
             const input = document.getElementById('condForecastLookAhead');
             if (!input) return;
             
+            // Forecast price: max 24 hours or 1 day
             switch (unit) {
-                case 'minutes':
-                    input.max = 60;
-                    if (parseInt(input.value) > 60) input.value = 30;
-                    break;
                 case 'hours':
-                    input.max = 48;
-                    if (parseInt(input.value) > 48) input.value = 24;
+                    input.max = 24;
+                    if (parseInt(input.value) > 24) input.value = 24;
                     break;
                 case 'days':
-                    input.max = 7;
-                    if (parseInt(input.value) > 7) input.value = 1;
+                    input.max = 1;
+                    if (parseInt(input.value) > 1) input.value = 1;
                     break;
             }
         }
@@ -6103,7 +6122,7 @@
                 }
             }
             
-            // Forecast Price validation
+            // Forecast Price validation (hours only, max 24h or 1 day)
             if (condForecastEnabled) {
                 const val = parseFloat(modal.querySelector('#condForecastVal')?.value);
                 if (isNaN(val) || val < -100 || val > 500) {
@@ -6111,12 +6130,10 @@
                 }
                 const lookAhead = parseInt(modal.querySelector('#condForecastLookAhead')?.value);
                 const unit = modal.querySelector('#condForecastLookAheadUnit')?.value;
-                if (unit === 'minutes' && (isNaN(lookAhead) || lookAhead < 1 || lookAhead > 60)) {
-                    setFieldError('condForecastLookAhead', '📈 Look-ahead must be 1-60 minutes');
-                } else if (unit === 'hours' && (isNaN(lookAhead) || lookAhead < 1 || lookAhead > 48)) {
-                    setFieldError('condForecastLookAhead', '📈 Look-ahead must be 1-48 hours');
-                } else if (unit === 'days' && (isNaN(lookAhead) || lookAhead < 1 || lookAhead > 7)) {
-                    setFieldError('condForecastLookAhead', '📈 Look-ahead must be 1-7 days');
+                if (unit === 'hours' && (isNaN(lookAhead) || lookAhead < 1 || lookAhead > 24)) {
+                    setFieldError('condForecastLookAhead', '📈 Look-ahead must be 1-24 hours');
+                } else if (unit === 'days' && (isNaN(lookAhead) || lookAhead < 1 || lookAhead > 1)) {
+                    setFieldError('condForecastLookAhead', '📈 Look-ahead must be exactly 1 day');
                 }
             }
             
@@ -6272,8 +6289,8 @@
                     checkType: modal?.querySelector('#condForecastCheck')?.value || 'average',
                     operator: modal?.querySelector('#condForecastOp')?.value || '>',
                     value: parseFloat(modal?.querySelector('#condForecastVal')?.value) || 0,
-                    lookAhead: parseInt(modal?.querySelector('#condForecastLookAhead')?.value) || 30,
-                    lookAheadUnit: modal?.querySelector('#condForecastLookAheadUnit')?.value || 'minutes'
+                    lookAhead: parseInt(modal?.querySelector('#condForecastLookAhead')?.value) || 1,
+                    lookAheadUnit: modal?.querySelector('#condForecastLookAheadUnit')?.value || 'hours'
                 },
                 time: {
                     enabled: modal?.querySelector('#condTimeEnabled')?.checked || false,
@@ -6294,7 +6311,7 @@
                         priority,
                         conditions,
                         cooldownMinutes,
-                        enabled: true,
+                        enabled: document.getElementById('newRuleEnabled')?.checked === true,
                         action: { workMode, durationMinutes, fdPwr, fdSoc, minSocOnGrid, maxSoc }
                     })
                 });
@@ -6313,8 +6330,9 @@
         }
         
         async function testNewRule() {
-            // Test the rule with current live data (dry run)
-            alert('Testing rule with current live data... Check the /test.html page for detailed testing.');
+            // Redirect to test page where user can test rule with live data
+            // Note: The rule definition is NOT saved until you click "Create Rule"
+            alert('📋 Test Rule opens the dedicated test page (test.html).\n\nThere you can:\n• Simulate different conditions\n• See if the rule would trigger\n• Preview what action would execute\n\n⚠️ Your rule is NOT saved until you click "Create Rule" on this page.');
             window.open('/test.html', '_blank');
         }
         
@@ -6348,6 +6366,7 @@
                 // Fill in basic info (these have unique IDs, OK to use getElementById)
                 document.getElementById('newRuleName').value = rule.name || ruleName;
                 document.getElementById('newRulePriority').value = rule.priority || 5;
+                document.getElementById('newRuleEnabled').checked = rule.enabled !== false;  // Default to enabled if not specified
                 document.getElementById('newRuleCooldown').value = rule.cooldownMinutes || 5;
                 
                 // Fill in conditions using modal-scoped queries
@@ -6397,8 +6416,8 @@
                     const chk = modal?.querySelector('#condForecastCheck'); if (chk) chk.value = conditions.forecastPrice.checkType || 'average';
                     const op = modal?.querySelector('#condForecastOp'); if (op) op.value = conditions.forecastPrice.operator || '>';
                     const val = modal?.querySelector('#condForecastVal'); if (val) val.value = conditions.forecastPrice.value || 0;
-                    const la = modal?.querySelector('#condForecastLookAhead'); if (la) la.value = conditions.forecastPrice.lookAhead || 30;
-                    const lau = modal?.querySelector('#condForecastLookAheadUnit'); if (lau) lau.value = conditions.forecastPrice.lookAheadUnit || 'minutes';
+                    const la = modal?.querySelector('#condForecastLookAhead'); if (la) la.value = conditions.forecastPrice.lookAhead || 1;
+                    const lau = modal?.querySelector('#condForecastLookAheadUnit'); if (lau) lau.value = conditions.forecastPrice.lookAheadUnit || 'hours';
                     updateForecastLookAheadRange();
                 }
                 const timeCondition = conditions.time || conditions.timeWindow;

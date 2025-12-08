@@ -71,7 +71,7 @@
 
         .grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: 1.25fr 1.25fr 0.5fr;
             gap: 16px;
             position: relative;
             z-index: 1;
@@ -634,10 +634,35 @@
                         <input type="number" id="simCloudCover" value="25" min="0" max="100">
                         <div class="hint">0=clear, 100=overcast</div>
                     </div>
+                    
+                    <!-- 1-Day Forecast Section -->
+                    <div style="grid-column: 1 / -1; border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px;">
+                        <div style="font-weight:600;color:var(--accent);font-size:0.9rem;margin-bottom:8px">📈 1-Day Forecast MAX Values</div>
+                    </div>
                     <div class="sim-field">
-                        <label>📊 Forecast High Price (BUY) (¢)</label>
-                        <input type="number" id="simForecastHigh" value="50" min="-100" max="500" step="0.5">
-                        <div class="hint">Max upcoming price</div>
+                        <label>💵 Buy Price 1D MAX (¢/kWh)</label>
+                        <input type="number" id="simForecastBuy1D" value="32" min="-100" max="500" step="0.5">
+                        <div class="hint">Max import cost tomorrow</div>
+                    </div>
+                    <div class="sim-field">
+                        <label>💰 Feed-in Price 1D MAX (¢/kWh)</label>
+                        <input type="number" id="simForecastFeedIn1D" value="24" min="-100" max="500" step="0.5">
+                        <div class="hint">Max export rate tomorrow</div>
+                    </div>
+                    
+                    <!-- Weather Forecast Section -->
+                    <div style="grid-column: 1 / -1; border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px;">
+                        <div style="font-weight:600;color:var(--accent);font-size:0.9rem;margin-bottom:8px">🌦️ Weather Forecast (1 Day)</div>
+                    </div>
+                    <div class="sim-field">
+                        <label>☀️ Solar Radiation 1D (W/m²)</label>
+                        <input type="number" id="simForecastSolar1D" value="480" min="0" max="1500" step="10">
+                        <div class="hint">Tomorrow's sunlight</div>
+                    </div>
+                    <div class="sim-field">
+                        <label>☁️ Cloud Cover 1D (%)</label>
+                        <input type="number" id="simForecastCloudCover1D" value="30" min="0" max="100">
+                        <div class="hint">Tomorrow: 0=clear, 100=overcast</div>
                     </div>
                 </div>
                 
@@ -665,8 +690,10 @@
                 <h2>
                     <span class="icon">⚙️</span>
                     <span>Automation Rules</span>
-                    <button class="btn btn-primary btn-sm" onclick="showAddRuleModal()" style="margin-left:auto;padding:8px 16px;font-size:0.85rem">➕ Add Rule</button>
                 </h2>
+                <div style="margin-bottom:12px;padding:12px 16px;background:rgba(79,195,247,0.1);border-radius:6px;border-left:3px solid #4fc3f7;font-size:0.85rem;color:#8b949e">
+                    <strong style="color:#4fc3f7">💡 Tip:</strong> Manage rules on the <strong>main dashboard</strong> — this page is for testing only.
+                </div>
                 <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:14px;margin-bottom:16px;padding:8px 12px;background:rgba(88,166,255,0.1);border-radius:4px;border-left:3px solid #58a6ff">
                     📋 Sorted by priority • Lower number = Higher priority • First match wins
                 </div>
@@ -916,13 +943,13 @@
 
         // Presets
         const presets = {
-            highFeedIn: { feedIn: 40, buy: 25, soc: 85, batteryTemp: 28, ambientTemp: 22, inverterTemp: 35, solarRadiation: 600, cloudCover: 20, forecastHigh: 50 },
-            cheapBuy: { feedIn: 8, buy: 5, soc: 30, batteryTemp: 25, ambientTemp: 20, inverterTemp: 32, solarRadiation: 300, cloudCover: 40, forecastHigh: 15 },
-            spike: { feedIn: 150, buy: 180, soc: 70, batteryTemp: 32, ambientTemp: 25, inverterTemp: 38, solarRadiation: 500, cloudCover: 30, forecastHigh: 200 },
-            lowSoc: { feedIn: 15, buy: 35, soc: 18, batteryTemp: 26, ambientTemp: 22, inverterTemp: 34, solarRadiation: 400, cloudCover: 35, forecastHigh: 40 },
-            hotBattery: { feedIn: 20, buy: 30, soc: 60, batteryTemp: 48, ambientTemp: 35, inverterTemp: 52, solarRadiation: 800, cloudCover: 10, forecastHigh: 35 },
-            cloudyDay: { feedIn: 5, buy: 25, soc: 45, batteryTemp: 22, ambientTemp: 18, inverterTemp: 28, solarRadiation: 80, cloudCover: 90, forecastHigh: 30 },
-            sunnyPeak: { feedIn: 35, buy: 20, soc: 90, batteryTemp: 30, ambientTemp: 28, inverterTemp: 40, solarRadiation: 1100, cloudCover: 5, forecastHigh: 45 }
+            highFeedIn: { feedIn: 40, buy: 25, soc: 85, batteryTemp: 28, ambientTemp: 22, inverterTemp: 35, solarRadiation: 600, cloudCover: 20, forecastBuy1D: 35, forecastFeedIn1D: 48, forecastSolar1D: 580, forecastCloudCover1D: 25 },
+            cheapBuy: { feedIn: 8, buy: 5, soc: 30, batteryTemp: 25, ambientTemp: 20, inverterTemp: 32, solarRadiation: 300, cloudCover: 40, forecastBuy1D: 10, forecastFeedIn1D: 9, forecastSolar1D: 320, forecastCloudCover1D: 45 },
+            spike: { feedIn: 150, buy: 180, soc: 70, batteryTemp: 32, ambientTemp: 25, inverterTemp: 38, solarRadiation: 500, cloudCover: 30, forecastBuy1D: 200, forecastFeedIn1D: 165, forecastSolar1D: 520, forecastCloudCover1D: 28 },
+            lowSoc: { feedIn: 15, buy: 35, soc: 18, batteryTemp: 26, ambientTemp: 22, inverterTemp: 34, solarRadiation: 400, cloudCover: 35, forecastBuy1D: 42, forecastFeedIn1D: 18, forecastSolar1D: 420, forecastCloudCover1D: 32 },
+            hotBattery: { feedIn: 20, buy: 30, soc: 60, batteryTemp: 48, ambientTemp: 35, inverterTemp: 52, solarRadiation: 800, cloudCover: 10, forecastBuy1D: 35, forecastFeedIn1D: 24, forecastSolar1D: 820, forecastCloudCover1D: 8 },
+            cloudyDay: { feedIn: 5, buy: 25, soc: 45, batteryTemp: 22, ambientTemp: 18, inverterTemp: 28, solarRadiation: 80, cloudCover: 90, forecastBuy1D: 30, forecastFeedIn1D: 6, forecastSolar1D: 75, forecastCloudCover1D: 92 },
+            sunnyPeak: { feedIn: 35, buy: 20, soc: 90, batteryTemp: 30, ambientTemp: 28, inverterTemp: 40, solarRadiation: 1100, cloudCover: 5, forecastBuy1D: 25, forecastFeedIn1D: 42, forecastSolar1D: 1080, forecastCloudCover1D: 3 }
         };
 
         function loadPreset(name) {
@@ -936,7 +963,10 @@
             document.getElementById('simInverterTemp').value = p.inverterTemp;
             document.getElementById('simSolarRadiation').value = p.solarRadiation;
             document.getElementById('simCloudCover').value = p.cloudCover;
-            document.getElementById('simForecastHigh').value = p.forecastHigh;
+            document.getElementById('simForecastBuy1D').value = p.forecastBuy1D;
+            document.getElementById('simForecastFeedIn1D').value = p.forecastFeedIn1D;
+            document.getElementById('simForecastSolar1D').value = p.forecastSolar1D;
+            document.getElementById('simForecastCloudCover1D').value = p.forecastCloudCover1D;
             log('info', `Loaded preset: ${name}`);
         }
 
@@ -970,6 +1000,17 @@
                 if (cacheState.weatherTime && (now - cacheState.weatherTime) < WEATHER_TTL) {
                     console.log('[Cache] Weather cache is fresh');
                     needsWeather = false;
+
+                    // If cached 1D values are missing/zero, force a refresh to avoid stale defaults
+                    try {
+                        const wxCache = JSON.parse(localStorage.getItem('cachedWeather') || '{}');
+                        const missing1D = (wxCache.solarRadiation1D === undefined || wxCache.cloudCover1D === undefined);
+                        const zero1D = (wxCache.solarRadiation1D === 0 && wxCache.cloudCover1D === 0);
+                        if (missing1D || zero1D) {
+                            console.log('[Cache] Weather 1D values missing/zero, refreshing');
+                            needsWeather = true;
+                        }
+                    } catch (e) { /* ignore */ }
                 }
                 
                 if (!needsInverter && !needsAmber && !needsWeather) {
@@ -1000,15 +1041,70 @@
                 if (invCache.invTemperation !== undefined) document.getElementById('simInverterTemp').value = invCache.invTemperation.toFixed(1);
                 
                 // Load Amber prices
+                // NOTE: Amber API returns NEGATIVE values for feed-in (negative = you earn)
+                // Dashboard displays as positive by negating: -(-9) = 9¢
+                // We must do the same transformation here
                 const priceCache = JSON.parse(localStorage.getItem('cachedPrices') || '{}');
                 if (priceCache.general?.perKwh !== undefined) document.getElementById('simBuy').value = priceCache.general.perKwh.toFixed(1);
-                if (priceCache.feedIn?.perKwh !== undefined) document.getElementById('simFeedIn').value = priceCache.feedIn.perKwh.toFixed(1);
-                if (priceCache.forecastHigh !== undefined) document.getElementById('simForecastHigh').value = priceCache.forecastHigh.toFixed(1);
+                if (priceCache.feedIn?.perKwh !== undefined) {
+                    // Negate feed-in to match dashboard display (negative API value → positive display)
+                    const feedInDisplay = -priceCache.feedIn.perKwh;
+                    document.getElementById('simFeedIn').value = feedInDisplay.toFixed(1);
+                }
+                if (priceCache.forecastBuy1D !== undefined) document.getElementById('simForecastBuy1D').value = priceCache.forecastBuy1D.toFixed(1);
+                if (priceCache.forecastFeedIn1D !== undefined) {
+                    // forecastFeedIn1D is stored as MAX of negated values (positive)
+                    document.getElementById('simForecastFeedIn1D').value = priceCache.forecastFeedIn1D.toFixed(1);
+                }
                 
-                // Load weather
+                // Load weather - try simple cache first, fall back to full cache for 1D values
                 const wxCache = JSON.parse(localStorage.getItem('cachedWeather') || '{}');
                 if (wxCache.solarRadiation !== undefined) document.getElementById('simSolarRadiation').value = Math.round(wxCache.solarRadiation);
                 if (wxCache.cloudCover !== undefined) document.getElementById('simCloudCover').value = Math.round(wxCache.cloudCover);
+                
+                // For 1D values, try simple cache first, then compute from full weather cache
+                if (wxCache.solarRadiation1D !== undefined) {
+                    document.getElementById('simForecastSolar1D').value = Math.round(wxCache.solarRadiation1D);
+                } else {
+                    // Compute from cachedWeatherFull if available
+                    try {
+                        const fullWx = JSON.parse(localStorage.getItem('cachedWeatherFull') || '{}');
+                        if (fullWx.hourly?.shortwave_radiation && fullWx.hourly?.time) {
+                            const currentTime = fullWx.current?.time || new Date().toISOString();
+                            const currentHourStr = currentTime.substring(0, 13);
+                            let idx = fullWx.hourly.time.findIndex(t => t && t.substring(0, 13) === currentHourStr);
+                            if (idx < 0) idx = 0;
+                            // Get max solar in next 24h
+                            const next24Solar = fullWx.hourly.shortwave_radiation.slice(idx + 1, idx + 25);
+                            if (next24Solar.length > 0) {
+                                const maxSolar = Math.max(...next24Solar.map(v => v || 0));
+                                document.getElementById('simForecastSolar1D').value = Math.round(maxSolar);
+                            }
+                        }
+                    } catch (e) { /* ignore */ }
+                }
+                
+                if (wxCache.cloudCover1D !== undefined) {
+                    document.getElementById('simForecastCloudCover1D').value = Math.round(wxCache.cloudCover1D);
+                } else {
+                    // Compute from cachedWeatherFull if available
+                    try {
+                        const fullWx = JSON.parse(localStorage.getItem('cachedWeatherFull') || '{}');
+                        const cloudArr = fullWx.hourly?.cloud_cover || fullWx.hourly?.cloudcover;
+                        if (cloudArr && fullWx.hourly?.time) {
+                            const currentTime = fullWx.current?.time || new Date().toISOString();
+                            const currentHourStr = currentTime.substring(0, 13);
+                            let idx = fullWx.hourly.time.findIndex(t => t && t.substring(0, 13) === currentHourStr);
+                            if (idx < 0) idx = 0;
+                            // Get min cloud cover in next 24h (lower = clearer)
+                            const next24Cloud = cloudArr.slice(idx + 1, idx + 25);
+                            if (next24Cloud.length > 0) {
+                                const minCloud = Math.min(...next24Cloud.map(v => v ?? 100));
+                                document.getElementById('simForecastCloudCover1D').value = Math.round(minCloud);
+                            }
+                        }
+                    } catch (e) { /* ignore */ }
+                }
                 
                 log('success', '✅ Loaded cached values');
             } catch (e) {
@@ -1109,26 +1205,50 @@
                                 
                                 const general = prices.find(p => p.channelType === 'general' && p.type === 'CurrentInterval');
                                 const feedIn = prices.find(p => p.channelType === 'feedIn' && p.type === 'CurrentInterval');
-                                const forecasts = prices.filter(p => p.type === 'ForecastInterval');
+
+                                const sortByStart = arr => arr.slice().sort((a, b) => new Date(a.startTime || a.start || 0) - new Date(b.startTime || b.start || 0));
+                                const generalForecasts = sortByStart(prices.filter(p => p.channelType === 'general' && p.type === 'ForecastInterval'));
+                                const feedInForecasts = sortByStart(prices.filter(p => p.channelType === 'feedIn' && p.type === 'ForecastInterval'));
                                 
                                 if (general?.perKwh !== undefined) {
                                     document.getElementById('simBuy').value = general.perKwh.toFixed(1);
                                     updated.push('Buy price');
                                 }
                                 if (feedIn?.perKwh !== undefined) {
-                                    document.getElementById('simFeedIn').value = feedIn.perKwh.toFixed(1);
+                                    // Amber API returns NEGATIVE values for feed-in (negative = you earn)
+                                    // Dashboard displays as positive by negating: -(-9) = 9¢
+                                    const feedInDisplay = -feedIn.perKwh;
+                                    document.getElementById('simFeedIn').value = feedInDisplay.toFixed(1);
                                     updated.push('Feed-in price');
                                 }
-                                if (forecasts.length > 0) {
-                                    const maxPrice = Math.max(...forecasts.map(f => f.perKwh || 0));
-                                    document.getElementById('simForecastHigh').value = maxPrice.toFixed(1);
-                                    updated.push('Forecast high');
+                                
+                                // Get max buy price from first 24 forecast intervals (approx next 24h)
+                                if (generalForecasts.length > 0) {
+                                    const sliceBuy = generalForecasts.slice(0, 24);
+                                    const max1DBuy = Math.max(...sliceBuy.map(f => f.perKwh || 0));
+                                    document.getElementById('simForecastBuy1D').value = max1DBuy.toFixed(1);
+                                    updated.push(`Buy 1D max (${max1DBuy.toFixed(1)}¢)`);
                                 }
                                 
+                                // Get max feed-in price from first 24 forecast intervals (approx next 24h)
+                                // Amber returns NEGATIVE feed-in values; negate to get positive display values
+                                // Then MAX finds the best earning rate
+                                if (feedInForecasts.length > 0) {
+                                    const sliceFi = feedInForecasts.slice(0, 24);
+                                    // Negate each value to convert negative API values to positive display values
+                                    const max1DFeedIn = Math.max(...sliceFi.map(f => -(f.perKwh || 0)));
+                                    document.getElementById('simForecastFeedIn1D').value = max1DFeedIn.toFixed(1);
+                                    updated.push(`Feed-in 1D max (${max1DFeedIn.toFixed(1)}¢)`);
+                                }
+                                
+                                // Cache values - store RAW API values for feedIn (will be negated when loaded)
+                                // But store TRANSFORMED values for forecast 1D (already computed as display values)
                                 const priceCache = {
                                     general: general ? { perKwh: general.perKwh } : null,
-                                    feedIn: feedIn ? { perKwh: feedIn.perKwh } : null,
-                                    forecastHigh: forecasts.length > 0 ? Math.max(...forecasts.map(f => f.perKwh || 0)) : null
+                                    feedIn: feedIn ? { perKwh: feedIn.perKwh } : null,  // Store RAW (negative)
+                                    forecastBuy1D: generalForecasts.length > 0 ? Math.max(...generalForecasts.slice(0, Math.min(24, generalForecasts.length)).map(f => f.perKwh || 0)) : null,
+                                    // Store NEGATED max (positive display value)
+                                    forecastFeedIn1D: feedInForecasts.length > 0 ? Math.max(...feedInForecasts.slice(0, Math.min(24, feedInForecasts.length)).map(f => -(f.perKwh || 0))) : null
                                 };
                                 localStorage.setItem('cachedPrices', JSON.stringify(priceCache));
                                 const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
@@ -1144,7 +1264,7 @@
                 // Fetch Weather only if needed
                 if (fetchWeather) {
                     try {
-                        const wxResp = await authenticatedFetch('/api/weather?days=1');
+                        const wxResp = await authenticatedFetch('/api/weather?days=3');
                         if (wxResp.ok) {
                             const wxData = await wxResp.json();
                             
@@ -1168,20 +1288,81 @@
                                     if (currentHourIdx < 0) currentHourIdx = 0; // Fallback to index 0 if not found
                                 }
                                 
+                                let solar1DComputed = null;
                                 if (hourly.shortwave_radiation && Array.isArray(hourly.shortwave_radiation) && hourly.shortwave_radiation.length > currentHourIdx) {
                                     document.getElementById('simSolarRadiation').value = Math.round(hourly.shortwave_radiation[currentHourIdx]);
                                     updated.push('Solar radiation');
+
+                                    // 1-day ahead peak (max in next 48h slice of 24h starting now)
+                                    const next24Solar = hourly.shortwave_radiation.slice(currentHourIdx + 1, currentHourIdx + 25);
+                                    if (next24Solar.length > 0) {
+                                        solar1DComputed = Math.max(...next24Solar.map(v => v || 0));
+                                        document.getElementById('simForecastSolar1D').value = Math.round(solar1DComputed);
+                                        updated.push(`Solar 1D max (${Math.round(solar1DComputed)}W)`);
+                                    }
+                                    // If still zero, look at overall upcoming 48h to find any daylight
+                                    if ((solar1DComputed === null || solar1DComputed === 0) && hourly.shortwave_radiation.length > currentHourIdx) {
+                                        const next48Solar = hourly.shortwave_radiation.slice(currentHourIdx + 1, currentHourIdx + 49);
+                                        if (next48Solar.length > 0) {
+                                            solar1DComputed = Math.max(...next48Solar.map(v => v || 0));
+                                            document.getElementById('simForecastSolar1D').value = Math.round(solar1DComputed);
+                                            updated.push(`Solar 1D max48 (${Math.round(solar1DComputed)}W)`);
+                                        }
+                                    }
+                                }
+
+                                // Fallback: if hourly solar missing/zero, use daily shortwave sum average
+                                if ((solar1DComputed === null || solar1DComputed === 0) && weatherObj.daily?.shortwave_radiation_sum?.length > 1) {
+                                    const dailySolar = weatherObj.daily.shortwave_radiation_sum[1];
+                                    if (dailySolar !== undefined) {
+                                        const avgSolar = Math.round(dailySolar / 24);
+                                        solar1DComputed = avgSolar;
+                                        document.getElementById('simForecastSolar1D').value = avgSolar;
+                                        updated.push(`Solar 1D daily (${avgSolar}W)`);
+                                    }
                                 }
                                 
+                                let cloud1DComputed = null;
                                 const cloudcoverArray = hourly.cloudcover || hourly.cloud_cover;
                                 if (cloudcoverArray && Array.isArray(cloudcoverArray) && cloudcoverArray.length > currentHourIdx) {
                                     document.getElementById('simCloudCover').value = Math.round(cloudcoverArray[currentHourIdx]);
                                     updated.push('Cloud cover');
+
+                                    // 1-day ahead best-case (min in next 24h)
+                                    const next24Cloud = cloudcoverArray.slice(currentHourIdx + 1, currentHourIdx + 25);
+                                    if (next24Cloud.length > 0) {
+                                        cloud1DComputed = Math.min(...next24Cloud.map(v => v ?? 100));
+                                        document.getElementById('simForecastCloudCover1D').value = Math.round(cloud1DComputed);
+                                        updated.push(`Cloud 1D min (${Math.round(cloud1DComputed)}%)`);
+                                    }
+                                    // If still 100, consider next 48h to find clearest point
+                                    if ((cloud1DComputed === null || cloud1DComputed === 100) && cloudcoverArray.length > currentHourIdx) {
+                                        const next48Cloud = cloudcoverArray.slice(currentHourIdx + 1, currentHourIdx + 49);
+                                        if (next48Cloud.length > 0) {
+                                            cloud1DComputed = Math.min(...next48Cloud.map(v => v ?? 100));
+                                            document.getElementById('simForecastCloudCover1D').value = Math.round(cloud1DComputed);
+                                            updated.push(`Cloud 1D min48 (${Math.round(cloud1DComputed)}%)`);
+                                        }
+                                    }
+                                }
+
+                                // Fallback: use daily mean cloud cover
+                                if ((cloud1DComputed === null || cloud1DComputed === 0) && weatherObj.daily?.cloudcover_mean?.length > 1) {
+                                    const dailyCloud = weatherObj.daily.cloudcover_mean[1];
+                                    if (dailyCloud !== undefined) {
+                                        cloud1DComputed = dailyCloud;
+                                        document.getElementById('simForecastCloudCover1D').value = Math.round(dailyCloud);
+                                        updated.push(`Cloud 1D daily (${Math.round(dailyCloud)}%)`);
+                                    }
                                 }
                                 
+                                const next24Solar = hourly.shortwave_radiation ? hourly.shortwave_radiation.slice(currentHourIdx + 1, currentHourIdx + 25) : [];
+                                const next24Cloud = (hourly.cloudcover || hourly.cloud_cover || []).slice(currentHourIdx + 1, currentHourIdx + 25);
                                 const wxCache = {
                                     solarRadiation: (hourly?.shortwave_radiation && hourly.shortwave_radiation[currentHourIdx]) || 0,
-                                    cloudCover: ((hourly?.cloudcover || hourly?.cloud_cover) && (hourly.cloudcover || hourly.cloud_cover)[currentHourIdx]) || 0
+                                    cloudCover: ((hourly?.cloudcover || hourly?.cloud_cover) && (hourly.cloudcover || hourly.cloud_cover)[currentHourIdx]) || 0,
+                                    solarRadiation1D: (solar1DComputed !== null ? solar1DComputed : (next24Solar.length ? Math.max(...next24Solar.map(v => v || 0)) : (weatherObj.daily?.shortwave_radiation_sum?.length > 1 ? Math.round(weatherObj.daily.shortwave_radiation_sum[1] / 24) : 0))),
+                                    cloudCover1D: (cloud1DComputed !== null ? cloud1DComputed : (next24Cloud.length ? Math.min(...next24Cloud.map(v => v ?? 100)) : (weatherObj.daily?.cloudcover_mean?.length > 1 ? weatherObj.daily.cloudcover_mean[1] : 0)))
                                 };
                                 localStorage.setItem('cachedWeather', JSON.stringify(wxCache));
                                 const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
@@ -1205,13 +1386,25 @@
         async function loadRules() {
             try {
                 const resp = await authenticatedFetch('/api/automation/status');
+                if (!resp.ok) {
+                    if (resp.status === 401 || resp.status === 403) {
+                        renderRules({ enabled: false, rules: {} });
+                        log('info', 'Sign in to load rules');
+                        return;
+                    }
+                    throw new Error(`HTTP ${resp.status}`);
+                }
                 const data = await resp.json();
                 if (data.errno === 0 && data.result) {
                     currentRules = data.result.rules || {};
                     renderRules(data.result);
                     log('success', `Loaded ${Object.keys(currentRules).length} rules`);
+                } else {
+                    renderRules({ enabled: false, rules: {} });
                 }
             } catch (e) {
+                console.error('[Rules] Load error:', e);
+                renderRules({ enabled: false, rules: {} });
                 log('error', 'Failed to load rules: ' + e.message);
             }
         }
@@ -1302,9 +1495,7 @@
                         <div class="rule-param"><span class="label">⚡</span> <span class="value">${action.fdPwr || 0}W</span></div>
                     </div>
                     <div class="rule-actions">
-                        <button class="btn-secondary" onclick="editRule('${key}')">✏️ Edit</button>
-                        <button class="btn-secondary" onclick="testSingleRule('${key}')">🧪 Test</button>
-                        <button class="btn-danger" onclick="deleteRule('${key}')">🗑️</button>
+                        <button class="btn-secondary" onclick="testSingleRule('${key}')" style="flex:1">🧪 Test</button>
                     </div>
                 </div>`;
             }
@@ -1322,7 +1513,12 @@
                 inverterTemp: parseFloat(document.getElementById('simInverterTemp').value) || 35,
                 solarRadiation: parseFloat(document.getElementById('simSolarRadiation').value) || 0,
                 cloudCover: parseFloat(document.getElementById('simCloudCover').value) || 0,
-                forecastHigh: parseFloat(document.getElementById('simForecastHigh').value) || 0,
+                // 1-Day forecast prices
+                forecastBuy1D: parseFloat(document.getElementById('simForecastBuy1D').value) || 0,
+                forecastFeedIn1D: parseFloat(document.getElementById('simForecastFeedIn1D').value) || 0,
+                // 1-Day forecast weather
+                forecastSolar1D: parseFloat(document.getElementById('simForecastSolar1D').value) || 0,
+                forecastCloudCover1D: parseFloat(document.getElementById('simForecastCloudCover1D').value) || 0,
                 testTime: document.getElementById('simTime').value || null
             };
             
@@ -1847,7 +2043,12 @@
                                         <option value="<=" ${solarCond.operator === '<=' ? 'selected' : ''}>&lt;=</option>
                                     </select>
                                     <input type="number" id="condSolarVal" value="${solarCond.value || 300}" min="0" max="1500" step="10" style="width:70px">
-                                    <span style="font-size:0.8rem;color:var(--text-secondary)">W/m²</span>
+                                    <span style="font-size:0.8rem;color:var(--text-secondary)">W/m² in next</span>
+                                    <input type="number" id="condSolarLookAhead" value="${solarCond.lookAhead || 6}" min="1" max="168" style="width:50px;font-size:0.85rem" title="Max 7 days (168 hours)">
+                                    <select id="condSolarLookAheadUnit" style="width:60px;font-size:0.85rem">
+                                        <option value="hours" ${solarCond.lookAheadUnit === 'hours' ? 'selected' : ''}>hrs</option>
+                                        <option value="days" ${solarCond.lookAheadUnit === 'days' ? 'selected' : ''}>days</option>
+                                    </select>
                                 </div>
                                 
                                 <!-- Cloud Cover -->
@@ -1865,7 +2066,13 @@
                                         <option value=">" ${cloudCond.operator === '>' ? 'selected' : ''}>&gt;</option>
                                         <option value=">=" ${cloudCond.operator === '>=' ? 'selected' : ''}>&gt;=</option>
                                     </select>
-                                    <input type="number" id="condCloudVal" value="${cloudCond.value || 50}" min="0" max="100" style="width:60px"> %
+                                    <input type="number" id="condCloudVal" value="${cloudCond.value || 50}" min="0" max="100" style="width:60px">
+                                    <span style="font-size:0.8rem;color:var(--text-secondary)">% in next</span>
+                                    <input type="number" id="condCloudLookAhead" value="${cloudCond.lookAhead || 6}" min="1" max="168" style="width:50px;font-size:0.85rem" title="Max 7 days (168 hours)">
+                                    <select id="condCloudLookAheadUnit" style="width:60px;font-size:0.85rem">
+                                        <option value="hours" ${cloudCond.lookAheadUnit === 'hours' ? 'selected' : ''}>hrs</option>
+                                        <option value="days" ${cloudCond.lookAheadUnit === 'days' ? 'selected' : ''}>days</option>
+                                    </select>
                                 </div>
                                 
                                 <!-- Forecast Price -->
@@ -1888,7 +2095,13 @@
                                         <option value="<" ${forecastCond.operator === '<' ? 'selected' : ''}>&lt;</option>
                                         <option value="<=" ${forecastCond.operator === '<=' ? 'selected' : ''}>&lt;=</option>
                                     </select>
-                                    <input type="number" id="condForecastVal" value="${forecastCond.value || 30}" min="-100" max="500" style="width:60px"> ¢
+                                    <input type="number" id="condForecastVal" value="${forecastCond.value || 30}" min="-100" max="500" style="width:60px">
+                                    <span style="font-size:0.8rem;color:var(--text-secondary)">¢ in next</span>
+                                    <input type="number" id="condForecastLookAhead" value="${forecastCond.lookAhead || 1}" min="1" max="24" style="width:50px;font-size:0.85rem" title="Max 24 hours or 1 day">
+                                    <select id="condForecastLookAheadUnit" style="width:60px;font-size:0.85rem">
+                                        <option value="hours" ${forecastCond.lookAheadUnit === 'hours' ? 'selected' : ''}>hrs</option>
+                                        <option value="days" ${forecastCond.lookAheadUnit === 'days' ? 'selected' : ''}>days</option>
+                                    </select>
                                 </div>
                                 
                                 <!-- Time Window -->
@@ -2055,21 +2268,29 @@
                 solarRadiation: {
                     enabled: document.getElementById('condSolar').checked,
                     check: document.getElementById('condSolarCheck').value,
+                    checkType: document.getElementById('condSolarCheck').value,  // Backend uses 'checkType'
                     operator: document.getElementById('condSolarOp').value,
-                    value: parseFloat(document.getElementById('condSolarVal').value) || 300
+                    value: parseFloat(document.getElementById('condSolarVal').value) || 300,
+                    lookAhead: parseInt(document.getElementById('condSolarLookAhead').value) || 6,
+                    lookAheadUnit: document.getElementById('condSolarLookAheadUnit').value || 'hours'
                 },
                 cloudCover: {
                     enabled: document.getElementById('condCloud').checked,
                     check: document.getElementById('condCloudCheck').value,
+                    checkType: document.getElementById('condCloudCheck').value,  // Backend uses 'checkType'
                     operator: document.getElementById('condCloudOp').value,
-                    value: parseFloat(document.getElementById('condCloudVal').value) || 50
+                    value: parseFloat(document.getElementById('condCloudVal').value) || 50,
+                    lookAhead: parseInt(document.getElementById('condCloudLookAhead').value) || 6,
+                    lookAheadUnit: document.getElementById('condCloudLookAheadUnit').value || 'hours'
                 },
                 forecastPrice: {
                     enabled: document.getElementById('condForecast').checked,
                     type: document.getElementById('condForecastType').value,
-                    check: document.getElementById('condForecastCheck').value,
+                    checkType: document.getElementById('condForecastCheck').value,  // Backend uses 'checkType'
                     operator: document.getElementById('condForecastOp').value,
-                    value: parseFloat(document.getElementById('condForecastVal').value) || 30
+                    value: parseFloat(document.getElementById('condForecastVal').value) || 30,
+                    lookAhead: parseInt(document.getElementById('condForecastLookAhead').value) || 1,
+                    lookAheadUnit: document.getElementById('condForecastLookAheadUnit').value || 'hours'
                 },
                 time: {
                     enabled: document.getElementById('condTime').checked,
@@ -2123,41 +2344,13 @@
         }
 
         async function editRule(ruleName) {
-            const rule = currentRules[ruleName];
-            if (!rule) {
-                alert('Rule not found');
-                return;
-            }
-            showAddRuleModal({
-                id: ruleName,
-                name: rule.name || ruleName,
-                priority: rule.priority,
-                conditions: rule.conditions,
-                cooldownMinutes: rule.cooldownMinutes,
-                action: rule.action
-            });
+            alert('📌 Rule editing is only available in the main automation page (index.html).\n\nPlease navigate there to edit rules.');
+            return;
         }
 
         async function deleteRule(ruleName) {
-            if (!confirm(`Delete rule "${ruleName}"?`)) return;
-            
-            try {
-                const resp = await authenticatedFetch('/api/automation/rule/delete', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ruleName })
-                });
-                const data = await resp.json();
-                
-                if (data.errno === 0) {
-                    log('success', `Rule deleted: ${ruleName}`);
-                    loadRules();
-                } else {
-                    alert('Failed: ' + (data.error || 'Unknown error'));
-                }
-            } catch (e) {
-                alert('Error: ' + e.message);
-            }
+            alert('🗑️ Rule deletion is only available in the main automation page (index.html).\n\nPlease navigate there to delete rules.');
+            return;
         }
 
         // AppShell handles auth lifecycle; no additional bootstrap required here.

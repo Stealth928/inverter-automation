@@ -142,6 +142,8 @@ Triggers based on forecast shortwave radiation (W/m²) from Open-Meteo API. This
 - 300-600 W/m²: Mostly clear, good solar
 - 600+ W/m²: Clear sunny day, excellent solar
 
+**⚠️ Important**: The lookAhead period starts from the **next full hour** (current hour is skipped since it's already partially elapsed). If current time is 14:23 and you request "next 6 hours", you get 15:00-21:00 (not 14:00-20:00).
+
 **Example**: Force discharge if avg solar radiation > 300 W/m² in next 6 hours
 ```javascript
 solarRadiation: { 
@@ -183,6 +185,8 @@ Triggers based on forecast cloud cover percentage from Open-Meteo API.
 - 30-70%: Partly cloudy, moderate solar
 - 70-100%: Overcast, minimal solar
 
+**⚠️ Important**: The lookAhead period starts from the **next full hour** (current hour is skipped since it's already partially elapsed). If current time is 14:23 and you request "next 12 hours", you get 15:00-03:00 (not 14:00-02:00).
+
 **Example**: Allow discharge only if avg cloud cover < 50% in next 12 hours
 ```javascript
 cloudCover: { 
@@ -208,7 +212,6 @@ cloudCover: {
 ```
 
 ### 7. Forecast Price (`forecastPrice`)
-Triggers based on **future** Amber prices (not current). Supports extended lookAhead periods.
 Triggers based on **future** Amber prices (not current). Now supports extended lookAhead periods.
 
 | Field | Type | Description |
@@ -226,6 +229,16 @@ Triggers based on **future** Amber prices (not current). Now supports extended l
 - `min`: Minimum price in the period
 - `max`: Maximum price in the period
 - `any`: Any single interval meets the threshold
+
+⚠️ **Important API Limitation**: 
+The Amber API provides approximately **1 hour of forecast data** (~12 × 5-min intervals).
+When you request longer periods (e.g., 2 hours, 7 days), the system:
+- Returns only the available ~1 hour of data
+- Logs a warning to indicate incomplete data
+- Still evaluates the rule correctly on available data
+- Includes `incomplete: true` flag in result object
+
+For multi-day electricity cost optimization, consider using `solarRadiation` and `cloudCover` conditions (which have 7-day forecasts) combined with shorter `forecastPrice` windows.
 
 **Example**: Pre-discharge if avg feed-in in next 2 hours > 25¢
 ```javascript
