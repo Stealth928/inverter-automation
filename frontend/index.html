@@ -370,6 +370,15 @@
             color: inherit;
             background: rgba(255,255,255,0.02);
         }
+        /* Thermometer variant: 50% size of default tile icons */
+        .tile-icon.thermometer {
+            width: 27px;
+            height: 27px;
+            padding: 2px 0 0 0;
+            background: transparent;
+        }
+        .tile-icon.thermometer .therm-svg { width: 18px; height: 36px; display:block; }
+        .therm-fill { transition: height 600ms cubic-bezier(.2,.9,.2,1), y 600ms cubic-bezier(.2,.9,.2,1), fill 300ms ease; }
         /* Battery SVG sizing and charging animation */
         /* Larger battery tile for improved alignment */
         .stat-item.battery-tile { min-width: 180px; padding: 12px 18px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
@@ -2705,6 +2714,34 @@
 
                 function fmtTemp(v) { if (v === null || v === undefined || v === '-') return '-'; const n = Number(v); if (isNaN(n)) return '-'; return n.toFixed(1) + '°C'; }
 
+                // Create an inline thermometer SVG string for a temperature value
+                // Visual idea: a bulb + tube. Fill level mapped from 0..80°C (clamped).
+                function makeThermSVG(v) {
+                    const n = (v === null || v === undefined || v === '-') ? null : Number(v);
+                    const minT = 0; const maxT = 80; // range mapped to 0..100%
+                    const pct = (n === null || isNaN(n)) ? 0 : Math.max(0, Math.min(1, (n - minT) / (maxT - minT)));
+                    // tube inner height (px) and geometry tuned for viewBox
+                    const innerH = 34; // tube height
+                    const fillH = Math.round(pct * innerH);
+                    const tubeX = 8; const tubeW = 8; const tubeY = 4;
+                    const y = tubeY + (innerH - fillH);
+                    // color thresholds: <40 green, <55 amber, >=55 red
+                    const fillColor = (n === null || isNaN(n)) ? 'rgba(255,255,255,0.06)' : (n < 40 ? '#16a34a' : (n < 55 ? '#d29922' : '#dc2626'));
+                    // return compact SVG (class "therm-svg" for styling)
+                    return `
+                        <div class="tile-icon thermometer" aria-hidden="true">
+                            <svg class="therm-svg" viewBox="0 0 24 48" xmlns="http://www.w3.org/2000/svg">
+                                <!-- outer tube -->
+                                <rect x="${tubeX}" y="${tubeY}" width="${tubeW}" height="${innerH}" rx="4" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" />
+                                <!-- fill (matches tube rounded corners) -->
+                                <rect x="${tubeX}" y="${y}" width="${tubeW}" height="${fillH}" rx="3" fill="${fillColor}" class="therm-fill" />
+                                <!-- bulb -->
+                                <circle cx="12" cy="42" r="6.5" fill="${fillColor}" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                                <circle cx="12" cy="42" r="6.5" fill-opacity="0.12" />
+                            </svg>
+                        </div>`;
+                }
+
                 const batTempCls = tempClassRealtime(batTempVal);
                 const ambTempCls = tempClassRealtime(ambTempVal);
                 const invTempCls = tempClassRealtime(invTempVal);
@@ -2741,17 +2778,17 @@
                 <!-- Inline temps row for real-time display -->
                 <div class="stat-row" style="margin-top:8px">
                         <div class="stat-item" style="min-width:140px">
-                            <div class="tile-icon">🌡️</div>
+                            ${makeThermSVG(batTempVal)}
                             <div class="value ${batTempCls}" style="font-size:18px">${batTempVal !== null && batTempVal !== undefined ? fmtTemp(batTempVal) : '-'}</div>
                             <div class="label">Battery Temp</div>
                         </div>
                     <div class="stat-item" style="min-width:140px">
-                        <div class="tile-icon">🌡️</div>
+                        ${makeThermSVG(ambTempVal)}
                         <div class="value ${ambTempCls}" style="font-size:18px">${ambTempVal !== null && ambTempVal !== undefined ? fmtTemp(ambTempVal) : '-'}</div>
                         <div class="label">Ambient Temp</div>
                     </div>
                     <div class="stat-item" style="min-width:140px">
-                        <div class="tile-icon">🌡️</div>
+                        ${makeThermSVG(invTempVal)}
                         <div class="value ${invTempCls}" style="font-size:18px">${invTempVal !== null && invTempVal !== undefined ? fmtTemp(invTempVal) : '-'}</div>
                         <div class="label">Inverter Temp</div>
                     </div>
@@ -2855,7 +2892,24 @@
             // normalize back into the input (helps when using autocomplete)
             try { if (placeEl) placeEl.value = (place === 'Roselands 2196 NSW' ? placeEl.value || place : place); } catch (e) {}
 
-            const days = Number(document.getElementById('weatherDays').value || 6);
+            // Prefer the saved user preference input if present (settings page uses id
+            // 'preferences_forecastDays'). If not present, use the weatherDays control.
+            const prefEl = document.getElementById('preferences_forecastDays');
+            const primaryEl = document.getElementById('weatherDays');
+            let days = CONFIG?.preferences?.forecastDays || 6;
+            console.log('[getWeather] Initial days from CONFIG.preferences.forecastDays:', days);
+            try {
+                if (prefEl && prefEl.value && String(prefEl.value).trim()) {
+                    days = Number(prefEl.value);
+                    console.log('[getWeather] Found preferences_forecastDays input, set days =', days);
+                } else if (primaryEl && primaryEl.value && String(primaryEl.value).trim()) {
+                    days = Number(primaryEl.value);
+                    console.log('[getWeather] Found weatherDays input, set days =', days);
+                } else {
+                    console.log('[getWeather] No input elements found, using CONFIG value:', days);
+                }
+            } catch (e) { /* use CONFIG value */ }
+            console.log('[getWeather] Final days value to use:', days);
             
             // Check if cached weather is still fresh (30 minutes TTL matches backend)
             // IMPORTANT: Cache key must include the requested days so we don't return stale cache
@@ -2867,16 +2921,23 @@
             const cachedDate = cacheState.weatherDate || null;  // Track the calendar day
             const today = new Date().toISOString().substring(0, 10);  // YYYY-MM-DD
             
+            console.log(`[Cache] Checking weather cache: cached=${cachedDays} days, requested=${days}, date match=${cachedDate === today}, TTL ok=${cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL}`);
+            console.log('[Cache] cacheState:', cacheState);
+            
             if (cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL && cachedDays === days && cachedDate === today) {
+                console.log('[Cache] Weather cache is fresh, has correct forecast days, and is from today - loading from cache');
                 // Load cached full weather object and render it
                 try {
                     const cachedWeatherFull = JSON.parse(localStorage.getItem('cachedWeatherFull') || '{}');
                     if (cachedWeatherFull.place || cachedWeatherFull.current) {
+                        console.log(`[Cache] Loaded cached weather with ${cachedWeatherFull.daily?.time?.length || 0} days`);
                         renderWeatherCard(cachedWeatherFull);
                         setLastUpdated('weather');
                         return;
                     }
                 } catch (e) { console.error('[Cache] Error loading weather cache:', e); }
+            } else {
+                console.log('[Cache] Weather cache INVALID - will fetch fresh from API');
             }
             
             const card = document.getElementById('weatherCard');
@@ -2891,6 +2952,9 @@
                 if (data.errno === 0 && data.result) {
                     weatherData = data.result;
                 }
+                
+                console.log(`[Weather] API returned ${days} days, got daily.time length: ${weatherData?.daily?.time?.length || 0}`);
+                console.log(`[Weather] Full API response:`, data);
                 
                 // Cache weather data - full object for dashboard, simplified for test.html
                 if (weatherData?.hourly) {
@@ -3031,10 +3095,14 @@
         // Update the small label showing how many days are requested by the control
         function updateWeatherRequestedLabel() {
             try {
+                const prefEl = document.getElementById('preferences_forecastDays');
                 const el = document.getElementById('weatherDays');
                 const lbl = document.getElementById('weatherRequestedLabel');
-                if (!lbl || !el) return;
-                const v = (el.value && String(el.value).trim()) ? String(el.value).trim() : '6';
+                if (!lbl) return;
+                // Prefer user preferences input if present (settings page may expose it)
+                const prefVal = prefEl && prefEl.value ? String(prefEl.value).trim() : null;
+                const controlVal = el && el.value ? String(el.value).trim() : null;
+                const v = prefVal || controlVal || String(CONFIG?.preferences?.forecastDays || 6);
                 lbl.textContent = `Requested: ${v}`;
             } catch (e) { /* ignore */ }
         }
@@ -3180,6 +3248,9 @@
                 const hourlyRadiation = hourly.shortwave_radiation || [];
                 const hourlyCloudcover = hourly.cloudcover || [];
                 
+                console.log(`[Weather] Daily data available: ${daily.time.length} days`);
+                console.log(`[Weather] Daily.time array:`, daily.time);
+                
                 // Group hourly data by day (YYYY-MM-DD)
                 const dailyRadiationAvg = {};
                 const dailyCloudcoverAvg = {};
@@ -3204,6 +3275,7 @@
                 const requestedDays = weatherDaysInput ? Number(weatherDaysInput.value) : 6;
                 // Show up to the requested number of days, but not more than available
                 const showCount = Math.min(daily.time.length, Math.max(1, requestedDays));
+                console.log(`[Weather] Rendering forecast: requested=${requestedDays}, available=${daily.time.length}, showing=${showCount}`);
                 for (let i = 0; i < showCount; i++) {
                     const d = daily.time[i];
                     const dayKey = d?.substring(0, 10);
@@ -3354,6 +3426,7 @@
                                                 m._resizeListener = onWin;
                                             }
                                         } catch(e) {}
+                                    console.log('Leaflet map updated:', mapId);
                                     } else {
                                         // Removed stale map instance — fall through to create a new map below
                                     }
@@ -3375,7 +3448,8 @@
                                         // ...existing code...
                                     });
                                     tileLayer.on('load', function () {
-                                        // Tiles loaded successfully
+                                        console.log('tileLayer load event:', mapId, 'tilesLoaded=', tileLoadCount);
+                                        // ...existing code...
                                     });
                                     tileLayer.on('tileerror', function (ev) {
                                         const mapEl = document.getElementById(mapId);
@@ -3404,6 +3478,66 @@
                                     setTimeout(() => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} }, 200);
                                     // Ensure map also invalidates a bit later to handle large DOM updates
                                     setTimeout(() => { try { m.invalidateSize && m.invalidateSize(); } catch(e){} }, 800);
+                                    // Extra diagnostics: log map size and tile container children
+                                            setTimeout(() => {
+                                        try {
+                                            const size = m.getSize();
+                                            const tileContainer = mapEl.querySelector('.leaflet-tile-pane');
+                                            const tiles = tileContainer ? tileContainer.querySelectorAll('img') : [];
+                                            console.log('map diagnostics:', mapId, 'size:', size, 'tile-img-count:', tiles.length, 'tileLoadCount:', tileLoadCount);
+                                            // If no tiles loaded after a short delay, attempt a direct tile test by requesting a single tile image
+                                            if (tileLoadCount === 0) {
+                                                try {
+                                                    const z = 9;
+                                                    // convert lat/lon to tile xy for zoom z
+                                                    function long2tile(lon, z) { return Math.floor((lon + 180) / 360 * Math.pow(2, z)); }
+                                                    function lat2tile(lat, z) { return Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, z)); }
+                                                    const tx = long2tile(latNum ? lonNum : 151.03, z);
+                                                    const ty = lat2tile(latNum ? latNum : -33.92, z);
+                                                    const tileUrl = `https://a.tile.openstreetmap.org/${z}/${tx}/${ty}.png`;
+                                                    console.log('Attempt direct tile fetch:', tileUrl);
+                                                    const tImg = new Image();
+                                                    tImg.crossOrigin = 'anonymous';
+                                                    tImg.onload = function() {
+                                                        console.log('Direct tile onload OK');
+                                                        // ...existing code...
+                                                    };
+                                                    tImg.onerror = function(err) {
+                                                        console.warn('Direct tile failed to load', err);
+                                                        // ...existing code...
+                                                    };
+                                                    tImg.src = tileUrl;
+                                                } catch(e) { console.error('direct tile test failed', e); }
+                                            }
+                                        } catch (e) { console.error('map diag error', e); }
+                                            }, 600);
+                                            // extra run: collect per-tile diagnostics and display them
+                                            setTimeout(() => {
+                                                try {
+                                                    const mapEl2 = document.getElementById(mapId);
+                                                    if (!mapEl2) return;
+                                                    const tilePane = mapEl2.querySelector('.leaflet-tile-pane');
+                                                    const tiles = tilePane ? Array.from(tilePane.querySelectorAll('img')) : [];
+                                                    const diag2 = ensureDiagNode();
+                                                    if (diag2) {
+                                                        if (tiles.length === 0) {
+                                                            diag2.textContent = (diag2.textContent || '') + ' | tiles:0';
+                                                        } else {
+                                                            let info = ' | tiles:' + tiles.length + ' [';
+                                                            info += tiles.slice(0,6).map(img => {
+                                                                const src = img.src.split('/').slice(-3).join('/');
+                                                                const cw = img.naturalWidth || img.width || 0;
+                                                                const ch = img.naturalHeight || img.height || 0;
+                                                                const style = window.getComputedStyle(img);
+                                                                return `${src} w:${cw} h:${ch} d:${style.display} o:${style.opacity}`;
+                                                            }).join(' ; ');
+                                                            info += (tiles.length > 6 ? ' …' : '') + ']';
+                                                            diag2.textContent = (diag2.textContent || '') + info;
+                                                        }
+                                                    }
+                                                } catch(e) { console.error('tile diagnostics 2 error', e); }
+                                            }, 900);
+                                    console.log('Leaflet map created:', mapId);
                                 }
                             } catch (e) {
                                 console.error('Map init error:', e);
@@ -3493,6 +3627,7 @@
             const AMBER_TTL = 60 * 1000;
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
             if (cacheState.amberTime && (Date.now() - cacheState.amberTime) < AMBER_TTL) {
+                console.log('[Cache] Amber cache is fresh, loading from cache');
                 // Load cached full prices array and render
                 try {
                     const cachedPricesFull = JSON.parse(localStorage.getItem('cachedPricesFull') || '[]');
@@ -4507,6 +4642,11 @@
             display: {
                 forecastLimit: 48,             // Max forecast intervals to show
                 defaultAmberNext: 12           // Default number of Amber forecast intervals
+            },
+            
+            // User preferences loaded from backend
+            preferences: {
+                forecastDays: 6                // User's preferred forecast days (loaded from backend)
             }
         };
         
@@ -4671,45 +4811,30 @@
             
             // Main result section - triggered or not
             if (result.triggered && result.rule) {
-                const statusIndicator = result.status === 'continuing' ? '✓ Continuing' : result.status === 'new_trigger' ? '✅ New Trigger' : '?';
-                const statusColor = result.status === 'continuing' ? '#79c0ff' : result.status === 'new_trigger' ? '#7ee787' : '#8b949e';
-                html += `<span style="color:${statusColor};font-weight:600;font-size:11px">${statusIndicator} <strong>${result.rule.name || 'Unknown'}</strong>`;
+                html += `<span style="color:#7ee787;font-weight:600;font-size:11px">✅ <strong>${result.rule.name || 'Unknown'}</strong>`;
                 if (result.rule.actionResult) {
                     const ar = result.rule.actionResult;
-                    if (ar.errno === 0) {
-                        html += ` <span style="color:#7ee787">• API ✓</span>`;
-                    } else {
-                        // API FAILED - show prominent error
-                        html += `</span><div style="margin-top:6px;padding:8px;background:rgba(248,81,73,0.15);border:1px solid #f85149;border-radius:4px">`;
-                        html += `<span style="color:#f85149;font-weight:600">⚠️ API FAILED</span>`;
-                        html += `<span style="color:#f85149;font-size:10px"> • errno=${ar.errno}</span>`;
-                        if (ar.msg) html += `<br><span style="color:#f85149;font-size:10px">${ar.msg}</span>`;
-                        html += `</div><span>`;
-                    }
+                    const statusColor = ar.errno === 0 ? '#7ee787' : '#f85149';
+                    const statusText = ar.errno === 0 ? '✓' : '✗';
+                    html += ` • API ${statusText} (errno=${ar.errno})`;
                 }
                 html += `</span>`;
             } else {
                 html += `<span style="color:#8b949e;font-size:11px">ℹ️ No rules triggered</span>`;
             }
-
             
             // Show evaluation summary with condition details - inline
             if (result.evaluationResults && result.evaluationResults.length > 0) {
                 html += `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start">`;
                 
                 result.evaluationResults.forEach(er => {
-                    const icon = er.result === 'triggered' ? '✅' : er.result === 'continuing' ? '✓' : er.result === 'cooldown' ? '⏳' : '❌';
-                    const bgColor = er.result === 'triggered' ? 'rgba(126,231,135,0.1)' : er.result === 'continuing' ? 'rgba(121,192,255,0.1)' : er.result === 'cooldown' ? 'rgba(240,136,62,0.1)' : 'rgba(248,81,73,0.1)';
-                    const borderColor = er.result === 'triggered' ? '#7ee787' : er.result === 'continuing' ? '#79c0ff' : er.result === 'cooldown' ? '#f0883e' : '#f85149';
-                    const textColor = er.result === 'triggered' ? '#7ee787' : er.result === 'continuing' ? '#79c0ff' : er.result === 'cooldown' ? '#f0883e' : '#f85149';
+                    const icon = er.result === 'triggered' ? '✅' : er.result === 'cooldown' ? '⏳' : '❌';
+                    const bgColor = er.result === 'triggered' ? 'rgba(126,231,135,0.1)' : er.result === 'cooldown' ? 'rgba(240,136,62,0.1)' : 'rgba(248,81,73,0.1)';
+                    const borderColor = er.result === 'triggered' ? '#7ee787' : er.result === 'cooldown' ? '#f0883e' : '#f85149';
+                    const textColor = er.result === 'triggered' ? '#7ee787' : er.result === 'cooldown' ? '#f0883e' : '#f85149';
                     
                     html += `<div style="background:${bgColor};border:1px solid ${borderColor};border-radius:3px;padding:4px 6px;display:inline-flex;align-items:center;gap:3px;font-size:10px">`;
                     html += `<span style="color:${textColor};font-weight:600">${icon} ${er.rule}</span>`;
-                    
-                    // Show cooldown info for continuing rules
-                    if (er.result === 'continuing' && er.cooldownRemaining != null) {
-                        html += `<span style="color:#79c0ff;font-size:9px"> • ${Math.ceil(er.cooldownRemaining)}s cooldown</span>`;
-                    }
                     
                     // Show individual condition details inline if available
                     if (er.details?.results && er.details.results.length > 0) {
@@ -5025,10 +5150,13 @@
         async function initializePageData() {
             console.log('[PageInit] Initializing page data for authenticated user');
             
+            // Declare cfg at function scope so it's accessible to all steps
+            let cfg = null;
+            
             // 0) Load shared config from backend (e.g. default weather location)
             try {
                 const cfgResp = await authenticatedFetch('/api/config');
-                const cfg = await cfgResp.json();
+                cfg = await cfgResp.json();
                 if (cfg.errno === 0 && cfg.result) {
                     const wInput = document.getElementById('weatherPlace');
                     // Prefer explicit preferences.weatherPlace (user preference), then top-level weatherPlace
@@ -5080,22 +5208,43 @@
             
             // 3) Set up weather request
             try {
+                console.log('[Weather Init] Starting weather initialization...');
                 // Determine default forecast days from backend preferences or top-level config
                 try {
                     const daysEl = document.getElementById('weatherDays');
                     let defaultDays = 6;
                     if (cfg.result) {
+                        console.log('[Weather Init] cfg.result.preferences:', cfg.result.preferences);
                         if (cfg.result.preferences && typeof cfg.result.preferences.forecastDays === 'number') {
                             defaultDays = Number(cfg.result.preferences.forecastDays);
+                            console.log('[Weather Init] Loaded forecastDays from preferences:', defaultDays);
                         } else if (typeof cfg.result.forecastDays === 'number') {
                             defaultDays = Number(cfg.result.forecastDays);
+                            console.log('[Weather Init] Loaded forecastDays from top-level:', defaultDays);
+                        } else {
+                            console.log('[Weather Init] No forecastDays found in cfg.result, using default 6');
                         }
+                    } else {
+                        console.log('[Weather Init] cfg.result is falsy, using default 6');
                     }
                     // Clamp to allowed range
                     defaultDays = Math.max(1, Math.min(16, defaultDays || 6));
+                    // Store in CONFIG so getWeather() can access it
+                    CONFIG.preferences.forecastDays = defaultDays;
+                    console.log('[Weather Init] Set CONFIG.preferences.forecastDays =', CONFIG.preferences.forecastDays);
                     if (daysEl) daysEl.value = defaultDays;
+                    console.log('[Weather Init] Set weatherDays input value =', daysEl?.value);
+                    // If preference changed from what was cached, invalidate cache so fresh data is fetched
+                    const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                    if (cacheState.weatherDays && cacheState.weatherDays !== defaultDays) {
+                        console.log('[Weather Init] Cache has old days count (' + cacheState.weatherDays + '), invalidating weather cache');
+                        cacheState.weatherDays = defaultDays;
+                        localStorage.setItem('cacheState', JSON.stringify(cacheState));
+                    }
                 } catch (e) {
+                    console.error('[Weather Init] Exception in setup:', e);
                     try { document.getElementById('weatherDays').value = 6; } catch (ee) {}
+                    try { CONFIG.preferences.forecastDays = 6; } catch (eee) {}
                 }
                 updateWeatherRequestedLabel();
                 document.getElementById('weatherDays').addEventListener('input', updateWeatherRequestedLabel);
@@ -5548,18 +5697,7 @@
                     // If a rule was triggered, show a notification
                     if (data.result?.triggered && data.result?.rule) {
                         const ruleName = data.result.rule.name || 'Unknown';
-                        if (data.result.status === 'new_trigger') {
-                            showMessage('success', `🤖 Automation triggered: ${ruleName}`, 5000);
-                        } else if (data.result.status === 'continuing') {
-                            // Check if there are cooldown rules in evaluationResults
-                            const cooldownRules = (data.result.evaluationResults || []).filter(er => er.result === 'cooldown');
-                            if (cooldownRules.length > 0) {
-                                const cooldownNames = cooldownRules.map(cr => cr.rule).join(', ');
-                                showMessage('info', `⏳ ${ruleName} continuing (${cooldownNames} in cooldown)`, 4000);
-                            } else {
-                                showMessage('info', `✓ ${ruleName} continuing`, 3000);
-                            }
-                        }
+                        showMessage('success', `🤖 Automation triggered: ${ruleName}`, 5000);
                     } else if (data.result?.skipped) {
                         console.log('[Automation] Cycle skipped:', data.result.reason);
                     } else {
@@ -6433,36 +6571,10 @@
                 });
                 const data = await resp.json();
                 if (data.errno === 0) {
-                    // Refresh status immediately to show updated state
-                    await loadBackendAutomationStatus();
-                    
-                    // Force an immediate cycle when toggling (to clear segments when disabling, or trigger rules when enabling)
-                    console.log(`[Automation] Master switch toggled to ${data.result.enabled ? 'ENABLED' : 'DISABLED'} - triggering immediate cycle`);
-                    try {
-                        const cycleResp = await authenticatedFetch('/api/automation/cycle', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({})
-                        });
-                        const cycleData = await cycleResp.json();
-                        if (cycleData.errno === 0) {
-                            console.log('[Automation] Cycle result:', cycleData.result);
-                            // Refresh status to show updated state
-                            await loadBackendAutomationStatus();
-                            if (data.result.enabled) {
-                                showMessage('success', '✅ Automation enabled', 2000);
-                            } else {
-                                showMessage('success', '🛑 Automation disabled and segments cleared', 3000);
-                            }
-                        }
-                    } catch (cycleError) {
-                        console.error('[Automation] Error running cycle:', cycleError);
-                        showMessage('warning', `Automation ${data.result.enabled ? 'enabled' : 'disabled'} but cycle failed`, 3000);
-                    }
+                    loadBackendAutomationStatus();
                 }
             } catch (e) {
                 console.error('Failed to toggle backend automation:', e);
-                showMessage('error', 'Failed to toggle automation', 2000);
             }
         }
 
