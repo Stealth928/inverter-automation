@@ -370,6 +370,15 @@
             color: inherit;
             background: rgba(255,255,255,0.02);
         }
+        /* Thermometer variant: 50% size of default tile icons */
+        .tile-icon.thermometer {
+            width: 27px;
+            height: 27px;
+            padding: 2px 0 0 0;
+            background: transparent;
+        }
+        .tile-icon.thermometer .therm-svg { width: 18px; height: 36px; display:block; }
+        .therm-fill { transition: height 600ms cubic-bezier(.2,.9,.2,1), y 600ms cubic-bezier(.2,.9,.2,1), fill 300ms ease; }
         /* Battery SVG sizing and charging animation */
         /* Larger battery tile for improved alignment */
         .stat-item.battery-tile { min-width: 180px; padding: 12px 18px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
@@ -2705,6 +2714,34 @@
 
                 function fmtTemp(v) { if (v === null || v === undefined || v === '-') return '-'; const n = Number(v); if (isNaN(n)) return '-'; return n.toFixed(1) + '°C'; }
 
+                // Create an inline thermometer SVG string for a temperature value
+                // Visual idea: a bulb + tube. Fill level mapped from 0..80°C (clamped).
+                function makeThermSVG(v) {
+                    const n = (v === null || v === undefined || v === '-') ? null : Number(v);
+                    const minT = 0; const maxT = 80; // range mapped to 0..100%
+                    const pct = (n === null || isNaN(n)) ? 0 : Math.max(0, Math.min(1, (n - minT) / (maxT - minT)));
+                    // tube inner height (px) and geometry tuned for viewBox
+                    const innerH = 34; // tube height
+                    const fillH = Math.round(pct * innerH);
+                    const tubeX = 8; const tubeW = 8; const tubeY = 4;
+                    const y = tubeY + (innerH - fillH);
+                    // color thresholds: <40 green, <55 amber, >=55 red
+                    const fillColor = (n === null || isNaN(n)) ? 'rgba(255,255,255,0.06)' : (n < 40 ? '#16a34a' : (n < 55 ? '#d29922' : '#dc2626'));
+                    // return compact SVG (class "therm-svg" for styling)
+                    return `
+                        <div class="tile-icon thermometer" aria-hidden="true">
+                            <svg class="therm-svg" viewBox="0 0 24 48" xmlns="http://www.w3.org/2000/svg">
+                                <!-- outer tube -->
+                                <rect x="${tubeX}" y="${tubeY}" width="${tubeW}" height="${innerH}" rx="4" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" />
+                                <!-- fill (matches tube rounded corners) -->
+                                <rect x="${tubeX}" y="${y}" width="${tubeW}" height="${fillH}" rx="3" fill="${fillColor}" class="therm-fill" />
+                                <!-- bulb -->
+                                <circle cx="12" cy="42" r="6.5" fill="${fillColor}" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                                <circle cx="12" cy="42" r="6.5" fill-opacity="0.12" />
+                            </svg>
+                        </div>`;
+                }
+
                 const batTempCls = tempClassRealtime(batTempVal);
                 const ambTempCls = tempClassRealtime(ambTempVal);
                 const invTempCls = tempClassRealtime(invTempVal);
@@ -2741,17 +2778,17 @@
                 <!-- Inline temps row for real-time display -->
                 <div class="stat-row" style="margin-top:8px">
                         <div class="stat-item" style="min-width:140px">
-                            <div class="tile-icon">🌡️</div>
+                            ${makeThermSVG(batTempVal)}
                             <div class="value ${batTempCls}" style="font-size:18px">${batTempVal !== null && batTempVal !== undefined ? fmtTemp(batTempVal) : '-'}</div>
                             <div class="label">Battery Temp</div>
                         </div>
                     <div class="stat-item" style="min-width:140px">
-                        <div class="tile-icon">🌡️</div>
+                        ${makeThermSVG(ambTempVal)}
                         <div class="value ${ambTempCls}" style="font-size:18px">${ambTempVal !== null && ambTempVal !== undefined ? fmtTemp(ambTempVal) : '-'}</div>
                         <div class="label">Ambient Temp</div>
                     </div>
                     <div class="stat-item" style="min-width:140px">
-                        <div class="tile-icon">🌡️</div>
+                        ${makeThermSVG(invTempVal)}
                         <div class="value ${invTempCls}" style="font-size:18px">${invTempVal !== null && invTempVal !== undefined ? fmtTemp(invTempVal) : '-'}</div>
                         <div class="label">Inverter Temp</div>
                     </div>
@@ -2855,7 +2892,24 @@
             // normalize back into the input (helps when using autocomplete)
             try { if (placeEl) placeEl.value = (place === 'Roselands 2196 NSW' ? placeEl.value || place : place); } catch (e) {}
 
-            const days = Number(document.getElementById('weatherDays').value || 6);
+            // Prefer the saved user preference input if present (settings page uses id
+            // 'preferences_forecastDays'). If not present, use the weatherDays control.
+            const prefEl = document.getElementById('preferences_forecastDays');
+            const primaryEl = document.getElementById('weatherDays');
+            let days = CONFIG?.preferences?.forecastDays || 6;
+            console.log('[getWeather] Initial days from CONFIG.preferences.forecastDays:', days);
+            try {
+                if (prefEl && prefEl.value && String(prefEl.value).trim()) {
+                    days = Number(prefEl.value);
+                    console.log('[getWeather] Found preferences_forecastDays input, set days =', days);
+                } else if (primaryEl && primaryEl.value && String(primaryEl.value).trim()) {
+                    days = Number(primaryEl.value);
+                    console.log('[getWeather] Found weatherDays input, set days =', days);
+                } else {
+                    console.log('[getWeather] No input elements found, using CONFIG value:', days);
+                }
+            } catch (e) { /* use CONFIG value */ }
+            console.log('[getWeather] Final days value to use:', days);
             
             // Check if cached weather is still fresh (30 minutes TTL matches backend)
             // IMPORTANT: Cache key must include the requested days so we don't return stale cache
@@ -2868,6 +2922,7 @@
             const today = new Date().toISOString().substring(0, 10);  // YYYY-MM-DD
             
             console.log(`[Cache] Checking weather cache: cached=${cachedDays} days, requested=${days}, date match=${cachedDate === today}, TTL ok=${cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL}`);
+            console.log('[Cache] cacheState:', cacheState);
             
             if (cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL && cachedDays === days && cachedDate === today) {
                 console.log('[Cache] Weather cache is fresh, has correct forecast days, and is from today - loading from cache');
@@ -3040,10 +3095,14 @@
         // Update the small label showing how many days are requested by the control
         function updateWeatherRequestedLabel() {
             try {
+                const prefEl = document.getElementById('preferences_forecastDays');
                 const el = document.getElementById('weatherDays');
                 const lbl = document.getElementById('weatherRequestedLabel');
-                if (!lbl || !el) return;
-                const v = (el.value && String(el.value).trim()) ? String(el.value).trim() : '6';
+                if (!lbl) return;
+                // Prefer user preferences input if present (settings page may expose it)
+                const prefVal = prefEl && prefEl.value ? String(prefEl.value).trim() : null;
+                const controlVal = el && el.value ? String(el.value).trim() : null;
+                const v = prefVal || controlVal || String(CONFIG?.preferences?.forecastDays || 6);
                 lbl.textContent = `Requested: ${v}`;
             } catch (e) { /* ignore */ }
         }
@@ -4583,6 +4642,11 @@
             display: {
                 forecastLimit: 48,             // Max forecast intervals to show
                 defaultAmberNext: 12           // Default number of Amber forecast intervals
+            },
+            
+            // User preferences loaded from backend
+            preferences: {
+                forecastDays: 6                // User's preferred forecast days (loaded from backend)
             }
         };
         
@@ -5086,10 +5150,13 @@
         async function initializePageData() {
             console.log('[PageInit] Initializing page data for authenticated user');
             
+            // Declare cfg at function scope so it's accessible to all steps
+            let cfg = null;
+            
             // 0) Load shared config from backend (e.g. default weather location)
             try {
                 const cfgResp = await authenticatedFetch('/api/config');
-                const cfg = await cfgResp.json();
+                cfg = await cfgResp.json();
                 if (cfg.errno === 0 && cfg.result) {
                     const wInput = document.getElementById('weatherPlace');
                     // Prefer explicit preferences.weatherPlace (user preference), then top-level weatherPlace
@@ -5141,22 +5208,43 @@
             
             // 3) Set up weather request
             try {
+                console.log('[Weather Init] Starting weather initialization...');
                 // Determine default forecast days from backend preferences or top-level config
                 try {
                     const daysEl = document.getElementById('weatherDays');
                     let defaultDays = 6;
                     if (cfg.result) {
+                        console.log('[Weather Init] cfg.result.preferences:', cfg.result.preferences);
                         if (cfg.result.preferences && typeof cfg.result.preferences.forecastDays === 'number') {
                             defaultDays = Number(cfg.result.preferences.forecastDays);
+                            console.log('[Weather Init] Loaded forecastDays from preferences:', defaultDays);
                         } else if (typeof cfg.result.forecastDays === 'number') {
                             defaultDays = Number(cfg.result.forecastDays);
+                            console.log('[Weather Init] Loaded forecastDays from top-level:', defaultDays);
+                        } else {
+                            console.log('[Weather Init] No forecastDays found in cfg.result, using default 6');
                         }
+                    } else {
+                        console.log('[Weather Init] cfg.result is falsy, using default 6');
                     }
                     // Clamp to allowed range
                     defaultDays = Math.max(1, Math.min(16, defaultDays || 6));
+                    // Store in CONFIG so getWeather() can access it
+                    CONFIG.preferences.forecastDays = defaultDays;
+                    console.log('[Weather Init] Set CONFIG.preferences.forecastDays =', CONFIG.preferences.forecastDays);
                     if (daysEl) daysEl.value = defaultDays;
+                    console.log('[Weather Init] Set weatherDays input value =', daysEl?.value);
+                    // If preference changed from what was cached, invalidate cache so fresh data is fetched
+                    const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                    if (cacheState.weatherDays && cacheState.weatherDays !== defaultDays) {
+                        console.log('[Weather Init] Cache has old days count (' + cacheState.weatherDays + '), invalidating weather cache');
+                        cacheState.weatherDays = defaultDays;
+                        localStorage.setItem('cacheState', JSON.stringify(cacheState));
+                    }
                 } catch (e) {
+                    console.error('[Weather Init] Exception in setup:', e);
                     try { document.getElementById('weatherDays').value = 6; } catch (ee) {}
+                    try { CONFIG.preferences.forecastDays = 6; } catch (eee) {}
                 }
                 updateWeatherRequestedLabel();
                 document.getElementById('weatherDays').addEventListener('input', updateWeatherRequestedLabel);
