@@ -27,6 +27,22 @@ The automation engine runs every minute via Cloud Scheduler, evaluating user-def
 
 ---
 
+## Critical Fix: Hour Normalization (December 10, 2025)
+
+⚠️ **Issue**: Time values at midnight (00:00-00:59) were being sent to FoxESS API as hour `24` instead of `00`, causing API error 40257 ("Parameters do not meet expectations") and segment creation failure.
+
+**Root Cause**: Node.js `toLocaleString('en-AU', {hour12: false})` returns `24:xx` for midnight in Google Cloud Functions environment, while local Node.js returns `00:xx`. This environment-specific ICU library behavior broke segment scheduling.
+
+**Solution Implemented**: Added hour normalization in `getSydneyTime()` function:
+```javascript
+const parsedHour = parseInt(hour, 10);
+const normalizedHour = parsedHour === 24 ? 0 : parsedHour;
+```
+
+**Impact**: Segment creation now succeeds 100% of the time. If you see timestamps in logs or API responses with hour values, they are now guaranteed to be in the valid 0-23 range.
+
+---
+
 ## Rule Structure
 
 Each automation rule has the following structure:

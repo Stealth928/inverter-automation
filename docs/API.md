@@ -11,6 +11,25 @@ All authenticated endpoints require a Firebase ID token in the `Authorization` h
 Authorization: Bearer <firebase-id-token>
 ```
 
+## Response Format
+
+All endpoints follow a consistent response envelope:
+
+```json
+{
+  "errno": 0,
+  "result": { /* response data */ },
+  "error": "Error message (only if errno != 0)"
+}
+```
+
+- `errno: 0` = Success
+- `errno > 0` = Error (see Error Codes section)
+- `result` = Response data (only present on success)
+- `error` = Error message string (only present on error)
+
+**⚠️ Important**: All API failures now show as prominent **red error boxes** in the UI with the error code and message, enabling users to quickly identify and debug issues. This replaces previous subtle inline error indicators.
+
 ---
 
 ## Authentication Endpoints
