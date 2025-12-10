@@ -1624,67 +1624,64 @@ app.post('/api/automation/cycle', async (req, res) => {
     // Check explicitly for enabled === false (not undefined which means not set yet)
     if (state && state.enabled === false) {
       console.log(`[Automation] 🛑 Master switch is DISABLED (state.enabled === false)`);
-      // If there's an active rule when automation is disabled, cancel its segment
-      if (state.activeRule) {
-        console.log(`[Automation] 🧹 Active rule detected: ${state.activeRuleName || state.activeRule} - CLEARING SEGMENTS`);
-        try {
-          const userConfig = await getUserConfig(userId);
-          const deviceSN = userConfig?.deviceSn;
-          if (deviceSN) {
-            console.log(`[Automation] 📡 Sending clear command to device ${deviceSN}...`);
-            const clearedGroups = [];
-            for (let i = 0; i < 8; i++) {
-              clearedGroups.push({
-                enable: 0,
-                workMode: 'SelfUse',
-                startHour: 0, startMinute: 0,
-                endHour: 0, endMinute: 0,
-                minSocOnGrid: 10,
-                fdSoc: 10,
-                fdPwr: 0,
-                maxSoc: 100
-              });
-            }
-            const clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
-            if (clearResult?.errno === 0) {
-              console.log(`[Automation] ✅ Segments CLEARED successfully (errno=0)`);
-            } else {
-              console.warn(`[Automation] ⚠️ Segment clear returned errno=${clearResult?.errno}`);
-            }
+      
+      // ALWAYS clear all segments when automation is disabled, regardless of activeRule state
+      // The inverter might have segments still scheduled from a previous rule
+      try {
+        const userConfig = await getUserConfig(userId);
+        const deviceSN = userConfig?.deviceSn;
+        if (deviceSN) {
+          console.log(`[Automation] 📡 Sending clear command to device ${deviceSN}...`);
+          const clearedGroups = [];
+          for (let i = 0; i < 8; i++) {
+            clearedGroups.push({
+              enable: 0,
+              workMode: 'SelfUse',
+              startHour: 0, startMinute: 0,
+              endHour: 0, endMinute: 0,
+              minSocOnGrid: 10,
+              fdSoc: 10,
+              fdPwr: 0,
+              maxSoc: 100
+            });
+          }
+          const clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+          if (clearResult?.errno === 0) {
+            console.log(`[Automation] ✅ All segments CLEARED successfully (errno=0)`);
           } else {
-            console.warn(`[Automation] ⚠️ No deviceSN found - cannot clear segments`);
+            console.warn(`[Automation] ⚠️ Segment clear returned errno=${clearResult?.errno}`);
           }
-        } catch (err) {
-          console.error(`[Automation] ❌ Error clearing segments on disable:`, err.message);
+        } else {
+          console.warn(`[Automation] ⚠️ No deviceSN found - cannot clear segments`);
         }
-        // Clear active rule state
-        console.log(`[Automation] 🧹 Clearing active rule state in Firestore`);
-        
-        // Also clear lastTriggered on the active rule so it can re-trigger immediately when automation re-enabled
-        if (state.activeRule) {
-          try {
-            await db.collection('users').doc(userId).collection('rules').doc(state.activeRule).set({
-              lastTriggered: null
-            }, { merge: true });
-            console.log(`[Automation] ✅ Cleared lastTriggered for rule ${state.activeRuleName || state.activeRule}`);
-          } catch (err) {
-            console.warn(`[Automation] ⚠️ Error clearing rule lastTriggered:`, err.message);
-          }
-        }
-        
-        await saveUserAutomationState(userId, { 
-          lastCheck: Date.now(), 
-          activeRule: null,
-          activeRuleName: null,
-          activeSegment: null,
-          activeSegmentEnabled: false
-        });
-        console.log(`[Automation] ✅ Active rule state cleared`);
-      } else {
-        console.log(`[Automation] ℹ️ No active rule - nothing to clear`);
-        await saveUserAutomationState(userId, { lastCheck: Date.now() });
+      } catch (err) {
+        console.error(`[Automation] ❌ Error clearing segments on disable:`, err.message);
       }
-      return res.json({ errno: 0, result: { skipped: true, reason: 'Automation disabled', segmentsCleared: !!state.activeRule } });
+      
+      // Clear lastTriggered on the active rule if one exists (so it can re-trigger when automation re-enabled)
+      if (state.activeRule) {
+        console.log(`[Automation] 🧹 Active rule detected: ${state.activeRuleName || state.activeRule} - clearing lastTriggered`);
+        try {
+          await db.collection('users').doc(userId).collection('rules').doc(state.activeRule).set({
+            lastTriggered: null
+          }, { merge: true });
+          console.log(`[Automation] ✅ Cleared lastTriggered for rule ${state.activeRuleName || state.activeRule}`);
+        } catch (err) {
+          console.warn(`[Automation] ⚠️ Error clearing rule lastTriggered:`, err.message);
+        }
+      }
+      
+      // Always clear automation state
+      await saveUserAutomationState(userId, { 
+        lastCheck: Date.now(), 
+        activeRule: null,
+        activeRuleName: null,
+        activeSegment: null,
+        activeSegmentEnabled: false
+      });
+      console.log(`[Automation] ✅ Automation state cleared`);
+      
+      return res.json({ errno: 0, result: { skipped: true, reason: 'Automation disabled', segmentsCleared: true } });
     }
     
     // Check for blackout windows
