@@ -1761,9 +1761,8 @@ app.post('/api/automation/cycle', async (req, res) => {
         console.error(`[Automation] ❌ Error clearing segments after rule disable:`, err.message);
       }
       
-      // Clear automation state
+      // Clear automation state (but DON'T update lastCheck - let scheduler timer continue)
       await saveUserAutomationState(userId, {
-        lastCheck: Date.now(),
         activeRule: null,
         activeRuleName: null,
         activeSegment: null,
