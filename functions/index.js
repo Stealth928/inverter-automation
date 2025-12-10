@@ -1730,6 +1730,49 @@ app.post('/api/automation/cycle', async (req, res) => {
       return res.json({ errno: 0, result: { skipped: true, reason: 'No rules configured' } });
     }
     
+    // Check if the active rule was disabled (CRITICAL: Must check BEFORE filtering)
+    // If activeRule exists but is now disabled, we need to clear segments
+    if (state.activeRule && rules[state.activeRule] && !rules[state.activeRule].enabled) {
+      console.log(`[Automation] 🧹 Active rule '${state.activeRuleName || state.activeRule}' was DISABLED - clearing segments`);
+      try {
+        const deviceSN = userConfig?.deviceSn;
+        if (deviceSN) {
+          const clearedGroups = [];
+          for (let i = 0; i < 8; i++) {
+            clearedGroups.push({
+              enable: 0,
+              workMode: 'SelfUse',
+              startHour: 0, startMinute: 0,
+              endHour: 0, endMinute: 0,
+              minSocOnGrid: 10,
+              fdSoc: 10,
+              fdPwr: 0,
+              maxSoc: 100
+            });
+          }
+          const clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+          if (clearResult?.errno === 0) {
+            console.log(`[Automation] ✅ Segments cleared successfully after rule disable`);
+          } else {
+            console.warn(`[Automation] ⚠️ Failed to clear segments: errno=${clearResult?.errno}`);
+          }
+        }
+      } catch (err) {
+        console.error(`[Automation] ❌ Error clearing segments after rule disable:`, err.message);
+      }
+      
+      // Clear automation state
+      await saveUserAutomationState(userId, {
+        lastCheck: Date.now(),
+        activeRule: null,
+        activeRuleName: null,
+        activeSegment: null,
+        activeSegmentEnabled: false
+      });
+      console.log(`[Automation] ✅ Automation state cleared after rule disable`);
+      return res.json({ errno: 0, result: { skipped: true, reason: 'Active rule was disabled', segmentsCleared: true } });
+    }
+    
     // Get live data for evaluation
     const deviceSN = userConfig?.deviceSn;
     let inverterData = null;
