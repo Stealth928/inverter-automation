@@ -6589,6 +6589,22 @@
                 const data = await resp.json();
                 
                 if (data.errno === 0) {
+                    // Trigger an immediate cycle to clear any segments from the deleted rule
+                    console.log(`[Automation] Rule ${ruleName} deleted - triggering immediate cycle to clear segments`);
+                    try {
+                        const cycleResp = await authenticatedFetch('/api/automation/cycle', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({})
+                        });
+                        const cycleData = await cycleResp.json();
+                        if (cycleData.errno === 0) {
+                            console.log('[Automation] Cycle complete - segments cleared if rule was active');
+                        }
+                    } catch (cycleErr) {
+                        console.warn('[Automation] Failed to run cycle after deleting rule:', cycleErr);
+                    }
+                    
                     loadBackendAutomationStatus();
                 } else {
                     alert('Failed to delete rule: ' + (data.error || 'Unknown error'));
@@ -6660,6 +6676,25 @@
                 const data = await resp.json();
                 if (data.errno === 0) {
                     console.log(`Rule ${ruleName} updated:`, data.result);
+                    
+                    // If disabling a rule, trigger an immediate cycle to clear any active segments
+                    if (field === 'enabled' && value === false) {
+                        console.log(`[Automation] Rule ${ruleName} disabled - triggering immediate cycle to clear segments`);
+                        try {
+                            const cycleResp = await authenticatedFetch('/api/automation/cycle', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({})
+                            });
+                            const cycleData = await cycleResp.json();
+                            if (cycleData.errno === 0) {
+                                console.log('[Automation] Cycle complete - segments cleared if rule was active');
+                            }
+                        } catch (cycleErr) {
+                            console.warn('[Automation] Failed to run cycle after disabling rule:', cycleErr);
+                        }
+                    }
+                    
                     // Refresh UI to show current state
                     loadBackendAutomationStatus();
                 }
