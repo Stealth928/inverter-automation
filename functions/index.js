@@ -1730,6 +1730,42 @@ app.post('/api/automation/cycle', async (req, res) => {
       return res.json({ errno: 0, result: { skipped: true, reason: 'No rules configured' } });
     }
     
+    // Check if a rule was just disabled and we need to clear segments (via flag)
+    if (state.clearSegmentsOnNextCycle) {
+      console.log('[Cycle] 🧹 clearSegmentsOnNextCycle flag detected - clearing all segments immediately');
+      try {
+        const deviceSN = userConfig?.deviceSn;
+        if (deviceSN) {
+          const clearedGroups = [];
+          for (let i = 0; i < 8; i++) {
+            clearedGroups.push({
+              enable: 0,
+              workMode: 'SelfUse',
+              startHour: 0, startMinute: 0,
+              endHour: 0, endMinute: 0,
+              minSocOnGrid: 10,
+              fdSoc: 10,
+              fdPwr: 0,
+              maxSoc: 100
+            });
+          }
+          const clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+          if (clearResult?.errno === 0) {
+            console.log(`[Cycle] ✅ Segments cleared successfully due to rule disable flag`);
+          }
+        }
+      } catch (err) {
+        console.error('[Cycle] Error clearing segments:', err.message);
+      }
+      
+      // Clear the flag after processing
+      await saveUserAutomationState(userId, {
+        clearSegmentsOnNextCycle: false
+      });
+      
+      return res.json({ errno: 0, result: { skipped: true, reason: 'Rule was disabled - segments cleared', segmentsCleared: true } });
+    }
+    
     // Check if the active rule was disabled (CRITICAL: Must check BEFORE filtering)
     // If activeRule exists but is now disabled, we need to clear segments
     if (state.activeRule && rules[state.activeRule] && !rules[state.activeRule].enabled) {
@@ -2408,15 +2444,16 @@ app.post('/api/automation/rule/update', async (req, res) => {
       update.lastTriggered = null;
       console.log(`[Rule Update] Rule ${ruleId} disabled - clearing lastTriggered to reset cooldown`);
       
-      // Also check if this was the active rule and clear automation state
+      // Also check if this was the active rule and flag for immediate clearing
       const state = await getUserAutomationState(req.user.uid);
       if (state && state.activeRule === ruleId) {
-        console.log(`[Rule Update] Disabled rule was active - clearing automation state`);
+        console.log(`[Rule Update] Disabled rule was active - setting clearSegmentsOnNextCycle flag`);
         await saveUserAutomationState(req.user.uid, {
           activeRule: null,
           activeRuleName: null,
           activeSegment: null,
-          activeSegmentEnabled: false
+          activeSegmentEnabled: false,
+          clearSegmentsOnNextCycle: true  // Flag for cycle to clear segments immediately
         });
       }
     }
@@ -2441,6 +2478,20 @@ app.post('/api/automation/rule/delete', async (req, res) => {
     }
     
     const ruleId = ruleName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    
+    // Check if this is the active rule, if so, set flag to clear segments
+    const state = await getUserAutomationState(req.user.uid);
+    if (state && state.activeRule === ruleId) {
+      console.log(`[Rule Delete] Deleted rule was active - setting clearSegmentsOnNextCycle flag`);
+      await saveUserAutomationState(req.user.uid, {
+        activeRule: null,
+        activeRuleName: null,
+        activeSegment: null,
+        activeSegmentEnabled: false,
+        clearSegmentsOnNextCycle: true  // Flag for cycle to clear segments immediately
+      });
+    }
+    
     await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).delete();
     res.json({ errno: 0, result: { deleted: ruleName } });
   } catch (error) {

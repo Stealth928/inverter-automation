@@ -34,6 +34,9 @@ See [docs/SETUP.md](docs/SETUP.md) for detailed setup instructions.
 | [docs/API.md](docs/API.md) | **API reference** - all endpoints and parameters |
 | [docs/SETUP.md](docs/SETUP.md) | **Setup guide** - deployment and configuration |
 | [docs/FOXESS_SCHEDULER_REORDERING.md](docs/FOXESS_SCHEDULER_REORDERING.md) | FoxESS API quirks and workarounds |
+| [TESTING_GUIDE.md](TESTING_GUIDE.md) | **Testing guide** - 167 automated tests, usage, coverage |
+| [FRONTEND_TESTING_STRATEGY.md](FRONTEND_TESTING_STRATEGY.md) | **Frontend testing** - UI testing strategy with Playwright |
+| [TEST_ENHANCEMENT_SUMMARY.md](TEST_ENHANCEMENT_SUMMARY.md) | **Test summary** - Complete test coverage overview |
 
 ## Architecture
 
@@ -185,6 +188,26 @@ firebase emulators:start --only functions
 # Serve frontend (separate terminal)
 cd frontend && python -m http.server 8000
 ```
+
+### Running Tests
+
+```powershell
+# Run all tests (167 automated tests)
+.\run-tests.ps1
+
+# Run specific test suites
+.\run-tests.ps1 -Type unit          # Unit tests (33 tests)
+.\run-tests.ps1 -Type e2e           # End-to-end tests (34 tests)
+.\run-tests.ps1 -Type auth          # Auth flow tests (40 tests)
+
+# Run with authentication
+.\run-tests.ps1 -Type e2e -AuthToken "your-firebase-id-token"
+
+# Run against production
+.\run-tests.ps1 -Type e2e -Prod -AuthToken "your-token"
+```
+
+See [TESTING_GUIDE.md](TESTING_GUIDE.md) for complete testing documentation.
 
 ### Deployment
 
