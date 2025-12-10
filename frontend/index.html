@@ -4811,12 +4811,28 @@
             
             // Main result section - triggered or not
             if (result.triggered && result.rule) {
-                html += `<span style="color:#7ee787;font-weight:600;font-size:11px">✅ <strong>${result.rule.name || 'Unknown'}</strong>`;
+                // Support both old format (no status) and new format (with status field)
+                const statusIndicator = result.status === 'continuing' ? '⏱️ Continuing'
+                                      : result.status === 'new_trigger' ? '✅ New Trigger'
+                                      : '?';
+                const statusColor = result.status === 'continuing' ? '#79c0ff'
+                                  : result.status === 'new_trigger' ? '#7ee787'
+                                  : '#8b949e';
+                
+                html += `<span style="color:${statusColor};font-weight:600;font-size:11px">${statusIndicator} <strong>${result.rule.name || 'Unknown'}</strong>`;
+                
                 if (result.rule.actionResult) {
                     const ar = result.rule.actionResult;
-                    const statusColor = ar.errno === 0 ? '#7ee787' : '#f85149';
-                    const statusText = ar.errno === 0 ? '✓' : '✗';
-                    html += ` • API ${statusText} (errno=${ar.errno})`;
+                    if (ar.errno === 0) {
+                        html += ` <span style="color:#7ee787">✓ API Continuing</span>`;
+                    } else {
+                        // API FAILED - show prominent error
+                        html += `</span><div style="margin-top:6px;padding:8px;background:rgba(248,81,73,0.15);border:1px solid #f85149;border-radius:4px">`;
+                        html += `<span style="color:#f85149;font-weight:600">❌ API FAILED</span>`;
+                        html += `<span style="color:#f85149;font-size:10px"> • errno=${ar.errno}</span>`;
+                        if (ar.msg) html += `<br><span style="color:#f85149;font-size:10px">${ar.msg}</span>`;
+                        html += `</div><span>`;
+                    }
                 }
                 html += `</span>`;
             } else {
@@ -4828,13 +4844,27 @@
                 html += `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start">`;
                 
                 result.evaluationResults.forEach(er => {
-                    const icon = er.result === 'triggered' ? '✅' : er.result === 'cooldown' ? '⏳' : '❌';
-                    const bgColor = er.result === 'triggered' ? 'rgba(126,231,135,0.1)' : er.result === 'cooldown' ? 'rgba(240,136,62,0.1)' : 'rgba(248,81,73,0.1)';
-                    const borderColor = er.result === 'triggered' ? '#7ee787' : er.result === 'cooldown' ? '#f0883e' : '#f85149';
-                    const textColor = er.result === 'triggered' ? '#7ee787' : er.result === 'cooldown' ? '#f0883e' : '#f85149';
+                    const icon = er.result === 'triggered' ? '✅' : er.result === 'continuing' ? '⏱️' : er.result === 'cooldown' ? '⏳' : '❌';
+                    const bgColor = er.result === 'triggered' ? 'rgba(126,231,135,0.1)' 
+                                  : er.result === 'continuing' ? 'rgba(121,192,255,0.1)'
+                                  : er.result === 'cooldown' ? 'rgba(240,136,62,0.1)' 
+                                  : 'rgba(248,81,73,0.1)';
+                    const borderColor = er.result === 'triggered' ? '#7ee787'
+                                      : er.result === 'continuing' ? '#79c0ff'
+                                      : er.result === 'cooldown' ? '#f0883e'
+                                      : '#f85149';
+                    const textColor = er.result === 'triggered' ? '#7ee787'
+                                    : er.result === 'continuing' ? '#79c0ff'
+                                    : er.result === 'cooldown' ? '#f0883e'
+                                    : '#f85149';
                     
                     html += `<div style="background:${bgColor};border:1px solid ${borderColor};border-radius:3px;padding:4px 6px;display:inline-flex;align-items:center;gap:3px;font-size:10px">`;
                     html += `<span style="color:${textColor};font-weight:600">${icon} ${er.rule}</span>`;
+                    
+                    // Show cooldown info for continuing rules
+                    if (er.result === 'continuing' && er.cooldownRemaining != null) {
+                        html += `<span style="color:#79c0ff;font-size:9px"> • ${Math.ceil(er.cooldownRemaining)}s cooldown</span>`;
+                    }
                     
                     // Show individual condition details inline if available
                     if (er.details?.results && er.details.results.length > 0) {
@@ -5697,7 +5727,18 @@
                     // If a rule was triggered, show a notification
                     if (data.result?.triggered && data.result?.rule) {
                         const ruleName = data.result.rule.name || 'Unknown';
-                        showMessage('success', `🤖 Automation triggered: ${ruleName}`, 5000);
+                        if (data.result.status === 'new_trigger') {
+                            showMessage('success', `🤖 Automation triggered: ${ruleName}`, 5000);
+                        } else if (data.result.status === 'continuing') {
+                            // Check if there are cooldown rules in evaluationResults
+                            const cooldownRules = (data.result.evaluationResults || []).filter(er => er.result === 'cooldown');
+                            if (cooldownRules.length > 0) {
+                                const cooldownNames = cooldownRules.map(cr => cr.rule).join(', ');
+                                showMessage('info', `⏱️ ${ruleName} continuing (${cooldownNames} in cooldown)`, 4000);
+                            } else {
+                                showMessage('info', `✓ ${ruleName} continuing`, 3000);
+                            }
+                        }
                     } else if (data.result?.skipped) {
                         console.log('[Automation] Cycle skipped:', data.result.reason);
                     } else {
@@ -6571,10 +6612,37 @@
                 });
                 const data = await resp.json();
                 if (data.errno === 0) {
-                    loadBackendAutomationStatus();
+                    // Refresh status immediately to show updated state
+                    await loadBackendAutomationStatus();
+                    
+                    // Force an immediate cycle when toggling (to clear segments when disabling,
+                    // or trigger rules when enabling)
+                    console.log(`[Automation] Master switch toggled to ${data.result.enabled ? 'ENABLED' : 'DISABLED'} - triggering immediate cycle`);
+                    try {
+                        const cycleResp = await authenticatedFetch('/api/automation/cycle', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({})
+                        });
+                        const cycleData = await cycleResp.json();
+                        if (cycleData.errno === 0) {
+                            console.log('[Automation] Cycle result:', cycleData.result);
+                            // Refresh status to show updated state
+                            await loadBackendAutomationStatus();
+                            if (data.result.enabled) {
+                                showMessage('success', '✅ Automation enabled', 2000);
+                            } else {
+                                showMessage('success', '🔆 Automation disabled and segments cleared', 3000);
+                            }
+                        }
+                    } catch (cycleError) {
+                        console.error('[Automation] Error running cycle:', cycleError);
+                        showMessage('warning', `Automation ${data.result.enabled ? 'enabled' : 'disabled'} but cycle failed`, 3000);
+                    }
                 }
             } catch (e) {
                 console.error('Failed to toggle backend automation:', e);
+                showMessage('error', 'Failed to toggle automation', 2000);
             }
         }
 
