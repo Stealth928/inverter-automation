@@ -1,8 +1,10 @@
 #!/usr/bin/env pwsh
 # Comprehensive test runner for inverter automation system
 # Usage:
-#   .\run-tests.ps1              # Run all tests
-#   .\run-tests.ps1 -Type unit   # Run only unit tests
+#   .\run-tests.ps1                # Run all tests (backend + frontend)
+#   .\run-tests.ps1 -Type backend  # Run all backend tests
+#   .\run-tests.ps1 -Type frontend # Run Playwright UI tests
+#   .\run-tests.ps1 -Type unit     # Run only unit tests
 #   .\run-tests.ps1 -Type unit -Coverage   # Run unit tests with coverage
 #   .\run-tests.ps1 -Type e2e -Prod -AuthToken "your-token-here"  # E2E with auth
 #   .\run-tests.ps1 -Type integration -Prod  # Run integration tests against prod
@@ -15,7 +17,7 @@
 
 param(
     [Parameter()]
-    [ValidateSet('all', 'unit', 'integration', 'e2e', 'auth')]
+    [ValidateSet('all', 'backend', 'frontend', 'unit', 'integration', 'e2e', 'auth')]
     [string]$Type = 'all',
     
     [Parameter()]
@@ -38,12 +40,31 @@ Write-Host "`n============================================================" -For
 Write-Host " INVERTER AUTOMATION TEST SUITE" -ForegroundColor Cyan
 Write-Host "============================================================`n" -ForegroundColor Cyan
 
-# Change to functions directory
-Push-Location "$PSScriptRoot\functions"
-
 try {
+    # Run frontend tests
+    if ($Type -eq 'all' -or $Type -eq 'frontend') {
+        Write-Host "Running Frontend UI Tests (Playwright)..." -ForegroundColor Yellow
+        Write-Host "------------------------------------------------------------" -ForegroundColor Gray
+        
+        Push-Location $PSScriptRoot
+        npx playwright test
+        Pop-Location
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "`nFrontend tests FAILED" -ForegroundColor Red
+            $testsFailed = $true
+        } else {
+            Write-Host "`nFrontend tests PASSED" -ForegroundColor Green
+        }
+        
+        Write-Host ""
+    }
+
+    # Change to functions directory for backend tests
+    Push-Location "$PSScriptRoot\functions"
+
     # Run unit tests
-    if ($Type -eq 'all' -or $Type -eq 'unit') {
+    if ($Type -eq 'all' -or $Type -eq 'backend' -or $Type -eq 'unit') {
         Write-Host "Running Unit Tests..." -ForegroundColor Yellow
         Write-Host "------------------------------------------------------------" -ForegroundColor Gray
         
@@ -64,7 +85,7 @@ try {
     }
     
     # Run E2E tests
-    if ($Type -eq 'all' -or $Type -eq 'e2e') {
+    if ($Type -eq 'all' -or $Type -eq 'backend' -or $Type -eq 'e2e') {
         Write-Host "Running E2E Tests..." -ForegroundColor Yellow
         Write-Host "------------------------------------------------------------" -ForegroundColor Gray
         
@@ -118,7 +139,7 @@ try {
     }
     
     # Run integration tests
-    if ($Type -eq 'all' -or $Type -eq 'integration') {
+    if ($Type -eq 'all' -or $Type -eq 'backend' -or $Type -eq 'integration') {
         Write-Host "Running Integration Tests..." -ForegroundColor Yellow
         Write-Host "------------------------------------------------------------" -ForegroundColor Gray
         

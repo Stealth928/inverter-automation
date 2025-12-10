@@ -23,5 +23,11 @@ tmp_docker_check/
 # Firebase cache and deployment artifacts
 .firebase/
 
+# Test artifacts and reports
+playwright-report/
+test-results/
+coverage/
+.playwright/
+
 # Archived/deprecated files
 archive/

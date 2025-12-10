@@ -4,13 +4,12 @@
 
 This repository includes extensive automated tests covering all critical functionality:
 
-- **Unit Tests**: 33 tests for automation logic
-- **Edge Case Tests**: 45+ tests for complex scenarios
-- **Integration Tests**: 15 tests for API availability
-- **E2E Tests**: 34 tests covering all 48 API endpoints
-- **Auth Flow Tests**: 40+ tests for authentication workflows
+- **Unit Tests (Jest)**: 90 tests for automation logic, edge cases, and auth flows
+- **Frontend Tests (Playwright)**: 145 UI tests across all pages
+- **Integration Tests**: API endpoint availability checks
+- **E2E Tests**: Comprehensive tests covering all API endpoints
 
-**Total: 167+ automated tests**
+**Total: 235+ automated tests**
 
 ---
 
@@ -226,16 +225,41 @@ TEST_ENV=prod TEST_AUTH_TOKEN="your-token" node functions/e2e-tests.js
 - Session handling
 - Protected endpoints
 
-### ⚠️ Partially Covered
+### ✅ Frontend (UI Tests)
 
-**Frontend Pages**:
-- No UI testing framework implemented yet
-- Backend APIs thoroughly tested
-- Recommendation: Add Playwright or Cypress tests
+**Framework**: Playwright  
+**Location**: `tests/frontend/*.spec.js`  
+**Coverage**: All HTML pages and user interactions
 
-**Visual Regression**:
-- No screenshot comparison
-- Manual testing required for UI changes
+```bash
+# Run all frontend tests
+npx playwright test
+
+# Run specific page tests
+npx playwright test tests/frontend/control.spec.js
+
+# Show test report
+npx playwright show-report
+```
+
+**What's Covered**:
+- Page navigation and routing
+- Form validation and submission
+- Button states and interactions
+- Responsive layout across viewports
+- Error handling and messages
+- Authentication flows
+- Data display and updates
+
+**145 tests** across 8 pages:
+- Dashboard (index.html)
+- Control panel (control.html)
+- History viewer (history.html)
+- Settings page (settings.html)
+- Setup wizard (setup.html)
+- Test lab (test.html)
+- Login page (login.html)
+- Password reset (reset-password.html)
 
 ---
 
@@ -456,23 +480,26 @@ npm --prefix functions test -- auth-flows.test.js
 ## Quick Reference
 
 ```bash
-# Full test suite
-.\run-tests.ps1
-
-# Quick unit test check
+# Backend unit tests (Jest)
 npm --prefix functions test
 
-# Full E2E with auth
-.\run-tests.ps1 -Type e2e -AuthToken "your-token"
+# Frontend UI tests (Playwright)
+npx playwright test
 
-# Production smoke test
-.\run-tests.ps1 -Type e2e -Prod -AuthToken "your-token"
+# Backend E2E tests
+node functions/e2e-tests.js
 
-# Coverage report
-.\run-tests.ps1 -Type unit -Coverage
+# Backend integration tests
+node functions/integration-test.js
 
-# Auth flow verification
-.\run-tests.ps1 -Type auth
+# All tests with PowerShell runner
+.\run-tests.ps1
+
+# With coverage
+npm --prefix functions test -- --coverage
+
+# Show Playwright report
+npx playwright show-report
 ```
 
 ---
@@ -481,6 +508,6 @@ npm --prefix functions test
 
 For issues or questions:
 1. Check test output for specific error messages
-2. Review `TEST_ENVIRONMENTS.md` for environment details
-3. Review `TEST_SUITE_SUMMARY.md` for test inventory
-4. Check Firebase emulator logs at `http://localhost:4000`
+2. Review repository documentation in `docs/` folder
+3. Check Firebase emulator logs at `http://localhost:4000`
+4. See `playwright-report/` for detailed frontend test results
