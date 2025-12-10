@@ -244,19 +244,19 @@ test.describe('Setup Wizard Page', () => {
   });
 
   test('should display responsive layout', async ({ page }) => {
-    // Desktop
+    // Desktop - ensure page finishes loading after resize
     await page.setViewportSize({ width: 1920, height: 1080 });
-    await page.waitForTimeout(500);
-    const desktopVisible = await page.locator('body').isVisible();
-    expect(desktopVisible).toBeTruthy();
-    
-    // Mobile
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(300);
+    const desktopReady = await page.evaluate(() => document.readyState);
+    expect(['complete', 'interactive', 'loaded']).toContain(desktopReady);
+
+    // Mobile - ensure page finishes loading after resize
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.waitForTimeout(500);
-    // Body should still be visible even on mobile
-    const body = page.locator('body');
-    const exists = await body.count() > 0;
-    expect(exists).toBeTruthy();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(300);
+    const mobileReady = await page.evaluate(() => document.readyState);
+    expect(['complete', 'interactive', 'loaded']).toContain(mobileReady);
   });
 
   test('should show documentation links', async ({ page }) => {

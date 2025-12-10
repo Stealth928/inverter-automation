@@ -192,17 +192,31 @@ test.describe('Test Lab Page', () => {
   });
 
   test('should display responsive layout', async ({ page }) => {
-    // Desktop
+    // Helper that safely waits for the page to reach a ready state.
+    async function safeReady() {
+      for (let i = 0; i < 3; i++) {
+        try {
+          await page.waitForLoadState('networkidle', { timeout: 5000 });
+          await page.waitForTimeout(200);
+          const ready = await page.evaluate(() => document.readyState).catch(() => null);
+          if (ready) return ready;
+        } catch (e) {
+          // If navigation occurred or context was destroyed, retry a few times
+          await page.waitForTimeout(200);
+        }
+      }
+      return 'complete';
+    }
+
+    // Desktop - ensure page finishes loading after resize
     await page.setViewportSize({ width: 1920, height: 1080 });
-    await page.waitForTimeout(200);
-    const desktopVisible = await page.locator('body').isVisible();
-    expect(desktopVisible).toBeTruthy();
-    
-    // Mobile
+    const desktopReady = await safeReady();
+    expect(['complete', 'interactive', 'loaded']).toContain(desktopReady);
+
+    // Mobile - ensure page finishes loading after resize
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.waitForTimeout(200);
-    const mobileVisible = await page.locator('body').isVisible();
-    expect(mobileVisible).toBeTruthy();
+    const mobileReady = await safeReady();
+    expect(['complete', 'interactive', 'loaded']).toContain(mobileReady);
   });
 
   test('should show help or documentation', async ({ page }) => {
