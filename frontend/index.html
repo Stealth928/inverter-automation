@@ -1948,6 +1948,14 @@
             // Ensure the toggle button remains clickable; keep pointer events enabled
             try {
                 const tbtn = document.getElementById('automationToggleBtn');
+        }
+
+        function dismissWeatherMismatch(key) {
+            try {
+                localStorage.setItem('weatherLocationMismatch:' + key, String(Date.now()));
+            } catch (e) { /* ignore storage errors */ }
+            const el = document.getElementById('weather-mismatch-banner-' + key);
+            if (el && el.remove) el.remove();
                 if (tbtn) tbtn.style.pointerEvents = 'auto';
             } catch (e) { /* ignore */ }
         }
@@ -3149,6 +3157,13 @@
                 const reasonText = (place.fallbackReason || 'unknown').replace(/_/g,' ');
                 headerTooltip = ` <span class="info-tip" title="Using fallback coordinates: ${reasonText}">ⓘ</span>`;
             }
+            // Check if requested location differs from resolved location (case-insensitive)
+            const requestedNorm = (place.query || '').toString().trim().toLowerCase();
+            const resolvedNorm = (locName || '').toString().trim().toLowerCase();
+            const locationMismatch = requestedNorm && resolvedNorm && requestedNorm !== resolvedNorm;
+            if (locationMismatch) {
+                headerTooltip += ` <span class="info-tip" title="Requested: ${place.query}, Resolved: ${locName}">⚠️</span>`;
+            }
             let html = `<div style="font-weight:600;color:#58a6ff;margin-bottom:6px">${locName || 'Unknown location'}${headerTooltip}</div>`;
             if (locExtra) html += `<div style="font-size:12px;color:#8b949e;margin-bottom:8px">${locExtra}</div>`;
 
@@ -3164,6 +3179,18 @@
                     html += `<div id="weather-fallback-banner-${locKeyBanner}" style="margin-top:8px;padding:10px;border-radius:8px;background:linear-gradient(90deg,#3b2f00,#5a4300);color:#fff;font-size:13px;display:flex;align-items:center;gap:10px;justify-content:space-between">
                         <div style="flex:1"><strong>⚠️ Location not resolved</strong><span style="opacity:0.9;margin-left:8px">Using fallback coordinates (${reason.replace(/_/g,' ')})</span></div>
                         <div style="flex:0 0 auto;margin-left:12px"><button onclick="dismissWeatherFallback('${locKeyBanner}')" style="background:transparent;border:1px solid rgba(255,255,255,0.12);color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer">Dismiss</button></div>
+                    </div>`;
+                }
+            }
+            // Show warning when requested location doesn't match resolved location
+            if (locationMismatch) {
+                const mismatchKey = 'weatherLocationMismatch:' + locKey;
+                let dismissedMismatch = false;
+                try { dismissedMismatch = !!localStorage.getItem(mismatchKey); } catch (e) { dismissedMismatch = false; }
+                if (!dismissedMismatch) {
+                    html += `<div id="weather-mismatch-banner-${locKey}" style="margin-top:8px;padding:10px;border-radius:8px;background:linear-gradient(90deg,#3d2d1f,#5a4040);color:#fff;font-size:13px;display:flex;align-items:center;gap:10px;justify-content:space-between">
+                        <div style="flex:1"><strong>ℹ️ Location mismatch</strong><span style="opacity:0.9;margin-left:8px">Requested "${place.query}" but resolved to "${locName}"</span></div>
+                        <div style="flex:0 0 auto;margin-left:12px"><button onclick="dismissWeatherMismatch('${locKey}')" style="background:transparent;border:1px solid rgba(255,255,255,0.12);color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer">Dismiss</button></div>
                     </div>`;
                 }
             }
