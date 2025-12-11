@@ -1,5 +1,5 @@
 /**
- * FoxESS Solar Dashboard - Shared Utilities
+ * FoxESS Automation - Shared Utilities
  * 
  * Common JavaScript functions used across the application.
  */
