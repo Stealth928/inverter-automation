@@ -175,6 +175,7 @@
         const avatarBtn = menu.querySelector('[data-user-avatar]');
         const dropdown = menu.querySelector('[data-user-dropdown]');
         const settingsBtn = menu.querySelector('[data-go-settings]');
+        const contactUsBtn = menu.querySelector('[data-contact-us]');
         const signOutBtn = menu.querySelector('[data-signout]');
 
         if (avatarBtn && dropdown) {
@@ -195,6 +196,12 @@
                 } else {
                     window.location.href = '/settings.html';
                 }
+            });
+        }
+
+        if (contactUsBtn) {
+            contactUsBtn.addEventListener('click', () => {
+                window.location.href = 'mailto:sardanapalos928@hotmail.com';
             });
         }
 
