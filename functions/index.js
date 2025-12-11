@@ -1469,6 +1469,29 @@ app.post('/api/config', async (req, res) => {
   }
 });
 
+// Clear credentials (clear deviceSN, foxessToken, amberApiKey from user config)
+app.post('/api/config/clear-credentials', authenticateUser, async (req, res) => {
+  try {
+    console.log('[API] /api/config/clear-credentials called by user:', req.user.uid);
+
+    const updates = {
+      deviceSn: admin.firestore.FieldValue.delete(),
+      foxessToken: admin.firestore.FieldValue.delete(),
+      amberApiKey: admin.firestore.FieldValue.delete(),
+      setupComplete: false,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    // Update the user's config/main document to clear these fields
+    await db.collection('users').doc(req.user.uid).collection('config').doc('main').update(updates);
+    
+    res.json({ errno: 0, msg: 'Credentials cleared successfully' });
+  } catch (error) {
+    console.error('[API] /api/config/clear-credentials error:', error && error.stack ? error.stack : String(error));
+    res.status(500).json({ errno: 500, error: error.message || String(error) });
+  }
+});
+
 // Get automation state
 app.get('/api/automation/status', async (req, res) => {
   try {
