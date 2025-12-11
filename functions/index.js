@@ -1175,7 +1175,7 @@ async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
     const geoResp = await fetch(geoUrl, { signal: controller.signal });
     const geoJson = await geoResp.json();
     
-    let latitude, longitude, resolvedName, country;
+    let latitude, longitude, resolvedName, country, fallback = false, fallbackReason = '', fallbackResolvedName = '';
     if (geoJson?.results?.length > 0) {
       const g = geoJson.results[0];
       latitude = g.latitude;
@@ -1183,11 +1183,15 @@ async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
       resolvedName = g.name;
       country = g.country;
     } else {
-      // Fallback to Sydney
+      // Fallback to Sydney when geocoding returns no results
+      fallback = true;
+      fallbackReason = 'location_not_found';
+      fallbackResolvedName = 'Sydney NSW';
       latitude = -33.9215;
       longitude = 151.0390;
       resolvedName = place;
       country = 'AU';
+      console.log(`[Weather] Geocoding failed for "${place}" - falling back to Sydney (${latitude}, ${longitude})`);
     }
     
     // Extended hourly variables including solar radiation and cloud cover
@@ -1228,7 +1232,16 @@ async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
       errno: 0,
       result: {
         source: 'open-meteo',
-        place: { query: place, resolvedName, country, latitude, longitude },
+        place: {
+          query: place,
+          resolvedName,
+          country,
+          latitude,
+          longitude,
+          fallback,
+          fallbackReason,
+          fallbackResolvedName
+        },
         current: forecastJson.current_weather || null,
         hourly: forecastJson.hourly || null,
         daily: forecastJson.daily || null,
