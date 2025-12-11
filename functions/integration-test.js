@@ -219,6 +219,12 @@ async function runTests() {
     expect(res.statusCode).toBe(401);
   });
 
+  // Clear credentials endpoint (requires auth)
+  await test('Clear credentials without auth should return 401', async () => {
+    const res = await httpRequest('/api/config/clear-credentials', 'POST', {});
+    expect(res.statusCode).toBe(401);
+  });
+
   // API call metrics
   await test('API metrics endpoint should return 200', async () => {
     const res = await httpRequest('/api/metrics/api-calls?days=1');
