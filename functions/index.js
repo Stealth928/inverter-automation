@@ -1170,18 +1170,23 @@ async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000); // Increased timeout for larger payload
     
-    // Geocode place
-    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=1&language=en`;
+    // Geocode place - request 5 results to prioritize Australian locations
+    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=5&language=en`;
     const geoResp = await fetch(geoUrl, { signal: controller.signal });
     const geoJson = await geoResp.json();
     
     let latitude, longitude, resolvedName, country, fallback = false, fallbackReason = '', fallbackResolvedName = '';
     if (geoJson?.results?.length > 0) {
-      const g = geoJson.results[0];
-      latitude = g.latitude;
-      longitude = g.longitude;
-      resolvedName = g.name;
-      country = g.country;
+      // Prioritize Australian locations, otherwise use the first result
+      const results = geoJson.results;
+      const auResult = results.find(r => r.country_code === 'AU');
+      const selectedResult = auResult || results[0];
+      
+      latitude = selectedResult.latitude;
+      longitude = selectedResult.longitude;
+      resolvedName = selectedResult.name;
+      country = selectedResult.country;
+      console.log(`[Weather] Geocoding for "${place}" resolved to "${resolvedName}, ${country}" (${latitude}, ${longitude})`);
     } else {
       // Fallback to Sydney when geocoding returns no results
       fallback = true;
