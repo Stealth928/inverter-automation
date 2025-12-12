@@ -27,6 +27,16 @@ class FirebaseAuth {
    * Call this once on page load
    */
   async init(config, options = {}) {
+      // Check if Firebase SDK is loaded
+      if (typeof firebase === 'undefined') {
+        console.error('[FirebaseAuth] Firebase SDK not loaded. Check that firebase-app-compat.js is included in the page.');
+        // Enable mock mode as fallback
+        this.mock = true;
+        this.initialized = true;
+        setTimeout(() => this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user)), 0);
+        return;
+      }
+
       // If config is missing or clearly placeholder, enable mock mode only for localhost
       // or when explicitly allowed via options.allowMock.
       const isPlaceholderConfig = !config || !config.apiKey || String(config.apiKey).trim() === '' || String(config.apiKey).startsWith('YOUR_');
@@ -76,19 +86,48 @@ class FirebaseAuth {
 
     try {
       // Initialize Firebase
-      this.app = firebase.initializeApp(config);
+      // Check if Firebase app already exists (prevent "already initialized" errors)
+      let appRef;
+      try {
+        appRef = firebase.app();
+        console.log('[FirebaseAuth] Firebase app already initialized');
+      } catch (e) {
+        // App doesn't exist, initialize it
+        try {
+          appRef = firebase.initializeApp(config);
+          console.log('[FirebaseAuth] Firebase app initialized');
+        } catch (initError) {
+          console.error('[FirebaseAuth] Failed to initialize Firebase app:', initError);
+          throw initError;
+        }
+      }
+      this.app = appRef;
       this.auth = firebase.auth();
       this.db = firebase.firestore();
+      try {
+        firebase.analytics();
+      } catch (analyticsError) {
+        console.warn('[FirebaseAuth] Analytics initialization failed (not critical):', analyticsError);
+      }
 
       // Set persistence to local (survives browser close)
-      await this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      try {
+        await this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      } catch (persistenceError) {
+        console.warn('[FirebaseAuth] Failed to set persistence:', persistenceError);
+      }
 
       // Listen for auth state changes
       this.auth.onAuthStateChanged(async (user) => {
         this.user = user;
         if (user) {
           // Get ID token for API calls
-          this.idToken = await user.getIdToken();
+          try {
+            this.idToken = await user.getIdToken();
+          } catch (tokenError) {
+            console.warn('[FirebaseAuth] Failed to get ID token:', tokenError);
+            this.idToken = null;
+          }
           console.log('[FirebaseAuth] User signed in:', user.email);
         } else {
           this.idToken = null;
@@ -96,14 +135,24 @@ class FirebaseAuth {
         }
 
         // Notify all callbacks
-        this.onAuthStateChangedCallbacks.forEach(cb => cb(user));
+        this.onAuthStateChangedCallbacks.forEach(cb => {
+          try {
+            cb(user);
+          } catch (callbackError) {
+            console.error('[FirebaseAuth] Auth state callback error:', callbackError);
+          }
+        });
       });
 
       // Refresh token periodically (every 50 minutes)
       setInterval(async () => {
         if (this.user) {
-          this.idToken = await this.user.getIdToken(true);
-          console.log('[FirebaseAuth] Token refreshed');
+          try {
+            this.idToken = await this.user.getIdToken(true);
+            console.log('[FirebaseAuth] Token refreshed');
+          } catch (refreshError) {
+            console.warn('[FirebaseAuth] Token refresh failed:', refreshError);
+          }
         }
       }, 50 * 60 * 1000);
 
@@ -111,7 +160,17 @@ class FirebaseAuth {
       console.log('[FirebaseAuth] Initialized successfully');
     } catch (error) {
       console.error('[FirebaseAuth] Initialization error:', error);
-      throw error;
+      // Mark as initialized anyway to prevent blocking the app
+      this.initialized = true;
+      // Fallback to mock auth
+      this.mock = true;
+      setTimeout(() => this.onAuthStateChangedCallbacks.forEach(cb => {
+        try {
+          cb(null);
+        } catch (e) {
+          console.error('[FirebaseAuth] Callback error in fallback:', e);
+        }
+      }), 0);
     }
   }
 

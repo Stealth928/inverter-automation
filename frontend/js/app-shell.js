@@ -308,8 +308,15 @@
                 })
                 .catch((error) => {
                     console.error('[AppShell] Firebase initialization failed', error);
+                    const errorMsg = error?.message || 'Unknown error';
+                    const userMsg = errorMsg.includes('already exists') 
+                        ? 'Firebase initialization issue detected. Please reload the page.'
+                        : errorMsg.includes('network') 
+                        ? 'Network error initializing Firebase. Please check your connection.'
+                        : 'Firebase initialization failed. Check console for details.';
+                    
                     if (typeof showMessage === 'function') {
-                        showMessage('error', 'Firebase initialization failed. Check console for details.');
+                        showMessage('error', userMsg);
                     }
                     resolveReady(getContext());
                     if (!state.initResolved) {
