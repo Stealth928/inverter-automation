@@ -10,8 +10,8 @@ const { test, expect } = require('@playwright/test');
 const EXPECTED_NAV_ORDER = [
   { href: '/', label: 'Overview', emoji: '🏠' },
   { href: '/test.html', label: 'Automation Lab', emoji: '🧪' },
+  { href: '/control.html', label: 'Controls', emoji: '🎮' },
   { href: '/history.html', label: 'History', emoji: '📊' },
-  { href: '/control.html', label: 'Controls', emoji: '🧭' },
   { href: '/settings.html', label: 'Settings', emoji: '⚙️' }
 ];
 
