@@ -1677,7 +1677,55 @@ app.get('/api/automation/status', async (req, res) => {
   }
 });
 
+// Initialize user profile (creates Firestore document if missing)
+app.post('/api/user/init-profile', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    
+    console.log(`[API] Initializing user profile for: ${userId}`);
+    
+    // Create user profile document if it doesn't exist
+    await db.collection('users').doc(userId).set({
+      uid: userId,
+      email: req.user.email || '',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    
+    // Ensure automation state exists and is enabled
+    const stateRef = db.collection('users').doc(userId).collection('automation').doc('state');
+    const stateDoc = await stateRef.get();
+    
+    if (!stateDoc.exists) {
+      // Create default state with automation DISABLED (user must enable it)
+      await stateRef.set({
+        enabled: false,
+        lastCheck: null,
+        lastTriggered: null,
+        activeRule: null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`[API] ✅ Created new automation state for ${userId} with enabled=false`);
+    } else {
+      console.log(`[API] User already initialized, current state: enabled=${stateDoc.data().enabled}`);
+    }
+    
+    res.json({
+      errno: 0,
+      result: {
+        userId,
+        message: 'User profile initialized successfully',
+        automationEnabled: false
+      }
+    });
+  } catch (error) {
+    console.error('[API] Error initializing user:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // Toggle automation
+
 app.post('/api/automation/toggle', async (req, res) => {
   try {
     const { enabled } = req.body;
@@ -4506,10 +4554,8 @@ app.use((req, res) => {
  * 3. If yes: triggers automation cycle by calling the endpoint logic
  * 4. Endpoint handles ALL the work (cache, evaluation, segments, counters)
  */
-exports.runAutomation = functions.pubsub
-  .schedule('every 1 minutes')  // Check frequency - actual cycle timing controlled by intervalMs
-  .timeZone('Australia/Sydney')
-  .onRun(async (_context) => {
+exports.runAutomation = functions.scheduler
+  .onSchedule('every 1 minutes', async (_context) => {
     const schedulerStartTime = Date.now();
     const schedId = `${schedulerStartTime}_${Math.random().toString(36).substr(2, 9)}`;
     
@@ -4526,7 +4572,15 @@ exports.runAutomation = functions.pubsub
       const usersSnapshot = await db.collection('users').get();
       const totalUsers = usersSnapshot.size;
       
-      console.log(`[Scheduler] Found ${totalUsers} users`);
+      console.log(`[Scheduler] Found ${totalUsers} user(s)`);
+      
+      // Log the user IDs being processed (critical for diagnosis)
+      if (totalUsers > 0) {
+        const userIds = usersSnapshot.docs.map(d => d.id);
+        userIds.forEach((uid, idx) => {
+          console.log(`[Scheduler] User[${idx}]: ${uid}`);
+        });
+      }
       
       if (totalUsers === 0) {
         console.log(`[Scheduler] No users to check`);

@@ -84,6 +84,20 @@
             
             const client = window.apiClient || await waitForAPIClient(4000);
             
+            // Initialize user profile in Firestore (creates document and automation state if missing)
+            try {
+              console.log('[AppShell] Initializing user profile...');
+              const initResp = await client.fetch('/api/user/init-profile', { method: 'POST' });
+              const initData = await initResp.json();
+              if (initData.errno === 0) {
+                console.log('[AppShell] ✅ User profile initialized:', initData.result);
+              } else {
+                console.warn('[AppShell] User profile init returned error:', initData.error);
+              }
+            } catch (initErr) {
+              console.warn('[AppShell] User profile initialization failed:', initErr && initErr.message ? initErr.message : initErr);
+            }
+            
             // Ensure we have a fresh token before calling setup-status
             if (window.firebaseAuth) {
                 try {
