@@ -463,9 +463,9 @@ describe('Automation System Tests', () => {
   describe('Edge Cases', () => {
     test('should handle missing state gracefully', async () => {
       const state = null;
-      const enabled = state?.enabled ?? true; // Default to enabled
+      const enabled = state?.enabled ?? false; // Default to disabled
       
-      expect(enabled).toBe(true);
+      expect(enabled).toBe(false);
     });
 
     test('should handle missing config gracefully', async () => {

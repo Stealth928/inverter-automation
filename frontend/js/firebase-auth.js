@@ -284,6 +284,13 @@ class FirebaseAuth {
    * Sign out
    */
   async signOut() {
+    // Clear idle timeout interval to prevent duplicate checks after logout
+    if (this.idleTimeoutCheckInterval) {
+      clearInterval(this.idleTimeoutCheckInterval);
+      this.idleTimeoutCheckInterval = null;
+      console.log('[FirebaseAuth] Cleared idle timeout interval');
+    }
+
     // Clear sensitive data from localStorage
     try {
       localStorage.removeItem('automationRules');
@@ -304,6 +311,9 @@ class FirebaseAuth {
     }
     try {
       await this.auth.signOut();
+      // Explicitly set user to null to ensure idle check stops
+      this.user = null;
+      this.idToken = null;
       console.log('[FirebaseAuth] Sign out successful');
       return { success: true };
     } catch (error) {
@@ -331,18 +341,34 @@ class FirebaseAuth {
 
     // Check for idle timeout every 3 minutes
     this.idleTimeoutCheckInterval = setInterval(async () => {
-      if (this.user) {
-        const idleTime = Date.now() - this.lastActivityTime;
-        
-        if (idleTime > this.IDLE_TIMEOUT_MS) {
-          console.warn(`[FirebaseAuth] Session idle for ${Math.round(idleTime / 1000 / 60)} minutes - logging out`);
-          await this.signOut();
+      try {
+        if (this.user) {
+          const idleTime = Date.now() - this.lastActivityTime;
           
-          // Redirect to login
-          if (typeof window !== 'undefined' && window.location) {
-            window.location.href = '/login.html';
+          if (idleTime > this.IDLE_TIMEOUT_MS) {
+            console.warn(`[FirebaseAuth] Session idle for ${Math.round(idleTime / 1000 / 60)} minutes - logging out`);
+            // Clear interval before signing out to prevent duplicate execution
+            if (this.idleTimeoutCheckInterval) {
+              clearInterval(this.idleTimeoutCheckInterval);
+              this.idleTimeoutCheckInterval = null;
+            }
+            await this.signOut();
+            
+            // Redirect to login
+            if (typeof window !== 'undefined' && window.location) {
+              console.log('[FirebaseAuth] Redirecting to login page');
+              window.location.href = '/login.html';
+            }
+          }
+        } else {
+          // User is null, stop checking
+          if (this.idleTimeoutCheckInterval) {
+            clearInterval(this.idleTimeoutCheckInterval);
+            this.idleTimeoutCheckInterval = null;
           }
         }
+      } catch (error) {
+        console.error('[FirebaseAuth] Error in idle timeout check:', error);
       }
     }, 3 * 60 * 1000); // Check every 3 minutes (180 seconds)
   }

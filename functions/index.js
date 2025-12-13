@@ -1504,10 +1504,13 @@ async function getUserAutomationState(userId) {
   try {
     const stateDoc = await db.collection('users').doc(userId).collection('automation').doc('state').get();
     if (stateDoc.exists) {
-      return stateDoc.data();
+      const data = stateDoc.data();
+      console.log(`[State] User ${userId}: Found state document - enabled=${data.enabled} (type: ${typeof data.enabled})`);
+      return data;
     }
+    console.log(`[State] User ${userId}: No state document found - returning default with enabled=false`);
     return {
-      enabled: true,
+      enabled: false,
       lastCheck: null,
       lastTriggered: null,
       activeRule: null
@@ -3265,6 +3268,7 @@ async function incrementApiCount(userId, apiType) {
 
   // Only update per-user metrics when we have a valid userId
   if (userId) {
+    console.log(`[Metrics] Incrementing ${apiType} counter for user ${userId} on ${today}`);
     const docRef = db.collection('users').doc(userId).collection('metrics').doc(today);
     try {
       await db.runTransaction(async (transaction) => {
@@ -3273,6 +3277,7 @@ async function incrementApiCount(userId, apiType) {
         data[apiType] = (data[apiType] || 0) + 1;
         data.updatedAt = admin.firestore.FieldValue.serverTimestamp();
         transaction.set(docRef, data, { merge: true });
+        console.log(`[Metrics] ✓ Incremented ${apiType} to ${data[apiType]}`);
       });
     } catch (error) {
       console.error('Error incrementing API count:', error);
@@ -4600,11 +4605,16 @@ exports.runAutomation = functions.scheduler
           // Get user automation state
           const state = await getUserAutomationState(userId);
           
-          // Skip if automation disabled
-          if (state?.enabled === false) {
+          // Skip if automation disabled or state.enabled is explicitly false or undefined
+          // This handles both disabled users and corrupted state documents
+          if (!state || state?.enabled !== true) {
+            console.log(`[Scheduler] User ${userId}: ✓ Skipping (automation disabled or undefined: enabled=${state?.enabled})`);
             skippedDisabled++;
             continue;
           }
+          
+          // If we got here, automation is explicitly enabled (enabled === true)
+          console.log(`[Scheduler] User ${userId}: ⚙️ Will run (automation enabled: enabled=${state.enabled})`);
           
           // Get user config
           const userConfig = await getUserConfig(userId);
