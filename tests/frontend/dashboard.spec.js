@@ -9,17 +9,38 @@ const { test, expect } = require('@playwright/test');
 test.describe('Dashboard Page', () => {
   
   test.beforeEach(async ({ page }) => {
-    // Mock Firebase auth for testing without real login
+    // Provide a full mock of window.firebaseAuth so app initializes as authenticated
     await page.addInitScript(() => {
-      window.mockFirebaseAuth = {
-        currentUser: {
+      // Minimal mock implementing the methods used by the app
+      window.firebaseAuth = {
+        mockUser: {
           uid: 'test-user-123',
           email: 'test@example.com',
-          getIdToken: () => Promise.resolve('mock-token')
-        }
+          displayName: 'Test User',
+          getIdToken: async () => 'mock-token'
+        },
+        initialized: false,
+        init: async function (config, options) {
+          this.initialized = true;
+          // simulate attaching current user
+          this.user = this.mockUser;
+          return;
+        },
+        onAuthStateChanged: function (cb) {
+          // call callback synchronously with the mock user to avoid redirect race
+          try { cb(this.user); } catch (e) { setTimeout(() => { try { cb(this.user); } catch (_) {} }, 0); }
+        },
+        // Provide an `auth` marker for code that checks for firebaseAuth.auth
+        auth: true,
+        getIdToken: async function (force) { return this.user ? this.user.getIdToken() : null; },
+        signOut: async function () { this.user = null; }
       };
+        // Prevent AppShell from redirecting during tests
+        window.safeRedirect = function (target) { console.log('[Test] suppressed redirect to', target); };
+        // Also neutralize location.assign to avoid accidental navigations
+        window.location.assign = function (url) { console.log('[Test] suppressed location.assign to', url); };
     });
-    
+
     await page.goto('/index.html');
   });
 

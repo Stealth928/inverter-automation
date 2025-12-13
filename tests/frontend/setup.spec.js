@@ -9,7 +9,7 @@ const { test, expect } = require('@playwright/test');
 test.describe('Setup Wizard Page', () => {
   
   test.beforeEach(async ({ page }) => {
-    // Mock Firebase auth for authenticated setup
+    // Mock Firebase auth for authenticated setup and prevent redirects
     await page.addInitScript(() => {
       window.mockFirebaseAuth = {
         currentUser: {
@@ -18,8 +18,10 @@ test.describe('Setup Wizard Page', () => {
           getIdToken: () => Promise.resolve('mock-token')
         }
       };
+      // Prevent AppShell safeRedirect from navigating away during tests
+      window.safeRedirect = function (target) { console.log('[Test] suppressed redirect to', target); };
     });
-    
+
     await page.goto('/setup.html');
   });
 
