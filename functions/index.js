@@ -2029,10 +2029,10 @@ app.post('/api/automation/cycle', async (req, res) => {
     // Fetch Amber data (with forecast for next 288 intervals = 24 hours, Amber provides up to ~48hrs)
     if (userConfig?.amberApiKey) {
       try {
-        const sites = await callAmberAPI('/sites', {}, userConfig);
+        const sites = await callAmberAPI('/sites', {}, userConfig, userId);
         if (Array.isArray(sites) && sites.length > 0) {
           const siteId = userConfig.amberSiteId || sites[0].id;
-          amberData = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig);
+          amberData = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig, userId);
           console.log(`[Automation] Amber data fetched: ${Array.isArray(amberData) ? amberData.length : 0} intervals`);
           if (Array.isArray(amberData) && amberData.length > 0) {
             const forecastCount = amberData.filter(p => p.type === 'ForecastInterval').length;
