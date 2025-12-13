@@ -610,11 +610,13 @@ app.get('/api/amber/prices', async (req, res) => {
 
 // Metrics (platform global or per-user). Allow unauthenticated callers to read global metrics by default.
 app.get('/api/metrics/api-calls', async (req, res) => {
+  // Parse days outside try block so it's available in catch
+  const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
+  
   try {
     // Attach optional user (don't require auth globally here)
     await tryAttachUser(req);
 
-    const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
     const scope = String(req.query.scope || 'global');
 
     if (!db) {
@@ -4485,3 +4487,159 @@ async function setHistoryToCacheFirestore(userId, sn, begin, end, data) {
 app.use((req, res) => {
   res.status(404).json({ errno: 404, error: 'Endpoint not found' });
 });
+// ==================== CLOUD SCHEDULER: BACKGROUND AUTOMATION ====================
+/**
+ * Cloud Scheduler trigger: Orchestrates background automation for all users.
+ * 
+ * RESPECTS ALL BACKEND CONFIGURATION:
+ * ✅ Uses getConfig().automation.intervalMs for cycle frequency (default 60000ms)
+ * ✅ Uses getConfig().automation.cacheTtl for all API cache TTL
+ * ✅ Respects per-user config: automation.intervalMs, automation.inverterCacheTtlMs
+ * ✅ Checks lastCheck timestamp - only runs cycle if enough time elapsed
+ * ✅ Uses existing cache functions: getCachedInverterData, getCachedWeatherData, callAmberAPI
+ * ✅ Reuses POST /api/automation/cycle endpoint logic - zero duplication
+ * ✅ Respects blackout windows, enabled state, all rule conditions
+ * 
+ * HOW IT WORKS:
+ * 1. Runs every 1 minute (Cloud Scheduler frequency - can be more frequent than user cycles)
+ * 2. For each user: checks if (now - lastCheck) >= userIntervalMs
+ * 3. If yes: triggers automation cycle by calling the endpoint logic
+ * 4. Endpoint handles ALL the work (cache, evaluation, segments, counters)
+ */
+exports.runAutomation = functions.pubsub
+  .schedule('every 1 minutes')  // Check frequency - actual cycle timing controlled by intervalMs
+  .timeZone('Australia/Sydney')
+  .onRun(async (_context) => {
+    const schedulerStartTime = Date.now();
+    const schedId = `${schedulerStartTime}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    console.log(`[Scheduler] ========== Background check ${schedId} START ==========`);
+    
+    try {
+      // Get server config for default interval
+      const serverConfig = getConfig();
+      const defaultIntervalMs = serverConfig.automation.intervalMs; // Respects backend config!
+      
+      console.log(`[Scheduler] Config: defaultIntervalMs=${defaultIntervalMs}ms, cacheTTL=${JSON.stringify(serverConfig.automation.cacheTtl)}`);
+      
+      // Get all users
+      const usersSnapshot = await db.collection('users').get();
+      const totalUsers = usersSnapshot.size;
+      
+      console.log(`[Scheduler] Found ${totalUsers} users`);
+      
+      if (totalUsers === 0) {
+        console.log(`[Scheduler] No users to check`);
+        return null;
+      }
+      
+      let cyclesRun = 0;
+      let skippedTooSoon = 0;
+      let skippedDisabled = 0;
+      let errors = 0;
+      
+      // Check each user to see if they need a cycle
+      for (const userDoc of usersSnapshot.docs) {
+        const userId = userDoc.id;
+        
+        try {
+          // Get user automation state
+          const state = await getUserAutomationState(userId);
+          
+          // Skip if automation disabled
+          if (state?.enabled === false) {
+            skippedDisabled++;
+            continue;
+          }
+          
+          // Get user config
+          const userConfig = await getUserConfig(userId);
+          
+          // Skip if no device configured
+          if (!userConfig?.deviceSn) {
+            skippedDisabled++;
+            continue;
+          }
+          
+          // Determine interval for this user (per-user config overrides default)
+          const userIntervalMs = userConfig?.automation?.intervalMs || defaultIntervalMs;
+          
+          // Check if enough time elapsed since last cycle
+          const lastCheck = state?.lastCheck || 0;
+          const elapsed = Date.now() - lastCheck;
+          
+          if (elapsed < userIntervalMs) {
+            // Too soon - skip this user
+            skippedTooSoon++;
+            continue;
+          }
+          
+          // Time to run a cycle for this user!
+          console.log(`[Scheduler] User ${userId}: Triggering cycle (elapsed=${elapsed}ms, interval=${userIntervalMs}ms)`);
+          
+          // Create mock request/response to call the existing endpoint
+          const mockReq = {
+            user: { uid: userId },
+            body: {},
+            headers: {},
+            get: () => null
+          };
+          
+          let cycleResult = null;
+          const mockRes = {
+            json: (data) => {
+              cycleResult = data;
+              return mockRes;
+            },
+            status: () => mockRes,
+            send: () => mockRes
+          };
+          
+          // Find and call the /api/automation/cycle route handler
+          const route = app._router.stack.find(layer => 
+            layer.route && 
+            layer.route.path === '/api/automation/cycle' && 
+            layer.route.methods.post
+          );
+          
+          if (route && route.route.stack[0]) {
+            await route.route.stack[0].handle(mockReq, mockRes);
+            
+            if (cycleResult) {
+              cyclesRun++;
+              if (cycleResult.errno === 0) {
+                const r = cycleResult.result;
+                if (r?.triggered) {
+                  console.log(`[Scheduler] User ${userId}: ✅ Rule '${r.rule?.name}' triggered`);
+                } else if (r?.skipped) {
+                  console.log(`[Scheduler] User ${userId}: ⏭️ Skipped: ${r.reason}`);
+                } else {
+                  console.log(`[Scheduler] User ${userId}: ✅ No rules matched`);
+                }
+              } else {
+                errors++;
+                console.error(`[Scheduler] User ${userId}: ❌ Error: ${cycleResult.error}`);
+              }
+            }
+          } else {
+            console.error(`[Scheduler] User ${userId}: ❌ Route /api/automation/cycle not found!`);
+            errors++;
+          }
+          
+        } catch (userErr) {
+          errors++;
+          console.error(`[Scheduler] User ${userId}: Exception: ${userErr.message}`);
+        }
+      }
+      
+      const duration = Date.now() - schedulerStartTime;
+      console.log(`[Scheduler] ========== Background check ${schedId} COMPLETE ==========`);
+      console.log(`[Scheduler] ${totalUsers} users: ${cyclesRun} cycles, ${skippedTooSoon} too soon, ${skippedDisabled} disabled, ${errors} errors (${duration}ms)`);
+      
+      return null;
+      
+    } catch (fatal) {
+      console.error(`[Scheduler] FATAL:`, fatal);
+      throw fatal;
+    }
+  });

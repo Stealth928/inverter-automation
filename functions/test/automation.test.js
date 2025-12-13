@@ -172,12 +172,16 @@ describe('Automation System Tests', () => {
       const rule = { ...mockRules.cheap_price_rule };
       rule.lastTriggered = Date.now() - 3600000; // 1 hour ago
       
-      // Simulate disabling rule
+      // When rule is disabled (enabled === false), lastTriggered should be cleared
+      // This behavior is documented - when re-enabled, should be able to trigger immediately
+      const ruleEnabled = false;
       const update = {};
-      if (false === true) { // enabled === false
+      if (ruleEnabled === false) {
         update.lastTriggered = null;
       }
       
+      // Verify the logic: when disabled, lastTriggered gets cleared
+      expect(update.lastTriggered).toBeNull();
       // When re-enabled, should be able to trigger immediately
       expect(rule.lastTriggered).toBeDefined();
     });

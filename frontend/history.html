@@ -1319,7 +1319,7 @@
                 rangeDays 
             });
             if (rangeDays > maxRangeDays) {
-                return { valid: false, error: `Maximum range is ${maxRangeDays} days (you selected ${rangeDays} days). Amber API will be queried in 14-day chunks.` };
+                return { valid: false, error: `Maximum range is ${maxRangeDays} days (you selected ${rangeDays} days). Please narrow the date range.` };
             }
 
             // Warn if range is large (>30 days = multiple chunks)
@@ -1345,7 +1345,11 @@
             const validation = validatePriceDateRange();
             if (!validation.valid) {
                 status.className = 'status error';
+                status.style.display = 'block';
                 status.textContent = `✗ ${validation.error}`;
+                console.log('[Prices] Validation failed:', validation.error);
+                btn.disabled = false;
+                btn.innerHTML = '📈 Fetch Prices';
                 return;
             }
 
@@ -1356,6 +1360,7 @@
             btn.disabled = true;
             btn.innerHTML = '⏳ Loading prices...';
             status.className = 'status loading';
+            status.style.display = 'block';
             status.textContent = '⏳ Fetching historical prices...';
             statsContainer.style.display = 'none';
             content.innerHTML = '';
