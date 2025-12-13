@@ -2032,7 +2032,16 @@ app.post('/api/automation/cycle', async (req, res) => {
     // Fetch Amber data (with forecast for next 288 intervals = 24 hours, Amber provides up to ~48hrs)
     if (userConfig?.amberApiKey) {
       try {
-        const sites = await callAmberAPI('/sites', {}, userConfig, userId);
+        // Try cache first to avoid duplicate API call
+        let sites = await getCachedAmberSites(userId);
+        if (!sites) {
+          console.log(`[Automation] Sites cache miss for ${userId}, calling API`);
+          sites = await callAmberAPI('/sites', {}, userConfig, userId);
+          if (Array.isArray(sites) && sites.length > 0) {
+            await cacheAmberSites(userId, sites);
+          }
+        }
+        
         if (Array.isArray(sites) && sites.length > 0) {
           const siteId = userConfig.amberSiteId || sites[0].id;
           amberData = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig, userId);
