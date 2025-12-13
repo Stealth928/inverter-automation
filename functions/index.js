@@ -860,14 +860,14 @@ async function cacheAmberSites(userId, sites) {
 /**
  * Get cached current Amber prices from Firestore.
  * Per-user cache stored at users/{userId}/cache/amber_current_{siteId}
- * TTL: 5 minutes (prices update every 5 mins in Australia)
+ * TTL: Configurable via config.automation.cacheTtl.amber (default: 60 seconds)
  */
 async function getCachedAmberPricesCurrent(siteId, userId) {
   try {
     if (!userId || !siteId) return null;
     
-    const cacheRef = db.collection('users').doc(userId).collection('cache').doc('amber_current_' + siteId);
-    const snap = await cacheRef.get();
+    const cacheDoc = db.collection('users').doc(userId).collection('cache').doc('amber_current_' + siteId);
+    const snap = await cacheDoc.get();
     
     if (!snap.exists) {
       console.log(`[Cache] No current prices cache found for user ${userId}, site ${siteId}`);
@@ -876,14 +876,14 @@ async function getCachedAmberPricesCurrent(siteId, userId) {
     
     const cached = snap.data();
     const cacheAge = Date.now() - (cached.cachedAt?.toMillis?.() || 0);
-    const cacheTTL = 5 * 60 * 1000; // 5 minutes
+    const cacheTTL = getConfig().automation.cacheTtl.amber;
     
     if (cacheAge > cacheTTL) {
-      console.log(`[Cache] Current prices cache expired for user ${userId}, site ${siteId} (age: ${Math.round(cacheAge / 1000)}s)`);
+      console.log(`[Cache] Current prices cache expired for user ${userId}, site ${siteId} (age: ${Math.round(cacheAge / 1000)}s, TTL: ${Math.round(cacheTTL / 1000)}s)`);
       return null;
     }
     
-    console.log(`[Cache] Using cached current prices for user ${userId}, site ${siteId} (age: ${Math.round(cacheAge / 1000)}s, ${cached.prices?.length || 0} intervals)`);
+    console.log(`[Cache] Using cached current prices for user ${userId}, site ${siteId} (age: ${Math.round(cacheAge / 1000)}s, TTL: ${Math.round(cacheTTL / 1000)}s, ${cached.prices?.length || 0} intervals)`);
     return cached.prices || null;
   } catch (error) {
     console.warn(`[Cache] Error reading current prices for user ${userId}, site ${siteId}:`, error.message);
@@ -894,19 +894,20 @@ async function getCachedAmberPricesCurrent(siteId, userId) {
 /**
  * Store cached current Amber prices in Firestore.
  * Per-user cache stored at users/{userId}/cache/amber_current_{siteId}
- * TTL: 5 minutes
+ * TTL: Configurable via config.automation.cacheTtl.amber (default: 60 seconds)
  */
 async function cacheAmberPricesCurrent(siteId, prices, userId) {
   try {
     if (!userId || !siteId || !prices) return;
     
-    const cacheRef = db.collection('users').doc(userId).collection('cache').doc('amber_current_' + siteId);
-    await cacheRef.set({
+    const cacheDoc = db.collection('users').doc(userId).collection('cache').doc('amber_current_' + siteId);
+    await cacheDoc.set({
       siteId,
       prices,
       cachedAt: admin.firestore.FieldValue.serverTimestamp()
     });
-    console.log(`[Cache] Stored ${prices.length} current prices in cache for user ${userId}, site ${siteId}`);
+    const ttl = getConfig().automation.cacheTtl.amber;
+    console.log(`[Cache] Stored ${prices.length} current prices in cache for user ${userId}, site ${siteId} (TTL: ${Math.round(ttl / 1000)}s)`);
   } catch (error) {
     console.warn(`[Cache] Error caching current prices for user ${userId}, site ${siteId}:`, error.message);
   }
