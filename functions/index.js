@@ -521,7 +521,15 @@ app.get('/api/amber/prices/current', async (req, res) => {
 
     if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
 
-    const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId);
+    // Try cache first (5-minute TTL for current prices)
+    let result = await getCachedAmberPricesCurrent(siteId, userId);
+    if (!result) {
+      console.log(`[Amber /prices/current] Cache miss for user ${userId}, calling API`);
+      result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId);
+      if (Array.isArray(result) && result.length > 0) {
+        await cacheAmberPricesCurrent(siteId, result, userId);
+      }
+    }
     
     // LOG: Detailed Amber response analysis
     if (Array.isArray(result)) {
@@ -846,6 +854,61 @@ async function cacheAmberSites(userId, sites) {
     console.log(`[Cache] Stored ${sites.length} sites in cache for ${userId}`);
   } catch (e) {
     console.error(`[Cache] Error storing sites cache for ${userId}:`, e.message);
+  }
+}
+
+/**
+ * Get cached current Amber prices from Firestore.
+ * Per-user cache stored at users/{userId}/cache/amber_current_{siteId}
+ * TTL: 5 minutes (prices update every 5 mins in Australia)
+ */
+async function getCachedAmberPricesCurrent(siteId, userId) {
+  try {
+    if (!userId || !siteId) return null;
+    
+    const cacheRef = db.collection('users').doc(userId).collection('cache').doc('amber_current_' + siteId);
+    const snap = await cacheRef.get();
+    
+    if (!snap.exists) {
+      console.log(`[Cache] No current prices cache found for user ${userId}, site ${siteId}`);
+      return null;
+    }
+    
+    const cached = snap.data();
+    const cacheAge = Date.now() - (cached.cachedAt?.toMillis?.() || 0);
+    const cacheTTL = 5 * 60 * 1000; // 5 minutes
+    
+    if (cacheAge > cacheTTL) {
+      console.log(`[Cache] Current prices cache expired for user ${userId}, site ${siteId} (age: ${Math.round(cacheAge / 1000)}s)`);
+      return null;
+    }
+    
+    console.log(`[Cache] Using cached current prices for user ${userId}, site ${siteId} (age: ${Math.round(cacheAge / 1000)}s, ${cached.prices?.length || 0} intervals)`);
+    return cached.prices || null;
+  } catch (error) {
+    console.warn(`[Cache] Error reading current prices for user ${userId}, site ${siteId}:`, error.message);
+    return null;
+  }
+}
+
+/**
+ * Store cached current Amber prices in Firestore.
+ * Per-user cache stored at users/{userId}/cache/amber_current_{siteId}
+ * TTL: 5 minutes
+ */
+async function cacheAmberPricesCurrent(siteId, prices, userId) {
+  try {
+    if (!userId || !siteId || !prices) return;
+    
+    const cacheRef = db.collection('users').doc(userId).collection('cache').doc('amber_current_' + siteId);
+    await cacheRef.set({
+      siteId,
+      prices,
+      cachedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    console.log(`[Cache] Stored ${prices.length} current prices in cache for user ${userId}, site ${siteId}`);
+  } catch (error) {
+    console.warn(`[Cache] Error caching current prices for user ${userId}, site ${siteId}:`, error.message);
   }
 }
 
@@ -2044,9 +2107,19 @@ app.post('/api/automation/cycle', async (req, res) => {
         
         if (Array.isArray(sites) && sites.length > 0) {
           const siteId = userConfig.amberSiteId || sites[0].id;
-          amberData = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig, userId);
-          console.log(`[Automation] Amber data fetched: ${Array.isArray(amberData) ? amberData.length : 0} intervals`);
-          if (Array.isArray(amberData) && amberData.length > 0) {
+          
+          // Try cache first for current prices (5-min TTL)
+          amberData = await getCachedAmberPricesCurrent(siteId, userId);
+          if (!amberData) {
+            console.log(`[Automation] Current prices cache miss for ${userId}, calling API`);
+            amberData = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig, userId);
+            if (Array.isArray(amberData) && amberData.length > 0) {
+              await cacheAmberPricesCurrent(siteId, amberData, userId);
+            }
+          }
+          
+          if (amberData) {
+            console.log(`[Automation] Amber data fetched: ${Array.isArray(amberData) ? amberData.length : 0} intervals`);
             const forecastCount = amberData.filter(p => p.type === 'ForecastInterval').length;
             const currentCount = amberData.filter(p => p.type === 'CurrentInterval').length;
             const generalForecasts = amberData.filter(p => p.type === 'ForecastInterval' && p.channelType === 'general');
