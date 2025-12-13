@@ -1390,9 +1390,13 @@
                 const { dates } = validation;
                 const resolution = document.getElementById('priceResolution').value;
 
-                // Format dates as YYYY-MM-DD
-                const startDate = dates.startDate.toISOString().split('T')[0];
-                const endDate = dates.endDate.toISOString().split('T')[0];
+                // Format dates as YYYY-MM-DD (keep in local timezone, no UTC conversion)
+                const startDate = dates.startDate.getFullYear() + '-' + 
+                    String(dates.startDate.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(dates.startDate.getDate()).padStart(2, '0');
+                const endDate = dates.endDate.getFullYear() + '-' + 
+                    String(dates.endDate.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(dates.endDate.getDate()).padStart(2, '0');
 
                 status.textContent = `⏳ Fetching prices for ${dates.rangeDays} days at ${resolution}-minute resolution...`;
                 console.log('[Prices] Request details:', { siteId, startDate, endDate, resolution });
