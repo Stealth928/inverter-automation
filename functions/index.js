@@ -948,7 +948,7 @@ function findGaps(startDate, endDate, existingPrices) {
  * Cache Amber prices in Firestore for persistent storage.
  * Per-user cache stored at users/{userId}/cache/amber_{siteId}
  * Merges new prices with existing cached prices.
- * Historical prices are cached for 30 days since they don't change.
+ * Historical prices are cached for 180 days (6 months) since they don't change.
  */
 async function cacheAmberPrices(siteId, newPrices, userId) {
   try {
@@ -999,25 +999,38 @@ async function cacheAmberPrices(siteId, newPrices, userId) {
 }
 
 /**
- * Split a date range into chunks of max 30 days for API calls.
+ * Split a date range into chunks for API calls.
+ * Amber API limit appears to be ~14 days per request.
  * Returns array of { start, end } objects.
  */
-function splitRangeIntoChunks(startDate, endDate, maxDaysPerChunk = 30) {
+function splitRangeIntoChunks(startDate, endDate, maxDaysPerChunk = 14) {
   const chunks = [];
-  let currentStart = new Date(startDate);
-  const end = new Date(endDate);
   
-  while (currentStart < end) {
+  // Parse dates properly to avoid timezone shifts
+  const [startY, startM, startD] = startDate.split('-').map(Number);
+  const [endY, endM, endD] = endDate.split('-').map(Number);
+  
+  let currentStart = new Date(startY, startM - 1, startD);
+  const end = new Date(endY, endM - 1, endD);
+  
+  while (currentStart <= end) {
     let currentEnd = new Date(currentStart);
-    currentEnd.setDate(currentEnd.getDate() + maxDaysPerChunk);
+    currentEnd.setDate(currentEnd.getDate() + maxDaysPerChunk - 1); // -1 because range is inclusive
     
     if (currentEnd > end) {
       currentEnd = end;
     }
     
+    // Format as YYYY-MM-DD manually to avoid UTC conversion
+    const formatDate = (d) => {
+      return d.getFullYear() + '-' + 
+             String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+             String(d.getDate()).padStart(2, '0');
+    };
+    
     chunks.push({
-      start: currentStart.toISOString().split('T')[0],
-      end: currentEnd.toISOString().split('T')[0]
+      start: formatDate(currentStart),
+      end: formatDate(currentEnd)
     });
     
     currentStart = new Date(currentEnd);
@@ -1115,6 +1128,12 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
           channelCounts[p.channelType] = (channelCounts[p.channelType] || 0) + 1;
         });
         console.log(`[Cache] Chunk ${chunk.start} to ${chunk.end} returned ${prices.length} prices - channels:`, channelCounts);
+        
+        // Log first and last timestamp to verify date range
+        if (prices.length > 0) {
+          const sortedPrices = prices.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+          console.log(`[Cache] Chunk actual date range: ${sortedPrices[0].startTime} to ${sortedPrices[sortedPrices.length - 1].startTime}`);
+        }
         
         newPrices = newPrices.concat(prices);
       }

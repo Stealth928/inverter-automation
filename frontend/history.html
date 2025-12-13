@@ -1307,9 +1307,9 @@
                 return { valid: false, error: 'End date cannot be in the future' };
             }
 
-            // Check maximum range (90 days - caching handles splitting into 30-day chunks)
+            // Check maximum range (Amber API chunks at 14 days, we allow up to 60 days = ~5 chunks)
             // Count days inclusively: if start=Nov 1 and end=Nov 5, that's 5 days
-            const maxRangeDays = 90;
+            const maxRangeDays = 60;
             const rangeDays = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
             console.log('[Prices] Date range calculation:', { 
                 startDate: startDate.toISOString(), 
@@ -1319,14 +1319,14 @@
                 rangeDays 
             });
             if (rangeDays > maxRangeDays) {
-                return { valid: false, error: `Maximum range is ${maxRangeDays} days (you selected ${rangeDays} days)` };
+                return { valid: false, error: `Maximum range is ${maxRangeDays} days (you selected ${rangeDays} days). Amber API will be queried in 14-day chunks.` };
             }
 
-            // Warn if range is large (>14 days)
-            if (rangeDays > 14) {
+            // Warn if range is large (>30 days = multiple chunks)
+            if (rangeDays > 30) {
                 return { 
                     valid: true, 
-                    warning: `Large range (${rangeDays} days) may take a moment to load`,
+                    warning: `Large range (${rangeDays} days) will be fetched in multiple 14-day chunks`,
                     dates: { startDate, endDate, rangeDays }
                 };
             }
@@ -1398,13 +1398,24 @@
                     String(dates.endDate.getMonth() + 1).padStart(2, '0') + '-' + 
                     String(dates.endDate.getDate()).padStart(2, '0');
 
+                console.log('[Prices] Date conversion check:', {
+                    inputStart: document.getElementById('priceStartDate').value,
+                    inputEnd: document.getElementById('priceEndDate').value,
+                    parsedStartDate: dates.startDate.toString(),
+                    parsedEndDate: dates.endDate.toString(),
+                    formattedStart: startDate,
+                    formattedEnd: endDate
+                });
+
                 status.textContent = `⏳ Fetching prices for ${dates.rangeDays} days at ${resolution}-minute resolution...`;
+                status.textContent += ` [Requesting: ${startDate} to ${endDate}]`;
                 console.log('[Prices] Request details:', { siteId, startDate, endDate, resolution });
 
                 // Fetch historical prices
                 const pricesResp = await apiClient.getAmberHistoricalPrices(siteId, startDate, endDate, resolution);
                 
                 console.log('[Prices] Response from API:', pricesResp);
+                console.log('[Prices] First 3 price timestamps:', pricesResp.result?.slice(0, 3).map(p => ({ startTime: p.startTime, channel: p.channelType })));
                 
                 if (pricesResp.errno && pricesResp.errno !== 0) {
                     throw new Error(pricesResp.error || `API Error ${pricesResp.errno}`);
