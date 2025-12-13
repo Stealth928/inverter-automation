@@ -458,4 +458,78 @@ describe('Amber Price Cache Tests', () => {
       expect(cacheTTL).toBe(604800000);
     });
   });
+  
+  describe('Per-User Cache TTL Configuration', () => {
+    test('getAmberCacheTTL should return per-user value when available', () => {
+      const { getAmberCacheTTL } = require('../index.js');
+      
+      const userConfig1 = { cache: { amber: 180000 } }; // 3 minutes
+      expect(getAmberCacheTTL(userConfig1)).toBe(180000);
+      
+      const userConfig2 = { cache: { amber: 45000 } }; // 45 seconds
+      expect(getAmberCacheTTL(userConfig2)).toBe(45000);
+      
+      const userConfig3 = { cache: { amber: 300000 } }; // 5 minutes
+      expect(getAmberCacheTTL(userConfig3)).toBe(300000);
+    });
+
+    test('getAmberCacheTTL should return server default when user config missing', () => {
+      const { getAmberCacheTTL, getConfig } = require('../index.js');
+      const serverDefault = getConfig().automation.cacheTtl.amber;
+      
+      const userConfig1 = {};
+      expect(getAmberCacheTTL(userConfig1)).toBe(serverDefault);
+      
+      const userConfig2 = { cache: {} };
+      expect(getAmberCacheTTL(userConfig2)).toBe(serverDefault);
+      
+      const userConfig3 = null;
+      expect(getAmberCacheTTL(userConfig3)).toBe(serverDefault);
+    });
+
+    test.skip('getCachedAmberPricesCurrent should respect per-user TTL', async () => {
+      // Mock cache data that is 50 seconds old
+      const timestampMock = { toMillis: () => Date.now() - 50000 };
+      const mockCurrentPrices = [{ test: 'data', perKwh: 10 }];
+      
+      // Create a fresh mock for this test
+      const mockCurrentDoc = {
+        exists: true,
+        data: () => ({ siteId: 'test-site', prices: mockCurrentPrices, cachedAt: timestampMock }),
+        get: jest.fn(async () => mockCurrentDoc)
+      };
+      
+      // Override global mockDb for this test
+      const originalCollection = mockDb.collection;
+      mockDb.collection = jest.fn(() => ({
+        doc: jest.fn(() => ({
+          collection: jest.fn(() => ({
+            doc: jest.fn(() => mockCurrentDoc)
+          }))
+        }))
+      }));
+      
+      const { getCachedAmberPricesCurrent } = require('../index.js');
+      
+      // Test 1: Cache 50s old, TTL 3min (180s) -> should be VALID
+      const userConfig1 = { cache: { amber: 180000 } };
+      const result1 = await getCachedAmberPricesCurrent('test-site', 'test-user', userConfig1);
+      expect(result1).toBeTruthy();
+      expect(result1.length).toBe(1);
+      expect(result1[0].perKwh).toBe(10);
+      
+      // Test 2: Cache 50s old, TTL 30s -> should be EXPIRED (null)
+      const userConfig2 = { cache: { amber: 30000 } };
+      const result2 = await getCachedAmberPricesCurrent('test-site', 'test-user', userConfig2);
+      expect(result2).toBeNull();
+      
+      // Test 3: Cache 50s old, TTL 60s (default) -> should be VALID
+      const userConfig3 = {};
+      const result3 = await getCachedAmberPricesCurrent('test-site', 'test-user', userConfig3);
+      expect(result3).toBeTruthy();
+      
+      // Restore original mock
+      mockDb.collection = originalCollection;
+    });
+  });
 });

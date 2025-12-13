@@ -522,7 +522,7 @@ app.get('/api/amber/prices/current', async (req, res) => {
     if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
 
     // Try cache first for current prices
-    let result = await getCachedAmberPricesCurrent(siteId, userId);
+    let result = await getCachedAmberPricesCurrent(siteId, userId, userConfig);
     if (!result) {
       const inflightKey = `${userId}:${siteId}`;
       
@@ -542,7 +542,7 @@ app.get('/api/amber/prices/current', async (req, res) => {
         const fetchPromise = callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId)
           .then(async (data) => {
             if (Array.isArray(data) && data.length > 0) {
-              await cacheAmberPricesCurrent(siteId, data, userId);
+              await cacheAmberPricesCurrent(siteId, data, userId, userConfig);
             }
             return data;
           })
@@ -885,11 +885,18 @@ async function cacheAmberSites(userId, sites) {
 const amberPricesInFlight = new Map(); // key: "userId:siteId", value: Promise
 
 /**
+ * Get Amber cache TTL for a user (respects per-user config, falls back to server default)
+ */
+function getAmberCacheTTL(userConfig) {
+  return (userConfig?.cache?.amber) || getConfig().automation.cacheTtl.amber;
+}
+
+/**
  * Get cached current Amber prices from Firestore with in-flight request deduplication.
  * Per-user cache stored at users/{userId}/cache/amber_current_{siteId}
- * TTL: Configurable via config.automation.cacheTtl.amber (default: 60 seconds)
+ * TTL: Configurable per-user via userConfig.cache.amber (default: 60 seconds)
  */
-async function getCachedAmberPricesCurrent(siteId, userId) {
+async function getCachedAmberPricesCurrent(siteId, userId, userConfig) {
   try {
     if (!userId || !siteId) return null;
     
@@ -903,7 +910,7 @@ async function getCachedAmberPricesCurrent(siteId, userId) {
     
     const cached = snap.data();
     const cacheAge = Date.now() - (cached.cachedAt?.toMillis?.() || 0);
-    const cacheTTL = getConfig().automation.cacheTtl.amber;
+    const cacheTTL = getAmberCacheTTL(userConfig);
     
     if (cacheAge > cacheTTL) {
       console.log(`[Cache] Current prices cache expired for user ${userId}, site ${siteId} (age: ${Math.round(cacheAge / 1000)}s, TTL: ${Math.round(cacheTTL / 1000)}s)`);
@@ -921,9 +928,9 @@ async function getCachedAmberPricesCurrent(siteId, userId) {
 /**
  * Store cached current Amber prices in Firestore.
  * Per-user cache stored at users/{userId}/cache/amber_current_{siteId}
- * TTL: Configurable via config.automation.cacheTtl.amber (default: 60 seconds)
+ * TTL: Per-user configurable via userConfig.cache.amber
  */
-async function cacheAmberPricesCurrent(siteId, prices, userId) {
+async function cacheAmberPricesCurrent(siteId, prices, userId, userConfig) {
   try {
     if (!userId || !siteId || !prices) return;
     
@@ -933,7 +940,7 @@ async function cacheAmberPricesCurrent(siteId, prices, userId) {
       prices,
       cachedAt: admin.firestore.FieldValue.serverTimestamp()
     });
-    const ttl = getConfig().automation.cacheTtl.amber;
+    const ttl = getAmberCacheTTL(userConfig);
     console.log(`[Cache] Stored ${prices.length} current prices in cache for user ${userId}, site ${siteId} (TTL: ${Math.round(ttl / 1000)}s)`);
   } catch (error) {
     console.warn(`[Cache] Error caching current prices for user ${userId}, site ${siteId}:`, error.message);
@@ -2137,7 +2144,7 @@ app.post('/api/automation/cycle', async (req, res) => {
           const siteId = userConfig.amberSiteId || sites[0].id;
           
           // Try cache first for current prices
-          amberData = await getCachedAmberPricesCurrent(siteId, userId);
+          amberData = await getCachedAmberPricesCurrent(siteId, userId, userConfig);
           if (!amberData) {
             const inflightKey = `${userId}:${siteId}`;
             
@@ -2157,7 +2164,7 @@ app.post('/api/automation/cycle', async (req, res) => {
               const fetchPromise = callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig, userId)
                 .then(async (data) => {
                   if (Array.isArray(data) && data.length > 0) {
-                    await cacheAmberPricesCurrent(siteId, data, userId);
+                    await cacheAmberPricesCurrent(siteId, data, userId, userConfig);
                   }
                   return data;
                 })
@@ -3539,6 +3546,13 @@ app.post('/api/scheduler/v1/clear-all', authenticateUser, async (req, res) => {
 // ==================== EXPORT EXPRESS APP AS CLOUD FUNCTION ====================
 // Use the broadly-compatible onRequest export to avoid depending on newer SDK features
 exports.api = functions.https.onRequest(app);
+
+// Export for testing
+if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID) {
+  exports.getAmberCacheTTL = getAmberCacheTTL;
+  exports.getCachedAmberPricesCurrent = getCachedAmberPricesCurrent;
+  exports.getConfig = getConfig;
+}
 
 // ==================== SCHEDULED AUTOMATION ====================
 /**
