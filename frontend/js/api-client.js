@@ -283,6 +283,7 @@ class APIClient {
 
   async getAmberHistoricalPrices(siteId, startDate, endDate, resolution = 30) {
     // startDate and endDate should be YYYY-MM-DD format
+    // Backend handles per-user caching in Firestore
     return this.get('/api/amber/prices', { 
       siteId, 
       startDate, 

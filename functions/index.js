@@ -461,15 +461,33 @@ app.get('/api/amber/sites', async (req, res) => {
       return res.json(response);
     }
 
-    // Increment user-specific count (if available) and call Amber
-    incrementApiCount(userId, 'amber').catch(err => console.warn('[Amber] Failed to log API call (pre-auth):', err.message));
-    const result = await callAmberAPI('/sites', {}, userConfig, userId);
+    // Try cache first
+    let cachedSites = await getCachedAmberSites(userId);
+    if (cachedSites) {
+      console.log(`[Amber] Returning ${cachedSites.length} cached sites for ${userId}`);
+      return res.json({ errno: 0, result: cachedSites, _cached: true });
+    }
+
+    // Cache miss - call API
+    console.log(`[Amber] Sites cache miss for ${userId}, calling API`);
+    incrementApiCount(userId, 'amber').catch(err => console.warn('[Amber] Failed to log API call:', err.message));
+    const result = await callAmberAPI('/sites', {}, userConfig, userId, true);
 
     console.log(`[Amber] API result for ${userId}:`, result && result.errno === 0 ? 'success' : `error(${result?.errno}): ${result?.error || result?.msg}`);
 
-    if (result && result.data && Array.isArray(result.data)) return res.json({ errno: 0, result: result.data });
-    if (result && result.sites && Array.isArray(result.sites)) return res.json({ errno: 0, result: result.sites });
-    if (Array.isArray(result)) return res.json({ errno: 0, result });
+    let sites = [];
+    if (result && result.data && Array.isArray(result.data)) sites = result.data;
+    else if (result && result.sites && Array.isArray(result.sites)) sites = result.sites;
+    else if (Array.isArray(result)) sites = result;
+    
+    // Store in cache for future requests
+    if (sites.length > 0) {
+      await cacheAmberSites(userId, sites);
+    }
+
+    if (sites.length > 0) {
+      return res.json({ errno: 0, result: sites });
+    }
     
     // If there's an error from Amber API, pass it through with debug info if requested
     if (result && result.errno && result.errno !== 0) {
@@ -778,34 +796,93 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, u
 /**
  * Call Amber API
  */
+
+/**
+ * Get cached Amber sites list from Firestore.
+ * Per-user cache stored at users/{userId}/cache/amber_sites
+ * TTL: 7 days (sites rarely change)
+ */
+async function getCachedAmberSites(userId) {
+  try {
+    if (!userId) return null;
+    
+    const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('amber_sites').get();
+    if (!cacheDoc.exists) {
+      console.log(`[Cache] No sites cache found for ${userId}`);
+      return null;
+    }
+    
+    const cached = cacheDoc.data();
+    const cacheAge = Date.now() - (cached.cachedAt?.toMillis?.() || 0);
+    const cacheTTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+    
+    if (cacheAge > cacheTTL) {
+      console.log(`[Cache] Sites cache expired for ${userId} (age: ${Math.round(cacheAge / 1000)}s)`);
+      return null;
+    }
+    
+    console.log(`[Cache] Using cached sites for ${userId} (age: ${Math.round(cacheAge / 1000)}s)`);
+    return cached.sites || [];
+  } catch (e) {
+    console.error(`[Cache] Error reading sites cache for ${userId}:`, e.message);
+    return null;
+  }
+}
+
+/**
+ * Store Amber sites list in Firestore cache.
+ * Per-user cache stored at users/{userId}/cache/amber_sites
+ */
+async function cacheAmberSites(userId, sites) {
+  try {
+    if (!userId || !sites) return;
+    
+    await db.collection('users').doc(userId).collection('cache').doc('amber_sites').set({
+      sites,
+      cachedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    console.log(`[Cache] Stored ${sites.length} sites in cache for ${userId}`);
+  } catch (e) {
+    console.error(`[Cache] Error storing sites cache for ${userId}:`, e.message);
+  }
+}
+
 /**
  * Get cached Amber price data from Firestore for a given date range.
+ * Per-user cache stored at users/{userId}/cache/amber_{siteId}
  * Returns prices that fall within [startDate, endDate] inclusive.
  */
-async function getCachedAmberPrices(siteId, startDate, endDate) {
+async function getCachedAmberPrices(siteId, startDate, endDate, userId) {
   try {
-    const cacheRef = db.collection('amber_prices').doc(siteId);
+    if (!userId) {
+      console.warn(`[Cache] No userId provided for Amber cache lookup`);
+      return [];
+    }
+    
+    const cacheRef = db.collection('users').doc(userId).collection('cache').doc('amber_' + siteId);
     const snap = await cacheRef.get();
     
     if (!snap.exists) {
-      console.log(`[Cache] No cached data found for site ${siteId}`);
+      console.log(`[Cache] No cached data found for user ${userId}, site ${siteId}`);
       return [];
     }
     
     const cached = snap.data().prices || [];
-    const startMs = new Date(startDate).getTime();
-    const endMs = new Date(endDate).getTime();
     
-    // Filter prices within the requested range
+    // Parse dates to include full day range
+    const startMs = new Date(startDate + 'T00:00:00Z').getTime();
+    const endMs = new Date(endDate + 'T23:59:59.999Z').getTime();
+    
+    // Filter prices within the requested range (inclusive of both start and end dates)
     const filtered = cached.filter(p => {
       const priceMs = new Date(p.startTime).getTime();
       return priceMs >= startMs && priceMs <= endMs;
     });
     
-    console.log(`[Cache] Found ${cached.length} cached prices total, ${filtered.length} in requested range`);
+    console.log(`[Cache] Found ${cached.length} cached prices total for user ${userId}, ${filtered.length} in requested range [${startDate} to ${endDate}]`);
     return filtered;
   } catch (error) {
-    console.warn(`[Cache] Error reading prices for ${siteId}:`, error.message);
+    console.warn(`[Cache] Error reading prices for user ${userId}, site ${siteId}:`, error.message);
     return [];
   }
 }
@@ -813,61 +890,54 @@ async function getCachedAmberPrices(siteId, startDate, endDate) {
 /**
  * Find gaps in coverage between startDate and endDate.
  * Returns array of { start, end } objects for gaps that need API calls.
+ * Improved to detect proper date coverage, not just large time gaps.
  */
 function findGaps(startDate, endDate, existingPrices) {
   const gaps = [];
-  const startMs = new Date(startDate).getTime();
-  const endMs = new Date(endDate).getTime();
+  const startMs = new Date(startDate + 'T00:00:00Z').getTime();
+  const endMs = new Date(endDate + 'T23:59:59Z').getTime();
   
   console.log(`[Cache] findGaps: looking for gaps between ${startDate} and ${endDate}, have ${existingPrices.length} cached prices`);
+  console.log(`[Cache] findGaps time range: ${startMs} to ${endMs}`);
   
   if (existingPrices.length === 0) {
-    // No cached data, entire range is a gap
     gaps.push({ start: startDate, end: endDate });
     console.log(`[Cache] No cached prices - entire range is a gap`);
     return gaps;
   }
-  
-  // Group prices by channel to check coverage per channel
-  const byChannel = {};
-  existingPrices.forEach(p => {
-    if (!byChannel[p.channelType]) byChannel[p.channelType] = [];
-    byChannel[p.channelType].push(p);
-  });
-  console.log(`[Cache] Cached prices by channel:`, Object.keys(byChannel).map(ch => `${ch}: ${byChannel[ch].length}`).join(', '));
   
   // Sort prices by startTime
   const sorted = [...existingPrices].sort((a, b) => 
     new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
   );
   
-  // Check gap before first price
-  const firstMs = new Date(sorted[0].startTime).getTime();
-  if (startMs < firstMs) {
-    const gapEnd = new Date(firstMs - 1).toISOString().split('T')[0];
+  // Get the actual date range of cached prices
+  const firstPriceMs = new Date(sorted[0].startTime).getTime();
+  const lastPriceMs = new Date(sorted[sorted.length - 1].startTime).getTime();
+  
+  // Get dates (YYYY-MM-DD) from cached price range
+  const firstCachedDate = sorted[0].startTime.split('T')[0];
+  const lastCachedDate = sorted[sorted.length - 1].startTime.split('T')[0];
+  
+  console.log(`[Cache] Cached date range: ${firstCachedDate} to ${lastCachedDate} (ms: ${firstPriceMs} to ${lastPriceMs})`);
+  console.log(`[Cache] Requested date range: ${startDate} to ${endDate}`);
+  console.log(`[Cache] String comparison: startDate < firstCached? ${startDate} < ${firstCachedDate} = ${startDate < firstCachedDate}`);
+  console.log(`[Cache] String comparison: endDate > lastCached? ${endDate} > ${lastCachedDate} = ${endDate > lastCachedDate}`);
+  
+  // Check if we need data before the first cached date
+  if (startDate < firstCachedDate) {
+    // Need dates before cached range
+    const gapEnd = new Date(new Date(firstCachedDate).getTime() - 86400000).toISOString().split('T')[0];
     gaps.push({ start: startDate, end: gapEnd });
-    console.log(`[Cache] Found gap before first cached price: ${startDate} to ${gapEnd}`);
+    console.log(`[Cache] Gap before cached data: ${startDate} to ${gapEnd}`);
   }
   
-  // Check gaps between consecutive prices
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const curr = new Date(sorted[i].startTime).getTime();
-    const next = new Date(sorted[i + 1].startTime).getTime();
-    // If gap > 1 day, flag it
-    if (next - curr > 86400000) {
-      const gapStart = new Date(curr + 1).toISOString().split('T')[0];
-      const gapEnd = new Date(next - 1).toISOString().split('T')[0];
-      gaps.push({ start: gapStart, end: gapEnd });
-      console.log(`[Cache] Found gap between prices: ${gapStart} to ${gapEnd}`);
-    }
-  }
-  
-  // Check gap after last price
-  const lastMs = new Date(sorted[sorted.length - 1].startTime).getTime();
-  if (lastMs < endMs) {
-    const gapStart = new Date(lastMs + 1).toISOString().split('T')[0];
+  // Check if we need data after the last cached date
+  if (endDate > lastCachedDate) {
+    // Need dates after cached range
+    const gapStart = new Date(new Date(lastCachedDate).getTime() + 86400000).toISOString().split('T')[0];
     gaps.push({ start: gapStart, end: endDate });
-    console.log(`[Cache] Found gap after last cached price: ${gapStart} to ${endDate}`);
+    console.log(`[Cache] Gap after cached data: ${gapStart} to ${endDate}`);
   }
   
   console.log(`[Cache] Total gaps found: ${gaps.length}`);
@@ -876,11 +946,18 @@ function findGaps(startDate, endDate, existingPrices) {
 
 /**
  * Cache Amber prices in Firestore for persistent storage.
+ * Per-user cache stored at users/{userId}/cache/amber_{siteId}
  * Merges new prices with existing cached prices.
+ * Historical prices are cached for 30 days since they don't change.
  */
-async function cacheAmberPrices(siteId, newPrices) {
+async function cacheAmberPrices(siteId, newPrices, userId) {
   try {
-    const cacheRef = db.collection('amber_prices').doc(siteId);
+    if (!userId) {
+      console.warn(`[Cache] No userId provided for Amber cache storage`);
+      return;
+    }
+    
+    const cacheRef = db.collection('users').doc(userId).collection('cache').doc('amber_' + siteId);
     const snap = await cacheRef.get();
     
     const existing = snap.exists ? (snap.data().prices || []) : [];
@@ -907,17 +984,17 @@ async function cacheAmberPrices(siteId, newPrices) {
       new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
     );
     
-    console.log(`[Cache] Storing ${merged.length} total prices for site ${siteId}`);
+    console.log(`[Cache] Storing ${merged.length} total prices for user ${userId}, site ${siteId} (${newPrices.length} new prices added)`);
     
     await cacheRef.set({
       siteId,
       prices: merged,
       lastUpdated: new Date().toISOString(),
       priceCount: merged.length,
-      ttl: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // Firestore TTL in seconds (24 hours)
+      ttl: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60) // Firestore TTL in seconds (30 days)
     });
   } catch (error) {
-    console.warn(`[Cache] Error caching prices for ${siteId}:`, error.message);
+    console.warn(`[Cache] Error caching prices for user ${userId}, site ${siteId}:`, error.message);
   }
 }
 
@@ -952,16 +1029,16 @@ function splitRangeIntoChunks(startDate, endDate, maxDaysPerChunk = 30) {
 
 /**
  * Fetch Amber historical prices with intelligent caching.
- * - Checks Firestore for existing data
+ * - Checks Firestore for existing per-user data
  * - Only fetches gaps from API
  * - Merges cached + new data
  * - Returns complete dataset for the requested range
  */
 async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, resolution, userConfig, userId) {
-  console.log(`[Cache] Fetching prices with cache for ${siteId}:`, { startDate, endDate, resolution });
+  console.log(`[Cache] Fetching prices with cache for user ${userId}, ${siteId}:`, { startDate, endDate, resolution });
   
-  // Step 1: Get cached prices
-  const cachedPrices = await getCachedAmberPrices(siteId, startDate, endDate);
+  // Step 1: Get cached prices (per-user cache)
+  const cachedPrices = await getCachedAmberPrices(siteId, startDate, endDate, userId);
   console.log(`[Cache] Found ${cachedPrices.length} cached prices in range`);
   
   // Step 2: Check if we have BOTH channels for the full range
@@ -973,14 +1050,15 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
   const hasFeedin = channelCounts['feedIn'] || 0;
   console.log(`[Cache] Cached channels - general: ${hasGeneral}, feedIn: ${hasFeedin}`);
   
-  // If either channel is missing or imbalanced (one significantly less than other), 
-  // treat entire range as gap to force fresh fetch
+  // If either channel is completely missing, treat entire range as gap to force fresh fetch
+  // But if both exist, use normal gap detection (they may naturally have different counts)
   let gaps = [];
-  if (!hasGeneral || !hasFeedin || Math.abs(hasGeneral - hasFeedin) > 50) {
-    console.log(`[Cache] Imbalanced or missing channels, fetching full range fresh`);
+  if (!hasGeneral || !hasFeedin) {
+    console.log(`[Cache] Missing channels (general: ${hasGeneral}, feedIn: ${hasFeedin}), fetching full range fresh`);
     gaps = [{ start: startDate, end: endDate }];
   } else {
-    // Both channels present and balanced, use normal gap detection
+    // Both channels present, use normal gap detection
+    console.log(`[Cache] Both channels present (general: ${hasGeneral}, feedIn: ${hasFeedin}), checking for gaps`);
     gaps = findGaps(startDate, endDate, cachedPrices);
   }
   
@@ -990,6 +1068,12 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
   
   // Step 3: Fetch gaps from API (split into 30-day chunks)
   if (gaps.length > 0) {
+    // Increment API counter once per cache miss (not per chunk)
+    console.log(`[Cache] Cache miss detected: ${gaps.length} gaps found, incrementing counter`);
+    if (userId) {
+      incrementApiCount(userId, 'amber').catch(() => {});
+    }
+    
     for (const gap of gaps) {
       const chunks = splitRangeIntoChunks(gap.start, gap.end, 30);
       console.log(`[Cache] Fetching gap ${gap.start} to ${gap.end} in ${chunks.length} chunk(s)`);
@@ -997,12 +1081,12 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
       for (const chunk of chunks) {
         console.log(`[Cache] Fetching chunk: ${chunk.start} to ${chunk.end}`);
         
-        // Call Amber API directly (NOT through caching to avoid recursion)
+        // Call Amber API directly (skip counter since we track at cache level)
         const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices`, {
           startDate: chunk.start,
           endDate: chunk.end,
           resolution: resolution || 30
-        }, userConfig, userId);
+        }, userConfig, userId, true); // skipCounter = true
         
         // Handle error responses (have errno property)
         if (result && result.errno && result.errno !== 0) {
@@ -1037,9 +1121,9 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
     }
   }
   
-  // Step 4: Cache the new prices
+  // Step 4: Cache the new prices (per-user cache)
   if (newPrices.length > 0) {
-    await cacheAmberPrices(siteId, newPrices);
+    await cacheAmberPrices(siteId, newPrices, userId);
   }
   
   // Step 5: Return merged result (cached + new)
@@ -1062,12 +1146,21 @@ async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, r
   finalPrices.forEach(p => {
     finalChannels[p.channelType] = (finalChannels[p.channelType] || 0) + 1;
   });
-  console.log(`[Cache] Final result: ${finalPrices.length} total prices - channels:`, finalChannels);
+  console.log(`[Cache] Final result: ${finalPrices.length} total prices (${cachedPrices.length} from cache, ${newPrices.length} from API) - channels:`, finalChannels);
   
-  return { errno: 0, result: finalPrices };
+  return { 
+    errno: 0, 
+    result: finalPrices,
+    _cacheInfo: {
+      total: finalPrices.length,
+      fromCache: cachedPrices.length,
+      fromAPI: newPrices.length,
+      cacheHitRate: finalPrices.length > 0 ? Math.round((cachedPrices.length / finalPrices.length) * 100) : 0
+    }
+  };
 }
 
-async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
+async function callAmberAPI(path, queryParams = {}, userConfig, userId = null, skipCounter = false) {
   const config = getConfig();
   const apiKey = userConfig?.amberApiKey || config.amber.apiKey;
   
@@ -1080,8 +1173,9 @@ async function callAmberAPI(path, queryParams = {}, userConfig, userId = null) {
     return { errno: 429, error: `Rate limited by Amber API. Retry after ${new Date(amberRateLimitState.retryAfter).toISOString()}`, retryAfter: amberRateLimitState.retryAfter };
   }
   
-  // Track API call if userId provided
-  if (userId) {
+  // Track API call if userId provided (unless caller is handling it, like cache logic)
+  if (userId && !skipCounter) {
+    console.log(`[Amber] callAmberAPI incrementing counter (skipCounter=${skipCounter})`);
     incrementApiCount(userId, 'amber').catch(() => {});
   }
   
