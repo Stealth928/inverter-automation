@@ -20,6 +20,11 @@ class FirebaseAuth {
     this.idToken = null;
     this.onAuthStateChangedCallbacks = [];
     this.initialized = false;
+    
+    // Idle session timeout (180 minutes = 3 hours)
+    this.IDLE_TIMEOUT_MS = 180 * 60 * 1000;
+    this.lastActivityTime = Date.now();
+    this.idleTimeoutCheckInterval = null;
   }
 
   /**
@@ -156,6 +161,9 @@ class FirebaseAuth {
         }
       }, 50 * 60 * 1000);
 
+      // Track user activity for idle timeout
+      this.setupIdleTracking();
+
       this.initialized = true;
       console.log('[FirebaseAuth] Initialized successfully');
     } catch (error) {
@@ -276,10 +284,21 @@ class FirebaseAuth {
    * Sign out
    */
   async signOut() {
+    // Clear sensitive data from localStorage
+    try {
+      localStorage.removeItem('automationRules');
+      localStorage.removeItem('automationEnabled');
+      localStorage.removeItem('lastSelectedRule');
+      localStorage.removeItem('mockAuthUser');
+      localStorage.removeItem('mockAuthToken');
+      console.log('[FirebaseAuth] Cleared sensitive data from localStorage');
+    } catch (e) {
+      console.warn('[FirebaseAuth] Failed to clear localStorage:', e);
+    }
+
     if (this.mock) {
       this.user = null;
       this.idToken = null;
-      try { localStorage.removeItem('mockAuthUser'); localStorage.removeItem('mockAuthToken'); } catch (e) {}
       this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user));
       return { success: true };
     }
@@ -291,6 +310,41 @@ class FirebaseAuth {
       console.error('[FirebaseAuth] Sign out error:', error);
       return { success: false, error: error.message };
     }
+  }
+
+  /**
+   * Setup activity tracking for idle session timeout
+   * Tracks user interactions and logs them out after 180 minutes of inactivity
+   */
+  setupIdleTracking() {
+    // Track user activity
+    const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    const updateActivity = () => {
+      this.lastActivityTime = Date.now();
+    };
+
+    activityEvents.forEach(event => {
+      document.addEventListener(event, updateActivity, { passive: true });
+    });
+
+    console.log('[FirebaseAuth] Idle tracking enabled (180 min timeout)');
+
+    // Check for idle timeout every 3 minutes
+    this.idleTimeoutCheckInterval = setInterval(async () => {
+      if (this.user) {
+        const idleTime = Date.now() - this.lastActivityTime;
+        
+        if (idleTime > this.IDLE_TIMEOUT_MS) {
+          console.warn(`[FirebaseAuth] Session idle for ${Math.round(idleTime / 1000 / 60)} minutes - logging out`);
+          await this.signOut();
+          
+          // Redirect to login
+          if (typeof window !== 'undefined' && window.location) {
+            window.location.href = '/login.html';
+          }
+        }
+      }
+    }, 3 * 60 * 1000); // Check every 3 minutes (180 seconds)
   }
 
   /**
