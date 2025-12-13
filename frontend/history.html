@@ -1285,9 +1285,14 @@
             if (!startInput) return { valid: false, error: 'Start date is required' };
             if (!endInput) return { valid: false, error: 'End date is required' };
 
-            // Parse dates in local timezone (not UTC) to avoid timezone issues
-            const startDate = new Date(startInput);
-            const endDate = new Date(endInput);
+            // Parse dates in local timezone without timezone shift
+            // HTML5 date input gives YYYY-MM-DD in local timezone
+            const [startYear, startMonth, startDay] = startInput.split('-').map(Number);
+            const [endYear, endMonth, endDay] = endInput.split('-').map(Number);
+            
+            const startDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+            const endDate = new Date(endYear, endMonth - 1, endDay, 0, 0, 0, 0);
+            
             const today = new Date();
             today.setHours(0, 0, 0, 0); // Start of today in local time
 
