@@ -521,13 +521,37 @@ app.get('/api/amber/prices/current', async (req, res) => {
 
     if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
 
-    // Try cache first (5-minute TTL for current prices)
+    // Try cache first for current prices
     let result = await getCachedAmberPricesCurrent(siteId, userId);
     if (!result) {
-      console.log(`[Amber /prices/current] Cache miss for user ${userId}, calling API`);
-      result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId);
-      if (Array.isArray(result) && result.length > 0) {
-        await cacheAmberPricesCurrent(siteId, result, userId);
+      const inflightKey = `${userId}:${siteId}`;
+      
+      // Check if another request is already fetching this data
+      if (amberPricesInFlight.has(inflightKey)) {
+        console.log(`[Amber /prices/current] Another request is fetching prices for ${userId}, waiting...`);
+        try {
+          result = await amberPricesInFlight.get(inflightKey);
+        } catch (err) {
+          console.warn(`[Amber /prices/current] In-flight request failed for ${userId}, will retry:`, err.message);
+        }
+      }
+      
+      // If still no data (first request or in-flight failed), fetch it
+      if (!result) {
+        console.log(`[Amber /prices/current] Cache miss for user ${userId}, calling API`);
+        const fetchPromise = callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId)
+          .then(async (data) => {
+            if (Array.isArray(data) && data.length > 0) {
+              await cacheAmberPricesCurrent(siteId, data, userId);
+            }
+            return data;
+          })
+          .finally(() => {
+            amberPricesInFlight.delete(inflightKey);
+          });
+        
+        amberPricesInFlight.set(inflightKey, fetchPromise);
+        result = await fetchPromise;
       }
     }
     
@@ -857,8 +881,11 @@ async function cacheAmberSites(userId, sites) {
   }
 }
 
+// In-flight request tracker to prevent duplicate API calls when cache expires
+const amberPricesInFlight = new Map(); // key: "userId:siteId", value: Promise
+
 /**
- * Get cached current Amber prices from Firestore.
+ * Get cached current Amber prices from Firestore with in-flight request deduplication.
  * Per-user cache stored at users/{userId}/cache/amber_current_{siteId}
  * TTL: Configurable via config.automation.cacheTtl.amber (default: 60 seconds)
  */
@@ -2109,13 +2136,37 @@ app.post('/api/automation/cycle', async (req, res) => {
         if (Array.isArray(sites) && sites.length > 0) {
           const siteId = userConfig.amberSiteId || sites[0].id;
           
-          // Try cache first for current prices (5-min TTL)
+          // Try cache first for current prices
           amberData = await getCachedAmberPricesCurrent(siteId, userId);
           if (!amberData) {
-            console.log(`[Automation] Current prices cache miss for ${userId}, calling API`);
-            amberData = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig, userId);
-            if (Array.isArray(amberData) && amberData.length > 0) {
-              await cacheAmberPricesCurrent(siteId, amberData, userId);
+            const inflightKey = `${userId}:${siteId}`;
+            
+            // Check if another request is already fetching this data
+            if (amberPricesInFlight.has(inflightKey)) {
+              console.log(`[Automation] Another request is fetching prices for ${userId}, waiting for it...`);
+              try {
+                amberData = await amberPricesInFlight.get(inflightKey);
+              } catch (err) {
+                console.warn(`[Automation] In-flight request failed for ${userId}, will retry:`, err.message);
+              }
+            }
+            
+            // If still no data (first request or in-flight failed), fetch it
+            if (!amberData) {
+              console.log(`[Automation] Current prices cache miss for ${userId}, calling API`);
+              const fetchPromise = callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig, userId)
+                .then(async (data) => {
+                  if (Array.isArray(data) && data.length > 0) {
+                    await cacheAmberPricesCurrent(siteId, data, userId);
+                  }
+                  return data;
+                })
+                .finally(() => {
+                  amberPricesInFlight.delete(inflightKey);
+                });
+              
+              amberPricesInFlight.set(inflightKey, fetchPromise);
+              amberData = await fetchPromise;
             }
           }
           
