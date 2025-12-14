@@ -2482,6 +2482,28 @@ app.post('/api/automation/cycle', async (req, res) => {
             lastActionResult: actionResult
           });
           
+          // Log to audit trail - Rule turned ON
+          await addAutomationAuditEntry(userId, {
+            cycleId: `cycle_${cycleStartTime}`,
+            triggered: true,
+            ruleName: rule.name,
+            ruleId: ruleId,
+            evaluationResults: result.conditions || [],
+            actionTaken: {
+              workMode: rule.action?.workMode,
+              durationMinutes: rule.action?.durationMinutes,
+              fdPwr: rule.action?.fdPwr,
+              fdSoc: rule.action?.fdSoc,
+              minSocOnGrid: rule.action?.minSocOnGrid
+            },
+            activeRuleBefore: state.activeRule,
+            activeRuleAfter: ruleId,
+            rulesEvaluated: sortedRules.length,
+            inverterCacheHit: cache?.inverterData?.__cacheHit || false,
+            inverterCacheAgeMs: cache?.inverterData?.__cacheAgeMs || null,
+            cycleDurationMs: Date.now() - cycleStartTime
+          });
+          
           // Store action result for response
           triggeredRule.actionResult = actionResult;
         } else {
@@ -2576,6 +2598,21 @@ app.post('/api/automation/cycle', async (req, res) => {
               activeSegment: null,
               activeSegmentEnabled: false
             });
+            
+            // Log to audit trail - Rule turned OFF
+            await addAutomationAuditEntry(userId, {
+              cycleId: `cycle_${cycleStartTime}`,
+              triggered: false,
+              ruleName: rule.name,
+              ruleId: ruleId,
+              evaluationResults: result.conditions || [],
+              actionTaken: null,
+              activeRuleBefore: state.activeRule,
+              activeRuleAfter: null,
+              rulesEvaluated: sortedRules.length,
+              cycleDurationMs: Date.now() - cycleStartTime
+            });
+            
             // Continue to check if any other rule can trigger
             console.log(`[Automation] 🔄 Continuing rule evaluation after cancellation...`);
             cancelledRuleThisCycle = true;  // Mark that we cancelled a rule this cycle

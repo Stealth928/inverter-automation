@@ -1366,18 +1366,33 @@
                 const resp = await authenticatedFetch('/api/automation/audit?days=7');
                 const data = await resp.json();
                 
+                // Debug logging
+                console.log('[Automation History] API Response:', data);
+                console.log('[Automation History] Raw entries:', data.result?.entries?.length || 0);
+                console.log('[Automation History] Processed events:', data.result?.ruleEvents?.length || 0);
+                
                 if (data.errno && data.errno !== 0) {
                     throw new Error(data.error || 'API error');
                 }
                 
+                const entries = data.result?.entries || [];
                 const events = data.result?.ruleEvents || [];
                 
+                console.log('[Automation History] First entry:', entries[0]);
+                console.log('[Automation History] First event:', events[0]);
+                
                 if (events.length === 0) {
+                    // Show more detailed debug info in empty state
+                    const debugInfo = entries.length > 0 
+                        ? `Found ${entries.length} raw audit log(s) but no processable events. Check console for details.`
+                        : 'No audit logs found in the database.';
+                    
                     content.innerHTML = `
                         <div class="timeline-empty">
                             <div class="icon">📭</div>
                             <p>No automation rule activity in the last 7 days</p>
-                            <p style="font-size:12px;margin-top:8px">Rules will appear here when automation is enabled and rules trigger</p>
+                            <p style="font-size:12px;margin-top:8px">${debugInfo}</p>
+                            <p style="font-size:11px;margin-top:8px;color:var(--text-muted)">Rules will appear here when automation is enabled and rules trigger</p>
                         </div>
                     `;
                 } else {
@@ -1385,7 +1400,7 @@
                 }
                 
                 status.className = 'status success';
-                status.textContent = `✓ Found ${events.length} rule event${events.length !== 1 ? 's' : ''} in the last 7 days`;
+                status.textContent = `✓ Found ${events.length} rule event${events.length !== 1 ? 's' : ''} in the last 7 days (${entries.length} raw entries)`;
                 setTimeout(() => { status.style.display = 'none'; }, 3000);
             } catch (e) {
                 status.className = 'status error';
