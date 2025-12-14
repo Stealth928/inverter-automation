@@ -473,6 +473,67 @@
       </div>
     </div>
 
+    <!-- Topology Diagnostics Section -->
+    <div class="card" style="margin-top: 20px;">
+      <div class="card-header">
+        <h2>🔬 Solar Topology Diagnostics</h2>
+      </div>
+      <div class="card-body">
+        <div class="hint">
+          <strong>🔍 For AC-Coupled Solar Users:</strong> If your solar panels connect to a separate inverter (not directly to Fox), 
+          your setup is "AC-coupled". Fox may show this as "GEN LOAD" instead of "PV". Use these tools to identify which meter 
+          channel represents your solar production.
+        </div>
+
+        <div style="display: grid; gap: 12px;">
+          <!-- Discover Variables -->
+          <div>
+            <button type="button" class="btn" onclick="discoverVariables()" id="btnDiscoverVars" style="width: 100%;">
+              🔍 Discover Available Variables
+            </button>
+            <div id="status-discover" style="margin-top: 8px;"></div>
+          </div>
+
+          <!-- Get All Real-Time Data -->
+          <div>
+            <button type="button" class="btn" onclick="getAllRealtimeData()" id="btnAllData" style="width: 100%;">
+              📊 Get All Real-Time Data (No Filters)
+            </button>
+            <div id="status-alldata" style="margin-top: 8px;"></div>
+          </div>
+
+          <!-- Topology Analysis Display -->
+          <div id="topologyAnalysis" style="display: none; margin-top: 12px; padding: 12px; background: rgba(88, 166, 255, 0.08); border-left: 3px solid var(--accent-blue); border-radius: 6px;">
+            <div style="font-size: 13px; font-weight: 600; color: var(--accent-blue); margin-bottom: 8px;">
+              📡 Detected Topology
+            </div>
+            <div id="topologyResult" style="font-size: 12px; color: var(--text-secondary);"></div>
+          </div>
+
+          <!-- Instructions -->
+          <details style="margin-top: 12px;">
+            <summary style="cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent-blue); padding: 8px 0;">
+              📖 How to Use These Diagnostics
+            </summary>
+            <div style="font-size: 12px; color: var(--text-secondary); padding: 12px; background: rgba(0, 0, 0, 0.2); border-radius: 6px; margin-top: 8px; line-height: 1.6;">
+              <p><strong>Step 1:</strong> Click "Discover Available Variables" to see what data your device exposes.</p>
+              <p><strong>Step 2:</strong> During solar production hours (midday), click "Get All Real-Time Data".</p>
+              <p><strong>Step 3:</strong> Check the "API Response" panel below for:</p>
+              <ul style="margin-left: 20px;">
+                <li><code>pvPower</code> - DC-coupled solar (normal setup)</li>
+                <li><code>meterPower</code> and <code>meterPower2</code> - Meter channels (may be AC-coupled solar)</li>
+                <li><code>batChargePower</code> - Battery charging rate</li>
+                <li><code>gridConsumptionPower</code> - Grid import</li>
+              </ul>
+              <p><strong>Analysis:</strong> If <code>pvPower ≈ 0</code> but battery is charging and no grid import, 
+              energy comes from AC-coupled solar (check which <code>meterPower*</code> has positive value).</p>
+              <p><strong>Next Step:</strong> Share the output with support to configure the correct solar source.</p>
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- API Call Metrics Footer -->
@@ -852,6 +913,126 @@
         document.getElementById('countWeather').textContent = today.weather ?? 0;
       } catch (e) {
         console.warn('Failed to load api metrics', e.message);
+      }
+    }
+
+    // ==================== DIAGNOSTICS FUNCTIONS ====================
+
+    async function discoverVariables() {
+      const btn = document.getElementById('btnDiscoverVars');
+      const status = document.getElementById('status-discover');
+      
+      try {
+        btn.disabled = true;
+        btn.textContent = '⏳ Discovering...';
+        status.innerHTML = '<div class="status-message info">Querying device variables...</div>';
+
+        const resp = await authenticatedFetch('/api/inverter/discover-variables');
+        const result = await resp.json();
+
+        if (result.errno === 0) {
+          status.innerHTML = '<div class="status-message success">✅ Variables discovered! Check output panel below.</div>';
+          displayFormattedResponse('Available Variables', result);
+          
+          // Show available variables count
+          if (result.result && Array.isArray(result.result)) {
+            const varCount = result.result.length;
+            status.innerHTML = `<div class="status-message success">✅ Found ${varCount} available variables</div>`;
+          }
+        } else {
+          status.innerHTML = `<div class="status-message error">❌ ${result.error || 'Failed to discover variables'}</div>`;
+          displayFormattedResponse('Discovery Error', result);
+        }
+      } catch (error) {
+        status.innerHTML = `<div class="status-message error">❌ Error: ${error.message}</div>`;
+        console.error('Discovery error:', error);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔍 Discover Available Variables';
+      }
+    }
+
+    async function getAllRealtimeData() {
+      const btn = document.getElementById('btnAllData');
+      const status = document.getElementById('status-alldata');
+      const analysisDiv = document.getElementById('topologyAnalysis');
+      const resultDiv = document.getElementById('topologyResult');
+      
+      try {
+        btn.disabled = true;
+        btn.textContent = '⏳ Querying...';
+        status.innerHTML = '<div class="status-message info">Fetching all real-time data...</div>';
+
+        console.log('[Diagnostics] Making request to /api/inverter/all-data');
+        
+        const resp = await authenticatedFetch('/api/inverter/all-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        
+        console.log('[Diagnostics] Response status:', resp.status);
+        
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        }
+        
+        const result = await resp.json();
+        console.log('[Diagnostics] Response data:', result);
+
+        if (result.errno === 0) {
+          status.innerHTML = '<div class="status-message success">✅ Data retrieved! Check output and topology analysis below.</div>';
+          displayFormattedResponse('All Real-Time Data', result);
+          
+          // Show topology analysis if available
+          if (result.topologyHints) {
+            analysisDiv.style.display = 'block';
+            const hints = result.topologyHints;
+            
+            let html = `<div style="display: grid; gap: 8px; font-size: 12px;">`;
+            html += `<div><strong>Detected Topology:</strong> <span style="color: var(--accent);">${hints.likelyTopology}</span></div>`;
+            html += `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px;">`;
+            html += `<div>pvPower: <strong>${hints.pvPower?.toFixed(2) || 0} kW</strong></div>`;
+            html += `<div>batChargePower: <strong>${hints.batChargePower?.toFixed(2) || 0} kW</strong></div>`;
+            if (hints.meterPower !== null) {
+              html += `<div>meterPower: <strong>${hints.meterPower?.toFixed(2) || 0} kW</strong></div>`;
+            }
+            if (hints.meterPower2 !== null) {
+              html += `<div>meterPower2: <strong>${hints.meterPower2?.toFixed(2) || 0} kW</strong></div>`;
+            }
+            html += `<div>gridConsumption: <strong>${hints.gridConsumptionPower?.toFixed(2) || 0} kW</strong></div>`;
+            html += `</div></div>`;
+            
+            // Add interpretation
+            if (hints.likelyTopology.includes('AC-coupled')) {
+              html += `<div style="margin-top: 8px; padding: 8px; background: rgba(126, 231, 135, 0.1); border-radius: 4px; color: var(--accent);">`;
+              html += `<strong>⚠️ AC-Coupled Solar Detected:</strong> Your solar appears to be on a separate inverter. `;
+              if (hints.meterPower2 > 0.5) {
+                html += `<code>meterPower2</code> likely represents your solar production (${hints.meterPower2.toFixed(2)} kW).`;
+              } else if (hints.meterPower > 0.5) {
+                html += `<code>meterPower</code> likely represents your solar production (${hints.meterPower.toFixed(2)} kW).`;
+              }
+              html += `</div>`;
+            } else if (hints.likelyTopology.includes('Unknown')) {
+              html += `<div style="margin-top: 8px; padding: 8px; background: rgba(255, 212, 59, 0.1); border-radius: 4px; color: #ffd43b;">`;
+              html += `<strong>ℹ️ Run During Solar Hours:</strong> Test this during midday when solar is producing for accurate detection.`;
+              html += `</div>`;
+            }
+            
+            resultDiv.innerHTML = html;
+          }
+        } else {
+          status.innerHTML = `<div class="status-message error">❌ ${result.error || 'Failed to get data'}</div>`;
+          displayFormattedResponse('Query Error', result);
+          analysisDiv.style.display = 'none';
+        }
+      } catch (error) {
+        status.innerHTML = `<div class="status-message error">❌ Error: ${error.message}</div>`;
+        console.error('All-data query error:', error);
+        analysisDiv.style.display = 'none';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '📊 Get All Real-Time Data (No Filters)';
       }
     }
 

@@ -608,19 +608,19 @@
                         </div>
                     </div>
 
-                    <!-- Default Weather Location (Optional) -->
+                    <!-- Weather Location (Required - Sets Timezone) -->
                     <div class="form-group" id="weatherPlaceGroup">
                         <label for="weatherPlace">
-                            <span>Default Weather Location</span>
-                            <span class="optional-badge">Optional</span>
+                            <span>Weather Location</span>
+                            <span class="required-badge" style="color: #ff6b6b;">Required</span>
                         </label>
-                        <div class="hint">Enter your city and country to see local weather forecasts (e.g., "Sydney, Australia"). Defaults to Sydney if not specified.</div>
+                        <div class="hint">Enter your city and country (e.g., "Sydney, Australia"). This is used to display local weather forecasts AND automatically detect your timezone for accurate automation scheduling.</div>
                         <div class="input-wrapper">
                             <input 
                                 type="text" 
                                 id="weatherPlace" 
                                 name="weatherPlace" 
-                                placeholder="Best format is City, Country (e.g. Sydney, Australia)"
+                                placeholder="(e.g. Sydney, Australia)"
                                 autocomplete="off"
                                 spellcheck="false"
                             >
@@ -767,6 +767,11 @@
 
             if (!foxessToken) {
                 setFieldError('foxessToken', 'FoxESS API Token is required');
+                return;
+            }
+
+            if (!weatherPlace) {
+                setFieldError('weatherPlace', 'Weather location is required to set your timezone');
                 return;
             }
 

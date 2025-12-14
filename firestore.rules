@@ -67,6 +67,16 @@ service cloud.firestore {
       // No updates to history (immutable log)
       allow update: if false;
     }
+
+    // ==================== USER AUTOMATION AUDIT ====================
+    // Per-user automation audit logs: /users/{userId}/automationAudit/{auditId}
+    match /users/{userId}/automationAudit/{auditId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId); // Cloud Functions can also create via Admin SDK
+      allow delete: if isOwner(userId);
+      // No updates to audit logs (immutable log)
+      allow update: if false;
+    }
     
     // ==================== SHARED CACHE (GLOBAL) ====================
     // Shared API cache for external APIs (Amber, Weather, etc.)

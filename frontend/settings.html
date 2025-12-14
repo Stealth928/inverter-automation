@@ -1209,6 +1209,8 @@
         // Save all settings
         async function saveAllSettings() {
             try {
+                console.log('[Settings] ========== SAVE SETTINGS START ==========');
+                
                 // Collect all values
                 const newConfig = {
                     automation: {
@@ -1238,8 +1240,14 @@
                     preferences: {
                         weatherPlace: document.getElementById('preferences_weatherPlace')?.value || 'Sydney NSW',
                         forecastDays: getInputValue('preferences_forecastDays') || 6
-                    }
+                    },
+                    // Also save location at root level for timezone detection
+                    location: document.getElementById('preferences_weatherPlace')?.value || 'Sydney NSW'
                 };
+
+                console.log('[Settings] newConfig.location:', newConfig.location);
+                console.log('[Settings] preferences.weatherPlace:', newConfig.preferences.weatherPlace);
+                console.log('[Settings] Full newConfig before adding browserTimezone:', JSON.stringify(newConfig));
 
                 // Comprehensive validation
                 const validationErrors = [];
@@ -1298,11 +1306,22 @@
                 const statusEl = document.getElementById('configStatus');
                 statusEl.innerHTML = '<span class="spinner"></span> Saving...';
 
+                // Add browser timezone for detection (most reliable source)
+                const browserTz = apiClient.getBrowserTimezone();
+                newConfig.browserTimezone = browserTz;
+                console.log('[Settings] Browser timezone detected:', browserTz);
+                console.log('[Settings] ✅ About to send config to /api/config');
+                console.log('[Settings] Full payload being sent:', JSON.stringify(newConfig, null, 2));
+
                 const resp = await authenticatedFetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(newConfig)
                 });
+
+                console.log('[Settings] HTTP Response status:', resp.status, resp.ok);
+                console.log('[Settings] Response headers:', [...resp.headers.entries()]);
+
 
                 if (!resp.ok) {
                     // Try to extract structured error payload
@@ -1315,11 +1334,19 @@
                 }
 
                 const data = await resp.json();
+                console.log('[Settings] Server response errno:', data.errno);
+                console.log('[Settings] Server response:', JSON.stringify(data, null, 2));
                 if (data.errno !== 0) throw new Error(data.msg || 'Failed to save config');
 
                 // Update original config from server response
                 originalConfig = JSON.parse(JSON.stringify(data.result));
                 currentConfig = data.result;
+                
+                console.log('[Settings] ✅ Config saved successfully!');
+                console.log('[Settings] Returned config timezone:', data.result?.timezone);
+                console.log('[Settings] Returned config location:', data.result?.location);
+                console.log('[Settings] ========== SAVE SETTINGS END ==========');
+
                 
                 updateStatus();
                 document.getElementById('lastSaved').textContent = new Date().toLocaleTimeString();

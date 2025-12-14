@@ -509,7 +509,7 @@
         /* Make the Active Automation card expand to fill available space and scroll internally */
         .automation-panel > .card:first-child {
             flex: 1 1 auto;
-            min-height: 0; /* critical for flex child to shrink and enable scrolling */
+            min-height: 500px; /* Increased from default to make it taller */
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -525,22 +525,20 @@
         /* Keep the FAQ card at fixed small size */
         .automation-panel > .card.faq-card {
             flex: 0 0 auto;
+            margin-top: 32px; /* Increased spacing to push FAQ further down */
         }
 
         /* FAQ card in automation panel - small default size and scrollable content */
         .automation-panel .faq-card {
-            /* Make the FAQ card considerably taller so 'How It Works' can display
-               more content without requiring the user to open the modal or scroll
-               the entire page. Keep a reasonable maximum so the panel doesn't
-               dominate the layout on very tall screens. */
-            max-height: 728px; /* increased from 520px (40% more vertical space) */
-            min-height: 280px; /* increased from 200px proportionally */
+            /* Reduced height to make FAQ card smaller */
+            max-height: 480px; /* reduced from 728px */
+            min-height: 200px; /* reduced from 280px */
             overflow: hidden; /* prevent the FAQ card from expanding the automation panel */
         }
         .automation-panel .faq-card .card-body {
             /* Allow only the inner FAQ area to scroll — height adjusted to match
-               the larger FAQ card container so content inside has more room */
-            max-height: calc(728px - 50px); /* account for header height */
+               the smaller FAQ card container so content inside has more room */
+            max-height: calc(480px - 50px); /* account for header height */
             overflow-y: auto;
             padding-right: 6px;
             overscroll-behavior: contain;
@@ -4723,7 +4721,7 @@
         }
 
         // Format a date/timestamp to DD/MM/YYYY optionally with time
-        function formatDate(ts, withTime = false, withSeconds = false) {
+        function formatDate(ts, withTime = false, withSeconds = false, timeZone = null) {
             if (!ts) return '—';
             
             // Handle date-only strings (YYYY-MM-DD) from weather API
@@ -4751,14 +4749,47 @@
             
             const d = (timestamp instanceof Date) ? timestamp : new Date(Number(timestamp) || timestamp);
             if (isNaN(d.getTime())) return '—';
-            const dd = String(d.getDate()).padStart(2, '0');
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const yyyy = d.getFullYear();
+            
+            let dd, mm, yyyy, hh, min, sec;
+            
+            // If specific timezone requested, use toLocaleString to get time in that timezone
+            if (timeZone && withTime) {
+                try {
+                    // Use Intl.DateTimeFormat to convert to user's timezone
+                    const formatter = new Intl.DateTimeFormat('en-GB', {
+                        timeZone,
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+                    const parts = formatter.formatToParts(d);
+                    const values = {};
+                    parts.forEach(p => values[p.type] = p.value);
+                    dd = values.day;
+                    mm = values.month;
+                    yyyy = values.year;
+                    hh = values.hour;
+                    min = values.minute;
+                    sec = values.second;
+                } catch (e) {
+                    // Fall back to browser timezone if timezone is invalid
+                    return formatDate(ts, withTime, withSeconds, null);
+                }
+            } else {
+                // Use browser's local timezone
+                dd = String(d.getDate()).padStart(2, '0');
+                mm = String(d.getMonth() + 1).padStart(2, '0');
+                yyyy = d.getFullYear();
+                hh = String(d.getHours()).padStart(2, '0');
+                min = String(d.getMinutes()).padStart(2, '0');
+                sec = String(d.getSeconds()).padStart(2, '0');
+            }
+            
             if (!withTime) return `${dd}/${mm}/${yyyy}`;
-            const hh = String(d.getHours()).padStart(2, '0');
-            const min = String(d.getMinutes()).padStart(2, '0');
             if (withSeconds) {
-                const sec = String(d.getSeconds()).padStart(2, '0');
                 return `${dd}/${mm}/${yyyy} ${hh}:${min}:${sec}`;
             }
             return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
@@ -5608,6 +5639,8 @@
             }
             
             // Debug Info Box - shows last cycle outcome
+            const debugTimestamp = status.lastCheck ? formatDate(status.lastCheck, true, false, status.userTimezone) : 'N/A';
+            const tzLabel = status.userTimezone ? ` (${status.userTimezone})` : '';
             html += `
                 <div id="automationDebugBox" style="margin-top:12px;padding:8px 10px;background:rgba(13,17,23,0.8);border:1px solid #30363d;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.2)">
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
@@ -5615,7 +5648,7 @@
                         <div id="debugContent" style="color:#e6edf3;font-size:11px;flex:1;min-width:250px">
                             ${window.lastCycleResult ? formatCycleResult(window.lastCycleResult) : '<span style="color:#6e7681;font-size:10px">⏳ Waiting...</span>'}
                         </div>
-                        <span id="debugTimestamp" style="color:#6e7681;font-size:9px;white-space:nowrap;background:#0d1117;padding:2px 6px;border-radius:3px">${status.lastCheck ? formatDate(status.lastCheck, true) : 'N/A'}</span>
+                        <span id="debugTimestamp" style="color:#6e7681;font-size:9px;white-space:nowrap;background:#0d1117;padding:2px 6px;border-radius:3px" title="User timezone: ${status.userTimezone || 'unknown'}">${debugTimestamp}${tzLabel}</span>
                     </div>
                 </div>
             `;

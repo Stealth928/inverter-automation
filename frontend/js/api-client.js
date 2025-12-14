@@ -210,7 +210,29 @@ class APIClient {
   }
 
   async saveConfig(config) {
-    return this.post('/api/config', { config });
+    // Auto-detect browser timezone using Intl API and include in config
+    // This allows server to update timezone immediately if location changes
+    const browserTimezone = this.getBrowserTimezone();
+    const configWithTimezone = {
+      ...config,
+      browserTimezone: browserTimezone
+    };
+    return this.post('/api/config', { config: configWithTimezone });
+  }
+
+  /**
+   * Detect user's browser timezone using Intl API
+   * Returns IANA timezone identifier (e.g., 'America/New_York', 'Australia/Sydney')
+   */
+  getBrowserTimezone() {
+    try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      console.log('[API] Detected browser timezone:', timezone);
+      return timezone;
+    } catch (e) {
+      console.warn('[API] Failed to detect browser timezone:', e);
+      return null;
+    }
   }
 
   // ==================== AUTOMATION ====================

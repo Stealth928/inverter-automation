@@ -315,6 +315,27 @@
             position: relative;
             padding-left: 30px;
             margin-top: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+            padding-right: 12px;
+        }
+        
+        .automation-timeline::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .automation-timeline::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+        
+        .automation-timeline::-webkit-scrollbar-thumb {
+            background: rgba(88, 166, 255, 0.3);
+            border-radius: 4px;
+        }
+        
+        .automation-timeline::-webkit-scrollbar-thumb:hover {
+            background: rgba(88, 166, 255, 0.5);
         }
         
         .timeline-event {
@@ -420,6 +441,27 @@
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+        
+        .condition-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .condition-list::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+        
+        .condition-list::-webkit-scrollbar-thumb {
+            background: rgba(88, 166, 255, 0.3);
+            border-radius: 3px;
+        }
+        
+        .condition-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(88, 166, 255, 0.5);
         }
         
         .condition-chip {
@@ -732,9 +774,11 @@
         <div class="card">
             <div class="card-header">
                 <div class="card-title">🤖 Automation Rule History (Last 7 Days)</div>
-                <button class="btn" onclick="fetchAutomationHistory()" id="btnRefreshAutomationHistory" style="font-size:11px;padding:6px 12px">
-                    🔄 Refresh
-                </button>
+                <div style="display:flex;gap:8px">
+                    <button class="btn" onclick="fetchAutomationHistory()" id="btnRefreshAutomationHistory" style="font-size:11px;padding:6px 12px">
+                        🔄 Refresh
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 <div id="automationHistoryStatus" class="status"></div>
@@ -1451,21 +1495,33 @@
                         </div>
                 `;
                 
-                // Show start conditions
-                if (event.startConditions && event.startConditions.length > 0) {
+                // Show comprehensive rule evaluation report (like "Last Cycle" display)
+                const allRules = event.startAllRules || [];
+                if (allRules && allRules.length > 0) {
                     html += `
                         <div class="event-conditions">
-                            <div class="event-conditions-title">Conditions When Started:</div>
+                            <div class="event-conditions-title">Rule Evaluation Report (${allRules.filter(r => r.triggered).length}/${allRules.length} rules triggered):</div>
                             <div class="condition-list">
                     `;
                     
-                    for (const condition of event.startConditions) {
-                        const metClass = condition.met ? 'met' : 'not-met';
-                        const icon = condition.met ? '✓' : '✗';
+                    for (const ruleEval of allRules) {
+                        const isTriggered = ruleEval.triggered;
+                        const icon = isTriggered ? '✓' : '✗';
+                        const metClass = isTriggered ? 'met' : 'not-met';
+                        
+                        // Build condition details string (like "✓ SoC: 89% • ✗ FI: 7.2¢")
+                        let conditionDetails = '';
+                        if (ruleEval.conditions && ruleEval.conditions.length > 0) {
+                            conditionDetails = ruleEval.conditions.map(c => {
+                                const cIcon = c.met ? '✓' : '✗';
+                                return `${cIcon} ${c.name || c.rule}: ${c.value}`;
+                            }).join(' • ');
+                        }
+                        
                         html += `
-                            <div class="condition-chip ${metClass}">
-                                <span>${icon}</span>
-                                <span>${condition.name || condition.rule}: ${condition.value}</span>
+                            <div class="condition-chip ${metClass}" style="display: block; margin-bottom: 4px;">
+                                <span style="font-weight: 600;">${icon} ${ruleEval.name || ruleEval.ruleId}</span>
+                                ${conditionDetails ? `<span style="margin-left: 8px; opacity: 0.9;">| ${conditionDetails}</span>` : ''}
                             </div>
                         `;
                     }
@@ -1477,20 +1533,31 @@
                 }
                 
                 // Show end conditions for completed events
-                if (!isOngoing && event.endConditions && event.endConditions.length > 0) {
+                if (!isOngoing && event.endAllRules && event.endAllRules.length > 0) {
                     html += `
                         <div class="event-conditions">
-                            <div class="event-conditions-title">Conditions When Ended:</div>
+                            <div class="event-conditions-title">Rule Evaluation at End (${event.endAllRules.filter(r => r.triggered).length}/${event.endAllRules.length} rules triggered):</div>
                             <div class="condition-list">
                     `;
                     
-                    for (const condition of event.endConditions) {
-                        const metClass = condition.met ? 'met' : 'not-met';
-                        const icon = condition.met ? '✓' : '✗';
+                    for (const ruleEval of event.endAllRules) {
+                        const isTriggered = ruleEval.triggered;
+                        const icon = isTriggered ? '✓' : '✗';
+                        const metClass = isTriggered ? 'met' : 'not-met';
+                        
+                        // Build condition details string
+                        let conditionDetails = '';
+                        if (ruleEval.conditions && ruleEval.conditions.length > 0) {
+                            conditionDetails = ruleEval.conditions.map(c => {
+                                const cIcon = c.met ? '✓' : '✗';
+                                return `${cIcon} ${c.name || c.rule}: ${c.value}`;
+                            }).join(' • ');
+                        }
+                        
                         html += `
-                            <div class="condition-chip ${metClass}">
-                                <span>${icon}</span>
-                                <span>${condition.name || condition.rule}: ${condition.value}</span>
+                            <div class="condition-chip ${metClass}" style="display: block; margin-bottom: 4px;">
+                                <span style="font-weight: 600;">${icon} ${ruleEval.name || ruleEval.ruleId}</span>
+                                ${conditionDetails ? `<span style="margin-left: 8px; opacity: 0.9;">| ${conditionDetails}</span>` : ''}
                             </div>
                         `;
                     }

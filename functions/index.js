@@ -1,12 +1,13 @@
 /**
  * Firebase Cloud Functions for Inverter App
- * Version: 2.2.0 - Fix segment group count (use 8, not 10)
+ * Version: 2.3.0 - Timezone Support (Auto-detect from weather location)
  * 
  * This module provides:
  * - API endpoints (proxied from frontend)
  * - Scheduled automation tasks
  * - Shared API caching (Amber, Weather, FoxESS)
  * - Per-user automation execution
+ * - Multi-timezone support for global users
  */
 
 const functions = require('firebase-functions');
@@ -122,6 +123,7 @@ async function addAutomationAuditEntry(userId, cycleData) {
       
       // Condition evaluation details
       evaluationResults: cycleData.evaluationResults || [],
+      allRuleEvaluations: cycleData.allRuleEvaluations || [], // NEW: All rule evaluations for complete context
       
       // Action taken (if any)
       actionTaken: cycleData.actionTaken || null,
@@ -286,7 +288,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 app.post('/api/config/validate-keys', async (req, res) => {
   try {
     await tryAttachUser(req);
-    const { device_sn, foxess_token, amber_api_key } = req.body;
+    const { device_sn, foxess_token, amber_api_key, weather_place } = req.body;
     const errors = {};
     const failed_keys = [];
     
@@ -335,6 +337,7 @@ app.post('/api/config/validate-keys', async (req, res) => {
         deviceSn: device_sn,
         foxessToken: foxess_token,
         amberApiKey: amber_api_key || '',
+        location: weather_place || 'Sydney',  // Save location for timezone detection
         setupComplete: true,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
@@ -1411,6 +1414,10 @@ async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
     const forecastJson = await forecastResp.json();
     clearTimeout(timeout);
     
+    // Extract timezone from Open-Meteo response (e.g., "America/New_York", "Europe/London", "Australia/Sydney")
+    const detectedTimezone = forecastJson.timezone || 'Australia/Sydney';
+    console.log(`[Weather] Detected timezone for ${resolvedName}: ${detectedTimezone}`);
+    
     return {
       errno: 0,
       result: {
@@ -1421,6 +1428,7 @@ async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
           country,
           latitude,
           longitude,
+          timezone: detectedTimezone,
           fallback,
           fallbackReason,
           fallbackResolvedName
@@ -1458,11 +1466,15 @@ async function getCachedWeatherData(userId, place = 'Sydney', days = 16) {
       
       // Validate cache is still fresh AND has enough days AND is for the same place
       // Use cache if it has >= requested days (e.g., cached 7 days can serve a request for 6 days)
-      if (ageMs < ttlMs && cachedDays >= days && placesMatch && cachedDayCount >= days) {
+      // IMPORTANT: Force cache MISS if location changed - this allows timezone to update
+      if (!placesMatch) {
+        console.log(`[Cache] Weather MISS - location changed (cached="${cachedPlace}", requested="${place}") - forcing refresh for timezone update`);
+        // Fall through to fetch fresh data
+      } else if (ageMs < ttlMs && cachedDays >= days && cachedDayCount >= days) {
         console.log(`[Cache] Weather HIT - age: ${Math.round(ageMs/1000)}s, cached ${cachedDays} days, requested ${days}, place: ${cachedPlace}`);
         return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
       } else {
-        console.log(`[Cache] Weather MISS - TTL ok=${ageMs < ttlMs}, enough days=${cachedDays >= days} (cached=${cachedDays}, requested=${days}), place match=${placesMatch} (cached="${cachedPlace}", requested="${place}"), data count=${cachedDayCount}`);
+        console.log(`[Cache] Weather MISS - TTL ok=${ageMs < ttlMs}, enough days=${cachedDays >= days} (cached=${cachedDays}, requested=${days}), data count=${cachedDayCount}`);
       }
     } else {
       console.log(`[Cache] No cached weather data - fetching fresh`);
@@ -1470,6 +1482,20 @@ async function getCachedWeatherData(userId, place = 'Sydney', days = 16) {
     
     // Fetch fresh data from Open-Meteo
     const data = await callWeatherAPI(place, days, userId);
+    
+    // If weather fetch succeeded and returned a timezone, update user config with detected timezone
+    if (data?.errno === 0 && data?.result?.place?.timezone && userId) {
+      const detectedTimezone = data.result.place.timezone;
+      console.log(`[Weather] Auto-updating user ${userId} timezone to: ${detectedTimezone}`);
+      try {
+        await db.collection('users').doc(userId).collection('config').doc('main').set(
+          { timezone: detectedTimezone },
+          { merge: true }
+        );
+      } catch (tzErr) {
+        console.warn(`[Weather] Failed to update user timezone: ${tzErr.message}`);
+      }
+    }
     
     // Store in cache if successful
     // NOTE: Only store the daily data and metadata, not full hourly (reduces Firestore document size)
@@ -1503,6 +1529,55 @@ async function getCachedWeatherData(userId, place = 'Sydney', days = 16) {
     console.error(`[Cache] Error in getCachedWeatherData: ${err.message}`);
     return { errno: 500, error: err.message };
   }
+}
+
+/**
+ * Get user's browser timezone from Intl API (client would send this)
+ * Server-side fallback: try to get from config first, then use timezone from weather
+ * @param {string} browserTimezone - IANA timezone from browser (sent by client)
+ * @returns {string} Timezone to use (from config, browser, or weather, or Sydney default)
+ */
+function resolveUserTimezone(userConfig, browserTimezone) {
+  // Priority 1: User's saved timezone in config
+  if (userConfig?.timezone) {
+    return userConfig.timezone;
+  }
+  
+  // Priority 2: Browser timezone sent from client
+  if (browserTimezone && isValidTimezone(browserTimezone)) {
+    return browserTimezone;
+  }
+  
+  // Priority 3: Fallback to Sydney
+  return 'Australia/Sydney';
+}
+
+/**
+ * Validate timezone string is a valid IANA timezone
+ */
+function isValidTimezone(tz) {
+  if (!tz || typeof tz !== 'string') return false;
+  try {
+    // Test by trying to use it in toLocaleString
+    new Date().toLocaleString('en-AU', { timeZone: tz });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Get user's timezone from config
+ * Config is kept up-to-date via:
+ * - Browser timezone detection (sent every time frontend saves)
+ * - Location-based detection (when location is set)
+ * - Weather API detection (when weather is fetched for any rule)
+ */
+function getAutomationTimezone(userConfig) {
+  if (userConfig?.timezone && isValidTimezone(userConfig.timezone)) {
+    return userConfig.timezone;
+  }
+  return 'Australia/Sydney';
 }
 
 /**
@@ -1657,10 +1732,66 @@ app.post('/api/config', async (req, res) => {
       return res.status(400).json({ errno: 400, error: 'Invalid payload: expected config object' });
     }
 
-    console.log('[API] /api/config save called by user:', req.user?.uid, 'payloadKeys=', Object.keys(newConfig || {}).slice(0,20));
+    const userId = req.user.uid;
+    console.log('\n\n🔵🔵🔵🔵🔵 [Config] ========== CONFIG SAVE START ==========');
+    console.log('[Config] User ID:', userId);
+    console.log('[Config] Full incoming payload:', JSON.stringify(req.body, null, 2));
+    console.log('[Config] Incoming browserTimezone:', newConfig.browserTimezone);
+    console.log('[Config] Incoming timezone:', newConfig.timezone);
+    console.log('[Config] Incoming location:', newConfig.location);
+    console.log('[Config] isValidTimezone(browserTimezone):', newConfig.browserTimezone ? isValidTimezone(newConfig.browserTimezone) : 'N/A');
+
+    // Get existing config to check if location changed
+    const existingConfig = await getUserConfig(userId);
+    console.log('[Config] Existing config:', JSON.stringify(existingConfig, null, 2));
+    console.log('[Config] Existing timezone:', existingConfig?.timezone);
+    console.log('[Config] Existing location:', existingConfig?.location);
+    
+    const locationChanged = newConfig.location && newConfig.location !== existingConfig?.location;
+    console.log('[Config] Location changed:', locationChanged, `(new: "${newConfig.location}", existing: "${existingConfig?.location}")`);
+    
+    // PRIORITY 1: If browser sent timezone, ALWAYS use it (most reliable - from user's OS)
+    if (newConfig.browserTimezone && isValidTimezone(newConfig.browserTimezone)) {
+      console.log(`[Config] 🟢 PRIORITY 1: Using browser timezone: ${newConfig.browserTimezone}`);
+      newConfig.timezone = newConfig.browserTimezone;
+    }
+    // PRIORITY 2: If location changed or no timezone set, detect from location
+    else if (locationChanged || !newConfig.timezone) {
+      const locationToUse = newConfig.location || existingConfig?.location || 'Sydney';
+      console.log(`[Config] 🟡 PRIORITY 2: Detecting timezone from location: "${locationToUse}"`);
+      try {
+        const weatherData = await callWeatherAPI(locationToUse, 1, userId);
+        console.log(`[Config] Weather API response:`, JSON.stringify(weatherData, null, 2));
+        console.log(`[Config] Weather API errno: ${weatherData?.errno}`);
+        console.log(`[Config] Weather API place:`, JSON.stringify(weatherData?.result?.place, null, 2));
+        console.log(`[Config] Weather API timezone: ${weatherData?.result?.place?.timezone}`);
+        const tzValid = weatherData?.result?.place?.timezone && isValidTimezone(weatherData.result.place.timezone);
+        console.log(`[Config] Is valid timezone: ${tzValid}`);
+        if (tzValid) {
+          newConfig.timezone = weatherData.result.place.timezone;
+          console.log(`[Config] 🟢 Detected timezone from location: ${newConfig.timezone}`);
+        } else {
+          console.log(`[Config] ❌ No valid timezone in weather response`);
+        }
+      } catch (err) {
+        console.warn(`[Config] ❌ Failed to detect timezone from location:`, err.message, err.stack);
+      }
+    }
+    // PRIORITY 3: Keep existing timezone if still valid
+    else if (newConfig.timezone && isValidTimezone(newConfig.timezone)) {
+      console.log(`[Config] 🟢 PRIORITY 3: Keeping existing timezone: ${newConfig.timezone}`);
+    }
+    
+    console.log('[Config] ⭐ Final timezone to save:', newConfig.timezone);
+    
+    // Remove browserTimezone from stored config (it's transient, only for detection)
+    delete newConfig.browserTimezone;
 
     // Persist to Firestore under user's config/main
-    await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(newConfig, { merge: true });
+    console.log('[Config] 📝 Saving to Firestore at users/' + userId + '/config/main');
+    await db.collection('users').doc(userId).collection('config').doc('main').set(newConfig, { merge: true });
+    console.log('[Config] ✅ Firestore save complete');
+    console.log('[Config] ========== CONFIG SAVE END ==========\n\n');
     res.json({ errno: 0, msg: 'Config saved', result: newConfig });
   } catch (error) {
     console.error('[API] /api/config save error:', error && error.stack ? error.stack : String(error));
@@ -1696,13 +1827,62 @@ app.get('/api/automation/status', async (req, res) => {
   try {
     const state = await getUserAutomationState(req.user.uid);
     const rules = await getUserRules(req.user.uid);
-    const userConfig = await getUserConfig(req.user.uid);
+    let userConfig = await getUserConfig(req.user.uid);
     const serverConfig = getConfig();
+    
+    console.log(`[Status] === TIMEZONE DEBUG ===`);
+    console.log(`[Status] User ID: ${req.user.uid}`);
+    console.log(`[Status] Config location: ${userConfig?.location}`);
+    console.log(`[Status] Config timezone: ${userConfig?.timezone}`);
+    
+    // AGGRESSIVE timezone sync: fetch weather to ensure timezone matches location
+    // This runs every status check, so timezone is always current
+    if (userConfig?.location) {
+      console.log(`[Status] Location is set, fetching weather for timezone detection...`);
+      try {
+        const weatherData = await getCachedWeatherData(req.user.uid, userConfig.location, 1);
+        console.log(`[Status] Weather data errno: ${weatherData?.errno}`);
+        console.log(`[Status] Weather data place: ${JSON.stringify(weatherData?.result?.place)}`);
+        
+        if (weatherData?.result?.place?.timezone) {
+          const weatherTimezone = weatherData.result.place.timezone;
+          console.log(`[Status] ✅ Weather timezone extracted: ${weatherTimezone}`);
+          console.log(`[Status] Is valid timezone: ${isValidTimezone(weatherTimezone)}`);
+          
+          // Update config if timezone is missing or different from weather
+          if (userConfig.timezone !== weatherTimezone) {
+            console.log(`[Status] ⚠️ TIMEZONE MISMATCH: config has "${userConfig.timezone}", weather has "${weatherTimezone}"`);
+            console.log(`[Status] 🔄 Updating Firestore config...`);
+            await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(
+              { timezone: weatherTimezone },
+              { merge: true }
+            );
+            console.log(`[Status] ✅ Config updated in Firestore`);
+            userConfig.timezone = weatherTimezone;
+          } else {
+            console.log(`[Status] ✅ Timezone already matches: ${weatherTimezone}`);
+          }
+        } else {
+          console.log(`[Status] ❌ No timezone in weather data`);
+          console.log(`[Status] Weather result: ${JSON.stringify(weatherData?.result)}`);
+        }
+      } catch (err) {
+        console.warn('[Status] ❌ Failed to sync timezone from weather:', err.message, err.stack);
+      }
+    } else {
+      console.log(`[Status] ⚠️ No location set in config`);
+    }
+    
+    console.log(`[Status] Final timezone for response: ${userConfig?.timezone || 'Australia/Sydney'}`);
+    console.log(`[Status] === END TIMEZONE DEBUG ===`);
+    
+    // Use user's timezone for blackout window check
+    const userTimezone = userConfig?.timezone || 'Australia/Sydney';
+    const userTime = getUserTime(userTimezone);
+    const currentMinutes = userTime.hour * 60 + userTime.minute;
     
     // Check for blackout windows
     const blackoutWindows = userConfig?.automation?.blackoutWindows || [];
-    const sydney = getSydneyTime();
-    const currentMinutes = sydney.hour * 60 + sydney.minute;
     
     let inBlackout = false;
     let currentBlackoutWindow = null;
@@ -1754,6 +1934,7 @@ app.get('/api/automation/status', async (req, res) => {
         ...state,
         rules,
         serverTime: Date.now(),
+        userTimezone,  // Include user's timezone so frontend can format times correctly
         nextCheckIn: config.automation.intervalMs,
         inBlackout,
         currentBlackoutWindow,
@@ -1978,8 +2159,13 @@ app.post('/api/automation/cycle', async (req, res) => {
     // Check for blackout windows
     const userConfig = await getUserConfig(userId);
     const blackoutWindows = userConfig?.automation?.blackoutWindows || [];
-    const sydney = getSydneyTime();
-    const currentMinutes = sydney.hour * 60 + sydney.minute;
+    
+    // Get user's timezone (from config which is kept up-to-date)
+    const userTimezone = getAutomationTimezone(userConfig);
+    const userTime = getUserTime(userTimezone);
+    const currentMinutes = userTime.hour * 60 + userTime.minute;
+    
+    console.log(`[Automation] User timezone: ${userTimezone}, current time: ${String(userTime.hour).padStart(2,'0')}:${String(userTime.minute).padStart(2,'0')}`);
     
     let inBlackout = false;
     let currentBlackoutWindow = null;
@@ -2483,12 +2669,31 @@ app.post('/api/automation/cycle', async (req, res) => {
           });
           
           // Log to audit trail - Rule turned ON
+          // Include full evaluation context: ALL rules and their condition states
+          // Transform evaluationResults to frontend-friendly format
+          const allRulesForAudit = evaluationResults.map(evalResult => {
+            const ruleData = sortedRules.find(([id, r]) => r.name === evalResult.rule);
+            const [evalRuleId, evalRule] = ruleData || [null, {}];
+            return {
+              name: evalResult.rule,
+              ruleId: evalRuleId || evalResult.rule,
+              triggered: evalResult.result === 'triggered' || evalResult.result === 'continuing',
+              conditions: evalResult.details?.results?.map(cond => ({
+                name: cond.condition,
+                met: cond.met,
+                value: cond.actual !== undefined ? String(cond.actual) : (cond.reason || 'N/A'),
+                rule: `${cond.condition} ${cond.operator || ''} ${cond.target || ''}`
+              })) || []
+            };
+          });
+          
           await addAutomationAuditEntry(userId, {
             cycleId: `cycle_${cycleStartTime}`,
             triggered: true,
             ruleName: rule.name,
             ruleId: ruleId,
             evaluationResults: result.conditions || [],
+            allRuleEvaluations: allRulesForAudit, // Complete evaluation context in frontend format
             actionTaken: {
               workMode: rule.action?.workMode,
               durationMinutes: rule.action?.durationMinutes,
@@ -2600,12 +2805,31 @@ app.post('/api/automation/cycle', async (req, res) => {
             });
             
             // Log to audit trail - Rule turned OFF
+            // Include full evaluation context showing why conditions failed
+            // Transform evaluationResults to frontend-friendly format
+            const allRulesForAudit = evaluationResults.map(evalResult => {
+              const ruleData = sortedRules.find(([id, r]) => r.name === evalResult.rule);
+              const [evalRuleId, evalRule] = ruleData || [null, {}];
+              return {
+                name: evalResult.rule,
+                ruleId: evalRuleId || evalResult.rule,
+                triggered: evalResult.result === 'triggered' || evalResult.result === 'continuing',
+                conditions: evalResult.details?.results?.map(cond => ({
+                  name: cond.condition,
+                  met: cond.met,
+                  value: cond.actual !== undefined ? String(cond.actual) : (cond.reason || 'N/A'),
+                  rule: `${cond.condition} ${cond.operator || ''} ${cond.target || ''}`
+                })) || []
+              };
+            });
+            
             await addAutomationAuditEntry(userId, {
               cycleId: `cycle_${cycleStartTime}`,
               triggered: false,
               ruleName: rule.name,
               ruleId: ruleId,
               evaluationResults: result.conditions || [],
+              allRuleEvaluations: allRulesForAudit, // Complete evaluation context in frontend format
               actionTaken: null,
               activeRuleBefore: state.activeRule,
               activeRuleAfter: null,
@@ -2922,6 +3146,8 @@ app.get('/api/automation/audit', async (req, res) => {
             durationMs,
             startConditions: startEvent.conditions,
             endConditions: log.evaluationResults,
+            startAllRules: startEvent.allRuleEvaluations,  // All rules evaluated at start
+            endAllRules: log.allRuleEvaluations,          // All rules evaluated at end
             action: startEvent.action
           });
           activeRules.delete(activeRuleBefore);
@@ -2936,6 +3162,7 @@ app.get('/api/automation/audit', async (req, res) => {
           ruleName: log.ruleName || activeRuleAfter,
           ruleId: log.ruleId || activeRuleAfter,
           conditions: log.evaluationResults,
+          allRuleEvaluations: log.allRuleEvaluations,  // Store all rules evaluated
           action: log.actionTaken
         });
       }
@@ -2952,6 +3179,7 @@ app.get('/api/automation/audit', async (req, res) => {
         endTime: null,
         durationMs,
         startConditions: startEvent.conditions,
+        startAllRules: startEvent.allRuleEvaluations,  // All rules evaluated when started
         action: startEvent.action
       });
     }
@@ -3278,6 +3506,125 @@ app.get('/api/inverter/generation', authenticateUser, async (req, res) => {
   }
 });
 
+// ==================== DIAGNOSTIC ENDPOINTS ====================
+
+// Discover all available variables for a device (topology detection)
+app.get('/api/inverter/discover-variables', authenticateUser, async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const deviceSN = req.query.sn || userConfig?.deviceSn;
+    if (!deviceSN) {
+      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    }
+
+    console.log(`[Diagnostics] Discovering variables for device: ${deviceSN}`);
+    
+    // Call FoxESS API to get available variables
+    const result = await callFoxESSAPI(
+      `/op/v0/device/variable/get?deviceSN=${encodeURIComponent(deviceSN)}`,
+      'GET',
+      null,
+      userConfig,
+      req.user.uid
+    );
+
+    console.log(`[Diagnostics] Variables discovered:`, result);
+    res.json(result);
+  } catch (error) {
+    console.error('[Diagnostics] discover-variables error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Get ALL real-time data (no variable filtering) for topology analysis
+app.post('/api/inverter/all-data', authenticateUser, async (req, res) => {
+  try {
+    console.log(`[Diagnostics] all-data endpoint called by user: ${req.user.uid}`);
+    
+    const userConfig = await getUserConfig(req.user.uid);
+    console.log(`[Diagnostics] User config loaded, deviceSn: ${userConfig?.deviceSn}`);
+    
+    const sn = req.body.sn || userConfig?.deviceSn;
+    if (!sn) {
+      console.error('[Diagnostics] No device SN found');
+      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    }
+
+    console.log(`[Diagnostics] Querying ALL variables for device: ${sn}`);
+    
+    // Use the comprehensive list of all available variables
+    // Including PV, meter, battery, loads, grid, etc.
+    const allVariables = [
+      'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power',
+      'meterPower', 'meterPower2', 'meterPowerR', 'meterPowerS', 'meterPowerT',
+      'loadsPower', 'loadsPowerR', 'loadsPowerS', 'loadsPowerT',
+      'generationPower', 'feedinPower', 'gridConsumptionPower',
+      'batChargePower', 'batDischargePower', 'batVolt', 'batCurrent', 'SoC',
+      'invBatVolt', 'invBatCurrent', 'invBatPower',
+      'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation', 'chargeTemperature',
+      'RVolt', 'RCurrent', 'RFreq', 'RPower',
+      'SVolt', 'SCurrent', 'SFreq', 'SPower',
+      'TVolt', 'TCurrent', 'TFreq', 'TPower',
+      'epsPower', 'epsVoltR', 'epsCurrentR', 'epsPowerR',
+      'epsVoltS', 'epsCurrentS', 'epsPowerS',
+      'epsVoltT', 'epsCurrentT', 'epsPowerT',
+      'ReactivePower', 'PowerFactor', 'runningState', 'currentFault'
+    ];
+
+    const body = {
+      sn,
+      variables: allVariables
+    };
+
+    console.log(`[Diagnostics] Calling FoxESS API /op/v0/device/real/query with ${allVariables.length} variables`);
+    
+    const result = await callFoxESSAPI(
+      '/op/v0/device/real/query',
+      'POST',
+      body,
+      userConfig,
+      req.user.uid
+    );
+
+    console.log(`[Diagnostics] FoxESS API response errno: ${result.errno}, has result: ${!!result.result}`);
+    
+    if (result.errno !== 0) {
+      console.warn(`[Diagnostics] FoxESS API returned error: ${result.errno} - ${result.msg || result.error}`);
+      return res.json(result); // Return the error response as-is
+    }
+
+    // Add topology hints based on data
+    if (result.result && Array.isArray(result.result)) {
+      const datas = result.result[0]?.datas || [];
+      const pvPower = datas.find(d => d.variable === 'pvPower')?.value || 0;
+      const meterPower = datas.find(d => d.variable === 'meterPower')?.value || null;
+      const meterPower2 = datas.find(d => d.variable === 'meterPower2')?.value || null;
+      const batChargePower = datas.find(d => d.variable === 'batChargePower')?.value || 0;
+      const gridConsumptionPower = datas.find(d => d.variable === 'gridConsumptionPower')?.value || 0;
+
+      result.topologyHints = {
+        pvPower,
+        meterPower,
+        meterPower2,
+        batChargePower,
+        gridConsumptionPower,
+        likelyTopology: 
+          (pvPower < 0.1 && (batChargePower > 0.5 || meterPower2 > 0.5) && gridConsumptionPower < 0.5)
+            ? 'AC-coupled (external PV via meter)'
+            : (pvPower > 0.5)
+            ? 'DC-coupled (standard)'
+            : 'Unknown (check during solar production hours)'
+      };
+    }
+
+    console.log(`[Diagnostics] All data retrieved, topology hints:`, result.topologyHints);
+    res.json(result);
+  } catch (error) {
+    console.error('[Diagnostics] all-data error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // EMS list
 app.get('/api/ems/list', async (req, res) => {
   try {
@@ -3488,9 +3835,14 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
 /**
  * Increment API call count for a user
  */
-// Helper: returns YYYY-MM-DD for Australia/Sydney local date (handles DST)
+// Helper: returns YYYY-MM-DD for specified timezone local date (handles DST)
+function getDateKey(date = new Date(), timezone = 'Australia/Sydney') {
+  return date.toLocaleDateString('en-CA', { timeZone: timezone }); // YYYY-MM-DD
+}
+
+// Backward compatibility: getAusDateKey uses Sydney timezone
 function getAusDateKey(date = new Date()) {
-  return date.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' }); // YYYY-MM-DD
+  return getDateKey(date, 'Australia/Sydney');
 }
 
 async function incrementApiCount(userId, apiType) {
@@ -3659,9 +4011,12 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   const enabledConditions = [];
   const results = [];
   
-  // Get current Sydney time for time-based conditions
-  const sydney = getSydneyTime();
-  const currentMinutes = sydney.hour * 60 + sydney.minute;
+  // Get user's timezone from config, fallback to Sydney
+  const userTimezone = userConfig?.timezone || 'Australia/Sydney';
+  const userTime = getUserTime(userTimezone);
+  const currentMinutes = userTime.hour * 60 + userTime.minute;
+  
+  console.log(`[Automation] Evaluating rule '${rule.name}' in timezone ${userTimezone} (${String(userTime.hour).padStart(2,'0')}:${String(userTime.minute).padStart(2,'0')})`);
   
   // Parse inverter data
   let soc = null;
@@ -3829,9 +4184,9 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
     } else {
       met = currentMinutes >= startMins || currentMinutes < endMins;
     }
-    results.push({ condition: 'time', met, actual: `${sydney.hour}:${String(sydney.minute).padStart(2,'0')}`, window: `${startTime}-${endTime}` });
+    results.push({ condition: 'time', met, actual: `${userTime.hour}:${String(userTime.minute).padStart(2,'0')}`, window: `${startTime}-${endTime}` });
     if (!met) {
-      console.log(`[Automation] Rule '${rule.name}' - Time condition NOT met: ${sydney.hour}:${String(sydney.minute).padStart(2,'0')} not in ${startTime}-${endTime}`);
+      console.log(`[Automation] Rule '${rule.name}' - Time condition NOT met: ${userTime.hour}:${String(userTime.minute).padStart(2,'0')} not in ${startTime}-${endTime}`);
     }
   }
   
@@ -4260,11 +4615,16 @@ function compareValue(actual, operator, target) {
 /**
  * Helper to get Sydney time components
  */
-function getSydneyTime() {
+/**
+ * Get current time in specified timezone
+ * @param {string} timezone - IANA timezone (e.g., 'America/New_York', 'Europe/London', 'Australia/Sydney')
+ * @returns {Object} Time components { hour, minute, second, day, month, year, dayOfWeek }
+ */
+function getUserTime(timezone = 'Australia/Sydney') {
   const now = new Date();
-  const sydneyStr = now.toLocaleString('en-AU', { timeZone: 'Australia/Sydney', hour12: false });
+  const timeStr = now.toLocaleString('en-AU', { timeZone: timezone, hour12: false });
   // Parse "DD/MM/YYYY, HH:MM:SS" format
-  const [datePart, timePart] = sydneyStr.split(', ');
+  const [datePart, timePart] = timeStr.split(', ');
   const [day, month, year] = datePart.split('/');
   const [hour, minute, second] = timePart.split(':');
   // IMPORTANT: Some Node.js/ICU versions return hour "24" for midnight instead of "00"
@@ -4278,8 +4638,16 @@ function getSydneyTime() {
     day: parseInt(day, 10),
     month: parseInt(month, 10),
     year: parseInt(year, 10),
-    dayOfWeek: now.getDay() // 0 = Sunday, 6 = Saturday
+    dayOfWeek: now.getDay(), // 0 = Sunday, 6 = Saturday
+    timezone: timezone
   };
+}
+
+/**
+ * Backward compatibility: getSydneyTime() calls getUserTime with Sydney timezone
+ */
+function getSydneyTime() {
+  return getUserTime('Australia/Sydney');
 }
 
 /**
@@ -4308,10 +4676,15 @@ async function applyRuleAction(userId, rule, userConfig) {
   
   console.log(`[Automation] Applying action for user ${userId}:`, JSON.stringify(action).slice(0, 300));
   
-  // Get current time in Sydney timezone
-  const sydney = getSydneyTime();
-  const startHour = sydney.hour;
-  const startMinute = sydney.minute;
+  // Get user's timezone from config, fallback to Sydney if not set
+  const userTimezone = userConfig?.timezone || 'Australia/Sydney';
+  const tzSource = userConfig?.timezone ? 'config' : 'default';
+  console.log(`[Automation] Using timezone: ${userTimezone} (source: ${tzSource})`);
+  
+  // Get current time in user's timezone
+  const userTime = getUserTime(userTimezone);
+  const startHour = userTime.hour;
+  const startMinute = userTime.minute;
   
   // Calculate end time based on duration
   const durationMins = action.durationMinutes || 30;
