@@ -1611,7 +1611,7 @@
                                 <div class="faq-answer">
                                     Every <code id="faqAutomationInterval">60 seconds</code> using <strong>cached data</strong>:
                                     <ul>
-                                        <li>Amber prices: refreshed every <span id="faqAmberCache">30s</span></li>
+                                        <li>Amber prices: refreshed every <span id="faqAmberCache">60s</span></li>
                                         <li>Inverter (SoC, temps): every <span id="faqInverterCache">5 min</span></li>
                                         <li>Weather: every <span id="faqWeatherCache">30 min</span></li>
                                     </ul>
@@ -5209,20 +5209,40 @@
 
                     // Apply backend-configured refresh intervals so the UI honors settings
                     try {
-                        if (cfg.result.cache && typeof cfg.result.cache.amber === 'number') {
-                            CONFIG.refresh.amberPricesMs = Number(cfg.result.cache.amber);
-                        }
-                        if (cfg.result.cache && typeof cfg.result.cache.inverter === 'number') {
-                            CONFIG.refresh.inverterMs = Number(cfg.result.cache.inverter);
-                        }
-                        if (cfg.result.cache && typeof cfg.result.cache.weather === 'number') {
-                            CONFIG.refresh.weatherMs = Number(cfg.result.cache.weather);
-                        }
-                        if (cfg.result.automation && typeof cfg.result.automation.intervalMs === 'number') {
-                            CONFIG.automation.intervalMs = Number(cfg.result.automation.intervalMs);
-                        }
-                        if (cfg.result.defaults && typeof cfg.result.defaults.cooldownMinutes === 'number') {
-                            CONFIG.defaults = cfg.result.defaults;
+                        // Use the new config field from API response which includes user-specific settings
+                        if (cfg.result.config) {
+                            if (typeof cfg.result.config.cache.amber === 'number') {
+                                CONFIG.refresh.amberPricesMs = Number(cfg.result.config.cache.amber);
+                            }
+                            if (typeof cfg.result.config.cache.inverter === 'number') {
+                                CONFIG.refresh.inverterMs = Number(cfg.result.config.cache.inverter);
+                            }
+                            if (typeof cfg.result.config.cache.weather === 'number') {
+                                CONFIG.refresh.weatherMs = Number(cfg.result.config.cache.weather);
+                            }
+                            if (typeof cfg.result.config.automation.intervalMs === 'number') {
+                                CONFIG.automation.intervalMs = Number(cfg.result.config.automation.intervalMs);
+                            }
+                            if (cfg.result.config.defaults) {
+                                CONFIG.defaults = cfg.result.config.defaults;
+                            }
+                        } else {
+                            // Fallback to old field names for backward compatibility
+                            if (cfg.result.cache && typeof cfg.result.cache.amber === 'number') {
+                                CONFIG.refresh.amberPricesMs = Number(cfg.result.cache.amber);
+                            }
+                            if (cfg.result.cache && typeof cfg.result.cache.inverter === 'number') {
+                                CONFIG.refresh.inverterMs = Number(cfg.result.cache.inverter);
+                            }
+                            if (cfg.result.cache && typeof cfg.result.cache.weather === 'number') {
+                                CONFIG.refresh.weatherMs = Number(cfg.result.cache.weather);
+                            }
+                            if (cfg.result.automation && typeof cfg.result.automation.intervalMs === 'number') {
+                                CONFIG.automation.intervalMs = Number(cfg.result.automation.intervalMs);
+                            }
+                            if (cfg.result.defaults && typeof cfg.result.defaults.cooldownMinutes === 'number') {
+                                CONFIG.defaults = cfg.result.defaults;
+                            }
                         }
                         // Update FAQ display with actual config values
                         updateFaqValues();

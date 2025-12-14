@@ -309,6 +309,174 @@
         .info-banner .icon { font-size: 18px; }
         .info-banner .text { color: var(--text-muted); }
         .info-banner strong { color: var(--text); }
+        
+        /* Automation History Timeline */
+        .automation-timeline {
+            position: relative;
+            padding-left: 30px;
+            margin-top: 20px;
+        }
+        
+        .timeline-event {
+            position: relative;
+            margin-bottom: 24px;
+            background: rgba(0, 0, 0, 0.2);
+            border-left: 3px solid var(--accent-blue);
+            border-radius: 8px;
+            padding: 16px;
+            transition: all 0.2s;
+        }
+        
+        .timeline-event:hover {
+            background: rgba(0, 0, 0, 0.3);
+            transform: translateX(2px);
+        }
+        
+        .timeline-event.ongoing {
+            border-left-color: var(--accent);
+            background: rgba(126, 231, 135, 0.08);
+        }
+        
+        .timeline-event.complete {
+            border-left-color: var(--text-muted);
+        }
+        
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+            gap: 12px;
+        }
+        
+        .event-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .event-badge {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .event-badge.ongoing {
+            background: var(--accent);
+            color: #000;
+        }
+        
+        .event-badge.complete {
+            background: var(--text-muted);
+            color: #000;
+        }
+        
+        .event-duration {
+            font-size: 12px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        
+        .event-times {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 8px 12px;
+            font-size: 12px;
+            margin-bottom: 12px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+        
+        .event-time-label {
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+        
+        .event-time-value {
+            color: var(--text);
+        }
+        
+        .event-conditions {
+            margin-top: 12px;
+        }
+        
+        .event-conditions-title {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .condition-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        
+        .condition-chip {
+            background: rgba(88, 166, 255, 0.12);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: var(--accent-blue);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .condition-chip.met {
+            background: rgba(126, 231, 135, 0.12);
+            border-color: rgba(126, 231, 135, 0.3);
+            color: var(--accent);
+        }
+        
+        .condition-chip.not-met {
+            background: rgba(248, 81, 73, 0.12);
+            border-color: rgba(248, 81, 73, 0.3);
+            color: var(--accent-red);
+        }
+        
+        .event-action {
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: rgba(88, 166, 255, 0.08);
+            border-left: 3px solid var(--accent-blue);
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .event-action-label {
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .event-action-value {
+            color: var(--text);
+            font-weight: 500;
+        }
+        
+        .timeline-empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+        
+        .timeline-empty .icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
     </style>
 </head>
 <body>
@@ -555,6 +723,26 @@
                     <div class="empty-state">
                         <div class="icon">🌞</div>
                         <p>Click "Fetch Generation Data" to load lifetime generation statistics</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Automation History -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">🤖 Automation Rule History (Last 7 Days)</div>
+                <button class="btn" onclick="fetchAutomationHistory()" id="btnRefreshAutomationHistory" style="font-size:11px;padding:6px 12px">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="automationHistoryStatus" class="status"></div>
+                
+                <div id="automationHistoryContent">
+                    <div class="empty-state">
+                        <div class="icon">🤖</div>
+                        <p>Loading automation rule history...</p>
                     </div>
                 </div>
             </div>
@@ -1160,6 +1348,193 @@
             }
         }
 
+        // ==================== AUTOMATION HISTORY ====================
+        async function fetchAutomationHistory() {
+            const btn = document.getElementById('btnRefreshAutomationHistory');
+            const status = document.getElementById('automationHistoryStatus');
+            const content = document.getElementById('automationHistoryContent');
+            
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '⏳ Loading...';
+            }
+            
+            status.className = 'status loading';
+            status.textContent = 'Fetching automation rule history...';
+            
+            try {
+                const resp = await authenticatedFetch('/api/automation/audit?days=7');
+                const data = await resp.json();
+                
+                if (data.errno && data.errno !== 0) {
+                    throw new Error(data.error || 'API error');
+                }
+                
+                const events = data.result?.ruleEvents || [];
+                
+                if (events.length === 0) {
+                    content.innerHTML = `
+                        <div class="timeline-empty">
+                            <div class="icon">📭</div>
+                            <p>No automation rule activity in the last 7 days</p>
+                            <p style="font-size:12px;margin-top:8px">Rules will appear here when automation is enabled and rules trigger</p>
+                        </div>
+                    `;
+                } else {
+                    renderAutomationTimeline(events);
+                }
+                
+                status.className = 'status success';
+                status.textContent = `✓ Found ${events.length} rule event${events.length !== 1 ? 's' : ''} in the last 7 days`;
+                setTimeout(() => { status.style.display = 'none'; }, 3000);
+            } catch (e) {
+                status.className = 'status error';
+                status.textContent = `✗ Error: ${e.message}`;
+                content.innerHTML = `
+                    <div class="timeline-empty">
+                        <div class="icon">❌</div>
+                        <p>Failed to load automation history</p>
+                        <p style="font-size:12px;margin-top:8px">${e.message}</p>
+                    </div>
+                `;
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '🔄 Refresh';
+                }
+            }
+        }
+        
+        function renderAutomationTimeline(events) {
+            const content = document.getElementById('automationHistoryContent');
+            
+            let html = '<div class="automation-timeline">';
+            
+            for (const event of events) {
+                const isOngoing = event.type === 'ongoing';
+                const duration = formatDuration(event.durationMs);
+                const startDate = new Date(event.startTime);
+                const endDate = event.endTime ? new Date(event.endTime) : null;
+                
+                html += `
+                    <div class="timeline-event ${event.type}">
+                        <div class="event-header">
+                            <div class="event-title">
+                                <span>${event.ruleName}</span>
+                                <span class="event-badge ${event.type}">${isOngoing ? '🟢 Active' : '✓ Complete'}</span>
+                            </div>
+                            <div class="event-duration">${duration}</div>
+                        </div>
+                        
+                        <div class="event-times">
+                            <span class="event-time-label">Started:</span>
+                            <span class="event-time-value">${startDate.toLocaleString()}</span>
+                            ${!isOngoing ? `
+                                <span class="event-time-label">Ended:</span>
+                                <span class="event-time-value">${endDate.toLocaleString()}</span>
+                            ` : ''}
+                        </div>
+                `;
+                
+                // Show start conditions
+                if (event.startConditions && event.startConditions.length > 0) {
+                    html += `
+                        <div class="event-conditions">
+                            <div class="event-conditions-title">Conditions When Started:</div>
+                            <div class="condition-list">
+                    `;
+                    
+                    for (const condition of event.startConditions) {
+                        const metClass = condition.met ? 'met' : 'not-met';
+                        const icon = condition.met ? '✓' : '✗';
+                        html += `
+                            <div class="condition-chip ${metClass}">
+                                <span>${icon}</span>
+                                <span>${condition.name || condition.rule}: ${condition.value}</span>
+                            </div>
+                        `;
+                    }
+                    
+                    html += `
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Show end conditions for completed events
+                if (!isOngoing && event.endConditions && event.endConditions.length > 0) {
+                    html += `
+                        <div class="event-conditions">
+                            <div class="event-conditions-title">Conditions When Ended:</div>
+                            <div class="condition-list">
+                    `;
+                    
+                    for (const condition of event.endConditions) {
+                        const metClass = condition.met ? 'met' : 'not-met';
+                        const icon = condition.met ? '✓' : '✗';
+                        html += `
+                            <div class="condition-chip ${metClass}">
+                                <span>${icon}</span>
+                                <span>${condition.name || condition.rule}: ${condition.value}</span>
+                            </div>
+                        `;
+                    }
+                    
+                    html += `
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Show action taken
+                if (event.action) {
+                    html += `
+                        <div class="event-action">
+                            <div class="event-action-label">Action Taken:</div>
+                            <div class="event-action-value">
+                                ${event.action.workMode || 'Unknown'} 
+                                ${event.action.durationMinutes ? `for ${event.action.durationMinutes} minutes` : ''}
+                                ${event.action.fdPwr ? `at ${event.action.fdPwr}W` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += `
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            content.innerHTML = html;
+        }
+        
+        function formatDuration(ms) {
+            if (!ms || ms < 0) return '—';
+            
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            const days = Math.floor(hours / 24);
+            
+            if (days > 0) {
+                const remainingHours = hours % 24;
+                return `${days}d ${remainingHours}h`;
+            }
+            
+            if (hours > 0) {
+                const remainingMinutes = minutes % 60;
+                return `${hours}h ${remainingMinutes}m`;
+            }
+            
+            if (minutes > 0) {
+                const remainingSeconds = seconds % 60;
+                return `${minutes}m ${remainingSeconds}s`;
+            }
+            
+            return `${seconds}s`;
+        }
+
         function renderGenerationData(data) {
             const content = document.getElementById('generationContent');
             
@@ -1691,6 +2066,8 @@
             autoMetrics: true,
             onReady: () => {
                 try { loadDeviceSn(); } catch (error) { console.warn('Failed to load device SN', error); }
+                // Load automation history on page load
+                try { fetchAutomationHistory(); } catch (error) { console.warn('Failed to load automation history', error); }
             }
         });
     </script>

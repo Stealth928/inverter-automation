@@ -805,6 +805,8 @@
                     // Load cached data into UI on page load
                     loadCachedDataIntoUI();
                     loadRules();
+                    // Initialize FAQ with dynamic values
+                    initFaq();
                 } catch (error) {
                     console.warn('[Automation Lab] Failed to initialize', error);
                 }
@@ -817,107 +819,161 @@
             item.classList.toggle('open');
         }
 
-        // FAQ content driven from configuration
-        const automationFaq = [
-            {
-                question: 'How often does automation check conditions?',
-                answer: `The automation engine runs every <code>60 seconds</code>. Each cycle it uses <strong>cached data</strong> from:
-                    <ul>
-                        <li><strong>Amber prices:</strong> refreshed every 60 seconds</li>
-                        <li><strong>Inverter data (SoC, temps):</strong> refreshed every 5 minutes (respects FoxESS rate limits)</li>
-                        <li><strong>Weather:</strong> refreshed every 30 minutes</li>
-                    </ul>
-                    <div class="faq-highlight">
-                        The automation does NOT poll the inverter every 60 seconds – it reuses the same data cache as the main UI to avoid excessive API calls.
-                    </div>`
-            },
-            {
-                question: 'What is the cooldown and why does it exist?',
-                answer: `Each rule has a <code>cooldown</code> period (default: 5 minutes). After a rule triggers, it cannot trigger again until the cooldown expires.
-                    <div class="faq-highlight"><strong>Why?</strong> Prevents "flapping" – rapidly switching modes when values hover near thresholds. For example, if SoC bounces between 29% and 31%, you don't want to switch modes every 60 seconds.</div>`
-            },
-            {
-                question: 'What happens if conditions change after a rule triggers?',
-                answer: `<div class="faq-highlight"><strong>Active Cancellation:</strong> Rules are monitored continuously. If the triggering rule's conditions are no longer met, the scheduled segment is cancelled immediately (within ~30 seconds).</div>
-                    <strong>Example:</strong>
-                    <ul>
-                        <li>Price drops below 10¢ → "Charge Battery" rule triggers for 30 minutes</li>
-                        <li>5 minutes later, price spikes back up to 40¢</li>
-                        <li>Within 30 seconds, system detects conditions changed → <em>cancels the charging segment</em></li>
-                        <li>A different rule (e.g., "High Export Price") may then take over</li>
-                    </ul>
-                    <div class="faq-highlight"><strong>Priority Override:</strong> If a higher-priority rule's conditions are met while a lower-priority rule is active, the higher-priority rule <em>immediately replaces</em> the active segment (bypasses cooldown).</div>
-                    This prevents wasteful operations when market conditions change rapidly.`
-            },
-            {
-                question: 'How does priority work?',
-                answer: `<ul>
-                        <li><strong>Lower number = Higher priority</strong> (Priority 1 beats Priority 5)</li>
-                        <li>Rules are evaluated in priority order</li>
-                        <li><strong>First match wins</strong> – once a rule's conditions are met, no lower-priority rules are checked</li>
-                        <li>Use high priority (1-2) for safety rules (e.g., hot battery protection)</li>
-                        <li>Use lower priority (3-5) for optimization rules (e.g., price arbitrage)</li>
-                    </ul>
-                    <div class="faq-highlight">💡 <strong>Tip:</strong> Color-coded badges show priority at a glance: 🔴 Red = 1, 🟠 Orange = 2, 🟡 Yellow = 3, 🟢 Green = 4-5</div>`
-            },
-            {
-                question: 'What is "duration" in the action?',
-                answer: `Duration sets how long the inverter scheduler segment should last (default: 30 minutes).
-                    <ul>
-                        <li>A triggered rule creates a time-bound segment (e.g., 10:00–10:30)</li>
-                        <li>After the segment ends, the inverter reverts to its base schedule</li>
-                        <li>However, if conditions are still met, the rule will re-trigger (after cooldown)</li>
-                    </ul>
-                    <strong>Note:</strong> Due to Active Cancellation, segments may end early if conditions change.`
-            },
-            {
-                question: 'What conditions can I use?',
-                answer: `<ul>
-                        <li><code>feedInPrice</code> – Amber feed-in price (¢/kWh) with operators &gt;, &lt;, or <em>between</em></li>
-                        <li><code>buyPrice</code> – Amber import price (¢/kWh) with operators &gt;, &lt;, or <em>between</em></li>
-                        <li><code>batterySoC</code> – Battery state of charge (%) with operators &gt;, &lt;, or <em>between</em></li>
-                        <li><code>temperature</code> – Battery, Ambient, or Inverter temperature (°C)</li>
-                        <li><code>solarRadiation</code> – Forecasted solar radiation (W/m²) - avg/min/max</li>
-                        <li><code>cloudCover</code> – Forecasted cloud cover (%) - avg/min/max</li>
-                        <li><code>forecastPrice</code> – Upcoming Amber prices with lookAhead period</li>
-                        <li><code>timeWindow</code> – Time of day range (e.g., 14:00-18:00)</li>
-                    </ul>
-                    <div class="faq-highlight">💡 All specified conditions must be met (AND logic) for the rule to trigger.</div>`
-            },
-            {
-                question: 'What are the weather-based conditions?',
-                answer: `<strong>Solar Radiation (☀️)</strong>
-                    <ul>
-                        <li>Measures expected sunlight intensity in W/m²</li>
-                        <li>High values (800+) = sunny day, great for solar generation</li>
-                        <li>Low values (&lt;200) = cloudy/overcast, limited solar</li>
-                        <li>Use to charge battery when solar production will be low</li>
-                    </ul>
-                    <strong>Cloud Cover (☁️)</strong>
-                    <ul>
-                        <li>Percentage of sky covered by clouds (0-100%)</li>
-                        <li>0% = clear sky, 100% = completely overcast</li>
-                        <li>Combine with solar radiation for weather-aware rules</li>
-                    </ul>
-                    <div class="faq-highlight">💡 <strong>Example:</strong> "If cloud cover &gt; 80% AND solar &lt; 150 W/m², charge from grid during cheap periods"</div>`
-            },
-            {
-                question: 'How does forecast price work?',
-                answer: `The <strong>Forecast Price</strong> condition checks upcoming Amber prices:
-                    <ul>
-                        <li><strong>Type:</strong> Feed-in (export) or Buy (import) prices</li>
-                        <li><strong>Check:</strong> Average, Min, Max, or Any value in the period</li>
-                        <li><strong>LookAhead:</strong> How far ahead to check (minutes/hours/days)</li>
-                    </ul>
-                    <strong>Use Cases:</strong>
-                    <ul>
-                        <li>Charge battery now if prices will spike in the next 2 hours</li>
-                        <li>Hold charge if high feed-in prices are coming</li>
-                        <li>Discharge before cheap import prices arrive</li>
-                    </ul>
-                    <div class="faq-highlight">💡 This lets you make proactive decisions based on upcoming market conditions rather than just reacting to current prices.</div>`
+        // Get dynamic configuration values from the backend
+        let cachedAutomationConfig = null;
+        async function getAutomationConfig() {
+            if (cachedAutomationConfig) return cachedAutomationConfig;
+            try {
+                const resp = await authenticatedFetch('/api/automation/status');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.errno === 0 && data.result?.config) {
+                        const cfg = data.result.config;
+                        // Use user-specific values from config, these already include user overrides
+                        cachedAutomationConfig = {
+                            intervalSeconds: Math.round(cfg.automation.intervalMs / 1000),
+                            amberCacheSeconds: Math.round(cfg.cache.amber / 1000),
+                            inverterCacheSeconds: Math.round(cfg.cache.inverter / 1000),
+                            weatherCacheSeconds: Math.round(cfg.cache.weather / 1000),
+                            defaultCooldownMinutes: cfg.defaults.cooldownMinutes,
+                            defaultDurationMinutes: cfg.defaults.durationMinutes
+                        };
+                    } else {
+                        // Fallback to defaults if config not available
+                        cachedAutomationConfig = {
+                            intervalSeconds: 60,
+                            amberCacheSeconds: 60,
+                            inverterCacheSeconds: 300,
+                            weatherCacheSeconds: 1800,
+                            defaultCooldownMinutes: 5,
+                            defaultDurationMinutes: 30
+                        };
+                    }
+                }
+            } catch (e) {
+                // Fallback to defaults if API not available
+                cachedAutomationConfig = {
+                    intervalSeconds: 60,
+                    amberCacheSeconds: 60,
+                    inverterCacheSeconds: 300,
+                    weatherCacheSeconds: 1800,
+                    defaultCooldownMinutes: 5,
+                    defaultDurationMinutes: 30
+                };
             }
-        ];
+            return cachedAutomationConfig;
+        }
+
+        // FAQ content driven from configuration
+        const buildAutomationFaq = async () => {
+            const config = await getAutomationConfig();
+            const min2sec = config.inverterCacheSeconds / 60;
+            const min3sec = config.weatherCacheSeconds / 60;
+            
+            return [
+                {
+                    question: 'How often does automation check conditions?',
+                    answer: `The automation engine runs every <code>${config.intervalSeconds} seconds</code>. Each cycle it uses <strong>cached data</strong> from:
+                        <ul>
+                            <li><strong>Amber prices:</strong> refreshed every ${config.amberCacheSeconds} seconds</li>
+                            <li><strong>Inverter data (SoC, temps):</strong> refreshed every ${min2sec} minutes (respects FoxESS rate limits)</li>
+                            <li><strong>Weather:</strong> refreshed every ${min3sec} minutes</li>
+                        </ul>
+                        <div class="faq-highlight">
+                            The automation does NOT poll the inverter every ${config.intervalSeconds} seconds – it reuses the same data cache as the main UI to avoid excessive API calls.
+                        </div>`
+                },
+                {
+                    question: 'What is the cooldown and why does it exist?',
+                    answer: `Each rule has a <code>cooldown</code> period (default: ${config.defaultCooldownMinutes} minutes). After a rule triggers, it cannot trigger again until the cooldown expires.
+                        <div class="faq-highlight"><strong>Why?</strong> Prevents "flapping" – rapidly switching modes when values hover near thresholds. For example, if SoC bounces between 29% and 31%, you don't want to switch modes every ${config.intervalSeconds} seconds.</div>`
+                },
+                {
+                    question: 'What happens if conditions change after a rule triggers?',
+                    answer: `<div class="faq-highlight"><strong>Active Cancellation:</strong> Rules are monitored continuously. If the triggering rule's conditions are no longer met, the scheduled segment is cancelled immediately (within ~${config.intervalSeconds * 2} seconds).</div>
+                        <strong>Example:</strong>
+                        <ul>
+                            <li>Price drops below 10¢ → "Charge Battery" rule triggers for ${config.defaultDurationMinutes} minutes</li>
+                            <li>5 minutes later, price spikes back up to 40¢</li>
+                            <li>Within ${config.intervalSeconds * 2} seconds, system detects conditions changed → <em>cancels the charging segment</em></li>
+                            <li>A different rule (e.g., "High Export Price") may then take over</li>
+                        </ul>
+                        <div class="faq-highlight"><strong>Priority Override:</strong> If a higher-priority rule's conditions are met while a lower-priority rule is active, the higher-priority rule <em>immediately replaces</em> the active segment (bypasses cooldown).</div>
+                        This prevents wasteful operations when market conditions change rapidly.`
+                },
+                {
+                    question: 'How does priority work?',
+                    answer: `<ul>
+                            <li><strong>Lower number = Higher priority</strong> (Priority 1 beats Priority 5)</li>
+                            <li>Rules are evaluated in priority order</li>
+                            <li><strong>First match wins</strong> – once a rule's conditions are met, no lower-priority rules are checked</li>
+                            <li>Use high priority (1-2) for safety rules (e.g., hot battery protection)</li>
+                            <li>Use lower priority (3-5) for optimization rules (e.g., price arbitrage)</li>
+                        </ul>
+                        <div class="faq-highlight">💡 <strong>Tip:</strong> Color-coded badges show priority at a glance: 🔴 Red = 1, 🟠 Orange = 2, 🟡 Yellow = 3, 🟢 Green = 4-5</div>`
+                },
+                {
+                    question: 'What is "duration" in the action?',
+                    answer: `Duration sets how long the inverter scheduler segment should last (default: ${config.defaultDurationMinutes} minutes).
+                        <ul>
+                            <li>A triggered rule creates a time-bound segment (e.g., 10:00–10:${String(config.defaultDurationMinutes).padStart(2, '0')})</li>
+                            <li>After the segment ends, the inverter reverts to its base schedule</li>
+                            <li>However, if conditions are still met, the rule will re-trigger (after cooldown)</li>
+                        </ul>
+                        <strong>Note:</strong> Due to Active Cancellation, segments may end early if conditions change.`
+                },
+                {
+                    question: 'What conditions can I use?',
+                    answer: `<ul>
+                            <li><code>feedInPrice</code> – Amber feed-in price (¢/kWh) with operators &gt;, &lt;, or <em>between</em></li>
+                            <li><code>buyPrice</code> – Amber import price (¢/kWh) with operators &gt;, &lt;, or <em>between</em></li>
+                            <li><code>batterySoC</code> – Battery state of charge (%) with operators &gt;, &lt;, or <em>between</em></li>
+                            <li><code>temperature</code> – Battery, Ambient, or Inverter temperature (°C)</li>
+                            <li><code>solarRadiation</code> – Forecasted solar radiation (W/m²) - average/min/max</li>
+                            <li><code>cloudCover</code> – Forecasted cloud cover (%) - average/min/max</li>
+                            <li><code>forecastPrice</code> – Upcoming Amber prices with lookAhead period</li>
+                            <li><code>timeWindow</code> – Time of day range (e.g., 14:00-18:00)</li>
+                        </ul>
+                        <div class="faq-highlight">💡 All specified conditions must be met (AND logic) for the rule to trigger.</div>`
+                },
+                {
+                    question: 'What are the weather-based conditions?',
+                    answer: `<strong>Solar Radiation (☀️)</strong>
+                        <ul>
+                            <li>Measures expected sunlight intensity in W/m²</li>
+                            <li>High values (800+) = sunny day, great for solar generation</li>
+                            <li>Low values (&lt;200) = cloudy/overcast, limited solar</li>
+                            <li>Use to charge battery when solar production will be low tomorrow</li>
+                        </ul>
+                        <strong>Cloud Cover (☁️)</strong>
+                        <ul>
+                            <li>Percentage of sky covered by clouds (0–100%)</li>
+                            <li>0% = clear sky, 100% = completely overcast</li>
+                            <li>Combine with solar radiation for weather-aware automation rules</li>
+                        </ul>
+                        <div class="faq-highlight">💡 <strong>Example:</strong> "If cloud cover &gt; 80% AND solar &lt; 150 W/m², charge battery from grid during cheap periods"</div>`
+                },
+                {
+                    question: 'How does forecast price work?',
+                    answer: `The <strong>Forecast Price</strong> condition checks upcoming Amber prices:
+                        <ul>
+                            <li><strong>Type:</strong> Feed-in (export earnings) or Buy (import costs)</li>
+                            <li><strong>Check:</strong> Average, Min, Max, or Any value in the look-ahead period</li>
+                            <li><strong>LookAhead:</strong> How far ahead to check (hours or days)</li>
+                        </ul>
+                        <strong>Use Cases:</strong>
+                        <ul>
+                            <li>Charge battery now if prices will spike in the next 2 hours</li>
+                            <li>Hold charge if high feed-in prices are coming this afternoon</li>
+                            <li>Discharge before cheap import prices arrive</li>
+                        </ul>
+                        <div class="faq-highlight">💡 This lets you make proactive decisions based on upcoming market conditions rather than just reacting to current prices.</div>`
+                }
+            ];
+        };
+
+        // Store FAQ as a promise to be resolved on init
+        let automationFaq = [];
 
         function renderFaq() {
             const container = document.getElementById('faqContainer');
@@ -932,8 +988,11 @@
             container.innerHTML = html;
         }
 
-        // Render the FAQ from the config
-        renderFaq();
+        // Render the FAQ from the config on page load
+        async function initFaq() {
+            automationFaq = await buildAutomationFaq();
+            renderFaq();
+        }
 
         // State
         let mockSchedulerSegments = [];

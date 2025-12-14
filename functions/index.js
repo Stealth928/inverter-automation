@@ -71,16 +71,9 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
         const { data, timestamp } = cacheDoc.data();
         const ageMs = Date.now() - timestamp;
         if (ageMs < ttlMs) {
-          console.log(`[Cache] Inverter data fresh (age: ${ageMs}ms, TTL: ${ttlMs}ms)`);
           return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
-        } else {
-          console.log(`[Cache] Inverter data expired (age: ${ageMs}ms, TTL: ${ttlMs}ms) - fetching fresh`);
         }
-      } else {
-        console.log(`[Cache] No cached inverter data - fetching fresh`);
       }
-    } else {
-      console.log(`[Cache] Force refresh requested for inverter data`);
     }
     
     // Fetch fresh data from FoxESS
@@ -99,7 +92,6 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
       }, { merge: true }).catch(cacheErr => {
         console.warn(`[Cache] Failed to store inverter cache: ${cacheErr.message}`);
       });
-      console.log(`[Cache] Stored fresh inverter data in cache (TTL: ${ttlMs}ms)`);
     }
     
     return { ...data, __cacheHit: false, __cacheAgeMs: 0, __cacheTtlMs: ttlMs };
@@ -154,7 +146,6 @@ async function addAutomationAuditEntry(userId, cycleData) {
     };
     
     await db.collection('users').doc(userId).collection('automationAudit').doc(docId).set(auditEntry);
-    console.log(`[Audit] Logged automation cycle: ${docId}`);
   } catch (err) {
     console.warn(`[Audit] Failed to log automation entry: ${err.message}`);
   }
@@ -177,7 +168,6 @@ async function getAutomationAuditLogs(userId, limitEntries = 100) {
       entries.push({ docId: doc.id, ...doc.data() });
     });
     
-    console.log(`[Audit] Retrieved ${entries.length} audit logs for user ${userId}`);
     return entries;
   } catch (err) {
     console.error(`[Audit] Failed to retrieve audit logs: ${err.message}`);
@@ -558,24 +548,6 @@ app.get('/api/amber/prices/current', async (req, res) => {
     // LOG: Detailed Amber response analysis
     if (Array.isArray(result)) {
       console.log(`[Amber /prices/current] Received ${result.length} total intervals`);
-      const forecastIntervals = result.filter(p => p.type === 'ForecastInterval');
-      const feedInForecasts = forecastIntervals.filter(p => p.channelType === 'feedIn');
-      console.log(`[Amber /prices/current] ${forecastIntervals.length} forecast intervals (${feedInForecasts.length} feedIn)`);
-      if (feedInForecasts.length > 0) {
-        // Show feed-in price range
-        const feedInPrices = feedInForecasts.map(f => f.perKwh);
-        const minFeedIn = Math.min(...feedInPrices);
-        const maxFeedIn = Math.max(...feedInPrices);
-        const firstTime = new Date(feedInForecasts[0].startTime).toLocaleString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
-        const lastTime = new Date(feedInForecasts[feedInForecasts.length - 1].startTime).toLocaleString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
-        console.log(`[Amber /prices/current] Feed-in range: ${minFeedIn.toFixed(2)} to ${maxFeedIn.toFixed(2)} ¢/kWh`);
-        console.log(`[Amber /prices/current] Time range: ${firstTime} to ${lastTime}`);
-        // Show actual prices if max is > 100 (to catch spikes)
-        if (maxFeedIn > 100 || maxFeedIn < -100) {
-          const allPricesWithTime = feedInForecasts.map(f => `${new Date(f.startTime).toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Australia/Sydney'})}=${f.perKwh.toFixed(1)}¢`);
-          console.log(`[Amber /prices/current] ALL FEED-IN PRICES: ${allPricesWithTime.join(', ')}`);
-        }
-      }
     }
     
     // Normalize response to wrapped format
@@ -750,9 +722,6 @@ function generateFoxESSSignature(apiPath, token, timestamp) {
 
   const signaturePlain = `${apiPath}\\r\\n${token}\\r\\n${timestamp}`;
   const signature = crypto.createHash('md5').update(signaturePlain).digest('hex');
-  console.log(`[FoxESS] Signature calc: path="${apiPath}" token="${token}" timestamp="${timestamp}"`);
-  console.log(`[FoxESS] Plain text (length=${signaturePlain.length}): ${JSON.stringify(signaturePlain)}`);
-  console.log(`[FoxESS] Generated signature: ${signature}`);
   return signature;
 }
 
@@ -806,12 +775,9 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, u
     const timeout = setTimeout(() => controller.abort(), 10000);
     options.signal = controller.signal;
     
-    console.log(`[FoxESS] Calling ${method} ${url.toString()} with signature ${signature}`);
     const response = await fetch(url, options);
     clearTimeout(timeout);
     const text = await response.text();
-    
-    console.log(`[FoxESS] Response status: ${response.status}, body length: ${text.length}, content: ${text.slice(0, 500)}`);
     
     try {
       return JSON.parse(text);
@@ -1731,6 +1697,7 @@ app.get('/api/automation/status', async (req, res) => {
     const state = await getUserAutomationState(req.user.uid);
     const rules = await getUserRules(req.user.uid);
     const userConfig = await getUserConfig(req.user.uid);
+    const serverConfig = getConfig();
     
     // Check for blackout windows
     const blackoutWindows = userConfig?.automation?.blackoutWindows || [];
@@ -1762,15 +1729,35 @@ app.get('/api/automation/status', async (req, res) => {
       }
     }
     
+    // Include user-specific cache TTLs and defaults
+    const config = {
+      // Automation timing
+      automation: {
+        intervalMs: (userConfig?.automation?.intervalMs) || serverConfig.automation.intervalMs
+      },
+      // Cache TTLs (respect user overrides, fall back to server defaults)
+      cache: {
+        amber: (userConfig?.cache?.amber) || serverConfig.automation.cacheTtl.amber,
+        inverter: (userConfig?.automation?.inverterCacheTtlMs) || serverConfig.automation.cacheTtl.inverter,
+        weather: (userConfig?.cache?.weather) || serverConfig.automation.cacheTtl.weather
+      },
+      // Default rule behavior
+      defaults: {
+        cooldownMinutes: (userConfig?.defaults?.cooldownMinutes) || 5,
+        durationMinutes: (userConfig?.defaults?.durationMinutes) || 30
+      }
+    };
+    
     res.json({
       errno: 0,
       result: {
         ...state,
         rules,
         serverTime: Date.now(),
-        nextCheckIn: getConfig().automation.intervalMs,
+        nextCheckIn: config.automation.intervalMs,
         inBlackout,
-        currentBlackoutWindow
+        currentBlackoutWindow,
+        config  // Return user-specific configuration
       }
     });
   } catch (error) {
@@ -2260,15 +2247,10 @@ app.post('/api/automation/cycle', async (req, res) => {
         const daysToFetch = 7;
         console.log(`[Automation] Rules need ${maxDaysNeeded} days, fetching ${daysToFetch} days for optimal caching`);
         weatherData = await getCachedWeatherData(userId, place, daysToFetch);
-        if (weatherData?.result?.current_weather) {
-          console.log(`[Automation] Weather data fetched: ${weatherData.result.current_weather.temperature}°C, code=${weatherData.result.current_weather.weathercode}`);
-        }
         cache.weather = weatherData.result || weatherData;
       } catch (e) {
         console.warn('[Automation] Failed to get weather data:', e.message);
       }
-    } else {
-      console.log(`[Automation] Skipping weather fetch - no rules use weather conditions`);
     }
     
     const sortedRules = enabledRules.sort((a, b) => (a[1].priority || 99) - (b[1].priority || 99));
@@ -2280,7 +2262,6 @@ app.post('/api/automation/cycle', async (req, res) => {
     
     for (const [ruleId, rule] of sortedRules) {
       console.log(`[Automation] Checking rule '${rule.name}' (priority ${rule.priority})`);
-      console.log(`[Automation] Rule conditions:`, JSON.stringify(rule.conditions || {}).slice(0, 500));
       
       // BUG FIX: Check if this is the ACTIVE rule
       // Active rules should always be re-evaluated to verify conditions still hold, even if in cooldown
@@ -2870,15 +2851,86 @@ app.get('/api/automation/history', async (req, res) => {
 // Get automation audit logs (cycle history with cache & performance metrics)
 app.get('/api/automation/audit', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit || '100', 10);
+    const limit = parseInt(req.query.limit || '500', 10);  // Increased default for 7-day history
+    const days = parseInt(req.query.days || '7', 10);  // Support days parameter (default 7)
     const auditLogs = await getAutomationAuditLogs(req.user.uid, limit);
+    
+    // Filter by date range if days parameter is provided
+    const cutoffMs = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const filteredLogs = auditLogs.filter(log => log.epochMs >= cutoffMs);
+    
+    // Process logs to identify rule on/off pairs and calculate durations
+    const ruleEvents = [];
+    const activeRules = new Map();  // Track currently active rules
+    
+    // Process logs in chronological order (oldest first)
+    const chronological = [...filteredLogs].reverse();
+    
+    for (const log of chronological) {
+      const activeRuleBefore = log.activeRuleBefore;
+      const activeRuleAfter = log.activeRuleAfter;
+      
+      // Detect rule turning OFF (was active, now not)
+      if (activeRuleBefore && activeRuleBefore !== activeRuleAfter) {
+        const startEvent = activeRules.get(activeRuleBefore);
+        if (startEvent) {
+          // Rule turned off - create complete event with duration
+          const durationMs = log.epochMs - startEvent.epochMs;
+          ruleEvents.push({
+            type: 'complete',
+            ruleId: activeRuleBefore,
+            ruleName: startEvent.ruleName || activeRuleBefore,
+            startTime: startEvent.epochMs,
+            endTime: log.epochMs,
+            durationMs,
+            startConditions: startEvent.conditions,
+            endConditions: log.evaluationResults,
+            action: startEvent.action
+          });
+          activeRules.delete(activeRuleBefore);
+        }
+      }
+      
+      // Detect rule turning ON (newly triggered)
+      if (log.triggered && activeRuleAfter && activeRuleAfter !== activeRuleBefore) {
+        // Rule turned on - store start event
+        activeRules.set(activeRuleAfter, {
+          epochMs: log.epochMs,
+          ruleName: log.ruleName || activeRuleAfter,
+          ruleId: log.ruleId || activeRuleAfter,
+          conditions: log.evaluationResults,
+          action: log.actionTaken
+        });
+      }
+    }
+    
+    // Add any still-active rules as ongoing events
+    for (const [ruleId, startEvent] of activeRules.entries()) {
+      const durationMs = Date.now() - startEvent.epochMs;
+      ruleEvents.push({
+        type: 'ongoing',
+        ruleId,
+        ruleName: startEvent.ruleName || ruleId,
+        startTime: startEvent.epochMs,
+        endTime: null,
+        durationMs,
+        startConditions: startEvent.conditions,
+        action: startEvent.action
+      });
+    }
+    
+    // Sort events by start time (newest first for UI)
+    ruleEvents.sort((a, b) => b.startTime - a.startTime);
     
     res.json({ 
       errno: 0, 
       result: {
-        entries: auditLogs,
-        count: auditLogs.length,
-        period: '48 hours',
+        entries: filteredLogs,  // Raw audit logs
+        ruleEvents,             // Processed rule on/off events
+        count: filteredLogs.length,
+        eventsCount: ruleEvents.length,
+        period: `${days} days`,
+        cutoffTime: cutoffMs,
         note: 'Logs older than 48 hours are automatically deleted'
       }
     });
