@@ -593,7 +593,7 @@
         <div class="grid">
             <!-- Column 1: Mock Data Input -->
             <div class="card">
-                <h2 style="text-align: center;">Simulated Conditions</h2>
+                <h2><span class="icon">⚙️</span> <span>Simulated Conditions</span></h2>
                 <div class="sim-grid">
                     <div class="sim-field">
                         <label>💰 Feed-in Price (¢/kWh)</label>
@@ -667,8 +667,8 @@
                     </div>
                 </div>
                 
-                <div class="presets">
-                    <span style="font-size:0.75rem;color:var(--text-secondary);margin-right:6px">Presets:</span>
+                <div class="presets" style="margin-top: 20px; margin-bottom: 20px;">
+                    <span style="font-size:0.75rem;color:var(--text-secondary);margin-right:8px;font-weight:600">Quick Presets:</span>
                     <button class="btn-secondary" onclick="loadPreset('highFeedIn')">High Export 💰</button>
                     <button class="btn-secondary" onclick="loadPreset('cheapBuy')">Cheap Import 📉</button>
                     <button class="btn-secondary" onclick="loadPreset('spike')">Price Spike ⚡</button>
@@ -678,11 +678,11 @@
                     <button class="btn-secondary" onclick="loadPreset('sunnyPeak')">Sunny Peak ☀️</button>
                 </div>
                 
-                <div class="inline-actions" style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
-                    <button class="btn-secondary" onclick="fetchRealConditions(); return false;" style="width:auto;padding:10px 14px;background:rgba(88,166,255,0.15);border-color:var(--accent-blue);border-radius:6px">
+                <div class="inline-actions" style="display:flex;gap:12px;align-items:center;margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
+                    <button class="btn btn-secondary" onclick="fetchRealConditions(); return false;" style="padding:10px 16px;font-size:0.9rem">
                         📡 Fetch Real Conditions
                     </button>
-                    <button class="btn-primary" onclick="runTest()" style="width:auto;padding:14px 22px;font-size:16px;background:linear-gradient(90deg,#28a745,#1ba33b);box-shadow:0 8px 20px rgba(18,122,23,0.18);border:none;color:#fff;border-radius:8px">
+                    <button class="btn btn-primary" onclick="runTest()" style="padding:12px 20px;font-size:0.95rem;font-weight:600;background:linear-gradient(90deg,#28a745,#1ba33b);border:none;box-shadow:0 4px 12px rgba(18,122,23,0.15)">
                         🚀 Run Automation Test
                     </button>
                 </div>
@@ -694,10 +694,10 @@
                     <span class="icon">⚙️</span>
                     <span>Automation Rules</span>
                 </h2>
-                <div style="margin-bottom:12px;padding:12px 16px;background:rgba(79,195,247,0.1);border-radius:6px;border-left:3px solid #4fc3f7;font-size:0.85rem;color:#8b949e">
+                <div style="margin-bottom:16px;padding:12px;background:rgba(79,195,247,0.08);border-radius:6px;border-left:3px solid #4fc3f7;font-size:0.85rem;color:#8b949e">
                     <strong style="color:#4fc3f7">💡 Tip:</strong> Manage rules on the <strong>main dashboard</strong> — this page is for testing only.
                 </div>
-                <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:14px;margin-bottom:16px;padding:8px 12px;background:rgba(88,166,255,0.1);border-radius:4px;border-left:3px solid #58a6ff">
+                <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:16px;padding:10px;background:rgba(88,166,255,0.08);border-radius:4px;border-left:3px solid #58a6ff">
                     📋 Sorted by priority • Lower number = Higher priority • First match wins
                 </div>
                 <div id="rulesDisplay">
@@ -706,14 +706,14 @@
                         <p>Loading rules...</p>
                     </div>
                 </div>
-                <button class="btn-secondary" style="width:100%;margin-top:10px" onclick="loadRules()">🔄 Refresh</button>
+                <button class="btn btn-secondary" style="width:100%;margin-top:16px;padding:10px" onclick="loadRules()">🔄 Refresh Rules</button>
             </div>
 
             <!-- Column 3: Mock Scheduler -->
             <div class="card">
-                <h2><span class="icon">📅</span> Mock Inverter Scheduler</h2>
-                <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px">
-                    Shows what scheduler segments would be created
+                <h2><span class="icon">📅</span> <span>Mock Inverter Scheduler</span></h2>
+                <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;line-height:1.4">
+                    Preview of scheduler segments that would be created by your test
                 </p>
                 <div id="mockScheduler">
                     <div class="empty-state">
@@ -722,12 +722,12 @@
                         <p style="font-size:0.75rem">Run a test to see what would be scheduled</p>
                     </div>
                 </div>
-                <button class="btn-secondary" style="width:100%;margin-top:10px" onclick="clearMockScheduler()">🗑️ Clear Mock Segments</button>
+                <button class="btn btn-secondary" style="width:100%;margin-top:16px;padding:10px" onclick="clearMockScheduler()">🗑️ Clear Segments</button>
             </div>
 
             <!-- Test Results -->
             <div class="card span-2">
-                <h2><span class="icon">📋</span> Test Results</h2>
+                <h2><span class="icon">�</span> <span>Test Results</span></h2>
                 <div id="testResults">
                     <div class="empty-state">
                         <div class="icon">🔬</div>
@@ -738,9 +738,9 @@
 
             <!-- API Payload Preview -->
             <div class="card">
-                <h2><span class="icon">📡</span> API Payload Preview</h2>
-                <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:8px">
-                    What would be sent to FoxESS API
+                <h2><span class="icon">📡</span> <span>API Payload Preview</span></h2>
+                <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;line-height:1.4">
+                    Request body that would be sent to the FoxESS API
                 </p>
                 <div class="api-payload" id="apiPayload">
 // Run a test to see the API payload that would be sent
@@ -751,7 +751,7 @@
 
             <!-- FAQ Section -->
             <div class="card full-width">
-                <h2><span class="icon">❓</span> Automation FAQ</h2>
+                <h2><span class="icon">❓</span> <span>Automation FAQ</span></h2>
                 <div class="faq-section" id="faqContainer">
                     <!-- FAQ items are rendered from the `automationFaq` config in the script. -->
                 </div>
