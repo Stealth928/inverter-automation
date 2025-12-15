@@ -71,11 +71,10 @@
 
         .grid {
             display: grid;
-            grid-template-columns: 1.2fr 1.4fr 0.6fr;
-            gap: 20px;
+            grid-template-columns: 1.25fr 1.25fr 0.5fr;
+            gap: 16px;
             position: relative;
             z-index: 1;
-            align-items: start;
         }
         @media (max-width: 1200px) {
             .grid { grid-template-columns: 1fr 1fr; }
@@ -101,42 +100,35 @@
         /* Mock Data Section */
         .sim-grid {
             display: grid;
-            grid-template-columns: 1fr;
-            gap: 16px;
-            margin-bottom: 18px;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 14px;
+            margin-bottom: 16px;
         }
-        @media (min-width: 700px) {
-            .sim-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-        @media (min-width: 1100px) {
+        @media (min-width: 600px) {
             .sim-grid {
                 grid-template-columns: repeat(3, 1fr);
             }
         }
-        .sim-field {
-            display: flex;
-            flex-direction: column;
+        @media (min-width: 900px) {
+            .sim-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
         .sim-field label {
             display: block;
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             color: var(--text-secondary);
-            margin-bottom: 8px;
-            font-weight: 600;
+            margin-bottom: 6px;
+            font-weight: 500;
         }
         .sim-field input {
             width: 100%;
-            margin-bottom: 6px;
-            padding: 10px 12px;
-            font-size: 0.95rem;
-            border-radius: 8px;
+            margin-bottom: 4px;
         }
         .sim-field .hint {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             color: var(--text-secondary);
-            margin-top: 6px;
+            margin-top: 4px;
             font-style: italic;
         }
 
@@ -145,8 +137,8 @@
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
-            margin-top: 14px;
-            margin-bottom: 14px;
+            margin-top: 18px;
+            margin-bottom: 18px;
             align-items: center;
         }
         .presets button {
@@ -158,9 +150,9 @@
         /* Rules Display */
         .rule-card {
             background: var(--bg-secondary);
-            border-radius: 10px;
-            padding: 18px;
-            margin-bottom: 16px;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 14px;
             border: 1px solid rgba(48, 54, 61, 0.6);
             border-left: 4px solid #58a6ff;
         }
@@ -368,16 +360,12 @@
         /* Run Button */
         .run-btn {
             width: 100%;
-            padding: 14px;
-            font-size: 1.05rem;
-            margin-top: 16px;
-            font-weight: 700;
-            letter-spacing: 0.4px;
-            border-radius: 10px;
+            padding: 16px;
+            font-size: 1.1rem;
+            margin-top: 20px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
         }
-
-        /* Slightly increase card padding for top three panels for breathing room */
-        .card { padding: 18px; }
 
         .full-width { grid-column: 1 / -1; }
         .span-2 { grid-column: span 2; }
@@ -690,12 +678,14 @@
                     <button class="btn-secondary" onclick="loadPreset('sunnyPeak')">Sunny Peak ☀️</button>
                 </div>
                 
-                <button class="btn-secondary run-btn" onclick="fetchRealConditions(); return false;" style="margin-bottom:10px;background:rgba(88,166,255,0.15);border-color:var(--accent-blue)">
-                    📡 Fetch Real Conditions
-                </button>
-                <button class="btn-primary run-btn" onclick="runTest()" style="width:100%;padding:14px 18px;font-size:16px;background:linear-gradient(90deg,#1f6feb,#0056d6);box-shadow:0 8px 20px rgba(31,111,235,0.18);border:none;color:#fff;border-radius:8px;margin-bottom:8px">
-                    🚀 Run Automation Test
-                </button>
+                <div class="inline-actions" style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
+                    <button class="btn-secondary" onclick="fetchRealConditions(); return false;" style="width:auto;padding:10px 14px;background:rgba(88,166,255,0.15);border-color:var(--accent-blue);border-radius:6px">
+                        📡 Fetch Real Conditions
+                    </button>
+                    <button class="btn-primary" onclick="runTest()" style="width:auto;padding:14px 22px;font-size:16px;background:linear-gradient(90deg,#28a745,#1ba33b);box-shadow:0 8px 20px rgba(18,122,23,0.18);border:none;color:#fff;border-radius:8px">
+                        🚀 Run Automation Test
+                    </button>
+                </div>
             </div>
 
             <!-- Column 2: Rules -->
@@ -757,13 +747,7 @@
                 </div>
             </div>
 
-            <!-- Logs -->
-            <div class="card full-width">
-                <h2><span class="icon">📜</span> Test Log</h2>
-                <div class="log-area" id="logArea">
-                    <div class="log-entry"><span class="log-time">[Ready]</span> <span class="log-info">Test lab initialized. Configure mock data and run tests.</span></div>
-                </div>
-            </div>
+            <!-- Logs (removed) -->
 
             <!-- FAQ Section -->
             <div class="card full-width">
@@ -1016,12 +1000,12 @@
         // Presets
         const presets = {
             highFeedIn: { feedIn: 40, buy: 25, soc: 85, batteryTemp: 28, ambientTemp: 22, inverterTemp: 35, solarRadiation: 600, cloudCover: 20, forecastBuy1D: 35, forecastFeedIn1D: 48, forecastSolar1D: 580, forecastCloudCover1D: 25 },
-            cheapBuy: { feedIn: 8, buy: 5, soc: 30, batteryTemp: 25, ambientTemp: 20, inverterTemp: 32, solarRadiation: 300, cloudCover: 40, forecastBuy1D: 10, forecastFeedIn1D: 9, forecastSolar1D: 320, forecastCloudCover1D: 45 },
+            cheapBuy: { feedIn: -6, buy: 5, soc: 30, batteryTemp: 25, ambientTemp: 20, inverterTemp: 32, solarRadiation: 300, cloudCover: 40, forecastBuy1D: 10, forecastFeedIn1D: 9, forecastSolar1D: 320, forecastCloudCover1D: 45 },
             spike: { feedIn: 150, buy: 180, soc: 70, batteryTemp: 32, ambientTemp: 25, inverterTemp: 38, solarRadiation: 500, cloudCover: 30, forecastBuy1D: 200, forecastFeedIn1D: 165, forecastSolar1D: 520, forecastCloudCover1D: 28 },
             lowSoc: { feedIn: 15, buy: 35, soc: 18, batteryTemp: 26, ambientTemp: 22, inverterTemp: 34, solarRadiation: 400, cloudCover: 35, forecastBuy1D: 42, forecastFeedIn1D: 18, forecastSolar1D: 420, forecastCloudCover1D: 32 },
-            hotBattery: { feedIn: 20, buy: 30, soc: 60, batteryTemp: 48, ambientTemp: 35, inverterTemp: 52, solarRadiation: 800, cloudCover: 10, forecastBuy1D: 35, forecastFeedIn1D: 24, forecastSolar1D: 820, forecastCloudCover1D: 8 },
-            cloudyDay: { feedIn: 5, buy: 25, soc: 45, batteryTemp: 22, ambientTemp: 18, inverterTemp: 28, solarRadiation: 80, cloudCover: 90, forecastBuy1D: 30, forecastFeedIn1D: 6, forecastSolar1D: 75, forecastCloudCover1D: 92 },
-            sunnyPeak: { feedIn: 35, buy: 20, soc: 90, batteryTemp: 30, ambientTemp: 28, inverterTemp: 40, solarRadiation: 1100, cloudCover: 5, forecastBuy1D: 25, forecastFeedIn1D: 42, forecastSolar1D: 1080, forecastCloudCover1D: 3 }
+            hotBattery: { feedIn: 20, buy: 30, soc: 60, batteryTemp: 68, ambientTemp: 75, inverterTemp: 82, solarRadiation: 800, cloudCover: 10, forecastBuy1D: 35, forecastFeedIn1D: 24, forecastSolar1D: 820, forecastCloudCover1D: 8 },
+            cloudyDay: { feedIn: 5, buy: 25, soc: 45, batteryTemp: 22, ambientTemp: 18, inverterTemp: 28, solarRadiation: 80, cloudCover: 95, forecastBuy1D: 30, forecastFeedIn1D: 6, forecastSolar1D: 75, forecastCloudCover1D: 92 },
+            sunnyPeak: { feedIn: 5, buy: 20, soc: 90, batteryTemp: 30, ambientTemp: 28, inverterTemp: 40, solarRadiation: 950, cloudCover: 5, forecastBuy1D: 25, forecastFeedIn1D: 42, forecastSolar1D: 1080, forecastCloudCover1D: 3 }
         };
 
         function loadPreset(name) {
@@ -1984,6 +1968,15 @@
         function log(level, message) {
             const container = document.getElementById('logArea');
             const time = new Date().toLocaleTimeString();
+            const formatted = `[${time}] ${message}`;
+
+            if (!container) {
+                // Fallback to console so removing the log area doesn't break the page
+                const logger = (level === 'error' ? console.error : level === 'warn' || level === 'warning' ? console.warn : console.log);
+                logger(`[TestLab] ${formatted}`);
+                return;
+            }
+
             const entry = document.createElement('div');
             entry.className = 'log-entry';
             entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${level}">${message}</span>`;
