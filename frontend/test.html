@@ -681,7 +681,7 @@
                 <button class="btn-secondary run-btn" onclick="fetchRealConditions(); return false;" style="margin-bottom:10px;background:rgba(88,166,255,0.15);border-color:var(--accent-blue)">
                     📡 Fetch Real Conditions
                 </button>
-                <button class="btn-primary run-btn" onclick="runTest()">
+                <button class="btn-primary run-btn" onclick="runTest()" style="width:100%;padding:14px 18px;font-size:16px;background:linear-gradient(90deg,#1f6feb,#0056d6);box-shadow:0 8px 20px rgba(31,111,235,0.18);border:none;color:#fff;border-radius:8px;margin-bottom:8px">
                     🚀 Run Automation Test
                 </button>
             </div>
@@ -1554,9 +1554,7 @@
                         <div class="rule-param"><span class="label">⏱</span> <span class="value">${action.durationMinutes || 0}m</span></div>
                         <div class="rule-param"><span class="label">⚡</span> <span class="value">${action.fdPwr || 0}W</span></div>
                     </div>
-                    <div class="rule-actions">
-                        <button class="btn-secondary" onclick="testSingleRule('${key}')" style="flex:1">🧪 Test</button>
-                    </div>
+                    
                 </div>`;
             }
             
