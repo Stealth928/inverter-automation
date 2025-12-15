@@ -71,10 +71,11 @@
 
         .grid {
             display: grid;
-            grid-template-columns: 1.25fr 1.25fr 0.5fr;
-            gap: 16px;
+            grid-template-columns: 1.2fr 1.4fr 0.6fr;
+            gap: 20px;
             position: relative;
             z-index: 1;
+            align-items: start;
         }
         @media (max-width: 1200px) {
             .grid { grid-template-columns: 1fr 1fr; }
@@ -100,35 +101,42 @@
         /* Mock Data Section */
         .sim-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 14px;
-            margin-bottom: 16px;
+            grid-template-columns: 1fr;
+            gap: 16px;
+            margin-bottom: 18px;
         }
-        @media (min-width: 600px) {
-            .sim-grid {
-                grid-template-columns: repeat(3, 1fr);
-            }
-        }
-        @media (min-width: 900px) {
+        @media (min-width: 700px) {
             .sim-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
         }
+        @media (min-width: 1100px) {
+            .sim-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        .sim-field {
+            display: flex;
+            flex-direction: column;
+        }
         .sim-field label {
             display: block;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
             color: var(--text-secondary);
-            margin-bottom: 6px;
-            font-weight: 500;
+            margin-bottom: 8px;
+            font-weight: 600;
         }
         .sim-field input {
             width: 100%;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
+            padding: 10px 12px;
+            font-size: 0.95rem;
+            border-radius: 8px;
         }
         .sim-field .hint {
-            font-size: 0.7rem;
+            font-size: 0.75rem;
             color: var(--text-secondary);
-            margin-top: 4px;
+            margin-top: 6px;
             font-style: italic;
         }
 
@@ -137,8 +145,8 @@
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
-            margin-top: 18px;
-            margin-bottom: 18px;
+            margin-top: 14px;
+            margin-bottom: 14px;
             align-items: center;
         }
         .presets button {
@@ -150,9 +158,9 @@
         /* Rules Display */
         .rule-card {
             background: var(--bg-secondary);
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 14px;
+            border-radius: 10px;
+            padding: 18px;
+            margin-bottom: 16px;
             border: 1px solid rgba(48, 54, 61, 0.6);
             border-left: 4px solid #58a6ff;
         }
@@ -360,12 +368,16 @@
         /* Run Button */
         .run-btn {
             width: 100%;
-            padding: 16px;
-            font-size: 1.1rem;
-            margin-top: 20px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
+            padding: 14px;
+            font-size: 1.05rem;
+            margin-top: 16px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            border-radius: 10px;
         }
+
+        /* Slightly increase card padding for top three panels for breathing room */
+        .card { padding: 18px; }
 
         .full-width { grid-column: 1 / -1; }
         .span-2 { grid-column: span 2; }
