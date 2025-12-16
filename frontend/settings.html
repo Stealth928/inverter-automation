@@ -1419,7 +1419,7 @@
                 const start = item.querySelector('.blackout-start')?.value;
                 const end = item.querySelector('.blackout-end')?.value;
                 if (start && end) {
-                    windows.push({ start, end, days: [] }); // days: [] means every day
+                    windows.push({ enabled: true, start, end, days: [] }); // enabled: true, days: [] means every day
                 }
             });
             return windows;
@@ -1427,7 +1427,7 @@
         
         function addBlackoutWindow() {
             const current = getBlackoutWindowsFromUI();
-            current.push({ start: '22:00', end: '06:00', days: [] });
+            current.push({ enabled: true, start: '22:00', end: '06:00', days: [] });
             renderBlackoutWindows(current);
             updateStatus();
         }

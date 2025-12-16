@@ -1449,7 +1449,7 @@
                         <div style="display:flex;align-items:center;gap:8px">
                             <span class="card-badge">Amber</span>
                             <div id="amberLastUpdate" style="font-size:11px;color:#8b949e;">—</div>
-                            <button class="btn btn-icon" onclick="getAmberCurrent()" title="Refresh prices">🔄</button>
+                            <button class="btn btn-icon" onclick="getAmberCurrent(true)" title="Force refresh from API (bypasses cache)">🔄</button>
                         </div>
                     </div>
                     <div class="card-body">
@@ -1474,12 +1474,12 @@
                         <div style="display:flex;align-items:center;gap:8px">
                             <span class="card-badge">Open-Meteo</span>
                             <div id="weatherLastUpdate" style="font-size:11px;color:#8b949e;">—</div>
-                            <button class="btn btn-icon" onclick="getWeather()" title="Refresh weather">🔄</button>
+                            <button class="btn btn-icon" onclick="getWeather(true)" title="Force refresh from API (bypasses cache)">🔄</button>
                         </div>
                     </div>
                     <div class="card-body">
                         <div class="input-row" style="align-items:center">
-                            <input type="text" id="weatherPlace" class="input" placeholder="Location" value="Roselands 2196 NSW" style="flex:1;min-width:220px;max-width:520px">
+                            <input type="text" id="weatherPlace" class="input" placeholder="Location" value="Sydney, Australia" style="flex:1;min-width:220px;max-width:520px">
                             <input type="number" id="weatherDays" class="input" min="1" max="16" value="6" style="width:70px" title="Days">
                             <div id="weatherRequestedLabel" style="min-width:110px;color:#8b949e;font-size:12px;display:flex;align-items:center;justify-content:center;margin-left:8px">Requested: 6</div>
                         </div>
@@ -1587,7 +1587,6 @@
                 <div class="card" style="margin-bottom:16px">
                     <div class="card-header">
                         <div class="card-title"><span class="icon">⚡</span> Active Automation</div>
-                        <button class="btn btn-sm" onclick="loadBackendAutomationStatus()" style="padding:4px 10px;width:auto;margin:0">🔄</button>
                     </div>
                     <div class="card-body" id="backendAutomationStatus">
                         <div style="color:#8b949e;font-size:12px">Loading automation status...</div>
@@ -1905,6 +1904,9 @@
         let panelCollapsed = false;
         // When true, suppress auto-opening the right response panel (used during init)
         window.suppressPanelAutoOpen = false;
+        // User timezone (populated from backend `/api/config` during initialization)
+        // Used throughout render functions and time formatting to respect user's local timezone
+        let USER_TZ = 'Australia/Sydney';
 
         // apiClient is declared in api-client.js and initialized after Firebase auth is ready
 
@@ -2883,14 +2885,14 @@
         }
 
         // Weather
-        async function getWeather() {
+        async function getWeather(force = false) {
             const placeEl = document.getElementById('weatherPlace');
             const rawPlace = (placeEl && typeof placeEl.value === 'string') ? placeEl.value.trim() : '';
             // Guard against the literal string 'undefined' (can appear from bad inputs)
             const cleanRaw = (rawPlace && rawPlace !== 'undefined') ? rawPlace : '';
-            const place = cleanRaw || 'Roselands 2196 NSW';
+            const place = cleanRaw || 'Sydney, Australia';
             // normalize back into the input (helps when using autocomplete)
-            try { if (placeEl) placeEl.value = (place === 'Roselands 2196 NSW' ? placeEl.value || place : place); } catch (e) {}
+            try { if (placeEl) placeEl.value = (place === 'Sydney, Australia' ? placeEl.value || place : place); } catch (e) {}
 
             // Prefer the saved user preference input if present (settings page uses id
             // 'preferences_forecastDays'). If not present, use the weatherDays control.
@@ -2924,7 +2926,7 @@
             console.log(`[Cache] Checking weather cache: cached=${cachedDays} days, requested=${days}, date match=${cachedDate === today}, TTL ok=${cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL}`);
             console.log('[Cache] cacheState:', cacheState);
             
-            if (cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL && cachedDays === days && cachedDate === today) {
+            if (!force && cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL && cachedDays === days && cachedDate === today) {
                 console.log('[Cache] Weather cache is fresh, has correct forecast days, and is from today - loading from cache');
                 // Load cached full weather object and render it
                 try {
@@ -3619,14 +3621,14 @@
             }
         }
 
-        async function getAmberCurrent() {
+        async function getAmberCurrent(force = false) {
             const siteId = document.getElementById('amberSiteId').value;
             if (!siteId) { document.getElementById('amberCard').innerHTML = '<div style="color:#d29922">Select a site</div>'; return; }
             
             // Check if cached data is still fresh (60 seconds TTL matches backend)
             const AMBER_TTL = 60 * 1000;
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
-            if (cacheState.amberTime && (Date.now() - cacheState.amberTime) < AMBER_TTL) {
+            if (!force && cacheState.amberTime && (Date.now() - cacheState.amberTime) < AMBER_TTL) {
                 console.log('[Cache] Amber cache is fresh, loading from cache');
                 // Load cached full prices array and render
                 try {
@@ -3849,7 +3851,7 @@
             // Compact info row: forecast count and time range
             try {
                 const returned = forecasts.length;
-                const lastInterval = forecasts.length ? new Date(forecasts[forecasts.length-1].startTime).toLocaleString('en-AU', {hour:'2-digit',minute:'2-digit', day:'2-digit', month:'2-digit', timeZone:'Australia/Sydney'}) : '—';
+                const lastInterval = forecasts.length ? new Date(forecasts[forecasts.length-1].startTime).toLocaleString('en-AU', {hour:'2-digit',minute:'2-digit', day:'2-digit', month:'2-digit', timeZone: USER_TZ || 'Australia/Sydney'}) : '—';
                 html += `<div style="font-size:11px;color:#8b949e;margin-bottom:8px">
                     <strong>${returned}</strong> forecast intervals available — until <strong>${lastInterval}</strong>
                 </div>`;
@@ -3913,7 +3915,7 @@
                     // Map renewable descriptor to emoji and color
                     const renewDesc = currentGen.descriptor || '';
                     const renewEmoji = { best: '🌱', great: '🌿', ok: '☁️', notGreat: '🏭', worst: '💨' }[renewDesc] || '';
-                    const renewColor = renew > 60 ? '#7ee787' : renew > 40 ? '#ffd43b' : '#f85149';
+                    const renewColor = renew > 55 ? '#7ee787' : renew > 35 ? '#ffd43b' : '#f85149';
                     html += `<div style="min-width:100px">
                         <div style="font-size:11px;color:#8b949e">Renewables ${renewEmoji}</div>
                         <div class="value" style="font-size:28px;font-weight:700;color:${renewColor}">${renew.toFixed(0)}%</div>
@@ -3952,7 +3954,7 @@
                 html += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
                 displayForecasts.forEach(it => {
                     const startDate = new Date(it.startTime);
-                    const time = startDate.toLocaleTimeString('en-AU', {hour:'numeric', minute:'2-digit', hour12:false, timeZone:'Australia/Sydney'});
+                    const time = startDate.toLocaleTimeString('en-AU', {hour:'numeric', minute:'2-digit', hour12:false, timeZone: USER_TZ || 'Australia/Sydney'});
                     const p = it.perKwh;
                     const cls = p > 30 ? 'price-high' : p > 20 ? 'price-mid' : 'price-low';
                     const spike = it.spikeStatus && it.spikeStatus !== 'none';
@@ -3977,7 +3979,7 @@
                 displayFeedForecasts.forEach(it => {
                     // Use startTime converted to AEST - Amber shows interval START time
                     const startDate = new Date(it.startTime);
-                    const time = startDate.toLocaleTimeString('en-AU', {hour:'numeric', minute:'2-digit', hour12:false, timeZone:'Australia/Sydney'});
+                    const time = startDate.toLocaleTimeString('en-AU', {hour:'numeric', minute:'2-digit', hour12:false, timeZone: USER_TZ || 'Australia/Sydney'});
                     // Display -Round(perKwh) to match Amber app (negative perKwh = you earn, shown positive)
                     const displayVal = -Math.round(it.perKwh);
                     function feedClassFromVal(v) {
@@ -4031,7 +4033,7 @@
                 const labels = forecasts.map(it => {
                     try {
                         const d = new Date(it.startTime);
-                        return d.toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false, timeZone:'Australia/Sydney'});
+                        return d.toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false, timeZone: USER_TZ || 'Australia/Sydney'});
                     } catch(e) { return ''; }
                 });
 
@@ -5221,11 +5223,15 @@
                 const cfgResp = await authenticatedFetch('/api/config');
                 cfg = await cfgResp.json();
                 if (cfg.errno === 0 && cfg.result) {
+                    // Update USER_TZ from backend-provided config (user-specific or server default)
+                    try {
+                        USER_TZ = cfg.result.timezone || (cfg.result.config && cfg.result.config.automation && cfg.result.config.automation.timeZone) || USER_TZ;
+                    } catch (e) { /* ignore and use default */ }
                     const wInput = document.getElementById('weatherPlace');
                     // Prefer explicit preferences.weatherPlace (user preference), then top-level weatherPlace
                     const preferredWeather = (cfg.result.preferences && cfg.result.preferences.weatherPlace) || cfg.result.weatherPlace;
                     // Only set if input is empty or still holds the placeholder/default value
-                    if (wInput && (wInput.value === '' || wInput.value === 'Roselands 2196 NSW')) {
+                    if (wInput && (wInput.value === '' || wInput.value === 'Sydney, Australia')) {
                         if (preferredWeather && String(preferredWeather).trim() !== '' && preferredWeather !== 'undefined') {
                             wInput.value = preferredWeather;
                         } else {
@@ -5339,6 +5345,17 @@
             
             // 5) Load backend automation status
             try { setTimeout(() => { loadBackendAutomationStatus(); }, 300); } catch(e) { console.warn('Failed to load automation status:', e); }
+            
+            // Refresh automation status every 30 seconds to catch blackout window changes
+            if (!window.automationStatusRefreshInterval) {
+                window.automationStatusRefreshInterval = setInterval(() => {
+                    try {
+                        loadBackendAutomationStatus();
+                    } catch (e) {
+                        console.warn('[Automation] Failed to refresh status:', e);
+                    }
+                }, 30000); // Refresh every 30 seconds
+            }
             
             // 6) Load API call metrics
             try { loadApiMetrics(1); } catch(e) { console.warn('Failed to load API metrics:', e); }
@@ -5645,10 +5662,10 @@
                 <div id="automationDebugBox" style="margin-top:12px;padding:8px 10px;background:rgba(13,17,23,0.8);border:1px solid #30363d;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.2)">
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
                         <span style="color:#58a6ff;font-weight:600;font-size:11px;white-space:nowrap">📊 Last Cycle</span>
-                        <div id="debugContent" style="color:#e6edf3;font-size:11px;flex:1;min-width:250px">
-                            ${window.lastCycleResult ? formatCycleResult(window.lastCycleResult) : '<span style="color:#6e7681;font-size:10px">⏳ Waiting...</span>'}
+                        <div id="debugContent" style="color:#e6edf3;font-size:11px;flex:1;min-width:250px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+                            <div style="flex:1">${window.lastCycleResult ? formatCycleResult(window.lastCycleResult) : '<span style="color:#6e7681;font-size:10px">⏳ Waiting...</span>'}</div>
+                            <div id="debugTimestamp" style="color:#6e7681;font-size:11px;white-space:nowrap;background:#0d1117;padding:2px 6px;border-radius:3px;margin-left:6px" title="User timezone: ${status.userTimezone || 'unknown'}">${debugTimestamp}${tzLabel}</div>
                         </div>
-                        <span id="debugTimestamp" style="color:#6e7681;font-size:9px;white-space:nowrap;background:#0d1117;padding:2px 6px;border-radius:3px" title="User timezone: ${status.userTimezone || 'unknown'}">${debugTimestamp}${tzLabel}</span>
                     </div>
                 </div>
             `;
@@ -5709,16 +5726,18 @@
                             window.automationCountdownInterval = null;
                             return;
                         }
-                        // If we're now in blackout, stop countdown
+                        // If we're now in blackout, stop countdown immediately
                         if (window.automationInBlackout) {
                             countdownEl.textContent = 'BLACKOUT';
+                            // Stop the automation cycle from being triggered
                             return;
                         }
                         const elapsed = Math.floor((Date.now() - window.automationLastCheck) / 1000);
                         const intervalSec = CONFIG.automation.intervalMs / 1000;
                         const remaining = Math.max(0, intervalSec - elapsed);
                         countdownEl.textContent = remaining + 's';
-                        if (remaining === 0 && window.automationEnabled && !window.automationCycleRunning) {
+                        // Only trigger cycle if: automation is enabled, not in blackout, and timer reached 0
+                        if (remaining === 0 && window.automationEnabled && !window.automationInBlackout && !window.automationCycleRunning) {
                             // Run the actual automation cycle on the backend
                             runAutomationCycle();
                         }

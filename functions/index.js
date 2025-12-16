@@ -17,9 +17,17 @@ const cors = require('cors');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
 
-// Initialize Firebase Admin SDK
-admin.initializeApp();
+// Initialize Firebase Admin SDK (guarded to avoid double-initialize in tests)
+if (!admin.apps || admin.apps.length === 0) {
+  admin.initializeApp();
+}
 const db = admin.firestore();
+
+// For 2nd Gen runtime: ensure pubsub is available
+// This handles test environments where pubsub might not be fully initialized
+if (typeof functions.pubsub === 'undefined' || typeof functions.pubsub.schedule !== 'function') {
+  console.warn('[Init] Firebase pubsub not available in current environment, using fallback');
+}
 
 // ==================== CONFIGURATION ====================
 // Secrets are stored in Firebase Functions config or Secret Manager
@@ -44,6 +52,7 @@ const getConfig = () => {
     },
     automation: {
       intervalMs: 60000,
+      timeZone: 'Australia/Sydney',
       cacheTtl: {
         amber: 60000,      // 60 seconds
         inverter: 300000,  // 5 minutes
@@ -51,6 +60,38 @@ const getConfig = () => {
       }
     }
   };
+};
+
+// Default timezone constant derived from config (can be overridden via functions.config())
+// NOTE: This is computed once at module load time. If timezone is changed via Firebase config,
+// the service must be redeployed for the change to take effect. Users in different timezones
+// will use their stored config.timezone value, falling back to this default.
+const DEFAULT_TIMEZONE = (getConfig().automation && getConfig().automation.timeZone) || 'Australia/Sydney';
+
+// ==================== LOGGING CONFIGURATION ====================
+// Control logging verbosity via environment variables
+const DEBUG = process.env.DEBUG === 'true';
+const VERBOSE = process.env.VERBOSE === 'true';
+const VERBOSE_API = process.env.VERBOSE_API === 'true';
+
+// Centralized logger utility for consistent formatting and easy control
+const logger = {
+  error: (tag, message) => {
+    console.error(`[${tag}] ${message}`);
+  },
+  warn: (tag, message) => {
+    console.warn(`[${tag}] ${message}`);
+  },
+  info: (tag, message, onlyIfVerbose = false) => {
+    if (!onlyIfVerbose || VERBOSE) {
+      console.log(`[${tag}] ${message}`);
+    }
+  },
+  debug: (tag, message) => {
+    if (DEBUG) {
+      console.log(`[${tag}] [DEBUG] ${message}`);
+    }
+  }
 };
 
 // ==================== CACHED INVERTER DATA HELPER ====================
@@ -187,10 +228,12 @@ const amberRateLimitState = {
 // ==================== EXPRESS APP ====================
 const app = express();
 app.use(cors({ origin: true }));
-// Simple request logger to help debug routing and missing endpoints
+// Simple request logger (controlled by VERBOSE_API environment variable)
 app.use((req, res, next) => {
   try {
-    console.log('[API REQ] ', req.method, req.originalUrl || req.url, 'headers:', Object.keys(req.headers).slice(0,10));
+    if (VERBOSE_API) {
+      logger.debug('API', `${req.method} ${req.path}`);
+    }
   } catch (e) { /* ignore logging errors */ }
   next();
 });
@@ -234,25 +277,21 @@ const authenticateUser = async (req, res, next) => {
 // Attempt to attach Firebase user info without enforcing auth (used by public endpoints)
 const tryAttachUser = async (req) => {
   if (req.user) {
-    console.log('[Auth] User already attached:', req.user.uid);
     return req.user;
   }
 
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.log('[Auth] No Authorization header or not Bearer format');
     return null;
   }
 
   const idToken = authHeader.split('Bearer ')[1];
-  console.log('[Auth] Attempting to verify token:', idToken.substring(0, 20) + '...');
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     req.user = decodedToken;
-    console.log('[Auth] Token verified successfully for user:', decodedToken.uid);
     return decodedToken;
   } catch (error) {
-    console.warn('[Auth] Token verification failed:', error.message);
+    logger.warn('Auth', `Token verification failed: ${error.message}`);
     return null;
   }
 };
@@ -525,13 +564,12 @@ app.get('/api/amber/prices/current', async (req, res) => {
         try {
           result = await amberPricesInFlight.get(inflightKey);
         } catch (err) {
-          console.warn(`[Amber /prices/current] In-flight request failed for ${userId}, will retry:`, err.message);
+          logger.warn('Amber', `In-flight request failed for ${userId}: ${err.message}`);
         }
       }
       
       // If still no data (first request or in-flight failed), fetch it
       if (!result) {
-        console.log(`[Amber /prices/current] Cache miss for user ${userId}, calling API`);
         const fetchPromise = callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId)
           .then(async (data) => {
             if (Array.isArray(data) && data.length > 0) {
@@ -546,11 +584,6 @@ app.get('/api/amber/prices/current', async (req, res) => {
         amberPricesInFlight.set(inflightKey, fetchPromise);
         result = await fetchPromise;
       }
-    }
-    
-    // LOG: Detailed Amber response analysis
-    if (Array.isArray(result)) {
-      console.log(`[Amber /prices/current] Received ${result.length} total intervals`);
     }
     
     // Normalize response to wrapped format
@@ -811,7 +844,6 @@ async function getCachedAmberSites(userId) {
     
     const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('amber_sites').get();
     if (!cacheDoc.exists) {
-      console.log(`[Cache] No sites cache found for ${userId}`);
       return null;
     }
     
@@ -820,14 +852,12 @@ async function getCachedAmberSites(userId) {
     const cacheTTL = 7 * 24 * 60 * 60 * 1000; // 7 days
     
     if (cacheAge > cacheTTL) {
-      console.log(`[Cache] Sites cache expired for ${userId} (age: ${Math.round(cacheAge / 1000)}s)`);
       return null;
     }
     
-    console.log(`[Cache] Using cached sites for ${userId} (age: ${Math.round(cacheAge / 1000)}s)`);
     return cached.sites || [];
   } catch (e) {
-    console.error(`[Cache] Error reading sites cache for ${userId}:`, e.message);
+    logger.error('Cache', `Error reading sites cache for ${userId}: ${e.message}`);
     return null;
   }
 }
@@ -844,9 +874,8 @@ async function cacheAmberSites(userId, sites) {
       sites,
       cachedAt: admin.firestore.FieldValue.serverTimestamp()
     });
-    console.log(`[Cache] Stored ${sites.length} sites in cache for ${userId}`);
   } catch (e) {
-    console.error(`[Cache] Error storing sites cache for ${userId}:`, e.message);
+    logger.error('Cache', `Error storing sites cache for ${userId}: ${e.message}`);
   }
 }
 
@@ -1548,8 +1577,8 @@ function resolveUserTimezone(userConfig, browserTimezone) {
     return browserTimezone;
   }
   
-  // Priority 3: Fallback to Sydney
-  return 'Australia/Sydney';
+  // Priority 3: Fallback to configured default timezone
+  return DEFAULT_TIMEZONE;
 }
 
 /**
@@ -1577,7 +1606,7 @@ function getAutomationTimezone(userConfig) {
   if (userConfig?.timezone && isValidTimezone(userConfig.timezone)) {
     return userConfig.timezone;
   }
-  return 'Australia/Sydney';
+  return DEFAULT_TIMEZONE;
 }
 
 /**
@@ -1687,6 +1716,47 @@ async function getUserRules(userId) {
   } catch (error) {
     console.error('Error getting user rules:', error);
     return {};
+  }
+}
+
+/**
+ * Get current time in user's timezone
+ */
+function getTimeInTimezone(timezone) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(new Date());
+  const values = {};
+  parts.forEach(part => {
+    values[part.type] = part.value;
+  });
+  return new Date(`${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}:${values.second}`);
+}
+
+/**
+ * Check if current time falls within a time range (HH:MM format)
+ */
+function isTimeInRange(currentTime, startTime, endTime) {
+  // currentTime format: "HH:MM"
+  // startTime, endTime format: "HH:MM"
+  
+  const current = parseInt(currentTime.replace(':', ''));
+  const start = parseInt(startTime.replace(':', ''));
+  const end = parseInt(endTime.replace(':', ''));
+
+  // If start < end (normal case: 22:00 to 06:00 wraps around midnight)
+  if (start >= end) {
+    return current >= start || current < end; // Wraps around midnight
+  } else {
+    return current >= start && current < end;
   }
 }
 
@@ -1873,11 +1943,11 @@ app.get('/api/automation/status', async (req, res) => {
       console.log(`[Status] ⚠️ No location set in config`);
     }
     
-    console.log(`[Status] Final timezone for response: ${userConfig?.timezone || 'Australia/Sydney'}`);
+    console.log(`[Status] Final timezone for response: ${userConfig?.timezone || DEFAULT_TIMEZONE}`);
     console.log(`[Status] === END TIMEZONE DEBUG ===`);
     
     // Use user's timezone for blackout window check
-    const userTimezone = userConfig?.timezone || 'Australia/Sydney';
+    const userTimezone = getAutomationTimezone(userConfig);
     const userTime = getUserTime(userTimezone);
     const currentMinutes = userTime.hour * 60 + userTime.minute;
     
@@ -1887,7 +1957,9 @@ app.get('/api/automation/status', async (req, res) => {
     let inBlackout = false;
     let currentBlackoutWindow = null;
     for (const window of blackoutWindows) {
-      if (!window.enabled) continue;
+      // Treat windows without explicit enabled property as enabled by default
+      // (the user explicitly added them, so they should be active unless explicitly disabled)
+      if (window.enabled === false) continue;
       const [startH, startM] = (window.start || '00:00').split(':').map(Number);
       const [endH, endM] = (window.end || '00:00').split(':').map(Number);
       const startMins = startH * 60 + startM;
@@ -2165,12 +2237,14 @@ app.post('/api/automation/cycle', async (req, res) => {
     const userTime = getUserTime(userTimezone);
     const currentMinutes = userTime.hour * 60 + userTime.minute;
     
-    console.log(`[Automation] User timezone: ${userTimezone}, current time: ${String(userTime.hour).padStart(2,'0')}:${String(userTime.minute).padStart(2,'0')}`);
+    console.log(`[Automation] User timezone: ${userTimezone}, current time: ${String(userTime.hour).padStart(2,'0')}:${String(userTime.minute).padStart(2,'0')}`, blackoutWindows);
     
     let inBlackout = false;
     let currentBlackoutWindow = null;
     for (const window of blackoutWindows) {
-      if (!window.enabled) continue;
+      // Treat windows without explicit enabled property as enabled by default
+      // (the user explicitly added them, so they should be active unless explicitly disabled)
+      if (window.enabled === false) continue;
       const [startH, startM] = (window.start || '00:00').split(':').map(Number);
       const [endH, endM] = (window.end || '00:00').split(':').map(Number);
       const startMins = startH * 60 + startM;
@@ -3780,12 +3854,10 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
       return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     }
     
-    console.log('[Scheduler] SET request for device:', deviceSN, 'groups count:', groups.length);
-    console.log('[Scheduler] Groups payload:', JSON.stringify(groups).slice(0, 500));
+    logger.debug('Scheduler', `SET request for device ${deviceSN}, ${groups.length} groups`);
     
     // Primary: v1 API (this is what backend server.js uses and it works)
     const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups }, userConfig, req.user.uid);
-    console.log('[Scheduler] v1 result:', JSON.stringify(result).slice(0, 300));
 
     // Determine if we should enable or disable the scheduler flag
     const shouldEnable = Array.isArray(groups) && groups.some(g => Number(g.enable) === 1);
@@ -3794,9 +3866,8 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
     let flagResult = null;
     try {
       flagResult = await callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: shouldEnable ? 1 : 0 }, userConfig, req.user.uid);
-      console.log('[Scheduler] Flag v1 result:', JSON.stringify(flagResult).slice(0, 200));
     } catch (flagErr) {
-      console.warn('[Scheduler] Flag v1 failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
+      logger.warn('Scheduler', `Flag set failed: ${flagErr && flagErr.message ? flagErr.message : flagErr}`);
     }
 
     // Log action to history
@@ -3811,9 +3882,8 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
     let verify = null;
     try {
       verify = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, req.user.uid);
-      console.log('[Scheduler] Verify read:', JSON.stringify(verify).slice(0, 500));
     } catch (e) { 
-      console.warn('[Scheduler] Verify read failed:', e && e.message ? e.message : e); 
+      logger.warn('Scheduler', `Verify read failed: ${e && e.message ? e.message : e}`);
     }
 
     // Return the result with verification data
@@ -3836,17 +3906,21 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
  * Increment API call count for a user
  */
 // Helper: returns YYYY-MM-DD for specified timezone local date (handles DST)
-function getDateKey(date = new Date(), timezone = 'Australia/Sydney') {
+function getDateKey(date = new Date(), timezone) {
+  timezone = timezone || DEFAULT_TIMEZONE;
   return date.toLocaleDateString('en-CA', { timeZone: timezone }); // YYYY-MM-DD
 }
 
-// Backward compatibility: getAusDateKey uses Sydney timezone
+// Backward compatibility: getAusDateKey uses configured default timezone
 function getAusDateKey(date = new Date()) {
-  return getDateKey(date, 'Australia/Sydney');
+  return getDateKey(date, DEFAULT_TIMEZONE);
 }
 
 async function incrementApiCount(userId, apiType) {
-  const today = getAusDateKey(); // YYYY-MM-DD (Australia/Sydney)
+  // NOTE: Metrics date keys are computed using DEFAULT_TIMEZONE. If the server's default timezone
+  // is changed, new metrics will be stored under different date keys. This is expected behavior.
+  // Historical metrics from previous timezone settings will not be included in new rollover.
+  const today = getAusDateKey(); // YYYY-MM-DD (DEFAULT_TIMEZONE)
 
   // Only update per-user metrics when we have a valid userId
   if (userId) {
@@ -3921,7 +3995,7 @@ app.post('/api/scheduler/v1/clear-all', authenticateUser, async (req, res) => {
       return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     }
     
-    console.log('[Scheduler] CLEAR-ALL request for device:', deviceSN);
+    logger.debug('Scheduler', `CLEAR-ALL request for device ${deviceSN}`);
 
     // Create 8 empty/disabled segments (matching device's actual group count)
     const emptyGroups = [];
@@ -3942,24 +4016,21 @@ app.post('/api/scheduler/v1/clear-all', authenticateUser, async (req, res) => {
     
     // Send to device via v1 API (primary - this is what works in server.js)
     const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: emptyGroups }, userConfig, userId);
-    console.log('[Scheduler] Clear-all v1 result:', JSON.stringify(result).slice(0, 300));
     
     // Disable the scheduler flag
     let flagResult = null;
     try {
       flagResult = await callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
-      console.log('[Scheduler] Clear-all flag result:', JSON.stringify(flagResult).slice(0, 200));
     } catch (flagErr) {
-      console.warn('[Scheduler] Flag disable failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
+      logger.warn('Scheduler', `Flag disable failed: ${flagErr && flagErr.message ? flagErr.message : flagErr}`);
     }
     
     // Verification read
     let verify = null;
     try {
       verify = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
-      console.log('[Scheduler] Clear-all verify:', JSON.stringify(verify).slice(0, 500));
     } catch (e) {
-      console.warn('[Scheduler] Verify read failed:', e && e.message ? e.message : e);
+      logger.warn('Scheduler', `Verify read failed: ${e && e.message ? e.message : e}`);
     }
     
     // Log to history
@@ -4012,7 +4083,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   const results = [];
   
   // Get user's timezone from config, fallback to Sydney
-  const userTimezone = userConfig?.timezone || 'Australia/Sydney';
+  const userTimezone = getAutomationTimezone(userConfig);
   const userTime = getUserTime(userTimezone);
   const currentMinutes = userTime.hour * 60 + userTime.minute;
   
@@ -4620,7 +4691,8 @@ function compareValue(actual, operator, target) {
  * @param {string} timezone - IANA timezone (e.g., 'America/New_York', 'Europe/London', 'Australia/Sydney')
  * @returns {Object} Time components { hour, minute, second, day, month, year, dayOfWeek }
  */
-function getUserTime(timezone = 'Australia/Sydney') {
+function getUserTime(timezone) {
+  timezone = timezone || DEFAULT_TIMEZONE;
   const now = new Date();
   const timeStr = now.toLocaleString('en-AU', { timeZone: timezone, hour12: false });
   // Parse "DD/MM/YYYY, HH:MM:SS" format
@@ -4676,8 +4748,8 @@ async function applyRuleAction(userId, rule, userConfig) {
   
   console.log(`[Automation] Applying action for user ${userId}:`, JSON.stringify(action).slice(0, 300));
   
-  // Get user's timezone from config, fallback to Sydney if not set
-  const userTimezone = userConfig?.timezone || 'Australia/Sydney';
+  // Get user's timezone from config (or configured default)
+  const userTimezone = getAutomationTimezone(userConfig);
   const tzSource = userConfig?.timezone ? 'config' : 'default';
   console.log(`[Automation] Using timezone: ${userTimezone} (source: ${tzSource})`);
   
@@ -5169,151 +5241,183 @@ app.use((req, res) => {
  * 3. If yes: triggers automation cycle by calling the endpoint logic
  * 4. Endpoint handles ALL the work (cache, evaluation, segments, counters)
  */
-exports.runAutomation = functions.scheduler
-  .onSchedule('every 1 minutes', async (_context) => {
-    const schedulerStartTime = Date.now();
-    const schedId = `${schedulerStartTime}_${Math.random().toString(36).substr(2, 9)}`;
+// Run automation handler logic as a standalone function so tests and different
+// firebase-functions versions can wire it up appropriately.
+async function runAutomationHandler(_context) {
+  const schedulerStartTime = Date.now();
+  const schedId = `${schedulerStartTime}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  console.log(`[Scheduler] ========== Background check ${schedId} START ==========`);
+  
+  try {
+    // Get server config for default interval
+    const serverConfig = getConfig();
+    const defaultIntervalMs = serverConfig.automation.intervalMs; // Respects backend config!
     
-    console.log(`[Scheduler] ========== Background check ${schedId} START ==========`);
+    console.log(`[Scheduler] Config: defaultIntervalMs=${defaultIntervalMs}ms, cacheTTL=${JSON.stringify(serverConfig.automation.cacheTtl)}`);
     
-    try {
-      // Get server config for default interval
-      const serverConfig = getConfig();
-      const defaultIntervalMs = serverConfig.automation.intervalMs; // Respects backend config!
-      
-      console.log(`[Scheduler] Config: defaultIntervalMs=${defaultIntervalMs}ms, cacheTTL=${JSON.stringify(serverConfig.automation.cacheTtl)}`);
-      
-      // Get all users
-      const usersSnapshot = await db.collection('users').get();
-      const totalUsers = usersSnapshot.size;
-      
-      console.log(`[Scheduler] Found ${totalUsers} user(s)`);
-      
-      // Log the user IDs being processed (critical for diagnosis)
-      if (totalUsers > 0) {
-        const userIds = usersSnapshot.docs.map(d => d.id);
-        userIds.forEach((uid, idx) => {
-          console.log(`[Scheduler] User[${idx}]: ${uid}`);
-        });
-      }
-      
-      if (totalUsers === 0) {
-        console.log(`[Scheduler] No users to check`);
-        return null;
-      }
-      
-      let cyclesRun = 0;
-      let skippedTooSoon = 0;
-      let skippedDisabled = 0;
-      let errors = 0;
-      
-      // Check each user to see if they need a cycle
-      for (const userDoc of usersSnapshot.docs) {
-        const userId = userDoc.id;
+    // Get all users
+    const usersSnapshot = await db.collection('users').get();
+    const totalUsers = usersSnapshot.size;
+    
+    console.log(`[Scheduler] Found ${totalUsers} user(s)`);
+    
+    if (totalUsers === 0) {
+      console.log(`[Scheduler] No users to check`);
+      return null;
+    }
+    
+    // OPTIMIZATION: Pre-filter and prepare all cycle candidates in parallel
+    // First pass: load state and config for all users at once
+    const userPromises = usersSnapshot.docs.map(async (userDoc) => {
+      const userId = userDoc.id;
+      try {
+        const state = await getUserAutomationState(userId);
+        const userConfig = await getUserConfig(userId);
         
+        return {
+          userId,
+          state,
+          userConfig,
+          ready: state && state.enabled === true && userConfig?.deviceSn
+        };
+      } catch (err) {
+        return { userId, error: err.message, ready: false };
+      }
+    });
+
+    const userDataAll = await Promise.all(userPromises);
+    
+    // Filter candidates that need cycles (enabled, have device, interval elapsed)
+    const cycleCandidates = [];
+    let skippedDisabled = 0;
+    let skippedTooSoon = 0;
+
+    const now = Date.now();
+    for (const userData of userDataAll) {
+      if (!userData.ready) {
+        skippedDisabled++;
+        continue;
+      }
+
+      const { userId, state, userConfig } = userData;
+      const userIntervalMs = userConfig?.automation?.intervalMs || defaultIntervalMs;
+      const lastCheck = state?.lastCheck || 0;
+      const elapsed = now - lastCheck;
+
+      if (elapsed < userIntervalMs) {
+        skippedTooSoon++;
+        continue;
+      }
+
+      // OPTIMIZATION: Check blackout window EARLY (before expensive cycle call)
+      const userRules = await getUserRules(userId);
+      const blackoutWindows = userRules?.blackoutWindows || [];
+      
+      // Check if currently in blackout
+      let inBlackout = false;
+      if (blackoutWindows && blackoutWindows.length > 0) {
+        const userTz = userConfig?.timezone || 'UTC';
+        const userNow = getTimeInTimezone(userTz);
+        const dayOfWeek = userNow.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
+        const currentTime = userNow.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+        for (const window of blackoutWindows) {
+          if (window.enabled === false) continue; // Skip explicitly disabled windows
+          
+          const applicableDays = window.days || [];
+          if (applicableDays.length === 0 || applicableDays.includes(dayOfWeek)) {
+            if (isTimeInRange(currentTime, window.start, window.end)) {
+              inBlackout = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (inBlackout) {
+        skippedDisabled++; // Count as skipped (though technically in blackout)
+        continue;
+      }
+
+      cycleCandidates.push({ userId, state, userConfig });
+    }
+
+    // OPTIMIZATION: Run all candidate cycles in parallel (Promise.all)
+    let cyclesRun = 0;
+    let errors = 0;
+
+    if (cycleCandidates.length > 0) {
+      const cyclePromises = cycleCandidates.map(async (candidate) => {
+        const { userId } = candidate;
+        const userStartTime = Date.now();
+
         try {
-          // Get user automation state
-          const state = await getUserAutomationState(userId);
-          
-          // Skip if automation disabled or state.enabled is explicitly false or undefined
-          // This handles both disabled users and corrupted state documents
-          if (!state || state?.enabled !== true) {
-            console.log(`[Scheduler] User ${userId}: ✓ Skipping (automation disabled or undefined: enabled=${state?.enabled})`);
-            skippedDisabled++;
-            continue;
-          }
-          
-          // If we got here, automation is explicitly enabled (enabled === true)
-          console.log(`[Scheduler] User ${userId}: ⚙️ Will run (automation enabled: enabled=${state.enabled})`);
-          
-          // Get user config
-          const userConfig = await getUserConfig(userId);
-          
-          // Skip if no device configured
-          if (!userConfig?.deviceSn) {
-            skippedDisabled++;
-            continue;
-          }
-          
-          // Determine interval for this user (per-user config overrides default)
-          const userIntervalMs = userConfig?.automation?.intervalMs || defaultIntervalMs;
-          
-          // Check if enough time elapsed since last cycle
-          const lastCheck = state?.lastCheck || 0;
-          const elapsed = Date.now() - lastCheck;
-          
-          if (elapsed < userIntervalMs) {
-            // Too soon - skip this user
-            skippedTooSoon++;
-            continue;
-          }
-          
-          // Time to run a cycle for this user!
-          console.log(`[Scheduler] User ${userId}: Triggering cycle (elapsed=${elapsed}ms, interval=${userIntervalMs}ms)`);
-          
-          // Create mock request/response to call the existing endpoint
-          const mockReq = {
-            user: { uid: userId },
-            body: {},
-            headers: {},
-            get: () => null
-          };
-          
+          // Trigger cycle via existing route handler
+          const mockReq = { user: { uid: userId }, body: {}, headers: {}, get: () => null };
           let cycleResult = null;
-          const mockRes = {
-            json: (data) => {
-              cycleResult = data;
-              return mockRes;
-            },
-            status: () => mockRes,
-            send: () => mockRes
-          };
-          
-          // Find and call the /api/automation/cycle route handler
-          const route = app._router.stack.find(layer => 
-            layer.route && 
-            layer.route.path === '/api/automation/cycle' && 
-            layer.route.methods.post
-          );
-          
+          const mockRes = { json: (data) => { cycleResult = data; return mockRes; }, status: () => mockRes, send: () => mockRes };
+
+          const route = app._router.stack.find(layer => layer.route && layer.route.path === '/api/automation/cycle' && layer.route.methods.post);
           if (route && route.route.stack[0]) {
             await route.route.stack[0].handle(mockReq, mockRes);
             
+            const userDuration = Date.now() - userStartTime;
+            
             if (cycleResult) {
-              cyclesRun++;
               if (cycleResult.errno === 0) {
                 const r = cycleResult.result;
                 if (r?.triggered) {
-                  console.log(`[Scheduler] User ${userId}: ✅ Rule '${r.rule?.name}' triggered`);
+                  console.log(`[Scheduler] User ${userId}: ✅ Rule '${r.rule?.name}' triggered (${userDuration}ms)`);
+                  return { success: true };
                 } else if (r?.skipped) {
-                  console.log(`[Scheduler] User ${userId}: ⏭️ Skipped: ${r.reason}`);
-                } else {
-                  console.log(`[Scheduler] User ${userId}: ✅ No rules matched`);
+                  console.log(`[Scheduler] User ${userId}: ⏭️ Skipped: ${r.reason} (${userDuration}ms)`);
+                  return { success: true };
                 }
               } else {
-                errors++;
-                console.error(`[Scheduler] User ${userId}: ❌ Error: ${cycleResult.error}`);
+                console.error(`[Scheduler] User ${userId}: ❌ Error: ${cycleResult.error} (${userDuration}ms)`);
+                return { success: false };
               }
             }
           } else {
-            console.error(`[Scheduler] User ${userId}: ❌ Route /api/automation/cycle not found!`);
-            errors++;
+            console.error(`[Scheduler] User ${userId}: ❌ No route found`);
+            return { success: false };
           }
-          
+
+          return { success: true };
         } catch (userErr) {
-          errors++;
           console.error(`[Scheduler] User ${userId}: Exception: ${userErr.message}`);
+          return { success: false };
         }
-      }
-      
-      const duration = Date.now() - schedulerStartTime;
-      console.log(`[Scheduler] ========== Background check ${schedId} COMPLETE ==========`);
-      console.log(`[Scheduler] ${totalUsers} users: ${cyclesRun} cycles, ${skippedTooSoon} too soon, ${skippedDisabled} disabled, ${errors} errors (${duration}ms)`);
-      
-      return null;
-      
-    } catch (fatal) {
-      console.error(`[Scheduler] FATAL:`, fatal);
-      throw fatal;
+      });
+
+      const cycleResults = await Promise.all(cyclePromises);
+      cyclesRun = cycleResults.filter(r => r.success).length;
+      errors = cycleResults.filter(r => !r.success).length;
     }
-  });
+
+    const duration = Date.now() - schedulerStartTime;
+    console.log(`[Scheduler] ========== Background check ${schedId} COMPLETE ==========`);
+    console.log(`[Scheduler] ${totalUsers} users: ${cyclesRun} cycles, ${skippedTooSoon} too soon, ${skippedDisabled} disabled, ${errors} errors (${duration}ms)`);
+
+    return null;
+
+  } catch (fatal) {
+    console.error(`[Scheduler] FATAL:`, fatal);
+    throw fatal;
+  }
+}
+
+// ==================== EXPORT CLOUD SCHEDULER FUNCTION ====================
+// Scheduler for background automation (runs every 1 minute via Cloud Scheduler)
+// For firebase-functions v7+ (2nd gen), we use functions.scheduler
+const { onSchedule } = require('firebase-functions/v2/scheduler');
+
+// Simple schedule without advanced options for CLI compatibility
+exports.runAutomation = onSchedule(
+  {
+    schedule: 'every 1 minutes',
+    timeZone: 'UTC'
+  },
+  runAutomationHandler
+);

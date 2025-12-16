@@ -4,12 +4,12 @@ A production-ready, multi-user solar inverter automation system that optimizes e
 
 ## Features
 
-- **🔋 Smart Battery Management**: Automatically charge when prices are low, discharge when prices are high
-- **💰 Amber Price Integration**: Real-time and forecast electricity prices
-- **🌤️ Weather-Aware**: Adjust behavior based on current weather conditions
-- **📊 Rule-Based Automation**: Create custom rules with multiple conditions
-- **🔒 Multi-User**: Per-user authentication and data isolation
-- **☁️ Serverless**: Firebase-powered, no servers to manage
+- **Smart Battery Management**: Automatically charge when prices are low, discharge when prices are high
+- **Amber Price Integration**: Real-time and forecast electricity prices
+- **Weather-Aware**: Adjust behavior based on current weather conditions
+- **Rule-Based Automation**: Create custom rules with multiple conditions
+- **Multi-User**: Per-user authentication and data isolation
+- **Serverless**: Firebase-powered, no servers to manage
 
 ## Quick Start
 
@@ -41,60 +41,48 @@ See [docs/SETUP.md](docs/SETUP.md) for detailed setup instructions.
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Firebase                                 │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │   Hosting    │  │  Cloud       │  │    Firestore         │  │
-│  │  (Frontend)  │  │  Functions   │  │   (Database)         │  │
-│  │              │  │  (API)       │  │                      │  │
-│  │  index.html  │──│  /api/*      │──│  /users/{uid}/...    │  │
-│  │  settings    │  │              │  │  /cache/shared       │  │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
-│                           │                                      │
-│                    ┌──────┴──────┐                              │
-│                    │   Cloud     │                              │
-│                    │  Scheduler  │                              │
-│                    │ (every 1m)  │                              │
-│                    └─────────────┘                              │
-└─────────────────────────────────────────────────────────────────┘
-                           │
-              ┌────────────┼────────────┐
-              ▼            ▼            ▼
-        ┌─────────┐  ┌─────────┐  ┌─────────┐
-        │ FoxESS  │  │  Amber  │  │ Weather │
-        │   API   │  │   API   │  │   API   │
-        └─────────┘  └─────────┘  └─────────┘
+                      +----------------------+
+                      |      Firebase        |
+          +-----------+-----------+----------+
+          | Hosting (UI) | Cloud Functions   |
+          | (frontend)   | (API + scheduler) |
+          +--------------+-------------------+
+                         |
+                    +----+----+
+                    | Firestore|
+                    | Database |
+                    +----+----+
+                         |
+    +--------------------+--------------------+
+    |                    |                    |
+ FoxESS API        Amber API            Weather API
+ (device data)     (price data)        (forecast data)
 ```
 
 ## Project Structure
 
 ```
 inverter-automation/
-├── firebase.json           # Firebase configuration
-├── .firebaserc             # Project ID
-├── firestore.rules         # Security rules
-├── firestore.indexes.json  # Database indexes
-│
-├── frontend/               # Static web files
-│   ├── index.html          # Main dashboard
-│   ├── login.html          # Authentication
-│   ├── settings.html       # User settings
-│   ├── history.html        # History & reports
-│   ├── css/
-│   └── js/
-│
-├── functions/              # Cloud Functions (API)
-│   ├── index.js            # All endpoints
-│   └── package.json
-│
-├── docs/                   # Documentation
-│   ├── AUTOMATION.md       # Automation rules & logic
-│   ├── API.md              # API reference
-│   ├── SETUP.md            # Deployment guide
-│   └── FOXESS_SCHEDULER_REORDERING.md
-│
-└── archive/                # Deprecated files (not deployed)
+|-- firebase.json            # Firebase configuration
+|-- .firebaserc              # Firebase project metadata
+|-- firestore.rules          # Security rules
+|-- firestore.indexes.json   # Firestore indexes
+|-- frontend/                # Static web app
+|   |-- index.html           # Dashboard
+|   |-- login.html           # Authentication UI
+|   |-- settings.html        # User settings UI
+|   |-- history.html         # History & reports
+|   |-- css/
+|   |-- js/
+|-- functions/               # Cloud Functions (API)
+|   |-- index.js             # HTTP handlers and schedulers
+|   |-- package.json
+|-- docs/                    # Documentation
+|   |-- AUTOMATION.md
+|   |-- API.md
+|   |-- SETUP.md
+|   |-- FOXESS_SCHEDULER_REORDERING.md
+|-- archive/                 # Deprecated files (not deployed)
 ```
 
 ## Tech Stack
