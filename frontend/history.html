@@ -680,6 +680,9 @@
                     <button class="btn btn-primary" onclick="fetchHistory()" id="btnFetchHistory">
                         📈 Fetch History Data
                     </button>
+                    <button class="btn btn-secondary" onclick="toggleHistoryVariables()" id="btnToggleVariables" style="display:none;">
+                        🔍 Show All Variables
+                    </button>
                     <!-- Test Data button removed (mock endpoint disabled) -->
                 </div>
                 
@@ -815,6 +818,7 @@
         let historyChart = null;
         let reportChart = null;
         let lastRawData = null;
+        let historyVariables = null;
         let deviceSn = null;
 
         // apiClient is declared in api-client.js and initialized after Firebase auth is ready
@@ -992,14 +996,33 @@
                 }
             });
             
-            // Debug: log available variables
-            console.log('[History] Available variables:', Object.keys(variables));
+            // Store all variables for debugging
+            historyVariables = {};
+            Object.entries(variables).forEach(([name, item]) => {
+                if (item.data) {
+                    historyVariables[name] = item.data;
+                }
+            });
+            
+            // Show the "Show All Variables" button
+            document.getElementById('btnToggleVariables').style.display = 'inline-block';
+            
+            // Debug: log available variables with sample values
+            const debugInfo = {};
+            Object.entries(variables).forEach(([name, item]) => {
+                if (item.data && item.data.length > 0) {
+                    const samples = item.data.slice(0, 3).map(d => `${d.time}: ${d.value}`);
+                    debugInfo[name] = {count: item.data.length, samples};
+                }
+            });
+            console.log('[History] Variables detail:', debugInfo);
             
             // Try to get solar data - try pvPower first, fallback to generationPower
             let genData = variables.pvPower?.data || variables.generationPower?.data || [];
             const feedData = variables.feedinPower?.data || [];
             const gridData = variables.gridConsumptionPower?.data || [];
             
+            console.log('[History] Selected: pvPower?', !!variables.pvPower?.data, 'generationPower?', !!variables.generationPower?.data);
             console.log('[History] genData length:', genData.length, 'feedData length:', feedData.length, 'gridData length:', gridData.length);
             
             if (genData.length === 0) {
@@ -1720,6 +1743,39 @@
             if (lastRawData) {
                 pre.textContent = JSON.stringify(lastRawData, null, 2);
             }
+        }
+
+        function toggleHistoryVariables() {
+            if (!historyVariables) {
+                alert('No history data loaded yet');
+                return;
+            }
+
+            // Create a table showing all variables with sample values
+            let html = '<div style="background: rgba(0,0,0,0.3); padding: 16px; border-radius: 8px; margin: 16px 0; font-size: 12px;">';
+            html += '<h3 style="margin-top: 0; color: #ffd43b;">Available Variables in Last Fetch:</h3>';
+            html += '<table style="width: 100%; border-collapse: collapse; color: #e6edf3;">';
+            html += '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);"><th style="text-align: left; padding: 8px;">Variable</th><th style="text-align: left; padding: 8px;">Count</th><th style="text-align: left; padding: 8px;">Sample Values (first 5)</th></tr>';
+            
+            Object.entries(historyVariables).forEach(([name, data]) => {
+                if (data && data.length > 0) {
+                    const samples = data.slice(0, 5).map(d => `${d.time}: ${d.value.toFixed(2)}`).join(' | ');
+                    html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);"><td style="padding: 8px; color: #58a6ff; font-weight: bold;">${name}</td><td style="padding: 8px;">${data.length}</td><td style="padding: 8px; font-family: monospace; font-size: 11px;">${samples}</td></tr>`;
+                }
+            });
+            
+            html += '</table></div>';
+            
+            // Show in a modal or alert
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 9999;';
+            modal.innerHTML = `
+                <div style="background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; max-width: 900px; max-height: 80vh; overflow: auto; color: #e6edf3;">
+                    ${html}
+                    <button class="btn btn-primary" onclick="this.closest('div').parentElement.remove()" style="margin-top: 16px;">Close</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
         }
 
         // Load API call metrics (per-day) and display in footer
