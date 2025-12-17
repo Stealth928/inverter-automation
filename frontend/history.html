@@ -243,6 +243,7 @@
         .stat-box.generation .value { color: #ffd43b; }
         .stat-box.feedin .value { color: var(--success); }
         .stat-box.consumption .value { color: var(--accent); }
+        .stat-box.houseload .value { color: #ff7b72; }
         .stat-box.charge .value { color: #a371f7; }
         .stat-box.discharge .value { color: #f78166; }
         
@@ -1089,11 +1090,11 @@
                         <div class="label">Avg Grid Import</div>
                         <div class="value">${avgGrid.toFixed(2)}<span class="unit">kW</span></div>
                     </div>
-                    <div class="stat-box consumption">
+                    <div class="stat-box houseload">
                         <div class="label">Avg House Load</div>
                         <div class="value">${avgHouseLoad.toFixed(2)}<span class="unit">kW</span></div>
                     </div>
-                    <div class="stat-box consumption">
+                    <div class="stat-box houseload">
                         <div class="label">Peak House Load</div>
                         <div class="value">${maxHouseLoad.toFixed(2)}<span class="unit">kW</span></div>
                     </div>
