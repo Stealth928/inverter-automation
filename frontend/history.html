@@ -1050,6 +1050,19 @@
             const avgGrid = gridData.length ? (gridData.reduce((s, d) => s + (d.value || 0), 0) / gridData.length) : 0;
             const maxGen = genData.length ? Math.max(...genData.map(d => d.value || 0)) : 0;
             
+            // Calculate house load stats
+            const houseLoadValues = genData.map(d => {
+                if (loadsMap[d.time] !== undefined) {
+                    return loadsMap[d.time];
+                }
+                const gen = d.value || 0;
+                const feedin = feedinMap[d.time] || 0;
+                const grid = gridMap[d.time] || 0;
+                return gen + grid - feedin;
+            });
+            const avgHouseLoad = houseLoadValues.length ? (houseLoadValues.reduce((s, v) => s + v, 0) / houseLoadValues.length) : 0;
+            const maxHouseLoad = houseLoadValues.length ? Math.max(...houseLoadValues) : 0;
+            
             let html = `
                 <div class="stats-grid">
                     <div class="stat-box generation">
@@ -1067,6 +1080,14 @@
                     <div class="stat-box consumption">
                         <div class="label">Avg Grid Import</div>
                         <div class="value">${avgGrid.toFixed(2)}<span class="unit">kW</span></div>
+                    </div>
+                    <div class="stat-box consumption">
+                        <div class="label">Avg House Load</div>
+                        <div class="value">${avgHouseLoad.toFixed(2)}<span class="unit">kW</span></div>
+                    </div>
+                    <div class="stat-box consumption">
+                        <div class="label">Peak House Load</div>
+                        <div class="value">${maxHouseLoad.toFixed(2)}<span class="unit">kW</span></div>
                     </div>
                 </div>
                 <div class="chart-container">
