@@ -1098,7 +1098,13 @@
                 return formatTime(d.time);
             });
             
-            // Compute derived House Load: generation - feedin + grid
+            // Compute derived House Load
+            // Energy flow: Generation + Grid Import = Feedin + House Load
+            // So: House Load = Generation + Grid Import - Feedin
+            // Simplifies to: House Load = Generation - (Feedin - Grid Import)
+            // When feeding to grid: House Load = Generation - Feedin (since grid import is ~0)
+            // When importing from grid: House Load = Generation + Grid Import
+            
             const feedinMap = {};
             const gridMap = {};
             feedData.forEach(d => feedinMap[d.time] = d.value || 0);
@@ -1108,7 +1114,8 @@
                 const gen = d.value || 0;
                 const feedin = feedinMap[d.time] || 0;
                 const grid = gridMap[d.time] || 0;
-                return gen - feedin + grid;
+                // House Load = what's consumed at home = Generation + Grid Import - Feed to Grid
+                return gen + grid - feedin;
             });
             
             historyChart = new Chart(ctx, {
