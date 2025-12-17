@@ -1045,6 +1045,14 @@
             feedData.sort((a, b) => parseTime(a.time) - parseTime(b.time));
             gridData.sort((a, b) => parseTime(a.time) - parseTime(b.time));
             
+            // Create time-based lookup maps for house load calculation
+            const feedinMap = {};
+            const gridMap = {};
+            const loadsMap = {};
+            feedData.forEach(d => feedinMap[d.time] = d.value || 0);
+            gridData.forEach(d => gridMap[d.time] = d.value || 0);
+            loadsData.forEach(d => loadsMap[d.time] = d.value || 0);
+            
             const avgGen = genData.length ? (genData.reduce((s, d) => s + (d.value || 0), 0) / genData.length) : 0;
             const avgFeed = feedData.length ? (feedData.reduce((s, d) => s + (d.value || 0), 0) / feedData.length) : 0;
             const avgGrid = gridData.length ? (gridData.reduce((s, d) => s + (d.value || 0), 0) / gridData.length) : 0;
@@ -1122,13 +1130,6 @@
             
             // Use actual house loads power from inverter instead of calculated value
             // loadsPower represents the actual power consumption in the house
-            const feedinMap = {};
-            const gridMap = {};
-            const loadsMap = {};
-            feedData.forEach(d => feedinMap[d.time] = d.value || 0);
-            gridData.forEach(d => gridMap[d.time] = d.value || 0);
-            loadsData.forEach(d => loadsMap[d.time] = d.value || 0);
-            
             const houseLoad = genData.map(d => {
                 // Prefer actual loadsPower measurement if available
                 if (loadsMap[d.time] !== undefined) {
