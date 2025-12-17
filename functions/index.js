@@ -4261,6 +4261,48 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
     }
   }
   
+  /**
+   * Find the starting hour index in weather hourly data for timezone-aware time comparison
+   * Open-Meteo returns times like "2025-12-17T00:00" in the user's timezone (no Z suffix)
+   * This function correctly matches current local time to the hourly array
+   */
+  function findWeatherStartIndex(hourlyTimes, weatherTz = 'Australia/Sydney') {
+    if (!hourlyTimes || hourlyTimes.length === 0) return 0;
+    
+    // Get current time in the weather's timezone
+    const userLocalTime = new Date().toLocaleString('en-AU', { timeZone: weatherTz, hour12: false });
+    const [userDatePart, userTimePart] = userLocalTime.split(', ');
+    const [userHour, userMinute] = userTimePart.split(':').slice(0, 2).map(Number);
+    const [userDay, userMonth, userYear] = userDatePart.split('/').map(Number);
+    
+    // Current time as comparison strings
+    const currentHourStr = `${String(userHour).padStart(2, '0')}:${String(userMinute).padStart(2, '0')}`;
+    const currentDateStr = `${userYear}-${String(userMonth).padStart(2, '0')}-${String(userDay).padStart(2, '0')}`;
+    
+    // Find first hour that's in the future (or current hour if no future)
+    let startIdx = 0;
+    for (let i = 0; i < hourlyTimes.length; i++) {
+      const timeStr = hourlyTimes[i]; // e.g., "2025-12-17T00:00"
+      const [dateOnly, timeOnly] = timeStr.split('T');
+      
+      // If this hour's date is after today, use this index
+      if (dateOnly > currentDateStr) {
+        startIdx = i;
+        break;
+      } else if (dateOnly === currentDateStr) {
+        // Same day - use this hour if it's in the future
+        if (timeOnly > currentHourStr) {
+          startIdx = i;
+          break;
+        }
+        // Otherwise keep searching
+      }
+      // If dateOnly < currentDateStr, this hour is in the past, keep going
+    }
+    
+    return startIdx;
+  }
+  
   // Check solar radiation condition (new separate condition)
   if (conditions.solarRadiation?.enabled) {
     enabledConditions.push('solarRadiation');
@@ -4277,25 +4319,11 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const operator = conditions.solarRadiation.operator || '>';
       const checkType = conditions.solarRadiation.checkType || 'average';
       
-      // Find NEXT hour index (skip current hour since it's partially elapsed)
-      const now = new Date();
-      const nowTimestamp = now.getTime();
-      let startIdx = -1;
-      for (let i = 0; i < hourly.time.length; i++) {
-        const t = new Date(hourly.time[i]);
-        // Find first hour that's in the future (not restricted to same day)
-        if (t.getTime() > nowTimestamp) {
-          startIdx = i;
-          break;
-        }
-      }
+      // Get timezone-aware starting index
+      const forecastTz = weatherData?.result?.place?.timezone || 'Australia/Sydney';
+      const startIdx = findWeatherStartIndex(hourly.time, forecastTz);
       
-      // If no future hours found, start from beginning (should not happen with proper weather data)
-      if (startIdx === -1 && hourly.time.length > 0) {
-        startIdx = 0;
-      }
-      
-      // Get radiation values for next N hours (starting from NEXT hour, not current)
+      // Get radiation values for next N hours (starting from current/next hour)
       const endIdx = Math.min(startIdx + lookAheadHours, hourly.shortwave_radiation.length);
       const radiationValues = hourly.shortwave_radiation.slice(startIdx, endIdx);
       const hoursRequested = lookAheadHours;
@@ -4323,7 +4351,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
         results.push({ 
           condition: 'solarRadiation', 
           met, 
-          actual: actualValue?.toFixed(0), 
+          actual: (actualValue !== undefined && actualValue !== null) ? actualValue.toFixed(0) : '0', 
           operator,
           target: threshold,
           unit: 'W/m²',
@@ -4360,23 +4388,9 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const operator = conditions.cloudCover.operator || '<';
       const checkType = conditions.cloudCover.checkType || 'average';
       
-      // Find NEXT hour index (skip current hour since it's partially elapsed)
-      const now = new Date();
-      const nowTimestamp = now.getTime();
-      let startIdx = -1;
-      for (let i = 0; i < hourly.time.length; i++) {
-        const t = new Date(hourly.time[i]);
-        // Find first hour that's in the future (not restricted to same day)
-        if (t.getTime() > nowTimestamp) {
-          startIdx = i;
-          break;
-        }
-      }
-      
-      // If no future hours found, start from beginning (should not happen with proper weather data)
-      if (startIdx === -1 && hourly.time.length > 0) {
-        startIdx = 0;
-      }
+      // Get timezone-aware starting index
+      const forecastTz = weatherData?.result?.place?.timezone || 'Australia/Sydney';
+      const startIdx = findWeatherStartIndex(hourly.time, forecastTz);
       
       const endIdx = Math.min(startIdx + lookAheadHours, hourly.cloudcover.length);
       const cloudValues = hourly.cloudcover.slice(startIdx, endIdx);
@@ -4405,7 +4419,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
         results.push({ 
           condition: 'cloudCover', 
           met, 
-          actual: actualValue?.toFixed(0), 
+          actual: (actualValue !== undefined && actualValue !== null) ? actualValue.toFixed(0) : '0', 
           operator,
           target: threshold,
           unit: '%',
@@ -4482,16 +4496,9 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           const operator = rawOp.replace('avg', '').replace('min', '').replace('max', '') || '<';
           const checkType = rawOp.includes('min') ? 'min' : rawOp.includes('max') ? 'max' : 'average';
           
-          const now = new Date();
-          const currentHour = now.getHours();
-          let startIdx = 0;
-          for (let i = 0; i < hourly.time.length; i++) {
-            const t = new Date(hourly.time[i]);
-            if (t.getHours() >= currentHour && t.getDate() === now.getDate()) {
-              startIdx = i;
-              break;
-            }
-          }
+          // Get timezone-aware starting index
+          const forecastTz = weatherData?.result?.place?.timezone || 'Australia/Sydney';
+          const startIdx = findWeatherStartIndex(hourly.time, forecastTz);
           
           const endIdx = Math.min(startIdx + lookAheadHours, hourly.cloudcover.length);
           const cloudValues = hourly.cloudcover.slice(startIdx, endIdx);
@@ -4503,7 +4510,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
             else actualValue = cloudValues.reduce((a, b) => a + b, 0) / cloudValues.length;
             
             const met = compareValue(actualValue, operator, threshold);
-            results.push({ condition: 'weather', met, type: 'cloudcover', actual: actualValue?.toFixed(0), operator, target: threshold, unit: '%', legacy: true });
+            results.push({ condition: 'weather', met, type: 'cloudcover', actual: (actualValue !== undefined && actualValue !== null) ? actualValue.toFixed(0) : '0', operator, target: threshold, unit: '%', legacy: true });
           } else {
             results.push({ condition: 'weather', met: false, reason: 'No cloud data' });
           }

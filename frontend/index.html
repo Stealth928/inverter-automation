@@ -4918,9 +4918,9 @@
                             } else if (cond.condition === 'time') {
                                 short = `Time: ${cond.actual}`;
                             } else if (cond.condition === 'solarRadiation') {
-                                short = `☀️ ${cond.actual}W/m²`;
+                                short = `☀️ ${cond.actual || '—'}W/m²`;
                             } else if (cond.condition === 'cloudCover') {
-                                short = `☁️ ${cond.actual}%`;
+                                short = `☁️ ${cond.actual || '—'}%`;
                             } else {
                                 short = `${cond.condition}: ${cond.actual}`;
                             }
