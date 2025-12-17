@@ -997,6 +997,20 @@
             const feedData = variables.feedinPower?.data || [];
             const gridData = variables.gridConsumptionPower?.data || [];
             
+            // Sort all data arrays by time to ensure chronological order
+            const parseTime = (timeStr) => {
+                if (typeof timeStr === 'string') {
+                    // Format: "2025-12-01 23:20:14 AEDT+1100"
+                    const [date, time] = timeStr.split(' ');
+                    return new Date(`${date}T${time}`).getTime();
+                }
+                return timeStr;
+            };
+            
+            genData.sort((a, b) => parseTime(a.time) - parseTime(b.time));
+            feedData.sort((a, b) => parseTime(a.time) - parseTime(b.time));
+            gridData.sort((a, b) => parseTime(a.time) - parseTime(b.time));
+            
             const avgGen = genData.length ? (genData.reduce((s, d) => s + (d.value || 0), 0) / genData.length) : 0;
             const avgFeed = feedData.length ? (feedData.reduce((s, d) => s + (d.value || 0), 0) / feedData.length) : 0;
             const avgGrid = gridData.length ? (gridData.reduce((s, d) => s + (d.value || 0), 0) / gridData.length) : 0;
@@ -1040,8 +1054,15 @@
             // Prepare datasets - parse time strings from the response
             const labels = genData.map(d => {
                 // Parse time format: "2025-12-01 23:20:14 AEDT+1100"
-                const timeStr = typeof d.time === 'string' ? d.time.split(' ')[1] : formatTime(d.time);
-                return timeStr;
+                // For better clarity, show date + time for boundary crossing
+                if (typeof d.time === 'string') {
+                    const parts = d.time.split(' ');
+                    const [year, month, day] = parts[0].split('-');
+                    const timeStr = parts[1];
+                    // Just show HH:MM, date is implicit from chart context
+                    return timeStr.substring(0, 5);
+                }
+                return formatTime(d.time);
             });
             
             // Compute derived House Load: generation - feedin + grid
