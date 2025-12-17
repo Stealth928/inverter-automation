@@ -748,9 +748,9 @@
             <div class="settings-grid">
                 <div class="setting-item">
                     <div class="setting-label">Default Weather Location</div>
-                    <div class="setting-hint">City and state for local weather forecasts (e.g., "Sydney NSW")</div>
+                    <div class="setting-hint">City and country for local weather forecasts (e.g., "Sydney, Australia")</div>
                     <div class="setting-input">
-                        <input type="text" id="preferences_weatherPlace" data-section="preferences" data-key="weatherPlace" placeholder="e.g., Sydney NSW">
+                        <input type="text" id="preferences_weatherPlace" data-section="preferences" data-key="weatherPlace" placeholder="e.g., Sydney, Australia" value="Sydney, Australia">
                     </div>
                 </div>
                 <div class="setting-item">
@@ -773,7 +773,7 @@
                             Your weather location determines the local timezone, sunrise/sunset times, and cloud cover forecasts — all critical for solar production predictions. 
                             Getting the location correct ensures automation reacts appropriately to local weather conditions. For example, a forecast heavy rain in your area 
                             will reduce solar output and might trigger battery discharge modes to maximize export during remaining sunny hours.
-                            <div class="faq-tip">Use the format "City State" (e.g., "Sydney NSW" or "Melbourne VIC") for best results.</div>
+                            <div class="faq-tip">Use the format "City, Country" (e.g., "Sydney, Australia" or "Melbourne, Australia") for best results.</div>
                         </div>
                     </div>
                     <div class="faq-item">
@@ -801,7 +801,7 @@
                     <div class="faq-item">
                         <div class="faq-question">Can I use coordinates instead of a city name?</div>
                         <div class="faq-answer">
-                            Currently, the system accepts location names (e.g., "Sydney NSW"). The weather provider resolves the name to coordinates internally. 
+                            Currently, the system accepts location names (e.g., "Sydney, Australia"). The weather provider resolves the name to coordinates internally. 
                             Using specific addresses or coordinates isn't supported, but city/state is precise enough for weather forecasting.
                         </div>
                     </div>
@@ -1064,7 +1064,7 @@
                 // Preferences
                 if (currentConfig.preferences) {
                     console.log('Setting preferences values:', currentConfig.preferences);
-                    setInput('preferences_weatherPlace', currentConfig.preferences.weatherPlace || 'Sydney NSW');
+                    setInput('preferences_weatherPlace', currentConfig.preferences.weatherPlace || 'Sydney, Australia');
                     setInput('preferences_forecastDays', currentConfig.preferences.forecastDays || 6);
                 } else if (currentConfig.weatherPlace) {
                     // Fallback: if weatherPlace is at root level, set it
@@ -1253,11 +1253,11 @@
                         retryDelayMs: getInputValue('api_retryDelayMs')
                     },
                     preferences: {
-                        weatherPlace: document.getElementById('preferences_weatherPlace')?.value || 'Sydney NSW',
+                        weatherPlace: document.getElementById('preferences_weatherPlace')?.value || 'Sydney, Australia',
                         forecastDays: getInputValue('preferences_forecastDays') || 6
                     },
                     // Also save location at root level for timezone detection
-                    location: document.getElementById('preferences_weatherPlace')?.value || 'Sydney NSW'
+                    location: document.getElementById('preferences_weatherPlace')?.value || 'Sydney, Australia'
                 };
 
                 console.log('[Settings] newConfig.location:', newConfig.location);
