@@ -1080,6 +1080,22 @@
                 return formatTime(d.time);
             });
             
+            // Clean generation data: remove nighttime parasitic load (< 0.05 kW during off-peak hours)
+            // This filters out inverter idle current and sensor noise
+            const cleanGenData = dedupGen.map((d, idx) => {
+                const value = d.value || 0;
+                // Extract hour from time string
+                const timeStr = typeof d.time === 'string' ? d.time : formatTime(d.time);
+                const hour = parseInt(timeStr.substring(0, 2));
+                
+                // During nighttime hours (18:00 - 06:00), filter out values < 0.05 kW as parasitic load
+                // This assumes minimal generation outside 6am-6pm
+                if ((hour >= 18 || hour < 6) && value < 0.05) {
+                    return { ...d, value: 0 };
+                }
+                return d;
+            });
+            
             // Create time-indexed maps AFTER sorting to ensure proper alignment
             const feedinMap = {};
             const gridMap = {};
@@ -1088,7 +1104,7 @@
             
             // Compute derived House Load: generation - feedin + grid
             // Use the sorted genData order to ensure alignment
-            const houseLoad = dedupGen.map(d => {
+            const houseLoad = cleanGenData.map(d => {
                 const gen = d.value || 0;
                 const feedin = feedinMap[d.time] || 0;
                 const grid = gridMap[d.time] || 0;
@@ -1102,7 +1118,7 @@
                     datasets: [
                         {
                             label: 'Generation (kW)',
-                            data: dedupGen.map(d => d.value || 0),
+                            data: cleanGenData.map(d => d.value || 0),
                             borderColor: '#ffd43b',
                             backgroundColor: 'rgba(255, 212, 59, 0.1)',
                             fill: true,
