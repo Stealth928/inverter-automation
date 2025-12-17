@@ -762,6 +762,59 @@
                     </div>
                 </div>
             </div>
+            <div class="faq-section">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> Frequently Asked Questions
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">Why is weather location important?</div>
+                        <div class="faq-answer">
+                            Your weather location determines the local timezone, sunrise/sunset times, and cloud cover forecasts — all critical for solar production predictions. 
+                            Getting the location correct ensures automation reacts appropriately to local weather conditions. For example, a forecast heavy rain in your area 
+                            will reduce solar output and might trigger battery discharge modes to maximize export during remaining sunny hours.
+                            <div class="faq-tip">Use the format "City State" (e.g., "Sydney NSW" or "Melbourne VIC") for best results.</div>
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">How does location affect my automation rules?</div>
+                        <div class="faq-answer">
+                            Location determines the actual sunrise/sunset times and cloud cover for your area. If you set a rule like "Discharge during peak export hours",
+                            the system uses your location to calculate when peak sun is expected. Wrong location = wrong time windows = suboptimal discharge timing.
+                            Additionally, timezone information from your location is used to align with local electricity markets (e.g., Amber pricing in Australia uses local times).
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What happens if I change my location?</div>
+                        <div class="faq-answer">
+                            The system will fetch new weather data for the new location on the next update cycle. Historical weather data for the old location is discarded,
+                            and your weather cache resets. Automation rules will immediately start using the new sunrise/sunset times and timezone. No manual adjustment needed.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Why does weather data cache for 30 minutes?</div>
+                        <div class="faq-answer">
+                            Weather forecasts typically update hourly from data providers. A <code>30 minute</code> cache reduces unnecessary API calls while keeping your forecast fresh enough
+                            for automation decisions. Shorter caching would hit rate limits; longer caching might miss rapid weather changes like sudden cloud cover.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Can I use coordinates instead of a city name?</div>
+                        <div class="faq-answer">
+                            Currently, the system accepts location names (e.g., "Sydney NSW"). The weather provider resolves the name to coordinates internally. 
+                            Using specific addresses or coordinates isn't supported, but city/state is precise enough for weather forecasting.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">How many forecast days should I use?</div>
+                        <div class="faq-answer">
+                            <code>6 days</code> (default) is ideal for most users — it's enough to plan weekly without overwhelming the UI. If you want to see longer-term trends,
+                            increase to <code>10-16 days</code>. For real-time operation focused on today/tomorrow, reduce to <code>2-3 days</code>.
+                            <div class="faq-tip">More forecast days = slightly slower dashboard load times. Balance visibility with performance.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Blackout Windows (Advanced) -->
