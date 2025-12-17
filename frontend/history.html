@@ -992,10 +992,20 @@
                 }
             });
             
-            // Build stats
-            const genData = variables.pvPower?.data || [];
+            // Debug: log available variables
+            console.log('[History] Available variables:', Object.keys(variables));
+            
+            // Try to get solar data - try pvPower first, fallback to generationPower
+            let genData = variables.pvPower?.data || variables.generationPower?.data || [];
             const feedData = variables.feedinPower?.data || [];
             const gridData = variables.gridConsumptionPower?.data || [];
+            
+            console.log('[History] genData length:', genData.length, 'feedData length:', feedData.length, 'gridData length:', gridData.length);
+            
+            if (genData.length === 0) {
+                content.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>No generation data available. Available variables: ${Object.keys(variables).join(', ')}</p></div>`;
+                return;
+            }
             
             // Sort all data arrays by time to ensure chronological order
             const parseTime = (timeStr) => {

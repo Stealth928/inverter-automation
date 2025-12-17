@@ -5075,7 +5075,7 @@ app.get('/api/inverter/history', authenticateUser, async (req, res) => {
             sn,
             begin,
             end,
-            variables: ['pvPower', 'feedinPower', 'gridConsumptionPower']
+            variables: ['generationPower', 'pvPower', 'feedinPower', 'gridConsumptionPower']
           }, userConfig, userId),
           timeoutPromise
         ]);
@@ -5111,7 +5111,7 @@ app.get('/api/inverter/history', authenticateUser, async (req, res) => {
             sn,
             begin: ch.cbeg,
             end: ch.cend,
-            variables: ['generationPower', 'feedinPower', 'gridConsumptionPower']
+            variables: ['generationPower', 'pvPower', 'feedinPower', 'gridConsumptionPower']
           }, userConfig, userId);
           
           // Cache successful chunk response
