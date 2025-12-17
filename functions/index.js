@@ -4566,21 +4566,39 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       
       const intervalsNeeded = Math.ceil(lookAheadMinutes / 5); // 5-min intervals
       
-      // Get forecast intervals for the specified channel
+      // Get forecast intervals for the specified channel, sorted by time
       const forecasts = amberData.filter(p => p.channelType === channelType && p.type === 'ForecastInterval');
-      const relevantForecasts = forecasts.slice(0, intervalsNeeded);
+      
+      // CRITICAL FIX: Filter by time window (now to now + lookAheadMinutes) instead of just taking first N
+      const now = new Date();
+      const cutoffTime = new Date(now.getTime() + lookAheadMinutes * 60 * 1000);
+      
+      // Filter for intervals that fall within [now, cutoffTime]
+      // startTime <= cutoffTime (ends before/at cutoff) and endTime >= now (starts before/at now)
+      const relevantForecasts = forecasts.filter(f => {
+        const startTime = new Date(f.startTime);
+        const endTime = new Date(f.endTime || startTime.getTime() + 5 * 60 * 1000);
+        // Include if interval overlaps with our window
+        return startTime <= cutoffTime && endTime >= now;
+      }).slice(0, intervalsNeeded); // Still limit to intervalsNeeded in case of overlap
       
       // LOG: Show what forecast data we have
       console.log(`[ForecastPrice] Rule '${rule.name}' - Type: ${priceType}, CheckType: ${conditions.forecastPrice.checkType || 'average'}`);
       console.log(`[ForecastPrice] Requested: ${lookAheadMinutes} minutes (${intervalsNeeded} intervals)`);
-      console.log(`[ForecastPrice] Found ${forecasts.length} forecast intervals in Amber data`);
+      console.log(`[ForecastPrice] Found ${forecasts.length} total forecast intervals in Amber data`);
+      console.log(`[ForecastPrice] Filtered to ${relevantForecasts.length} intervals in time window [now -> +${lookAheadMinutes}min]`);
       if (forecasts.length > 0) {
         const firstTime = new Date(forecasts[0].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
         const lastTime = new Date(forecasts[forecasts.length - 1].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
-        console.log(`[ForecastPrice] Time range: ${firstTime} to ${lastTime}`);
+        console.log(`[ForecastPrice] Available data time range: ${firstTime} to ${lastTime}`);
         // Show first 5 prices to see what we're working with
         const firstPrices = forecasts.slice(0, 5).map(f => `${new Date(f.startTime).toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Australia/Sydney'})}=${(priceType === 'feedIn' ? -f.perKwh : f.perKwh).toFixed(1)}¢`);
-        console.log(`[ForecastPrice] First 5 prices: ${firstPrices.join(', ')}`);
+        console.log(`[ForecastPrice] First 5 prices (all data): ${firstPrices.join(', ')}`);
+      }
+      if (relevantForecasts.length > 0) {
+        const relevantFirst = new Date(relevantForecasts[0].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+        const relevantLast = new Date(relevantForecasts[relevantForecasts.length-1].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+        console.log(`[ForecastPrice] Relevant time range (filtered): ${relevantFirst} to ${relevantLast}`);
       }
       
       // Check if we got fewer intervals than requested (Amber API limit is ~12 intervals = 1 hour)
@@ -4589,7 +4607,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const hasIncompleteData = relevantForecasts.length < intervalsNeeded;
       
       if (hasIncompleteData && intervalsActuallyAvailable < intervalsNeeded) {
-        console.warn(`[Automation] Rule '${rule.name}' - Forecast ${priceType}: Only ${intervalsActuallyAvailable} intervals available in Amber API (limit ~1 hour), but requested ${lookAheadMinutes} minutes`);
+        console.warn(`[Automation] Rule '${rule.name}' - Forecast ${priceType}: Only ${relevantForecasts.length} intervals in time window, requested ${intervalsNeeded}`);
       }
       
       if (relevantForecasts.length > 0) {
