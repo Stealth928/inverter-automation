@@ -1021,9 +1021,10 @@
             let genData = variables.pvPower?.data || variables.generationPower?.data || [];
             const feedData = variables.feedinPower?.data || [];
             const gridData = variables.gridConsumptionPower?.data || [];
+            const loadsData = variables.loadsPower?.data || [];
             
             console.log('[History] Selected: pvPower?', !!variables.pvPower?.data, 'generationPower?', !!variables.generationPower?.data);
-            console.log('[History] genData length:', genData.length, 'feedData length:', feedData.length, 'gridData length:', gridData.length);
+            console.log('[History] genData length:', genData.length, 'feedData length:', feedData.length, 'gridData length:', gridData.length, 'loadsData length:', loadsData.length);
             
             if (genData.length === 0) {
                 content.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>No generation data available. Available variables: ${Object.keys(variables).join(', ')}</p></div>`;
@@ -1098,23 +1099,24 @@
                 return formatTime(d.time);
             });
             
-            // Compute derived House Load
-            // Energy flow: Generation + Grid Import = Feedin + House Load
-            // So: House Load = Generation + Grid Import - Feedin
-            // Simplifies to: House Load = Generation - (Feedin - Grid Import)
-            // When feeding to grid: House Load = Generation - Feedin (since grid import is ~0)
-            // When importing from grid: House Load = Generation + Grid Import
-            
+            // Use actual house loads power from inverter instead of calculated value
+            // loadsPower represents the actual power consumption in the house
             const feedinMap = {};
             const gridMap = {};
+            const loadsMap = {};
             feedData.forEach(d => feedinMap[d.time] = d.value || 0);
             gridData.forEach(d => gridMap[d.time] = d.value || 0);
+            loadsData.forEach(d => loadsMap[d.time] = d.value || 0);
             
             const houseLoad = genData.map(d => {
+                // Prefer actual loadsPower measurement if available
+                if (loadsMap[d.time] !== undefined) {
+                    return loadsMap[d.time];
+                }
+                // Fallback to calculation: Gen + Grid - FeedIn
                 const gen = d.value || 0;
                 const feedin = feedinMap[d.time] || 0;
                 const grid = gridMap[d.time] || 0;
-                // House Load = what's consumed at home = Generation + Grid Import - Feed to Grid
                 return gen + grid - feedin;
             });
             
