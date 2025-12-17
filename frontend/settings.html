@@ -616,60 +616,6 @@
             </div>
         </div>
 
-        <!-- Logging Settings -->
-        <div class="section">
-            <div class="section-header">
-                <div>
-                    <div class="section-title">
-                        📝 Logging
-                        <span class="badge badge-sync" id="loggingBadge">Synced</span>
-                    </div>
-                </div>
-                <button class="btn-secondary" onclick="resetSection('logging')">Undo Current Changes</button>
-            </div>
-            <div class="section-description">
-                Control server logging verbosity for debugging issues.
-            </div>
-            <div class="settings-grid">
-                <div class="setting-item">
-                    <div class="setting-label">Log Level</div>
-                    <div class="setting-hint">Higher levels include more detail (debug > info > warn > error)</div>
-                    <div class="setting-input">
-                        <select id="logging_level" data-section="logging" data-key="level" style="flex:1;background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:8px 12px;border-radius:6px;font-size:14px">
-                            <option value="error">Error - Critical issues only</option>
-                            <option value="warn">Warn - Warnings and errors</option>
-                            <option value="info" selected>Info - General information (default)</option>
-                            <option value="debug">Debug - Detailed debugging</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="faq-section">
-                <div class="faq-toggle" onclick="toggleFaq(this)">
-                    <span class="arrow">▶</span> Frequently Asked Questions
-                </div>
-                <div class="faq-content">
-                    <div class="faq-item">
-                        <div class="faq-question">Which log level should I use?</div>
-                        <div class="faq-answer">
-                            <strong>Info</strong> (default) — Shows automation cycles, rule triggers, and important events. Good for normal operation.<br><br>
-                            <strong>Debug</strong> — Shows everything including API responses, condition evaluations, and timing details. Use when troubleshooting.<br><br>
-                            <strong>Warn</strong> — Only warnings and errors. Use for minimal output in stable setups.<br><br>
-                            <strong>Error</strong> — Only critical failures. Not recommended as you'll miss important information.
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question">Where can I see the logs?</div>
-                        <div class="faq-answer">
-                            Logs are output to the terminal where you started the server (<code>node server.js</code>). 
-                            Each log line includes a timestamp, level, and message.
-                            <div class="faq-tip">On Windows, you can scroll up in PowerShell or Command Prompt to see historical logs.</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- API Retry Settings -->
         <div class="section">
             <div class="section-header">
@@ -1055,13 +1001,6 @@
                     setInput('defaults_fdPwr', currentConfig.defaults.fdPwr);
                 }
                 
-                // Logging
-                if (currentConfig.logging) {
-                    console.log('Setting logging values:', currentConfig.logging);
-                    const levelSelect = document.getElementById('logging_level');
-                    if (levelSelect) levelSelect.value = currentConfig.logging.level || 'info';
-                }
-                
                 // API retry
                 if (currentConfig.api) {
                     console.log('Setting api values:', currentConfig.api);
@@ -1256,9 +1195,6 @@
                         durationMinutes: getInputValue('defaults_durationMinutes'),
                         fdPwr: getInputValue('defaults_fdPwr')
                     },
-                    logging: {
-                        level: document.getElementById('logging_level')?.value || 'info'
-                    },
                     api: {
                         retryCount: getInputValue('api_retryCount'),
                         retryDelayMs: getInputValue('api_retryDelayMs')
@@ -1389,10 +1325,7 @@
         function resetSection(section) {
             if (!confirm(`Undo changes to ${section} settings?`)) return;
             
-            if (section === 'logging' && originalConfig.logging) {
-                const levelSelect = document.getElementById('logging_level');
-                if (levelSelect) levelSelect.value = originalConfig.logging.level || 'info';
-            } else if (originalConfig[section]) {
+            if (originalConfig[section]) {
                 Object.keys(originalConfig[section]).forEach(key => {
                     if (key === 'blackoutWindows') return;
                     setInputValue(`${section}_${key}`, originalConfig[section][key]);
