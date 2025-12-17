@@ -5075,7 +5075,7 @@ app.get('/api/inverter/history', authenticateUser, async (req, res) => {
             sn,
             begin,
             end,
-            variables: ['generationPower', 'feedinPower', 'gridConsumptionPower']
+            variables: ['pvPower', 'feedinPower', 'gridConsumptionPower']
           }, userConfig, userId),
           timeoutPromise
         ]);

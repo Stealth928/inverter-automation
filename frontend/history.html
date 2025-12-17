@@ -993,7 +993,7 @@
             });
             
             // Build stats
-            const genData = variables.generationPower?.data || [];
+            const genData = variables.pvPower?.data || [];
             const feedData = variables.feedinPower?.data || [];
             const gridData = variables.gridConsumptionPower?.data || [];
             
@@ -1007,38 +1007,23 @@
                 return timeStr;
             };
             
-            // Deduplicate by time and keep latest value for each time point
-            const deduplicateByTime = (data) => {
-                const timeMap = new Map();
-                data.forEach(d => {
-                    const key = typeof d.time === 'string' ? d.time.substring(0, 19) : d.time;
-                    timeMap.set(key, d);
-                });
-                return Array.from(timeMap.values());
-            };
+            genData.sort((a, b) => parseTime(a.time) - parseTime(b.time));
+            feedData.sort((a, b) => parseTime(a.time) - parseTime(b.time));
+            gridData.sort((a, b) => parseTime(a.time) - parseTime(b.time));
             
-            const dedupGen = deduplicateByTime(genData);
-            const dedupFeed = deduplicateByTime(feedData);
-            const dedupGrid = deduplicateByTime(gridData);
-            
-            // Sort by time
-            dedupGen.sort((a, b) => parseTime(a.time) - parseTime(b.time));
-            dedupFeed.sort((a, b) => parseTime(a.time) - parseTime(b.time));
-            dedupGrid.sort((a, b) => parseTime(a.time) - parseTime(b.time));
-            
-            const avgGen = dedupGen.length ? (dedupGen.reduce((s, d) => s + (d.value || 0), 0) / dedupGen.length) : 0;
-            const avgFeed = dedupFeed.length ? (dedupFeed.reduce((s, d) => s + (d.value || 0), 0) / dedupFeed.length) : 0;
-            const avgGrid = dedupGrid.length ? (dedupGrid.reduce((s, d) => s + (d.value || 0), 0) / dedupGrid.length) : 0;
-            const maxGen = dedupGen.length ? Math.max(...dedupGen.map(d => d.value || 0)) : 0;
+            const avgGen = genData.length ? (genData.reduce((s, d) => s + (d.value || 0), 0) / genData.length) : 0;
+            const avgFeed = feedData.length ? (feedData.reduce((s, d) => s + (d.value || 0), 0) / feedData.length) : 0;
+            const avgGrid = gridData.length ? (gridData.reduce((s, d) => s + (d.value || 0), 0) / gridData.length) : 0;
+            const maxGen = genData.length ? Math.max(...genData.map(d => d.value || 0)) : 0;
             
             let html = `
                 <div class="stats-grid">
                     <div class="stat-box generation">
-                        <div class="label">Avg Generation</div>
+                        <div class="label">Avg Solar Generation</div>
                         <div class="value">${avgGen.toFixed(2)}<span class="unit">kW</span></div>
                     </div>
                     <div class="stat-box generation">
-                        <div class="label">Peak Generation</div>
+                        <div class="label">Peak Solar Generation</div>
                         <div class="value">${maxGen.toFixed(2)}<span class="unit">kW</span></div>
                     </div>
                     <div class="stat-box feedin">
@@ -1067,7 +1052,7 @@
             const ctx = document.getElementById('historyChartCanvas').getContext('2d');
             
             // Prepare datasets - parse time strings from the response
-            const labels = dedupGen.map(d => {
+            const labels = genData.map(d => {
                 // Parse time format: "2025-12-01 23:20:14 AEDT+1100"
                 // For better clarity, show date + time for boundary crossing
                 if (typeof d.time === 'string') {
@@ -1080,31 +1065,13 @@
                 return formatTime(d.time);
             });
             
-            // Clean generation data: remove nighttime parasitic load (< 0.05 kW during off-peak hours)
-            // This filters out inverter idle current and sensor noise
-            const cleanGenData = dedupGen.map((d, idx) => {
-                const value = d.value || 0;
-                // Extract hour from time string
-                const timeStr = typeof d.time === 'string' ? d.time : formatTime(d.time);
-                const hour = parseInt(timeStr.substring(0, 2));
-                
-                // During nighttime hours (18:00 - 06:00), filter out values < 0.05 kW as parasitic load
-                // This assumes minimal generation outside 6am-6pm
-                if ((hour >= 18 || hour < 6) && value < 0.05) {
-                    return { ...d, value: 0 };
-                }
-                return d;
-            });
-            
-            // Create time-indexed maps AFTER sorting to ensure proper alignment
+            // Compute derived House Load: generation - feedin + grid
             const feedinMap = {};
             const gridMap = {};
-            dedupFeed.forEach(d => feedinMap[d.time] = d.value || 0);
-            dedupGrid.forEach(d => gridMap[d.time] = d.value || 0);
+            feedData.forEach(d => feedinMap[d.time] = d.value || 0);
+            gridData.forEach(d => gridMap[d.time] = d.value || 0);
             
-            // Compute derived House Load: generation - feedin + grid
-            // Use the sorted genData order to ensure alignment
-            const houseLoad = cleanGenData.map(d => {
+            const houseLoad = genData.map(d => {
                 const gen = d.value || 0;
                 const feedin = feedinMap[d.time] || 0;
                 const grid = gridMap[d.time] || 0;
@@ -1117,8 +1084,8 @@
                     labels,
                     datasets: [
                         {
-                            label: 'Generation (kW)',
-                            data: cleanGenData.map(d => d.value || 0),
+                            label: 'Solar Generation (kW)',
+                            data: genData.map(d => d.value || 0),
                             borderColor: '#ffd43b',
                             backgroundColor: 'rgba(255, 212, 59, 0.1)',
                             fill: true,
@@ -1127,7 +1094,7 @@
                         },
                         {
                             label: 'Feed-in (kW)',
-                            data: dedupFeed.map(d => d.value || 0),
+                            data: feedData.map(d => d.value || 0),
                             borderColor: '#7ee787',
                             backgroundColor: 'rgba(126, 231, 135, 0.1)',
                             fill: true,
@@ -1136,7 +1103,7 @@
                         },
                         {
                             label: 'Grid Import (kW)',
-                            data: dedupGrid.map(d => d.value || 0),
+                            data: gridData.map(d => d.value || 0),
                             borderColor: '#58a6ff',
                             backgroundColor: 'rgba(88, 166, 255, 0.1)',
                             fill: true,
