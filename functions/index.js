@@ -143,6 +143,54 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
   }
 }
 
+// ==================== CACHED REAL-TIME INVERTER DATA ====================
+/**
+ * Get full real-time inverter data with per-user Firestore cache.
+ * Includes all variables needed for the dashboard display.
+ * Respects TTL (default 5 minutes for real-time, configurable via user config).
+ */
+async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, forceRefresh = false) {
+  const config = getConfig();
+  // Use user's custom TTL if set, otherwise fall back to default (5 min for real-time data)
+  const ttlMs = (userConfig?.automation?.inverterRealtimeCacheTtlMs) || config.automation.cacheTtl.inverter || 300000;
+  
+  try {
+    // Check cache if not forcing refresh
+    if (!forceRefresh) {
+      const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('inverter-realtime').get();
+      if (cacheDoc.exists) {
+        const { data, timestamp } = cacheDoc.data();
+        const ageMs = Date.now() - timestamp;
+        if (ageMs < ttlMs) {
+          return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
+        }
+      }
+    }
+    
+    // Fetch fresh data from FoxESS with all required variables
+    const data = await callFoxESSAPI('/op/v0/device/real/query', 'POST', {
+      sn: deviceSN,
+      variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
+    }, userConfig, userId);
+    
+    // Store in cache if successful
+    if (data?.errno === 0) {
+      await db.collection('users').doc(userId).collection('cache').doc('inverter-realtime').set({
+        data,
+        timestamp: Date.now(),
+        ttlMs,
+        ttl: Math.floor(Date.now() / 1000) + Math.floor(ttlMs / 1000) // Firestore TTL in seconds
+      }, { merge: true }).catch(cacheErr => {
+        console.warn(`[Cache] Failed to store inverter realtime cache: ${cacheErr.message}`);
+      });
+    }
+    
+    return { ...data, __cacheHit: false, __cacheAgeMs: 0, __cacheTtlMs: ttlMs };
+  } catch (err) {
+    console.error(`[Cache] Error in getCachedInverterRealtimeData: ${err.message}`);
+    return { errno: 500, error: err.message };
+  }
+}
 // ==================== AUTOMATION AUDIT LOG HELPERS ====================
 /**
  * Log a single automation cycle to the audit trail.
@@ -3557,10 +3605,9 @@ app.get('/api/inverter/real-time', async (req, res) => {
       return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     }
     
-    const result = await callFoxESSAPI('/op/v0/device/real/query', 'POST', {
-      sn,
-      variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
-    }, userConfig, req.user.uid);
+    // Use cached data to avoid excessive Fox API calls
+    // This respects per-user cache TTL and reduces API quota usage significantly
+    const result = await getCachedInverterRealtimeData(req.user.uid, sn, userConfig, false);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });

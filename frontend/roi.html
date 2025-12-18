@@ -567,8 +567,8 @@
             <div class="card-header">
                 <div class="card-title">💰 ROI Calculator</div>
                 <div style="display:flex;gap:8px">
-                    <button class="btn" onclick="calculateROI()" id="btnCalculateROI" style="font-size:11px;padding:6px 12px">
-                        📊 Calculate ROI
+                    <button class="btn-primary" onclick="calculateROI()" id="btnCalculateROI" style="font-size:13px;padding:10px 18px;font-weight:600">
+                        Calculate ROI
                     </button>
                 </div>
             </div>
@@ -782,7 +782,7 @@
                 `;
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '📊 Calculate ROI';
+                btn.innerHTML = 'Calculate ROI';
             }
         }
 
@@ -865,7 +865,7 @@
                 let isFeedinRule = false;
                 let ruleType = 'Discharge'; // Default: assume discharge/feed-in (most common)
                 let actualPrice = null;
-                let rulePowerKw = systemCapacityKw; // Default to system capacity
+                let rulePowerKw = null; // Use actual rule power from fdPwr if available
                 
                 if (event.startAllRules) {
                     for (const rule of event.startAllRules) {
@@ -1296,43 +1296,6 @@
             autoMetrics: true,
             onReady: () => {
                 console.log('[ROI] AppShell.onReady callback fired');
-                
-                // Check if user is authorized to view this page
-                const ALLOWED_EMAIL = 'sardanapalos928@hotmail.com';
-                const currentUser = window.firebaseAuth?.user?.email || AppShell.state?.userEmail;
-                
-                if (currentUser !== ALLOWED_EMAIL) {
-                    console.warn('[ROI] Access denied for user:', currentUser);
-                    // Show access denied message
-                    const roiCalculatorCard = document.querySelector('[data-card="roi-calculator"]');
-                    const automationHistoryCard = document.querySelector('[data-card="automation-history"]');
-                    
-                    if (roiCalculatorCard) {
-                        roiCalculatorCard.innerHTML = `
-                            <div style="padding: 40px 20px; text-align: center; color: var(--text-muted);">
-                                <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
-                                <h3 style="margin: 0 0 8px 0; color: var(--text);">Page Not Available Yet</h3>
-                                <p style="margin: 0; font-size: 13px;">The Automation ROI page is currently in development and only available to authorized users.</p>
-                            </div>
-                        `;
-                        roiCalculatorCard.style.pointerEvents = 'none';
-                        roiCalculatorCard.style.opacity = '0.5';
-                    }
-                    
-                    if (automationHistoryCard) {
-                        automationHistoryCard.innerHTML = `
-                            <div style="padding: 40px 20px; text-align: center; color: var(--text-muted);">
-                                <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
-                                <h3 style="margin: 0 0 8px 0; color: var(--text);">Page Not Available Yet</h3>
-                                <p style="margin: 0; font-size: 13px;">The Automation ROI page is currently in development and only available to authorized users.</p>
-                            </div>
-                        `;
-                        automationHistoryCard.style.pointerEvents = 'none';
-                        automationHistoryCard.style.opacity = '0.5';
-                    }
-                    
-                    return;
-                }
                 
                 // User is authorized, load page content
                 try { 
