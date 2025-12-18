@@ -756,6 +756,28 @@
         function renderROICalculation(events, startDate, endDate, pricesData) {
             const content = document.getElementById('roiContent');
             
+            // Helper function to extract price from rule conditions
+            function extractPriceFromRule(ruleEvals) {
+                if (!ruleEvals || ruleEvals.length === 0) return null;
+                
+                for (const ruleEval of ruleEvals) {
+                    if (ruleEval.triggered && ruleEval.conditions && ruleEval.conditions.length > 0) {
+                        for (const condition of ruleEval.conditions) {
+                            // Look for feedInPrice or buyInPrice in condition values
+                            if (condition.value && typeof condition.value === 'string') {
+                                // Extract numeric prices from condition strings like "feedInPrice: 22.24247"
+                                const feedInMatch = condition.value.match(/feedInPrice[:\s]+([0-9.]+)/i);
+                                const buyInMatch = condition.value.match(/buyInPrice[:\s]+([0-9.]+)/i);
+                                
+                                if (feedInMatch) return parseFloat(feedInMatch[1]);
+                                if (buyInMatch) return parseFloat(buyInMatch[1]);
+                            }
+                        }
+                    }
+                }
+                return null;
+            }
+            
             // Calculate summary stats
             let totalRules = 0;
             let totalChargeRules = 0;
@@ -765,19 +787,24 @@
             let estimatedSavings = 0; // charge operations that avoided high prices
             let estimatedEarnings = 0; // feed-in operations during peak prices
             
-            // Get average prices from Amber API data if available
-            const avgFeedInPrice = pricesData?.feedInPrice || 0.15; // Default fallback AUD/kWh
-            const avgBuyInPrice = pricesData?.buyInPrice || 0.35; // Default fallback AUD/kWh
+            // Default system capacity assumption (5kW)
+            const systemCapacityKw = 5;
+            
+            // Store prices for each event for later use in table
+            const eventPrices = [];
             
             for (const event of events) {
                 totalRules++;
                 
                 // Calculate rule duration in hours (assuming it's stored in milliseconds)
                 const durationHours = (event.durationMs || 0) / (1000 * 60 * 60);
+                const energyGenerated = systemCapacityKw * durationHours;
                 
-                // Count actions by type and estimate profit
+                // Extract actual price from the rule conditions
+                let actualPrice = extractPriceFromRule(event.startAllRules);
                 let isChargeRule = false;
                 let isFeedinRule = false;
+                let eventProfit = 0;
                 
                 if (event.startAllRules) {
                     for (const rule of event.startAllRules) {
@@ -797,20 +824,29 @@
                     }
                 }
                 
-                // Estimate profit based on rule type and duration
-                // Assuming 5kW system (typical residential)
-                const systemCapacityKw = 5;
-                const energyGenerated = systemCapacityKw * durationHours;
-                
-                if (isChargeRule) {
-                    // Profit from cheap charging (avoided expensive grid power)
-                    // Assume average buy-in price of 35c/kWh
-                    totalProfit += energyGenerated * avgBuyInPrice;
-                } else if (isFeedinRule) {
-                    // Profit from selling to grid during peak prices
-                    // Assume average feed-in price of 15c/kWh
-                    totalProfit += energyGenerated * avgFeedInPrice;
+                // Calculate profit using actual price if available
+                if (actualPrice) {
+                    // Convert price to AUD/kWh (if needed - Amber prices may be in cents or dollars)
+                    const priceAudPerKwh = actualPrice > 10 ? actualPrice / 100 : actualPrice;
+                    eventProfit = energyGenerated * priceAudPerKwh;
+                } else {
+                    // Fallback to default prices if no actual price found
+                    if (isChargeRule) {
+                        eventProfit = energyGenerated * 0.35;
+                    } else if (isFeedinRule) {
+                        eventProfit = energyGenerated * 0.15;
+                    }
                 }
+                
+                eventPrices.push({
+                    eventId: event.ruleId,
+                    price: actualPrice,
+                    profit: eventProfit,
+                    isChargeRule,
+                    isFeedinRule
+                });
+                
+                totalProfit += eventProfit;
             }
             
             // Determine profit color
@@ -862,7 +898,7 @@
                 <div class="info-banner" style="background: rgba(126,231,135,0.08); border-color: rgba(126,231,135,0.2);">
                     <span class="icon">💡</span>
                     <div class="text">
-                        <strong>Profit Calculation:</strong> Estimated at $0.35/kWh for charging and $0.15/kWh for feed-in, assuming a 5kW system. Actual values depend on real-time Amber prices. Higher accuracy coming with price history data.
+                        <strong>Profit Calculation:</strong> Uses actual feed-in/buy-in prices captured at rule trigger time, multiplied by rule duration and 5kW system capacity. Prices in AUD/kWh.
                     </div>
                 </div>
                 
@@ -873,6 +909,7 @@
                             <th>Type</th>
                             <th>Triggered At</th>
                             <th>Duration</th>
+                            <th>Price (AUD/kWh)</th>
                             <th>Est. Profit</th>
                             <th>Status</th>
                         </tr>
@@ -880,33 +917,20 @@
                     <tbody>
             `;
             
+            let priceIndex = 0;
             for (const event of events) {
                 const ruleType = event.type === 'ongoing' ? '🔄 Active' : '✓ Complete';
                 const startDate = new Date(event.startTime);
                 const duration = formatDuration(event.durationMs);
+                const priceInfo = eventPrices[priceIndex] || {};
                 
-                // Calculate profit for this event
-                const durationHours = (event.durationMs || 0) / (1000 * 60 * 60);
-                const systemCapacityKw = 5;
-                const energyGenerated = systemCapacityKw * durationHours;
-                let eventProfit = 0;
-                let profitLabel = '';
-                
-                if (event.startAllRules) {
-                    for (const rule of event.startAllRules) {
-                        if (rule.triggered) {
-                            const ruleName = rule.name || '';
-                            if (ruleName.toLowerCase().includes('charge')) {
-                                eventProfit = energyGenerated * avgBuyInPrice;
-                                profitLabel = `$${eventProfit.toFixed(2)} (charging)`;
-                            } else if (ruleName.toLowerCase().includes('feed') || ruleName.toLowerCase().includes('export')) {
-                                eventProfit = energyGenerated * avgFeedInPrice;
-                                profitLabel = `$${eventProfit.toFixed(2)} (feed-in)`;
-                            }
-                            break;
-                        }
-                    }
+                let priceDisplay = '—';
+                if (priceInfo.price) {
+                    const displayPrice = priceInfo.price > 10 ? (priceInfo.price / 100).toFixed(3) : priceInfo.price.toFixed(3);
+                    priceDisplay = `$${displayPrice}`;
                 }
+                
+                const profitLabel = priceInfo.profit ? `$${priceInfo.profit.toFixed(2)}` : '—';
                 
                 html += `
                     <tr>
@@ -914,10 +938,13 @@
                         <td>${ruleType}</td>
                         <td>${startDate.toLocaleString()}</td>
                         <td>${duration}</td>
-                        <td style="color: ${eventProfit >= 0 ? '#7ee787' : '#ef4444'};">${profitLabel || '—'}</td>
+                        <td>${priceDisplay}</td>
+                        <td style="color: ${priceInfo.profit >= 0 ? '#7ee787' : '#ef4444'}; font-weight: 600;">${profitLabel}</td>
                         <td>${event.type === 'ongoing' ? '🟢 Running' : '✓ Done'}</td>
                     </tr>
                 `;
+                
+                priceIndex++;
             }
             
             html += `
