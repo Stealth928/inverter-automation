@@ -929,7 +929,13 @@
          * Render automation timeline
          */
         function renderAutomationTimeline(events) {
+            console.log('[ROI] renderAutomationTimeline called with', events.length, 'events');
             const content = document.getElementById('automationHistoryContent');
+            
+            if (!content) {
+                console.error('[ROI] automationHistoryContent element not found!');
+                return;
+            }
             
             let html = '<div class="automation-timeline">';
             
@@ -1036,7 +1042,9 @@
             }
             
             html += '</div>';
+            console.log('[ROI] Setting innerHTML with', html.length, 'characters');
             content.innerHTML = html;
+            console.log('[ROI] renderAutomationTimeline complete');
         }
 
         /**
