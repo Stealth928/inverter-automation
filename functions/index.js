@@ -2081,7 +2081,14 @@ app.post('/api/automation/toggle', async (req, res) => {
 app.post('/api/automation/enable', async (req, res) => {
   try {
     const { enabled } = req.body;
-    await saveUserAutomationState(req.user.uid, { enabled: !!enabled });
+    const stateUpdate = { enabled: !!enabled };
+    
+    // When re-enabling automation, clear the segmentsCleared flag so segments will be re-cleared on next disable
+    if (enabled === true) {
+      stateUpdate.segmentsCleared = false;
+    }
+    
+    await saveUserAutomationState(req.user.uid, stateUpdate);
     res.json({ errno: 0, result: { enabled: !!enabled } });
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -2169,37 +2176,44 @@ app.post('/api/automation/cycle', async (req, res) => {
     if (state && state.enabled === false) {
       console.log(`[Automation] 🛑 Master switch is DISABLED (state.enabled === false)`);
       
-      // ALWAYS clear all segments when automation is disabled, regardless of activeRule state
-      // The inverter might have segments still scheduled from a previous rule
-      try {
-        const userConfig = await getUserConfig(userId);
-        const deviceSN = userConfig?.deviceSn;
-        if (deviceSN) {
-          console.log(`[Automation] 📡 Sending clear command to device ${deviceSN}...`);
-          const clearedGroups = [];
-          for (let i = 0; i < 8; i++) {
-            clearedGroups.push({
-              enable: 0,
-              workMode: 'SelfUse',
-              startHour: 0, startMinute: 0,
-              endHour: 0, endMinute: 0,
-              minSocOnGrid: 10,
-              fdSoc: 10,
-              fdPwr: 0,
-              maxSoc: 100
-            });
-          }
-          const clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
-          if (clearResult?.errno === 0) {
-            console.log(`[Automation] ✅ All segments CLEARED successfully (errno=0)`);
+      // Only clear segments if they haven't been cleared already for this disabled state
+      // Track with a flag in the state to avoid redundant API calls on every cycle
+      if (state.segmentsCleared !== true) {
+        console.log(`[Automation] 📡 Segments not yet cleared for disabled state - sending clear command...`);
+        try {
+          const userConfig = await getUserConfig(userId);
+          const deviceSN = userConfig?.deviceSn;
+          if (deviceSN) {
+            console.log(`[Automation] 📡 Sending clear command to device ${deviceSN}...`);
+            const clearedGroups = [];
+            for (let i = 0; i < 8; i++) {
+              clearedGroups.push({
+                enable: 0,
+                workMode: 'SelfUse',
+                startHour: 0, startMinute: 0,
+                endHour: 0, endMinute: 0,
+                minSocOnGrid: 10,
+                fdSoc: 10,
+                fdPwr: 0,
+                maxSoc: 100
+              });
+            }
+            const clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+            if (clearResult?.errno === 0) {
+              console.log(`[Automation] ✅ All segments CLEARED successfully (errno=0)`);
+              // Mark segments as cleared so we don't do this again every cycle
+              await saveUserAutomationState(userId, { segmentsCleared: true });
+            } else {
+              console.warn(`[Automation] ⚠️ Segment clear returned errno=${clearResult?.errno}`);
+            }
           } else {
-            console.warn(`[Automation] ⚠️ Segment clear returned errno=${clearResult?.errno}`);
+            console.warn(`[Automation] ⚠️ No deviceSN found - cannot clear segments`);
           }
-        } else {
-          console.warn(`[Automation] ⚠️ No deviceSN found - cannot clear segments`);
+        } catch (err) {
+          console.error(`[Automation] ❌ Error clearing segments on disable:`, err.message);
         }
-      } catch (err) {
-        console.error(`[Automation] ❌ Error clearing segments on disable:`, err.message);
+      } else {
+        console.log(`[Automation] ✅ Segments already cleared for disabled state - skipping API call`);
       }
       
       // Clear lastTriggered on the active rule if one exists (so it can re-trigger when automation re-enabled)
