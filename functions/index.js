@@ -702,10 +702,17 @@ app.get('/api/metrics/api-calls', async (req, res) => {
   const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
   
   try {
+    // Debug: log incoming request
+    const authHeader = req.headers.authorization;
+    console.log(`[Metrics] GET /api/metrics/api-calls - days=${days}, scope=${req.query.scope}`);
+    console.log(`[Metrics] Authorization header present: ${!!authHeader}, First 20 chars: ${authHeader ? authHeader.substring(0, 20) : 'none'}`);
+    console.log(`[Metrics] req.user before tryAttachUser: ${req.user ? req.user.uid : 'undefined'}`);
+    
     // Attach optional user (don't require auth globally here)
     await tryAttachUser(req);
 
     const scope = String(req.query.scope || 'global');
+    console.log(`[Metrics] req.user after tryAttachUser: ${req.user ? req.user.uid : 'undefined'}, scope=${scope}`);
 
     if (!db) {
       console.warn('[Metrics] Firestore not initialized - returning zeroed metrics');
@@ -724,22 +731,43 @@ app.get('/api/metrics/api-calls', async (req, res) => {
 
     if (scope === 'user') {
       const userId = req.user?.uid;
-      if (!userId) return res.status(401).json({ errno: 401, error: 'Unauthorized: user scope requested' });
+      console.log(`[Metrics] User scope requested - userId: ${userId}`);
+      if (!userId) {
+        console.warn(`[Metrics] User scope requested but no userId - returning 401`);
+        return res.status(401).json({ errno: 401, error: 'Unauthorized: user scope requested' });
+      }
 
+      // Query without orderBy to avoid needing a composite index
+      // Get all metrics docs for the user and filter/sort in code
       const metricsSnapshot = await db.collection('users').doc(userId)
         .collection('metrics')
-        .orderBy(admin.firestore.FieldPath.documentId(), 'desc')
-        .limit(days)
         .get();
 
+      console.log(`[Metrics] Queried /users/${userId}/metrics - found ${metricsSnapshot.size} documents`);
+
       const result = {};
+      const allDocs = [];
       metricsSnapshot.forEach(doc => {
         const d = doc.data() || {};
-        result[doc.id] = {
+        allDocs.push({
+          id: doc.id,
           foxess: Number(d.foxess || 0),
           amber: Number(d.amber || 0),
           weather: Number(d.weather || 0)
+        });
+      });
+
+      // Sort by date descending (YYYY-MM-DD format sorts alphabetically)
+      allDocs.sort((a, b) => b.id.localeCompare(a.id));
+
+      // Take only the most recent N days
+      allDocs.slice(0, days).forEach(doc => {
+        result[doc.id] = {
+          foxess: doc.foxess,
+          amber: doc.amber,
+          weather: doc.weather
         };
+        console.log(`[Metrics]   ${doc.id}: foxess=${result[doc.id].foxess}, amber=${result[doc.id].amber}, weather=${result[doc.id].weather}`);
       });
 
       // Fill in missing days with zeros (Australia/Sydney local date)
@@ -750,7 +778,9 @@ app.get('/api/metrics/api-calls', async (req, res) => {
         if (!result[key]) result[key] = { foxess: 0, amber: 0, weather: 0 };
       }
 
+      console.log(`[Metrics] Returning user scope metrics for ${Object.keys(result).length} days`);
       return res.json({ errno: 0, result });
+
     }
 
     // Global scope: read top-level `metrics` collection for each date
@@ -825,10 +855,8 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, u
     token = token.trim().replace(/\s+/g, '').replace(/[^\x20-\x7E]/g, '');
   }
   
-  // Track API call if userId provided
-  if (userId) {
-    incrementApiCount(userId, 'foxess').catch(() => {});
-  }
+  // NOTE: API counter is now incremented AFTER the call, only for successful responses
+  // This prevents counting rate-limited or failed requests
   
   try {
     const timestamp = Date.now();
@@ -864,8 +892,23 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, u
     const text = await response.text();
     
     try {
-      return JSON.parse(text);
+      const result = JSON.parse(text);
+      
+      // Only count the API call if it was actually processed (not rate-limited)
+      // errno 40402 = rate limit exceeded - don't count these as they didn't consume quota
+      // errno 0 = success, other errno values = real API calls that consumed quota
+      if (userId && result.errno !== 40402) {
+        incrementApiCount(userId, 'foxess').catch(() => {});
+      } else if (result.errno === 40402) {
+        console.warn(`[FoxESS] Rate limited (40402) - NOT counting toward API quota`);
+      }
+      
+      return result;
     } catch (err) {
+      // Non-JSON response - still count as an API call was made
+      if (userId) {
+        incrementApiCount(userId, 'foxess').catch(() => {});
+      }
       return { errno: -1, msg: 'Non-JSON response', raw: text };
     }
   } catch (error) {
@@ -3605,9 +3648,12 @@ app.get('/api/inverter/real-time', async (req, res) => {
       return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     }
     
-    // Use cached data to avoid excessive Fox API calls
+    // Check for force refresh query parameter (bypass cache when ?forceRefresh=true)
+    const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
+    
+    // Use cached data to avoid excessive Fox API calls (unless force refresh requested)
     // This respects per-user cache TTL and reduces API quota usage significantly
-    const result = await getCachedInverterRealtimeData(req.user.uid, sn, userConfig, false);
+    const result = await getCachedInverterRealtimeData(req.user.uid, sn, userConfig, forceRefresh);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });

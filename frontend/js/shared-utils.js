@@ -82,13 +82,15 @@ function showInfo(message, duration = 5000) {
 async function loadApiMetrics(days = 1) {
     try {
         // Use apiClient if available, otherwise fallback
+        // IMPORTANT: Use scope=user to show per-user metrics, not global platform totals
         let resp;
+        const apiUrl = `/api/metrics/api-calls?days=${encodeURIComponent(days)}&scope=user`;
         if (typeof apiClient !== 'undefined' && apiClient) {
-            resp = await apiClient.fetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+            resp = await apiClient.fetch(apiUrl);
         } else if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn()) {
-            resp = await firebaseAuth.fetchWithAuth(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+            resp = await firebaseAuth.fetchWithAuth(apiUrl);
         } else {
-            resp = await fetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+            resp = await fetch(apiUrl);
         }
         
         // Handle response using normalizeFetchResponse logic if available, or manual check

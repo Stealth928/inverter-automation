@@ -940,7 +940,7 @@
                 
                 status.className = 'status success';
                 status.textContent = `✓ History loaded successfully (${hours}h range)`;
-                timestamp.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+                timestamp.textContent = `Updated: ${new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
                 
                 setTimeout(() => { status.style.display = 'none'; }, 3000);
             } catch (e) {
@@ -1231,7 +1231,7 @@
                 
                 status.className = 'status success';
                 status.textContent = `✓ Report loaded successfully`;
-                timestamp.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+                timestamp.textContent = `Updated: ${new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
                 
                 setTimeout(() => { status.style.display = 'none'; }, 3000);
             } catch (e) {
@@ -1446,7 +1446,7 @@
                 
                 status.className = 'status success';
                 status.textContent = `✓ Generation data loaded successfully`;
-                timestamp.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+                timestamp.textContent = `Updated: ${new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
                 
                 setTimeout(() => { status.style.display = 'none'; }, 3000);
             } catch (e) {
@@ -1585,7 +1585,8 @@
         // Load API call metrics (per-day) and display in footer
         async function loadApiMetrics(days = 1) {
             try {
-                const resp = await authenticatedFetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+                // Use scope=user to show per-user metrics, not global platform totals
+                const resp = await authenticatedFetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}&scope=user`);
                 const data = await resp.json();
                 if (!data || data.errno !== 0 || !data.result) return;
                 const keys = Object.keys(data.result).sort().reverse();
@@ -1603,9 +1604,9 @@
 
         // Helper function for date formatting
         function formatDate(date, includeTime = true) {
-            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const dateStr = date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' });
             if (includeTime) {
-                const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                const timeStr = date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
                 return `${dateStr} ${timeStr}`;
             }
             return dateStr;
@@ -1787,7 +1788,7 @@
 
                 status.className = 'status success';
                 status.textContent = `✓ Loaded ${prices.length} price intervals`;
-                timestamp.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+                timestamp.textContent = `Updated: ${new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
 
                 setTimeout(() => { status.style.display = 'none'; }, 3000);
             } catch (e) {
@@ -1872,6 +1873,7 @@
                 const timeStr = date.toLocaleTimeString('en-AU', {
                     hour: '2-digit',
                     minute: '2-digit',
+                    hour12: false,
                     timeZone: 'Australia/Sydney'
                 });
                 // Always include date and time (date on first line, time on second)

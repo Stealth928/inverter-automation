@@ -1968,7 +1968,7 @@
 
         function log(level, message) {
             const container = document.getElementById('logArea');
-            const time = new Date().toLocaleTimeString();
+            const time = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
             const formatted = `[${time}] ${message}`;
 
             if (!container) {

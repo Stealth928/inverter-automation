@@ -1027,7 +1027,7 @@
                         <td class="rule-name">${event.ruleName || 'Unknown Rule'}</td>
                         <td>${ruleTypeDisplay}</td>
                         <td>${powerDisplay}</td>
-                        <td>${startDate.toLocaleString()}</td>
+                        <td>${startDate.toLocaleString('en-AU', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</td>
                         <td>${duration}</td>
                         <td>${priceDisplay}</td>
                         <td style="color: ${priceInfo.profit >= 0 ? '#7ee787' : '#ef4444'}; font-weight: 600;">${profitLabel}</td>
@@ -1144,10 +1144,10 @@
                         
                         <div class="event-times">
                             <span class="event-time-label">Started:</span>
-                            <span class="event-time-value">${startDate.toLocaleString()}</span>
+                            <span class="event-time-value">${startDate.toLocaleString('en-AU', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                             ${!isOngoing ? `
                                 <span class="event-time-label">Ended:</span>
-                                <span class="event-time-value">${endDate.toLocaleString()}</span>
+                                <span class="event-time-value">${endDate.toLocaleString('en-AU', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                             ` : ''}
                         </div>
                 `;
@@ -1255,7 +1255,8 @@
          */
         async function loadApiMetrics(days = 1) {
             try {
-                const resp = await authenticatedFetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+                // Use scope=user to show per-user metrics, not global platform totals
+                const resp = await authenticatedFetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}&scope=user`);
                 const data = await resp.json();
                 if (!data || data.errno !== 0 || !data.result) return;
                 const keys = Object.keys(data.result).sort().reverse();
@@ -1277,7 +1278,7 @@
         function formatDate(date, includeTime = true) {
             const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             if (includeTime) {
-                const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                const timeStr = date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
                 return `${dateStr} ${timeStr}`;
             }
             return dateStr;

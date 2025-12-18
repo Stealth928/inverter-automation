@@ -1416,7 +1416,7 @@
                             <div style="display:flex;gap:8px;align-items:center">
                                 <span class="card-badge">Live</span>
                                 <div id="inverterLastUpdate" style="font-size:11px;color:#8b949e;">—</div>
-                                <button class="btn btn-icon" onclick="callAPI('/api/inverter/real-time', 'Real-time Data')" title="Refresh inverter data">🔄</button>
+                                <button class="btn btn-icon" onclick="callAPI('/api/inverter/real-time?forceRefresh=true', 'Real-time Data')" title="Refresh inverter data (bypasses cache)">🔄</button>
                             </div>
 
                                 <!-- API call metrics footer -->
@@ -2032,7 +2032,9 @@
             
             let url = endpoint;
             if (sn && (endpoint.includes('/inverter') || endpoint.includes('/scheduler/') || endpoint.includes('/module/signal'))) {
-                url += `?sn=${encodeURIComponent(sn)}`;
+                // Use & if URL already has query parameters, otherwise use ?
+                const separator = endpoint.includes('?') ? '&' : '?';
+                url += `${separator}sn=${encodeURIComponent(sn)}`;
             }
             
             resultEl.className = '';
@@ -3852,7 +3854,7 @@
             // Compact info row: forecast count and time range
             try {
                 const returned = forecasts.length;
-                const lastInterval = forecasts.length ? new Date(forecasts[forecasts.length-1].startTime).toLocaleString('en-AU', {hour:'2-digit',minute:'2-digit', day:'2-digit', month:'2-digit', timeZone: USER_TZ || 'Australia/Sydney'}) : '—';
+                const lastInterval = forecasts.length ? new Date(forecasts[forecasts.length-1].startTime).toLocaleString('en-AU', {hour:'2-digit',minute:'2-digit', day:'2-digit', month:'2-digit', hour12:false, timeZone: USER_TZ || 'Australia/Sydney'}) : '—';
                 html += `<div style="font-size:11px;color:#8b949e;margin-bottom:8px">
                     <strong>${returned}</strong> forecast intervals available — until <strong>${lastInterval}</strong>
                 </div>`;
@@ -3867,7 +3869,7 @@
             // Spike Alert Banner (if any forecasted spikes)
             if (hasSpikes) {
                 const nextSpike = spikeForecasts[0];
-                const spikeTime = new Date(nextSpike.startTime).toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit'});
+                const spikeTime = new Date(nextSpike.startTime).toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false, timeZone: USER_TZ || 'Australia/Sydney'});
                 const spikePrice = nextSpike.perKwh.toFixed(0);
                 html += `<div style="background:linear-gradient(135deg,rgba(248,81,73,0.15),rgba(248,81,73,0.05));border:1px solid rgba(248,81,73,0.4);border-radius:8px;padding:10px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
                     <span style="font-size:24px">⚠️</span>

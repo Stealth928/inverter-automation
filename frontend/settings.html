@@ -1365,7 +1365,7 @@
 
                 
                 updateStatus();
-                document.getElementById('lastSaved').textContent = new Date().toLocaleTimeString();
+                document.getElementById('lastSaved').textContent = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
                 
                 showMessage('success', '✅ Configuration saved to server and persisted to disk!');
             } catch (error) {

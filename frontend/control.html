@@ -899,7 +899,8 @@
     // Load API metrics
     async function loadApiMetrics(days = 1) {
       try {
-        const resp = await authenticatedFetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+        // Use scope=user to show per-user metrics, not global platform totals
+        const resp = await authenticatedFetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}&scope=user`);
         const data = await resp.json();
         if (!data || data.errno !== 0 || !data.result) return;
         const keys = Object.keys(data.result).sort().reverse();
