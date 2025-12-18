@@ -2176,6 +2176,15 @@ app.post('/api/automation/cycle', async (req, res) => {
     if (state && state.enabled === false) {
       console.log(`[Automation] 🛑 Master switch is DISABLED (state.enabled === false)`);
       
+      // Always update lastCheck timestamp to prevent scheduler from calling cycle repeatedly
+      await saveUserAutomationState(userId, { 
+        lastCheck: Date.now(), 
+        activeRule: null,
+        activeRuleName: null,
+        activeSegment: null,
+        activeSegmentEnabled: false
+      });
+      
       // Only clear segments if they haven't been cleared already for this disabled state
       // Track with a flag in the state to avoid redundant API calls on every cycle
       if (state.segmentsCleared !== true) {
@@ -2198,6 +2207,7 @@ app.post('/api/automation/cycle', async (req, res) => {
                 maxSoc: 100
               });
             }
+            // Real API call - counted in metrics for accurate quota tracking
             const clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
             if (clearResult?.errno === 0) {
               console.log(`[Automation] ✅ All segments CLEARED successfully (errno=0)`);
@@ -2224,22 +2234,47 @@ app.post('/api/automation/cycle', async (req, res) => {
             lastTriggered: null
           }, { merge: true });
           console.log(`[Automation] ✅ Cleared lastTriggered for rule ${state.activeRuleName || state.activeRule}`);
+          
+          // Create audit entry showing the active rule was deactivated due to automation being disabled
+          // This ensures the ROI calculator shows the rule as "ended" not "ongoing"
+          try {
+            const activationTime = state.lastTriggered || Date.now();
+            const deactivationTime = Date.now();
+            const durationMs = deactivationTime - activationTime;
+            
+            await addAutomationAuditEntry(userId, {
+              cycleId: `cycle_automation_disabled_${Date.now()}`,
+              triggered: false,
+              ruleName: state.activeRuleName || state.activeRule,
+              ruleId: state.activeRule,
+              evaluationResults: [],
+              allRuleEvaluations: [{
+                name: state.activeRuleName || state.activeRule,
+                ruleId: state.activeRule,
+                triggered: false,
+                conditions: [],
+                feedInPrice: null,
+                buyPrice: null
+              }],
+              actionTaken: null,
+              activeRuleBefore: state.activeRule,
+              activeRuleAfter: null,
+              rulesEvaluated: 0,
+              cycleDurationMs: durationMs,
+              automationDisabled: true  // Flag indicating this was due to automation being disabled
+            });
+            console.log(`[Automation] 📝 Created audit entry for rule deactivation (${Math.round(durationMs / 1000)}s duration)`);
+          } catch (auditErr) {
+            console.warn(`[Automation] ⚠️ Failed to create audit entry:`, auditErr.message);
+          }
         } catch (err) {
           console.warn(`[Automation] ⚠️ Error clearing rule lastTriggered:`, err.message);
         }
       }
       
-      // Always clear automation state
-      await saveUserAutomationState(userId, { 
-        lastCheck: Date.now(), 
-        activeRule: null,
-        activeRuleName: null,
-        activeSegment: null,
-        activeSegmentEnabled: false
-      });
-      console.log(`[Automation] ✅ Automation state cleared`);
+      console.log(`[Automation] ✅ Automation state updated with lastCheck timestamp`);
       
-      return res.json({ errno: 0, result: { skipped: true, reason: 'Automation disabled', segmentsCleared: true } });
+      return res.json({ errno: 0, result: { skipped: true, reason: 'Automation disabled', segmentsCleared: state.segmentsCleared === true } });
     }
     
     // Check for blackout windows
@@ -2314,6 +2349,7 @@ app.post('/api/automation/cycle', async (req, res) => {
               maxSoc: 100
             });
           }
+          // Real API call - counted in metrics for accurate quota tracking
           const clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
           if (clearResult?.errno === 0) {
             console.log(`[Cycle] ✅ Segments cleared successfully due to rule disable flag`);
@@ -2351,6 +2387,7 @@ app.post('/api/automation/cycle', async (req, res) => {
               maxSoc: 100
             });
           }
+          // Real API call - counted in metrics for accurate quota tracking
           const clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
           if (clearResult?.errno === 0) {
             console.log(`[Automation] ✅ Segments cleared successfully after rule disable`);
@@ -2539,7 +2576,8 @@ app.post('/api/automation/cycle', async (req, res) => {
       
       // BUG FIX: Check if this is the ACTIVE rule
       // Active rules should always be re-evaluated to verify conditions still hold, even if in cooldown
-      const isActiveRule = state.activeRule === ruleId;
+      // Be resilient to older state docs that may not have activeRule but have the name persisted
+      const isActiveRule = state.activeRule === ruleId || state.activeRuleName === rule.name;
       
       // Only apply cooldown check to INACTIVE rules (new rule searches)
       // Active rules bypass cooldown check because they need continuous condition monitoring
@@ -2704,6 +2742,7 @@ app.post('/api/automation/cycle', async (req, res) => {
                       maxSoc: 100
                     });
                   }
+                  // Real API call - counted in metrics for accurate quota tracking
                   await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
                   console.log(`[Automation] ✅ Cleared lower-priority active rule's segment`);
                   await new Promise(resolve => setTimeout(resolve, 2500)); // Wait for inverter to process
@@ -2762,10 +2801,18 @@ app.post('/api/automation/cycle', async (req, res) => {
           const allRulesForAudit = evaluationResults.map(evalResult => {
             const ruleData = sortedRules.find(([id, r]) => r.name === evalResult.rule);
             const [evalRuleId, evalRule] = ruleData || [null, {}];
+            
+            // DEBUG: Log prices being stored
+            if (evalResult.details?.feedInPrice !== undefined || evalResult.details?.buyPrice !== undefined) {
+              console.log(`[Audit] Rule '${evalResult.rule}': feedInPrice=${evalResult.details?.feedInPrice}, buyPrice=${evalResult.details?.buyPrice}`);
+            }
+            
             return {
               name: evalResult.rule,
               ruleId: evalRuleId || evalResult.rule,
               triggered: evalResult.result === 'triggered' || evalResult.result === 'continuing',
+              feedInPrice: evalResult.details?.feedInPrice || null,
+              buyPrice: evalResult.details?.buyPrice || null,
               conditions: evalResult.details?.results?.map(cond => ({
                 name: cond.condition,
                 met: cond.met,
@@ -2805,7 +2852,9 @@ app.post('/api/automation/cycle', async (req, res) => {
           await saveUserAutomationState(userId, {
             lastCheck: Date.now(),
             inBlackout: false,
-            activeSegmentEnabled: true
+            activeSegmentEnabled: true,
+            activeRule: state.activeRule,
+            activeRuleName: state.activeRuleName
           });
         }
         
@@ -2898,10 +2947,18 @@ app.post('/api/automation/cycle', async (req, res) => {
             const allRulesForAudit = evaluationResults.map(evalResult => {
               const ruleData = sortedRules.find(([id, r]) => r.name === evalResult.rule);
               const [evalRuleId, evalRule] = ruleData || [null, {}];
+              
+              // DEBUG: Log prices being stored
+              if (evalResult.details?.feedInPrice !== undefined || evalResult.details?.buyPrice !== undefined) {
+                console.log(`[Audit] Rule '${evalResult.rule}': feedInPrice=${evalResult.details?.feedInPrice}, buyPrice=${evalResult.details?.buyPrice}`);
+              }
+              
               return {
                 name: evalResult.rule,
                 ruleId: evalRuleId || evalResult.rule,
                 triggered: evalResult.result === 'triggered' || evalResult.result === 'continuing',
+                feedInPrice: evalResult.details?.feedInPrice || null,
+                buyPrice: evalResult.details?.buyPrice || null,
                 conditions: evalResult.details?.results?.map(cond => ({
                   name: cond.condition,
                   met: cond.met,
@@ -3045,6 +3102,106 @@ app.post('/api/automation/cancel', async (req, res) => {
     });
   } catch (error) {
     console.error('[Automation] Cancel error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Manually end an orphan ongoing rule (create a "complete" audit entry with endTime)
+// This fixes rules that get stuck in "ongoing" state without a proper termination event
+app.post('/api/automation/rule/end', async (req, res) => {
+  try {
+    const { ruleId, ruleName, endTime } = req.body;
+    const userId = req.user.uid;
+    
+    if (!ruleId && !ruleName) {
+      return res.status(400).json({ errno: 400, error: 'ruleId or ruleName is required' });
+    }
+    
+    const actualRuleId = ruleId || (ruleName || '').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    const endTimestamp = endTime || Date.now();
+    
+    console.log(`[Automation] Manual rule end requested: ruleId=${actualRuleId}, endTime=${endTimestamp}`);
+    
+    // Get automation audit logs to find the start event for this rule
+    const auditLogs = await getAutomationAuditLogs(userId, 500);
+    
+    // Find the most recent log where this rule became active
+    let startEvent = null;
+    let startTimestamp = null;
+    
+    for (const log of auditLogs) {
+      if (log.activeRuleAfter === actualRuleId && log.triggered) {
+        startTimestamp = log.epochMs;
+        startEvent = {
+          ruleName: log.ruleName,
+          ruleId: actualRuleId,
+          conditions: log.evaluationResults,
+          allRuleEvaluations: log.allRuleEvaluations,
+          action: log.actionTaken
+        };
+        break;  // Found the most recent activation (logs are in desc order)
+      }
+    }
+    
+    if (!startEvent) {
+      return res.status(400).json({ errno: 400, error: `No activation event found for rule ${actualRuleId}` });
+    }
+    
+    console.log(`[Automation] Found start event at ${new Date(startTimestamp).toISOString()}`);
+    
+    // Create an audit entry that shows the rule being deactivated
+    // This creates the "off" event that pairs with the "on" event in the audit trail
+    await addAutomationAuditEntry(userId, {
+      cycleId: `cycle_manual_end_${Date.now()}`,
+      triggered: false,
+      ruleName: startEvent.ruleName,
+      ruleId: actualRuleId,
+      evaluationResults: [],
+      allRuleEvaluations: [{
+        name: startEvent.ruleName,
+        ruleId: actualRuleId,
+        triggered: false,
+        conditions: [],
+        feedInPrice: null,
+        buyPrice: null
+      }],
+      actionTaken: null,
+      activeRuleBefore: actualRuleId,
+      activeRuleAfter: null,  // This is the key - switching from activeRule to null marks it as ended
+      rulesEvaluated: 0,
+      cycleDurationMs: endTimestamp - startTimestamp,
+      manualEnd: true  // Flag to indicate this was manually ended
+    });
+    
+    // Also clear the active rule from state if it's still set to this rule
+    const state = await getUserAutomationState(userId);
+    if (state && state.activeRule === actualRuleId) {
+      console.log(`[Automation] Clearing active rule state for ${actualRuleId}`);
+      await saveUserAutomationState(userId, {
+        activeRule: null,
+        activeRuleName: null,
+        activeSegment: null,
+        activeSegmentEnabled: false
+      });
+    }
+    
+    const durationMs = endTimestamp - startTimestamp;
+    console.log(`[Automation] ✅ Orphan rule ended: ${startEvent.ruleName} (${Math.round(durationMs / 1000)}s duration)`);
+    
+    res.json({
+      errno: 0,
+      result: {
+        ended: true,
+        ruleName: startEvent.ruleName,
+        ruleId: actualRuleId,
+        startTime: startTimestamp,
+        endTime: endTimestamp,
+        durationMs,
+        message: 'Orphan rule successfully ended with completion timestamp'
+      }
+    });
+  } catch (error) {
+    console.error('[Automation] Manual rule end error:', error);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
@@ -4689,16 +4846,16 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   
   if (enabledConditions.length === 0) {
     console.log(`[Automation] Rule '${rule.name}' - No conditions enabled, skipping`);
-    return { triggered: false, reason: 'No conditions enabled' };
+    return { triggered: false, reason: 'No conditions enabled', feedInPrice, buyPrice };
   }
   
   if (allMet) {
     console.log(`[Automation] Rule '${rule.name}' - ALL ${enabledConditions.length} conditions MET!`);
-    return { triggered: true, results };
+    return { triggered: true, results, feedInPrice, buyPrice };
   }
   
   console.log(`[Automation] Rule '${rule.name}' - Not all conditions met (${results.filter(r => r.met).length}/${results.length})`);
-  return { triggered: false, results };
+  return { triggered: false, results, feedInPrice, buyPrice };
 }
 
 /**

@@ -260,6 +260,27 @@
             color: #f85149;
             font-weight: 600;
         }
+
+        /* Scrollable panels for ROI and Automation History - keep equal fixed height (50% larger) */
+        #roiContent, #automationHistoryContent {
+            max-height: 630px;
+            height: 630px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-right: 8px; /* avoid scrollbar overlap */
+            box-sizing: border-box;
+        }
+
+        /* Ensure the table doesn't force the container to expand */
+        .roi-summary-table {
+            table-layout: fixed;
+        }
+
+        .roi-summary-table td, .roi-summary-table th {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         
         /* Automation History Timeline */
         .automation-timeline {
@@ -701,8 +722,11 @@
                 
                 // Filter events within date range
                 const events = (auditData.result?.ruleEvents || []).filter(event => {
+                    // event.startTime is in milliseconds (epoch)
                     const eventStart = new Date(event.startTime);
-                    return eventStart >= new Date(startDate) && eventStart <= new Date(endDate);
+                    const startDateObj = new Date(startDate + 'T00:00:00');  // Start of day
+                    const endDateObj = new Date(endDate + 'T23:59:59');     // End of day
+                    return eventStart >= startDateObj && eventStart <= endDateObj;
                 });
                 
                 if (events.length === 0) {
@@ -717,6 +741,18 @@
                     return;
                 }
                 
+                // Fetch current automation enabled state
+                let isAutomationEnabled = false;
+                try {
+                    const stateResp = await authenticatedFetch('/api/automation/state');
+                    const stateJson = await stateResp.json();
+                    if (stateJson.errno === 0 && stateJson.result) {
+                        isAutomationEnabled = stateJson.result.enabled || false;
+                    }
+                } catch (e) {
+                    console.warn('Could not fetch automation state:', e);
+                }
+                
                 // Fetch current prices (if available) for reference
                 let pricesData = null;
                 try {
@@ -729,7 +765,7 @@
                     console.warn('Could not fetch current prices:', e);
                 }
                 
-                renderROICalculation(events, startDate, endDate, pricesData);
+                renderROICalculation(events, startDate, endDate, pricesData, isAutomationEnabled);
                 
                 status.className = 'status success';
                 status.textContent = `✓ Analyzed ${events.length} rule trigger(s)`;
@@ -753,24 +789,52 @@
         /**
          * Render ROI calculation results
          */
-        function renderROICalculation(events, startDate, endDate, pricesData) {
+        function renderROICalculation(events, startDate, endDate, pricesData, isAutomationEnabled) {
             const content = document.getElementById('roiContent');
             
-            // Helper function to extract price from rule conditions
+            // Helper function to extract price from rule data (prefer explicit fields, fallback to parsing)
             function extractPriceFromRule(ruleEvals) {
-                if (!ruleEvals || ruleEvals.length === 0) return null;
+                if (!ruleEvals || ruleEvals.length === 0) {
+                    console.log('[ROI] extractPriceFromRule: No ruleEvals provided');
+                    return null;
+                }
                 
+                console.log('[ROI] extractPriceFromRule: Processing', ruleEvals.length, 'rule evaluations');
+                
+                // First try to get price from explicit feedInPrice/buyPrice fields (NEW)
+                for (const ruleEval of ruleEvals) {
+                    console.log('[ROI] Checking rule:', ruleEval.name, 'triggered:', ruleEval.triggered, 'feedInPrice:', ruleEval.feedInPrice, 'buyPrice:', ruleEval.buyPrice);
+                    if (ruleEval.triggered) {
+                        if (ruleEval.feedInPrice !== null && ruleEval.feedInPrice !== undefined) {
+                            console.log('[ROI] ✅ Found feedInPrice:', ruleEval.feedInPrice);
+                            return ruleEval.feedInPrice;
+                        }
+                        if (ruleEval.buyPrice !== null && ruleEval.buyPrice !== undefined) {
+                            console.log('[ROI] ✅ Found buyPrice:', ruleEval.buyPrice);
+                            return ruleEval.buyPrice;
+                        }
+                    }
+                }
+                
+                console.log('[ROI] No explicit prices found in triggered rules, trying condition fallback...');
+                
+                // Fallback: Parse from condition data (for older events without explicit fields)
                 for (const ruleEval of ruleEvals) {
                     if (ruleEval.triggered && ruleEval.conditions && ruleEval.conditions.length > 0) {
                         for (const condition of ruleEval.conditions) {
-                            // Look for feedInPrice or buyInPrice in condition values
-                            if (condition.value && typeof condition.value === 'string') {
-                                // Extract numeric prices from condition strings like "feedInPrice: 22.24247"
-                                const feedInMatch = condition.value.match(/feedInPrice[:\s]+([0-9.]+)/i);
-                                const buyInMatch = condition.value.match(/buyInPrice[:\s]+([0-9.]+)/i);
-                                
-                                if (feedInMatch) return parseFloat(feedInMatch[1]);
-                                if (buyInMatch) return parseFloat(buyInMatch[1]);
+                            // Skip non-price conditions (Battery SoC, Ambient/Battery Temp)
+                            const condName = condition.name || '';
+                            if (condName.includes('SoC') || condName.includes('Temperature') || condName.includes('Temp') || condName.includes('Battery')) {
+                                continue;
+                            }
+                            
+                            // Check if this is a price condition by name match
+                            if ((condName.includes('Price') || condName.includes('Feed') || condName === 'price') && condition.value !== undefined && condition.value !== null) {
+                                const parsed = parseFloat(condition.value);
+                                if (!isNaN(parsed) && parsed > 0 && parsed < 10000) {
+                                    // Valid price range (0-10000 cents/kWh, or 0-100 AUD/kWh)
+                                    return parsed;
+                                }
                             }
                         }
                     }
@@ -787,10 +851,7 @@
             let estimatedSavings = 0; // charge operations that avoided high prices
             let estimatedEarnings = 0; // feed-in operations during peak prices
             
-            // Default system capacity assumption (5kW)
-            const systemCapacityKw = 5;
-            
-            // Store prices for each event for later use in table
+            // Store prices and power for each event for later use in table
             const eventPrices = [];
             
             for (const event of events) {
@@ -798,44 +859,61 @@
                 
                 // Calculate rule duration in hours (assuming it's stored in milliseconds)
                 const durationHours = (event.durationMs || 0) / (1000 * 60 * 60);
-                const energyGenerated = systemCapacityKw * durationHours;
                 
-                // Extract actual price from the rule conditions
-                let actualPrice = extractPriceFromRule(event.startAllRules);
+                // Determine rule type (charge vs discharge/feed-in) and appropriate pricing
                 let isChargeRule = false;
                 let isFeedinRule = false;
-                let eventProfit = 0;
+                let ruleType = 'Discharge'; // Default: assume discharge/feed-in (most common)
+                let actualPrice = null;
+                let rulePowerKw = systemCapacityKw; // Default to system capacity
                 
                 if (event.startAllRules) {
                     for (const rule of event.startAllRules) {
                         if (rule.triggered) {
-                            // Try to infer action type from rule name/data
-                            const ruleName = rule.name || '';
-                            if (ruleName.toLowerCase().includes('charge')) {
+                            const ruleName = (rule.name || '').toLowerCase();
+                            
+                            // Detect rule type from name
+                            if (ruleName.includes('charge')) {
                                 totalChargeRules++;
                                 isChargeRule = true;
-                            } else if (ruleName.toLowerCase().includes('discharge')) {
-                                totalDischargeRules++;
-                            } else if (ruleName.toLowerCase().includes('feed') || ruleName.toLowerCase().includes('export')) {
+                                ruleType = 'Charge';
+                                actualPrice = rule.buyPrice; // Use buy price for charging
+                            } else {
+                                // Default to discharge/feed-in (includes feed, discharge, export, empty, etc.)
                                 totalFeedinRules++;
                                 isFeedinRule = true;
+                                ruleType = 'Discharge';
+                                actualPrice = rule.feedInPrice; // Use feed-in price for discharge
                             }
                         }
                     }
                 }
                 
-                // Calculate profit using actual price if available
-                if (actualPrice) {
-                    // Convert price to AUD/kWh (if needed - Amber prices may be in cents or dollars)
+                // If no explicit prices from backend, fall back to condition parsing
+                if (!actualPrice) {
+                    actualPrice = extractPriceFromRule(event.startAllRules);
+                }
+                
+                // Get actual rule power from action data if available (stored in Watts, convert to kW)
+                if (event.action && event.action.fdPwr) {
+                    rulePowerKw = event.action.fdPwr / 1000; // Convert watts to kilowatts
+                } else {
+                    // No fdPwr available - cannot calculate without knowing power
+                    rulePowerKw = null;
+                }
+                
+                // Calculate energy using actual rule power
+                const energyGenerated = rulePowerKw !== null ? rulePowerKw * durationHours : 0;
+                
+                // Calculate profit using appropriate price
+                let eventProfit = 0;
+                if (actualPrice && rulePowerKw !== null) {
+                    // Convert price to AUD/kWh (Amber prices in cents/kWh)
                     const priceAudPerKwh = actualPrice > 10 ? actualPrice / 100 : actualPrice;
                     eventProfit = energyGenerated * priceAudPerKwh;
+                    console.log(`[ROI] Rule: ${event.ruleName}, Type: ${ruleType}, Price: ${actualPrice}¢/kWh, Power: ${rulePowerKw}kW, Energy: ${energyGenerated.toFixed(2)}kWh, Profit: $${eventProfit.toFixed(2)}`);
                 } else {
-                    // Fallback to default prices if no actual price found
-                    if (isChargeRule) {
-                        eventProfit = energyGenerated * 0.35;
-                    } else if (isFeedinRule) {
-                        eventProfit = energyGenerated * 0.15;
-                    }
+                    console.log(`[ROI] Rule: ${event.ruleName}, Type: ${ruleType} - ${!actualPrice ? 'No price' : 'No power'} found`);
                 }
                 
                 eventPrices.push({
@@ -843,7 +921,9 @@
                     price: actualPrice,
                     profit: eventProfit,
                     isChargeRule,
-                    isFeedinRule
+                    isFeedinRule,
+                    ruleType,
+                    rulePowerKw
                 });
                 
                 totalProfit += eventProfit;
@@ -898,7 +978,7 @@
                 <div class="info-banner" style="background: rgba(126,231,135,0.08); border-color: rgba(126,231,135,0.2);">
                     <span class="icon">💡</span>
                     <div class="text">
-                        <strong>Profit Calculation:</strong> Uses actual feed-in/buy-in prices captured at rule trigger time, multiplied by rule duration and 5kW system capacity. Prices in AUD/kWh.
+                        <strong>Profit Calculation:</strong> Uses actual feed-in/buy-in prices captured at rule trigger time, multiplied by rule force-discharge power and rule duration. Prices in ¢/kWh.
                     </div>
                 </div>
                 
@@ -906,10 +986,11 @@
                     <thead>
                         <tr>
                             <th>Rule</th>
-                            <th>Type</th>
+                            <th>Rule Type</th>
+                            <th>Power (kW)</th>
                             <th>Triggered At</th>
                             <th>Duration</th>
-                            <th>Price (AUD/kWh)</th>
+                            <th>Price (¢/kWh)</th>
                             <th>Est. Profit</th>
                             <th>Status</th>
                         </tr>
@@ -917,30 +998,40 @@
                     <tbody>
             `;
             
+            console.log(`[ROI] About to render table with ${events.length} events and ${eventPrices.length} price entries`);
+            
             let priceIndex = 0;
             for (const event of events) {
-                const ruleType = event.type === 'ongoing' ? '🔄 Active' : '✓ Complete';
                 const startDate = new Date(event.startTime);
                 const duration = formatDuration(event.durationMs);
                 const priceInfo = eventPrices[priceIndex] || {};
                 
+                if (priceIndex < 3 || !priceInfo.price) {
+                    console.log(`[ROI] Rendering row ${priceIndex}: ${event.ruleName}, priceInfo:`, priceInfo);
+                }
+                
                 let priceDisplay = '—';
                 if (priceInfo.price) {
-                    const displayPrice = priceInfo.price > 10 ? (priceInfo.price / 100).toFixed(3) : priceInfo.price.toFixed(3);
-                    priceDisplay = `$${displayPrice}`;
+                    priceDisplay = `${priceInfo.price.toFixed(2)}¢`;
                 }
                 
                 const profitLabel = priceInfo.profit ? `$${priceInfo.profit.toFixed(2)}` : '—';
+                const ruleTypeDisplay = priceInfo.ruleType || '—';
+                const powerDisplay = priceInfo.rulePowerKw ? `${priceInfo.rulePowerKw}kW` : '—';
+                
+                // Only show "Running" if automation is enabled AND event type is ongoing
+                const statusDisplay = (event.type === 'ongoing' && isAutomationEnabled) ? '🟢 Running' : '✓ Done';
                 
                 html += `
                     <tr>
                         <td class="rule-name">${event.ruleName || 'Unknown Rule'}</td>
-                        <td>${ruleType}</td>
+                        <td>${ruleTypeDisplay}</td>
+                        <td>${powerDisplay}</td>
                         <td>${startDate.toLocaleString()}</td>
                         <td>${duration}</td>
                         <td>${priceDisplay}</td>
                         <td style="color: ${priceInfo.profit >= 0 ? '#7ee787' : '#ef4444'}; font-weight: 600;">${profitLabel}</td>
-                        <td>${event.type === 'ongoing' ? '🟢 Running' : '✓ Done'}</td>
+                        <td>${statusDisplay}</td>
                     </tr>
                 `;
                 

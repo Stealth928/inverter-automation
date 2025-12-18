@@ -4607,6 +4607,11 @@
             try { if (lastUpdateTicker) clearInterval(lastUpdateTicker); } catch(e){}
         });
 
+        // EARLY DECLARATION: Make toggleAutomationPanel available to onclick handlers in HTML
+        window.toggleAutomationPanel = function(forceState) {
+            console.warn('[Early] toggleAutomationPanel called before full initialization');
+        };
+
         // ==================== CONFIGURATION ====================
         // Centralized configuration for all timing and thresholds
         const CONFIG = {
@@ -4661,6 +4666,13 @@
         let inverterRefreshTimer = null;
         let weatherRefreshTimer = null;
 
+        // Auto-refresh control: pause when tab hidden or after idle timeout
+        const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes of no interaction
+        let lastUserActivity = Date.now();
+        let isPageVisible = !document.hidden;
+        let idleCheckTimer = null;
+        let autoRefreshActive = true;
+
         // Map of last update timestamps (ms since epoch)
         const lastUpdated = {
             inverter: null,           // client local ms when we last successfully fetched from API
@@ -4671,6 +4683,153 @@
 
         // UI ticker for 'time since' labels
         let lastUpdateTicker = null;
+
+        // Helper to format milliseconds to human-readable string
+        function formatMsToReadable(ms) {
+            if (!ms || ms <= 0) return '—';
+            const sec = Math.floor(ms / 1000);
+            if (sec < 60) return sec + 's';
+            const min = Math.floor(sec / 60);
+            if (min < 60) return min + 'm';
+            const hours = Math.floor(min / 60);
+            if (hours < 24) return hours + 'h';
+            const days = Math.floor(hours / 24);
+            return days + 'd';
+        }
+
+        /**
+         * Stop all auto-refresh timers (when page hidden or idle)
+         */
+        function stopAutoRefreshTimers() {
+            if (!autoRefreshActive) return; // Already stopped
+            
+            console.log('[AutoRefresh] Stopping all auto-refresh timers (page hidden or idle)');
+            
+            if (amberRefreshTimer) {
+                clearInterval(amberRefreshTimer);
+                amberRefreshTimer = null;
+            }
+            if (inverterRefreshTimer) {
+                clearInterval(inverterRefreshTimer);
+                inverterRefreshTimer = null;
+            }
+            if (weatherRefreshTimer) {
+                clearInterval(weatherRefreshTimer);
+                weatherRefreshTimer = null;
+            }
+            if (window.metricsRefreshTimer) {
+                clearInterval(window.metricsRefreshTimer);
+                window.metricsRefreshTimer = null;
+            }
+            if (window.automationStatusRefreshInterval) {
+                clearInterval(window.automationStatusRefreshInterval);
+                window.automationStatusRefreshInterval = null;
+            }
+            
+            autoRefreshActive = false;
+        }
+
+        /**
+         * Start all auto-refresh timers (when page visible and active)
+         */
+        function startAutoRefreshTimers() {
+            if (autoRefreshActive) return; // Already running
+            
+            console.log('[AutoRefresh] Starting all auto-refresh timers (page active)');
+            
+            // Amber prices: every 30s
+            if (!amberRefreshTimer) {
+                amberRefreshTimer = setInterval(() => {
+                    const siteId = document.getElementById('amberSiteId')?.value;
+                    if (siteId) getAmberCurrent();
+                }, REFRESH.amberPricesMs);
+            }
+
+            // Inverter real-time data: every 5 minutes
+            if (!inverterRefreshTimer) {
+                inverterRefreshTimer = setInterval(() => {
+                    callAPI('/api/inverter/real-time', 'Real-time Data');
+                }, REFRESH.inverterMs);
+            }
+
+            // Weather: every 30 minutes
+            if (!weatherRefreshTimer) {
+                weatherRefreshTimer = setInterval(() => {
+                    getWeather();
+                }, REFRESH.weatherMs);
+            }
+
+            // API call metrics: every 30 seconds
+            if (!window.metricsRefreshTimer) {
+                window.metricsRefreshTimer = setInterval(() => {
+                    loadApiMetrics(1);
+                }, 30000);
+            }
+
+            // Automation status: every 30 seconds
+            if (!window.automationStatusRefreshInterval) {
+                window.automationStatusRefreshInterval = setInterval(() => {
+                    try {
+                        loadBackendAutomationStatus();
+                    } catch (e) {
+                        console.warn('[Automation] Failed to refresh status:', e);
+                    }
+                }, 30000);
+            }
+            
+            autoRefreshActive = true;
+        }
+
+        /**
+         * Check if user has been idle too long, stop timers if so
+         */
+        function checkIdleTimeout() {
+            const idleTime = Date.now() - lastUserActivity;
+            if (idleTime > IDLE_TIMEOUT_MS && autoRefreshActive) {
+                console.log(`[AutoRefresh] User idle for ${Math.floor(idleTime/1000/60)} minutes, stopping auto-refresh`);
+                stopAutoRefreshTimers();
+            }
+        }
+
+        /**
+         * Track user activity to prevent idle timeout
+         */
+        function recordUserActivity() {
+            const wasIdle = !autoRefreshActive;
+            lastUserActivity = Date.now();
+            
+            // If we were idle and page is visible, restart timers
+            if (wasIdle && isPageVisible) {
+                console.log('[AutoRefresh] User activity detected, resuming auto-refresh');
+                startAutoRefreshTimers();
+            }
+        }
+
+        // Set up Page Visibility API to pause/resume on tab switch
+        document.addEventListener('visibilitychange', () => {
+            isPageVisible = !document.hidden;
+            
+            if (isPageVisible) {
+                console.log('[AutoRefresh] Page visible, checking activity...');
+                const idleTime = Date.now() - lastUserActivity;
+                if (idleTime < IDLE_TIMEOUT_MS) {
+                    startAutoRefreshTimers();
+                } else {
+                    console.log('[AutoRefresh] Page visible but user idle, keeping timers stopped');
+                }
+            } else {
+                console.log('[AutoRefresh] Page hidden, stopping auto-refresh');
+                stopAutoRefreshTimers();
+            }
+        });
+
+        // Track user activity events
+        ['mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(event => {
+            document.addEventListener(event, recordUserActivity, { passive: true });
+        });
+
+        // Check for idle timeout every minute
+        idleCheckTimer = setInterval(checkIdleTimeout, 60000);
 
         // Helper to format milliseconds to human-readable string
         function formatMsToReadable(ms) {
@@ -5347,63 +5506,16 @@
             // 5) Load backend automation status
             try { setTimeout(() => { loadBackendAutomationStatus(); }, 300); } catch(e) { console.warn('Failed to load automation status:', e); }
             
-            // Refresh automation status every 30 seconds to catch blackout window changes
-            if (!window.automationStatusRefreshInterval) {
-                window.automationStatusRefreshInterval = setInterval(() => {
-                    try {
-                        loadBackendAutomationStatus();
-                    } catch (e) {
-                        console.warn('[Automation] Failed to refresh status:', e);
-                    }
-                }, 30000); // Refresh every 30 seconds
-            }
-            
             // 6) Load API call metrics
             try { loadApiMetrics(1); } catch(e) { console.warn('Failed to load API metrics:', e); }
             
             // Now allow user-triggered API calls to open the panel
             window.suppressPanelAutoOpen = false;
             
-            // ---- Start auto-refresh timers ----
-            // Amber prices: every 30s
+            // ---- Start auto-refresh timers (managed by visibility/idle detection) ----
             try {
-                if (amberRefreshTimer) clearInterval(amberRefreshTimer);
-                amberRefreshTimer = setInterval(() => {
-                    const siteId = document.getElementById('amberSiteId')?.value;
-                    if (siteId) getAmberCurrent();
-                }, REFRESH.amberPricesMs);
-                if (!lastUpdateTicker) lastUpdateTicker = setInterval(updateLastUpdateDisplays, 1000);
-            } catch (e) { console.warn('Amber refresh timer failed:', e); }
-
-            // Inverter real-time data: every 5 minutes
-            try {
-                if (inverterRefreshTimer) clearInterval(inverterRefreshTimer);
-                inverterRefreshTimer = setInterval(() => {
-                    callAPI('/api/inverter/real-time', 'Real-time Data');
-                }, REFRESH.inverterMs);
-                if (!lastUpdateTicker) lastUpdateTicker = setInterval(updateLastUpdateDisplays, 1000);
-            } catch (e) { console.warn('Inverter refresh timer failed:', e); }
-
-            // Weather: every 30 minutes
-            try {
-                if (weatherRefreshTimer) clearInterval(weatherRefreshTimer);
-                weatherRefreshTimer = setInterval(() => {
-                    getWeather();
-                }, REFRESH.weatherMs);
-                if (!lastUpdateTicker) lastUpdateTicker = setInterval(updateLastUpdateDisplays, 1000);
-            } catch (e) { console.warn('Weather refresh timer failed:', e); }
-
-            // API call metrics: every 30 seconds
-            try {
-                if (window.metricsRefreshTimer) clearInterval(window.metricsRefreshTimer);
-                window.metricsRefreshTimer = setInterval(() => {
-                    loadApiMetrics(1);
-                }, 30000);
-            } catch (e) { console.warn('Metrics refresh timer failed:', e); }
-
-            // Note: Automation status is NOT refreshed on a timer anymore
-            // The countdown timer handles calling runAutomationCycle() when it hits 0
-            // Status is only refreshed after specific actions (toggle, rule changes, cycle complete)
+                startAutoRefreshTimers();
+            } catch (e) { console.warn('Failed to start auto-refresh timers:', e); }
             
             // Start the 'since' ticker
             try {
