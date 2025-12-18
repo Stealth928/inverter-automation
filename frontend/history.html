@@ -1459,20 +1459,8 @@
             }
         }
 
-        // ==================== AUTOMATION HISTORY ====================
-        // Initialize price datepickers on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            try { initPriceDatepickers(); } catch (error) { console.warn('Failed to init price datepickers', error); }
-        });
-
-        // Initialize Firebase on page load
-        AppShell.init({
-            pageName: 'history',
-            autoMetrics: true,
-            onReady: () => {
-                try { loadDeviceSn(); } catch (error) { console.warn('Failed to load device SN', error); }
-            }
-        });
+        // ==================== RENDER GENERATION DATA ====================
+        function renderGenerationData(data) {
             const content = document.getElementById('generationContent');
             
             const result = data.result || data;
@@ -1532,6 +1520,21 @@
             
             content.innerHTML = html;
         }
+
+        // ==================== INITIALIZATION ====================
+        // Initialize price datepickers on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            try { initPriceDatepickers(); } catch (error) { console.warn('Failed to init price datepickers', error); }
+        });
+
+        // Initialize Firebase on page load
+        AppShell.init({
+            pageName: 'history',
+            autoMetrics: true,
+            onReady: () => {
+                try { loadDeviceSn(); } catch (error) { console.warn('Failed to load device SN', error); }
+            }
+        });
 
         // ==================== RAW DATA ====================
         function toggleRawData() {
