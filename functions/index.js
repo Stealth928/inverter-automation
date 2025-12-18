@@ -1776,104 +1776,6 @@ async function addHistoryEntry(userId, entry) {
   }
 }
 
-/**
- * Normalize power data to handle both DC-coupled and AC-coupled solar topologies
- * @param {Object} rawData - Raw FoxESS API data with power values
- * @param {number} meter2SolarSign - Sign multiplier for meter2 (+1 or -1), defaults to -1 for AC-coupled
- * @returns {Object} Normalized power values in kW
- */
-function normalizePowerData(rawData, meter2SolarSign = -1) {
-  const epsilon = 0.05; // Threshold for considering values as zero (50W)
-  
-  // Extract raw values (default to 0)
-  const pvPower = Math.max(0, rawData.pvPower ?? 0);
-  const meterPower2 = rawData.meterPower2 ?? 0;
-  const gridConsumptionPower = Math.max(0, rawData.gridConsumptionPower ?? 0);
-  const feedinPower = Math.max(0, rawData.feedinPower ?? 0);
-  const loadsPower = Math.max(0, rawData.loadsPower ?? 0);
-  const invBatPower = rawData.invBatPower ?? null;
-  const batChargePower = Math.max(0, rawData.batChargePower ?? 0);
-  const batDischargePower = Math.max(0, rawData.batDischargePower ?? 0);
-  
-  // Solar calculation
-  const solar_dc_kw = pvPower;
-  // AC-coupled solar from Meter2 (apply sign)
-  const solar_ac_kw = Math.max(0, meter2SolarSign * meterPower2);
-  const solar_total_kw = solar_dc_kw + solar_ac_kw;
-  
-  // Grid
-  const grid_import_kw = gridConsumptionPower;
-  const grid_export_kw = feedinPower;
-  
-  // Battery (prefer invBatPower if available - it's signed: positive=discharge, negative=charge)
-  let battery_net_kw, battery_discharge_kw, battery_charge_kw;
-  if (invBatPower !== null && invBatPower !== undefined) {
-    battery_net_kw = invBatPower;
-    battery_discharge_kw = Math.max(0, invBatPower);
-    battery_charge_kw = Math.max(0, -invBatPower);
-  } else {
-    battery_discharge_kw = batDischargePower;
-    battery_charge_kw = batChargePower;
-    battery_net_kw = battery_discharge_kw - battery_charge_kw;
-  }
-  
-  // Load
-  const load_kw = loadsPower;
-  
-  // Topology detection
-  const hasDcSolar = solar_dc_kw > epsilon;
-  const hasAcSolar = solar_ac_kw > epsilon;
-  let topology = 'unknown';
-  if (hasDcSolar && hasAcSolar) {
-    topology = 'hybrid';
-  } else if (hasDcSolar) {
-    topology = 'dc-coupled';
-  } else if (hasAcSolar) {
-    topology = 'ac-coupled';
-  }
-  
-  // Energy balance check (for debugging)
-  const sources = solar_total_kw + grid_import_kw + battery_discharge_kw;
-  const sinks = load_kw + grid_export_kw + battery_charge_kw;
-  const residual = sources - sinks;
-  
-  return {
-    // Computed values
-    solar_dc_kw,
-    solar_ac_kw,
-    solar_total_kw,
-    grid_import_kw,
-    grid_export_kw,
-    battery_net_kw,
-    battery_charge_kw,
-    battery_discharge_kw,
-    load_kw,
-    // Topology
-    topology,
-    hasDcSolar,
-    hasAcSolar,
-    // Debug
-    residual,
-    energyBalance: {
-      sources,
-      sinks,
-      residual,
-      balanceOk: Math.abs(residual) < 0.5 // Within 500W is acceptable
-    },
-    // Raw values (for debugging)
-    raw: {
-      pvPower,
-      meterPower2,
-      gridConsumptionPower,
-      feedinPower,
-      loadsPower,
-      invBatPower,
-      batChargePower,
-      batDischargePower
-    }
-  };
-}
-
 // ==================== API ENDPOINTS ====================
 
 // Get user config
@@ -3486,27 +3388,8 @@ app.get('/api/inverter/real-time', async (req, res) => {
     
     const result = await callFoxESSAPI('/op/v0/device/real/query', 'POST', {
       sn,
-      variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'invBatPower', 'meterPower', 'meterPower2', 'SoC', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
+      variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
     }, userConfig, req.user.uid);
-    
-    // Add normalized power data for AC-coupled solar support
-    if (result.errno === 0 && result.result && Array.isArray(result.result)) {
-      const datas = result.result[0]?.datas || [];
-      const rawData = {};
-      datas.forEach(d => {
-        rawData[d.variable] = d.value;
-      });
-      
-      // Get meter2SolarSign from user config (default -1 for AC-coupled systems)
-      const meter2SolarSign = userConfig?.meter2SolarSign ?? -1;
-      
-      // Compute normalized power values
-      const normalized = normalizePowerData(rawData, meter2SolarSign);
-      result.normalized = normalized;
-      
-      console.log(`[RealTime] User ${req.user.uid}: topology=${normalized.topology}, solar_dc=${normalized.solar_dc_kw.toFixed(2)}kW, solar_ac=${normalized.solar_ac_kw.toFixed(2)}kW, residual=${normalized.residual.toFixed(3)}kW`);
-    }
-    
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -3787,38 +3670,28 @@ app.post('/api/inverter/all-data', authenticateUser, async (req, res) => {
     // Add topology hints based on data
     if (result.result && Array.isArray(result.result)) {
       const datas = result.result[0]?.datas || [];
-      
-      // Extract raw power values
-      const rawData = {};
-      datas.forEach(d => {
-        rawData[d.variable] = d.value;
-      });
-      
-      const pvPower = rawData.pvPower || 0;
-      const meterPower = rawData.meterPower || null;
-      const meterPower2 = rawData.meterPower2 || null;
-      const batChargePower = rawData.batChargePower || 0;
-      const gridConsumptionPower = rawData.gridConsumptionPower || 0;
+      const pvPower = datas.find(d => d.variable === 'pvPower')?.value || 0;
+      const meterPower = datas.find(d => d.variable === 'meterPower')?.value || null;
+      const meterPower2 = datas.find(d => d.variable === 'meterPower2')?.value || null;
+      const batChargePower = datas.find(d => d.variable === 'batChargePower')?.value || 0;
+      const gridConsumptionPower = datas.find(d => d.variable === 'gridConsumptionPower')?.value || 0;
 
-      // Get meter2SolarSign from user config (default -1 for AC-coupled systems)
-      const meter2SolarSign = userConfig?.meter2SolarSign ?? -1;
-      
-      // Compute normalized power values
-      const normalized = normalizePowerData(rawData, meter2SolarSign);
-      
       result.topologyHints = {
         pvPower,
         meterPower,
         meterPower2,
         batChargePower,
         gridConsumptionPower,
-        likelyTopology: normalized.topology,
-        // Add full normalized data for debugging
-        normalized
+        likelyTopology: 
+          (pvPower < 0.1 && (batChargePower > 0.5 || meterPower2 > 0.5) && gridConsumptionPower < 0.5)
+            ? 'AC-coupled (external PV via meter)'
+            : (pvPower > 0.5)
+            ? 'DC-coupled (standard)'
+            : 'Unknown (check during solar production hours)'
       };
     }
 
-    console.log(`[Diagnostics] All data retrieved, topology: ${result.topologyHints?.likelyTopology}`);
+    console.log(`[Diagnostics] All data retrieved, topology hints:`, result.topologyHints);
     res.json(result);
   } catch (error) {
     console.error('[Diagnostics] all-data error:', error);
