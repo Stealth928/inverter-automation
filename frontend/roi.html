@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automation ROI</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <!-- Firebase Auth Configuration -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/firebase-auth.js"></script>
+    <script src="js/api-client.js"></script>
+    <script src="js/shared-utils.js"></script>
+    <script src="js/app-shell.js"></script>
+    <link rel="stylesheet" href="css/shared-styles.css">
+    <style>
+        /* Page-specific styles */
+        /* Main content */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .page-header {
+            margin-bottom: 24px;
+        }
+        .page-header h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .page-header p {
+            color: var(--text-muted);
+            margin-top: 8px;
+            font-size: 14px;
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(0,0,0,0.2);
+        }
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-body {
+            padding: 20px;
+        }
+        
+        /* Controls row */
+        .controls-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: flex-end;
+            margin-bottom: 16px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .control-group label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Inputs */
+        .input, select {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .input:focus, select:focus {
+            border-color: var(--accent);
+        }
+        select {
+            cursor: pointer;
+        }
+        
+        /* Buttons */
+        .btn {
+            background: #21262d;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn:hover { background: #30363d; }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-primary {
+            background: #238636;
+            border-color: #238636;
+            color: #fff;
+        }
+        .btn-primary:hover { background: #2ea043; }
+        
+        /* Status messages */
+        .status {
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .status.loading {
+            display: block;
+            background: rgba(88, 166, 255, 0.1);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+            color: var(--accent);
+        }
+        .status.error {
+            display: block;
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+            color: var(--danger);
+        }
+        .status.success {
+            display: block;
+            background: rgba(126, 231, 135, 0.1);
+            border: 1px solid rgba(126, 231, 135, 0.3);
+            color: var(--success);
+        }
+        
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+        .empty-state p {
+            font-size: 14px;
+        }
+        
+        /* ROI Calculator Styles */
+        .roi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .roi-card {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+        }
+        
+        .roi-card-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .roi-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+        
+        .roi-value.positive { color: #7ee787; }
+        .roi-value.negative { color: #f85149; }
+        .roi-value.neutral { color: #8b949e; }
+        
+        .roi-value-label {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        
+        /* ROI Summary Table */
+        .roi-summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+            font-size: 13px;
+        }
+        
+        .roi-summary-table th, 
+        .roi-summary-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .roi-summary-table th {
+            background: rgba(0, 0, 0, 0.2);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .roi-summary-table tr:hover {
+            background: rgba(88, 166, 255, 0.05);
+        }
+        
+        .roi-summary-table .rule-name {
+            font-weight: 600;
+            color: var(--text);
+        }
+        
+        .roi-summary-table .roi-gain {
+            color: #7ee787;
+            font-weight: 600;
+        }
+        
+        .roi-summary-table .roi-loss {
+            color: #f85149;
+            font-weight: 600;
+        }
+        
+        /* Automation History Timeline */
+        .automation-timeline {
+            position: relative;
+            padding-left: 30px;
+            margin-top: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+            padding-right: 12px;
+        }
+        
+        .automation-timeline::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .automation-timeline::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+        
+        .automation-timeline::-webkit-scrollbar-thumb {
+            background: rgba(88, 166, 255, 0.3);
+            border-radius: 4px;
+        }
+        
+        .automation-timeline::-webkit-scrollbar-thumb:hover {
+            background: rgba(88, 166, 255, 0.5);
+        }
+        
+        .timeline-event {
+            position: relative;
+            margin-bottom: 24px;
+            background: rgba(0, 0, 0, 0.2);
+            border-left: 3px solid var(--accent-blue);
+            border-radius: 8px;
+            padding: 16px;
+            transition: all 0.2s;
+        }
+        
+        .timeline-event:hover {
+            background: rgba(0, 0, 0, 0.3);
+            transform: translateX(2px);
+        }
+        
+        .timeline-event.ongoing {
+            border-left-color: var(--accent);
+            background: rgba(126, 231, 135, 0.08);
+        }
+        
+        .timeline-event.complete {
+            border-left-color: var(--text-muted);
+        }
+        
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+            gap: 12px;
+        }
+        
+        .event-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .event-badge {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .event-badge.ongoing {
+            background: var(--accent);
+            color: #000;
+        }
+        
+        .event-badge.complete {
+            background: var(--text-muted);
+            color: #000;
+        }
+        
+        .event-duration {
+            font-size: 12px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        
+        .event-times {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 8px 12px;
+            font-size: 12px;
+            margin-bottom: 12px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+        
+        .event-time-label {
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+        
+        .event-time-value {
+            color: var(--text);
+        }
+        
+        .event-conditions {
+            margin-top: 12px;
+        }
+        
+        .event-conditions-title {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .condition-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+        
+        .condition-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .condition-list::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+        
+        .condition-list::-webkit-scrollbar-thumb {
+            background: rgba(88, 166, 255, 0.3);
+            border-radius: 3px;
+        }
+        
+        .condition-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(88, 166, 255, 0.5);
+        }
+        
+        .condition-chip {
+            background: rgba(88, 166, 255, 0.12);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: var(--accent-blue);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .condition-chip.met {
+            background: rgba(126, 231, 135, 0.12);
+            border-color: rgba(126, 231, 135, 0.3);
+            color: var(--accent);
+        }
+        
+        .condition-chip.not-met {
+            background: rgba(248, 81, 73, 0.12);
+            border-color: rgba(248, 81, 73, 0.3);
+            color: var(--accent-red);
+        }
+        
+        .event-action {
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: rgba(88, 166, 255, 0.08);
+            border-left: 3px solid var(--accent-blue);
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .event-action-label {
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .event-action-value {
+            color: var(--text);
+            font-weight: 500;
+        }
+        
+        .timeline-empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+        
+        .timeline-empty .icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .controls-row { flex-direction: column; align-items: stretch; }
+            nav { flex-wrap: wrap; gap: 8px; }
+        }
+        
+        /* Info banner */
+        .info-banner {
+            background: rgba(88, 166, 255, 0.08);
+            border: 1px solid rgba(88, 166, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+        }
+        .info-banner .icon { font-size: 18px; }
+        .info-banner .text { color: var(--text-muted); }
+        .info-banner strong { color: var(--text); }
+    </style>
+</head>
+<body>
+    <nav class="nav-main">
+        <div class="nav-links">
+            <a href="/" class="nav-link">🏠 Overview</a>
+            <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
+            <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
+            <a href="/control.html" class="nav-link">🎮 Controls</a>
+            <a href="/history.html" class="nav-link">📊 History</a>
+            <a href="/settings.html" class="nav-link">⚙️ Settings</a>
+        </div>
+        <div class="nav-right">
+            <span class="nav-info" id="deviceSnDisplay">Device: —</span>
+            <div class="user-menu" data-user-menu>
+                <button class="user-avatar" type="button" data-user-avatar>
+                    <span data-user-initials>?</span>
+                </button>
+                <div class="user-dropdown" data-user-dropdown>
+                    <div class="user-dropdown-header">
+                        <div class="user-name" data-user-name>Guest</div>
+                        <div class="user-email" data-user-email>Not signed in</div>
+                    </div>
+                    <button class="user-dropdown-item" type="button" data-go-settings>⚙️ Settings</button>
+                    <button class="user-dropdown-item" type="button" data-contact-us>💬 Contact Us</button>
+                    <button class="user-dropdown-item danger" type="button" data-signout>🚪 Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- API call metrics footer -->
+    <div id="apiMetricsFooter" class="api-metrics-footer">
+        <div class="metrics-icon">📊</div>
+        <div id="metricsDate" class="metrics-date">—</div>
+        <div id="metricsCounts" class="metrics-counts">
+            <div class="metric-fox">Fox: <span id="countFox" class="metric-value">0</span></div>
+            <div class="metric-amber">Amb: <span id="countAmber" class="metric-value">0</span></div>
+            <div class="metric-weather">Wea: <span id="countWeather" class="metric-value">0</span></div>
+        </div>
+        <button class="btn btn-sm" onclick="loadApiMetrics(1)" title="Refresh metrics">🔄</button>
+    </div>
+
+    <div class="container page-shell">
+        <div class="page-header">
+            <h1>💲 Automation ROI</h1>
+            <p>Track the financial impact of your automation rules. See how much money you've made or saved through smart battery and solar management.</p>
+        </div>
+
+        <!-- ROI Calculator Section -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">💰 ROI Calculator</div>
+                <div style="display:flex;gap:8px">
+                    <button class="btn" onclick="calculateROI()" id="btnCalculateROI" style="font-size:11px;padding:6px 12px">
+                        📊 Calculate ROI
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="roiStatus" class="status"></div>
+                
+                <div class="controls-row">
+                    <div class="control-group" style="min-width:120px">
+                        <label>Start Date</label>
+                        <input type="date" id="roiStartDate" class="input" />
+                    </div>
+                    <div class="control-group" style="min-width:120px">
+                        <label>End Date</label>
+                        <input type="date" id="roiEndDate" class="input" />
+                    </div>
+                </div>
+
+                <div id="roiContent">
+                    <div class="empty-state">
+                        <div class="icon">💵</div>
+                        <p>Click "Calculate ROI" to analyze your automation earnings</p>
+                        <p style="font-size:12px;margin-top:8px">Shows financial impact based on rule triggers, feed-in prices, and buy-in prices</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Automation Rule History Section -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">🤖 Automation Rule History (Last 7 Days)</div>
+                <div style="display:flex;gap:8px">
+                    <button class="btn" onclick="fetchAutomationHistory()" id="btnRefreshAutomationHistory" style="font-size:11px;padding:6px 12px">
+                        🔄 Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="automationHistoryStatus" class="status"></div>
+                
+                <div id="automationHistoryContent">
+                    <div class="empty-state">
+                        <div class="icon">🤖</div>
+                        <p>Loading automation rule history...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let roiData = null;
+        let automationHistoryData = null;
+        let deviceSn = null;
+
+        /**
+         * Helper function to make authenticated API calls.
+         */
+        async function authenticatedFetch(url, options = {}) {
+            if (window.AppShell && typeof AppShell.authFetch === 'function') {
+                return AppShell.authFetch(url, options);
+            }
+            try {
+                if (typeof waitForAPIClient === 'function') {
+                    await waitForAPIClient(3000);
+                } else {
+                    const start = Date.now();
+                    while (!apiClient && (Date.now() - start) < 3000) {
+                        await new Promise(r => setTimeout(r, 50));
+                    }
+                }
+            } catch (e) {
+                console.warn('[API] apiClient not initialized yet');
+                throw new Error('API client not ready');
+            }
+            return apiClient.fetch(url, options);
+        }
+
+        /**
+         * Format duration in milliseconds to human-readable string
+         */
+        function formatDuration(ms) {
+            if (!ms) return '0s';
+            
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            const days = Math.floor(hours / 24);
+            
+            if (days > 0) return `${days}d ${hours % 24}h`;
+            if (hours > 0) return `${hours}h ${minutes % 60}m`;
+            if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+            return `${seconds}s`;
+        }
+
+        /**
+         * Initialize date pickers with default values
+         */
+        function initDatePickers() {
+            const today = new Date();
+            const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+            
+            document.getElementById('roiEndDate').valueAsDate = today;
+            document.getElementById('roiStartDate').valueAsDate = sevenDaysAgo;
+        }
+
+        /**
+         * Calculate ROI based on rule history and prices
+         */
+        async function calculateROI() {
+            const startDate = document.getElementById('roiStartDate').value;
+            const endDate = document.getElementById('roiEndDate').value;
+            const btn = document.getElementById('btnCalculateROI');
+            const status = document.getElementById('roiStatus');
+            const content = document.getElementById('roiContent');
+            
+            if (!startDate || !endDate) {
+                status.className = 'status error';
+                status.textContent = '✗ Please select both start and end dates';
+                return;
+            }
+            
+            if (new Date(startDate) > new Date(endDate)) {
+                status.className = 'status error';
+                status.textContent = '✗ Start date must be before end date';
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Calculating...';
+            status.className = 'status loading';
+            status.textContent = 'Calculating ROI...';
+            
+            try {
+                // Fetch automation audit data for the date range
+                const days = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24));
+                const auditResp = await authenticatedFetch(`/api/automation/audit?days=${Math.min(days + 1, 30)}`);
+                const auditData = await auditResp.json();
+                
+                if (auditData.errno && auditData.errno !== 0) {
+                    throw new Error(auditData.error || 'Failed to fetch audit data');
+                }
+                
+                // Filter events within date range
+                const events = (auditData.result?.ruleEvents || []).filter(event => {
+                    const eventStart = new Date(event.startTime);
+                    return eventStart >= new Date(startDate) && eventStart <= new Date(endDate);
+                });
+                
+                if (events.length === 0) {
+                    content.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">📭</div>
+                            <p>No automation rule activity in this date range</p>
+                        </div>
+                    `;
+                    status.className = 'status success';
+                    status.textContent = 'No rules triggered during this period';
+                    return;
+                }
+                
+                // Fetch current prices (if available) for reference
+                let pricesData = null;
+                try {
+                    const pricesResp = await authenticatedFetch('/api/amber/prices');
+                    const pricesJson = await pricesResp.json();
+                    if (pricesJson.errno === 0) {
+                        pricesData = pricesJson.result;
+                    }
+                } catch (e) {
+                    console.warn('Could not fetch current prices:', e);
+                }
+                
+                renderROICalculation(events, startDate, endDate, pricesData);
+                
+                status.className = 'status success';
+                status.textContent = `✓ Analyzed ${events.length} rule trigger(s)`;
+                setTimeout(() => { status.style.display = 'none'; }, 3000);
+            } catch (e) {
+                status.className = 'status error';
+                status.textContent = `✗ Error: ${e.message}`;
+                content.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">❌</div>
+                        <p>Failed to calculate ROI</p>
+                        <p style="font-size:12px;margin-top:8px">${e.message}</p>
+                    </div>
+                `;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '📊 Calculate ROI';
+            }
+        }
+
+        /**
+         * Render ROI calculation results
+         */
+        function renderROICalculation(events, startDate, endDate, pricesData) {
+            const content = document.getElementById('roiContent');
+            
+            // Calculate summary stats
+            let totalRules = 0;
+            let totalChargeRules = 0;
+            let totalDischargeRules = 0;
+            let totalFeedinRules = 0;
+            let estimatedSavings = 0; // charge operations that avoided high prices
+            let estimatedEarnings = 0; // feed-in operations during peak prices
+            
+            for (const event of events) {
+                totalRules++;
+                
+                // Count actions by type (simplified - based on rule history data)
+                if (event.startAllRules) {
+                    for (const rule of event.startAllRules) {
+                        if (rule.triggered) {
+                            // Try to infer action type from rule name/data
+                            if (rule.name && rule.name.toLowerCase().includes('charge')) {
+                                totalChargeRules++;
+                            } else if (rule.name && rule.name.toLowerCase().includes('discharge')) {
+                                totalDischargeRules++;
+                            } else if (rule.name && rule.name.toLowerCase().includes('feed')) {
+                                totalFeedinRules++;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Build HTML with summary cards and detailed table
+            let html = `
+                <div class="roi-grid">
+                    <div class="roi-card">
+                        <div class="roi-card-title">
+                            <span>🎯</span>
+                            Total Rules Triggered
+                        </div>
+                        <div class="roi-value">${totalRules}</div>
+                        <div class="roi-value-label">during this period</div>
+                    </div>
+                    
+                    <div class="roi-card">
+                        <div class="roi-card-title">
+                            <span>⚡</span>
+                            Charge Operations
+                        </div>
+                        <div class="roi-value">${totalChargeRules}</div>
+                        <div class="roi-value-label">smart charging events</div>
+                    </div>
+                    
+                    <div class="roi-card">
+                        <div class="roi-card-title">
+                            <span>📤</span>
+                            Feed-in Operations
+                        </div>
+                        <div class="roi-value">${totalFeedinRules}</div>
+                        <div class="roi-value-label">export events</div>
+                    </div>
+                </div>
+                
+                <div class="info-banner" style="background: rgba(126,231,135,0.08); border-color: rgba(126,231,135,0.2);">
+                    <span class="icon">💡</span>
+                    <div class="text">
+                        <strong>ROI Note:</strong> Financial calculations require Amber API historical pricing data. Current display shows rule trigger counts. Full ROI analysis coming soon.
+                    </div>
+                </div>
+                
+                <table class="roi-summary-table">
+                    <thead>
+                        <tr>
+                            <th>Rule</th>
+                            <th>Type</th>
+                            <th>Triggered At</th>
+                            <th>Duration</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            for (const event of events) {
+                const ruleType = event.type === 'ongoing' ? '🔄 Active' : '✓ Complete';
+                const startDate = new Date(event.startTime);
+                const duration = formatDuration(event.durationMs);
+                
+                html += `
+                    <tr>
+                        <td class="rule-name">${event.ruleName || 'Unknown Rule'}</td>
+                        <td>${ruleType}</td>
+                        <td>${startDate.toLocaleString()}</td>
+                        <td>${duration}</td>
+                        <td>${event.type === 'ongoing' ? '🟢 Running' : '✓ Done'}</td>
+                    </tr>
+                `;
+            }
+            
+            html += `
+                    </tbody>
+                </table>
+            `;
+            
+            content.innerHTML = html;
+        }
+
+        /**
+         * Fetch automation history
+         */
+        async function fetchAutomationHistory() {
+            const btn = document.getElementById('btnRefreshAutomationHistory');
+            const status = document.getElementById('automationHistoryStatus');
+            const content = document.getElementById('automationHistoryContent');
+            
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '⏳ Loading...';
+            }
+            
+            status.className = 'status loading';
+            status.textContent = 'Fetching automation rule history...';
+            
+            try {
+                const resp = await authenticatedFetch('/api/automation/audit?days=7');
+                const data = await resp.json();
+                
+                console.log('[Automation History] API Response:', data);
+                
+                if (data.errno && data.errno !== 0) {
+                    throw new Error(data.error || 'API error');
+                }
+                
+                const events = data.result?.ruleEvents || [];
+                
+                if (events.length === 0) {
+                    content.innerHTML = `
+                        <div class="timeline-empty">
+                            <div class="icon">📭</div>
+                            <p>No automation rule activity in the last 7 days</p>
+                            <p style="font-size:12px;margin-top:8px">Rules will appear here when automation is enabled and rules trigger</p>
+                        </div>
+                    `;
+                } else {
+                    renderAutomationTimeline(events);
+                }
+                
+                status.className = 'status success';
+                status.textContent = `✓ Found ${events.length} rule event${events.length !== 1 ? 's' : ''} in the last 7 days`;
+                setTimeout(() => { status.style.display = 'none'; }, 3000);
+            } catch (e) {
+                status.className = 'status error';
+                status.textContent = `✗ Error: ${e.message}`;
+                content.innerHTML = `
+                    <div class="timeline-empty">
+                        <div class="icon">❌</div>
+                        <p>Failed to load automation history</p>
+                        <p style="font-size:12px;margin-top:8px">${e.message}</p>
+                    </div>
+                `;
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '🔄 Refresh';
+                }
+            }
+        }
+
+        /**
+         * Render automation timeline
+         */
+        function renderAutomationTimeline(events) {
+            const content = document.getElementById('automationHistoryContent');
+            
+            let html = '<div class="automation-timeline">';
+            
+            for (const event of events) {
+                const isOngoing = event.type === 'ongoing';
+                const duration = formatDuration(event.durationMs);
+                const startDate = new Date(event.startTime);
+                const endDate = event.endTime ? new Date(event.endTime) : null;
+                
+                html += `
+                    <div class="timeline-event ${event.type}">
+                        <div class="event-header">
+                            <div class="event-title">
+                                <span>${event.ruleName}</span>
+                                <span class="event-badge ${event.type}">${isOngoing ? '🟢 Active' : '✓ Complete'}</span>
+                            </div>
+                            <div class="event-duration">${duration}</div>
+                        </div>
+                        
+                        <div class="event-times">
+                            <span class="event-time-label">Started:</span>
+                            <span class="event-time-value">${startDate.toLocaleString()}</span>
+                            ${!isOngoing ? `
+                                <span class="event-time-label">Ended:</span>
+                                <span class="event-time-value">${endDate.toLocaleString()}</span>
+                            ` : ''}
+                        </div>
+                `;
+                
+                // Show comprehensive rule evaluation report
+                const allRules = event.startAllRules || [];
+                if (allRules && allRules.length > 0) {
+                    html += `
+                        <div class="event-conditions">
+                            <div class="event-conditions-title">Rule Evaluation Report (${allRules.filter(r => r.triggered).length}/${allRules.length} rules triggered):</div>
+                            <div class="condition-list">
+                    `;
+                    
+                    for (const ruleEval of allRules) {
+                        const isTriggered = ruleEval.triggered;
+                        const icon = isTriggered ? '✓' : '✗';
+                        const metClass = isTriggered ? 'met' : 'not-met';
+                        
+                        let conditionDetails = '';
+                        if (ruleEval.conditions && ruleEval.conditions.length > 0) {
+                            conditionDetails = ruleEval.conditions.map(c => {
+                                const cIcon = c.met ? '✓' : '✗';
+                                return `${cIcon} ${c.name || c.rule}: ${c.value}`;
+                            }).join(' • ');
+                        }
+                        
+                        html += `
+                            <div class="condition-chip ${metClass}" style="display: block; margin-bottom: 4px;">
+                                <span style="font-weight: 600;">${icon} ${ruleEval.name || ruleEval.ruleId}</span>
+                                ${conditionDetails ? `<span style="margin-left: 8px; opacity: 0.9;">| ${conditionDetails}</span>` : ''}
+                            </div>
+                        `;
+                    }
+                    
+                    html += `
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Show end conditions for completed events
+                if (!isOngoing && event.endAllRules && event.endAllRules.length > 0) {
+                    html += `
+                        <div class="event-conditions">
+                            <div class="event-conditions-title">Rule Evaluation at End (${event.endAllRules.filter(r => r.triggered).length}/${event.endAllRules.length} rules triggered):</div>
+                            <div class="condition-list">
+                    `;
+                    
+                    for (const ruleEval of event.endAllRules) {
+                        const isTriggered = ruleEval.triggered;
+                        const icon = isTriggered ? '✓' : '✗';
+                        const metClass = isTriggered ? 'met' : 'not-met';
+                        
+                        let conditionDetails = '';
+                        if (ruleEval.conditions && ruleEval.conditions.length > 0) {
+                            conditionDetails = ruleEval.conditions.map(c => {
+                                const cIcon = c.met ? '✓' : '✗';
+                                return `${cIcon} ${c.name || c.rule}: ${c.value}`;
+                            }).join(' • ');
+                        }
+                        
+                        html += `
+                            <div class="condition-chip ${metClass}" style="display: block; margin-bottom: 4px;">
+                                <span style="font-weight: 600;">${icon} ${ruleEval.name || ruleEval.ruleId}</span>
+                                ${conditionDetails ? `<span style="margin-left: 8px; opacity: 0.9;">| ${conditionDetails}</span>` : ''}
+                            </div>
+                        `;
+                    }
+                    
+                    html += `
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += `
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            content.innerHTML = html;
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initDatePickers();
+            // Auto-load automation history
+            fetchAutomationHistory();
+        });
+    </script>
+</body>
+</html>

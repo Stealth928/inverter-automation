@@ -527,6 +527,7 @@
         <div class="nav-links">
             <a href="/" class="nav-link">🏠 Overview</a>
             <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
+            <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
             <a href="/control.html" class="nav-link">🎮 Controls</a>
             <a href="/history.html" class="nav-link">📊 History</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
@@ -774,27 +775,7 @@
             </div>
         </div>
 
-        <!-- Automation History -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">🤖 Automation Rule History (Last 7 Days)</div>
-                <div style="display:flex;gap:8px">
-                    <button class="btn" onclick="fetchAutomationHistory()" id="btnRefreshAutomationHistory" style="font-size:11px;padding:6px 12px">
-                        🔄 Refresh
-                    </button>
-                </div>
-            </div>
-            <div class="card-body">
-                <div id="automationHistoryStatus" class="status"></div>
-                
-                <div id="automationHistoryContent">
-                    <div class="empty-state">
-                        <div class="icon">🤖</div>
-                        <p>Loading automation rule history...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+
 
         <!-- Raw Data Viewer -->
         <div class="card">
@@ -1479,231 +1460,19 @@
         }
 
         // ==================== AUTOMATION HISTORY ====================
-        async function fetchAutomationHistory() {
-            const btn = document.getElementById('btnRefreshAutomationHistory');
-            const status = document.getElementById('automationHistoryStatus');
-            const content = document.getElementById('automationHistoryContent');
-            
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '⏳ Loading...';
-            }
-            
-            status.className = 'status loading';
-            status.textContent = 'Fetching automation rule history...';
-            
-            try {
-                const resp = await authenticatedFetch('/api/automation/audit?days=7');
-                const data = await resp.json();
-                
-                // Debug logging
-                console.log('[Automation History] API Response:', data);
-                console.log('[Automation History] Raw entries:', data.result?.entries?.length || 0);
-                console.log('[Automation History] Processed events:', data.result?.ruleEvents?.length || 0);
-                
-                if (data.errno && data.errno !== 0) {
-                    throw new Error(data.error || 'API error');
-                }
-                
-                const entries = data.result?.entries || [];
-                const events = data.result?.ruleEvents || [];
-                
-                console.log('[Automation History] First entry:', entries[0]);
-                console.log('[Automation History] First event:', events[0]);
-                
-                if (events.length === 0) {
-                    // Show more detailed debug info in empty state
-                    const debugInfo = entries.length > 0 
-                        ? `Found ${entries.length} raw audit log(s) but no processable events. Check console for details.`
-                        : 'No audit logs found in the database.';
-                    
-                    content.innerHTML = `
-                        <div class="timeline-empty">
-                            <div class="icon">📭</div>
-                            <p>No automation rule activity in the last 7 days</p>
-                            <p style="font-size:12px;margin-top:8px">${debugInfo}</p>
-                            <p style="font-size:11px;margin-top:8px;color:var(--text-muted)">Rules will appear here when automation is enabled and rules trigger</p>
-                        </div>
-                    `;
-                } else {
-                    renderAutomationTimeline(events);
-                }
-                
-                status.className = 'status success';
-                status.textContent = `✓ Found ${events.length} rule event${events.length !== 1 ? 's' : ''} in the last 7 days (${entries.length} raw entries)`;
-                setTimeout(() => { status.style.display = 'none'; }, 3000);
-            } catch (e) {
-                status.className = 'status error';
-                status.textContent = `✗ Error: ${e.message}`;
-                content.innerHTML = `
-                    <div class="timeline-empty">
-                        <div class="icon">❌</div>
-                        <p>Failed to load automation history</p>
-                        <p style="font-size:12px;margin-top:8px">${e.message}</p>
-                    </div>
-                `;
-            } finally {
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerHTML = '🔄 Refresh';
-                }
-            }
-        }
-        
-        function renderAutomationTimeline(events) {
-            const content = document.getElementById('automationHistoryContent');
-            
-            let html = '<div class="automation-timeline">';
-            
-            for (const event of events) {
-                const isOngoing = event.type === 'ongoing';
-                const duration = formatDuration(event.durationMs);
-                const startDate = new Date(event.startTime);
-                const endDate = event.endTime ? new Date(event.endTime) : null;
-                
-                html += `
-                    <div class="timeline-event ${event.type}">
-                        <div class="event-header">
-                            <div class="event-title">
-                                <span>${event.ruleName}</span>
-                                <span class="event-badge ${event.type}">${isOngoing ? '🟢 Active' : '✓ Complete'}</span>
-                            </div>
-                            <div class="event-duration">${duration}</div>
-                        </div>
-                        
-                        <div class="event-times">
-                            <span class="event-time-label">Started:</span>
-                            <span class="event-time-value">${startDate.toLocaleString()}</span>
-                            ${!isOngoing ? `
-                                <span class="event-time-label">Ended:</span>
-                                <span class="event-time-value">${endDate.toLocaleString()}</span>
-                            ` : ''}
-                        </div>
-                `;
-                
-                // Show comprehensive rule evaluation report (like "Last Cycle" display)
-                const allRules = event.startAllRules || [];
-                if (allRules && allRules.length > 0) {
-                    html += `
-                        <div class="event-conditions">
-                            <div class="event-conditions-title">Rule Evaluation Report (${allRules.filter(r => r.triggered).length}/${allRules.length} rules triggered):</div>
-                            <div class="condition-list">
-                    `;
-                    
-                    for (const ruleEval of allRules) {
-                        const isTriggered = ruleEval.triggered;
-                        const icon = isTriggered ? '✓' : '✗';
-                        const metClass = isTriggered ? 'met' : 'not-met';
-                        
-                        // Build condition details string (like "✓ SoC: 89% • ✗ FI: 7.2¢")
-                        let conditionDetails = '';
-                        if (ruleEval.conditions && ruleEval.conditions.length > 0) {
-                            conditionDetails = ruleEval.conditions.map(c => {
-                                const cIcon = c.met ? '✓' : '✗';
-                                return `${cIcon} ${c.name || c.rule}: ${c.value}`;
-                            }).join(' • ');
-                        }
-                        
-                        html += `
-                            <div class="condition-chip ${metClass}" style="display: block; margin-bottom: 4px;">
-                                <span style="font-weight: 600;">${icon} ${ruleEval.name || ruleEval.ruleId}</span>
-                                ${conditionDetails ? `<span style="margin-left: 8px; opacity: 0.9;">| ${conditionDetails}</span>` : ''}
-                            </div>
-                        `;
-                    }
-                    
-                    html += `
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                // Show end conditions for completed events
-                if (!isOngoing && event.endAllRules && event.endAllRules.length > 0) {
-                    html += `
-                        <div class="event-conditions">
-                            <div class="event-conditions-title">Rule Evaluation at End (${event.endAllRules.filter(r => r.triggered).length}/${event.endAllRules.length} rules triggered):</div>
-                            <div class="condition-list">
-                    `;
-                    
-                    for (const ruleEval of event.endAllRules) {
-                        const isTriggered = ruleEval.triggered;
-                        const icon = isTriggered ? '✓' : '✗';
-                        const metClass = isTriggered ? 'met' : 'not-met';
-                        
-                        // Build condition details string
-                        let conditionDetails = '';
-                        if (ruleEval.conditions && ruleEval.conditions.length > 0) {
-                            conditionDetails = ruleEval.conditions.map(c => {
-                                const cIcon = c.met ? '✓' : '✗';
-                                return `${cIcon} ${c.name || c.rule}: ${c.value}`;
-                            }).join(' • ');
-                        }
-                        
-                        html += `
-                            <div class="condition-chip ${metClass}" style="display: block; margin-bottom: 4px;">
-                                <span style="font-weight: 600;">${icon} ${ruleEval.name || ruleEval.ruleId}</span>
-                                ${conditionDetails ? `<span style="margin-left: 8px; opacity: 0.9;">| ${conditionDetails}</span>` : ''}
-                            </div>
-                        `;
-                    }
-                    
-                    html += `
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                // Show action taken
-                if (event.action) {
-                    html += `
-                        <div class="event-action">
-                            <div class="event-action-label">Action Taken:</div>
-                            <div class="event-action-value">
-                                ${event.action.workMode || 'Unknown'} 
-                                ${event.action.durationMinutes ? `for ${event.action.durationMinutes} minutes` : ''}
-                                ${event.action.fdPwr ? `at ${event.action.fdPwr}W` : ''}
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                html += `
-                    </div>
-                `;
-            }
-            
-            html += '</div>';
-            content.innerHTML = html;
-        }
-        
-        function formatDuration(ms) {
-            if (!ms || ms < 0) return '—';
-            
-            const seconds = Math.floor(ms / 1000);
-            const minutes = Math.floor(seconds / 60);
-            const hours = Math.floor(minutes / 60);
-            const days = Math.floor(hours / 24);
-            
-            if (days > 0) {
-                const remainingHours = hours % 24;
-                return `${days}d ${remainingHours}h`;
-            }
-            
-            if (hours > 0) {
-                const remainingMinutes = minutes % 60;
-                return `${hours}h ${remainingMinutes}m`;
-            }
-            
-            if (minutes > 0) {
-                const remainingSeconds = seconds % 60;
-                return `${minutes}m ${remainingSeconds}s`;
-            }
-            
-            return `${seconds}s`;
-        }
+        // Initialize price datepickers on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            try { initPriceDatepickers(); } catch (error) { console.warn('Failed to init price datepickers', error); }
+        });
 
-        function renderGenerationData(data) {
+        // Initialize Firebase on page load
+        AppShell.init({
+            pageName: 'history',
+            autoMetrics: true,
+            onReady: () => {
+                try { loadDeviceSn(); } catch (error) { console.warn('Failed to load device SN', error); }
+            }
+        });
             const content = document.getElementById('generationContent');
             
             const result = data.result || data;
