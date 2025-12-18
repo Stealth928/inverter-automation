@@ -606,12 +606,15 @@
 
         /**
          * Helper function to make authenticated API calls.
+         * Uses apiClient.fetch to include the Authorization header and normalize responses.
          */
         async function authenticatedFetch(url, options = {}) {
             if (window.AppShell && typeof AppShell.authFetch === 'function') {
+                console.log('[ROI] Using AppShell.authFetch for:', url);
                 return AppShell.authFetch(url, options);
             }
             try {
+                console.log('[ROI] Waiting for apiClient to be ready...');
                 if (typeof waitForAPIClient === 'function') {
                     await waitForAPIClient(3000);
                 } else {
@@ -620,9 +623,13 @@
                         await new Promise(r => setTimeout(r, 50));
                     }
                 }
+                if (!apiClient) {
+                    throw new Error('apiClient still not available after timeout');
+                }
+                console.log('[ROI] apiClient ready, fetching:', url);
             } catch (e) {
-                console.warn('[API] apiClient not initialized yet');
-                throw new Error('API client not ready');
+                console.error('[ROI] Error waiting for apiClient:', e);
+                throw new Error('API client not ready: ' + e.message);
             }
             return apiClient.fetch(url, options);
         }
@@ -856,6 +863,7 @@
          * Fetch automation history
          */
         async function fetchAutomationHistory() {
+            console.log('[ROI] fetchAutomationHistory called');
             const btn = document.getElementById('btnRefreshAutomationHistory');
             const status = document.getElementById('automationHistoryStatus');
             const content = document.getElementById('automationHistoryContent');
@@ -869,16 +877,19 @@
             status.textContent = 'Fetching automation rule history...';
             
             try {
+                console.log('[ROI] Making authenticated fetch to /api/automation/audit?days=7');
                 const resp = await authenticatedFetch('/api/automation/audit?days=7');
+                console.log('[ROI] Response received:', resp);
                 const data = await resp.json();
                 
-                console.log('[Automation History] API Response:', data);
+                console.log('[ROI] API Response:', data);
                 
                 if (data.errno && data.errno !== 0) {
                     throw new Error(data.error || 'API error');
                 }
                 
                 const events = data.result?.ruleEvents || [];
+                console.log('[ROI] Events loaded:', events.length);
                 
                 if (events.length === 0) {
                     content.innerHTML = `
@@ -896,6 +907,7 @@
                 status.textContent = `✓ Found ${events.length} rule event${events.length !== 1 ? 's' : ''} in the last 7 days`;
                 setTimeout(() => { status.style.display = 'none'; }, 3000);
             } catch (e) {
+                console.error('[ROI] Error fetching automation history:', e);
                 status.className = 'status error';
                 status.textContent = `✗ Error: ${e.message}`;
                 content.innerHTML = `
@@ -1078,17 +1090,29 @@
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
+            console.log('[ROI] DOMContentLoaded event fired');
             initDatePickers();
         });
 
         // Initialize Firebase & AppShell
+        console.log('[ROI] Script loaded, initializing AppShell...');
         AppShell.init({
             pageName: 'roi',
             autoMetrics: true,
             onReady: () => {
-                try { loadDeviceSn(); } catch (error) { console.warn('Failed to load device SN', error); }
-                // Load automation history on page load
-                try { fetchAutomationHistory(); } catch (error) { console.warn('Failed to load automation history', error); }
+                console.log('[ROI] AppShell.onReady callback fired');
+                try { 
+                    console.log('[ROI] Calling loadDeviceSn...');
+                    loadDeviceSn(); 
+                } catch (error) { 
+                    console.error('Failed to load device SN', error); 
+                }
+                try { 
+                    console.log('[ROI] Calling fetchAutomationHistory...');
+                    fetchAutomationHistory(); 
+                } catch (error) { 
+                    console.error('Failed to load automation history', error); 
+                }
             }
         });
     </script>
