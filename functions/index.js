@@ -1776,6 +1776,104 @@ async function addHistoryEntry(userId, entry) {
   }
 }
 
+/**
+ * Normalize power data to handle both DC-coupled and AC-coupled solar topologies
+ * @param {Object} rawData - Raw FoxESS API data with power values
+ * @param {number} meter2SolarSign - Sign multiplier for meter2 (+1 or -1), defaults to -1 for AC-coupled
+ * @returns {Object} Normalized power values in kW
+ */
+function normalizePowerData(rawData, meter2SolarSign = -1) {
+  const epsilon = 0.05; // Threshold for considering values as zero (50W)
+  
+  // Extract raw values (default to 0)
+  const pvPower = Math.max(0, rawData.pvPower ?? 0);
+  const meterPower2 = rawData.meterPower2 ?? 0;
+  const gridConsumptionPower = Math.max(0, rawData.gridConsumptionPower ?? 0);
+  const feedinPower = Math.max(0, rawData.feedinPower ?? 0);
+  const loadsPower = Math.max(0, rawData.loadsPower ?? 0);
+  const invBatPower = rawData.invBatPower ?? null;
+  const batChargePower = Math.max(0, rawData.batChargePower ?? 0);
+  const batDischargePower = Math.max(0, rawData.batDischargePower ?? 0);
+  
+  // Solar calculation
+  const solar_dc_kw = pvPower;
+  // AC-coupled solar from Meter2 (apply sign)
+  const solar_ac_kw = Math.max(0, meter2SolarSign * meterPower2);
+  const solar_total_kw = solar_dc_kw + solar_ac_kw;
+  
+  // Grid
+  const grid_import_kw = gridConsumptionPower;
+  const grid_export_kw = feedinPower;
+  
+  // Battery (prefer invBatPower if available - it's signed: positive=discharge, negative=charge)
+  let battery_net_kw, battery_discharge_kw, battery_charge_kw;
+  if (invBatPower !== null && invBatPower !== undefined) {
+    battery_net_kw = invBatPower;
+    battery_discharge_kw = Math.max(0, invBatPower);
+    battery_charge_kw = Math.max(0, -invBatPower);
+  } else {
+    battery_discharge_kw = batDischargePower;
+    battery_charge_kw = batChargePower;
+    battery_net_kw = battery_discharge_kw - battery_charge_kw;
+  }
+  
+  // Load
+  const load_kw = loadsPower;
+  
+  // Topology detection
+  const hasDcSolar = solar_dc_kw > epsilon;
+  const hasAcSolar = solar_ac_kw > epsilon;
+  let topology = 'unknown';
+  if (hasDcSolar && hasAcSolar) {
+    topology = 'hybrid';
+  } else if (hasDcSolar) {
+    topology = 'dc-coupled';
+  } else if (hasAcSolar) {
+    topology = 'ac-coupled';
+  }
+  
+  // Energy balance check (for debugging)
+  const sources = solar_total_kw + grid_import_kw + battery_discharge_kw;
+  const sinks = load_kw + grid_export_kw + battery_charge_kw;
+  const residual = sources - sinks;
+  
+  return {
+    // Computed values
+    solar_dc_kw,
+    solar_ac_kw,
+    solar_total_kw,
+    grid_import_kw,
+    grid_export_kw,
+    battery_net_kw,
+    battery_charge_kw,
+    battery_discharge_kw,
+    load_kw,
+    // Topology
+    topology,
+    hasDcSolar,
+    hasAcSolar,
+    // Debug
+    residual,
+    energyBalance: {
+      sources,
+      sinks,
+      residual,
+      balanceOk: Math.abs(residual) < 0.5 // Within 500W is acceptable
+    },
+    // Raw values (for debugging)
+    raw: {
+      pvPower,
+      meterPower2,
+      gridConsumptionPower,
+      feedinPower,
+      loadsPower,
+      invBatPower,
+      batChargePower,
+      batDischargePower
+    }
+  };
+}
+
 // ==================== API ENDPOINTS ====================
 
 // Get user config
@@ -3388,8 +3486,27 @@ app.get('/api/inverter/real-time', async (req, res) => {
     
     const result = await callFoxESSAPI('/op/v0/device/real/query', 'POST', {
       sn,
-      variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
+      variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'invBatPower', 'meterPower', 'meterPower2', 'SoC', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
     }, userConfig, req.user.uid);
+    
+    // Add normalized power data for AC-coupled solar support
+    if (result.errno === 0 && result.result && Array.isArray(result.result)) {
+      const datas = result.result[0]?.datas || [];
+      const rawData = {};
+      datas.forEach(d => {
+        rawData[d.variable] = d.value;
+      });
+      
+      // Get meter2SolarSign from user config (default -1 for AC-coupled systems)
+      const meter2SolarSign = userConfig?.meter2SolarSign ?? -1;
+      
+      // Compute normalized power values
+      const normalized = normalizePowerData(rawData, meter2SolarSign);
+      result.normalized = normalized;
+      
+      console.log(`[RealTime] User ${req.user.uid}: topology=${normalized.topology}, solar_dc=${normalized.solar_dc_kw.toFixed(2)}kW, solar_ac=${normalized.solar_ac_kw.toFixed(2)}kW, residual=${normalized.residual.toFixed(3)}kW`);
+    }
+    
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -3670,28 +3787,38 @@ app.post('/api/inverter/all-data', authenticateUser, async (req, res) => {
     // Add topology hints based on data
     if (result.result && Array.isArray(result.result)) {
       const datas = result.result[0]?.datas || [];
-      const pvPower = datas.find(d => d.variable === 'pvPower')?.value || 0;
-      const meterPower = datas.find(d => d.variable === 'meterPower')?.value || null;
-      const meterPower2 = datas.find(d => d.variable === 'meterPower2')?.value || null;
-      const batChargePower = datas.find(d => d.variable === 'batChargePower')?.value || 0;
-      const gridConsumptionPower = datas.find(d => d.variable === 'gridConsumptionPower')?.value || 0;
+      
+      // Extract raw power values
+      const rawData = {};
+      datas.forEach(d => {
+        rawData[d.variable] = d.value;
+      });
+      
+      const pvPower = rawData.pvPower || 0;
+      const meterPower = rawData.meterPower || null;
+      const meterPower2 = rawData.meterPower2 || null;
+      const batChargePower = rawData.batChargePower || 0;
+      const gridConsumptionPower = rawData.gridConsumptionPower || 0;
 
+      // Get meter2SolarSign from user config (default -1 for AC-coupled systems)
+      const meter2SolarSign = userConfig?.meter2SolarSign ?? -1;
+      
+      // Compute normalized power values
+      const normalized = normalizePowerData(rawData, meter2SolarSign);
+      
       result.topologyHints = {
         pvPower,
         meterPower,
         meterPower2,
         batChargePower,
         gridConsumptionPower,
-        likelyTopology: 
-          (pvPower < 0.1 && (batChargePower > 0.5 || meterPower2 > 0.5) && gridConsumptionPower < 0.5)
-            ? 'AC-coupled (external PV via meter)'
-            : (pvPower > 0.5)
-            ? 'DC-coupled (standard)'
-            : 'Unknown (check during solar production hours)'
+        likelyTopology: normalized.topology,
+        // Add full normalized data for debugging
+        normalized
       };
     }
 
-    console.log(`[Diagnostics] All data retrieved, topology hints:`, result.topologyHints);
+    console.log(`[Diagnostics] All data retrieved, topology: ${result.topologyHints?.likelyTopology}`);
     res.json(result);
   } catch (error) {
     console.error('[Diagnostics] all-data error:', error);
@@ -4261,6 +4388,48 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
     }
   }
   
+  /**
+   * Find the starting hour index in weather hourly data for timezone-aware time comparison
+   * Open-Meteo returns times like "2025-12-17T00:00" in the user's timezone (no Z suffix)
+   * This function correctly matches current local time to the hourly array
+   */
+  function findWeatherStartIndex(hourlyTimes, weatherTz = 'Australia/Sydney') {
+    if (!hourlyTimes || hourlyTimes.length === 0) return 0;
+    
+    // Get current time in the weather's timezone
+    const userLocalTime = new Date().toLocaleString('en-AU', { timeZone: weatherTz, hour12: false });
+    const [userDatePart, userTimePart] = userLocalTime.split(', ');
+    const [userHour, userMinute] = userTimePart.split(':').slice(0, 2).map(Number);
+    const [userDay, userMonth, userYear] = userDatePart.split('/').map(Number);
+    
+    // Current time as comparison strings
+    const currentHourStr = `${String(userHour).padStart(2, '0')}:${String(userMinute).padStart(2, '0')}`;
+    const currentDateStr = `${userYear}-${String(userMonth).padStart(2, '0')}-${String(userDay).padStart(2, '0')}`;
+    
+    // Find first hour that's in the future (or current hour if no future)
+    let startIdx = 0;
+    for (let i = 0; i < hourlyTimes.length; i++) {
+      const timeStr = hourlyTimes[i]; // e.g., "2025-12-17T00:00"
+      const [dateOnly, timeOnly] = timeStr.split('T');
+      
+      // If this hour's date is after today, use this index
+      if (dateOnly > currentDateStr) {
+        startIdx = i;
+        break;
+      } else if (dateOnly === currentDateStr) {
+        // Same day - use this hour if it's in the future
+        if (timeOnly > currentHourStr) {
+          startIdx = i;
+          break;
+        }
+        // Otherwise keep searching
+      }
+      // If dateOnly < currentDateStr, this hour is in the past, keep going
+    }
+    
+    return startIdx;
+  }
+  
   // Check solar radiation condition (new separate condition)
   if (conditions.solarRadiation?.enabled) {
     enabledConditions.push('solarRadiation');
@@ -4277,25 +4446,11 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const operator = conditions.solarRadiation.operator || '>';
       const checkType = conditions.solarRadiation.checkType || 'average';
       
-      // Find NEXT hour index (skip current hour since it's partially elapsed)
-      const now = new Date();
-      const nowTimestamp = now.getTime();
-      let startIdx = -1;
-      for (let i = 0; i < hourly.time.length; i++) {
-        const t = new Date(hourly.time[i]);
-        // Find first hour that's in the future (not restricted to same day)
-        if (t.getTime() > nowTimestamp) {
-          startIdx = i;
-          break;
-        }
-      }
+      // Get timezone-aware starting index
+      const forecastTz = weatherData?.result?.place?.timezone || 'Australia/Sydney';
+      const startIdx = findWeatherStartIndex(hourly.time, forecastTz);
       
-      // If no future hours found, start from beginning (should not happen with proper weather data)
-      if (startIdx === -1 && hourly.time.length > 0) {
-        startIdx = 0;
-      }
-      
-      // Get radiation values for next N hours (starting from NEXT hour, not current)
+      // Get radiation values for next N hours (starting from current/next hour)
       const endIdx = Math.min(startIdx + lookAheadHours, hourly.shortwave_radiation.length);
       const radiationValues = hourly.shortwave_radiation.slice(startIdx, endIdx);
       const hoursRequested = lookAheadHours;
@@ -4323,7 +4478,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
         results.push({ 
           condition: 'solarRadiation', 
           met, 
-          actual: actualValue?.toFixed(0), 
+          actual: (actualValue !== undefined && actualValue !== null) ? actualValue.toFixed(0) : '0', 
           operator,
           target: threshold,
           unit: 'W/m²',
@@ -4360,23 +4515,9 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const operator = conditions.cloudCover.operator || '<';
       const checkType = conditions.cloudCover.checkType || 'average';
       
-      // Find NEXT hour index (skip current hour since it's partially elapsed)
-      const now = new Date();
-      const nowTimestamp = now.getTime();
-      let startIdx = -1;
-      for (let i = 0; i < hourly.time.length; i++) {
-        const t = new Date(hourly.time[i]);
-        // Find first hour that's in the future (not restricted to same day)
-        if (t.getTime() > nowTimestamp) {
-          startIdx = i;
-          break;
-        }
-      }
-      
-      // If no future hours found, start from beginning (should not happen with proper weather data)
-      if (startIdx === -1 && hourly.time.length > 0) {
-        startIdx = 0;
-      }
+      // Get timezone-aware starting index
+      const forecastTz = weatherData?.result?.place?.timezone || 'Australia/Sydney';
+      const startIdx = findWeatherStartIndex(hourly.time, forecastTz);
       
       const endIdx = Math.min(startIdx + lookAheadHours, hourly.cloudcover.length);
       const cloudValues = hourly.cloudcover.slice(startIdx, endIdx);
@@ -4405,7 +4546,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
         results.push({ 
           condition: 'cloudCover', 
           met, 
-          actual: actualValue?.toFixed(0), 
+          actual: (actualValue !== undefined && actualValue !== null) ? actualValue.toFixed(0) : '0', 
           operator,
           target: threshold,
           unit: '%',
@@ -4482,16 +4623,9 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           const operator = rawOp.replace('avg', '').replace('min', '').replace('max', '') || '<';
           const checkType = rawOp.includes('min') ? 'min' : rawOp.includes('max') ? 'max' : 'average';
           
-          const now = new Date();
-          const currentHour = now.getHours();
-          let startIdx = 0;
-          for (let i = 0; i < hourly.time.length; i++) {
-            const t = new Date(hourly.time[i]);
-            if (t.getHours() >= currentHour && t.getDate() === now.getDate()) {
-              startIdx = i;
-              break;
-            }
-          }
+          // Get timezone-aware starting index
+          const forecastTz = weatherData?.result?.place?.timezone || 'Australia/Sydney';
+          const startIdx = findWeatherStartIndex(hourly.time, forecastTz);
           
           const endIdx = Math.min(startIdx + lookAheadHours, hourly.cloudcover.length);
           const cloudValues = hourly.cloudcover.slice(startIdx, endIdx);
@@ -4503,7 +4637,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
             else actualValue = cloudValues.reduce((a, b) => a + b, 0) / cloudValues.length;
             
             const met = compareValue(actualValue, operator, threshold);
-            results.push({ condition: 'weather', met, type: 'cloudcover', actual: actualValue?.toFixed(0), operator, target: threshold, unit: '%', legacy: true });
+            results.push({ condition: 'weather', met, type: 'cloudcover', actual: (actualValue !== undefined && actualValue !== null) ? actualValue.toFixed(0) : '0', operator, target: threshold, unit: '%', legacy: true });
           } else {
             results.push({ condition: 'weather', met: false, reason: 'No cloud data' });
           }
@@ -4559,21 +4693,39 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       
       const intervalsNeeded = Math.ceil(lookAheadMinutes / 5); // 5-min intervals
       
-      // Get forecast intervals for the specified channel
+      // Get forecast intervals for the specified channel, sorted by time
       const forecasts = amberData.filter(p => p.channelType === channelType && p.type === 'ForecastInterval');
-      const relevantForecasts = forecasts.slice(0, intervalsNeeded);
+      
+      // CRITICAL FIX: Filter by time window (now to now + lookAheadMinutes) instead of just taking first N
+      const now = new Date();
+      const cutoffTime = new Date(now.getTime() + lookAheadMinutes * 60 * 1000);
+      
+      // Filter for intervals that fall within [now, cutoffTime]
+      // startTime <= cutoffTime (ends before/at cutoff) and endTime >= now (starts before/at now)
+      const relevantForecasts = forecasts.filter(f => {
+        const startTime = new Date(f.startTime);
+        const endTime = new Date(f.endTime || startTime.getTime() + 5 * 60 * 1000);
+        // Include if interval overlaps with our window
+        return startTime <= cutoffTime && endTime >= now;
+      }).slice(0, intervalsNeeded); // Still limit to intervalsNeeded in case of overlap
       
       // LOG: Show what forecast data we have
       console.log(`[ForecastPrice] Rule '${rule.name}' - Type: ${priceType}, CheckType: ${conditions.forecastPrice.checkType || 'average'}`);
       console.log(`[ForecastPrice] Requested: ${lookAheadMinutes} minutes (${intervalsNeeded} intervals)`);
-      console.log(`[ForecastPrice] Found ${forecasts.length} forecast intervals in Amber data`);
+      console.log(`[ForecastPrice] Found ${forecasts.length} total forecast intervals in Amber data`);
+      console.log(`[ForecastPrice] Filtered to ${relevantForecasts.length} intervals in time window [now -> +${lookAheadMinutes}min]`);
       if (forecasts.length > 0) {
         const firstTime = new Date(forecasts[0].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
         const lastTime = new Date(forecasts[forecasts.length - 1].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
-        console.log(`[ForecastPrice] Time range: ${firstTime} to ${lastTime}`);
+        console.log(`[ForecastPrice] Available data time range: ${firstTime} to ${lastTime}`);
         // Show first 5 prices to see what we're working with
         const firstPrices = forecasts.slice(0, 5).map(f => `${new Date(f.startTime).toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Australia/Sydney'})}=${(priceType === 'feedIn' ? -f.perKwh : f.perKwh).toFixed(1)}¢`);
-        console.log(`[ForecastPrice] First 5 prices: ${firstPrices.join(', ')}`);
+        console.log(`[ForecastPrice] First 5 prices (all data): ${firstPrices.join(', ')}`);
+      }
+      if (relevantForecasts.length > 0) {
+        const relevantFirst = new Date(relevantForecasts[0].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+        const relevantLast = new Date(relevantForecasts[relevantForecasts.length-1].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+        console.log(`[ForecastPrice] Relevant time range (filtered): ${relevantFirst} to ${relevantLast}`);
       }
       
       // Check if we got fewer intervals than requested (Amber API limit is ~12 intervals = 1 hour)
@@ -4582,7 +4734,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const hasIncompleteData = relevantForecasts.length < intervalsNeeded;
       
       if (hasIncompleteData && intervalsActuallyAvailable < intervalsNeeded) {
-        console.warn(`[Automation] Rule '${rule.name}' - Forecast ${priceType}: Only ${intervalsActuallyAvailable} intervals available in Amber API (limit ~1 hour), but requested ${lookAheadMinutes} minutes`);
+        console.warn(`[Automation] Rule '${rule.name}' - Forecast ${priceType}: Only ${relevantForecasts.length} intervals in time window, requested ${intervalsNeeded}`);
       }
       
       if (relevantForecasts.length > 0) {
