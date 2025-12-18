@@ -178,7 +178,7 @@
         /* ROI Calculator Styles */
         .roi-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
             gap: 16px;
             margin-bottom: 20px;
         }
@@ -761,28 +761,63 @@
             let totalChargeRules = 0;
             let totalDischargeRules = 0;
             let totalFeedinRules = 0;
+            let totalProfit = 0; // Total profit from all rules
             let estimatedSavings = 0; // charge operations that avoided high prices
             let estimatedEarnings = 0; // feed-in operations during peak prices
+            
+            // Get average prices from Amber API data if available
+            const avgFeedInPrice = pricesData?.feedInPrice || 0.15; // Default fallback AUD/kWh
+            const avgBuyInPrice = pricesData?.buyInPrice || 0.35; // Default fallback AUD/kWh
             
             for (const event of events) {
                 totalRules++;
                 
-                // Count actions by type (simplified - based on rule history data)
+                // Calculate rule duration in hours (assuming it's stored in milliseconds)
+                const durationHours = (event.durationMs || 0) / (1000 * 60 * 60);
+                
+                // Count actions by type and estimate profit
+                let isChargeRule = false;
+                let isFeedinRule = false;
+                
                 if (event.startAllRules) {
                     for (const rule of event.startAllRules) {
                         if (rule.triggered) {
                             // Try to infer action type from rule name/data
-                            if (rule.name && rule.name.toLowerCase().includes('charge')) {
+                            const ruleName = rule.name || '';
+                            if (ruleName.toLowerCase().includes('charge')) {
                                 totalChargeRules++;
-                            } else if (rule.name && rule.name.toLowerCase().includes('discharge')) {
+                                isChargeRule = true;
+                            } else if (ruleName.toLowerCase().includes('discharge')) {
                                 totalDischargeRules++;
-                            } else if (rule.name && rule.name.toLowerCase().includes('feed')) {
+                            } else if (ruleName.toLowerCase().includes('feed') || ruleName.toLowerCase().includes('export')) {
                                 totalFeedinRules++;
+                                isFeedinRule = true;
                             }
                         }
                     }
                 }
+                
+                // Estimate profit based on rule type and duration
+                // Assuming 5kW system (typical residential)
+                const systemCapacityKw = 5;
+                const energyGenerated = systemCapacityKw * durationHours;
+                
+                if (isChargeRule) {
+                    // Profit from cheap charging (avoided expensive grid power)
+                    // Assume average buy-in price of 35c/kWh
+                    totalProfit += energyGenerated * avgBuyInPrice;
+                } else if (isFeedinRule) {
+                    // Profit from selling to grid during peak prices
+                    // Assume average feed-in price of 15c/kWh
+                    totalProfit += energyGenerated * avgFeedInPrice;
+                }
             }
+            
+            // Determine profit color
+            const profitColor = totalProfit >= 0 ? 'rgba(126, 231, 135, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+            const profitBorderColor = totalProfit >= 0 ? 'rgba(126, 231, 135, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+            const profitTextColor = totalProfit >= 0 ? '#7ee787' : '#ef4444';
+            const profitIcon = totalProfit >= 0 ? '💰' : '📉';
             
             // Build HTML with summary cards and detailed table
             let html = `
@@ -813,12 +848,21 @@
                         <div class="roi-value">${totalFeedinRules}</div>
                         <div class="roi-value-label">export events</div>
                     </div>
+                    
+                    <div class="roi-card" style="background: ${profitColor}; border-color: ${profitBorderColor};">
+                        <div class="roi-card-title">
+                            <span>${profitIcon}</span>
+                            Total Profit
+                        </div>
+                        <div class="roi-value" style="color: ${profitTextColor};">$${Math.abs(totalProfit).toFixed(2)}</div>
+                        <div class="roi-value-label">${totalProfit >= 0 ? 'estimated savings' : 'estimated cost'}</div>
+                    </div>
                 </div>
                 
                 <div class="info-banner" style="background: rgba(126,231,135,0.08); border-color: rgba(126,231,135,0.2);">
                     <span class="icon">💡</span>
                     <div class="text">
-                        <strong>ROI Note:</strong> Financial calculations require Amber API historical pricing data. Current display shows rule trigger counts. Full ROI analysis coming soon.
+                        <strong>Profit Calculation:</strong> Estimated at $0.35/kWh for charging and $0.15/kWh for feed-in, assuming a 5kW system. Actual values depend on real-time Amber prices. Higher accuracy coming with price history data.
                     </div>
                 </div>
                 
@@ -829,6 +873,7 @@
                             <th>Type</th>
                             <th>Triggered At</th>
                             <th>Duration</th>
+                            <th>Est. Profit</th>
                             <th>Status</th>
                         </tr>
                     </thead>
@@ -840,12 +885,36 @@
                 const startDate = new Date(event.startTime);
                 const duration = formatDuration(event.durationMs);
                 
+                // Calculate profit for this event
+                const durationHours = (event.durationMs || 0) / (1000 * 60 * 60);
+                const systemCapacityKw = 5;
+                const energyGenerated = systemCapacityKw * durationHours;
+                let eventProfit = 0;
+                let profitLabel = '';
+                
+                if (event.startAllRules) {
+                    for (const rule of event.startAllRules) {
+                        if (rule.triggered) {
+                            const ruleName = rule.name || '';
+                            if (ruleName.toLowerCase().includes('charge')) {
+                                eventProfit = energyGenerated * avgBuyInPrice;
+                                profitLabel = `$${eventProfit.toFixed(2)} (charging)`;
+                            } else if (ruleName.toLowerCase().includes('feed') || ruleName.toLowerCase().includes('export')) {
+                                eventProfit = energyGenerated * avgFeedInPrice;
+                                profitLabel = `$${eventProfit.toFixed(2)} (feed-in)`;
+                            }
+                            break;
+                        }
+                    }
+                }
+                
                 html += `
                     <tr>
                         <td class="rule-name">${event.ruleName || 'Unknown Rule'}</td>
                         <td>${ruleType}</td>
                         <td>${startDate.toLocaleString()}</td>
                         <td>${duration}</td>
+                        <td style="color: ${eventProfit >= 0 ? '#7ee787' : '#ef4444'};">${profitLabel || '—'}</td>
                         <td>${event.type === 'ongoing' ? '🟢 Running' : '✓ Done'}</td>
                     </tr>
                 `;
