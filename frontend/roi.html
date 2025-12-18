@@ -1027,11 +1027,69 @@
             content.innerHTML = html;
         }
 
+        /**
+         * Load device SN from Firestore
+         */
+        async function loadDeviceSn() {
+            try {
+                const resp = await authenticatedFetch('/api/config/device');
+                const data = await resp.json();
+                if (data.errno === 0 && data.result?.sn) {
+                    deviceSn = data.result.sn;
+                    document.getElementById('deviceSnDisplay').textContent = `Device: ${deviceSn}`;
+                }
+            } catch (e) {
+                console.warn('Failed to load device SN:', e);
+            }
+        }
+
+        /**
+         * Load API call metrics
+         */
+        async function loadApiMetrics(days = 1) {
+            try {
+                const resp = await authenticatedFetch(`/api/metrics/api-calls?days=${encodeURIComponent(days)}`);
+                const data = await resp.json();
+                if (!data || data.errno !== 0 || !data.result) return;
+                const keys = Object.keys(data.result).sort().reverse();
+                const todayKey = keys[0];
+                const today = data.result[todayKey] || {};
+
+                document.getElementById('metricsDate').textContent = formatDate(new Date(todayKey), false);
+                document.getElementById('countFox').textContent = today.foxess ?? 0;
+                document.getElementById('countAmber').textContent = today.amber ?? 0;
+                document.getElementById('countWeather').textContent = today.weather ?? 0;
+            } catch (e) {
+                console.warn('Failed to load api metrics', e.message);
+            }
+        }
+
+        /**
+         * Format date helper
+         */
+        function formatDate(date, includeTime = true) {
+            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            if (includeTime) {
+                const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                return `${dateStr} ${timeStr}`;
+            }
+            return dateStr;
+        }
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             initDatePickers();
-            // Auto-load automation history
-            fetchAutomationHistory();
+        });
+
+        // Initialize Firebase & AppShell
+        AppShell.init({
+            pageName: 'roi',
+            autoMetrics: true,
+            onReady: () => {
+                try { loadDeviceSn(); } catch (error) { console.warn('Failed to load device SN', error); }
+                // Load automation history on page load
+                try { fetchAutomationHistory(); } catch (error) { console.warn('Failed to load automation history', error); }
+            }
         });
     </script>
 </body>
