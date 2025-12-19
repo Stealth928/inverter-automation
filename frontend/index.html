@@ -5438,7 +5438,11 @@
                     // Apply backend-configured refresh intervals so the UI honors settings
                     try {
                         // Use the new config field from API response which includes user-specific settings
+                        console.log('[Config] Received cfg.result:', cfg.result);
+                        console.log('[Config] cfg.result.config:', cfg.result.config);
+                        
                         if (cfg.result.config) {
+                            console.log('[Config] Backend config detected, updating TTLs...');
                             if (typeof cfg.result.config.cache.amber === 'number') {
                                 CONFIG.refresh.amberPricesMs = Number(cfg.result.config.cache.amber);
                                 CONFIG.cache.amber = Number(cfg.result.config.cache.amber);
@@ -5478,6 +5482,8 @@
                                 CONFIG.defaults = cfg.result.defaults;
                             }
                         }
+                        console.log('[Config] Final CONFIG.cache values:', CONFIG.cache);
+                        console.log('[Config] Final CONFIG.refresh values:', CONFIG.refresh);
                         // Update FAQ display with actual config values
                         updateFaqValues();
                     } catch (e) {

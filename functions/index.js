@@ -469,21 +469,50 @@ app.get('/api/config/setup-status', async (req, res) => {
     
     console.log(`[Setup Status] After tryAttachUser - User:`, req.user ? `${req.user.uid} (email: ${req.user.email})` : '(not authenticated)');
     
+    const serverConfig = getConfig();
+    
     // If user is authenticated (has ID token), check their Firestore config
     if (req.user?.uid) {
-      const config = await getUserConfig(req.user.uid);
+      const userConfig = await getUserConfig(req.user.uid);
       console.log(`[Setup Status] getUserConfig result for ${req.user.uid}:`, {
-        found: !!config,
-        deviceSn: config?.deviceSn ? '(present)' : '(missing)',
-        foxessToken: config?.foxessToken ? '(present)' : '(missing)',
-        amberApiKey: config?.amberApiKey ? '(present)' : '(missing)',
-        setupComplete: config?.setupComplete,
-        source: config?._source
+        found: !!userConfig,
+        deviceSn: userConfig?.deviceSn ? '(present)' : '(missing)',
+        foxessToken: userConfig?.foxessToken ? '(present)' : '(missing)',
+        amberApiKey: userConfig?.amberApiKey ? '(present)' : '(missing)',
+        setupComplete: userConfig?.setupComplete,
+        source: userConfig?._source
       });
       
       // Treat setupComplete as true if explicitly set OR if both critical fields are present
-      const setupComplete = !!((config?.setupComplete === true) || (config?.deviceSn && config?.foxessToken));
-      return res.json({ errno: 0, result: { setupComplete, hasDeviceSn: !!config?.deviceSn, hasFoxessToken: !!config?.foxessToken, hasAmberKey: !!config?.amberApiKey, source: config?._source || 'user' } });
+      const setupComplete = !!((userConfig?.setupComplete === true) || (userConfig?.deviceSn && userConfig?.foxessToken));
+      
+      // Include cache TTL configuration for frontend
+      const config = {
+        automation: {
+          intervalMs: (userConfig?.automation?.intervalMs) || serverConfig.automation.intervalMs
+        },
+        cache: {
+          amber: (userConfig?.cache?.amber) || serverConfig.automation.cacheTtl.amber,
+          inverter: (userConfig?.automation?.inverterCacheTtlMs) || serverConfig.automation.cacheTtl.inverter,
+          weather: (userConfig?.cache?.weather) || serverConfig.automation.cacheTtl.weather
+        },
+        defaults: {
+          cooldownMinutes: (userConfig?.defaults?.cooldownMinutes) || 5,
+          durationMinutes: (userConfig?.defaults?.durationMinutes) || 30
+        }
+      };
+      
+      return res.json({ 
+        errno: 0, 
+        result: { 
+          setupComplete, 
+          hasDeviceSn: !!userConfig?.deviceSn, 
+          hasFoxessToken: !!userConfig?.foxessToken, 
+          hasAmberKey: !!userConfig?.amberApiKey, 
+          source: userConfig?._source || 'user',
+          config  // Include user-specific config with TTLs
+        } 
+      });
     }
     
     // Unauthenticated user - fall back to shared server config (if present)
@@ -497,15 +526,47 @@ app.get('/api/config/setup-status', async (req, res) => {
           foxessToken: cfg.foxessToken ? '(present)' : '(missing)'
         });
         const setupComplete = !!(cfg.setupComplete && cfg.deviceSn && cfg.foxessToken);
-        return res.json({ errno: 0, result: { setupComplete, hasDeviceSn: !!cfg.deviceSn, hasFoxessToken: !!cfg.foxessToken, hasAmberKey: !!cfg.amberApiKey, source: 'shared' } });
+        
+        // Include server default config
+        const config = {
+          automation: { intervalMs: serverConfig.automation.intervalMs },
+          cache: serverConfig.automation.cacheTtl,
+          defaults: { cooldownMinutes: 5, durationMinutes: 30 }
+        };
+        
+        return res.json({ 
+          errno: 0, 
+          result: { 
+            setupComplete, 
+            hasDeviceSn: !!cfg.deviceSn, 
+            hasFoxessToken: !!cfg.foxessToken, 
+            hasAmberKey: !!cfg.amberApiKey, 
+            source: 'shared',
+            config  // Include server config with TTLs
+          } 
+        });
       }
     } catch (e) {
       console.warn('[Setup Status] Error reading shared server config:', e.message || e);
     }
 
-    // No shared config found - setup not complete
+    // No shared config found - setup not complete, but include server defaults
     console.log(`[Setup Status] No shared config found, setup not complete`);
-    res.json({ errno: 0, result: { setupComplete: false, hasDeviceSn: false, hasFoxessToken: false, hasAmberKey: false } });
+    const config = {
+      automation: { intervalMs: serverConfig.automation.intervalMs },
+      cache: serverConfig.automation.cacheTtl,
+      defaults: { cooldownMinutes: 5, durationMinutes: 30 }
+    };
+    res.json({ 
+      errno: 0, 
+      result: { 
+        setupComplete: false, 
+        hasDeviceSn: false, 
+        hasFoxessToken: false, 
+        hasAmberKey: false,
+        config  // Include server defaults
+      } 
+    });
   } catch (error) {
     console.error('[Setup Status] Error:', error);
     res.status(500).json({ errno: 500, error: error.message });
