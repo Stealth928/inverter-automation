@@ -2920,16 +2920,16 @@
             // IMPORTANT: Cache key must include the requested days so we don't return stale cache
             // when user requests a different number of forecast days
             // ALSO: Invalidate cache if the calendar day has changed to get fresh forecasts
-            const WEATHER_TTL = 30 * 60 * 1000;
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
             const cachedDays = cacheState.weatherDays || 0;
             const cachedDate = cacheState.weatherDate || null;  // Track the calendar day
             const today = new Date().toISOString().substring(0, 10);  // YYYY-MM-DD
+            const age = Date.now() - (cacheState.weatherTime || 0);
             
-            console.log(`[Cache] Checking weather cache: cached=${cachedDays} days, requested=${days}, date match=${cachedDate === today}, TTL ok=${cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL}`);
+            console.log(`[Cache] Checking weather cache: cached=${cachedDays} days, requested=${days}, date match=${cachedDate === today}, age=${age}ms, TTL=${CONFIG.cache.weather}ms`);
             console.log('[Cache] cacheState:', cacheState);
             
-            if (!force && cacheState.weatherTime && (Date.now() - cacheState.weatherTime) < WEATHER_TTL && cachedDays === days && cachedDate === today) {
+            if (!force && cacheState.weatherTime && age < CONFIG.cache.weather && cachedDays === days && cachedDate === today) {
                 console.log('[Cache] Weather cache is fresh, has correct forecast days, and is from today - loading from cache');
                 // Load cached full weather object and render it
                 try {
@@ -3628,10 +3628,12 @@
             const siteId = document.getElementById('amberSiteId').value;
             if (!siteId) { document.getElementById('amberCard').innerHTML = '<div style="color:#d29922">Select a site</div>'; return; }
             
-            // Check if cached data is still fresh (60 seconds TTL matches backend)
-            const AMBER_TTL = 60 * 1000;
+            // Check if cached data is still fresh (TTL from backend config)
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
-            if (!force && cacheState.amberTime && (Date.now() - cacheState.amberTime) < AMBER_TTL) {
+            const age = Date.now() - (cacheState.amberTime || 0);
+            console.log(`[Cache] Amber cache age: ${age}ms, TTL: ${CONFIG.cache.amber}ms, fresh: ${age < CONFIG.cache.amber}`);
+            
+            if (!force && cacheState.amberTime && age < CONFIG.cache.amber) {
                 console.log('[Cache] Amber cache is fresh, loading from cache');
                 // Load cached full prices array and render
                 try {
@@ -4624,6 +4626,13 @@
                 weatherMs: 30 * 60 * 1000      // 30 minutes - Weather data
             },
             
+            // Cache TTL values (updated from backend config)
+            cache: {
+                amber: 60 * 1000,              // 60 seconds - Amber prices cache TTL
+                inverter: 5 * 60 * 1000,       // 5 minutes - Inverter data cache TTL
+                weather: 30 * 60 * 1000        // 30 minutes - Weather data cache TTL
+            },
+            
             // Automation timing
             automation: {
                 intervalMs: 60 * 1000,         // How often automation cycles run (must match backend)
@@ -4673,7 +4682,7 @@
         let lastUserActivity = Date.now();
         let isPageVisible = !document.hidden;
         let idleCheckTimer = null;
-        let autoRefreshActive = true;
+        let autoRefreshActive = false;  // Start as false so timers will actually start
 
         // Map of last update timestamps (ms since epoch)
         const lastUpdated = {
@@ -4735,7 +4744,11 @@
          * Start all auto-refresh timers (when page visible and active)
          */
         function startAutoRefreshTimers() {
-            if (autoRefreshActive) return; // Already running
+            console.log('[AutoRefresh] startAutoRefreshTimers() called, autoRefreshActive =', autoRefreshActive);
+            if (autoRefreshActive) {
+                console.log('[AutoRefresh] Already running, returning early');
+                return; // Already running
+            }
             
             console.log('[AutoRefresh] Starting all auto-refresh timers (page active)');
             console.log('[AutoRefresh] Config values:', { 
@@ -5428,12 +5441,18 @@
                         if (cfg.result.config) {
                             if (typeof cfg.result.config.cache.amber === 'number') {
                                 CONFIG.refresh.amberPricesMs = Number(cfg.result.config.cache.amber);
+                                CONFIG.cache.amber = Number(cfg.result.config.cache.amber);
+                                console.log('[Config] Updated Amber cache TTL from backend:', CONFIG.cache.amber);
                             }
                             if (typeof cfg.result.config.cache.inverter === 'number') {
                                 CONFIG.refresh.inverterMs = Number(cfg.result.config.cache.inverter);
+                                CONFIG.cache.inverter = Number(cfg.result.config.cache.inverter);
+                                console.log('[Config] Updated Inverter cache TTL from backend:', CONFIG.cache.inverter);
                             }
                             if (typeof cfg.result.config.cache.weather === 'number') {
                                 CONFIG.refresh.weatherMs = Number(cfg.result.config.cache.weather);
+                                CONFIG.cache.weather = Number(cfg.result.config.cache.weather);
+                                console.log('[Config] Updated Weather cache TTL from backend:', CONFIG.cache.weather);
                             }
                             if (typeof cfg.result.config.automation.intervalMs === 'number') {
                                 CONFIG.automation.intervalMs = Number(cfg.result.config.automation.intervalMs);
