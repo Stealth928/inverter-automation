@@ -69,29 +69,13 @@
         if (!state.options.checkSetup) return true;
         if (state.options.pageName === 'setup') return true;
         try {
-            console.log('[AppShell] ensureSetupComplete called');
-            console.log('[AppShell] state.user:', state.user ? `${state.user.uid} (${state.user.email})` : 'null');
-            console.log('[AppShell] window.firebaseAuth exists:', !!window.firebaseAuth);
-            
-            if (window.firebaseAuth) {
-              console.log('[AppShell] firebaseAuth.user:', window.firebaseAuth.user ? `${window.firebaseAuth.user.uid}` : 'null');
-              console.log('[AppShell] firebaseAuth.auth exists:', !!window.firebaseAuth.auth);
-              if (window.firebaseAuth.auth && typeof firebase !== 'undefined') {
-                const fbUser = firebase.auth().currentUser;
-                console.log('[AppShell] firebase.auth().currentUser:', fbUser ? `${fbUser.uid} (${fbUser.email})` : 'null');
-              }
-            }
-            
             const client = window.apiClient || await waitForAPIClient(4000);
             
             // Initialize user profile in Firestore (creates document and automation state if missing)
             try {
-              console.log('[AppShell] Initializing user profile...');
               const initResp = await client.fetch('/api/user/init-profile', { method: 'POST' });
               const initData = await initResp.json();
-              if (initData.errno === 0) {
-                console.log('[AppShell] ✅ User profile initialized:', initData.result);
-              } else {
+              if (initData.errno !== 0) {
                 console.warn('[AppShell] User profile init returned error:', initData.error);
               }
             } catch (initErr) {
@@ -101,9 +85,7 @@
             // Ensure we have a fresh token before calling setup-status
             if (window.firebaseAuth) {
                 try {
-                    console.log('[AppShell] Attempting to get fresh token...');
-                    const token = await window.firebaseAuth.getIdToken(true); // force refresh
-                    console.log('[AppShell] Got fresh token:', token ? (token.substring(0, 20) + '...') : '(null)');
+                    await window.firebaseAuth.getIdToken(true); // force refresh
                 } catch (tokenErr) {
                     console.warn('[AppShell] Failed to refresh token:', tokenErr && tokenErr.message ? tokenErr.message : tokenErr);
                 }
@@ -115,7 +97,6 @@
                 return false;
             }
             const data = await response.json().catch(() => null);
-            console.log('[AppShell] Setup status response:', data);
             if (data && data.errno === 0 && !data.result?.setupComplete) {
                 if (typeof safeRedirect === 'function') {
                     safeRedirect('/setup.html');

@@ -968,9 +968,9 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, u
   try {
     const timestamp = Date.now();
     
-    // Split apiPath into base path and query string for signature calculation
+    // Split apiPath into base path for signature calculation
     // Signature should be calculated on the path WITHOUT query parameters
-    const [basePath, queryString] = apiPath.split('?');
+    const [basePath] = apiPath.split('?');
     const signature = generateFoxESSSignature(basePath, token, timestamp);
     
     const url = new URL(`${config.foxess.baseUrl}${apiPath}`);
@@ -1836,27 +1836,6 @@ async function getCachedWeatherData(userId, place = 'Sydney', days = 16) {
     console.error(`[Cache] Error in getCachedWeatherData: ${err.message}`);
     return { errno: 500, error: err.message };
   }
-}
-
-/**
- * Get user's browser timezone from Intl API (client would send this)
- * Server-side fallback: try to get from config first, then use timezone from weather
- * @param {string} browserTimezone - IANA timezone from browser (sent by client)
- * @returns {string} Timezone to use (from config, browser, or weather, or Sydney default)
- */
-function resolveUserTimezone(userConfig, browserTimezone) {
-  // Priority 1: User's saved timezone in config
-  if (userConfig?.timezone) {
-    return userConfig.timezone;
-  }
-  
-  // Priority 2: Browser timezone sent from client
-  if (browserTimezone && isValidTimezone(browserTimezone)) {
-    return browserTimezone;
-  }
-  
-  // Priority 3: Fallback to configured default timezone
-  return DEFAULT_TIMEZONE;
 }
 
 /**
@@ -2832,7 +2811,7 @@ app.post('/api/automation/cycle', async (req, res) => {
         
         // Calculate maximum lookAhead days needed across all enabled rules
         let maxDaysNeeded = 1;
-        for (const [_, rule] of enabledRules) {
+        for (const [, rule] of enabledRules) {
           const cond = rule.conditions || {};
           
           // Check solar radiation lookAhead
@@ -2869,9 +2848,7 @@ app.post('/api/automation/cycle', async (req, res) => {
     const sortedRules = enabledRules.sort((a, b) => (a[1].priority || 99) - (b[1].priority || 99));
     
     let triggeredRule = null;
-    let triggerResult = null;
     const evaluationResults = [];
-    let cancelledRuleThisCycle = false;  // Track if a rule was cancelled in this cycle for logging
     
     for (const [ruleId, rule] of sortedRules) {
       console.log(`[Automation] Checking rule '${rule.name}' (priority ${rule.priority})`);
@@ -2952,7 +2929,6 @@ app.post('/api/automation/cycle', async (req, res) => {
             // Apply the rule action with NEW timestamps
             const isNewTrigger = true; // Treat as new trigger
             triggeredRule = { ruleId, ...rule, isNewTrigger, status: 'new_trigger' };
-            triggerResult = result;
             
             let actionResult = null;
             try {
@@ -3003,7 +2979,6 @@ app.post('/api/automation/cycle', async (req, res) => {
             
             // Mark this as the triggered rule for response (continuing state)
             triggeredRule = { ruleId, ...rule, isNewTrigger: false, status: 'continuing' };
-            triggerResult = result;
             
             // Update check timestamp only, don't re-apply segment
             await saveUserAutomationState(userId, {
@@ -3056,7 +3031,6 @@ app.post('/api/automation/cycle', async (req, res) => {
               if (state.activeRule) {
                 await db.collection('users').doc(userId).collection('rules').doc(state.activeRule).set({ lastTriggered: null }, { merge: true });
               }
-              cancelledRuleThisCycle = true;
             }
           }
           // New rule triggered with higher priority or no active rule exists
@@ -3065,7 +3039,6 @@ app.post('/api/automation/cycle', async (req, res) => {
         // Mark whether this is a new trigger or a continuing active rule
         const isNewTrigger = !isActiveRule;
         triggeredRule = { ruleId, ...rule, isNewTrigger, status: isNewTrigger ? 'new_trigger' : 'continuing' };
-        triggerResult = result;
         
         // Only apply the rule action if this is a NEW rule (not the active one continuing)
         if (!isActiveRule) {
@@ -3101,8 +3074,8 @@ app.post('/api/automation/cycle', async (req, res) => {
           // Include full evaluation context: ALL rules and their condition states
           // Transform evaluationResults to frontend-friendly format
           const allRulesForAudit = evaluationResults.map(evalResult => {
-            const ruleData = sortedRules.find(([id, r]) => r.name === evalResult.rule);
-            const [evalRuleId, evalRule] = ruleData || [null, {}];
+            const ruleData = sortedRules.find(([_id, r]) => r.name === evalResult.rule);
+const [evalRuleId] = ruleData || [null];
             
             // DEBUG: Log prices being stored
             if (evalResult.details?.feedInPrice !== undefined || evalResult.details?.buyPrice !== undefined) {
@@ -3247,8 +3220,8 @@ app.post('/api/automation/cycle', async (req, res) => {
             // Include full evaluation context showing why conditions failed
             // Transform evaluationResults to frontend-friendly format
             const allRulesForAudit = evaluationResults.map(evalResult => {
-              const ruleData = sortedRules.find(([id, r]) => r.name === evalResult.rule);
-              const [evalRuleId, evalRule] = ruleData || [null, {}];
+              const ruleData = sortedRules.find(([_id, r]) => r.name === evalResult.rule);
+              const [evalRuleId] = ruleData || [null];
               
               // DEBUG: Log prices being stored
               if (evalResult.details?.feedInPrice !== undefined || evalResult.details?.buyPrice !== undefined) {
@@ -3286,7 +3259,6 @@ app.post('/api/automation/cycle', async (req, res) => {
             
             // Continue to check if any other rule can trigger
             console.log(`[Automation] 🔄 Continuing rule evaluation after cancellation...`);
-            cancelledRuleThisCycle = true;  // Mark that we cancelled a rule this cycle
             continue;
           } else {
             // Failed to clear - don't evaluate replacement rules this cycle
@@ -4289,7 +4261,7 @@ app.get('/api/scheduler/v1/get', async (req, res) => {
     
     if (!sn) {
       // No device SN configured - return sensible defaults
-      const defaultGroups = Array.from({ length: 10 }).map((_, i) => ({
+      const defaultGroups = Array.from({ length: 10 }).map((_unused, _i) => ({
         startHour: 0, startMinute: 0,
         endHour: 0, endMinute: 0,
         enable: 0,
@@ -4551,8 +4523,8 @@ if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID) {
  * Evaluate a single automation rule - checks ALL conditions
  * ALL enabled conditions must be met for the rule to trigger
  */
-async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfig, skipCooldown = false) {
-  // skipCooldown: if true, we skip the cooldown check (used for re-evaluating active rules)
+async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfig, _skipCooldown = false) {
+  // _skipCooldown: if true, we skip the cooldown check (used for re-evaluating active rules)
   const conditions = rule.conditions || {};
   const enabledConditions = [];
   const results = [];
@@ -5077,7 +5049,6 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       }
       
       // Check if we got fewer intervals than requested (Amber API limit is ~12 intervals = 1 hour)
-      const intervalsRequested = intervalsNeeded;
       const intervalsActuallyAvailable = forecasts.length;
       const hasIncompleteData = relevantForecasts.length < intervalsNeeded;
       
@@ -5213,13 +5184,6 @@ function getUserTime(timezone) {
     dayOfWeek: now.getDay(), // 0 = Sunday, 6 = Saturday
     timezone: timezone
   };
-}
-
-/**
- * Backward compatibility: getSydneyTime() calls getUserTime with Sydney timezone
- */
-function getSydneyTime() {
-  return getUserTime('Australia/Sydney');
 }
 
 /**
