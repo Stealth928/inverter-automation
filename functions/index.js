@@ -502,6 +502,11 @@ app.get('/api/config/setup-status', async (req, res) => {
         }
       };
       
+      console.log('[Setup Status] Returning user config with TTLs:', {
+        setupComplete,
+        configCache: config.cache,
+        configAutomation: config.automation
+      });
       return res.json({ 
         errno: 0, 
         result: { 
@@ -534,6 +539,11 @@ app.get('/api/config/setup-status', async (req, res) => {
           defaults: { cooldownMinutes: 5, durationMinutes: 30 }
         };
         
+        console.log('[Setup Status] Returning shared config with TTLs:', {
+          setupComplete,
+          configCache: config.cache,
+          configAutomation: config.automation
+        });
         return res.json({ 
           errno: 0, 
           result: { 
@@ -557,6 +567,11 @@ app.get('/api/config/setup-status', async (req, res) => {
       cache: serverConfig.automation.cacheTtl,
       defaults: { cooldownMinutes: 5, durationMinutes: 30 }
     };
+    console.log('[Setup Status] Returning fallback config with TTLs:', {
+      setupComplete: false,
+      configCache: config.cache,
+      configAutomation: config.automation
+    });
     res.json({ 
       errno: 0, 
       result: { 
@@ -2047,8 +2062,32 @@ app.get('/api/config', async (req, res) => {
     if (!req.user || !req.user.uid) {
       return res.status(401).json({ errno: 401, error: 'Unauthorized' });
     }
-    const config = await getUserConfig(req.user.uid);
-    res.json({ errno: 0, result: config || {} });
+    const userConfig = await getUserConfig(req.user.uid);
+    const serverConfig = getConfig();
+    
+    // Build config object with TTLs and defaults (same as setup-status)
+    const config = {
+      automation: {
+        intervalMs: (userConfig?.automation?.intervalMs) || serverConfig.automation.intervalMs
+      },
+      cache: {
+        amber: (userConfig?.cache?.amber) || serverConfig.automation.cacheTtl.amber,
+        inverter: (userConfig?.automation?.inverterCacheTtlMs) || serverConfig.automation.cacheTtl.inverter,
+        weather: (userConfig?.cache?.weather) || serverConfig.automation.cacheTtl.weather
+      },
+      defaults: {
+        cooldownMinutes: (userConfig?.defaults?.cooldownMinutes) || 5,
+        durationMinutes: (userConfig?.defaults?.durationMinutes) || 30
+      }
+    };
+    
+    console.log('[Config] GET /api/config returning with TTLs:', {
+      userId: req.user.uid,
+      configCache: config.cache,
+      configAutomation: config.automation
+    });
+    
+    res.json({ errno: 0, result: { ...userConfig, config } });
   } catch (error) {
     console.error('[Config] Error getting user config:', error.message);
     // Return safe empty config instead of 500 error
