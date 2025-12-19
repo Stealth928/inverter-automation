@@ -670,6 +670,10 @@ app.get('/api/amber/prices', async (req, res) => {
     if (!siteId) {
       return res.status(400).json({ errno: 400, error: 'Site ID is required' });
     }
+    
+    // Check if caller wants only actual (non-forecast) prices
+    const actualOnly = req.query.actual_only === 'true';
+    
     // If the caller provided startDate/endDate, treat this as a historical range
     // request and use intelligent caching to avoid repeated API calls.
     const startDate = req.query.startDate;
@@ -677,12 +681,39 @@ app.get('/api/amber/prices', async (req, res) => {
     if (startDate || endDate) {
       const resolution = req.query.resolution || 30;
       
-      console.log(`[Prices] Fetching historical prices with caching for ${siteId}:`, {
+      console.log(`[Prices] Fetching historical prices for ${siteId}:`, {
         startDate,
         endDate,
-        resolution
+        resolution,
+        actualOnly,
+        queryActualOnly: req.query.actual_only,
+        fullQuery: req.query
       });
       
+      // If actualOnly is set, check if this is a recent date range
+      // For dates older than 3 days, use cache since they're definitely materialized
+      // For recent dates (today, yesterday, day before), fetch fresh to avoid forecast
+      if (actualOnly) {
+        const endDateObj = new Date(endDate);
+        const now = new Date();
+        const daysSinceEnd = Math.floor((now - endDateObj) / (1000 * 60 * 60 * 24));
+        
+        console.log(`[Prices] actual_only=true, end date: ${endDate}, days since: ${daysSinceEnd}`);
+        
+        if (daysSinceEnd > 3) {
+          // Old data - safe to use cache (it's all materialized)
+          console.log(`[Prices] End date is ${daysSinceEnd} days old, using cache for materialized data`);
+          const result = await fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, resolution, userConfig, userId);
+          return res.json(result);
+        } else {
+          // Recent data - fetch fresh to avoid forecast pollution
+          console.log(`[Prices] End date is recent (${daysSinceEnd} days), fetching fresh without cache`);
+          const result = await fetchAmberHistoricalPricesActualOnly(siteId, startDate, endDate, resolution, userConfig, userId);
+          return res.json(result);
+        }
+      }
+      
+      // Default: use cache
       const result = await fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, resolution, userConfig, userId);
       return res.json(result);
     }
@@ -1227,6 +1258,86 @@ function splitRangeIntoChunks(startDate, endDate, maxDaysPerChunk = 14) {
   }
   
   return chunks;
+}
+
+/**
+ * Fetch Amber historical prices WITHOUT cache, filter to actual (past) only.
+ * Used by Reports page to ensure we show materialized prices, not stale forecasts.
+ * - Always fetches fresh from Amber API (bypasses cache)
+ * - Filters out any prices with timestamp > now (future/forecast)
+ * - Returns only actual historical prices
+ */
+async function fetchAmberHistoricalPricesActualOnly(siteId, startDate, endDate, resolution, userConfig, userId) {
+  console.log(`[Prices] Fetching actual-only prices (fresh, no cache) for ${siteId}:`, { startDate, endDate, resolution });
+  
+  // Increment API counter once per request (bypassing cache means we're hitting the API)
+  if (userId) {
+    console.log(`[Prices] actual_only request: incrementing Amber API counter for user ${userId}`);
+    incrementApiCount(userId, 'amber').catch(() => {});
+  }
+  
+  const now = new Date();
+  let allPrices = [];
+  
+  // Split range into 30-day chunks and fetch each from API (skip cache entirely)
+  const chunks = splitRangeIntoChunks(startDate, endDate, 30);
+  console.log(`[Prices] Fetching ${chunks.length} chunk(s) from API`);
+  
+  for (const chunk of chunks) {
+    console.log(`[Prices] Fetching fresh chunk: ${chunk.start} to ${chunk.end}`);
+    
+    // Call Amber API directly (skip counter since we'll track at endpoint level)
+    const result = await callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices`, {
+      startDate: chunk.start,
+      endDate: chunk.end,
+      resolution: resolution || 30
+    }, userConfig, userId, true); // skipCounter = true
+    
+    // Handle error responses
+    if (result && result.errno && result.errno !== 0) {
+      console.warn(`[Prices] API error for chunk ${chunk.start} to ${chunk.end}:`, result.error);
+      continue;
+    }
+    
+    // Extract prices from result
+    let prices = [];
+    if (Array.isArray(result)) {
+      prices = result;
+    } else if (result && Array.isArray(result.result)) {
+      prices = result.result;
+    } else if (result && result.data && Array.isArray(result.data)) {
+      prices = result.data;
+    }
+    
+    console.log(`[Prices] Chunk ${chunk.start} to ${chunk.end} returned ${prices.length} prices`);
+    allPrices = allPrices.concat(prices);
+  }
+  
+  // Filter to keep ONLY prices where startTime <= now (actual, not forecast)
+  // This is the Reports page - we want historical data only, no forecasts
+  console.log(`[Prices] Filtering ${allPrices.length} prices to actual only (timestamp <= now)`);
+  
+  const actualPrices = allPrices.filter(p => {
+    const priceTime = new Date(p.startTime);
+    return priceTime <= now;
+  });
+  
+  console.log(`[Prices] Filtered result: ${actualPrices.length} actual prices (removed ${allPrices.length - actualPrices.length} future prices)`);
+  
+  // Sort by startTime
+  actualPrices.sort((a, b) => 
+    new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+  );
+  
+  return {
+    errno: 0,
+    result: actualPrices,
+    _info: {
+      total: actualPrices.length,
+      source: 'fresh_api_no_cache',
+      filtered: `${allPrices.length - actualPrices.length} future prices excluded`
+    }
+  };
 }
 
 /**

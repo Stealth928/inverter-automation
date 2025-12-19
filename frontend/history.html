@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FoxESS History & Reports</title>
+    <title>FoxESS Reports</title>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -526,10 +526,10 @@
     <nav class="nav-main">
         <div class="nav-links">
             <a href="/" class="nav-link">🏠 Overview</a>
-            <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
             <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
+            <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
+            <a href="/history.html" class="nav-link">📊 Reports</a>
             <a href="/control.html" class="nav-link">🎮 Controls</a>
-            <a href="/history.html" class="nav-link">📊 History</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
         </div>
         <div class="nav-right">
@@ -565,7 +565,7 @@
 
     <div class="container page-shell">
         <div class="page-header">
-            <h1>📊 History & Reports</h1>
+            <h1>📊 Reports</h1>
             <p>View historical inverter data, generation reports, and energy statistics. Data is fetched on-demand to respect API limits.</p>
         </div>
 
@@ -1765,8 +1765,8 @@
                 status.textContent += ` [Requesting: ${startDate} to ${endDate}]`;
                 console.log('[Prices] Request details:', { siteId, startDate, endDate, resolution });
 
-                // Fetch historical prices
-                const pricesResp = await apiClient.getAmberHistoricalPrices(siteId, startDate, endDate, resolution);
+                // Fetch historical prices (actual only, no forecasts)
+                const pricesResp = await apiClient.getAmberHistoricalPrices(siteId, startDate, endDate, resolution, true);
                 
                 console.log('[Prices] Response from API:', pricesResp);
                 console.log('[Prices] First 3 price timestamps:', pricesResp.result?.slice(0, 3).map(p => ({ startTime: p.startTime, channel: p.channelType })));
@@ -1784,8 +1784,21 @@
 
                 // Process and display data
                 renderAmberHistoricalChart(prices);
-                renderPriceStatistics(prices);
+                
+                // Render statistics with error handling
+                try {
+                    renderPriceStatistics(prices);
+                } catch (statsErr) {
+                    console.warn('[Prices] Statistics rendering failed (non-critical):', statsErr);
+                    // Continue even if stats fail - chart is more important
+                }
 
+                // Clear any previous error and show success
+                const errorMessage = document.querySelector('#pricesContent .empty-state');
+                if (errorMessage) {
+                    errorMessage.remove();
+                }
+                
                 status.className = 'status success';
                 status.textContent = `✓ Loaded ${prices.length} price intervals`;
                 timestamp.textContent = `Updated: ${new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}`;

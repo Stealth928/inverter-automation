@@ -303,15 +303,23 @@ class APIClient {
     return this.get('/api/amber/prices', { siteId });
   }
 
-  async getAmberHistoricalPrices(siteId, startDate, endDate, resolution = 30) {
+  async getAmberHistoricalPrices(siteId, startDate, endDate, resolution = 30, actualOnly = false) {
     // startDate and endDate should be YYYY-MM-DD format
     // Backend handles per-user caching in Firestore
-    return this.get('/api/amber/prices', { 
+    // If actualOnly=true, bypasses cache and returns only materialized (past) prices
+    const params = { 
       siteId, 
       startDate, 
       endDate, 
-      resolution 
-    });
+      resolution
+    };
+    
+    // Only add actual_only if true (don't send 'false' to keep query clean)
+    if (actualOnly) {
+      params.actual_only = 'true';
+    }
+    
+    return this.get('/api/amber/prices', params);
   }
 
   // ==================== WEATHER ====================
