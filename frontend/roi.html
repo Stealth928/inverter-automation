@@ -39,6 +39,20 @@
             margin-top: 8px;
             font-size: 14px;
         }
+        /* Under construction banner */
+        .under-construction-banner {
+            background: linear-gradient(90deg, rgba(248,81,73,0.12), rgba(248,81,73,0.06));
+            border: 1px solid rgba(248,81,73,0.25);
+            color: #f85149;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .under-construction-banner small { color: rgba(248,81,73,0.85); font-weight:600 }
         
         /* Cards */
         .card {
@@ -560,6 +574,12 @@
         <div class="page-header">
             <h1>💲 Automation ROI</h1>
             <p>Track the financial impact of your automation rules. See how much money you've made or saved through smart battery and solar management.</p>
+        </div>
+
+        <!-- Under construction banner -->
+        <div class="under-construction-banner" role="status" aria-live="polite">
+            🚧 Under Construction: This page is being rebuilt. Features may be incomplete or inaccurate.
+            <small>Expected: improvements to ROI calculation and visualization. Check back soon.</small>
         </div>
 
         <!-- ROI Calculator Section -->
