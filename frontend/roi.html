@@ -899,7 +899,23 @@
                 }
                 
                 // Filter events within date range
-                const events = (auditData.result?.ruleEvents || []).filter(event => {
+                const allEvents = auditData.result?.ruleEvents || [];
+                console.log(`[ROI] Total audit events received: ${allEvents.length}`);
+                
+                if (allEvents.length > 0) {
+                    console.log(`[ROI] First event:`, allEvents[0]);
+                    console.log(`[ROI] Event startTime type: ${typeof allEvents[0].startTime}, value: ${allEvents[0].startTime}`);
+                }
+                
+                const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+                const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+                const userStartDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+                const userEndDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+                
+                console.log(`[ROI] Date range: ${startDate} to ${endDate}`);
+                console.log(`[ROI] userStartDate: ${userStartDate.toISOString()}, userEndDate: ${userEndDate.toISOString()}`);
+                
+                const events = allEvents.filter((event, idx) => {
                     // event.startTime is in epoch milliseconds
                     if (!event.startTime) {
                         console.warn('[ROI] Event missing startTime:', event);
@@ -907,22 +923,16 @@
                     }
                     
                     const eventStart = new Date(event.startTime);
-                    
-                    // Parse the input date strings (YYYY-MM-DD format from <input type="date">)
-                    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-                    const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
-                    
-                    // Create dates at midnight local time for comparison
-                    const userStartDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
-                    const userEndDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
-                    
-                    // Simply check if event is within the date range
                     const isInRange = eventStart >= userStartDate && eventStart <= userEndDate;
+                    
+                    if (idx < 3) {  // Log first 3 events for debugging
+                        console.log(`[ROI] Event ${idx}: ${event.ruleName} at ${eventStart.toISOString()} - inRange: ${isInRange}`);
+                    }
                     
                     return isInRange;
                 });
                 
-                console.log(`[ROI] Filtered events: ${events.length} out of ${(auditData.result?.ruleEvents || []).length} total`);
+                console.log(`[ROI] Filtered events: ${events.length} out of ${allEvents.length} total`);
                 
                 if (events.length === 0) {
                     console.warn(`[ROI] No events found in date range ${startDate} to ${endDate}`);
