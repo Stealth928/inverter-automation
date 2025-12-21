@@ -3894,16 +3894,29 @@
                 }
             } catch(e) { /* ignore diagnostics errors */ }
 
+            // Helper: format a price (val in cents). Values >= 100¢ shown as $X.YY, else as XX.XX¢
+            function formatPrice(val) {
+                const n = Number(val) || 0;
+                const neg = n < 0;
+                const abs = Math.abs(n);
+                if (abs >= 100) {
+                    const s = `$${(abs / 100).toFixed(2)}`;
+                    return neg ? `-${s}` : s;
+                }
+                const s = `${abs.toFixed(2)}¢`;
+                return neg ? `-${s}` : s;
+            }
+
             // Spike Alert Banner (if any forecasted spikes)
             if (hasSpikes) {
                 const nextSpike = spikeForecasts[0];
                 const spikeTime = new Date(nextSpike.startTime).toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false, timeZone: USER_TZ || 'Australia/Sydney'});
-                const spikePrice = nextSpike.perKwh.toFixed(0);
+                const spikePrice = formatPrice(nextSpike.perKwh);
                 html += `<div style="background:linear-gradient(135deg,rgba(248,81,73,0.15),rgba(248,81,73,0.05));border:1px solid rgba(248,81,73,0.4);border-radius:8px;padding:10px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
                     <span style="font-size:24px">⚠️</span>
                     <div>
                         <div style="font-weight:600;color:#f85149">Price Spike Forecast</div>
-                        <div style="font-size:12px;color:#e6edf3">${spikeForecasts.length} spike${spikeForecasts.length > 1 ? 's' : ''} expected — next at <strong>${spikeTime}</strong> (${spikePrice}¢)</div>
+                        <div style="font-size:12px;color:#e6edf3">${spikeForecasts.length} spike${spikeForecasts.length > 1 ? 's' : ''} expected — next at <strong>${spikeTime}</strong> (${spikePrice})</div>
                     </div>
                 </div>`;
             }
@@ -3916,9 +3929,15 @@
                     const spot = currentGen.spotPerKwh;
                     const cls = p > 30 ? 'price-high' : p > 20 ? 'price-mid' : 'price-low';
                     const spike = currentGen.spikeStatus && currentGen.spikeStatus !== 'none';
+                    let priceStr;
+                    if (p > 99) {
+                        priceStr = `$${(p/100).toFixed(2)}`;
+                    } else {
+                        priceStr = `${p.toFixed(1)}¢`;
+                    }
                     html += `<div style="min-width:100px">
                         <div style="font-size:11px;color:#8b949e">Buy Now ${spike ? '<span style="color:#f85149">⚠️</span>' : ''}</div>
-                        <div class="value ${cls}" style="font-size:28px;font-weight:700">${p.toFixed(1)}¢</div>
+                        <div class="value ${cls}" style="font-size:28px;font-weight:700">${priceStr}</div>
                     </div>`;
                 }
                 if (currentFeed) {
@@ -3936,9 +3955,15 @@
                         return 'price-neutral';
                     }
                     const getCls = feedClassFromVal(displayVal);
+                    let feedPriceStr;
+                    if (displayVal > 99) {
+                        feedPriceStr = `$${(displayVal/100).toFixed(2)}`;
+                    } else {
+                        feedPriceStr = `${displayVal}¢`;
+                    }
                     html += `<div style="min-width:100px">
                         <div style="font-size:11px;color:#8b949e">Feed-In Price</div>
-                        <div class="value ${getCls}" style="font-size:28px;font-weight:700">${displayVal}¢</div>
+                        <div class="value ${getCls}" style="font-size:28px;font-weight:700">${feedPriceStr}</div>
                     </div>`;
                 }
                 if (currentGen && currentGen.renewables !== undefined) {
@@ -3960,7 +3985,6 @@
                 // Buy price coloring (low=cheap, high=expensive)
                 const minBuyCls = minBuyPrice > 30 ? 'price-high' : minBuyPrice > 20 ? 'price-mid' : 'price-low';
                 const maxBuyCls = maxBuyPrice > 30 ? 'price-high' : maxBuyPrice > 20 ? 'price-mid' : 'price-low';
-                
                 // Feed-in coloring (high=you earn money, low=you pay)
                 function feedClassFromVal(v) {
                     if (v < -6) return 'price-high'; // red - paying money
@@ -3972,10 +3996,10 @@
                 }
                 const minFeedCls = feedClassFromVal(minFeedSpot);
                 const maxFeedCls = feedClassFromVal(maxFeedSpot);
-                
+                // Note: `formatPrice` helper is defined earlier to provide consistent formatting
                 html += `<div style="display:flex;gap:12px;margin-bottom:12px;padding:8px;background:rgba(33,38,45,0.6);border-radius:6px;font-size:11px">
-                    <div><span style="color:#8b949e">Forecast range:</span> <span class="${minBuyCls}" style="font-weight:600">${minBuyPrice.toFixed(0)}¢</span> — <span class="${maxBuyCls}" style="font-weight:600">${maxBuyPrice.toFixed(0)}¢</span></div>
-                    ${feedForecasts.length ? `<div><span style="color:#8b949e">Feed-in range:</span> <span class="${minFeedCls}" style="font-weight:600">${minFeedSpot}¢</span> — <span class="${maxFeedCls}" style="font-weight:600">${maxFeedSpot}¢</span></div>` : ''}
+                    <div><span style="color:#8b949e">Forecast range:</span> <span class="${minBuyCls}" style="font-weight:600">${formatPrice(minBuyPrice)}</span> — <span class="${maxBuyCls}" style="font-weight:600">${formatPrice(maxBuyPrice)}</span></div>
+                    ${feedForecasts.length ? `<div><span style="color:#8b949e">Feed-in range:</span> <span class="${minFeedCls}" style="font-weight:600">${formatPrice(minFeedSpot)}</span> — <span class="${maxFeedCls}" style="font-weight:600">${formatPrice(maxFeedSpot)}</span></div>` : ''}
                 </div>`;
             }
 
@@ -3992,9 +4016,15 @@
                     const ap = it.advancedPrice;
                     const bandInfo = ap ? `Low: ${ap.low.toFixed(0)}¢ | Pred: ${ap.predicted.toFixed(0)}¢ | High: ${ap.high.toFixed(0)}¢` : '';
                     const tooltip = spike ? `SPIKE: ${it.spikeStatus}` : bandInfo;
+                    let priceStr;
+                    if (p > 99) {
+                        priceStr = `$${(p/100).toFixed(2)}`;
+                    } else {
+                        priceStr = `${p.toFixed(0)}¢`;
+                    }
                     html += `<div class="stat-item" style="min-width:52px;padding:5px;${spike ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}" title="${tooltip}">
                         <div style="display:flex;align-items:center;justify-content:center;gap:2px">
-                            <span class="value ${cls}" style="font-size:12px;font-weight:600">${p.toFixed(0)}¢</span>
+                            <span class="value ${cls}" style="font-size:12px;font-weight:600">${priceStr}</span>
                             ${spike ? '<span style="font-size:10px">⚠️</span>' : ''}
                         </div>
                         <div class="label" style="font-size:9px;color:#8b949e">${time}</div>
@@ -4025,9 +4055,15 @@
                     const getCls = feedClassFromVal(displayVal);
                     const isVeryNegative = displayVal < -2;
                     const feedHighlightCls = displayVal > 50 ? 'feedin-highlight' : '';
+                    let feedPriceStr;
+                    if (displayVal > 99) {
+                        feedPriceStr = `$${(displayVal/100).toFixed(2)}`;
+                    } else {
+                        feedPriceStr = `${displayVal}¢`;
+                    }
                     html += `<div class="stat-item ${feedHighlightCls}" style="min-width:52px;padding:6px;${isVeryNegative ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}">
                                 <div style="display:flex;align-items:center;justify-content:center;gap:2px">
-                                    <span class="value ${getCls}" style="font-size:13px;font-weight:700">${displayVal}¢</span>
+                                    <span class="value ${getCls}" style="font-size:13px;font-weight:700">${feedPriceStr}</span>
                         </div>
                         <div class="label" style="font-size:9px">${time}</div>
                     </div>`;
