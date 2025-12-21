@@ -1650,7 +1650,13 @@
             status.className = 'status loading';
             status.textContent = 'Fetching automation rule history...';
             
-            try {                const resp = await authenticatedFetch('/api/automation/audit?days=7');                const data = await resp.json();                
+            try {                const resp = await authenticatedFetch('/api/automation/audit?days=7');
+                
+                if (!resp.ok) {
+                    throw new Error(`API error: ${resp.status} ${resp.statusText}`);
+                }
+                
+                const data = await resp.json();                
                 if (data.errno && data.errno !== 0) {
                     throw new Error(data.error || 'API error');
                 }

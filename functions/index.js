@@ -3924,23 +3924,35 @@ app.get('/api/automation/audit', async (req, res) => {
     // Support explicit date range: ?startDate=2025-12-19&endDate=2025-12-21
     let startMs = null;
     let endMs = null;
+    let period = null;
     
     if (req.query.startDate && req.query.endDate) {
-      // Parse dates as YYYY-MM-DD in local timezone
-      const [startYear, startMonth, startDay] = req.query.startDate.split('-').map(Number);
-      const [endYear, endMonth, endDay] = req.query.endDate.split('-').map(Number);
-      
-      const startDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
-      const endDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
-      
-      startMs = startDate.getTime();
-      endMs = endDate.getTime();
-      console.log(`[Audit] Fetching events for date range: ${req.query.startDate} to ${req.query.endDate} (${startMs} to ${endMs})`);
+      try {
+        // Parse dates as YYYY-MM-DD in local timezone
+        const [startYear, startMonth, startDay] = req.query.startDate.split('-').map(Number);
+        const [endYear, endMonth, endDay] = req.query.endDate.split('-').map(Number);
+        
+        if (!startYear || !startMonth || !startDay || !endYear || !endMonth || !endDay) {
+          throw new Error('Invalid date format');
+        }
+        
+        const startDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+        const endDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+        
+        startMs = startDate.getTime();
+        endMs = endDate.getTime();
+        period = `${req.query.startDate} to ${req.query.endDate}`;
+        console.log(`[Audit] Fetching events for date range: ${period} (${startMs} to ${endMs})`);
+      } catch (parseError) {
+        console.error(`[Audit] Date parsing error: ${parseError.message}`);
+        return res.status(400).json({ errno: 400, error: `Invalid date format: ${parseError.message}` });
+      }
     } else {
       // Fallback: use days parameter (relative to now)
       endMs = Date.now();
       startMs = endMs - (days * 24 * 60 * 60 * 1000);
-      console.log(`[Audit] Fetching events for last ${days} days (${startMs} to ${endMs})`);
+      period = `${days} days`;
+      console.log(`[Audit] Fetching events for last ${period} (${startMs} to ${endMs})`);
     }
     
     const auditLogs = await getAutomationAuditLogs(req.user.uid, limit);
@@ -3949,9 +3961,6 @@ app.get('/api/automation/audit', async (req, res) => {
     const filteredLogs = auditLogs.filter(log => log.epochMs >= startMs && log.epochMs <= endMs);
     
     console.log(`[Audit] Filtered ${filteredLogs.length} events from ${auditLogs.length} total`);
-    
-    // Process logs to identify rule on/off pairs and calculate durations
-    const ruleEvents = [];
     const activeRules = new Map();  // Track currently active rules
     
     // Process logs in chronological order (oldest first)
@@ -4027,9 +4036,9 @@ app.get('/api/automation/audit', async (req, res) => {
         ruleEvents,             // Processed rule on/off events
         count: filteredLogs.length,
         eventsCount: ruleEvents.length,
-        period: `${days} days`,
-        cutoffTime: cutoffMs,
-        note: 'Logs older than 48 hours are automatically deleted'
+        period: period,
+        cutoffTime: startMs,
+        note: 'Logs older than 7 days are automatically deleted'
       }
     });
   } catch (error) {
