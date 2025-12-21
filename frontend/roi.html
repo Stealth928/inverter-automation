@@ -767,6 +767,32 @@
         }
 
         /**
+         * Validate that date range does not exceed 7 days
+         */
+        function validateDateRange() {
+            const startDateInput = document.getElementById('roiStartDate');
+            const endDateInput = document.getElementById('roiEndDate');
+            const status = document.getElementById('roiStatus');
+            
+            if (!startDateInput.value || !endDateInput.value) return;
+            
+            const startDate = new Date(startDateInput.value);
+            const endDate = new Date(endDateInput.value);
+            const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+            
+            if (daysDiff > 7) {
+                status.className = 'status warning';
+                status.textContent = '⚠ Maximum 7 days allowed. Start date will be auto-adjusted to match this range.';
+                // Auto-adjust start date to be 7 days before end date
+                const adjustedStart = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+                startDateInput.valueAsDate = adjustedStart;
+            } else {
+                status.className = '';
+                status.textContent = '';
+            }
+        }
+
+        /**
          * Initialize date pickers with default values
          */
         function initDatePickers() {
@@ -775,6 +801,10 @@
             
             document.getElementById('roiEndDate').valueAsDate = today;
             document.getElementById('roiStartDate').valueAsDate = sevenDaysAgo;
+            
+            // Add validation listeners for date changes
+            document.getElementById('roiStartDate').addEventListener('change', validateDateRange);
+            document.getElementById('roiEndDate').addEventListener('change', validateDateRange);
         }
 
         /**
