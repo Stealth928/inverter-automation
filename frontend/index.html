@@ -2958,7 +2958,12 @@
             card.innerHTML = '<div style="color:#8b949e">Loading weather...</div>';
 
             try {
-                const resp = await authenticatedFetch(`/api/weather?place=${encodeURIComponent(place)}&days=${days}`);
+                let url = `/api/weather?place=${encodeURIComponent(place)}&days=${days}`;
+                // Add forceRefresh if force flag is set
+                if (force) {
+                    url += '&forceRefresh=true';
+                }
+                const resp = await authenticatedFetch(url);
                 const data = await resp.json();
                 
                 // Handle wrapped {errno, result} response format
@@ -3667,7 +3672,12 @@
             
             try {
                 const next = Number(document.getElementById('amberNext')?.value) || 12;
-                const resp = await authenticatedFetch(`/api/amber/prices/current?siteId=${siteId}&next=${next}`);
+                let url = `/api/amber/prices/current?siteId=${siteId}&next=${next}`;
+                // Add forceRefresh if force flag is set
+                if (force) {
+                    url += '&forceRefresh=true';
+                }
+                const resp = await authenticatedFetch(url);
                 const data = await resp.json();
                 
                 // Handle both wrapped {errno, result} and unwrapped array formats
@@ -4773,26 +4783,30 @@
                 weatherMs: REFRESH.weatherMs 
             });
             
-            // Amber prices: every 30s
+            // Amber prices: every 60s (with cache bypass)
             if (!amberRefreshTimer) {
                 amberRefreshTimer = setInterval(() => {
                     const siteId = document.getElementById('amberSiteId')?.value;
-                    if (siteId) getAmberCurrent();
+                    if (siteId) {
+                        console.log('[AutoRefresh] Amber prices refresh interval triggered - bypassing cache');
+                        getAmberCurrent(true);
+                    }
                 }, REFRESH.amberPricesMs);
             }
 
-            // Inverter real-time data: every 5 minutes
+            // Inverter real-time data: every 5 minutes (with cache bypass)
             if (!inverterRefreshTimer) {
                 inverterRefreshTimer = setInterval(() => {
-                    console.log('[AutoRefresh] Inverter refresh interval triggered');
-                    callAPI('/api/inverter/real-time', 'Real-time Data');
+                    console.log('[AutoRefresh] Inverter refresh interval triggered - bypassing cache');
+                    callAPI('/api/inverter/real-time', 'Real-time Data', false, true);
                 }, REFRESH.inverterMs);
             }
 
-            // Weather: every 30 minutes
+            // Weather: every 30 minutes (with cache bypass)
             if (!weatherRefreshTimer) {
                 weatherRefreshTimer = setInterval(() => {
-                    getWeather();
+                    console.log('[AutoRefresh] Weather refresh interval triggered - bypassing cache');
+                    getWeather(true);
                 }, REFRESH.weatherMs);
             }
 

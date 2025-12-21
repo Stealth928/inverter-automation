@@ -1,14 +1,14 @@
-# 180-Minute Idle Logout Implementation
+# 30-Minute Idle Logout Implementation
 
 ## Overview
-Added automatic session invalidation after 180 minutes (3 hours) of user inactivity, improving security by preventing unauthorized access on shared or unattended devices.
+Added automatic session invalidation after 30 minutes of user inactivity, improving security by preventing unauthorized access on shared or unattended devices.
 
 ## Changes Made
 
 ### 1. **Constructor Updates** (`firebase-auth.js` lines 14-26)
 ```javascript
-// Idle session timeout (180 minutes = 3 hours)
-this.IDLE_TIMEOUT_MS = 180 * 60 * 1000;
+// Idle session timeout (30 minutes for better security)
+this.IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 this.lastActivityTime = Date.now();
 this.idleTimeoutCheckInterval = null;
 ```
@@ -62,7 +62,7 @@ setupIdleTracking() {
 **What it does:**
 - **Listens for activity:** Tracks mousedown, keydown, scroll, touchstart, click events
 - **Updates timestamp:** Any activity resets the idle counter
-- **Periodic check:** Every 60 seconds, checks if idle time exceeds 180 minutes
+- **Periodic check:** Every 60 seconds, checks if idle time exceeds 30 minutes
 - **Auto-logout:** Calls signOut() and redirects to login if idle threshold reached
 - **Passive listeners:** Uses passive event handlers (won't block scrolling)
 
@@ -91,10 +91,10 @@ try {
 
 | Scenario | Before | After |
 |----------|--------|-------|
-| User leaves device unattended for 4 hours | Session remains active | User automatically logged out after 3 hours |
+| User leaves device unattended for 1 hour | Session remains active | User automatically logged out after 30 minutes |
 | Browser crash/recovery | Sensitive data persists | Data cleared on logout |
 | Device shared with others | Previous user's data accessible | Data removed on each logout |
-| Attacker gains device access | Full session available | 3-hour window to exploit before auto-logout |
+| Attacker gains device access | Full session available | 30-minute window to exploit before auto-logout |
 
 ---
 
@@ -117,17 +117,17 @@ The system tracks these user interactions as "active":
 The idle clock resets to 0 whenever user performs ANY monitored activity:
 ```
 T=0min    User active
-T=30min   User scrolls → Clock resets to 0
-T=90min   User types → Clock resets to 0
-T=180min  User idle → AUTO-LOGOUT ❌
+T=10min   User scrolls → Clock resets to 0
+T=25min   User types → Clock resets to 0
+T=30min   User idle → AUTO-LOGOUT ❌
 ```
 
 ### No Activity Scenario
 ```
 T=0min    User leaves device
-T=60min   Check runs: 60 < 180 → Continue
-T=120min  Check runs: 120 < 180 → Continue
-T=180min  Check runs: 180 >= 180 → LOGOUT ✅
+T=10min   Check runs: 10 < 30 → Continue
+T=20min   Check runs: 20 < 30 → Continue
+T=30min   Check runs: 30 >= 30 → LOGOUT ✅
 ```
 
 ---
@@ -156,7 +156,7 @@ firebaseAuth.IDLE_TIMEOUT_MS = 5 * 1000; // 5 seconds for testing
 ### Browser DevTools
 ```javascript
 // Check idle tracking in console:
-firebaseAuth.IDLE_TIMEOUT_MS // => 10800000 (180 * 60 * 1000)
+firebaseAuth.IDLE_TIMEOUT_MS // => 1800000 (30 * 60 * 1000)
 firebaseAuth.lastActivityTime // => Current timestamp
 ```
 
@@ -208,10 +208,10 @@ const idleTimeout = user.email.includes('admin') ? 30 * 60 * 1000 : 180 * 60 * 1
 
 ```javascript
 // Initialization
-'[FirebaseAuth] Idle tracking enabled (180 min timeout)'
+'[FirebaseAuth] Idle tracking enabled (30 min timeout)'
 
 // On logout
-'[FirebaseAuth] Session idle for 180 minutes - logging out'
+'[FirebaseAuth] Session idle for 30 minutes - logging out'
 '[FirebaseAuth] Cleared sensitive data from localStorage'
 ```
 

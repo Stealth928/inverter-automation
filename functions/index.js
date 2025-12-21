@@ -677,11 +677,16 @@ app.get('/api/amber/prices/current', async (req, res) => {
 
     const siteId = req.query.siteId;
     const next = Number(req.query.next || '1') || 1;
+    const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
 
     if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
 
-    // Try cache first for current prices
-    let result = await getCachedAmberPricesCurrent(siteId, userId, userConfig);
+    // Try cache first for current prices (unless force refresh requested)
+    let result = null;
+    if (!forceRefresh) {
+      result = await getCachedAmberPricesCurrent(siteId, userId, userConfig);
+    }
+    
     if (!result) {
       const inflightKey = `${userId}:${siteId}`;
       
@@ -1759,35 +1764,40 @@ async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
  * Cache weather data in Firestore (per-user)
  * TTL: 30 minutes
  */
-async function getCachedWeatherData(userId, place = 'Sydney', days = 16) {
+async function getCachedWeatherData(userId, place = 'Sydney', days = 16, forceRefresh = false) {
   const config = getConfig();
   const ttlMs = config.automation.cacheTtl.weather; // 30 minutes
   
   try {
-    const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('weather').get();
-    
-    if (cacheDoc.exists) {
-      const { data, timestamp, cachedDays, cachedPlace } = cacheDoc.data();
-      const ageMs = Date.now() - timestamp;
-      const cachedDayCount = data?.result?.daily?.time?.length || 0;
+    // Skip cache check if forceRefresh is true
+    if (!forceRefresh) {
+      const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('weather').get();
       
-      // Compare places case-insensitively and handle undefined/null
-      const placesMatch = (cachedPlace || '').toLowerCase().trim() === (place || '').toLowerCase().trim();
-      
-      // Validate cache is still fresh AND has enough days AND is for the same place
-      // Use cache if it has >= requested days (e.g., cached 7 days can serve a request for 6 days)
-      // IMPORTANT: Force cache MISS if location changed - this allows timezone to update
-      if (!placesMatch) {
-        console.log(`[Cache] Weather MISS - location changed (cached="${cachedPlace}", requested="${place}") - forcing refresh for timezone update`);
-        // Fall through to fetch fresh data
-      } else if (ageMs < ttlMs && cachedDays >= days && cachedDayCount >= days) {
-        console.log(`[Cache] Weather HIT - age: ${Math.round(ageMs/1000)}s, cached ${cachedDays} days, requested ${days}, place: ${cachedPlace}`);
-        return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
+      if (cacheDoc.exists) {
+        const { data, timestamp, cachedDays, cachedPlace } = cacheDoc.data();
+        const ageMs = Date.now() - timestamp;
+        const cachedDayCount = data?.result?.daily?.time?.length || 0;
+        
+        // Compare places case-insensitively and handle undefined/null
+        const placesMatch = (cachedPlace || '').toLowerCase().trim() === (place || '').toLowerCase().trim();
+        
+        // Validate cache is still fresh AND has enough days AND is for the same place
+        // Use cache if it has >= requested days (e.g., cached 7 days can serve a request for 6 days)
+        // IMPORTANT: Force cache MISS if location changed - this allows timezone to update
+        if (!placesMatch) {
+          console.log(`[Cache] Weather MISS - location changed (cached="${cachedPlace}", requested="${place}") - forcing refresh for timezone update`);
+          // Fall through to fetch fresh data
+        } else if (ageMs < ttlMs && cachedDays >= days && cachedDayCount >= days) {
+          console.log(`[Cache] Weather HIT - age: ${Math.round(ageMs/1000)}s, cached ${cachedDays} days, requested ${days}, place: ${cachedPlace}`);
+          return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
+        } else {
+          console.log(`[Cache] Weather MISS - TTL ok=${ageMs < ttlMs}, enough days=${cachedDays >= days} (cached=${cachedDays}, requested=${days}), data count=${cachedDayCount}`);
+        }
       } else {
-        console.log(`[Cache] Weather MISS - TTL ok=${ageMs < ttlMs}, enough days=${cachedDays >= days} (cached=${cachedDays}, requested=${days}), data count=${cachedDayCount}`);
+        console.log(`[Cache] No cached weather data - fetching fresh`);
       }
     } else {
-      console.log(`[Cache] No cached weather data - fetching fresh`);
+      console.log(`[Cache] Weather BYPASS - forceRefresh requested`);
     }
     
     // Fetch fresh data from Open-Meteo
@@ -3103,8 +3113,8 @@ const [evalRuleId] = ruleData || [null];
           // ⭐ Extract house load at trigger time (for accurate ROI calculation)
           // Use the SAME logic as index.html which successfully extracts house load (showing 1.68kW)
           
-          // Helper function - same as index.html findValue
-          function findValue(arr, keysOrPatterns) {
+          // Helper function - same as index.html findValue (using const to avoid inner function declaration lint error)
+          const findValue = (arr, keysOrPatterns) => {
             if (!Array.isArray(arr)) return null;
             for (const k of keysOrPatterns) {
               // Try exact match on variable
@@ -3122,6 +3132,12 @@ const [evalRuleId] = ruleData || [null];
               if (incl && incl.value !== undefined && incl.value !== null) return incl.value;
             }
             return null;
+          };
+          
+          // ⭐ CRITICAL: Validate inverterData exists and is valid before extracting house load
+          // If API call failed or cache is empty, inverterData.errno won't be 0
+          if (!inverterData || inverterData.errno !== 0) {
+            console.error(`[Automation ROI] Cannot extract house load - inverterData invalid: errno=${inverterData?.errno}, error=${inverterData?.error || inverterData?.msg || 'unknown'}`);
           }
           
           // Normalize response structure - same as index.html
@@ -3137,6 +3153,14 @@ const [evalRuleId] = ruleData || [null];
           } else if (inverterData?.result && typeof inverterData.result === 'object') {
             if (Array.isArray(inverterData.result.datas)) datas = inverterData.result.datas.slice();
             else if (Array.isArray(inverterData.result.data)) datas = inverterData.result.data.slice();
+          }
+          
+          // Log the structure we're working with for debugging
+          if (datas.length === 0) {
+            console.error(`[Automation ROI] No datapoints extracted! inverterData structure: errno=${inverterData?.errno}, hasResult=${!!inverterData?.result}, resultType=${Array.isArray(inverterData?.result) ? 'array' : typeof inverterData?.result}, resultLength=${Array.isArray(inverterData?.result) ? inverterData.result.length : 'N/A'}`);
+            if (inverterData?.result && Array.isArray(inverterData.result) && inverterData.result.length > 0) {
+              console.error(`[Automation ROI] First result item structure: ${JSON.stringify(Object.keys(inverterData.result[0]))}, hasDatas=${!!inverterData.result[0].datas}`);
+            }
           }
           
           // Extract house load using same keys and logic as index.html
@@ -3158,13 +3182,28 @@ const [evalRuleId] = ruleData || [null];
             if (isNaN(houseLoadW)) {
               console.warn(`[Automation ROI] House load found but NaN: ${houseLoadW}`);
               houseLoadW = null;
+            } else {
+              // CRITICAL FIX: FoxESS API returns loadsPower in KILOWATTS, not watts!
+              // Example: API returns 2.545 meaning 2.545kW (2545W actual house load)
+              // We need to convert to watts for consistency with variable name (houseLoadW)
+              // If value < 100, it's definitely in kW (house load rarely exceeds 100kW residential)
+              if (Math.abs(houseLoadW) < 100) {
+                const originalValue = houseLoadW;
+                houseLoadW = houseLoadW * 1000; // Convert kW to W
+                console.log(`[Automation ROI] Converted house load from kW to W: ${originalValue}kW → ${houseLoadW}W`);
+              }
             }
           }
           
           if (houseLoadW !== null) {
-            console.log(`[Automation ROI] ✓ Successfully extracted house load: ${houseLoadW}W`);
+            console.log(`[Automation ROI] ✓ Successfully extracted house load: ${houseLoadW}W from ${datas.length} datapoints`);
           } else {
-            console.warn(`[Automation ROI] ⚠️ Could not extract house load from ${datas.length} datapoints - tried keys: ${loadKeys.join(', ')}`);
+            console.error(`[Automation ROI] ❌ FAILED to extract house load from ${datas.length} datapoints - tried keys: ${loadKeys.join(', ')}`);
+            // Log what variables ARE present to help diagnose
+            if (datas.length > 0) {
+              const presentVars = datas.map(d => d.variable || d.key).filter(v => v).join(', ');
+              console.error(`[Automation ROI] Variables present in data: [${presentVars}]`);
+            }
           }
           
           const fdPwr = rule.action?.fdPwr || 0;
@@ -4418,8 +4457,9 @@ app.get('/api/weather', async (req, res) => {
     await tryAttachUser(req);
     const place = req.query.place || 'Sydney';
     const days = parseInt(req.query.days || '3', 10);
-    console.log(`[Weather API] Request for place="${place}", days=${days}`);
-    const result = await getCachedWeatherData(req.user?.uid || 'anonymous', place, days);
+    const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
+    console.log(`[Weather API] Request for place="${place}", days=${days}, forceRefresh=${forceRefresh}`);
+    const result = await getCachedWeatherData(req.user?.uid || 'anonymous', place, days, forceRefresh);
     console.log(`[Weather API] Returning: errno=${result.errno}, daily days=${result.result?.daily?.time?.length || 0}, cache hit=${result.__cacheHit || false}`);
     res.json(result);
   } catch (error) {

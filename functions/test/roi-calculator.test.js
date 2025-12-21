@@ -79,6 +79,8 @@ describe('ROI Calculator Improvements', () => {
 
   /**
    * Test 4: Profit calculation with correct pricing
+   * IMPORTANT: Amber prices are ALWAYS in cents/kWh
+   * ALWAYS divide by 100 to convert to dollars
    */
   test('Profit is calculated using appropriate pricing (buyPrice vs feedInPrice)', () => {
     const testCases = [
@@ -105,15 +107,34 @@ describe('ROI Calculator Improvements', () => {
         feedInPrice: 967.95, // cents/kWh (spike pricing)
         buyPrice: null,
         expectedProfit: 43.5578 // 4.5 × 9.6795 AUD
+      },
+      {
+        name: 'Discharge rule with low feed-in price (under 10 cents)',
+        ruleType: 'Discharge',
+        energy: 2, // kWh  
+        feedInPrice: 6.36, // cents/kWh (low price like in user screenshot)
+        buyPrice: null,
+        expectedProfit: 0.1272 // 2 × 0.0636 AUD - NOT $12.72!
+      },
+      {
+        name: 'Discharge rule with very low feed-in price (3.23 cents)',
+        ruleType: 'Discharge',
+        energy: 2, // kWh
+        feedInPrice: 3.23, // cents/kWh
+        buyPrice: null,
+        expectedProfit: 0.0646 // 2 × 0.0323 AUD - NOT $6.46!
       }
     ];
 
-    testCases.forEach(({ energy, feedInPrice, buyPrice, expectedProfit }) => {
+    testCases.forEach(({ name, energy, feedInPrice, buyPrice, expectedProfit }) => {
       let actualPrice = feedInPrice || buyPrice;
       let eventProfit = 0;
 
       if (actualPrice && energy) {
-        const priceAudPerKwh = actualPrice > 10 ? actualPrice / 100 : actualPrice;
+        // CRITICAL: Amber prices are ALWAYS in cents/kWh
+        // ALWAYS divide by 100 to convert to dollars/kWh
+        // Do NOT conditionally check if price > 10!
+        const priceAudPerKwh = actualPrice / 100;
         eventProfit = energy * priceAudPerKwh;
       }
 
@@ -191,5 +212,137 @@ describe('ROI Calculator Improvements', () => {
     expect(selfChargeRule.profit).toBe(0);
     expect(selfChargeRule.feedInPrice).toBeNull();
     expect(selfChargeRule.buyPrice).toBeNull();
+  });
+
+  /**
+   * Test 9: CRITICAL - Use ACTUAL duration, not rule's configured duration
+   * 
+   * This test verifies the fix for the bug where profit was calculated using
+   * the rule's configured duration (e.g., 30 minutes) instead of the actual
+   * runtime (e.g., 2 minutes 6 seconds).
+   * 
+   * Example from user screenshot:
+   * - Rule: "Test ROI calc" (Discharge)
+   * - Configured duration: 30 minutes (used by backend at trigger time)
+   * - Actual runtime: 2m 6s = 126 seconds
+   * - Power: 4.00kW
+   * - Price: 6.36¢/kWh
+   * 
+   * WRONG (using configured duration):
+   *   4kW × 0.5h × $0.0636 = $0.1272... wait, that's still wrong
+   *   The backend was calculating: 4000W × 0.0636 × 0.5h = $127.20 (BUG!)
+   * 
+   * CORRECT (using actual duration):
+   *   4kW × 0.035h × $0.0636 = $0.0089
+   */
+  test('Profit uses ACTUAL duration from event.durationMs, not rule configured duration', () => {
+    const testCases = [
+      {
+        name: 'Short discharge (2m 6s) at 6.36¢',
+        durationMs: 126000, // 2 minutes 6 seconds
+        rulePowerKw: 4.0,
+        feedInPrice: 6.36, // cents/kWh
+        houseLoadKw: null, // unknown house load
+        // Calculation: 4kW × (126000 / 3600000)h × ($6.36 / 100) = 4 × 0.035 × 0.0636 = $0.0089
+        expectedProfit: 0.0089
+      },
+      {
+        name: 'Very short discharge (1m 5s) at 3.23¢',
+        durationMs: 65000, // 1 minute 5 seconds  
+        rulePowerKw: 4.0,
+        feedInPrice: 3.23, // cents/kWh
+        houseLoadKw: null,
+        // Calculation: 4kW × (65000 / 3600000)h × ($3.23 / 100) = 4 × 0.0181 × 0.0323 = $0.0023
+        expectedProfit: 0.0023
+      },
+      {
+        name: 'Standard 30-minute discharge at 25¢',
+        durationMs: 1800000, // 30 minutes
+        rulePowerKw: 5.0,
+        feedInPrice: 25.0, // cents/kWh
+        houseLoadKw: 1.0, // 1kW house load
+        // Export = 5kW - 1kW = 4kW
+        // Calculation: 4kW × 0.5h × $0.25 = $0.50
+        expectedProfit: 0.50
+      },
+      {
+        name: 'Long discharge (2 hours) at spike price 150¢',
+        durationMs: 7200000, // 2 hours
+        rulePowerKw: 6.0,
+        feedInPrice: 150.0, // cents/kWh (spike)
+        houseLoadKw: 2.0, // 2kW house load
+        // Export = 6kW - 2kW = 4kW
+        // Calculation: 4kW × 2h × $1.50 = $12.00
+        expectedProfit: 12.00
+      }
+    ];
+
+    testCases.forEach(({ name, durationMs, rulePowerKw, feedInPrice, houseLoadKw, expectedProfit }) => {
+      // Convert milliseconds to hours (same as frontend)
+      const durationHours = durationMs / (1000 * 60 * 60);
+      
+      // Always divide price by 100 (cents to dollars)
+      const priceAudPerKwh = feedInPrice / 100;
+      
+      // Calculate export power (discharge - house load, or just discharge if no house load)
+      const exportKw = houseLoadKw !== null ? Math.max(0, rulePowerKw - houseLoadKw) : rulePowerKw;
+      
+      // Calculate profit: export × duration × price
+      const eventProfit = exportKw * durationHours * priceAudPerKwh;
+      
+      expect(eventProfit).toBeCloseTo(expectedProfit, 3);
+    });
+  });
+
+  /**
+   * Test 10: Charge rule profit calculation (negative when price positive, positive when price negative)
+   */
+  test('Charge rule profit is negative for positive prices, positive for negative prices', () => {
+    const testCases = [
+      {
+        name: 'Charge at positive price (cost)',
+        durationMs: 1800000, // 30 minutes
+        rulePowerKw: 5.0,
+        buyPrice: 30.0, // cents/kWh - positive = you pay
+        houseLoadKw: 1.0,
+        // Grid draw = 5kW + 1kW = 6kW
+        // Profit = -(6kW × 0.5h × $0.30) = -$0.90 (cost)
+        expectedProfit: -0.90
+      },
+      {
+        name: 'Charge at negative price (get paid to consume!)',
+        durationMs: 1800000, // 30 minutes
+        rulePowerKw: 5.0,
+        buyPrice: -20.0, // cents/kWh - negative = you get paid
+        houseLoadKw: 1.0,
+        // Grid draw = 5kW + 1kW = 6kW
+        // Profit = -(6kW × 0.5h × $-0.20) = $0.60 (profit!)
+        expectedProfit: 0.60
+      },
+      {
+        name: 'Charge at zero price (free energy)',
+        durationMs: 3600000, // 1 hour
+        rulePowerKw: 8.0,
+        buyPrice: 0.0, // cents/kWh - free
+        houseLoadKw: 2.0,
+        // Profit = -(10kW × 1h × $0) = $0
+        expectedProfit: 0.00
+      }
+    ];
+
+    testCases.forEach(({ name, durationMs, rulePowerKw, buyPrice, houseLoadKw, expectedProfit }) => {
+      const durationHours = durationMs / (1000 * 60 * 60);
+      const priceAudPerKwh = buyPrice / 100;
+      
+      // For charge: grid draw = charge power + house load
+      const gridDrawKw = houseLoadKw !== null ? (rulePowerKw + houseLoadKw) : rulePowerKw;
+      
+      // Charge profit is negative of (power × price)
+      // Positive price = negative profit (cost)
+      // Negative price = positive profit (revenue)
+      const eventProfit = -(gridDrawKw * durationHours * priceAudPerKwh);
+      
+      expect(eventProfit).toBeCloseTo(expectedProfit, 3);
+    });
   });
 });

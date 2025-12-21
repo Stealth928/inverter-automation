@@ -20,11 +20,11 @@
         .container {
             max-width: 1920px;
             margin: 0 auto;
-            padding: 20px 12px;
+            padding: 16px 8px;
         }
         
         .page-header {
-            margin-bottom: 24px;
+            margin-bottom: 16px;
         }
         .page-header h1 {
             font-size: 1.8rem;
@@ -59,44 +59,44 @@
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 12px;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
             overflow: hidden;
         }
         .card-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 16px 20px;
+            padding: 12px 16px;
             border-bottom: 1px solid var(--border);
             background: rgba(0,0,0,0.2);
         }
         .card-title {
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 600;
             color: var(--text);
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
         .card-body {
-            padding: 20px;
+            padding: 16px;
         }
         
         /* Controls row */
         .controls-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 12px;
+            gap: 10px;
             align-items: flex-end;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
         }
         .control-group {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 3px;
         }
         .control-group label {
-            font-size: 11px;
+            font-size: 10px;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -107,9 +107,9 @@
             background: rgba(0,0,0,0.3);
             border: 1px solid var(--border);
             color: var(--text);
-            padding: 8px 12px;
+            padding: 6px 10px;
             border-radius: 6px;
-            font-size: 13px;
+            font-size: 12px;
             outline: none;
             transition: border-color 0.2s;
         }
@@ -192,35 +192,35 @@
         /* ROI Calculator Styles */
         .roi-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 16px;
-            margin-bottom: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
         }
         
         .roi-card {
             background: rgba(0, 0, 0, 0.2);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 16px;
+            padding: 12px;
         }
         
         .roi-card-title {
-            font-size: 13px;
+            font-size: 11px;
             font-weight: 600;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
         
         .roi-value {
-            font-size: 28px;
+            font-size: 24px;
             font-weight: 700;
             color: var(--accent);
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
         
         .roi-value.positive { color: #7ee787; }
@@ -228,7 +228,7 @@
         .roi-value.neutral { color: #8b949e; }
         
         .roi-value-label {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-muted);
         }
         
@@ -237,12 +237,12 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 16px;
-            font-size: 13px;
+            font-size: 12px;
         }
         
         .roi-summary-table th, 
         .roi-summary-table td {
-            padding: 12px;
+            padding: 10px 8px;
             text-align: left;
             border-bottom: 1px solid var(--border);
         }
@@ -289,60 +289,58 @@
         .roi-summary-table {
             table-layout: auto;
             width: 100%;
-            min-width: 1600px; /* Ensure minimum width for all columns */
+            min-width: auto; /* Remove forced minimum width that causes scrolling */
         }
 
         .roi-summary-table td, .roi-summary-table th {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            padding: 10px 12px;
+            padding: 10px 8px;
         }
         
-        /* Set minimum widths for specific columns */
+        /* Set minimum widths for specific columns - optimized for space efficiency */
         .roi-summary-table th:nth-child(1), /* Rule */
         .roi-summary-table td:nth-child(1) {
-            min-width: 180px;
-            max-width: 240px;
+            min-width: 150px;
+            max-width: 200px;
         }
         
         .roi-summary-table th:nth-child(2), /* Rule Type */
         .roi-summary-table td:nth-child(2) {
-            min-width: 100px;
+            min-width: 80px;
         }
         
         .roi-summary-table th:nth-child(3), /* Set Power */
         .roi-summary-table td:nth-child(3),
         .roi-summary-table th:nth-child(4), /* House Load */
-        .roi-summary-table td:nth-child(4),
-        .roi-summary-table th:nth-child(5), /* Grid Export */
+        .roi-summary-table td:nth-child(4) {
+            min-width: 95px;
+        }
+        
+        .roi-summary-table th:nth-child(5), /* Triggered At */
         .roi-summary-table td:nth-child(5) {
-            min-width: 110px;
+            min-width: 140px;
         }
         
-        .roi-summary-table th:nth-child(6), /* Triggered At */
+        .roi-summary-table th:nth-child(6), /* Duration */
         .roi-summary-table td:nth-child(6) {
-            min-width: 150px;
+            min-width: 75px;
         }
         
-        .roi-summary-table th:nth-child(7), /* Duration */
+        .roi-summary-table th:nth-child(7), /* Price */
         .roi-summary-table td:nth-child(7) {
             min-width: 90px;
         }
         
-        .roi-summary-table th:nth-child(8), /* Price */
+        .roi-summary-table th:nth-child(8), /* Est. Profit */
         .roi-summary-table td:nth-child(8) {
-            min-width: 100px;
+            min-width: 85px;
         }
         
-        .roi-summary-table th:nth-child(9), /* Est. Profit */
+        .roi-summary-table th:nth-child(9), /* Status */
         .roi-summary-table td:nth-child(9) {
-            min-width: 100px;
-        }
-        
-        .roi-summary-table th:nth-child(10), /* Status */
-        .roi-summary-table td:nth-child(10) {
-            min-width: 90px;
+            min-width: 85px;
         }
         
         /* Automation History Timeline */
@@ -930,6 +928,8 @@
                 // Calculate rule duration in hours (assuming it's stored in milliseconds)
                 const durationHours = (event.durationMs || 0) / (1000 * 60 * 60);
                 
+                console.log(`[ROI DEBUG] Processing event: ${event.ruleName}, durationMs=${event.durationMs}, durationHours=${durationHours.toFixed(6)}`);
+                
                 // Determine rule type (charge vs discharge/feed-in) and appropriate pricing
                 let isChargeRule = false;
                 let isFeedinRule = false;
@@ -995,13 +995,17 @@
                     actualPrice = extractPriceFromRule(event.startAllRules);
                 }
                 
-                // ⭐ NEW: Get ROI snapshot data (house load, actual grid export, revenue)
+                // ⭐ Get ROI snapshot data (house load, prices, power) and ALWAYS recalculate profit
+                // using ACTUAL duration from event.durationMs, not the backend's estimated revenue
+                // (which was calculated using rule's configured duration, not actual runtime)
                 let houseLoadKw = null;
                 let gridExportKw = null;
                 let eventProfit = 0;
                 
+                console.log(`[ROI DEBUG] Event roiSnapshot:`, event.roiSnapshot);
+                
                 if (event.roiSnapshot) {
-                    // Use accurate data from automation trigger time
+                    // Extract house load from snapshot (captured at trigger time)
                     // Safely convert watts to kW, treating null/undefined as null (not 0)
                     houseLoadKw = (event.roiSnapshot.houseLoadW !== null && event.roiSnapshot.houseLoadW !== undefined) 
                         ? event.roiSnapshot.houseLoadW / 1000 
@@ -1009,11 +1013,8 @@
                     gridExportKw = (event.roiSnapshot.estimatedGridExportW !== null && event.roiSnapshot.estimatedGridExportW !== undefined) 
                         ? event.roiSnapshot.estimatedGridExportW / 1000 
                         : null;
-                    eventProfit = (event.roiSnapshot.estimatedRevenue !== null && event.roiSnapshot.estimatedRevenue !== undefined && event.roiSnapshot.estimatedRevenue !== 0) 
-                        ? event.roiSnapshot.estimatedRevenue 
-                        : 0;
                     
-                    // Extract prices from roiSnapshot if available
+                    // Extract prices from roiSnapshot if not already set
                     if (actualPrice === null || actualPrice === undefined) {
                         if (isChargeRule && event.roiSnapshot.buyPrice !== null && event.roiSnapshot.buyPrice !== undefined) {
                             actualPrice = event.roiSnapshot.buyPrice;
@@ -1022,16 +1023,19 @@
                         }
                     }
                     
+                    // Get power from action (in Watts, convert to kW)
                     if (event.action && event.action.fdPwr) {
                         rulePowerKw = event.action.fdPwr / 1000;
                     }
                     
-                    // Fallback: If roiSnapshot exists but revenue is 0 or missing, recalculate
-                    // This handles old events before backend ROI calculation was implemented
-                    if (eventProfit === 0 && (actualPrice !== null && actualPrice !== undefined) && rulePowerKw !== null) {
-                        // Price conversion: prices from Amber API are in cents/kWh
-                        // Use absolute value to detect magnitude, then preserve original sign
-                        const priceAudPerKwh = Math.abs(actualPrice) > 10 ? actualPrice / 100 : actualPrice;
+                    // ⭐ CRITICAL FIX: ALWAYS recalculate profit using ACTUAL duration (event.durationMs)
+                    // The backend's estimatedRevenue was calculated at trigger time using the RULE's
+                    // configured duration (e.g. 30 min), NOT the actual runtime (e.g. 2 min 6 sec).
+                    // This caused massively inflated profits (e.g. $127 instead of $0.01).
+                    if ((actualPrice !== null && actualPrice !== undefined) && rulePowerKw !== null) {
+                        // Price conversion: Amber API prices are ALWAYS in cents/kWh
+                        // Convert to dollars by dividing by 100
+                        const priceAudPerKwh = actualPrice / 100;
                         
                         if (isChargeRule) {
                             // CHARGE: revenue = -(power * price)
@@ -1040,19 +1044,21 @@
                             const gridDrawKw = houseLoadKw !== null ? (rulePowerKw + houseLoadKw) : rulePowerKw;
                             eventProfit = -(gridDrawKw * durationHours * priceAudPerKwh);
                             const profitOrCost = eventProfit >= 0 ? 'PROFIT' : 'COST';
-                            console.log(`[ROI] ⚡ Recalculated CHARGE for ${event.ruleName}: (${rulePowerKw.toFixed(2)}kW + ${houseLoadKw !== null ? houseLoadKw.toFixed(2) : '0'}kW) × ${durationHours.toFixed(4)}h × $${priceAudPerKwh.toFixed(4)}/kWh = $${eventProfit.toFixed(4)} (${profitOrCost})`);
+                            console.log(`[ROI] ⚡ CHARGE ${event.ruleName}: (${rulePowerKw.toFixed(2)}kW + ${houseLoadKw !== null ? houseLoadKw.toFixed(2) : '0'}kW house) × ${durationHours.toFixed(4)}h × $${priceAudPerKwh.toFixed(4)}/kWh = $${eventProfit.toFixed(4)} (${profitOrCost})`);
                         } else {
                             // DISCHARGE: Revenue = (discharge - house load) * price * duration
                             // - Positive price: positive result (revenue)
                             // - Negative price: negative result (cost - rare, pay to export)
-                            const exportKw = gridExportKw !== null ? gridExportKw : (houseLoadKw !== null ? Math.max(0, rulePowerKw - houseLoadKw) : rulePowerKw);
+                            const exportKw = houseLoadKw !== null ? Math.max(0, rulePowerKw - houseLoadKw) : rulePowerKw;
                             eventProfit = exportKw * durationHours * priceAudPerKwh;
                             const profitOrCost = eventProfit >= 0 ? 'REVENUE' : 'COST';
-                            console.log(`[ROI] 📤 Recalculated DISCHARGE for ${event.ruleName}: ${exportKw.toFixed(2)}kW × ${durationHours.toFixed(4)}h × $${priceAudPerKwh.toFixed(4)}/kWh = $${eventProfit.toFixed(4)} (${profitOrCost})`);
+                            console.log(`[ROI] 📤 DISCHARGE ${event.ruleName}: (${rulePowerKw.toFixed(2)}kW - ${houseLoadKw !== null ? houseLoadKw.toFixed(2) : '0'}kW house) = ${exportKw.toFixed(2)}kW export × ${durationHours.toFixed(4)}h × $${priceAudPerKwh.toFixed(4)}/kWh = $${eventProfit.toFixed(4)} (${profitOrCost})`);
                         }
+                    } else {
+                        console.log(`[ROI] Rule: ${event.ruleName}, Type: ${ruleType} - Missing ${!actualPrice ? 'price' : 'power'} data`);
                     }
                     
-                    console.log(`[ROI] Rule: ${event.ruleName}, Type: ${ruleType}, Price: ${actualPrice}¢/kWh, FdPwr: ${rulePowerKw !== null ? rulePowerKw.toFixed(2) : '—'}kW, HouseLoad: ${houseLoadKw !== null ? houseLoadKw.toFixed(2) : '—'}kW, GridExport: ${gridExportKw !== null ? gridExportKw.toFixed(2) : '—'}kW, Revenue: $${eventProfit.toFixed(4)}`);
+                    console.log(`[ROI] Summary: ${event.ruleName}, Type: ${ruleType}, Price: ${actualPrice !== null ? actualPrice.toFixed(2) : '—'}¢/kWh, Power: ${rulePowerKw !== null ? rulePowerKw.toFixed(2) : '—'}kW, HouseLoad: ${houseLoadKw !== null ? houseLoadKw.toFixed(2) : '—'}kW, ActualDuration: ${durationHours.toFixed(4)}h, Profit: $${eventProfit.toFixed(4)}`);
                 } else {
                     // Fallback to old method if roiSnapshot not available
                     if (event.action && event.action.fdPwr) {
@@ -1062,8 +1068,9 @@
                     }
                     
                     if ((actualPrice !== null && actualPrice !== undefined) && rulePowerKw !== null) {
-                        // Price conversion: use absolute value to detect magnitude, preserve sign
-                        const priceAudPerKwh = Math.abs(actualPrice) > 10 ? actualPrice / 100 : actualPrice;
+                        // Price conversion: Amber API prices are ALWAYS in cents/kWh
+                        // Convert to dollars by dividing by 100
+                        const priceAudPerKwh = actualPrice / 100;
                         
                         if (isChargeRule) {
                             // CHARGE: revenue = -(power * price) (no house load data)
@@ -1090,8 +1097,7 @@
                     isFeedinRule,
                     ruleType,
                     rulePowerKw,
-                    houseLoadKw,      // ⭐ NEW: house load from roiSnapshot
-                    gridExportKw      // ⭐ NEW: actual grid export from roiSnapshot
+                    houseLoadKw      // ⭐ NEW: house load from roiSnapshot
                 });
                 
                 // IMPORTANT: Don't blindly flip charge profit signs!
@@ -1162,7 +1168,6 @@
                             <th>Rule Type</th>
                             <th>Set Power (kW)</th>
                             <th>House Load (kW)</th>
-                            <th>Grid Export (kW)</th>
                             <th>Triggered At</th>
                             <th>Duration</th>
                             <th>Price (¢/kWh)</th>
@@ -1211,9 +1216,6 @@
                 const houseLoadDisplay = (priceInfo.houseLoadKw !== null && priceInfo.houseLoadKw !== undefined && !isNaN(priceInfo.houseLoadKw)) 
                     ? `${priceInfo.houseLoadKw.toFixed(2)}kW` 
                     : '—';
-                const gridExportDisplay = (priceInfo.gridExportKw !== null && priceInfo.gridExportKw !== undefined && !isNaN(priceInfo.gridExportKw)) 
-                    ? `${priceInfo.gridExportKw.toFixed(2)}kW` 
-                    : '—';
                     
                     // Show status based on event type and automation state
                     // Ongoing events show "Running" if automation is currently enabled
@@ -1228,7 +1230,6 @@
                             <td>${ruleTypeDisplay}</td>
                             <td>${powerDisplay}</td>
                             <td>${houseLoadDisplay}</td>
-                            <td>${gridExportDisplay}</td>
                             <td>${startDate.toLocaleString('en-AU', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                             <td>${duration}</td>
                             <td>${priceDisplay}</td>

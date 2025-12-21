@@ -21,8 +21,8 @@ class FirebaseAuth {
     this.onAuthStateChangedCallbacks = [];
     this.initialized = false;
     
-    // Idle session timeout (180 minutes = 3 hours)
-    this.IDLE_TIMEOUT_MS = 180 * 60 * 1000;
+    // Idle session timeout (30 minutes for better security)
+    this.IDLE_TIMEOUT_MS = 30 * 60 * 1000;
     this.lastActivityTime = Date.now();
     this.idleTimeoutCheckInterval = null;
   }
@@ -337,9 +337,9 @@ class FirebaseAuth {
       document.addEventListener(event, updateActivity, { passive: true });
     });
 
-    console.log('[FirebaseAuth] Idle tracking enabled (180 min timeout)');
+    console.log('[FirebaseAuth] Idle tracking enabled (30 min timeout)');
 
-    // Check for idle timeout every 3 minutes
+    // Check for idle timeout every 60 seconds
     this.idleTimeoutCheckInterval = setInterval(async () => {
       try {
         if (this.user) {
@@ -370,7 +370,7 @@ class FirebaseAuth {
       } catch (error) {
         console.error('[FirebaseAuth] Error in idle timeout check:', error);
       }
-    }, 3 * 60 * 1000); // Check every 3 minutes (180 seconds)
+    }, 60 * 1000); // Check every 60 seconds
   }
 
   /**
