@@ -3961,6 +3961,9 @@ app.get('/api/automation/audit', async (req, res) => {
     const filteredLogs = auditLogs.filter(log => log.epochMs >= startMs && log.epochMs <= endMs);
     
     console.log(`[Audit] Filtered ${filteredLogs.length} events from ${auditLogs.length} total`);
+    
+    // Process logs to identify rule on/off pairs and calculate durations
+    const ruleEvents = [];
     const activeRules = new Map();  // Track currently active rules
     
     // Process logs in chronological order (oldest first)
