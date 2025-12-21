@@ -3918,13 +3918,37 @@ app.get('/api/automation/history', async (req, res) => {
 // Get automation audit logs (cycle history with cache & performance metrics)
 app.get('/api/automation/audit', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit || '500', 10);  // Increased default for 7-day history
+    const limit = parseInt(req.query.limit || '1000', 10);  // Increased to ensure we get all events in range
     const days = parseInt(req.query.days || '7', 10);  // Support days parameter (default 7)
+    
+    // Support explicit date range: ?startDate=2025-12-19&endDate=2025-12-21
+    let startMs = null;
+    let endMs = null;
+    
+    if (req.query.startDate && req.query.endDate) {
+      // Parse dates as YYYY-MM-DD in local timezone
+      const [startYear, startMonth, startDay] = req.query.startDate.split('-').map(Number);
+      const [endYear, endMonth, endDay] = req.query.endDate.split('-').map(Number);
+      
+      const startDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+      const endDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+      
+      startMs = startDate.getTime();
+      endMs = endDate.getTime();
+      console.log(`[Audit] Fetching events for date range: ${req.query.startDate} to ${req.query.endDate} (${startMs} to ${endMs})`);
+    } else {
+      // Fallback: use days parameter (relative to now)
+      endMs = Date.now();
+      startMs = endMs - (days * 24 * 60 * 60 * 1000);
+      console.log(`[Audit] Fetching events for last ${days} days (${startMs} to ${endMs})`);
+    }
+    
     const auditLogs = await getAutomationAuditLogs(req.user.uid, limit);
     
-    // Filter by date range if days parameter is provided
-    const cutoffMs = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const filteredLogs = auditLogs.filter(log => log.epochMs >= cutoffMs);
+    // Filter by date range
+    const filteredLogs = auditLogs.filter(log => log.epochMs >= startMs && log.epochMs <= endMs);
+    
+    console.log(`[Audit] Filtered ${filteredLogs.length} events from ${auditLogs.length} total`);
     
     // Process logs to identify rule on/off pairs and calculate durations
     const ruleEvents = [];

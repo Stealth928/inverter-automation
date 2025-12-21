@@ -892,7 +892,8 @@
                 
                 console.log(`[ROI] Starting calculation for date range ${startDate} to ${endDate} (${daysToFetch} days to fetch, max 7)`);
                 
-                const auditResp = await authenticatedFetch(`/api/automation/audit?days=${Math.min(daysToFetch, 7)}`);
+                // Pass date range to backend so it can filter properly
+                const auditResp = await authenticatedFetch(`/api/automation/audit?days=${Math.min(daysToFetch, 7)}&startDate=${startDate}&endDate=${endDate}`);
                 const auditData = await auditResp.json();
                 
                 if (auditData.errno && auditData.errno !== 0) {
@@ -905,40 +906,19 @@
                 
                 if (allEvents.length > 0) {
                     console.log(`[ROI] First event:`, allEvents[0]);
-                    console.log(`[ROI] Event startTime type: ${typeof allEvents[0].startTime}, value: ${allEvents[0].startTime}`);
+                    console.log(`[ROI] Last event:`, allEvents[allEvents.length - 1]);
                 }
                 
-                const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-                const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
-                
-                // CRITICAL: When user picks a date from <input type="date">, it's in local timezone
-                // We need to create date boundaries that encompass the entire calendar day in local time
-                const userStartDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
-                const userEndDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
-                
-                console.log(`[ROI] User selected: ${startDate} to ${endDate}`);
-                console.log(`[ROI] Local time boundaries: ${userStartDate.toLocaleString()} to ${userEndDate.toLocaleString()}`);
-                console.log(`[ROI] Epoch ms boundaries: ${userStartDate.getTime()} to ${userEndDate.getTime()}`);
-                
-                const events = allEvents.filter((event, idx) => {
-                    // event.startTime is in epoch milliseconds (timezone-agnostic)
+                // Backend now filters by date range, but we do a final check for safety
+                const events = allEvents.filter(event => {
                     if (!event.startTime && event.startTime !== 0) {
                         console.warn('[ROI] Event missing startTime:', event);
                         return false;
                     }
-                    
-                    // Convert to Date for human-readable logging
-                    const eventStart = new Date(event.startTime);
-                    const isInRange = event.startTime >= userStartDate.getTime() && event.startTime <= userEndDate.getTime();
-                    
-                    if (idx < 5) {  // Log first 5 events for debugging
-                        console.log(`[ROI] Event ${idx}: "${event.ruleName}" at ${eventStart.toLocaleString()} (epoch: ${event.startTime}) - inRange: ${isInRange}`);
-                    }
-                    
-                    return isInRange;
+                    return true;
                 });
                 
-                console.log(`[ROI] Filtered: ${events.length} events out of ${allEvents.length} match the date range`);
+                console.log(`[ROI] Final event count: ${events.length}`);
                 
                 if (events.length === 0) {
                     console.warn(`[ROI] No events found in date range ${startDate} to ${endDate}`);
