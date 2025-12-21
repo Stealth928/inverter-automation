@@ -235,8 +235,9 @@ async function addAutomationAuditEntry(userId, cycleData) {
       // Errors
       error: cycleData.error || null,
       
-      // TTL for 48-hour auto-cleanup (Firestore TTL policy must be enabled)
-      ttl: Math.floor((Date.now() + 48 * 60 * 60 * 1000) / 1000)
+      // TTL for 7-day auto-cleanup (Firestore TTL policy must be enabled)
+      // Extended from 48 hours to allow ROI analysis over a week of data
+      ttl: Math.floor((Date.now() + 7 * 24 * 60 * 60 * 1000) / 1000)
     };
     
     await db.collection('users').doc(userId).collection('automationAudit').doc(docId).set(auditEntry);
@@ -246,7 +247,7 @@ async function addAutomationAuditEntry(userId, cycleData) {
 }
 
 /**
- * Get recent automation audit logs (last 48 hours).
+ * Get recent automation audit logs (last 7 days).
  * Returns entries sorted by timestamp descending.
  */
 async function getAutomationAuditLogs(userId, limitEntries = 100) {
