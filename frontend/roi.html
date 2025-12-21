@@ -909,30 +909,35 @@
                 
                 const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
                 const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+                
+                // CRITICAL: When user picks a date from <input type="date">, it's in local timezone
+                // We need to create date boundaries that encompass the entire calendar day in local time
                 const userStartDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
                 const userEndDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
                 
-                console.log(`[ROI] Date range: ${startDate} to ${endDate}`);
-                console.log(`[ROI] userStartDate: ${userStartDate.toISOString()}, userEndDate: ${userEndDate.toISOString()}`);
+                console.log(`[ROI] User selected: ${startDate} to ${endDate}`);
+                console.log(`[ROI] Local time boundaries: ${userStartDate.toLocaleString()} to ${userEndDate.toLocaleString()}`);
+                console.log(`[ROI] Epoch ms boundaries: ${userStartDate.getTime()} to ${userEndDate.getTime()}`);
                 
                 const events = allEvents.filter((event, idx) => {
-                    // event.startTime is in epoch milliseconds
-                    if (!event.startTime) {
+                    // event.startTime is in epoch milliseconds (timezone-agnostic)
+                    if (!event.startTime && event.startTime !== 0) {
                         console.warn('[ROI] Event missing startTime:', event);
                         return false;
                     }
                     
+                    // Convert to Date for human-readable logging
                     const eventStart = new Date(event.startTime);
-                    const isInRange = eventStart >= userStartDate && eventStart <= userEndDate;
+                    const isInRange = event.startTime >= userStartDate.getTime() && event.startTime <= userEndDate.getTime();
                     
-                    if (idx < 3) {  // Log first 3 events for debugging
-                        console.log(`[ROI] Event ${idx}: ${event.ruleName} at ${eventStart.toISOString()} - inRange: ${isInRange}`);
+                    if (idx < 5) {  // Log first 5 events for debugging
+                        console.log(`[ROI] Event ${idx}: "${event.ruleName}" at ${eventStart.toLocaleString()} (epoch: ${event.startTime}) - inRange: ${isInRange}`);
                     }
                     
                     return isInRange;
                 });
                 
-                console.log(`[ROI] Filtered events: ${events.length} out of ${allEvents.length} total`);
+                console.log(`[ROI] Filtered: ${events.length} events out of ${allEvents.length} match the date range`);
                 
                 if (events.length === 0) {
                     console.warn(`[ROI] No events found in date range ${startDate} to ${endDate}`);
