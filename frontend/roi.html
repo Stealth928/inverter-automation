@@ -889,6 +889,8 @@
                 const daysDiff = Math.ceil((endDateObj - startDateObj) / (1000 * 60 * 60 * 24));
                 const daysToFetch = Math.max(2, daysDiff + 1); // Always fetch at least 2 days to handle timezone offsets
                 
+                console.log(`[ROI] Starting calculation for date range ${startDate} to ${endDate} (${daysToFetch} days to fetch, max 7)`);
+                
                 const auditResp = await authenticatedFetch(`/api/automation/audit?days=${Math.min(daysToFetch, 7)}`);
                 const auditData = await auditResp.json();
                 
@@ -898,35 +900,33 @@
                 
                 // Filter events within date range
                 const events = (auditData.result?.ruleEvents || []).filter(event => {
-                    // event.startTime is in epoch milliseconds, but stored as local AEDT time
-                    // Convert to local date for comparison
+                    // event.startTime is in epoch milliseconds
+                    if (!event.startTime) {
+                        console.warn('[ROI] Event missing startTime:', event);
+                        return false;
+                    }
+                    
                     const eventStart = new Date(event.startTime);
                     
                     // Parse the input date strings (YYYY-MM-DD format from <input type="date">)
                     const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
                     const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
                     
-                    // Create date objects in LOCAL timezone (not UTC)
-                    // Get the event's local date components
-                    const eventYear = eventStart.getFullYear();
-                    const eventMonth = eventStart.getMonth() + 1;  // getMonth is 0-indexed
-                    const eventDate = eventStart.getDate();
+                    // Create dates at midnight local time for comparison
+                    const userStartDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+                    const userEndDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
                     
-                    // Compare as YYYY-MM-DD numbers
-                    const eventDateNum = eventYear * 10000 + eventMonth * 100 + eventDate;
-                    const startDateNum = startYear * 10000 + startMonth * 100 + startDay;
-                    const endDateNum = endYear * 10000 + endMonth * 100 + endDay;
-                    
-                    const isInRange = eventDateNum >= startDateNum && eventDateNum <= endDateNum;
-                    
-                    if (!isInRange && eventDateNum >= startDateNum - 1 && eventDateNum <= endDateNum + 1) {
-                        // Events just outside range - filtering as expected
-                    }
+                    // Simply check if event is within the date range
+                    const isInRange = eventStart >= userStartDate && eventStart <= userEndDate;
                     
                     return isInRange;
                 });
                 
+                console.log(`[ROI] Filtered events: ${events.length} out of ${(auditData.result?.ruleEvents || []).length} total`);
+                
                 if (events.length === 0) {
+                    console.warn(`[ROI] No events found in date range ${startDate} to ${endDate}`);
+                    console.log(`[ROI] Total audit events returned: ${(auditData.result?.ruleEvents || []).length}`);
                     content.innerHTML = `
                         <div class="empty-state">
                             <div class="icon">📭</div>
@@ -981,6 +981,8 @@
          */
         async function renderROICalculation(events, startDate, endDate, pricesData, isAutomationEnabled) {
             const content = document.getElementById('roiContent');
+            
+            try {
             
             // Helper function to extract price from rule data (prefer explicit fields, fallback to parsing)
             function extractPriceFromRule(ruleEvals) {
@@ -1624,6 +1626,16 @@
                         rows.forEach(row => tbody.appendChild(row));
                     });
                 });
+            }
+            } catch (renderError) {
+                console.error('[ROI] Error rendering ROI results:', renderError);
+                content.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">❌</div>
+                        <p>Error rendering ROI results</p>
+                        <p style="font-size:12px;margin-top:8px">${renderError.message}</p>
+                    </div>
+                `;
             }
         }
 

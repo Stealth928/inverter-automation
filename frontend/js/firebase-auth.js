@@ -110,9 +110,11 @@ class FirebaseAuth {
       this.auth = firebase.auth();
       this.db = firebase.firestore();
       try {
-        firebase.analytics();
+        if (firebase.analytics && typeof firebase.analytics === 'function') {
+          firebase.analytics();
+        }
       } catch (analyticsError) {
-        console.warn('[FirebaseAuth] Analytics initialization failed (not critical):', analyticsError);
+        console.error('[FirebaseAuth] Analytics initialization failed (not critical):', analyticsError.message);
       }
 
       // Set persistence to local (survives browser close)
