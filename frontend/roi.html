@@ -254,6 +254,32 @@
             font-size: 11px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+        
+        .roi-summary-table th:hover {
+            background: rgba(0, 0, 0, 0.3);
+        }
+        
+        .roi-summary-table th::after {
+            content: '⇅';
+            opacity: 0.3;
+            margin-left: 4px;
+            font-size: 10px;
+        }
+        
+        .roi-summary-table th.sort-asc::after {
+            content: '▲';
+            opacity: 1;
+            color: #58a6ff;
+        }
+        
+        .roi-summary-table th.sort-desc::after {
+            content: '▼';
+            opacity: 1;
+            color: #58a6ff;
         }
         
         .roi-summary-table tr:hover {
@@ -633,7 +659,7 @@
         <!-- ROI Calculator Section -->
         <div class="card" data-card="roi-calculator">
             <div class="card-header">
-                <div class="card-title">💰 ROI Calculator</div>
+                <div class="card-title">💰 ROI Analysis (Last 7 Days)</div>
                 <div style="display:flex;gap:8px">
                     <button class="btn-primary" onclick="calculateROI()" id="btnCalculateROI" style="font-size:13px;padding:10px 18px;font-weight:600">
                         Calculate ROI
@@ -761,6 +787,8 @@
             const status = document.getElementById('roiStatus');
             const content = document.getElementById('roiContent');
             
+            console.log(`[ROI] calculateROI called with startDate=${startDate}, endDate=${endDate}`);
+            
             if (!startDate || !endDate) {
                 status.className = 'status error';
                 status.textContent = '✗ Please select both start and end dates';
@@ -780,8 +808,15 @@
             
             try {
                 // Fetch automation audit data for the date range
-                const days = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24));
-                const auditResp = await authenticatedFetch(`/api/automation/audit?days=${Math.min(days + 1, 30)}`);
+                // Calculate days: if same day, request 2 days; otherwise add 1 to include end date
+                const startDateObj = new Date(startDate);
+                const endDateObj = new Date(endDate);
+                const daysDiff = Math.ceil((endDateObj - startDateObj) / (1000 * 60 * 60 * 24));
+                const daysToFetch = Math.max(2, daysDiff + 1); // Always fetch at least 2 days to handle timezone offsets
+                
+                console.log(`[ROI] Days calculation: diff=${daysDiff}, daysToFetch=${daysToFetch}`);
+                
+                const auditResp = await authenticatedFetch(`/api/automation/audit?days=${Math.min(daysToFetch, 7)}`);
                 const auditData = await auditResp.json();
                 
                 if (auditData.errno && auditData.errno !== 0) {
@@ -790,12 +825,36 @@
                 
                 // Filter events within date range
                 const events = (auditData.result?.ruleEvents || []).filter(event => {
-                    // event.startTime is in milliseconds (epoch)
+                    // event.startTime is in epoch milliseconds, but stored as local AEDT time
+                    // Convert to local date for comparison
                     const eventStart = new Date(event.startTime);
-                    const startDateObj = new Date(startDate + 'T00:00:00');  // Start of day
-                    const endDateObj = new Date(endDate + 'T23:59:59');     // End of day
-                    return eventStart >= startDateObj && eventStart <= endDateObj;
+                    
+                    // Parse the input date strings (YYYY-MM-DD format from <input type="date">)
+                    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+                    const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+                    
+                    // Create date objects in LOCAL timezone (not UTC)
+                    // Get the event's local date components
+                    const eventYear = eventStart.getFullYear();
+                    const eventMonth = eventStart.getMonth() + 1;  // getMonth is 0-indexed
+                    const eventDate = eventStart.getDate();
+                    
+                    // Compare as YYYY-MM-DD numbers
+                    const eventDateNum = eventYear * 10000 + eventMonth * 100 + eventDate;
+                    const startDateNum = startYear * 10000 + startMonth * 100 + startDay;
+                    const endDateNum = endYear * 10000 + endMonth * 100 + endDay;
+                    
+                    const isInRange = eventDateNum >= startDateNum && eventDateNum <= endDateNum;
+                    
+                    if (!isInRange && eventDateNum >= startDateNum - 1 && eventDateNum <= endDateNum + 1) {
+                        // Log events just outside the range for debugging
+                        console.log(`[ROI] Event ${event.ruleName} on ${eventYear}-${String(eventMonth).padStart(2, '0')}-${String(eventDate).padStart(2, '0')} (${eventDateNum}) is outside range ${startDateNum}-${endDateNum}`);
+                    }
+                    
+                    return isInRange;
                 });
+                
+                console.log(`[ROI] Filtered ${events.length} events from ${(auditData.result?.ruleEvents || []).length} total events`);
                 
                 if (events.length === 0) {
                     content.innerHTML = `
@@ -811,29 +870,23 @@
                 
                 // Fetch current automation enabled state
                 let isAutomationEnabled = false;
-                try {
-                    const stateResp = await authenticatedFetch('/api/automation/state');
-                    const stateJson = await stateResp.json();
-                    if (stateJson.errno === 0 && stateJson.result) {
-                        isAutomationEnabled = stateJson.result.enabled || false;
-                    }
-                } catch (e) {
-                    console.warn('Could not fetch automation state:', e);
-                }
-                
-                // Fetch current prices (if available) for reference
+                // NOTE: /api/automation/state and /api/amber/prices endpoints don't exist or require parameters
+                // We fetch automation state from config endpoint and prices from historical data above
                 let pricesData = null;
                 try {
-                    const pricesResp = await authenticatedFetch('/api/amber/prices');
-                    const pricesJson = await pricesResp.json();
-                    if (pricesJson.errno === 0) {
-                        pricesData = pricesJson.result;
+                    const configResp = await authenticatedFetch('/api/config');
+                    const configJson = await configResp.json();
+                    if (configJson.errno === 0 && configJson.result) {
+                        // Check if automation rules exist in config
+                        isAutomationEnabled = (configJson.result.rules && configJson.result.rules.length > 0);
                     }
                 } catch (e) {
-                    console.warn('Could not fetch current prices:', e);
+                    console.debug('Could not fetch config for automation state check:', e.message);
+                    // If config fetch fails, that's OK - we'll assume automation is enabled since we have events
+                    isAutomationEnabled = (events && events.length > 0);
                 }
                 
-                renderROICalculation(events, startDate, endDate, pricesData, isAutomationEnabled);
+                await renderROICalculation(events, startDate, endDate, pricesData, isAutomationEnabled);
                 
                 status.className = 'status success';
                 status.textContent = `✓ Analyzed ${events.length} rule trigger(s)`;
@@ -857,7 +910,7 @@
         /**
          * Render ROI calculation results
          */
-        function renderROICalculation(events, startDate, endDate, pricesData, isAutomationEnabled) {
+        async function renderROICalculation(events, startDate, endDate, pricesData, isAutomationEnabled) {
             const content = document.getElementById('roiContent');
             
             // Helper function to extract price from rule data (prefer explicit fields, fallback to parsing)
@@ -922,55 +975,151 @@
             // Store prices and power for each event for later use in table
             const eventPrices = [];
             
-            /**
-             * Try to fetch actual (settled) Amber prices for an event
-             * Only works for events within last 7 days and older than 5 minutes
-             */
-            async function tryFetchActualPrices(event) {
-                // Check if event has a timestamp
-                if (!event || !event.startTime) {
-                    return { feedInPrice: null, buyPrice: null };
-                }
-                
-                const eventTime = new Date(event.startTime);
-                const now = new Date();
-                const ageMs = now.getTime() - eventTime.getTime();
-                const ageDays = ageMs / (1000 * 60 * 60 * 24);
-                const ageMinutes = ageMs / (1000 * 60);
-                
-                if (ageDays > 7 || ageMinutes < 5) {
-                    return { feedInPrice: null, buyPrice: null };
-                }
-                
-                try {
-                    const sitesResp = await apiClient.getAmberSites();
-                    if (!sitesResp || sitesResp.errno !== 0 || !sitesResp.result || sitesResp.result.length === 0) {
-                        return { feedInPrice: null, buyPrice: null };
-                    }
-                    
+            // Fetch ALL actual prices for the date range ONCE (ONE API CALL)
+            const actualPriceMap = new Map(); // key: ISO timestamp, value: {buyPrice, feedInPrice}
+            
+            try {
+                const sitesResp = await apiClient.getAmberSites();
+                if (sitesResp && sitesResp.errno === 0 && sitesResp.result && sitesResp.result.length > 0) {
                     const siteId = sitesResp.result[0].id;
-                    const timestamp = eventTime.toISOString();
                     
-                    console.log(`[ROI Actual] Fetching actual prices for ${event.ruleName} at ${timestamp} (age: ${ageDays.toFixed(2)} days)`);
+                    // CRITICAL: startDate/endDate are in LOCAL timezone (AEST/AEDT), but Amber API expects UTC dates
+                    // Parse local dates and convert to UTC for API call
+                    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+                    const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
                     
-                    // Fetch actual price (API returns one channel at a time based on the event)
-                    const resp = await apiClient.getAmberActualPrice(siteId, timestamp, 30);
+                    // Create local date objects (not UTC)
+                    const localStartDate = new Date(startYear, startMonth - 1, startDay); // months are 0-indexed
+                    const localEndDate = new Date(endYear, endMonth - 1, endDay);
                     
-                    if (resp && resp.errno === 0 && resp.result) {
-                        const price = resp.result;
-                        if (price.channelType === 'general') {
-                            console.log(`[ROI Actual] ✅ Got actual buy price: ${price.perKwh}¢/kWh`);
-                            return { buyPrice: price.perKwh, feedInPrice: null };
-                        } else if (price.channelType === 'feedIn') {
-                            console.log(`[ROI Actual] ✅ Got actual feed-in price: ${price.perKwh}¢/kWh`);
-                            return { feedInPrice: price.perKwh, buyPrice: null };
+                    // Convert local dates to UTC by subtracting timezone offset
+                    // AEDT is UTC+11, so subtract 11 hours to get actual UTC
+                    const AEDT_OFFSET_MS = 11 * 60 * 60 * 1000;
+                    const utcStartMs = localStartDate.getTime() - AEDT_OFFSET_MS;
+                    const utcEndMs = localEndDate.getTime() - AEDT_OFFSET_MS;
+                    
+                    const utcStartDate = new Date(utcStartMs).toISOString().split('T')[0];
+                    const utcEndDate = new Date(utcEndMs).toISOString().split('T')[0];
+                    
+                    // Also request the next UTC day to catch events near midnight
+                    const reqEndDate = new Date(utcEndMs + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    
+                    console.log(`[ROI Actual] Fetching historical prices for ${utcStartDate} to ${reqEndDate} UTC (local dates: ${startDate} to ${endDate})`);
+                    
+                    // Fetch all prices for the date range with 5-minute resolution (not actualOnly to get recent data)
+                    const pricesResp = await apiClient.getAmberHistoricalPrices(siteId, utcStartDate, reqEndDate, 5, false);
+                    
+                    console.log('[ROI Actual] API Response:', pricesResp);
+                    
+                    if (pricesResp && pricesResp.errno === 0 && pricesResp.result) {
+                        console.log('[ROI Actual] Sample price point:', pricesResp.result[0]);
+                        
+                        // Build map of prices indexed by EPOCH MILLISECONDS (avoids timezone issues)
+                        const samplePrices = {}; // DEBUG: Track first occurrence of each channel
+                        for (const pricePoint of pricesResp.result) {
+                            // Convert API's UTC ISO string to epoch ms - this is timezone-agnostic
+                            // Amber API adds +1 second to timestamps (14:00:01 instead of 14:00:00)
+                            // Subtract 1 second so it aligns with our 5-minute interval rounding
+                            const priceEpochMs = new Date(pricePoint.startTime || pricePoint.nemTime).getTime() - 1000;
+                            const channelType = pricePoint.channelType;
+                            const perKwh = pricePoint.perKwh;
+                            
+                            // DEBUG: Log first occurrence of each channel
+                            if (!samplePrices[channelType]) {
+                                samplePrices[channelType] = { perKwh, startTime: pricePoint.startTime, type: pricePoint.type };
+                            }
+                            
+                            if (!actualPriceMap.has(priceEpochMs)) {
+                                actualPriceMap.set(priceEpochMs, {});
+                            }
+                            
+                            if (channelType === 'general') {
+                                actualPriceMap.get(priceEpochMs).buyPrice = perKwh;
+                            } else if (channelType === 'feedIn') {
+                                // Amber API returns feedIn as negative (grid paying user to take power)
+                                // Negate it so discharge operations (exporting) show positive revenue
+                                actualPriceMap.get(priceEpochMs).feedInPrice = -perKwh;
+                            }
+                        }
+                        console.log(`[ROI Actual] ✅ Loaded ${actualPriceMap.size} price epochs from ONE API call`);
+                        console.log('[ROI Actual] Sample prices by channel:');
+                        console.log('  general:', samplePrices.general);
+                        console.log('  feedIn:', samplePrices.feedIn);
+                        console.log('[ROI Actual] Full price map sample (first entry):', Array.from(actualPriceMap.entries())[0]);
+                    } else {
+                        console.warn('[ROI Actual] No price data returned:', pricesResp);
+                    }
+                }
+            } catch (error) {
+                console.warn('[ROI Actual] Failed to fetch historical prices:', error.message);
+            }
+            
+            /**
+             * Look up actual prices from the pre-fetched cache
+             * For events spanning multiple 5-min windows, average the prices
+             */
+            function getActualPrice(event) {
+                if (!event || !event.startTime || actualPriceMap.size === 0) {
+                    return { feedInPrice: null, buyPrice: null };
+                }
+                
+                // Event times are in epoch milliseconds (timezone-agnostic), create Date object
+                const eventTime = new Date(event.startTime);
+                const eventDuration = event.durationMs || 0;
+                const eventEndTime = new Date(eventTime.getTime() + eventDuration);
+                const now = new Date();
+                const ageMinutes = (now.getTime() - eventTime.getTime()) / (1000 * 60);
+                
+                // Only use actual prices for events older than 5 minutes
+                if (ageMinutes < 5) {
+                    return { feedInPrice: null, buyPrice: null };
+                }
+                
+                // TIMEZONE FIX: Event timestamps appear to be local AEDT (UTC+11) incorrectly marked as UTC
+                // Convert from what JavaScript thinks is UTC to actual UTC by subtracting timezone offset
+                const AEDT_OFFSET_MS = 11 * 60 * 60 * 1000; // 11 hours in milliseconds (AEDT = UTC+11)
+                const eventTimeActualUTC = new Date(eventTime.getTime() - AEDT_OFFSET_MS);
+                const eventEndTimeActualUTC = new Date(eventEndTime.getTime() - AEDT_OFFSET_MS);
+                
+                // Collect all 5-minute windows that fall within the event duration
+                const buyPrices = [];
+                const feedInPrices = [];
+                
+                // Round start time down to nearest 5-minute interval (using epoch ms)
+                const startWindowMs = Math.floor(eventTimeActualUTC.getTime() / (5 * 60 * 1000)) * (5 * 60 * 1000);
+                
+                // DEBUG: Log what we're looking for
+                console.log(`[ROI Actual Lookup] Event: ${event.ruleName}, storedTime: ${eventTime.toISOString()}, actualUTC: ${eventTimeActualUTC.toISOString()}, Looking for epoch: ${startWindowMs} (${new Date(startWindowMs).toISOString()}), map size: ${actualPriceMap.size}`);
+                
+                // Iterate through all 5-minute windows in the event duration
+                for (let windowMs = startWindowMs; windowMs <= eventEndTimeActualUTC.getTime(); windowMs += 5 * 60 * 1000) {
+                    // Use epoch ms directly as key (no timezone conversion needed)
+                    const priceData = actualPriceMap.get(windowMs);
+                    
+                    if (priceData) {
+                        if (priceData.buyPrice !== null && priceData.buyPrice !== undefined) {
+                            buyPrices.push(priceData.buyPrice);
+                        }
+                        if (priceData.feedInPrice !== null && priceData.feedInPrice !== undefined) {
+                            feedInPrices.push(priceData.feedInPrice);
                         }
                     }
-                } catch (error) {
-                    console.log('[ROI Actual] Error fetching actual prices:', error.message);
                 }
                 
-                return { feedInPrice: null, buyPrice: null };
+                // Return average prices across all windows, or null if no data found
+                const avgBuyPrice = buyPrices.length > 0 ? buyPrices.reduce((a, b) => a + b) / buyPrices.length : null;
+                const avgFeedinPrice = feedInPrices.length > 0 ? feedInPrices.reduce((a, b) => a + b) / feedInPrices.length : null;
+                
+                if (avgBuyPrice !== null || avgFeedinPrice !== null) {
+                    console.log(`[ROI Actual] ✅ Found prices for ${event.ruleName}: buy=${avgBuyPrice?.toFixed(2)}, feedIn=${avgFeedinPrice?.toFixed(2)} (${buyPrices.length + feedInPrices.length} windows)`);
+                } else {
+                    console.log(`[ROI Actual] ❌ No match for ${event.ruleName}`);
+                }
+                
+                return { 
+                    buyPrice: avgBuyPrice, 
+                    feedInPrice: avgFeedinPrice 
+                };
             }
             
             for (const event of events) {
@@ -1003,8 +1152,8 @@
                         actualPrice = event.roiSnapshot.feedInPrice || null; // Use feed-in price for discharge (forecast)
                     }
                     
-                    // ⭐ Try to get ACTUAL settled prices for recent events (< 7 days old, > 5 min old)
-                    const actualPrices = await tryFetchActualPrices(event);
+                    // ⭐ Look up ACTUAL settled prices from pre-fetched cache (NO API CALL)
+                    const actualPrices = getActualPrice(event);
                     if (isChargeRule && actualPrices.buyPrice !== null) {
                         console.log(`[ROI] Replacing forecast buy price ${actualPrice}¢ with actual ${actualPrices.buyPrice}¢ for ${event.ruleName}`);
                         actualPrice = actualPrices.buyPrice;
@@ -1222,18 +1371,18 @@
                     </div>
                 </div>
                 
-                <table class="roi-summary-table">
+                <table class="roi-summary-table" id="roiTable">
                     <thead>
                         <tr>
-                            <th>Rule</th>
-                            <th>Rule Type</th>
-                            <th>Set Power (kW)</th>
-                            <th>House Load (kW)</th>
-                            <th>Triggered At</th>
-                            <th>Duration</th>
-                            <th>Price (¢/kWh)</th>
-                            <th>Est. Profit</th>
-                            <th>Status</th>
+                            <th data-column="ruleName">Rule</th>
+                            <th data-column="ruleType">Rule Type</th>
+                            <th data-column="rulePowerKw">Set Power (kW)</th>
+                            <th data-column="houseLoadKw">House Load (kW)</th>
+                            <th data-column="startTime">Triggered At</th>
+                            <th data-column="duration">Duration</th>
+                            <th data-column="price">Price (¢/kWh)</th>
+                            <th data-column="profit">Est. Profit</th>
+                            <th data-column="status">Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1257,10 +1406,17 @@
                     priceDisplay = `${priceInfo.price.toFixed(2)}¢`;
                 }
                 
-                // Show profit even if it's $0.00 - only show '—' if truly missing
-                const profitLabel = (priceInfo.profit !== null && priceInfo.profit !== undefined && !isNaN(priceInfo.profit)) 
-                    ? `$${priceInfo.profit.toFixed(2)}` 
-                    : '—';
+                // Show profit with appropriate precision - show cents for values < $0.01
+                let profitLabel = '—';
+                if (priceInfo.profit !== null && priceInfo.profit !== undefined && !isNaN(priceInfo.profit)) {
+                    if (Math.abs(priceInfo.profit) < 0.01) {
+                        // For very small values, show in cents (e.g., "0.23¢")
+                        profitLabel = `${(priceInfo.profit * 100).toFixed(2)}¢`;
+                    } else {
+                        // For larger values, show in dollars (e.g., "$1.23")
+                        profitLabel = `$${priceInfo.profit.toFixed(2)}`;
+                    }
+                }
                     
                 // Determine profit color based on ECONOMIC value, not rule type
                 // - Positive profit (you earned money) = GREEN (even for charge with negative prices!)
@@ -1308,6 +1464,73 @@
             `;
             
             content.innerHTML = html;
+            
+            // Add sorting functionality
+            const table = document.getElementById('roiTable');
+            if (table) {
+                const headers = table.querySelectorAll('th[data-column]');
+                let sortState = {}; // Track sort direction per column
+                
+                headers.forEach(header => {
+                    header.addEventListener('click', () => {
+                        const columnName = header.getAttribute('data-column');
+                        const tbody = table.querySelector('tbody');
+                        const rows = Array.from(tbody.querySelectorAll('tr'));
+                        
+                        // Determine sort direction
+                        const isAsc = sortState[columnName] !== 'asc';
+                        sortState = {}; // Reset all other columns
+                        sortState[columnName] = isAsc ? 'asc' : 'desc';
+                        
+                        // Update header indicators
+                        headers.forEach(h => {
+                            h.classList.remove('sort-asc', 'sort-desc');
+                        });
+                        header.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
+                        
+                        // Sort rows
+                        rows.sort((rowA, rowB) => {
+                            let valA, valB;
+                            
+                            // Extract values based on column
+                            const getCellValue = (row, col) => {
+                                const cell = row.querySelector(`td:nth-child(${headers.length - Array.from(headers).indexOf(headers[Array.from(headers).findIndex(h => h.getAttribute('data-column') === col)]) + 1})`);
+                                return cell ? cell.textContent.trim() : '';
+                            };
+                            
+                            // Map columns to their positions for direct access
+                            const colIndex = Array.from(headers).findIndex(h => h.getAttribute('data-column') === columnName);
+                            const getRowValue = (row) => {
+                                const cells = row.querySelectorAll('td');
+                                if (colIndex >= 0 && colIndex < cells.length) {
+                                    return cells[colIndex].textContent.trim();
+                                }
+                                return '';
+                            };
+                            
+                            valA = getRowValue(rowA);
+                            valB = getRowValue(rowB);
+                            
+                            // Parse numeric values for sorting
+                            const numA = parseFloat(valA.replace(/[^0-9.-]/g, ''));
+                            const numB = parseFloat(valB.replace(/[^0-9.-]/g, ''));
+                            
+                            if (!isNaN(numA) && !isNaN(numB)) {
+                                // Numeric sort
+                                return isAsc ? numA - numB : numB - numA;
+                            } else {
+                                // String sort
+                                return isAsc 
+                                    ? valA.localeCompare(valB) 
+                                    : valB.localeCompare(valA);
+                            }
+                        });
+                        
+                        // Re-append sorted rows
+                        rows.forEach(row => tbody.appendChild(row));
+                    });
+                });
+            }
         }
 
         /**
@@ -1503,10 +1726,10 @@
          */
         async function loadDeviceSn() {
             try {
-                const resp = await authenticatedFetch('/api/config/device');
+                const resp = await authenticatedFetch('/api/config');
                 const data = await resp.json();
-                if (data.errno === 0 && data.result?.sn) {
-                    deviceSn = data.result.sn;
+                if (data.errno === 0 && data.result?.deviceSn) {
+                    deviceSn = data.result.deviceSn;
                     document.getElementById('deviceSnDisplay').textContent = `Device: ${deviceSn}`;
                 }
             } catch (e) {
