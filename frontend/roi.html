@@ -188,6 +188,38 @@
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .roi-card-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        
+        .roi-card-main {
+            flex: 1;
+        }
+        
+        .roi-card-secondary {
+            text-align: right;
+            min-width: 80px;
+        }
+        
+        .roi-secondary-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        
+        .roi-secondary-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
         }
         
         .roi-card-title {
@@ -954,6 +986,11 @@
             let estimatedSavings = 0; // charge operations that avoided high prices
             let estimatedEarnings = 0; // feed-in operations during peak prices
             
+            // Tracking for new metrics
+            let totalChargePower = 0; // Total power in kW for charge operations
+            let totalDischargePower = 0; // Total power in kW for discharge operations
+            let numRulesWithProfit = 0; // Count of rules with valid profit calculations
+            
             // Store prices and power for each event for later use in table
             const eventPrices = [];
             
@@ -1237,6 +1274,18 @@
                     } else {                    }
                 }
                 
+                // Track power and profit metrics
+                if (rulePowerKw !== null && rulePowerKw !== undefined) {
+                    if (isChargeRule) {
+                        totalChargePower += rulePowerKw;
+                    } else if (isFeedinRule) {
+                        totalDischargePower += rulePowerKw;
+                    }
+                }
+                if (eventProfit !== null && eventProfit !== undefined && !isNaN(eventProfit)) {
+                    numRulesWithProfit++;
+                }
+                
                 eventPrices.push({
                     eventId: event.ruleId,
                     price: actualPrice,
@@ -1256,6 +1305,13 @@
                 totalProfit += eventProfit;
             }
             
+            // Calculate average metrics
+            const daysDiff = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1;
+            const avgRulesPerDay = (totalRules / daysDiff).toFixed(1);
+            const avgChargePower = totalChargeRules > 0 ? (totalChargePower / totalChargeRules).toFixed(2) : '—';
+            const avgDischargePower = totalFeedinRules > 0 ? (totalDischargePower / totalFeedinRules).toFixed(2) : '—';
+            const avgProfitPerRule = numRulesWithProfit > 0 ? (totalProfit / numRulesWithProfit).toFixed(2) : '—';
+            
             // Determine profit color
             const profitColor = totalProfit >= 0 ? 'rgba(126, 231, 135, 0.15)' : 'rgba(239, 68, 68, 0.15)';
             const profitBorderColor = totalProfit >= 0 ? 'rgba(126, 231, 135, 0.3)' : 'rgba(239, 68, 68, 0.3)';
@@ -1270,8 +1326,16 @@
                             <span>🎯</span>
                             Total Rules Triggered
                         </div>
-                        <div class="roi-value">${totalRules}</div>
-                        <div class="roi-value-label">during this period</div>
+                        <div class="roi-card-content">
+                            <div class="roi-card-main">
+                                <div class="roi-value">${totalRules}</div>
+                                <div class="roi-value-label">during this period</div>
+                            </div>
+                            <div class="roi-card-secondary">
+                                <div class="roi-secondary-value">${avgRulesPerDay}</div>
+                                <div class="roi-secondary-label">avg per day</div>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="roi-card">
@@ -1279,8 +1343,16 @@
                             <span>⚡</span>
                             Charge Operations
                         </div>
-                        <div class="roi-value">${totalChargeRules}</div>
-                        <div class="roi-value-label">smart charging events</div>
+                        <div class="roi-card-content">
+                            <div class="roi-card-main">
+                                <div class="roi-value">${totalChargeRules}</div>
+                                <div class="roi-value-label">smart charging events</div>
+                            </div>
+                            <div class="roi-card-secondary">
+                                <div class="roi-secondary-value">${avgChargePower}</div>
+                                <div class="roi-secondary-label">avg power (kW)</div>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="roi-card">
@@ -1288,8 +1360,16 @@
                             <span>📤</span>
                             Feed-in Operations
                         </div>
-                        <div class="roi-value">${totalFeedinRules}</div>
-                        <div class="roi-value-label">export events</div>
+                        <div class="roi-card-content">
+                            <div class="roi-card-main">
+                                <div class="roi-value">${totalFeedinRules}</div>
+                                <div class="roi-value-label">export events</div>
+                            </div>
+                            <div class="roi-card-secondary">
+                                <div class="roi-secondary-value">${avgDischargePower}</div>
+                                <div class="roi-secondary-label">avg power (kW)</div>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="roi-card" style="background: ${profitColor}; border-color: ${profitBorderColor};">
@@ -1297,8 +1377,16 @@
                             <span>${profitIcon}</span>
                             Total Profit
                         </div>
-                        <div class="roi-value" style="color: ${profitTextColor};">$${Math.abs(totalProfit).toFixed(2)}</div>
-                        <div class="roi-value-label">${totalProfit >= 0 ? 'estimated savings' : 'estimated cost'}</div>
+                        <div class="roi-card-content">
+                            <div class="roi-card-main">
+                                <div class="roi-value" style="color: ${profitTextColor};">$${Math.abs(totalProfit).toFixed(2)}</div>
+                                <div class="roi-value-label">${totalProfit >= 0 ? 'estimated savings' : 'estimated cost'}</div>
+                            </div>
+                            <div class="roi-card-secondary">
+                                <div class="roi-secondary-value" style="color: ${profitTextColor};">${avgProfitPerRule !== '—' ? '$' + avgProfitPerRule : '—'}</div>
+                                <div class="roi-secondary-label">per rule</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
