@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WIP - Topology Discovery</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics-compat.js"></script>
+    <link rel="stylesheet" href="css/shared-styles.css">
+    <style>
+        .discovery-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .discovery-section {
+            background: rgba(30, 30, 30, 0.8);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #58a6ff;
+            border-bottom: 2px solid rgba(88, 166, 255, 0.2);
+            padding-bottom: 10px;
+        }
+
+        .discovery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .info-card {
+            background: rgba(13, 17, 23, 0.5);
+            border: 1px solid rgba(88, 166, 255, 0.2);
+            border-radius: 6px;
+            padding: 15px;
+        }
+
+        .info-card-title {
+            font-size: 12px;
+            color: #8b949e;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+        }
+
+        .info-card-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: #7ee787;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+        }
+
+        .info-card-value.warning {
+            color: #d29922;
+        }
+
+        .info-card-value.error {
+            color: #f85149;
+        }
+
+        .topology-indicator {
+            display: inline-block;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+
+        .topology-indicator.dc-coupled {
+            background: rgba(126, 231, 135, 0.2);
+            color: #7ee787;
+            border: 1px solid rgba(126, 231, 135, 0.3);
+        }
+
+        .topology-indicator.ac-coupled {
+            background: rgba(210, 153, 34, 0.2);
+            color: #d29922;
+            border: 1px solid rgba(210, 153, 34, 0.3);
+        }
+
+        .topology-indicator.unknown {
+            background: rgba(139, 148, 158, 0.2);
+            color: #8b949e;
+            border: 1px solid rgba(139, 148, 158, 0.3);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: #238636;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+
+        .btn:hover {
+            background: #2ea043;
+        }
+
+        .btn.secondary {
+            background: #424f5e;
+            color: #c9d1d9;
+        }
+
+        .btn.secondary:hover {
+            background: #4a5569;
+        }
+
+        .btn:disabled {
+            background: #424f5e;
+            color: #6e7681;
+            cursor: not-allowed;
+        }
+
+        .btn.danger {
+            background: #f85149;
+        }
+
+        .btn.danger:hover {
+            background: #fa5a5f;
+        }
+
+        .status-log {
+            background: rgba(13, 17, 23, 0.7);
+            border: 1px solid rgba(139, 148, 158, 0.2);
+            border-radius: 6px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #8b949e;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(139, 148, 158, 0.1);
+        }
+
+        .log-entry.success {
+            color: #7ee787;
+        }
+
+        .log-entry.error {
+            color: #f85149;
+        }
+
+        .log-entry.warning {
+            color: #d29922;
+        }
+
+        .log-entry.info {
+            color: #58a6ff;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #c9d1d9;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 6px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px;
+            background: rgba(13, 17, 23, 0.8);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+            border-radius: 4px;
+            color: #c9d1d9;
+            font-size: 13px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #58a6ff;
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+        }
+
+        .alert {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
+
+        .alert.warning {
+            background: rgba(210, 153, 34, 0.1);
+            border: 1px solid rgba(210, 153, 34, 0.3);
+            color: #d29922;
+        }
+
+        .alert.info {
+            background: rgba(88, 166, 255, 0.1);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+            color: #58a6ff;
+        }
+
+        .alert.success {
+            background: rgba(126, 231, 135, 0.1);
+            border: 1px solid rgba(126, 231, 135, 0.3);
+            color: #7ee787;
+        }
+
+        .telemetry-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        .telemetry-table th,
+        .telemetry-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid rgba(88, 166, 255, 0.1);
+        }
+
+        .telemetry-table th {
+            background: rgba(88, 166, 255, 0.1);
+            color: #58a6ff;
+            font-weight: 600;
+        }
+
+        .telemetry-table td {
+            color: #8b949e;
+        }
+
+        .telemetry-table td.value {
+            color: #7ee787;
+            font-family: 'Courier New', monospace;
+            font-weight: 500;
+        }
+
+        .loading {
+            color: #8b949e;
+            font-style: italic;
+        }
+
+        .test-result {
+            background: rgba(13, 17, 23, 0.5);
+            border-left: 3px solid #7ee787;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+
+        .test-result.failure {
+            border-left-color: #f85149;
+        }
+
+        .test-result.warning {
+            border-left-color: #d29922;
+        }
+
+        .code-block {
+            background: rgba(13, 17, 23, 0.7);
+            border: 1px solid rgba(139, 148, 158, 0.2);
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #7ee787;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <nav class="nav-main">
+        <div class="nav-links">
+            <a href="/" class="nav-link">🏠 Overview</a>
+            <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
+            <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
+            <a href="/history.html" class="nav-link">📊 Reports</a>
+            <a href="/control.html" class="nav-link">🎮 Controls</a>
+            <a href="/settings.html" class="nav-link">⚙️ Settings</a>
+            <a href="/curtailment-discovery.html" class="nav-link">🔬 WIP - Topology Discovery</a>
+        </div>
+        <div class="nav-right">
+            <div class="user-menu" data-user-menu>
+                <button class="user-avatar" type="button" data-user-avatar>
+                    <span data-user-initials>?</span>
+                </button>
+                <div class="user-menu-dropdown">
+                    <a href="#" data-user-logout class="user-menu-item">Sign out</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div id="app-shell-container"></div>
+
+    <div class="discovery-container">
+        <div class="discovery-section">
+            <div class="section-title">🔬 Solar Curtailment Discovery & Testing</div>
+            <p style="color: #8b949e; margin-bottom: 15px;">
+                This page helps you understand your system topology, probe FoxESS API capabilities, and test curtailment control.
+                All operations are logged for review.
+            </p>
+        </div>
+
+        <!-- Section 1: System Detection -->
+        <div class="discovery-section">
+            <div class="section-title">1️⃣ System Topology Detection</div>
+            <p style="color: #8b949e; margin-bottom: 15px;">
+                Analyzes real-time inverter data to detect if your system is DC-coupled (solar into battery) or AC-coupled (separate solar inverter).
+            </p>
+            
+            <div class="button-group">
+                <button class="btn" id="detectTopologyBtn">Detect Topology Now</button>
+                <button class="btn secondary" id="refreshTelemetryBtn">Refresh Real-Time Data</button>
+            </div>
+
+            <div class="discovery-grid">
+                <div class="info-card">
+                    <div class="info-card-title">Detected Topology</div>
+                    <div id="topologyResult" class="info-card-value">—</div>
+                </div>
+                <div class="info-card">
+                    <div class="info-card-title">Solar Generation</div>
+                    <div id="solarGenResult" class="info-card-value">—</div>
+                </div>
+                <div class="info-card">
+                    <div class="info-card-title">Current Export</div>
+                    <div id="currentExportResult" class="info-card-value">—</div>
+                </div>
+                <div class="info-card">
+                    <div class="info-card-title">House Consumption</div>
+                    <div id="houseLoadResult" class="info-card-value">—</div>
+                </div>
+            </div>
+
+            <div id="topologyLogContainer" style="margin-top: 15px;"></div>
+        </div>
+
+        <!-- Section 2: Export Limit Key Discovery -->
+        <div class="discovery-section">
+            <div class="section-title">2️⃣ FoxESS API Capability Probing</div>
+            <p style="color: #8b949e; margin-bottom: 15px;">
+                Tests which export limit setting keys are available on your FoxESS device. Different models may use different key names.
+            </p>
+
+            <div class="button-group">
+                <button class="btn" id="probeKeysBtn">Probe Export Limit Keys</button>
+            </div>
+
+            <table class="telemetry-table" id="keysProbeTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Setting Key</th>
+                        <th>Status</th>
+                        <th>Current Value</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody id="keysProbebody">
+                </tbody>
+            </table>
+
+            <div id="keysProbeLog" style="margin-top: 15px;"></div>
+        </div>
+
+        <!-- Section 3: Current Export Limit Settings -->
+        <div class="discovery-section">
+            <div class="section-title">3️⃣ Current Export Limit Settings</div>
+            <p style="color: #8b949e; margin-bottom: 15px;">
+                Reads the current export limit configuration from your FoxESS device.
+            </p>
+
+            <div class="button-group">
+                <button class="btn" id="readSettingsBtn">Read Current Settings</button>
+            </div>
+
+            <div id="settingsContainer" style="margin-top: 15px;"></div>
+        </div>
+
+        <!-- Section 4: Real-Time Telemetry for Topology -->
+        <div class="discovery-section">
+            <div class="section-title">4️⃣ Real-Time Telemetry (Topology Analysis)</div>
+            <p style="color: #8b949e; margin-bottom: 15px;">
+                Raw inverter data used to detect system topology. Look for:
+                <br />• <strong>pvPower = 0 in daytime?</strong> Might be AC-coupled
+                <br />• <strong>feedinPower high but pvPower low?</strong> External solar inverter likely
+            </p>
+
+            <table class="telemetry-table" id="telemetryTable">
+                <thead>
+                    <tr>
+                        <th>Variable</th>
+                        <th>Value</th>
+                        <th>Unit</th>
+                    </tr>
+                </thead>
+                <tbody id="telemetryBody">
+                </tbody>
+            </table>
+
+            <p style="color: #8b949e; font-size: 11px; margin-top: 10px;">
+                Last updated: <span id="telemetryTimestamp">—</span>
+            </p>
+        </div>
+
+        <!-- Section 5: Test Export Limit Control -->
+        <div class="discovery-section">
+            <div class="section-title">5️⃣ Test Export Limit Control (⚠️ Caution)</div>
+            <p style="color: #8b949e; margin-bottom: 15px;">
+                <strong>WARNING:</strong> These commands will modify your inverter settings. Only proceed if you understand the impact.
+            </p>
+
+            <div class="alert warning">
+                ⚠️ <strong>Important:</strong> Export limit changes are immediately applied to your inverter.
+                Monitor your FoxESS Cloud app or inverter display for changes.
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div class="form-group">
+                    <label>Target Export Limit (Watts)</label>
+                    <input type="number" id="exportLimitInput" value="0" min="0" max="20000" step="100">
+                    <small style="color: #8b949e; margin-top: 4px; display: block;">
+                        0 = No export (curtail), or set a specific limit
+                    </small>
+                </div>
+                <div style="display: flex; align-items: flex-end; gap: 10px;">
+                    <button class="btn" id="setExportLimitBtn">Set Export Limit</button>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn secondary" id="disableLimitBtn">Disable Export Limiting (Restore Default)</button>
+            </div>
+
+            <div id="controlTestLog" style="margin-top: 15px;"></div>
+        </div>
+
+        <!-- Section 6: System Capability Summary -->
+        <div class="discovery-section">
+            <div class="section-title">📋 System Capability Summary</div>
+            <p style="color: #8b949e; margin-bottom: 15px;">
+                Based on discovery results, here's what curtailment features are available for your system.
+            </p>
+
+            <div id="capabilitySummary"></div>
+        </div>
+
+        <!-- Status Log -->
+        <div class="discovery-section">
+            <div class="section-title">📝 Activity Log</div>
+            <div class="status-log" id="statusLog">
+                <div class="log-entry info">Curtailment Discovery page initialized. Ready to explore.</div>
+            </div>
+
+            <!-- API Metrics Footer -->
+            <div id="apiMetricsFooter" class="api-metrics-footer" style="margin-top: 15px;">
+                <div class="metrics-icon">📊</div>
+                <div id="metricsDate" class="metrics-date">—</div>
+                <div id="metricsCounts" class="metrics-counts">
+                    <div class="metric-fox">Fox: <span id="countFox" class="metric-value">0</span></div>
+                    <div class="metric-amber">Amb: <span id="countAmber" class="metric-value">0</span></div>
+                    <div class="metric-weather">Wea: <span id="countWeather" class="metric-value">0</span></div>
+                </div>
+                <button class="btn btn-sm" onclick="loadApiMetrics(1)" title="Refresh metrics">🔄</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/firebase-config.js"></script>
+    <script src="js/firebase-auth.js"></script>
+    <script src="js/api-client.js"></script>
+    <script src="js/shared-utils.js"></script>
+    <script src="js/app-shell.js"></script>
+    <script>
+        // ===== AUTHENTICATED FETCH HELPER =====
+        async function authenticatedFetch(url, options = {}) {
+            try {
+                // Use apiClient (initialized by AppShell)
+                if (window.apiClient) {
+                    return await window.apiClient.fetch(url, options);
+                }
+                throw new Error('API Client not initialized');
+            } catch (err) {
+                addLog(`Auth error: ${err.message}`, 'error');
+                throw err;
+            }
+        }
+
+        // ===== STATE MANAGEMENT =====
+        const discoveryState = {
+            topology: null,
+            telemetry: null,
+            exportLimitKey: null,
+            exportLimitValue: null,
+            keysProbed: {},
+            deviceSn: null
+        };
+
+        // ===== LOGGING =====
+        function addLog(message, type = 'info') {
+            const log = document.getElementById('statusLog');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // ===== GET DEVICE SN =====
+        async function getDeviceSn() {
+            try {
+                const resp = await authenticatedFetch('/api/config');
+                const data = await resp.json();
+                if (data.errno === 0 && data.result?.deviceSn) {
+                    discoveryState.deviceSn = data.result.deviceSn;
+                    addLog(`Device SN: ${discoveryState.deviceSn}`, 'success');
+                    return data.result.deviceSn;
+                }
+            } catch (err) {
+                addLog(`Failed to get device SN from config: ${err.message}`, 'error');
+            }
+            return null;
+        }
+
+        // ===== TELEMETRY FETCHING =====
+        async function fetchTelemetry(force = false) {
+            addLog('Fetching real-time telemetry...', 'info');
+            try {
+                const resp = await authenticatedFetch('/api/inverter/real-time' + (force ? '?forceRefresh=true' : ''));
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                
+                if (data.errno !== 0) {
+                    addLog(`Telemetry failed: ${data.error}`, 'error');
+                    return null;
+                }
+
+                discoveryState.telemetry = data.result;
+                addLog(`Fetched ${data.result?.[0]?.datas?.length || 0} telemetry variables`, 'success');
+                displayTelemetry(data.result);
+                return data.result;
+            } catch (err) {
+                addLog(`Telemetry error: ${err.message}`, 'error');
+                return null;
+            }
+        }
+
+        // ===== TELEMETRY DISPLAY =====
+        function displayTelemetry(inverterData) {
+            const tbody = document.getElementById('telemetryBody');
+            tbody.innerHTML = '';
+
+            if (!inverterData || !Array.isArray(inverterData)) return;
+
+            const result = inverterData[0];
+            if (!result?.datas || !Array.isArray(result.datas)) return;
+
+            result.datas.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${item.variable}</strong></td>
+                    <td class="value">${(item.value !== undefined ? item.value : '—')}</td>
+                    <td>${item.unit || '—'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('telemetryTimestamp').textContent = new Date().toLocaleTimeString();
+        }
+
+        // ===== TOPOLOGY DETECTION =====
+        function detectSystemTopology(inverterData) {
+            if (!inverterData || !Array.isArray(inverterData)) return 'unknown';
+
+            const result = inverterData[0];
+            const datas = result?.datas || [];
+            const getVar = (name) => datas.find(d => d.variable === name)?.value ?? 0;
+
+            const pvPower = getVar('pvPower');
+            const feedinPower = getVar('feedinPower');
+            const loadsPower = getVar('loadsPower');
+            const generationPower = getVar('generationPower');
+
+            // Daytime detection (simplified)
+            const isDaylight = new Date().getHours() >= 6 && new Date().getHours() <= 18;
+
+            // AC-coupled indicators
+            const hasFeedinButNoPV = feedinPower > 500 && pvPower < 100;
+            const isLikelyACCoupled = isDaylight && hasFeedinButNoPV;
+
+            // DC-coupled indicators
+            const isLikelyDCCoupled = pvPower > 1000 || (pvPower > 0 && generationPower > 0);
+
+            if (isLikelyACCoupled && !isLikelyDCCoupled) {
+                return 'ac-coupled';
+            } else if (isLikelyDCCoupled && !isLikelyACCoupled) {
+                return 'dc-coupled';
+            } else if (isLikelyACCoupled && isLikelyDCCoupled) {
+                return 'hybrid';
+            }
+
+            return 'unknown';
+        }
+
+        async function runTopologyDetection() {
+            document.getElementById('detectTopologyBtn').disabled = true;
+            addLog('Starting topology detection...', 'info');
+
+            try {
+                const telemetry = await fetchTelemetry(true);
+                if (!telemetry) {
+                    document.getElementById('detectTopologyBtn').disabled = false;
+                    return;
+                }
+
+                const topology = detectSystemTopology(telemetry);
+                discoveryState.topology = topology;
+
+                const result = telemetry[0];
+                const datas = result?.datas || [];
+                const getVar = (name) => datas.find(d => d.variable === name)?.value ?? 0;
+
+                const pvPower = getVar('pvPower');
+                const feedinPower = getVar('feedinPower');
+                const loadsPower = getVar('loadsPower');
+
+                // Update display
+                const topoEl = document.getElementById('topologyResult');
+                topoEl.innerHTML = `${topology.toUpperCase()}<div class="topology-indicator ${topology.toLowerCase()}">${topology}</div>`;
+
+                document.getElementById('solarGenResult').textContent = `${pvPower.toFixed(0)}W`;
+                document.getElementById('currentExportResult').textContent = `${feedinPower.toFixed(0)}W`;
+                document.getElementById('houseLoadResult').textContent = `${loadsPower.toFixed(0)}W`;
+
+                addLog(`✓ Topology detected: ${topology}`, 'success');
+
+                if (topology === 'ac-coupled') {
+                    addLog('⚠️ AC-coupled system detected. External solar inverter likely. Curtailment will only limit battery exports.', 'warning');
+                } else if (topology === 'dc-coupled') {
+                    addLog('✓ DC-coupled system detected. Full curtailment control available.', 'success');
+                } else {
+                    addLog('? Topology unclear. System may have insufficient telemetry or unusual configuration.', 'warning');
+                }
+            } catch (err) {
+                addLog(`Topology detection failed: ${err.message}`, 'error');
+            } finally {
+                document.getElementById('detectTopologyBtn').disabled = false;
+            }
+        }
+
+        // ===== KEY PROBING =====
+        async function probeExportLimitKeys() {
+            const keysToProbe = [
+                'ExportLimit',
+                'ExportLimitPower',
+                'ExportMaxPower',
+                'ExportLimitEnable',
+                'ExportLimitActive'
+            ];
+
+            if (!discoveryState.deviceSn) {
+                addLog('⚠️ Device SN not available. Attempting to fetch...', 'warning');
+                if (!await getDeviceSn()) {
+                    addLog('✗ Cannot probe without device SN', 'error');
+                    return;
+                }
+            }
+
+            document.getElementById('probeKeysBtn').disabled = true;
+            addLog('Starting export limit key probing...', 'info');
+
+            const table = document.getElementById('keysProbeTable');
+            const tbody = document.getElementById('keysProbebody');
+            tbody.innerHTML = '';
+            table.style.display = 'table';
+
+            for (const key of keysToProbe) {
+                addLog(`Probing key: ${key}`, 'info');
+                
+                try {
+                    const resp = await authenticatedFetch('/api/device/setting/get', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key, sn: discoveryState.deviceSn })
+                    });
+
+                    const data = await resp.json();
+                    const row = tbody.insertRow();
+
+                    if (data.errno === 0) {
+                        const value = data.result?.data?.value ?? 'N/A';
+                        row.innerHTML = `
+                            <td><strong>${key}</strong></td>
+                            <td><span style="color: #7ee787;">✓ Available</span></td>
+                            <td class="value">${value}</td>
+                            <td>Key exists on device</td>
+                        `;
+                        discoveryState.keysProbed[key] = { status: 'available', value };
+                        addLog(`✓ Key available: ${key} = ${value}`, 'success');
+                    } else {
+                        row.innerHTML = `
+                            <td><strong>${key}</strong></td>
+                            <td><span style="color: #8b949e;">✗ Not Available</span></td>
+                            <td>—</td>
+                            <td>${data.error || 'Key not found'}</td>
+                        `;
+                        discoveryState.keysProbed[key] = { status: 'not-available', error: data.error };
+                        addLog(`✗ Key not available: ${key}`, 'warning');
+                    }
+                } catch (err) {
+                    const row = tbody.insertRow();
+                    row.innerHTML = `
+                        <td><strong>${key}</strong></td>
+                        <td><span style="color: #f85149;">⚠ Error</span></td>
+                        <td>—</td>
+                        <td>${err.message}</td>
+                    `;
+                    discoveryState.keysProbed[key] = { status: 'error', error: err.message };
+                    addLog(`⚠ Error probing ${key}: ${err.message}`, 'error');
+                }
+            }
+
+            const availableKeys = Object.entries(discoveryState.keysProbed)
+                .filter(([, v]) => v.status === 'available')
+                .map(([k]) => k);
+
+            if (availableKeys.length > 0) {
+                addLog(`✓ Found ${availableKeys.length} available keys: ${availableKeys.join(', ')}`, 'success');
+                discoveryState.exportLimitKey = availableKeys[0];
+            } else {
+                addLog('⚠️ No export limit keys found. Your device may not support this feature.', 'warning');
+            }
+
+            document.getElementById('probeKeysBtn').disabled = false;
+        }
+
+        // ===== SETTINGS READING =====
+        async function readCurrentSettings() {
+            if (!discoveryState.deviceSn) {
+                addLog('⚠️ Device SN not available. Attempting to fetch...', 'warning');
+                if (!await getDeviceSn()) {
+                    addLog('✗ Cannot read settings without device SN', 'error');
+                    return;
+                }
+            }
+
+            document.getElementById('readSettingsBtn').disabled = true;
+            addLog('Reading current export limit settings...', 'info');
+
+            const container = document.getElementById('settingsContainer');
+            container.innerHTML = '<div class="loading">Reading settings...</div>';
+
+            try {
+                const keysToCheck = ['ExportLimit', 'ExportLimitPower'];
+                const settings = {};
+
+                for (const key of keysToCheck) {
+                    try {
+                        const resp = await authenticatedFetch('/api/device/setting/get', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ key, sn: discoveryState.deviceSn })
+                        });
+
+                        const data = await resp.json();
+                        if (data.errno === 0) {
+                            settings[key] = data.result?.data?.value ?? null;
+                            addLog(`✓ ${key}: ${settings[key]}`, 'success');
+                        }
+                    } catch (err) {
+                        addLog(`Failed to read ${key}: ${err.message}`, 'error');
+                    }
+                }
+
+                container.innerHTML = `
+                    <div class="info-card">
+                        <div class="info-card-title">Export Limit Enabled</div>
+                        <div class="info-card-value">${settings.ExportLimit ?? '?'}</div>
+                        <small style="color: #8b949e; margin-top: 5px; display: block;">1 = enabled, 0 = disabled</small>
+                    </div>
+                    <div class="info-card" style="margin-top: 15px;">
+                        <div class="info-card-title">Export Limit Power (Watts)</div>
+                        <div class="info-card-value">${settings.ExportLimitPower ?? '?'}</div>
+                        <small style="color: #8b949e; margin-top: 5px; display: block;">Maximum export to grid in Watts</small>
+                    </div>
+                `;
+
+                discoveryState.exportLimitValue = settings.ExportLimitPower;
+            } catch (err) {
+                container.innerHTML = `<div class="test-result failure">Error reading settings: ${err.message}</div>`;
+                addLog(`Settings read failed: ${err.message}`, 'error');
+            }
+
+            document.getElementById('readSettingsBtn').disabled = false;
+        }
+
+        // ===== EXPORT LIMIT CONTROL =====
+        async function setExportLimit() {
+            if (!discoveryState.deviceSn) {
+                addLog('⚠️ Device SN not available. Attempting to fetch...', 'warning');
+                if (!await getDeviceSn()) {
+                    addLog('✗ Cannot set limit without device SN', 'error');
+                    return;
+                }
+            }
+
+            const limitValue = parseInt(document.getElementById('exportLimitInput').value);
+            if (isNaN(limitValue) || limitValue < 0) {
+                addLog('Invalid export limit value', 'error');
+                return;
+            }
+
+            document.getElementById('setExportLimitBtn').disabled = true;
+            addLog(`⚠️ Attempting to set export limit to ${limitValue}W...`, 'warning');
+
+            const container = document.getElementById('controlTestLog');
+
+            try {
+                // First, enable export limiting
+                const enableResp = await authenticatedFetch('/api/device/setting/set', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: 'ExportLimit', value: 1, sn: discoveryState.deviceSn })
+                });
+
+                const enableData = await enableResp.json();
+                if (enableData.errno !== 0) {
+                    throw new Error(`Failed to enable export limit: ${enableData.error}`);
+                }
+
+                addLog('✓ Export limiting enabled on device', 'success');
+
+                // Then, set the limit value
+                const setResp = await authenticatedFetch('/api/device/setting/set', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: 'ExportLimitPower', value: limitValue, sn: discoveryState.deviceSn })
+                });
+
+                const setData = await setResp.json();
+                if (setData.errno !== 0) {
+                    throw new Error(`Failed to set export limit power: ${setData.error}`);
+                }
+
+                addLog(`✓ Export limit set to ${limitValue}W on device`, 'success');
+
+                container.innerHTML = `
+                    <div class="test-result">
+                        <strong>✓ Export Limit Set Successfully</strong><br />
+                        Target: ${limitValue}W<br />
+                        Status: Applied to inverter<br />
+                        <br />
+                        <small style="color: #8b949e;">
+                            Check your FoxESS Cloud app or inverter display to verify the change.
+                            The limit should be applied within a few seconds.
+                        </small>
+                    </div>
+                `;
+
+                discoveryState.exportLimitValue = limitValue;
+            } catch (err) {
+                container.innerHTML = `<div class="test-result failure"><strong>✗ Failed to Set Export Limit</strong><br />${err.message}</div>`;
+                addLog(`Export limit set failed: ${err.message}`, 'error');
+            }
+
+            document.getElementById('setExportLimitBtn').disabled = false;
+        }
+
+        async function disableExportLimit() {
+            if (!discoveryState.deviceSn) {
+                addLog('⚠️ Device SN not available. Attempting to fetch...', 'warning');
+                if (!await getDeviceSn()) {
+                    addLog('✗ Cannot disable without device SN', 'error');
+                    return;
+                }
+            }
+
+            document.getElementById('disableLimitBtn').disabled = true;
+            addLog('⚠️ Disabling export limiting...', 'warning');
+
+            const container = document.getElementById('controlTestLog');
+
+            try {
+                const resp = await authenticatedFetch('/api/device/setting/set', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: 'ExportLimit', value: 0, sn: discoveryState.deviceSn })
+                });
+
+                const data = await resp.json();
+                if (data.errno !== 0) {
+                    throw new Error(data.error);
+                }
+
+                addLog('✓ Export limiting disabled on device', 'success');
+
+                container.innerHTML = `
+                    <div class="test-result">
+                        <strong>✓ Export Limiting Disabled</strong><br />
+                        Status: Device will now use default export settings<br />
+                    </div>
+                `;
+
+                discoveryState.exportLimitValue = null;
+            } catch (err) {
+                container.innerHTML = `<div class="test-result failure"><strong>✗ Failed</strong><br />${err.message}</div>`;
+                addLog(`Disable export limit failed: ${err.message}`, 'error');
+            }
+
+            document.getElementById('disableLimitBtn').disabled = false;
+        }
+
+        // ===== CAPABILITY SUMMARY =====
+        function generateCapabilitySummary() {
+            const summary = document.getElementById('capabilitySummary');
+            
+            let html = '';
+
+            // Topology capability
+            if (discoveryState.topology === 'dc-coupled') {
+                html += `
+                    <div class="test-result">
+                        <strong>✓ System Topology: DC-Coupled</strong><br />
+                        Solar panels connect directly to FoxESS battery. Full curtailment control available.
+                    </div>
+                `;
+            } else if (discoveryState.topology === 'ac-coupled') {
+                html += `
+                    <div class="test-result warning">
+                        <strong>⚠️ System Topology: AC-Coupled</strong><br />
+                        External solar inverter detected. Curtailment will only control battery exports,
+                        not external solar directly. Amber SmartShift or external inverter control may be needed.
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="test-result warning">
+                        <strong>? System Topology: Unknown</strong><br />
+                        Unable to determine if system is DC or AC-coupled. Check telemetry data manually.
+                    </div>
+                `;
+            }
+
+            // Export limit keys
+            const availableKeys = Object.entries(discoveryState.keysProbed)
+                .filter(([, v]) => v.status === 'available')
+                .map(([k, v]) => `${k} (currently: ${v.value})`);
+
+            if (availableKeys.length > 0) {
+                html += `
+                    <div class="test-result" style="margin-top: 10px;">
+                        <strong>✓ Export Limit Keys Available</strong><br />
+                        ${availableKeys.join('<br />')}
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="test-result warning" style="margin-top: 10px;">
+                        <strong>⚠️ No Export Limit Keys Found</strong><br />
+                        Probe results did not find standard FoxESS export limit settings.
+                    </div>
+                `;
+            }
+
+            // Recommendation
+            html += `
+                <div class="alert info" style="margin-top: 10px;">
+                    <strong>Next Steps:</strong><br />
+                    Based on discovery results, you can proceed with:
+                    <ul style="margin: 8px 0 0 20px; color: #58a6ff;">
+                        <li>Creating automation rules that trigger curtailment on negative FiT</li>
+                        <li>Setting up load-following curtailment during negative pricing windows</li>
+                        <li>Integrating curtailment events into ROI tracking</li>
+                    </ul>
+                </div>
+            `;
+
+            summary.innerHTML = html;
+        }
+
+        // ===== EVENT LISTENERS =====
+        document.getElementById('detectTopologyBtn').addEventListener('click', runTopologyDetection);
+        document.getElementById('refreshTelemetryBtn').addEventListener('click', () => fetchTelemetry(true));
+        document.getElementById('probeKeysBtn').addEventListener('click', probeExportLimitKeys);
+        document.getElementById('readSettingsBtn').addEventListener('click', readCurrentSettings);
+        document.getElementById('setExportLimitBtn').addEventListener('click', setExportLimit);
+        document.getElementById('disableLimitBtn').addEventListener('click', disableExportLimit);
+
+        // ===== INITIALIZATION =====
+        async function initPage() {
+            addLog('Page initialized. Getting device configuration...', 'info');
+            await getDeviceSn();
+            // Force refresh telemetry on page load to ensure API call for metrics
+            await fetchTelemetry(true);
+            // Load API metrics
+            try { loadApiMetrics(1); } catch(e) { console.warn('Failed to load API metrics:', e); }
+            addLog('Ready for discovery. Select "Detect Topology" to begin.', 'success');
+        }
+
+        // Initialize AppShell and then the page
+        if (window.AppShell) {
+            window.AppShell.init({ pageName: 'curtailment', requireAuth: true, checkSetup: false }).then(() => {
+                initPage();
+            }).catch((err) => {
+                addLog(`AppShell init error: ${err.message}`, 'error');
+            });
+        } else {
+            addLog('AppShell not available', 'warning');
+        }
+    </script>
+</body>
+</html>

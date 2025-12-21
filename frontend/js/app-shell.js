@@ -29,6 +29,18 @@
         }
     }
 
+    // Wait for apiClient to be initialized (with timeout)
+    async function waitForAPIClient(timeoutMs = 5000) {
+        const startTime = Date.now();
+        while (Date.now() - startTime < timeoutMs) {
+            if (window.apiClient) {
+                return window.apiClient;
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        throw new Error('API Client initialization timeout');
+    }
+
     function getContext() {
         return { user: state.user, apiClient: window.apiClient || null };
     }

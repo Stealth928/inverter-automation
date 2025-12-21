@@ -18,9 +18,9 @@
         /* Page-specific styles */
         /* Main content */
         .container {
-            max-width: 1400px;
+            max-width: 1920px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 20px 12px;
         }
         
         .page-header {
@@ -192,7 +192,7 @@
         /* ROI Calculator Styles */
         .roi-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 16px;
             margin-bottom: 20px;
         }
@@ -280,20 +280,69 @@
             max-height: 630px;
             height: 630px;
             overflow-y: auto;
-            overflow-x: hidden;
+            overflow-x: auto; /* Allow horizontal scroll if needed */
             padding-right: 8px; /* avoid scrollbar overlap */
             box-sizing: border-box;
         }
 
-        /* Ensure the table doesn't force the container to expand */
+        /* Ensure the table uses available width efficiently */
         .roi-summary-table {
-            table-layout: fixed;
+            table-layout: auto;
+            width: 100%;
+            min-width: 1600px; /* Ensure minimum width for all columns */
         }
 
         .roi-summary-table td, .roi-summary-table th {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            padding: 10px 12px;
+        }
+        
+        /* Set minimum widths for specific columns */
+        .roi-summary-table th:nth-child(1), /* Rule */
+        .roi-summary-table td:nth-child(1) {
+            min-width: 180px;
+            max-width: 240px;
+        }
+        
+        .roi-summary-table th:nth-child(2), /* Rule Type */
+        .roi-summary-table td:nth-child(2) {
+            min-width: 100px;
+        }
+        
+        .roi-summary-table th:nth-child(3), /* Set Power */
+        .roi-summary-table td:nth-child(3),
+        .roi-summary-table th:nth-child(4), /* House Load */
+        .roi-summary-table td:nth-child(4),
+        .roi-summary-table th:nth-child(5), /* Grid Export */
+        .roi-summary-table td:nth-child(5) {
+            min-width: 110px;
+        }
+        
+        .roi-summary-table th:nth-child(6), /* Triggered At */
+        .roi-summary-table td:nth-child(6) {
+            min-width: 150px;
+        }
+        
+        .roi-summary-table th:nth-child(7), /* Duration */
+        .roi-summary-table td:nth-child(7) {
+            min-width: 90px;
+        }
+        
+        .roi-summary-table th:nth-child(8), /* Price */
+        .roi-summary-table td:nth-child(8) {
+            min-width: 100px;
+        }
+        
+        .roi-summary-table th:nth-child(9), /* Est. Profit */
+        .roi-summary-table td:nth-child(9) {
+            min-width: 100px;
+        }
+        
+        .roi-summary-table th:nth-child(10), /* Status */
+        .roi-summary-table td:nth-child(10) {
+            min-width: 90px;
         }
         
         /* Automation History Timeline */
@@ -538,6 +587,7 @@
             <a href="/history.html" class="nav-link">📊 Reports</a>
             <a href="/control.html" class="nav-link">🎮 Controls</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
+            <a href="/curtailment-discovery.html" class="nav-link">🔬 WIP - Topology Discovery</a>
         </div>
         <div class="nav-right">
             <span class="nav-info" id="deviceSnDisplay">Device: —</span>
@@ -851,7 +901,7 @@
                             // Check if this is a price condition by name match
                             if ((condName.includes('Price') || condName.includes('Feed') || condName === 'price') && condition.value !== undefined && condition.value !== null) {
                                 const parsed = parseFloat(condition.value);
-                                if (!isNaN(parsed) && parsed > 0 && parsed < 10000) {
+                                if (!isNaN(parsed) && parsed >= 0 && parsed < 10000) {
                                     // Valid price range (0-10000 cents/kWh, or 0-100 AUD/kWh)
                                     return parsed;
                                 }
@@ -887,7 +937,38 @@
                 let actualPrice = null;
                 let rulePowerKw = null; // Use actual rule power from fdPwr if available
                 
-                if (event.startAllRules) {
+                // First check roiSnapshot for workMode (most reliable)
+                if (event.roiSnapshot && event.roiSnapshot.workMode) {
+                    const workMode = event.roiSnapshot.workMode;
+                    if (workMode === 'ForceCharge') {
+                        totalChargeRules++;
+                        isChargeRule = true;
+                        ruleType = 'Charge';
+                        actualPrice = event.roiSnapshot.buyPrice || null; // Use buy price for charging
+                    } else if (workMode === 'ForceDischarge' || workMode === 'Feedin') {
+                        totalFeedinRules++;
+                        isFeedinRule = true;
+                        ruleType = 'Discharge';
+                        actualPrice = event.roiSnapshot.feedInPrice || null; // Use feed-in price for discharge
+                    }
+                }
+                
+                // Fallback: check action workMode
+                if (!isChargeRule && !isFeedinRule && event.action && event.action.workMode) {
+                    const workMode = event.action.workMode;
+                    if (workMode === 'ForceCharge') {
+                        totalChargeRules++;
+                        isChargeRule = true;
+                        ruleType = 'Charge';
+                    } else if (workMode === 'ForceDischarge' || workMode === 'Feedin') {
+                        totalFeedinRules++;
+                        isFeedinRule = true;
+                        ruleType = 'Discharge';
+                    }
+                }
+                
+                // Legacy fallback: check rule evaluations and rule name
+                if (!isChargeRule && !isFeedinRule && event.startAllRules) {
                     for (const rule of event.startAllRules) {
                         if (rule.triggered) {
                             const ruleName = (rule.name || '').toLowerCase();
@@ -910,30 +991,95 @@
                 }
                 
                 // If no explicit prices from backend, fall back to condition parsing
-                if (!actualPrice) {
+                if (actualPrice === null || actualPrice === undefined) {
                     actualPrice = extractPriceFromRule(event.startAllRules);
                 }
                 
-                // Get actual rule power from action data if available (stored in Watts, convert to kW)
-                if (event.action && event.action.fdPwr) {
-                    rulePowerKw = event.action.fdPwr / 1000; // Convert watts to kilowatts
-                } else {
-                    // No fdPwr available - cannot calculate without knowing power
-                    rulePowerKw = null;
-                }
-                
-                // Calculate energy using actual rule power
-                const energyGenerated = rulePowerKw !== null ? rulePowerKw * durationHours : 0;
-                
-                // Calculate profit using appropriate price
+                // ⭐ NEW: Get ROI snapshot data (house load, actual grid export, revenue)
+                let houseLoadKw = null;
+                let gridExportKw = null;
                 let eventProfit = 0;
-                if (actualPrice && rulePowerKw !== null) {
-                    // Convert price to AUD/kWh (Amber prices in cents/kWh)
-                    const priceAudPerKwh = actualPrice > 10 ? actualPrice / 100 : actualPrice;
-                    eventProfit = energyGenerated * priceAudPerKwh;
-                    console.log(`[ROI] Rule: ${event.ruleName}, Type: ${ruleType}, Price: ${actualPrice}¢/kWh, Power: ${rulePowerKw}kW, Energy: ${energyGenerated.toFixed(2)}kWh, Profit: $${eventProfit.toFixed(2)}`);
+                
+                if (event.roiSnapshot) {
+                    // Use accurate data from automation trigger time
+                    // Safely convert watts to kW, treating null/undefined as null (not 0)
+                    houseLoadKw = (event.roiSnapshot.houseLoadW !== null && event.roiSnapshot.houseLoadW !== undefined) 
+                        ? event.roiSnapshot.houseLoadW / 1000 
+                        : null;
+                    gridExportKw = (event.roiSnapshot.estimatedGridExportW !== null && event.roiSnapshot.estimatedGridExportW !== undefined) 
+                        ? event.roiSnapshot.estimatedGridExportW / 1000 
+                        : null;
+                    eventProfit = (event.roiSnapshot.estimatedRevenue !== null && event.roiSnapshot.estimatedRevenue !== undefined && event.roiSnapshot.estimatedRevenue !== 0) 
+                        ? event.roiSnapshot.estimatedRevenue 
+                        : 0;
+                    
+                    // Extract prices from roiSnapshot if available
+                    if (actualPrice === null || actualPrice === undefined) {
+                        if (isChargeRule && event.roiSnapshot.buyPrice !== null && event.roiSnapshot.buyPrice !== undefined) {
+                            actualPrice = event.roiSnapshot.buyPrice;
+                        } else if (event.roiSnapshot.feedInPrice !== null && event.roiSnapshot.feedInPrice !== undefined) {
+                            actualPrice = event.roiSnapshot.feedInPrice;
+                        }
+                    }
+                    
+                    if (event.action && event.action.fdPwr) {
+                        rulePowerKw = event.action.fdPwr / 1000;
+                    }
+                    
+                    // Fallback: If roiSnapshot exists but revenue is 0 or missing, recalculate
+                    // This handles old events before backend ROI calculation was implemented
+                    if (eventProfit === 0 && (actualPrice !== null && actualPrice !== undefined) && rulePowerKw !== null) {
+                        // Price conversion: prices from Amber API are in cents/kWh
+                        // Use absolute value to detect magnitude, then preserve original sign
+                        const priceAudPerKwh = Math.abs(actualPrice) > 10 ? actualPrice / 100 : actualPrice;
+                        
+                        if (isChargeRule) {
+                            // CHARGE: revenue = -(power * price)
+                            // - Positive price: negative result (cost)
+                            // - Negative price: positive result (profit - you get paid to consume!)
+                            const gridDrawKw = houseLoadKw !== null ? (rulePowerKw + houseLoadKw) : rulePowerKw;
+                            eventProfit = -(gridDrawKw * durationHours * priceAudPerKwh);
+                            const profitOrCost = eventProfit >= 0 ? 'PROFIT' : 'COST';
+                            console.log(`[ROI] ⚡ Recalculated CHARGE for ${event.ruleName}: (${rulePowerKw.toFixed(2)}kW + ${houseLoadKw !== null ? houseLoadKw.toFixed(2) : '0'}kW) × ${durationHours.toFixed(4)}h × $${priceAudPerKwh.toFixed(4)}/kWh = $${eventProfit.toFixed(4)} (${profitOrCost})`);
+                        } else {
+                            // DISCHARGE: Revenue = (discharge - house load) * price * duration
+                            // - Positive price: positive result (revenue)
+                            // - Negative price: negative result (cost - rare, pay to export)
+                            const exportKw = gridExportKw !== null ? gridExportKw : (houseLoadKw !== null ? Math.max(0, rulePowerKw - houseLoadKw) : rulePowerKw);
+                            eventProfit = exportKw * durationHours * priceAudPerKwh;
+                            const profitOrCost = eventProfit >= 0 ? 'REVENUE' : 'COST';
+                            console.log(`[ROI] 📤 Recalculated DISCHARGE for ${event.ruleName}: ${exportKw.toFixed(2)}kW × ${durationHours.toFixed(4)}h × $${priceAudPerKwh.toFixed(4)}/kWh = $${eventProfit.toFixed(4)} (${profitOrCost})`);
+                        }
+                    }
+                    
+                    console.log(`[ROI] Rule: ${event.ruleName}, Type: ${ruleType}, Price: ${actualPrice}¢/kWh, FdPwr: ${rulePowerKw !== null ? rulePowerKw.toFixed(2) : '—'}kW, HouseLoad: ${houseLoadKw !== null ? houseLoadKw.toFixed(2) : '—'}kW, GridExport: ${gridExportKw !== null ? gridExportKw.toFixed(2) : '—'}kW, Revenue: $${eventProfit.toFixed(4)}`);
                 } else {
-                    console.log(`[ROI] Rule: ${event.ruleName}, Type: ${ruleType} - ${!actualPrice ? 'No price' : 'No power'} found`);
+                    // Fallback to old method if roiSnapshot not available
+                    if (event.action && event.action.fdPwr) {
+                        rulePowerKw = event.action.fdPwr / 1000;
+                    } else {
+                        rulePowerKw = null;
+                    }
+                    
+                    if ((actualPrice !== null && actualPrice !== undefined) && rulePowerKw !== null) {
+                        // Price conversion: use absolute value to detect magnitude, preserve sign
+                        const priceAudPerKwh = Math.abs(actualPrice) > 10 ? actualPrice / 100 : actualPrice;
+                        
+                        if (isChargeRule) {
+                            // CHARGE: revenue = -(power * price) (no house load data)
+                            eventProfit = -(rulePowerKw * durationHours * priceAudPerKwh);
+                            const profitOrCost = eventProfit >= 0 ? 'PROFIT' : 'COST';
+                            console.log(`[ROI] Rule: ${event.ruleName}, Type: ${ruleType}, Price: ${actualPrice}¢/kWh, Power: ${rulePowerKw}kW, Energy: ${(rulePowerKw * durationHours).toFixed(2)}kWh, ${profitOrCost}: $${eventProfit.toFixed(4)}`);
+                        } else {
+                            // DISCHARGE: Revenue = power * price * duration (no house load data)
+                            const energyGenerated = rulePowerKw * durationHours;
+                            eventProfit = energyGenerated * priceAudPerKwh;
+                            const profitOrCost = eventProfit >= 0 ? 'REVENUE' : 'COST';
+                            console.log(`[ROI] Rule: ${event.ruleName}, Type: ${ruleType}, Price: ${actualPrice}¢/kWh, Power: ${rulePowerKw}kW, Energy: ${energyGenerated.toFixed(2)}kWh, ${profitOrCost}: $${eventProfit.toFixed(4)}`);
+                        }
+                    } else {
+                        console.log(`[ROI] Rule: ${event.ruleName}, Type: ${ruleType} - ${!actualPrice ? 'No price' : 'No power'} found`);
+                    }
                 }
                 
                 eventPrices.push({
@@ -943,8 +1089,15 @@
                     isChargeRule,
                     isFeedinRule,
                     ruleType,
-                    rulePowerKw
+                    rulePowerKw,
+                    houseLoadKw,      // ⭐ NEW: house load from roiSnapshot
+                    gridExportKw      // ⭐ NEW: actual grid export from roiSnapshot
                 });
+                
+                // IMPORTANT: Don't blindly flip charge profit signs!
+                // - Positive buy price: Charge costs money = NEGATIVE profit (correct)
+                // - Negative buy price: You get PAID to charge = POSITIVE profit (correct!)
+                // The profit sign should match the economic reality, not just the rule type.
                 
                 totalProfit += eventProfit;
             }
@@ -1007,7 +1160,9 @@
                         <tr>
                             <th>Rule</th>
                             <th>Rule Type</th>
-                            <th>Power (kW)</th>
+                            <th>Set Power (kW)</th>
+                            <th>House Load (kW)</th>
+                            <th>Grid Export (kW)</th>
                             <th>Triggered At</th>
                             <th>Duration</th>
                             <th>Price (¢/kWh)</th>
@@ -1030,30 +1185,57 @@
                     console.log(`[ROI] Rendering row ${priceIndex}: ${event.ruleName}, priceInfo:`, priceInfo);
                 }
                 
+                // Display values: treat null/undefined as '—', but show all numbers including 0
                 let priceDisplay = '—';
-                if (priceInfo.price) {
+                if (priceInfo.price !== null && priceInfo.price !== undefined && !isNaN(priceInfo.price)) {
                     priceDisplay = `${priceInfo.price.toFixed(2)}¢`;
                 }
                 
-                const profitLabel = priceInfo.profit ? `$${priceInfo.profit.toFixed(2)}` : '—';
+                // Show profit even if it's $0.00 - only show '—' if truly missing
+                const profitLabel = (priceInfo.profit !== null && priceInfo.profit !== undefined && !isNaN(priceInfo.profit)) 
+                    ? `$${priceInfo.profit.toFixed(2)}` 
+                    : '—';
+                    
+                // Determine profit color based on ECONOMIC value, not rule type
+                // - Positive profit (you earned money) = GREEN (even for charge with negative prices!)
+                // - Negative profit (you spent money) = RED
+                let profitColor = '#8b949e'; // Default gray for missing data
+                if (priceInfo.profit !== null && priceInfo.profit !== undefined && !isNaN(priceInfo.profit)) {
+                    profitColor = priceInfo.profit >= 0 ? '#7ee787' : '#ef4444';
+                }
+                
                 const ruleTypeDisplay = priceInfo.ruleType || '—';
-                const powerDisplay = priceInfo.rulePowerKw ? `${priceInfo.rulePowerKw}kW` : '—';
-                
-                // Only show "Running" if automation is enabled AND event type is ongoing
-                const statusDisplay = (event.type === 'ongoing' && isAutomationEnabled) ? '🟢 Running' : '✓ Done';
-                
-                html += `
-                    <tr>
-                        <td class="rule-name">${event.ruleName || 'Unknown Rule'}</td>
-                        <td>${ruleTypeDisplay}</td>
-                        <td>${powerDisplay}</td>
-                        <td>${startDate.toLocaleString('en-AU', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</td>
-                        <td>${duration}</td>
-                        <td>${priceDisplay}</td>
-                        <td style="color: ${priceInfo.profit >= 0 ? '#7ee787' : '#ef4444'}; font-weight: 600;">${profitLabel}</td>
-                        <td>${statusDisplay}</td>
-                    </tr>
-                `;
+                const powerDisplay = (priceInfo.rulePowerKw !== null && priceInfo.rulePowerKw !== undefined && !isNaN(priceInfo.rulePowerKw)) 
+                    ? `${priceInfo.rulePowerKw.toFixed(2)}kW` 
+                    : '—';
+                const houseLoadDisplay = (priceInfo.houseLoadKw !== null && priceInfo.houseLoadKw !== undefined && !isNaN(priceInfo.houseLoadKw)) 
+                    ? `${priceInfo.houseLoadKw.toFixed(2)}kW` 
+                    : '—';
+                const gridExportDisplay = (priceInfo.gridExportKw !== null && priceInfo.gridExportKw !== undefined && !isNaN(priceInfo.gridExportKw)) 
+                    ? `${priceInfo.gridExportKw.toFixed(2)}kW` 
+                    : '—';
+                    
+                    // Show status based on event type and automation state
+                    // Ongoing events show "Running" if automation is currently enabled
+                    // Complete events show "Done" regardless
+                    const statusDisplay = (event.type === 'ongoing') 
+                        ? (isAutomationEnabled ? '🟢 Running' : '⏸ Pending') 
+                        : '✓ Done';
+                    
+                    html += `
+                        <tr>
+                            <td class="rule-name">${event.ruleName || 'Unknown Rule'}</td>
+                            <td>${ruleTypeDisplay}</td>
+                            <td>${powerDisplay}</td>
+                            <td>${houseLoadDisplay}</td>
+                            <td>${gridExportDisplay}</td>
+                            <td>${startDate.toLocaleString('en-AU', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                            <td>${duration}</td>
+                            <td>${priceDisplay}</td>
+                            <td style="color: ${profitColor}; font-weight: 600;">${profitLabel}</td>
+                            <td>${statusDisplay}</td>
+                        </tr>
+                    `;
                 
                 priceIndex++;
             }

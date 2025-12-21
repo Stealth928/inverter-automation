@@ -1374,6 +1374,7 @@
             <a href="/history.html" class="nav-link">📊 Reports</a>
             <a href="/control.html" class="nav-link">🎮 Controls</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
+            <a href="/curtailment-discovery.html" class="nav-link">🔬 WIP - Topology Discovery</a>
         </div>
         <div class="nav-right">
             <div class="device-input">
@@ -2022,7 +2023,7 @@
             }
         }
         
-        async function callAPI(endpoint, name, autoOpen = false) {
+        async function callAPI(endpoint, name, autoOpen = false, forceRefresh = false) {
             // Only auto-open the right-panel if caller explicitly requests it.
             // Suppress during initial boot to keep panel collapsed by default.
             if (autoOpen && panelCollapsed && !window.suppressPanelAutoOpen) togglePanel();
@@ -2031,9 +2032,14 @@
             const sn = document.getElementById('deviceSn').value;
             
             let url = endpoint;
+            // Add forceRefresh parameter if provided to bypass backend cache
+            if (forceRefresh && !url.includes('forceRefresh')) {
+                const separator = url.includes('?') ? '&' : '?';
+                url += separator + 'forceRefresh=true';
+            }
             if (sn && (endpoint.includes('/inverter') || endpoint.includes('/scheduler/') || endpoint.includes('/module/signal'))) {
                 // Use & if URL already has query parameters, otherwise use ?
-                const separator = endpoint.includes('?') ? '&' : '?';
+                const separator = url.includes('?') ? '&' : '?';
                 url += `${separator}sn=${encodeURIComponent(sn)}`;
             }
             
@@ -2929,7 +2935,10 @@
             console.log(`[Cache] Checking weather cache: cached=${cachedDays} days, requested=${days}, date match=${cachedDate === today}, age=${age}ms, TTL=${CONFIG.cache.weather}ms`);
             console.log('[Cache] cacheState:', cacheState);
             
-            if (!force && cacheState.weatherTime && age < CONFIG.cache.weather && cachedDays === days && cachedDate === today) {
+            // Force refresh if requested (either explicit parameter or page reload bypass)
+            const shouldBypassCache = force || isPageReload;
+            
+            if (!shouldBypassCache && cacheState.weatherTime && age < CONFIG.cache.weather && cachedDays === days && cachedDate === today) {
                 console.log('[Cache] Weather cache is fresh, has correct forecast days, and is from today - loading from cache');
                 // Load cached full weather object and render it
                 try {
@@ -3588,13 +3597,17 @@
         // Amber
         let amberSites = [];
         
-        async function loadAmberSites() {
+        async function loadAmberSites(forceRefresh = false) {
             const select = document.getElementById('amberSiteId');
             const card = document.getElementById('amberCard');
             select.innerHTML = '<option value="">Loading...</option>';
             
             try {
-                const resp = await authenticatedFetch('/api/amber/sites');
+                let url = '/api/amber/sites';
+                if (forceRefresh) {
+                    url += '?forceRefresh=true';
+                }
+                const resp = await authenticatedFetch(url);
                 const json = await resp.json();
                 
                 // Extract sites array from response
@@ -3633,7 +3646,10 @@
             const age = Date.now() - (cacheState.amberTime || 0);
             console.log(`[Cache] Amber cache age: ${age}ms, TTL: ${CONFIG.cache.amber}ms, fresh: ${age < CONFIG.cache.amber}`);
             
-            if (!force && cacheState.amberTime && age < CONFIG.cache.amber) {
+            // Force refresh if requested (either explicit parameter or page reload bypass)
+            const shouldBypassCache = force || isPageReload;
+            
+            if (!shouldBypassCache && cacheState.amberTime && age < CONFIG.cache.amber) {
                 console.log('[Cache] Amber cache is fresh, loading from cache');
                 // Load cached full prices array and render
                 try {
@@ -5399,6 +5415,37 @@
         });
         
         // =====================================================
+        // PAGE RELOAD DETECTION & CACHE BYPASS
+        // =====================================================
+        // Detect page reload to force cache bypass on initial load
+        let isPageReload = false;
+        try {
+            // Use Navigation Timing API to detect reload (standard way across all browsers)
+            // navigation.type: 0 = normal navigation, 1 = reload (F5/Ctrl+R), 2 = back/forward, 255 = unknown
+            if (window.performance && window.performance.navigation) {
+                isPageReload = (window.performance.navigation.type === 1);
+                if (isPageReload) {
+                    console.log('[PageInit] Page reload detected (Navigation Type = 1) - will bypass cache for fresh data');
+                }
+            }
+            
+            // Fallback for newer browsers using PerformanceNavigationTiming
+            if (!isPageReload && window.performance?.getEntriesByType) {
+                const navEntries = window.performance.getEntriesByType('navigation');
+                if (navEntries.length > 0) {
+                    // If this navigation entry exists, check if it's a reload
+                    isPageReload = navEntries[0]?.type === 'reload';
+                    if (isPageReload) {
+                        console.log('[PageInit] Page reload detected (PerformanceNavigationTiming) - will bypass cache for fresh data');
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[PageInit] Could not detect page reload:', e);
+            isPageReload = false;
+        }
+
+        // =====================================================
         // AUTHENTICATED PAGE DATA INITIALIZATION
         // =====================================================
         // This function is called ONLY after user is authenticated
@@ -5492,13 +5539,13 @@
                 }
             } catch (e) { console.warn('Failed to load backend config', e); }
             
-            // 1) Load Amber sites / prices
-            try { loadAmberSites(); } catch(e) { console.warn('Failed to load Amber sites:', e); }
+            // 1) Load Amber sites / prices (bypass cache if page reload)
+            try { loadAmberSites(isPageReload); } catch(e) { console.warn('Failed to load Amber sites:', e); }
             
-            // 2) Fetch inverter real-time data immediately
-            try { callAPI('/api/inverter/real-time', 'Real-time Data'); } catch(e) { console.warn('Failed to load inverter data:', e); }
+            // 2) Fetch inverter real-time data immediately (bypass cache if page reload)
+            try { callAPI('/api/inverter/real-time', 'Real-time Data', false, isPageReload); } catch(e) { console.warn('Failed to load inverter data:', e); }
             
-            // 3) Set up weather request
+            // 3) Set up weather request (bypass cache if page reload)
             try {
                 console.log('[Weather Init] Starting weather initialization...');
                 // Determine default forecast days from backend preferences or top-level config
@@ -5540,7 +5587,7 @@
                 }
                 updateWeatherRequestedLabel();
                 document.getElementById('weatherDays').addEventListener('input', updateWeatherRequestedLabel);
-                getWeather();
+                getWeather(isPageReload);  // Bypass cache on page reload
             } catch(e) { console.warn('Failed to initialize weather:', e); }
             
             // 4) Load automation rules from localStorage

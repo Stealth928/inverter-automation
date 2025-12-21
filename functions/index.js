@@ -218,6 +218,9 @@ async function addAutomationAuditEntry(userId, cycleData) {
       actionTaken: cycleData.actionTaken || null,
       segmentApplied: cycleData.segmentApplied || null,
       
+      // ⭐ NEW: ROI snapshot with house load
+      roiSnapshot: cycleData.roiSnapshot || null,
+      
       // Cache info
       inverterCacheHit: cycleData.inverterCacheHit || false,
       inverterCacheAgeMs: cycleData.inverterCacheAgeMs || null,
@@ -3086,8 +3089,8 @@ const [evalRuleId] = ruleData || [null];
               name: evalResult.rule,
               ruleId: evalRuleId || evalResult.rule,
               triggered: evalResult.result === 'triggered' || evalResult.result === 'continuing',
-              feedInPrice: evalResult.details?.feedInPrice || null,
-              buyPrice: evalResult.details?.buyPrice || null,
+              feedInPrice: evalResult.details?.feedInPrice !== undefined && evalResult.details?.feedInPrice !== null ? evalResult.details.feedInPrice : null,
+              buyPrice: evalResult.details?.buyPrice !== undefined && evalResult.details?.buyPrice !== null ? evalResult.details.buyPrice : null,
               conditions: evalResult.details?.results?.map(cond => ({
                 name: cond.condition,
                 met: cond.met,
@@ -3096,6 +3099,125 @@ const [evalRuleId] = ruleData || [null];
               })) || []
             };
           });
+          
+          // ⭐ Extract house load at trigger time (for accurate ROI calculation)
+          // Use the SAME logic as index.html which successfully extracts house load (showing 1.68kW)
+          
+          // Helper function - same as index.html findValue
+          function findValue(arr, keysOrPatterns) {
+            if (!Array.isArray(arr)) return null;
+            for (const k of keysOrPatterns) {
+              // Try exact match on variable
+              const exact = arr.find(it => 
+                (it.variable && it.variable.toString().toLowerCase() === k.toString().toLowerCase()) || 
+                (it.key && it.key.toString().toLowerCase() === k.toString().toLowerCase())
+              );
+              if (exact && exact.value !== undefined && exact.value !== null) return exact.value;
+              
+              // Try includes match on variable name
+              const incl = arr.find(it => 
+                (it.variable && it.variable.toString().toLowerCase().includes(k.toString().toLowerCase())) || 
+                (it.key && it.key.toString().toLowerCase().includes(k.toString().toLowerCase()))
+              );
+              if (incl && incl.value !== undefined && incl.value !== null) return incl.value;
+            }
+            return null;
+          }
+          
+          // Normalize response structure - same as index.html
+          let datas = [];
+          if (Array.isArray(inverterData?.result)) {
+            // result may be array of frames with datas arrays
+            if (inverterData.result.length > 0 && Array.isArray(inverterData.result[0].datas)) {
+              inverterData.result.forEach(r => { if (Array.isArray(r.datas)) datas.push(...r.datas); });
+            } else {
+              // result is array of simple datapoints
+              datas = inverterData.result.slice();
+            }
+          } else if (inverterData?.result && typeof inverterData.result === 'object') {
+            if (Array.isArray(inverterData.result.datas)) datas = inverterData.result.datas.slice();
+            else if (Array.isArray(inverterData.result.data)) datas = inverterData.result.data.slice();
+          }
+          
+          // Extract house load using same keys and logic as index.html
+          const loadKeys = ['loadspower', 'loadpower', 'load', 'houseload', 'house_load', 'consumption', 'load_active_power', 'loadactivepower', 'loadsPower'];
+          let houseLoadW = findValue(datas, loadKeys);
+          
+          // DEBUG: Log all available variables to help debug missing house load
+          if (datas.length > 0 && datas.length <= 30) {
+            const availableVars = datas.map(d => `${d.variable || d.key}=${d.value}`).join(', ');
+            console.log(`[Automation ROI DEBUG] Available datapoints (${datas.length}): ${availableVars}`);
+          } else if (datas.length > 30) {
+            const sample = datas.slice(0, 5).map(d => `${d.variable || d.key}=${d.value}`).join(', ');
+            console.log(`[Automation ROI DEBUG] Sample datapoints (${datas.length} total): ${sample}...`);
+          }
+          
+          // Convert to number, but preserve null if data not found (don't default to 0)
+          if (houseLoadW !== null && houseLoadW !== undefined) {
+            houseLoadW = Number(houseLoadW);
+            if (isNaN(houseLoadW)) {
+              console.warn(`[Automation ROI] House load found but NaN: ${houseLoadW}`);
+              houseLoadW = null;
+            }
+          }
+          
+          if (houseLoadW !== null) {
+            console.log(`[Automation ROI] ✓ Successfully extracted house load: ${houseLoadW}W`);
+          } else {
+            console.warn(`[Automation ROI] ⚠️ Could not extract house load from ${datas.length} datapoints - tried keys: ${loadKeys.join(', ')}`);
+          }
+          
+          const fdPwr = rule.action?.fdPwr || 0;
+          const workMode = rule.action?.workMode || 'SelfUse';
+          const isChargeRule = workMode === 'ForceCharge';
+          const isDischargeRule = workMode === 'ForceDischarge' || workMode === 'Feedin';
+          
+          // BUG FIX: result from evaluateRule() has prices at TOP level, not inside 'details'
+          // evaluateRule returns: { triggered, results, feedInPrice, buyPrice }
+          const feedInPrice = result.feedInPrice ?? 0; // In cents/kWh from Amber API
+          const buyPrice = result.buyPrice ?? 0; // In cents/kWh from Amber API
+          
+          // DEBUG: Validate price format
+          console.log(`[Automation ROI] Prices from evaluateRule: feedInPrice=${feedInPrice}¢/kWh, buyPrice=${buyPrice}¢/kWh (type: ${typeof feedInPrice}, ${typeof buyPrice})`);
+          
+          const durationHours = (rule.action?.durationMinutes || 30) / 60;
+          
+          // Calculate profit/cost based on rule type
+          let estimatedGridExportW = null;
+          let estimatedRevenue = 0;
+          
+          if (isChargeRule) {
+            // CHARGE RULE: Drawing power FROM the grid
+            // - Positive buyPrice: You PAY to consume = NEGATIVE profit (cost)
+            // - Negative buyPrice: You get PAID to consume = POSITIVE profit (revenue)
+            // Formula: revenue = -(power * price) where price can be negative
+            // Power drawn from grid = fdPwr (charge power) + house load
+            const gridDrawW = houseLoadW !== null ? (fdPwr + houseLoadW) : fdPwr;
+            const pricePerKwh = buyPrice / 100; // Convert cents to dollars
+            
+            // When buyPrice is negative (e.g., -20¢), pricePerKwh is -0.20
+            // revenue = -(gridDrawW * -0.20 * hours) = positive (you earn money)
+            // When buyPrice is positive (e.g., +30¢), pricePerKwh is +0.30
+            // revenue = -(gridDrawW * 0.30 * hours) = negative (you pay money)
+            estimatedRevenue = -(gridDrawW * pricePerKwh * durationHours);
+            
+            const profitOrCost = estimatedRevenue >= 0 ? 'PROFIT' : 'COST';
+            console.log(`[Automation ROI] ⚡ CHARGE Rule '${rule.name}': (${fdPwr}W charge + ${houseLoadW !== null ? houseLoadW + 'W' : '0W'} house) = ${gridDrawW}W @ ${buyPrice}¢/kWh × ${durationHours.toFixed(4)}h = $${estimatedRevenue.toFixed(4)} (${profitOrCost})`);
+          } else if (isDischargeRule) {
+            // DISCHARGE RULE: Exporting power TO the grid
+            // - Positive feedInPrice: You get PAID for export = POSITIVE profit (revenue)  
+            // - Negative feedInPrice: You PAY to export = NEGATIVE profit (cost) - rare but possible
+            // Power exported = fdPwr (discharge power) - house load
+            estimatedGridExportW = houseLoadW !== null ? Math.max(0, fdPwr - houseLoadW) : fdPwr;
+            const pricePerKwh = feedInPrice / 100; // Convert cents to dollars
+            estimatedRevenue = estimatedGridExportW * pricePerKwh * durationHours;
+            
+            const profitOrCost = estimatedRevenue >= 0 ? 'REVENUE' : 'COST';
+            console.log(`[Automation ROI] 📤 DISCHARGE Rule '${rule.name}': ${fdPwr}W - ${houseLoadW !== null ? houseLoadW + 'W' : '0W'} = ${estimatedGridExportW}W @ ${feedInPrice}¢/kWh × ${durationHours.toFixed(4)}h = $${estimatedRevenue.toFixed(4)} (${profitOrCost})`);
+          } else {
+            // Other modes (SelfUse, Backup, etc) - no grid transaction
+            console.log(`[Automation ROI] ℹ️ Rule '${rule.name}': workMode=${workMode} - no grid transaction calculated`);
+          }
           
           await addAutomationAuditEntry(userId, {
             cycleId: `cycle_${cycleStartTime}`,
@@ -3110,6 +3232,16 @@ const [evalRuleId] = ruleData || [null];
               fdPwr: rule.action?.fdPwr,
               fdSoc: rule.action?.fdSoc,
               minSocOnGrid: rule.action?.minSocOnGrid
+            },
+            // ⭐ Store ROI data with house load snapshot (null if not found)
+            roiSnapshot: {
+              houseLoadW: houseLoadW,
+              estimatedGridExportW: estimatedGridExportW,
+              feedInPrice: feedInPrice,
+              buyPrice: buyPrice,
+              workMode: workMode,
+              durationMinutes: rule.action?.durationMinutes || 30,
+              estimatedRevenue: estimatedRevenue
             },
             activeRuleBefore: state.activeRule,
             activeRuleAfter: ruleId,
@@ -3232,8 +3364,8 @@ const [evalRuleId] = ruleData || [null];
                 name: evalResult.rule,
                 ruleId: evalRuleId || evalResult.rule,
                 triggered: evalResult.result === 'triggered' || evalResult.result === 'continuing',
-                feedInPrice: evalResult.details?.feedInPrice || null,
-                buyPrice: evalResult.details?.buyPrice || null,
+                feedInPrice: evalResult.details?.feedInPrice !== undefined && evalResult.details?.feedInPrice !== null ? evalResult.details.feedInPrice : null,
+                buyPrice: evalResult.details?.buyPrice !== undefined && evalResult.details?.buyPrice !== null ? evalResult.details.buyPrice : null,
                 conditions: evalResult.details?.results?.map(cond => ({
                   name: cond.condition,
                   met: cond.met,
@@ -3667,7 +3799,8 @@ app.get('/api/automation/audit', async (req, res) => {
             endConditions: log.evaluationResults,
             startAllRules: startEvent.allRuleEvaluations,  // All rules evaluated at start
             endAllRules: log.allRuleEvaluations,          // All rules evaluated at end
-            action: startEvent.action
+            action: startEvent.action,
+            roiSnapshot: startEvent.roiSnapshot  // ⭐ Include ROI snapshot captured at trigger time
           });
           activeRules.delete(activeRuleBefore);
         }
@@ -3682,7 +3815,8 @@ app.get('/api/automation/audit', async (req, res) => {
           ruleId: log.ruleId || activeRuleAfter,
           conditions: log.evaluationResults,
           allRuleEvaluations: log.allRuleEvaluations,  // Store all rules evaluated
-          action: log.actionTaken
+          action: log.actionTaken,
+          roiSnapshot: log.roiSnapshot  // ⭐ Preserve ROI data for later use in complete event
         });
       }
     }
@@ -3699,7 +3833,8 @@ app.get('/api/automation/audit', async (req, res) => {
         durationMs,
         startConditions: startEvent.conditions,
         startAllRules: startEvent.allRuleEvaluations,  // All rules evaluated when started
-        action: startEvent.action
+        action: startEvent.action,
+        roiSnapshot: startEvent.roiSnapshot  // ⭐ Include ROI snapshot from trigger time
       });
     }
     
@@ -3883,6 +4018,48 @@ app.post('/api/device/battery/soc/set', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('[API] /api/device/battery/soc/set error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// ==================== DEVICE SETTINGS (Curtailment Discovery) ====================
+
+// Read device setting (for discovery / testing)
+app.post('/api/device/setting/get', authenticateUser, async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.body.sn || userConfig?.deviceSn;
+    const key = req.body.key;
+    
+    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    if (!key) return res.status(400).json({ errno: 400, error: 'Missing required parameter: key' });
+    
+    const result = await callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key }, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/device/setting/get error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Write device setting (for discovery / testing and curtailment control)
+app.post('/api/device/setting/set', authenticateUser, async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.body.sn || userConfig?.deviceSn;
+    const key = req.body.key;
+    const value = req.body.value;
+    
+    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    if (!key) return res.status(400).json({ errno: 400, error: 'Missing required parameter: key' });
+    if (value === undefined || value === null) return res.status(400).json({ errno: 400, error: 'Missing required parameter: value' });
+    
+    console.log(`[DeviceSetting] User ${req.user.uid} setting ${key}=${value} on device ${sn}`);
+    
+    const result = await callFoxESSAPI('/op/v0/device/setting/set', 'POST', { sn, key, value }, userConfig, req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] /api/device/setting/set error:', error);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
