@@ -1692,18 +1692,21 @@
             initDatePickers();
         });
 
-        // Initialize Firebase & AppShell        AppShell.init({
+        // Initialize Firebase & AppShell
+        AppShell.init({
             pageName: 'roi',
             autoMetrics: true,
-            onReady: () => {                
+            onReady: () => {
                 // User is authorized, load page content
-                try {                    loadDeviceSn(); 
-                } catch (error) { 
-                    console.error('Failed to load device SN', error); 
+                try {
+                    loadDeviceSn();
+                } catch (error) {
+                    console.error('Failed to load device SN', error);
                 }
-                try {                    fetchAutomationHistory(); 
-                } catch (error) { 
-                    console.error('Failed to load automation history', error); 
+                try {
+                    fetchAutomationHistory();
+                } catch (error) {
+                    console.error('Failed to load automation history', error);
                 }
             }
         });
