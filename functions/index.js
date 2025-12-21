@@ -811,6 +811,124 @@ app.get('/api/amber/prices', async (req, res) => {
   }
 });
 
+/**
+ * Get actual (settled) Amber prices for a specific timestamp
+ * Used by ROI calculator to get accurate prices for completed rules
+ * Only works for timestamps within last 7 days (Amber API limitation)
+ */
+app.get('/api/amber/prices/actual', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const userConfig = await getUserConfig(userId);
+    
+    if (!userConfig || !userConfig.amberApiKey) {
+      return res.status(400).json({ errno: 400, error: 'Amber not configured' });
+    }
+    
+    const siteId = req.query.siteId;
+    const timestamp = req.query.timestamp; // ISO 8601 timestamp
+    
+    if (!siteId) {
+      return res.status(400).json({ errno: 400, error: 'Site ID is required' });
+    }
+    
+    if (!timestamp) {
+      return res.status(400).json({ errno: 400, error: 'Timestamp is required' });
+    }
+    
+    // Parse timestamp and check if within 7-day window
+    const targetTime = new Date(timestamp);
+    const now = new Date();
+    const ageMs = now.getTime() - targetTime.getTime();
+    const ageDays = ageMs / (1000 * 60 * 60 * 24);
+    
+    if (isNaN(targetTime.getTime())) {
+      return res.status(400).json({ errno: 400, error: 'Invalid timestamp format' });
+    }
+    
+    if (ageDays > 7) {
+      console.log(`[Amber Actual] Timestamp ${timestamp} is ${ageDays.toFixed(2)} days old (>7 days) - outside Amber data retention`);
+      return res.json({ errno: 0, result: null, reason: 'outside_retention_window', ageDays: ageDays.toFixed(2) });
+    }
+    
+    if (ageMs < 5 * 60 * 1000) {
+      console.log(`[Amber Actual] Timestamp ${timestamp} is only ${(ageMs / 60000).toFixed(1)} minutes old - price may not be settled yet`);
+      return res.json({ errno: 0, result: null, reason: 'too_recent', ageMinutes: (ageMs / 60000).toFixed(1) });
+    }
+    
+    // Calculate date for the timestamp (Amber uses date-based queries)
+    const targetDate = targetTime.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    console.log(`[Amber Actual] Fetching actual prices for ${targetDate} (timestamp: ${timestamp}, age: ${ageDays.toFixed(2)} days)`);
+    
+    // Fetch prices for that date (we'll filter to the specific interval)
+    // Use the same resolution as the user's billing interval (5 or 30 minutes)
+    const resolution = req.query.resolution || 30;
+    
+    try {
+      const result = await callAmberAPI(
+        `/sites/${encodeURIComponent(siteId)}/prices`,
+        { startDate: targetDate, endDate: targetDate, resolution },
+        userConfig,
+        userId
+      );
+      
+      if (!result || (result.errno && result.errno !== 0)) {
+        console.warn(`[Amber Actual] API error: ${result?.error || 'unknown'}`);
+        return res.json({ errno: result?.errno || 500, error: result?.error || 'API call failed', result: null });
+      }
+      
+      // Extract prices array
+      let prices = [];
+      if (Array.isArray(result)) {
+        prices = result;
+      } else if (result.result && Array.isArray(result.result)) {
+        prices = result.result;
+      }
+      
+      if (prices.length === 0) {
+        console.log(`[Amber Actual] No prices returned for ${targetDate}`);
+        return res.json({ errno: 0, result: null, reason: 'no_data' });
+      }
+      
+      // Filter to find the interval containing our timestamp
+      // Amber prices have startTime and endTime fields
+      const matchingInterval = prices.find(price => {
+        const intervalStart = new Date(price.startTime);
+        const intervalEnd = new Date(price.endTime);
+        return targetTime >= intervalStart && targetTime <= intervalEnd;
+      });
+      
+      if (!matchingInterval) {
+        console.log(`[Amber Actual] No matching interval found for ${timestamp} in ${prices.length} price intervals`);
+        return res.json({ errno: 0, result: null, reason: 'no_matching_interval' });
+      }
+      
+      // Return the actual price data
+      console.log(`[Amber Actual] Found matching interval: type=${matchingInterval.type}, channel=${matchingInterval.channelType}, price=${matchingInterval.perKwh}c/kWh`);
+      
+      res.json({
+        errno: 0,
+        result: {
+          type: matchingInterval.type,
+          channelType: matchingInterval.channelType,
+          perKwh: matchingInterval.perKwh,
+          spotPerKwh: matchingInterval.spotPerKwh,
+          startTime: matchingInterval.startTime,
+          endTime: matchingInterval.endTime,
+          descriptor: matchingInterval.descriptor
+        }
+      });
+    } catch (apiError) {
+      console.error(`[Amber Actual] API call failed:`, apiError.message);
+      return res.status(500).json({ errno: 500, error: apiError.message, result: null });
+    }
+  } catch (error) {
+    console.error('[Amber Actual] Endpoint error:', error.message);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // Metrics (platform global or per-user). Allow unauthenticated callers to read global metrics by default.
 app.get('/api/metrics/api-calls', async (req, res) => {
   // Parse days outside try block so it's available in catch

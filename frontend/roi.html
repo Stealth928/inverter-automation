@@ -922,6 +922,57 @@
             // Store prices and power for each event for later use in table
             const eventPrices = [];
             
+            /**
+             * Try to fetch actual (settled) Amber prices for an event
+             * Only works for events within last 7 days and older than 5 minutes
+             */
+            async function tryFetchActualPrices(event) {
+                // Check if event has a timestamp
+                if (!event || !event.startTime) {
+                    return { feedInPrice: null, buyPrice: null };
+                }
+                
+                const eventTime = new Date(event.startTime);
+                const now = new Date();
+                const ageMs = now.getTime() - eventTime.getTime();
+                const ageDays = ageMs / (1000 * 60 * 60 * 24);
+                const ageMinutes = ageMs / (1000 * 60);
+                
+                if (ageDays > 7 || ageMinutes < 5) {
+                    return { feedInPrice: null, buyPrice: null };
+                }
+                
+                try {
+                    const sitesResp = await apiClient.getAmberSites();
+                    if (!sitesResp || sitesResp.errno !== 0 || !sitesResp.result || sitesResp.result.length === 0) {
+                        return { feedInPrice: null, buyPrice: null };
+                    }
+                    
+                    const siteId = sitesResp.result[0].id;
+                    const timestamp = eventTime.toISOString();
+                    
+                    console.log(`[ROI Actual] Fetching actual prices for ${event.ruleName} at ${timestamp} (age: ${ageDays.toFixed(2)} days)`);
+                    
+                    // Fetch actual price (API returns one channel at a time based on the event)
+                    const resp = await apiClient.getAmberActualPrice(siteId, timestamp, 30);
+                    
+                    if (resp && resp.errno === 0 && resp.result) {
+                        const price = resp.result;
+                        if (price.channelType === 'general') {
+                            console.log(`[ROI Actual] ✅ Got actual buy price: ${price.perKwh}¢/kWh`);
+                            return { buyPrice: price.perKwh, feedInPrice: null };
+                        } else if (price.channelType === 'feedIn') {
+                            console.log(`[ROI Actual] ✅ Got actual feed-in price: ${price.perKwh}¢/kWh`);
+                            return { feedInPrice: price.perKwh, buyPrice: null };
+                        }
+                    }
+                } catch (error) {
+                    console.log('[ROI Actual] Error fetching actual prices:', error.message);
+                }
+                
+                return { feedInPrice: null, buyPrice: null };
+            }
+            
             for (const event of events) {
                 totalRules++;
                 
@@ -944,12 +995,22 @@
                         totalChargeRules++;
                         isChargeRule = true;
                         ruleType = 'Charge';
-                        actualPrice = event.roiSnapshot.buyPrice || null; // Use buy price for charging
+                        actualPrice = event.roiSnapshot.buyPrice || null; // Use buy price for charging (forecast)
                     } else if (workMode === 'ForceDischarge' || workMode === 'Feedin') {
                         totalFeedinRules++;
                         isFeedinRule = true;
                         ruleType = 'Discharge';
-                        actualPrice = event.roiSnapshot.feedInPrice || null; // Use feed-in price for discharge
+                        actualPrice = event.roiSnapshot.feedInPrice || null; // Use feed-in price for discharge (forecast)
+                    }
+                    
+                    // ⭐ Try to get ACTUAL settled prices for recent events (< 7 days old, > 5 min old)
+                    const actualPrices = await tryFetchActualPrices(event);
+                    if (isChargeRule && actualPrices.buyPrice !== null) {
+                        console.log(`[ROI] Replacing forecast buy price ${actualPrice}¢ with actual ${actualPrices.buyPrice}¢ for ${event.ruleName}`);
+                        actualPrice = actualPrices.buyPrice;
+                    } else if (isFeedinRule && actualPrices.feedInPrice !== null) {
+                        console.log(`[ROI] Replacing forecast feed-in price ${actualPrice}¢ with actual ${actualPrices.feedInPrice}¢ for ${event.ruleName}`);
+                        actualPrice = actualPrices.feedInPrice;
                     }
                 }
                 

@@ -1281,8 +1281,8 @@
                 }
                 
                 // Cache settings validation
-                if (newConfig.cache.amber < 30000 || newConfig.cache.amber > 300000) {
-                    validationErrors.push('Amber cache: must be 30s-5m (30,000-300,000ms)');
+                if (newConfig.cache.amber < 10000 || newConfig.cache.amber > 300000) {
+                    validationErrors.push('Amber cache: must be 10s-5m (10,000-300,000ms)');
                 }
                 if (newConfig.cache.inverter < 60000 || newConfig.cache.inverter > 600000) {
                     validationErrors.push('Inverter cache: must be 1m-10m (60,000-600,000ms) - respect API rate limits');
@@ -1496,8 +1496,8 @@
                 errorMsg: 'Data timeout must be 5-30s (5,000-30,000ms)'
             },
             'cache_amber': {
-                min: 30000, max: 300000,
-                errorMsg: 'Amber cache must be 30s-5m (30,000-300,000ms)'
+                min: 10000, max: 300000,
+                errorMsg: 'Amber cache must be 10s-5m (10,000-300,000ms)'
             },
             'cache_inverter': {
                 min: 60000, max: 600000,

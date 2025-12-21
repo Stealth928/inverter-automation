@@ -321,7 +321,17 @@ class APIClient {
     
     return this.get('/api/amber/prices', params);
   }
-
+  /**
+   * Get actual (settled) Amber prices for a specific timestamp
+   * Used to improve ROI accuracy by replacing forecast prices with settled prices
+   * @param {string} siteId - Amber site ID
+   * @param {string} timestamp - ISO 8601 timestamp (e.g., "2025-12-21T14:30:00Z")
+   * @param {number} resolution - 5 or 30 (minute interval)
+   * @returns {Promise} Response with actual price data or null if unavailable
+   */
+  async getAmberActualPrice(siteId, timestamp, resolution = 30) {
+    return this.get('/api/amber/prices/actual', { siteId, timestamp, resolution });
+  }
   // ==================== WEATHER ====================
 
   async getWeather(place, days = 3) {
