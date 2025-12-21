@@ -78,11 +78,13 @@ service cloud.firestore {
       allow update: if false;
     }
     
-    // ==================== SHARED CACHE (GLOBAL) ====================
-    // Shared API cache for external APIs (Amber, Weather, etc.)
-    // Written by Cloud Functions only, readable by authenticated users
+    // ==================== SHARED CACHE (GLOBAL) - RESERVED ====================
+    // NOTE: This collection is currently UNUSED. All caching is done per-user
+    // at users/{userId}/cache/{cacheDoc}. This rule is preserved for potential
+    // future use (e.g., shared rate-limit state, global announcements).
+    // If implementing, ensure proper access controls.
     match /cache/{cacheId} {
-      allow read: if isAuthenticated();
+      allow read: if false;  // Disabled - not currently used
       allow write: if false; // Only Cloud Functions can write (via Admin SDK)
     }
     

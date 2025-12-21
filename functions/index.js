@@ -389,7 +389,8 @@ app.post('/api/config/validate-keys', async (req, res) => {
       const testConfig = { foxessToken: foxess_token, deviceSn: device_sn };
       const foxResult = await callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, testConfig, null);
       
-      console.log(`[Validation] FoxESS API response:`, foxResult);
+      // Log only status, not full response (may contain sensitive device data)
+      console.log(`[Validation] FoxESS API response: errno=${foxResult?.errno}, devices=${foxResult?.result?.data?.length || 0}`);
       
       if (!foxResult || foxResult.errno !== 0) {
         failed_keys.push('foxess_token');
@@ -461,16 +462,12 @@ app.post('/api/config/validate-keys', async (req, res) => {
 // Check if user setup is complete (no auth required for initial check during setup flow)
 app.get('/api/config/setup-status', async (req, res) => {
   try {
-    // Log all request details for debugging
-    const authHeader = req.headers.authorization || '(no auth header)';
-    console.log(`[Setup Status] Request headers:`, {
-      hasAuthHeader: !!req.headers.authorization,
-      authHeaderPrefix: authHeader.substring(0, 20)
-    });
+    // Log only whether auth header is present (not its contents for security)
+    console.log(`[Setup Status] Request - hasAuth: ${!!req.headers.authorization}`);
     
     await tryAttachUser(req);
     
-    console.log(`[Setup Status] After tryAttachUser - User:`, req.user ? `${req.user.uid} (email: ${req.user.email})` : '(not authenticated)');
+    console.log(`[Setup Status] After tryAttachUser - User:`, req.user ? req.user.uid : '(not authenticated)');
     
     const serverConfig = getConfig();
     

@@ -261,6 +261,71 @@ Resets automation state and clears active rules.
 { "errno": 0, "msg": "Reset complete" }
 ```
 
+### End Orphan Rule
+```
+POST /api/automation/rule/end
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "ruleId": "high_feed_in",
+  "endTime": 1733401800000
+}
+```
+Manually ends an orphan ongoing rule that got stuck without proper termination. Creates a completion audit entry with the specified end time.
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": {
+    "ended": true,
+    "ruleName": "High Feed-in",
+    "ruleId": "high_feed_in",
+    "startTime": 1733400000000,
+    "endTime": 1733401800000,
+    "durationMs": 1800000,
+    "message": "Orphan rule successfully ended with completion timestamp"
+  }
+}
+```
+
+### Get Automation Audit Logs
+```
+GET /api/automation/audit?limit=500&days=7
+Authorization: Bearer <token>
+```
+Returns detailed automation cycle audit logs with rule on/off events for ROI calculation.
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": {
+    "entries": [...],
+    "ruleEvents": [
+      {
+        "type": "complete",
+        "ruleId": "high_feed_in",
+        "ruleName": "High Feed-in",
+        "startTime": 1733400000000,
+        "endTime": 1733401800000,
+        "durationMs": 1800000,
+        "roiSnapshot": {
+          "houseLoadW": 1500,
+          "feedInPrice": 35.5,
+          "buyPrice": 28.2,
+          "estimatedRevenue": 1.25
+        }
+      }
+    ],
+    "count": 150,
+    "eventsCount": 25,
+    "period": "7 days"
+  }
+}
+```
+
 ---
 
 ## Rule Management Endpoints
@@ -423,6 +488,46 @@ Content-Type: application/json
 { "errno": 0, "cleared": 8 }
 ```
 
+### Discover Device Variables
+```
+GET /api/inverter/discover-variables?sn=60KB10305AKA064
+Authorization: Bearer <token>
+```
+Returns all available variables for a device (useful for topology detection).
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": ["pvPower", "pv1Power", "pv2Power", "SoC", "batTemperature", ...]
+}
+```
+
+### Get All Device Data
+```
+POST /api/inverter/all-data
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "sn": "60KB10305AKA064" }
+```
+Returns ALL real-time data for a device without variable filtering. Used for topology analysis and diagnostics.
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": [...],
+  "topologyHints": {
+    "pvPower": 0,
+    "meterPower": 2500,
+    "meterPower2": 1800,
+    "batChargePower": 1500,
+    "likelyTopology": "AC-coupled (external PV via meter)"
+  }
+}
+```
+
 ---
 
 ## Amber Endpoints
@@ -492,6 +597,44 @@ Authorization: Bearer <token>
       "startTime": "2025-12-01T00:00:00+11:00"
     }
   ]
+}
+```
+
+### Get Actual Price at Timestamp
+```
+GET /api/amber/prices/actual?timestamp=1733400000000&siteId=site123
+Authorization: Bearer <token>
+```
+Returns the actual settled price for a specific historical timestamp. Used by ROI calculator to get real prices instead of forecasts. Only works for timestamps older than 5 minutes (prices take time to settle).
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": {
+    "timestamp": 1733400000000,
+    "targetDate": "2025-12-05",
+    "general": {
+      "perKwh": 24.52,
+      "spotPerKwh": 20.15,
+      "startTime": "2025-12-05T14:00:00+11:00",
+      "endTime": "2025-12-05T14:30:00+11:00"
+    },
+    "feedIn": {
+      "perKwh": -8.35,
+      "spotPerKwh": -5.20,
+      "startTime": "2025-12-05T14:00:00+11:00",
+      "endTime": "2025-12-05T14:30:00+11:00"
+    }
+  }
+}
+```
+
+**Error Response (timestamp too recent):**
+```json
+{
+  "errno": 400,
+  "error": "Timestamp is only 3.5 minutes old - price may not be settled yet. Wait at least 5 minutes."
 }
 ```
 
