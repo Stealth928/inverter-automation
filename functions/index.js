@@ -24,8 +24,16 @@ if (!admin.apps || admin.apps.length === 0) {
 }
 const db = admin.firestore();
 
-// Initialize Amber API module with dependencies
+// Initialize API modules with dependencies
 const amberAPI = amberModule.init({
+  db,
+  logger: null, // Will be defined below
+  getConfig: null, // Will be defined below
+  incrementApiCount: null // Will be defined below
+});
+
+const foxessModule = require('./api/foxess');
+const foxessAPI = foxessModule.init({
   db,
   logger: null, // Will be defined below
   getConfig: null, // Will be defined below
@@ -128,7 +136,7 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
     }
     
     // Fetch fresh data from FoxESS
-    const data = await callFoxESSAPI('/op/v0/device/real/query', 'POST', {
+    const data = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', {
       sn: deviceSN,
       variables: ['SoC', 'batTemperature', 'ambientTemperation', 'pvPower', 'loadsPower', 'gridConsumptionPower', 'feedinPower']
     }, userConfig, userId);
@@ -177,7 +185,7 @@ async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, force
     }
     
     // Fetch fresh data from FoxESS with all required variables
-    const data = await callFoxESSAPI('/op/v0/device/real/query', 'POST', {
+    const data = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', {
       sn: deviceSN,
       variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
     }, userConfig, userId);
@@ -390,7 +398,7 @@ app.post('/api/config/validate-keys', async (req, res) => {
     if (foxess_token && device_sn) {
       console.log(`[Validation] Testing FoxESS token`);
       const testConfig = { foxessToken: foxess_token, deviceSn: device_sn };
-      const foxResult = await callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, testConfig, null);
+      const foxResult = await foxessAPI.callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, testConfig, null);
       
       // Log only status, not full response (may contain sensitive device data)
       console.log(`[Validation] FoxESS API response: errno=${foxResult?.errno}, devices=${foxResult?.result?.data?.length || 0}`);
@@ -1059,99 +1067,10 @@ app.get('/api/health/auth', (req, res) => {
 
 // ==================== HELPER FUNCTIONS ====================
 
-/**
- * Generate FoxESS API signature
- * NOTE: FoxESS expects literal backslash-r-backslash-n characters, NOT actual CRLF bytes
- * This matches the Postman collection which uses escaped \\r\\n
- */
-function generateFoxESSSignature(apiPath, token, timestamp) {
-  // See CONFIGURATION.md -> "FoxESS API authentication / signature" for examples (curl, PowerShell, Node.js) and troubleshooting tips.
-
-  const signaturePlain = `${apiPath}\\r\\n${token}\\r\\n${timestamp}`;
-  const signature = crypto.createHash('md5').update(signaturePlain).digest('hex');
-  return signature;
-}
-
-/**
- * Call FoxESS API with user's credentials
- */
-async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, userId = null) {
-  const config = getConfig();
-  let token = userConfig?.foxessToken || config.foxess.token;
-  
-  if (!token) {
-    return { errno: 401, error: 'FoxESS token not configured' };
-  }
-  
-  // Clean token - remove whitespace per Postman collection
-  if (typeof token === 'string') {
-    token = token.trim().replace(/\s+/g, '').replace(/[^\x20-\x7E]/g, '');
-  }
-  
-  // NOTE: API counter is now incremented AFTER the call, only for successful responses
-  // This prevents counting rate-limited or failed requests
-  
-  try {
-    const timestamp = Date.now();
-    
-    // Split apiPath into base path for signature calculation
-    // Signature should be calculated on the path WITHOUT query parameters
-    const [basePath] = apiPath.split('?');
-    const signature = generateFoxESSSignature(basePath, token, timestamp);
-    
-    const url = new URL(`${config.foxess.baseUrl}${apiPath}`);
-    
-    const options = {
-      method: method,
-      headers: {
-        'token': token,
-        'timestamp': timestamp.toString(),
-        'signature': signature,
-        'lang': 'en',
-        'Content-Type': 'application/json'
-      }
-    };
-    
-    if (body && method !== 'GET') {
-      options.body = JSON.stringify(body);
-    }
-    
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    options.signal = controller.signal;
-    
-    const response = await fetch(url, options);
-    clearTimeout(timeout);
-    const text = await response.text();
-    
-    try {
-      const result = JSON.parse(text);
-      
-      // Only count the API call if it was actually processed (not rate-limited)
-      // errno 40402 = rate limit exceeded - don't count these as they didn't consume quota
-      // errno 0 = success, other errno values = real API calls that consumed quota
-      if (userId && result.errno !== 40402) {
-        incrementApiCount(userId, 'foxess').catch(() => {});
-      } else if (result.errno === 40402) {
-        console.warn(`[FoxESS] Rate limited (40402) - NOT counting toward API quota`);
-      }
-      
-      return result;
-    } catch (err) {
-      // Non-JSON response - still count as an API call was made
-      if (userId) {
-        incrementApiCount(userId, 'foxess').catch(() => {});
-      }
-      return { errno: -1, msg: 'Non-JSON response', raw: text };
-    }
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      return { errno: 408, msg: 'Request timeout' };
-    }
-    console.error(`[FoxESS] Error calling API: ${error.message}`);
-    return { errno: 500, msg: error.message };
-  }
-}
+// ==================== FOXESS API MODULE ====================
+// All FoxESS-related functions have been extracted to api/foxess.js
+// Functions are initialized at module load and reinit after dependencies are available (line ~4180)
+// Access via foxessAPI.foxessAPI.callFoxESSAPI(), foxessAPI.generateFoxESSSignature()
 
 /**
  * Call Amber API
@@ -2015,7 +1934,7 @@ app.post('/api/automation/cycle', async (req, res) => {
               });
             }
             // Real API call - counted in metrics for accurate quota tracking
-            const clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+            const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
             if (clearResult?.errno === 0) {
               console.log(`[Automation] ✅ All segments CLEARED successfully (errno=0)`);
               // Mark segments as cleared so we don't do this again every cycle
@@ -2157,7 +2076,7 @@ app.post('/api/automation/cycle', async (req, res) => {
             });
           }
           // Real API call - counted in metrics for accurate quota tracking
-          const clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+          const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
           if (clearResult?.errno === 0) {
             console.log(`[Cycle] ✅ Segments cleared successfully due to rule disable flag`);
           }
@@ -2195,7 +2114,7 @@ app.post('/api/automation/cycle', async (req, res) => {
             });
           }
           // Real API call - counted in metrics for accurate quota tracking
-          const clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+          const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
           if (clearResult?.errno === 0) {
             console.log(`[Automation] ✅ Segments cleared successfully after rule disable`);
           } else {
@@ -2546,7 +2465,7 @@ app.post('/api/automation/cycle', async (req, res) => {
                     });
                   }
                   // Real API call - counted in metrics for accurate quota tracking
-                  await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+                  await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
                   console.log(`[Automation] ✅ Cleared lower-priority active rule's segment`);
                   await new Promise(resolve => setTimeout(resolve, 2500)); // Wait for inverter to process
                 }
@@ -2850,7 +2769,7 @@ const [evalRuleId] = ruleData || [null];
               while (clearAttempt < 3 && !segmentClearSuccess) {
                 clearAttempt++;
                 console.log(`[Automation] Segment clear attempt ${clearAttempt}/3...`);
-                clearResult = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+                clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
                 
                 if (clearResult?.errno === 0) {
                   console.log(`[Automation] ✓ Cleared all scheduler segments (attempt ${clearAttempt})`);
@@ -3019,13 +2938,13 @@ app.post('/api/automation/cancel', async (req, res) => {
     }
     
     // Send to device via v1 API
-    const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: emptyGroups }, userConfig, userId);
+    const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: emptyGroups }, userConfig, userId);
     console.log(`[Automation] Cancel v1 result: errno=${result.errno}`);
     
     // Disable the scheduler flag
     let flagResult = null;
     try {
-      flagResult = await callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
+      flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
       console.log(`[Automation] Cancel flag result: errno=${flagResult?.errno}`);
     } catch (flagErr) {
       console.warn('[Automation] Flag disable failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
@@ -3034,7 +2953,7 @@ app.post('/api/automation/cancel', async (req, res) => {
     // Verification read
     let verify = null;
     try {
-      verify = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+      verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
     } catch (e) {
       console.warn('[Automation] Verify read failed:', e && e.message ? e.message : e);
     }
@@ -3538,7 +3457,7 @@ app.post('/api/automation/test', async (req, res) => {
 app.get('/api/inverter/list', async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
-    const result = await callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -3573,7 +3492,7 @@ app.get('/api/inverter/settings', async (req, res) => {
     const sn = req.query.sn || userConfig?.deviceSn;
     const key = req.query.key;
     if (!key) return res.status(400).json({ errno: 400, error: 'Missing required parameter: key' });
-    const result = await callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/inverter/settings error:', error);
@@ -3587,7 +3506,7 @@ app.get('/api/device/battery/soc/get', async (req, res) => {
     const userConfig = await getUserConfig(req.user.uid);
     const sn = req.query.sn || userConfig?.deviceSn;
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    const result = await callFoxESSAPI(`/op/v0/device/battery/soc/get?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI(`/op/v0/device/battery/soc/get?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/device/battery/soc/get error:', error);
@@ -3602,7 +3521,7 @@ app.post('/api/device/battery/soc/set', async (req, res) => {
     const sn = req.body.sn || userConfig?.deviceSn;
     const { minSoc, minSocOnGrid } = req.body;
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    const result = await callFoxESSAPI('/op/v0/device/battery/soc/set', 'POST', { sn, minSoc, minSocOnGrid }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/battery/soc/set', 'POST', { sn, minSoc, minSocOnGrid }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/device/battery/soc/set error:', error);
@@ -3622,7 +3541,7 @@ app.post('/api/device/setting/get', authenticateUser, async (req, res) => {
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     if (!key) return res.status(400).json({ errno: 400, error: 'Missing required parameter: key' });
     
-    const result = await callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/device/setting/get error:', error);
@@ -3644,7 +3563,7 @@ app.post('/api/device/setting/set', authenticateUser, async (req, res) => {
     
     console.log(`[DeviceSetting] User ${req.user.uid} setting ${key}=${value} on device ${sn}`);
     
-    const result = await callFoxESSAPI('/op/v0/device/setting/set', 'POST', { sn, key, value }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', { sn, key, value }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/device/setting/set error:', error);
@@ -3658,7 +3577,7 @@ app.get('/api/device/battery/forceChargeTime/get', async (req, res) => {
     const userConfig = await getUserConfig(req.user.uid);
     const sn = req.query.sn || userConfig?.deviceSn;
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    const result = await callFoxESSAPI(`/op/v0/device/battery/forceChargeTime/get?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI(`/op/v0/device/battery/forceChargeTime/get?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/device/battery/forceChargeTime/get error:', error);
@@ -3672,7 +3591,7 @@ app.post('/api/device/battery/forceChargeTime/set', async (req, res) => {
     const userConfig = await getUserConfig(req.user.uid);
     const sn = req.body.sn || userConfig?.deviceSn;
     const body = Object.assign({ sn }, req.body);
-    const result = await callFoxESSAPI('/op/v0/device/battery/forceChargeTime/set', 'POST', body, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/battery/forceChargeTime/set', 'POST', body, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/device/battery/forceChargeTime/set error:', error);
@@ -3687,7 +3606,7 @@ app.post('/api/device/getMeterReader', async (req, res) => {
     const sn = req.body.sn || userConfig?.deviceSn;
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     const body = Object.assign({ sn }, req.body);
-    const result = await callFoxESSAPI('/op/v0/device/getMeterReader', 'POST', body, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/getMeterReader', 'POST', body, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/device/getMeterReader error:', error);
@@ -3702,7 +3621,7 @@ app.get('/api/inverter/temps', async (req, res) => {
     const sn = req.query.sn || userConfig?.deviceSn;
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     const variables = ['batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation'];
-    const result = await callFoxESSAPI('/op/v0/device/real/query', 'POST', { sn, variables }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', { sn, variables }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/inverter/temps error:', error);
@@ -3738,7 +3657,7 @@ app.get('/api/inverter/report', authenticateUser, async (req, res) => {
     
     console.log(`[API] /api/inverter/report - dimension: ${dimension}, body: ${JSON.stringify(body)}`);
     
-    const result = await callFoxESSAPI('/op/v0/device/report/query', 'POST', body, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/report/query', 'POST', body, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/inverter/report error:', error);
@@ -3754,7 +3673,7 @@ app.get('/api/inverter/generation', authenticateUser, async (req, res) => {
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     
     // Get point-in-time generation data (today, month, cumulative)
-    const genResult = await callFoxESSAPI(`/op/v0/device/generation?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
+    const genResult = await foxessAPI.callFoxESSAPI(`/op/v0/device/generation?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
     
     // Enhance with yearly data from report endpoint
     try {
@@ -3765,7 +3684,7 @@ app.get('/api/inverter/generation', authenticateUser, async (req, res) => {
         year,
         variables: ['generation']
       };
-      const reportResult = await callFoxESSAPI('/op/v0/device/report/query', 'POST', reportBody, userConfig, req.user.uid);
+      const reportResult = await foxessAPI.callFoxESSAPI('/op/v0/device/report/query', 'POST', reportBody, userConfig, req.user.uid);
       
       // Extract yearly generation from report (array of monthly values for the year)
       if (reportResult.result && Array.isArray(reportResult.result) && reportResult.result.length > 0) {
@@ -3806,7 +3725,7 @@ app.get('/api/inverter/discover-variables', authenticateUser, async (req, res) =
     console.log(`[Diagnostics] Discovering variables for device: ${deviceSN}`);
     
     // Call FoxESS API to get available variables
-    const result = await callFoxESSAPI(
+    const result = await foxessAPI.callFoxESSAPI(
       `/op/v0/device/variable/get?deviceSN=${encodeURIComponent(deviceSN)}`,
       'GET',
       null,
@@ -3864,7 +3783,7 @@ app.post('/api/inverter/all-data', authenticateUser, async (req, res) => {
 
     console.log(`[Diagnostics] Calling FoxESS API /op/v0/device/real/query with ${allVariables.length} variables`);
     
-    const result = await callFoxESSAPI(
+    const result = await foxessAPI.callFoxESSAPI(
       '/op/v0/device/real/query',
       'POST',
       body,
@@ -3915,7 +3834,7 @@ app.post('/api/inverter/all-data', authenticateUser, async (req, res) => {
 app.get('/api/ems/list', async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
-    const result = await callFoxESSAPI('/op/v0/ems/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/ems/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/ems/list error:', error);
@@ -3927,7 +3846,7 @@ app.get('/api/ems/list', async (req, res) => {
 app.get('/api/module/list', async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
-    const result = await callFoxESSAPI('/op/v0/module/list', 'POST', { currentPage: 1, pageSize: 10, sn: userConfig?.deviceSn }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/module/list', 'POST', { currentPage: 1, pageSize: 10, sn: userConfig?.deviceSn }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/module/list error:', error);
@@ -3945,7 +3864,7 @@ app.get('/api/module/signal', async (req, res) => {
       return res.status(400).json({ errno: 400, error: 'moduleSN parameter is required' });
     }
     
-    const result = await callFoxESSAPI('/op/v0/module/getSignal', 'POST', { sn: moduleSN }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/module/getSignal', 'POST', { sn: moduleSN }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/module/signal error:', error);
@@ -3957,7 +3876,7 @@ app.get('/api/module/signal', async (req, res) => {
 app.get('/api/meter/list', async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
-    const result = await callFoxESSAPI('/op/v0/gw/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/gw/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/meter/list error:', error);
@@ -3972,7 +3891,7 @@ app.get('/api/device/workmode/get', async (req, res) => {
     const sn = req.query.sn || userConfig?.deviceSn;
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
 
-    const result = await callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key: 'WorkMode' }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key: 'WorkMode' }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/device/workmode/get error:', error);
@@ -3989,7 +3908,7 @@ app.post('/api/device/workmode/set', async (req, res) => {
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     if (!workMode) return res.status(400).json({ errno: 400, error: 'workMode is required (SelfUse, Feedin, Backup, PeakShaving)' });
 
-    const result = await callFoxESSAPI('/op/v0/device/setting/set', 'POST', { sn, key: 'WorkMode', value: workMode }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', { sn, key: 'WorkMode', value: workMode }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/device/workmode/set error:', error);
@@ -4041,7 +3960,7 @@ app.get('/api/scheduler/v1/get', async (req, res) => {
     }
     
     // Always fetch live data from the device (this is what the manufacturer app sees)
-    const result = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN: sn }, userConfig, req.user?.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN: sn }, userConfig, req.user?.uid);
     
     // Tag the source so debugging is easier
     if (result && result.errno === 0) {
@@ -4070,7 +3989,7 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
     logger.debug('Scheduler', `SET request for device ${deviceSN}, ${groups.length} groups`);
     
     // Primary: v1 API (this is what backend server.js uses and it works)
-    const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups }, userConfig, req.user.uid);
+    const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups }, userConfig, req.user.uid);
 
     // Determine if we should enable or disable the scheduler flag
     const shouldEnable = Array.isArray(groups) && groups.some(g => Number(g.enable) === 1);
@@ -4078,7 +3997,7 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
     // Set scheduler flag (required for FoxESS app to show the schedule)
     let flagResult = null;
     try {
-      flagResult = await callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: shouldEnable ? 1 : 0 }, userConfig, req.user.uid);
+      flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: shouldEnable ? 1 : 0 }, userConfig, req.user.uid);
     } catch (flagErr) {
       logger.warn('Scheduler', `Flag set failed: ${flagErr && flagErr.message ? flagErr.message : flagErr}`);
     }
@@ -4094,7 +4013,7 @@ app.post('/api/scheduler/v1/set', async (req, res) => {
     // Verification read: fetch what the device actually has now
     let verify = null;
     try {
-      verify = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, req.user.uid);
+      verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, req.user.uid);
     } catch (e) { 
       logger.warn('Scheduler', `Verify read failed: ${e && e.message ? e.message : e}`);
     }
@@ -4162,10 +4081,17 @@ async function incrementApiCount(userId, apiType) {
   }
 }
 
-// ==================== REINITIALIZE AMBER MODULE ====================
+// ==================== REINITIALIZE API MODULES ====================
 // Now that all dependencies (logger, getConfig, incrementApiCount) are defined,
-// reinitialize the Amber API module with proper dependencies
+// reinitialize the API modules with proper dependencies
 Object.assign(amberAPI, amberModule.init({
+  db,
+  logger,
+  getConfig,
+  incrementApiCount
+}));
+
+Object.assign(foxessAPI, foxessModule.init({
   db,
   logger,
   getConfig,
@@ -4238,12 +4164,12 @@ app.post('/api/scheduler/v1/clear-all', authenticateUser, async (req, res) => {
     }
     
     // Send to device via v1 API (primary - this is what works in server.js)
-    const result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: emptyGroups }, userConfig, userId);
+    const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: emptyGroups }, userConfig, userId);
     
     // Disable the scheduler flag
     let flagResult = null;
     try {
-      flagResult = await callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
+      flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
     } catch (flagErr) {
       logger.warn('Scheduler', `Flag disable failed: ${flagErr && flagErr.message ? flagErr.message : flagErr}`);
     }
@@ -4251,7 +4177,7 @@ app.post('/api/scheduler/v1/clear-all', authenticateUser, async (req, res) => {
     // Verification read
     let verify = null;
     try {
-      verify = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+      verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
     } catch (e) {
       logger.warn('Scheduler', `Verify read failed: ${e && e.message ? e.message : e}`);
     }
@@ -5009,7 +4935,7 @@ async function applyRuleAction(userId, rule, userConfig) {
   // Get current scheduler from device (v1 API)
   let currentGroups = [];
   try {
-    const currentScheduler = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+    const currentScheduler = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
     if (currentScheduler.errno === 0 && currentScheduler.result?.groups) {
       currentGroups = JSON.parse(JSON.stringify(currentScheduler.result.groups)); // Deep copy
       console.log(`[Automation] Got ${currentGroups.length} groups from device`);
@@ -5078,7 +5004,7 @@ async function applyRuleAction(userId, rule, userConfig) {
   let result = null;
   while (applyAttempt < 3) {
     applyAttempt++;
-    result = await callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: currentGroups }, userConfig, userId);
+    result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: currentGroups }, userConfig, userId);
     
     if (result?.errno === 0) {
       console.log(`[Automation] ✓ Segment sent (attempt ${applyAttempt})`);
@@ -5109,7 +5035,7 @@ async function applyRuleAction(userId, rule, userConfig) {
   while (flagAttempt < 2) {
     flagAttempt++;
     try {
-      flagResult = await callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 1 }, userConfig, userId);
+      flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 1 }, userConfig, userId);
       if (flagResult?.errno === 0) {
         console.log(`[Automation] ✓ Flag set successfully (attempt ${flagAttempt})`);
         break;
@@ -5135,7 +5061,7 @@ async function applyRuleAction(userId, rule, userConfig) {
   while (verifyAttempt < 2) {
     verifyAttempt++;
     try {
-      verify = await callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+      verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
       if (verify?.errno === 0) {
         console.log(`[Automation] ✓ Verification read successful (attempt ${verifyAttempt}): groups count=${verify?.result?.groups?.length || 0}`);
         break;
@@ -5311,7 +5237,7 @@ app.get('/api/inverter/history', authenticateUser, async (req, res) => {
         }
         
         const result = await Promise.race([
-          callFoxESSAPI('/op/v0/device/history/query', 'POST', {
+          foxessAPI.callFoxESSAPI('/op/v0/device/history/query', 'POST', {
             sn,
             begin,
             end,
@@ -5347,7 +5273,7 @@ app.get('/api/inverter/history', authenticateUser, async (req, res) => {
         if (chunkResp) {
           console.log(`[History] Cache HIT for chunk ${new Date(ch.cbeg).toISOString()} - ${new Date(ch.cend).toISOString()}`);
         } else {
-          chunkResp = await callFoxESSAPI('/op/v0/device/history/query', 'POST', {
+          chunkResp = await foxessAPI.callFoxESSAPI('/op/v0/device/history/query', 'POST', {
             sn,
             begin: ch.cbeg,
             end: ch.cend,
