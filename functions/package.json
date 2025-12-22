@@ -23,7 +23,8 @@
     "test:e2e": "node e2e-tests.js",
     "test:e2e:prod": "TEST_ENV=prod node e2e-tests.js",
     "test:e2e:auth": "node e2e-tests.js",
-    "test:all": "npm test && npm run test:integration && npm run test:e2e"
+    "test:all": "npm test && npm run test:integration && npm run test:e2e",
+    "pre-deploy": "node ../scripts/pre-deploy-check.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

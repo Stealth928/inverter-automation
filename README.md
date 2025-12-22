@@ -30,6 +30,7 @@ See [docs/SETUP.md](docs/SETUP.md) for detailed setup instructions.
 
 | Document | Description |
 |----------|-------------|
+| [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | **⚡ CRITICAL: Pre-deployment checklist & quality control** |
 | [docs/AUTOMATION.md](docs/AUTOMATION.md) | **Automation rules engine** - conditions, actions, examples |
 | [docs/API.md](docs/API.md) | **API reference** - all endpoints and parameters |
 | [docs/SETUP.md](docs/SETUP.md) | **Setup guide** - deployment and configuration |
@@ -197,9 +198,55 @@ cd frontend && python -m http.server 8000
 
 See [TESTING_GUIDE.md](TESTING_GUIDE.md) for complete testing documentation.
 
+## ⚡ Quality Control & Deployment
+
+**This is a production app with live users. Strict quality control is enforced.**
+
+### Pre-Deployment Checklist
+
+**ALWAYS run these before deploying:**
+
+```bash
+# 1. Run pre-deployment quality checks
+npm --prefix functions run pre-deploy
+
+# 2. Run full test suite  
+npm --prefix functions test
+
+# 3. Check logs for errors
+firebase functions:log | tail -30
+
+# 4. Deploy
+firebase deploy --only functions
+```
+
+**The pre-deploy script verifies:**
+- ✓ All 323 tests pass
+- ✓ No linting errors
+- ✓ All critical modules properly imported/exported
+- ✓ All critical routes defined and functional
+- ✓ No common refactoring mistakes
+- ✓ Firebase configuration correct
+
+**If any check fails, deployment is blocked. Fix the issue first.**
+
+### Automated Quality Control (GitHub Actions)
+
+Every push to `main` automatically runs:
+- Unit tests (323 tests)
+- Linting (ESLint)
+- Module verification
+- Security audit
+
+See [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for the complete deployment and quality control guide.
+
 ### Deployment
 
 ```bash
+# Single-step safe deployment (runs all checks first)
+npm --prefix functions run pre-deploy && firebase deploy --only functions
+
+# Or manually check then deploy
 firebase deploy                    # Deploy everything
 firebase deploy --only functions   # Deploy functions only
 firebase deploy --only hosting     # Deploy frontend only

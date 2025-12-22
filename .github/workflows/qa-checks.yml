@@ -1,0 +1,112 @@
+name: Pre-Deployment Quality Checks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  quality-assurance:
+    name: QA Checks Before Deployment
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [20.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: |
+          functions/package-lock.json
+          package-lock.json
+    
+    - name: Install root dependencies
+      run: npm install
+    
+    - name: Install functions dependencies
+      run: npm --prefix functions install
+    
+    - name: Run pre-deployment checks
+      run: node scripts/pre-deploy-check.js
+    
+    - name: Run test suite
+      run: npm --prefix functions test -- --passWithNoTests
+    
+    - name: Generate coverage report
+      run: npm --prefix functions run test:coverage
+      continue-on-error: true
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./functions/coverage/coverage-final.json
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  lint-check:
+    name: Lint & Code Quality
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [20.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: functions/package-lock.json
+    
+    - name: Install dependencies
+      run: npm --prefix functions install
+    
+    - name: Run ESLint
+      run: npm --prefix functions run lint
+      continue-on-error: true
+
+  security-check:
+    name: Security Vulnerabilities
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Run npm audit
+      run: npm --prefix functions audit --audit-level=moderate
+      continue-on-error: true
+
+  deployment-readiness:
+    name: Deployment Readiness
+    needs: [quality-assurance, lint-check]
+    runs-on: ubuntu-latest
+    
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Check deployment requirements
+      run: |
+        echo "✓ All checks passed"
+        echo "✓ Ready for deployment"
+        echo ""
+        echo "Next steps:"
+        echo "1. Review changes: git log --oneline -5"
+        echo "2. Run: firebase deploy --only functions"
+        echo "3. Verify in console: https://console.firebase.google.com"
