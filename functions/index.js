@@ -682,7 +682,7 @@ app.get('/api/amber/prices/current', async (req, res) => {
       
       // If still no data (first request or in-flight failed), fetch it
       if (!result) {
-        const fetchPromise = callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId)
+        const fetchPromise = amberAPI.callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId)
           .then(async (data) => {
             if (Array.isArray(data) && data.length > 0) {
               await amberAPI.cacheAmberPricesCurrent(siteId, data, userId, userConfig);
@@ -2157,7 +2157,7 @@ app.post('/api/automation/cycle', async (req, res) => {
             // If still no data (first request or in-flight failed), fetch it
             if (!amberData) {
               console.log(`[Automation] Current prices cache miss for ${userId}, calling API`);
-              const fetchPromise = callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig, userId)
+              const fetchPromise = amberAPI.callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig, userId)
                 .then(async (data) => {
                   if (Array.isArray(data) && data.length > 0) {
                     await amberAPI.cacheAmberPricesCurrent(siteId, data, userId, userConfig);
