@@ -4187,6 +4187,7 @@ exports.api = functions.https.onRequest(app);
 
 // Export for testing
 if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID) {
+  exports.app = app; // Export Express app for supertest
   exports.getAmberCacheTTL = amberAPI.getAmberCacheTTL;
   exports.getCachedAmberPricesCurrent = amberAPI.getCachedAmberPricesCurrent;
   exports.getConfig = getConfig;
