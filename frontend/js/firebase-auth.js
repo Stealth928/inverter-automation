@@ -21,8 +21,8 @@ class FirebaseAuth {
     this.onAuthStateChangedCallbacks = [];
     this.initialized = false;
     
-    // Idle session timeout (30 minutes for better security)
-    this.IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+    // Idle session timeout (120 minutes / 2 hours - relaxed for better user experience)
+    this.IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000;
     this.lastActivityTime = Date.now();
     this.idleTimeoutCheckInterval = null;
   }

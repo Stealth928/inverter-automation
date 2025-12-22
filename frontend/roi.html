@@ -1056,24 +1056,21 @@
                     let fetchStartDate, fetchEndDate;
                     if (minEventTime !== Infinity && maxEventTime !== -Infinity) {
                         // Convert event timestamps to date strings (UTC)
+                        // Events are stored as epoch ms and represent UTC times
                         const minDate = new Date(minEventTime);
                         const maxDate = new Date(maxEventTime);
                         
-                        // Subtract timezone offset to get actual UTC
-                        const AEDT_OFFSET_MS = 11 * 60 * 60 * 1000;
-                        fetchStartDate = new Date(minDate.getTime() - AEDT_OFFSET_MS).toISOString().split('T')[0];
-                        fetchEndDate = new Date(maxDate.getTime() - AEDT_OFFSET_MS + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                        // Extract UTC date (YYYY-MM-DD) and add one day buffer at end for safety
+                        fetchStartDate = minDate.toISOString().split('T')[0];
+                        fetchEndDate = new Date(maxDate.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
                         
                         console.log(`[ROI Actual] Fetching prices for actual event range: ${fetchStartDate} to ${fetchEndDate} (${events.length} events)`);
                     } else {
                         // Fallback: use user-selected date range
-                        const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-                        const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
-                        const localStartDate = new Date(startYear, startMonth - 1, startDay);
-                        const localEndDate = new Date(endYear, endMonth - 1, endDay);
-                        const AEDT_OFFSET_MS = 11 * 60 * 60 * 1000;
-                        fetchStartDate = new Date(localStartDate.getTime() - AEDT_OFFSET_MS).toISOString().split('T')[0];
-                        fetchEndDate = new Date(localEndDate.getTime() - AEDT_OFFSET_MS + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                        // User selects dates in their local timezone (AEDT), pass them directly to API
+                        // Amber API interprets YYYY-MM-DD as local Australian dates
+                        fetchStartDate = startDate;
+                        fetchEndDate = endDate;
                         
                         console.log(`[ROI Actual] Fetching prices for user-selected range: ${fetchStartDate} to ${fetchEndDate} (no events found)`);
                     }
@@ -1093,8 +1090,15 @@
                             // Subtract 1 second so it aligns with our 5-minute interval rounding
                             const priceEpochMs = startMs - 1000;
                             const channelType = pricePoint.channelType;
-                            // Historical: perKwh comes 10x smaller than current API; normalize
-                            const perKwh = pricePoint.perKwh * 10;
+                            
+                            // Normalize price to ¢/kWh: detect if already normalized or needs 10x multiplier
+                            // Prices in normal range (-200 to 200 ¢/kWh) are already correct; outside that range need 10x
+                            let perKwh = pricePoint.perKwh;
+                            if (Math.abs(perKwh) > 200 || (Math.abs(perKwh) < 0.01 && perKwh !== 0)) {
+                                // Price is outside typical range — likely needs 10x multiplier (old format)
+                                perKwh = perKwh * 10;
+                            }
+                            // else: price is already in ¢/kWh, use as-is
                             
                             if (!actualPriceMap.has(priceEpochMs)) {
                                 actualPriceMap.set(priceEpochMs, {});
@@ -1139,25 +1143,22 @@
                     return { feedInPrice: null, buyPrice: null };
                 }
                 
-                // TIMEZONE FIX: Event timestamps appear to be local AEDT (UTC+11) incorrectly marked as UTC
-                // Convert from what JavaScript thinks is UTC to actual UTC by subtracting timezone offset
-                const AEDT_OFFSET_MS = 11 * 60 * 60 * 1000; // 11 hours in milliseconds (AEDT = UTC+11)
-                const eventTimeActualUTC = new Date(eventTime.getTime() - AEDT_OFFSET_MS);
-                const eventEndTimeActualUTC = new Date(eventEndTime.getTime() - AEDT_OFFSET_MS);
+                // Event timestamps are stored as epoch milliseconds (timezone-agnostic)
+                // Use them directly without any timezone conversion
                 
                 // Collect all 5-minute windows that fall within the event duration
                 const buyPrices = [];
                 const feedInPrices = [];
                 
                 // Round start time down to nearest 5-minute interval (using epoch ms)
-                const startWindowMs = Math.floor(eventTimeActualUTC.getTime() / (5 * 60 * 1000)) * (5 * 60 * 1000);
+                const startWindowMs = Math.floor(eventTime.getTime() / (5 * 60 * 1000)) * (5 * 60 * 1000);
                 
                 console.log(`[ROI Actual] Looking up prices for event ${eventTime.toISOString()}, window start: ${new Date(startWindowMs).toISOString()}`);
                 
                 // Iterate through all 5-minute windows in the event duration
                 let windowsChecked = 0;
                 let windowsFound = 0;
-                for (let windowMs = startWindowMs; windowMs <= eventEndTimeActualUTC.getTime(); windowMs += 5 * 60 * 1000) {
+                for (let windowMs = startWindowMs; windowMs <= eventEndTime.getTime(); windowMs += 5 * 60 * 1000) {
                     windowsChecked++;
                     // Use epoch ms directly as key (no timezone conversion needed)
                     const priceData = actualPriceMap.get(windowMs);
