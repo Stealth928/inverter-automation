@@ -3900,10 +3900,12 @@
                 const neg = n < 0;
                 const abs = Math.abs(n);
                 if (abs >= 100) {
+                    // Format as dollar amount with 2 decimal places
                     const s = `$${(abs / 100).toFixed(2)}`;
                     return neg ? `-${s}` : s;
                 }
-                const s = `${abs.toFixed(2)}¢`;
+                // Format as cents - show decimal only if needed
+                const s = abs >= 10 ? `${abs.toFixed(1)}¢` : `${abs.toFixed(2)}¢`;
                 return neg ? `-${s}` : s;
             }
 
@@ -3929,12 +3931,8 @@
                     const spot = currentGen.spotPerKwh;
                     const cls = p > 30 ? 'price-high' : p > 20 ? 'price-mid' : 'price-low';
                     const spike = currentGen.spikeStatus && currentGen.spikeStatus !== 'none';
-                    let priceStr;
-                    if (p > 99) {
-                        priceStr = `$${(p/100).toFixed(2)}`;
-                    } else {
-                        priceStr = `${p.toFixed(1)}¢`;
-                    }
+                    // Format price using helper function for consistency
+                    const priceStr = formatPrice(p);
                     html += `<div style="min-width:100px">
                         <div style="font-size:11px;color:#8b949e">Buy Now ${spike ? '<span style="color:#f85149">⚠️</span>' : ''}</div>
                         <div class="value ${cls}" style="font-size:28px;font-weight:700">${priceStr}</div>
@@ -3955,12 +3953,8 @@
                         return 'price-neutral';
                     }
                     const getCls = feedClassFromVal(displayVal);
-                    let feedPriceStr;
-                    if (displayVal > 99) {
-                        feedPriceStr = `$${(displayVal/100).toFixed(2)}`;
-                    } else {
-                        feedPriceStr = `${displayVal}¢`;
-                    }
+                    // Format price using helper function for consistency
+                    const feedPriceStr = formatPrice(displayVal);
                     html += `<div style="min-width:100px">
                         <div style="font-size:11px;color:#8b949e">Feed-In Price</div>
                         <div class="value ${getCls}" style="font-size:28px;font-weight:700">${feedPriceStr}</div>
