@@ -32,6 +32,9 @@ const amberAPI = amberModule.init({
   incrementApiCount: null // Will be defined below
 });
 
+// Import shared state from amber module (used for concurrency control)
+const { amberPricesInFlight } = amberModule;
+
 const foxessModule = require('./api/foxess');
 const foxessAPI = foxessModule.init({
   db,
@@ -650,14 +653,19 @@ app.get('/api/amber/prices/current', async (req, res) => {
   try {
     await tryAttachUser(req);
     const userId = req.user?.uid;
+    console.log(`[Amber /prices/current] Request from user: ${userId || 'anonymous'}`);
     if (!userId) return res.json({ errno: 0, result: [] });
 
     const userConfig = await getUserConfig(userId);
-    if (!userConfig || !userConfig.amberApiKey) return res.json({ errno: 0, result: [] });
+    if (!userConfig || !userConfig.amberApiKey) {
+      console.log(`[Amber /prices/current] No config or API key for ${userId}`);
+      return res.json({ errno: 0, result: [] });
+    }
 
     const siteId = req.query.siteId;
     const next = Number(req.query.next || '1') || 1;
     const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
+    console.log(`[Amber /prices/current] siteId=${siteId}, next=${next}, forceRefresh=${forceRefresh}`);
 
     if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
 
@@ -665,6 +673,7 @@ app.get('/api/amber/prices/current', async (req, res) => {
     let result = null;
     if (!forceRefresh) {
       result = await amberAPI.getCachedAmberPricesCurrent(siteId, userId, userConfig);
+      console.log(`[Amber /prices/current] Cache result: ${result ? 'found' : 'miss'}, length: ${result?.length || 0}`);
     }
     
     if (!result) {
@@ -682,8 +691,10 @@ app.get('/api/amber/prices/current', async (req, res) => {
       
       // If still no data (first request or in-flight failed), fetch it
       if (!result) {
+        console.log(`[Amber /prices/current] Calling Amber API for ${userId}`);
         const fetchPromise = amberAPI.callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId)
           .then(async (data) => {
+            console.log(`[Amber /prices/current] API returned data, type: ${Array.isArray(data) ? 'array' : typeof data}, length: ${data?.length || 0}`);
             if (Array.isArray(data) && data.length > 0) {
               await amberAPI.cacheAmberPricesCurrent(siteId, data, userId, userConfig);
             }
@@ -699,6 +710,7 @@ app.get('/api/amber/prices/current', async (req, res) => {
     }
     
     // Normalize response to wrapped format
+    console.log(`[Amber /prices/current] Final result type: ${Array.isArray(result) ? 'array' : typeof result}, length: ${result?.length || 0}`);
     if (Array.isArray(result)) {
       return res.json({ errno: 0, result });
     }
@@ -706,8 +718,8 @@ app.get('/api/amber/prices/current', async (req, res) => {
     if (result?.errno !== undefined) {
       return res.json(result);
     }
-    // Fallback: wrap whatever we got
-    return res.json({ errno: 0, result });
+    // Fallback: wrap whatever we got (ensure array)
+    return res.json({ errno: 0, result: result || [] });
   } catch (e) {
     console.error('[Amber] /prices/current error (pre-auth):', e && e.message ? e.message : e);
     return res.json({ errno: 0, result: [] });
