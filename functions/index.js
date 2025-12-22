@@ -40,6 +40,12 @@ const foxessAPI = foxessModule.init({
   incrementApiCount: null // Will be defined below
 });
 
+const authModule = require('./api/auth');
+const authAPI = authModule.init({
+  admin,
+  logger: null // Will be defined below
+});
+
 // For 2nd Gen runtime: ensure pubsub is available
 // This handles test environments where pubsub might not be fully initialized
 if (typeof functions.pubsub === 'undefined' || typeof functions.pubsub.schedule !== 'function') {
@@ -316,47 +322,13 @@ app.use((err, req, res, next) => {
 });
 
 // ==================== AUTH MIDDLEWARE ====================
-/**
- * Middleware to verify Firebase ID token
- */
-const authenticateUser = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ errno: 401, error: 'Unauthorized: No token provided' });
-  }
-  
-  const idToken = authHeader.split('Bearer ')[1];
-  try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    req.user = decodedToken;
-    next();
-  } catch (error) {
-    console.error('Token verification failed:', error.message);
-    return res.status(401).json({ errno: 401, error: 'Unauthorized: Invalid token' });
-  }
-};
+// All authentication functions have been extracted to api/auth.js
+// Functions are initialized at module load and reinit after dependencies are available (line ~4110)
+// Access via authAPI.authenticateUser (middleware) and authAPI.tryAttachUser (optional auth)
 
-// Attempt to attach Firebase user info without enforcing auth (used by public endpoints)
-const tryAttachUser = async (req) => {
-  if (req.user) {
-    return req.user;
-  }
-
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-
-  const idToken = authHeader.split('Bearer ')[1];
-  try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    req.user = decodedToken;
-    return decodedToken;
-  } catch (error) {
-    logger.warn('Auth', `Token verification failed: ${error.message}`);
-    return null;
-  }
-};
+// Create convenience aliases for direct middleware use
+const authenticateUser = (req, res, next) => authAPI.authenticateUser(req, res, next);
+const tryAttachUser = (req) => authAPI.tryAttachUser(req);
 
 // ==================== UNPROTECTED ENDPOINTS (Before Auth Middleware) ====================
 
@@ -4096,6 +4068,11 @@ Object.assign(foxessAPI, foxessModule.init({
   logger,
   getConfig,
   incrementApiCount
+}));
+
+Object.assign(authAPI, authModule.init({
+  admin,
+  logger
 }));
 
 /**
