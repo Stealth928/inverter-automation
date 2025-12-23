@@ -85,7 +85,6 @@ class FirebaseAuth {
       }
 
     if (this.initialized) {
-      console.log('[FirebaseAuth] Already initialized');
       return;
     }
 
@@ -95,12 +94,10 @@ class FirebaseAuth {
       let appRef;
       try {
         appRef = firebase.app();
-        console.log('[FirebaseAuth] Firebase app already initialized');
       } catch (e) {
         // App doesn't exist, initialize it
         try {
           appRef = firebase.initializeApp(config);
-          console.log('[FirebaseAuth] Firebase app initialized');
         } catch (initError) {
           console.error('[FirebaseAuth] Failed to initialize Firebase app:', initError);
           throw initError;
@@ -135,10 +132,8 @@ class FirebaseAuth {
             console.warn('[FirebaseAuth] Failed to get ID token:', tokenError);
             this.idToken = null;
           }
-          console.log('[FirebaseAuth] User signed in:', user.email);
         } else {
           this.idToken = null;
-          console.log('[FirebaseAuth] User signed out');
         }
 
         // Notify all callbacks
@@ -156,7 +151,6 @@ class FirebaseAuth {
         if (this.user) {
           try {
             this.idToken = await this.user.getIdToken(true);
-            console.log('[FirebaseAuth] Token refreshed');
           } catch (refreshError) {
             console.warn('[FirebaseAuth] Token refresh failed:', refreshError);
           }
@@ -167,7 +161,6 @@ class FirebaseAuth {
       this.setupIdleTracking();
 
       this.initialized = true;
-      console.log('[FirebaseAuth] Initialized successfully');
     } catch (error) {
       console.error('[FirebaseAuth] Initialization error:', error);
       // Mark as initialized anyway to prevent blocking the app
@@ -244,7 +237,6 @@ class FirebaseAuth {
     }
     try {
       const result = await this.auth.signInWithEmailAndPassword(email, password);
-      console.log('[FirebaseAuth] Sign in successful:', email);
       return { success: true, user: result.user };
     } catch (error) {
       console.error('[FirebaseAuth] Sign in error:', error);
@@ -274,7 +266,6 @@ class FirebaseAuth {
       provider.addScope('profile');
       
       const result = await this.auth.signInWithPopup(provider);
-      console.log('[FirebaseAuth] Google sign in successful:', result.user.email);
       return { success: true, user: result.user };
     } catch (error) {
       console.error('[FirebaseAuth] Google sign in error:', error);
@@ -290,7 +281,6 @@ class FirebaseAuth {
     if (this.idleTimeoutCheckInterval) {
       clearInterval(this.idleTimeoutCheckInterval);
       this.idleTimeoutCheckInterval = null;
-      console.log('[FirebaseAuth] Cleared idle timeout interval');
     }
 
     // Clear sensitive data from localStorage
@@ -300,7 +290,6 @@ class FirebaseAuth {
       localStorage.removeItem('lastSelectedRule');
       localStorage.removeItem('mockAuthUser');
       localStorage.removeItem('mockAuthToken');
-      console.log('[FirebaseAuth] Cleared sensitive data from localStorage');
     } catch (e) {
       console.warn('[FirebaseAuth] Failed to clear localStorage:', e);
     }
@@ -316,7 +305,6 @@ class FirebaseAuth {
       // Explicitly set user to null to ensure idle check stops
       this.user = null;
       this.idToken = null;
-      console.log('[FirebaseAuth] Sign out successful');
       return { success: true };
     } catch (error) {
       console.error('[FirebaseAuth] Sign out error:', error);
@@ -338,8 +326,6 @@ class FirebaseAuth {
     activityEvents.forEach(event => {
       document.addEventListener(event, updateActivity, { passive: true });
     });
-
-    console.log('[FirebaseAuth] Idle tracking enabled (30 min timeout)');
 
     // Check for idle timeout every 60 seconds
     this.idleTimeoutCheckInterval = setInterval(async () => {
@@ -397,7 +383,6 @@ class FirebaseAuth {
       } else {
         await this.auth.sendPasswordResetEmail(email);
       }
-      console.log('[FirebaseAuth] Password reset email sent to:', email);
       return { success: true };
     } catch (error) {
       console.error('[FirebaseAuth] Password reset error:', error);
@@ -442,7 +427,6 @@ class FirebaseAuth {
         throw new Error('No user signed in');
       }
       await this.user.updateProfile(updates);
-      console.log('[FirebaseAuth] Profile updated');
       return { success: true };
     } catch (error) {
       console.error('[FirebaseAuth] Profile update error:', error);
@@ -459,7 +443,6 @@ class FirebaseAuth {
         throw new Error('No user signed in');
       }
       await this.user.updateEmail(newEmail);
-      console.log('[FirebaseAuth] Email updated to:', newEmail);
       return { success: true };
     } catch (error) {
       console.error('[FirebaseAuth] Email update error:', error);
@@ -476,7 +459,6 @@ class FirebaseAuth {
         throw new Error('No user signed in');
       }
       await this.user.updatePassword(newPassword);
-      console.log('[FirebaseAuth] Password updated');
       return { success: true };
     } catch (error) {
       console.error('[FirebaseAuth] Password update error:', error);
@@ -493,7 +475,6 @@ class FirebaseAuth {
         throw new Error('No user signed in');
       }
       await this.user.delete();
-      console.log('[FirebaseAuth] Account deleted');
       return { success: true };
     } catch (error) {
       console.error('[FirebaseAuth] Account deletion error:', error);

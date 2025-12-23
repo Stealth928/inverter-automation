@@ -2482,8 +2482,8 @@
                         }
                         if (g !== null && !isNaN(g) && Math.abs(g) > 0) return `${Math.abs(g).toFixed(2)} kW <span class="substatus">(import)</span>`;
                         if (f !== null && !isNaN(f) && Math.abs(f) > 0) return `${Math.abs(f).toFixed(2)} kW <span class="substatus">(export)</span>`;
-                        return '—';
-                    } catch (e) { return '—'; }
+                        return '0.00 kW';
+                    } catch (e) { return '0.00 kW'; }
                 }
 
                 // Interpret battery using separate charge/discharge values when available
@@ -2908,19 +2908,13 @@
             const prefEl = document.getElementById('preferences_forecastDays');
             const primaryEl = document.getElementById('weatherDays');
             let days = CONFIG?.preferences?.forecastDays || 6;
-            console.log('[getWeather] Initial days from CONFIG.preferences.forecastDays:', days);
             try {
                 if (prefEl && prefEl.value && String(prefEl.value).trim()) {
                     days = Number(prefEl.value);
-                    console.log('[getWeather] Found preferences_forecastDays input, set days =', days);
                 } else if (primaryEl && primaryEl.value && String(primaryEl.value).trim()) {
                     days = Number(primaryEl.value);
-                    console.log('[getWeather] Found weatherDays input, set days =', days);
-                } else {
-                    console.log('[getWeather] No input elements found, using CONFIG value:', days);
                 }
             } catch (e) { /* use CONFIG value */ }
-            console.log('[getWeather] Final days value to use:', days);
             
             // Check if cached weather is still fresh (30 minutes TTL matches backend)
             // IMPORTANT: Cache key must include the requested days so we don't return stale cache
@@ -2932,26 +2926,19 @@
             const today = new Date().toISOString().substring(0, 10);  // YYYY-MM-DD
             const age = Date.now() - (cacheState.weatherTime || 0);
             
-            console.log(`[Cache] Checking weather cache: cached=${cachedDays} days, requested=${days}, date match=${cachedDate === today}, age=${age}ms, TTL=${CONFIG.cache.weather}ms`);
-            console.log('[Cache] cacheState:', cacheState);
-            
             // Force refresh if requested (either explicit parameter or page reload bypass)
             const shouldBypassCache = force || isPageReload;
             
             if (!shouldBypassCache && cacheState.weatherTime && age < CONFIG.cache.weather && cachedDays === days && cachedDate === today) {
-                console.log('[Cache] Weather cache is fresh, has correct forecast days, and is from today - loading from cache');
                 // Load cached full weather object and render it
                 try {
                     const cachedWeatherFull = JSON.parse(localStorage.getItem('cachedWeatherFull') || '{}');
                     if (cachedWeatherFull.place || cachedWeatherFull.current) {
-                        console.log(`[Cache] Loaded cached weather with ${cachedWeatherFull.daily?.time?.length || 0} days`);
                         renderWeatherCard(cachedWeatherFull);
                         setLastUpdated('weather');
                         return;
                     }
                 } catch (e) { console.error('[Cache] Error loading weather cache:', e); }
-            } else {
-                console.log('[Cache] Weather cache INVALID - will fetch fresh from API');
             }
             
             const card = document.getElementById('weatherCard');
@@ -2971,9 +2958,6 @@
                 if (data.errno === 0 && data.result) {
                     weatherData = data.result;
                 }
-                
-                console.log(`[Weather] API returned ${days} days, got daily.time length: ${weatherData?.daily?.time?.length || 0}`);
-                console.log(`[Weather] Full API response:`, data);
                 
                 // Cache weather data - full object for dashboard, simplified for test.html
                 if (weatherData?.hourly) {
@@ -3267,9 +3251,6 @@
                 const hourlyRadiation = hourly.shortwave_radiation || [];
                 const hourlyCloudcover = hourly.cloudcover || [];
                 
-                console.log(`[Weather] Daily data available: ${daily.time.length} days`);
-                console.log(`[Weather] Daily.time array:`, daily.time);
-                
                 // Group hourly data by day (YYYY-MM-DD)
                 const dailyRadiationAvg = {};
                 const dailyCloudcoverAvg = {};
@@ -3294,7 +3275,6 @@
                 const requestedDays = weatherDaysInput ? Number(weatherDaysInput.value) : 6;
                 // Show up to the requested number of days, but not more than available
                 const showCount = Math.min(daily.time.length, Math.max(1, requestedDays));
-                console.log(`[Weather] Rendering forecast: requested=${requestedDays}, available=${daily.time.length}, showing=${showCount}`);
                 for (let i = 0; i < showCount; i++) {
                     const d = daily.time[i];
                     const dayKey = d?.substring(0, 10);
@@ -3445,7 +3425,6 @@
                                                 m._resizeListener = onWin;
                                             }
                                         } catch(e) {}
-                                    console.log('Leaflet map updated:', mapId);
                                     } else {
                                         // Removed stale map instance — fall through to create a new map below
                                     }
@@ -3467,7 +3446,6 @@
                                         // ...existing code...
                                     });
                                     tileLayer.on('load', function () {
-                                        console.log('tileLayer load event:', mapId, 'tilesLoaded=', tileLoadCount);
                                         // ...existing code...
                                     });
                                     tileLayer.on('tileerror', function (ev) {
@@ -3503,7 +3481,6 @@
                                             const size = m.getSize();
                                             const tileContainer = mapEl.querySelector('.leaflet-tile-pane');
                                             const tiles = tileContainer ? tileContainer.querySelectorAll('img') : [];
-                                            console.log('map diagnostics:', mapId, 'size:', size, 'tile-img-count:', tiles.length, 'tileLoadCount:', tileLoadCount);
                                             // If no tiles loaded after a short delay, attempt a direct tile test by requesting a single tile image
                                             if (tileLoadCount === 0) {
                                                 try {
@@ -3514,11 +3491,9 @@
                                                     const tx = long2tile(latNum ? lonNum : 151.03, z);
                                                     const ty = lat2tile(latNum ? latNum : -33.92, z);
                                                     const tileUrl = `https://a.tile.openstreetmap.org/${z}/${tx}/${ty}.png`;
-                                                    console.log('Attempt direct tile fetch:', tileUrl);
                                                     const tImg = new Image();
                                                     tImg.crossOrigin = 'anonymous';
                                                     tImg.onload = function() {
-                                                        console.log('Direct tile onload OK');
                                                         // ...existing code...
                                                     };
                                                     tImg.onerror = function(err) {
@@ -3556,7 +3531,6 @@
                                                     }
                                                 } catch(e) { console.error('tile diagnostics 2 error', e); }
                                             }, 900);
-                                    console.log('Leaflet map created:', mapId);
                                 }
                             } catch (e) {
                                 console.error('Map init error:', e);
@@ -3628,6 +3602,10 @@
                 if (sites.length > 0) {
                     amberSites = sites;
                     select.innerHTML = sites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
+                    // Select the first site by default
+                    if (select.options.length > 0) {
+                        select.selectedIndex = 0;
+                    }
                     card.innerHTML = `<div style="color:#7ee787">✓ ${sites.length} site(s) found</div>`;
                     // Auto-fetch current prices
                     setTimeout(getAmberCurrent, 500);
@@ -3649,13 +3627,11 @@
             // Check if cached data is still fresh (TTL from backend config)
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
             const age = Date.now() - (cacheState.amberTime || 0);
-            console.log(`[Cache] Amber cache age: ${age}ms, TTL: ${CONFIG.cache.amber}ms, fresh: ${age < CONFIG.cache.amber}`);
             
             // Force refresh if requested (either explicit parameter or page reload bypass)
             const shouldBypassCache = force || isPageReload;
             
             if (!shouldBypassCache && cacheState.amberTime && age < CONFIG.cache.amber) {
-                console.log('[Cache] Amber cache is fresh, loading from cache');
                 // Load cached full prices array and render
                 try {
                     const cachedPricesFull = JSON.parse(localStorage.getItem('cachedPricesFull') || '[]');
@@ -4770,8 +4746,6 @@
         function stopAutoRefreshTimers() {
             if (!autoRefreshActive) return; // Already stopped
             
-            console.log('[AutoRefresh] Stopping all auto-refresh timers (page hidden or idle)');
-            
             if (amberRefreshTimer) {
                 clearInterval(amberRefreshTimer);
                 amberRefreshTimer = null;
@@ -4800,25 +4774,15 @@
          * Start all auto-refresh timers (when page visible and active)
          */
         function startAutoRefreshTimers() {
-            console.log('[AutoRefresh] startAutoRefreshTimers() called, autoRefreshActive =', autoRefreshActive);
             if (autoRefreshActive) {
-                console.log('[AutoRefresh] Already running, returning early');
                 return; // Already running
             }
-            
-            console.log('[AutoRefresh] Starting all auto-refresh timers (page active)');
-            console.log('[AutoRefresh] Config values:', { 
-                inverterMs: REFRESH.inverterMs, 
-                amberMs: REFRESH.amberPricesMs,
-                weatherMs: REFRESH.weatherMs 
-            });
             
             // Amber prices: every 60s (with cache bypass)
             if (!amberRefreshTimer) {
                 amberRefreshTimer = setInterval(() => {
                     const siteId = document.getElementById('amberSiteId')?.value;
                     if (siteId) {
-                        console.log('[AutoRefresh] Amber prices refresh interval triggered - bypassing cache');
                         getAmberCurrent(true);
                     }
                 }, REFRESH.amberPricesMs);
@@ -4827,7 +4791,6 @@
             // Inverter real-time data: every 5 minutes (with cache bypass)
             if (!inverterRefreshTimer) {
                 inverterRefreshTimer = setInterval(() => {
-                    console.log('[AutoRefresh] Inverter refresh interval triggered - bypassing cache');
                     callAPI('/api/inverter/real-time', 'Real-time Data', false, true);
                 }, REFRESH.inverterMs);
             }
@@ -4835,7 +4798,6 @@
             // Weather: every 30 minutes (with cache bypass)
             if (!weatherRefreshTimer) {
                 weatherRefreshTimer = setInterval(() => {
-                    console.log('[AutoRefresh] Weather refresh interval triggered - bypassing cache');
                     getWeather(true);
                 }, REFRESH.weatherMs);
             }
@@ -4887,7 +4849,6 @@
             
             // If we were idle and page is visible, restart timers
             if (wasIdle && isPageVisible) {
-                console.log('[AutoRefresh] User activity detected, resuming auto-refresh');
                 startAutoRefreshTimers();
             }
         }
@@ -4896,23 +4857,6 @@
         // DISABLED: Visibility changes are being triggered inappropriately, breaking refresh
         // Just use interval timers instead - they're more reliable
         /*
-        document.addEventListener('visibilitychange', () => {
-            isPageVisible = !document.hidden;
-            
-            if (isPageVisible) {
-                console.log('[AutoRefresh] Page visible, checking activity...');
-                const idleTime = Date.now() - lastUserActivity;
-                if (idleTime < IDLE_TIMEOUT_MS) {
-                    startAutoRefreshTimers();
-                } else {
-                    console.log('[AutoRefresh] Page visible but user idle, keeping timers stopped');
-                }
-            } else {
-                console.log('[AutoRefresh] Page hidden, stopping auto-refresh');
-                stopAutoRefreshTimers();
-            }
-        });
-        */
 
         // Track user activity events
         ['mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(event => {
@@ -4921,6 +4865,7 @@
 
         // Check for idle timeout every minute
         idleCheckTimer = setInterval(checkIdleTimeout, 60000);
+        */
 
         // Helper to format milliseconds to human-readable string
         function formatMsToReadable(ms) {
@@ -5221,24 +5166,38 @@
                 if (inv) {
                     // Show "time since cloud sync" if available, otherwise fallback to fetch time
                     if (lastUpdated.inverterCloud) {
-                        inv.textContent = formatSince(lastUpdated.inverterCloud) + ' (cloud)';
+                        const text = formatSince(lastUpdated.inverterCloud) + ' (cloud)';
+                        inv.textContent = text;
                     } else if (lastUpdated.inverter) {
-                        inv.textContent = formatSince(lastUpdated.inverter);
+                        const text = formatSince(lastUpdated.inverter);
+                        inv.textContent = text;
                     } else {
                         inv.textContent = '—';
                     }
                 }
-                if (amb) amb.textContent = lastUpdated.amber ? formatSince(lastUpdated.amber) : '—';
-                if (we) we.textContent = lastUpdated.weather ? formatSince(lastUpdated.weather) : '—';
+                if (amb) {
+                    const text = lastUpdated.amber ? formatSince(lastUpdated.amber) : '—';
+                    amb.textContent = text;
+                }
+                if (we) {
+                    const text = lastUpdated.weather ? formatSince(lastUpdated.weather) : '—';
+                    we.textContent = text;
+                }
 
                 // Also update the detailed inverter cloud/fetch labels
                 try {
                     const cloudEl = document.getElementById('inverterCloudTime');
                     const fetchAgoEl = document.getElementById('inverterFetchAgo');
-                    if (cloudEl) cloudEl.textContent = lastUpdated.inverterCloud ? `cloud: ${formatDate(lastUpdated.inverterCloud, true)}` : '—';
-                    if (fetchAgoEl) fetchAgoEl.textContent = lastUpdated.inverter ? formatSince(lastUpdated.inverter) : '—';
-                } catch (e) { /* ignore */ }
-            } catch (e) { /* ignore */ }
+                    if (cloudEl) {
+                        const text = lastUpdated.inverterCloud ? `cloud: ${formatDate(lastUpdated.inverterCloud, true)}` : '—';
+                        cloudEl.textContent = text;
+                    }
+                    if (fetchAgoEl) {
+                        const text = lastUpdated.inverter ? formatSince(lastUpdated.inverter) : '—';
+                        fetchAgoEl.textContent = text;
+                    }
+                } catch (e) { console.error('Error updating inverter display details:', e); }
+            } catch (e) { console.error('Error in updateLastUpdateDisplays:', e); }
         }
 
         function setLastUpdated(key) {
@@ -5468,9 +5427,6 @@
             // navigation.type: 0 = normal navigation, 1 = reload (F5/Ctrl+R), 2 = back/forward, 255 = unknown
             if (window.performance && window.performance.navigation) {
                 isPageReload = (window.performance.navigation.type === 1);
-                if (isPageReload) {
-                    console.log('[PageInit] Page reload detected (Navigation Type = 1) - will bypass cache for fresh data');
-                }
             }
             
             // Fallback for newer browsers using PerformanceNavigationTiming
@@ -5479,9 +5435,6 @@
                 if (navEntries.length > 0) {
                     // If this navigation entry exists, check if it's a reload
                     isPageReload = navEntries[0]?.type === 'reload';
-                    if (isPageReload) {
-                        console.log('[PageInit] Page reload detected (PerformanceNavigationTiming) - will bypass cache for fresh data');
-                    }
                 }
             }
         } catch (e) {
@@ -5495,7 +5448,6 @@
         // This function is called ONLY after user is authenticated
         // It loads all data that requires Firebase auth tokens
         async function initializePageData() {
-            console.log('[PageInit] Initializing page data for authenticated user');
             
             // Declare cfg at function scope so it's accessible to all steps
             let cfg = null;
@@ -5529,25 +5481,19 @@
                     // Apply backend-configured refresh intervals so the UI honors settings
                     try {
                         // Use the new config field from API response which includes user-specific settings
-                        console.log('[Config] Received cfg.result:', cfg.result);
-                        console.log('[Config] cfg.result.config:', cfg.result.config);
                         
                         if (cfg.result.config) {
-                            console.log('[Config] Backend config detected, updating TTLs...');
                             if (typeof cfg.result.config.cache.amber === 'number') {
                                 CONFIG.refresh.amberPricesMs = Number(cfg.result.config.cache.amber);
                                 CONFIG.cache.amber = Number(cfg.result.config.cache.amber);
-                                console.log('[Config] Updated Amber cache TTL from backend:', CONFIG.cache.amber);
                             }
                             if (typeof cfg.result.config.cache.inverter === 'number') {
                                 CONFIG.refresh.inverterMs = Number(cfg.result.config.cache.inverter);
                                 CONFIG.cache.inverter = Number(cfg.result.config.cache.inverter);
-                                console.log('[Config] Updated Inverter cache TTL from backend:', CONFIG.cache.inverter);
                             }
                             if (typeof cfg.result.config.cache.weather === 'number') {
                                 CONFIG.refresh.weatherMs = Number(cfg.result.config.cache.weather);
                                 CONFIG.cache.weather = Number(cfg.result.config.cache.weather);
-                                console.log('[Config] Updated Weather cache TTL from backend:', CONFIG.cache.weather);
                             }
                             if (typeof cfg.result.config.automation.intervalMs === 'number') {
                                 CONFIG.automation.intervalMs = Number(cfg.result.config.automation.intervalMs);
@@ -5573,10 +5519,8 @@
                                 CONFIG.defaults = cfg.result.defaults;
                             }
                         }
-                        console.log('[Config] Final CONFIG.cache values:', CONFIG.cache);
-                        console.log('[Config] Final CONFIG.refresh values:', CONFIG.refresh);
-                        // Update FAQ display with actual config values
-                        updateFaqValues();
+                        // Update FAQ display with actual config values (deferred until page fully loads)
+                        setTimeout(() => { if (typeof updateFaqValues === 'function') updateFaqValues(); }, 100);
                     } catch (e) {
                         console.warn('Failed to apply backend refresh config', e);
                     }
@@ -5591,36 +5535,25 @@
             
             // 3) Set up weather request (bypass cache if page reload)
             try {
-                console.log('[Weather Init] Starting weather initialization...');
                 // Determine default forecast days from backend preferences or top-level config
                 try {
                     const daysEl = document.getElementById('weatherDays');
                     let defaultDays = 6;
                     if (cfg.result) {
-                        console.log('[Weather Init] cfg.result.preferences:', cfg.result.preferences);
                         if (cfg.result.preferences && typeof cfg.result.preferences.forecastDays === 'number') {
                             defaultDays = Number(cfg.result.preferences.forecastDays);
-                            console.log('[Weather Init] Loaded forecastDays from preferences:', defaultDays);
                         } else if (typeof cfg.result.forecastDays === 'number') {
                             defaultDays = Number(cfg.result.forecastDays);
-                            console.log('[Weather Init] Loaded forecastDays from top-level:', defaultDays);
-                        } else {
-                            console.log('[Weather Init] No forecastDays found in cfg.result, using default 6');
                         }
-                    } else {
-                        console.log('[Weather Init] cfg.result is falsy, using default 6');
                     }
                     // Clamp to allowed range
                     defaultDays = Math.max(1, Math.min(16, defaultDays || 6));
                     // Store in CONFIG so getWeather() can access it
                     CONFIG.preferences.forecastDays = defaultDays;
-                    console.log('[Weather Init] Set CONFIG.preferences.forecastDays =', CONFIG.preferences.forecastDays);
                     if (daysEl) daysEl.value = defaultDays;
-                    console.log('[Weather Init] Set weatherDays input value =', daysEl?.value);
                     // If preference changed from what was cached, invalidate cache so fresh data is fetched
                     const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
                     if (cacheState.weatherDays && cacheState.weatherDays !== defaultDays) {
-                        console.log('[Weather Init] Cache has old days count (' + cacheState.weatherDays + '), invalidating weather cache');
                         cacheState.weatherDays = defaultDays;
                         localStorage.setItem('cacheState', JSON.stringify(cacheState));
                     }
@@ -6021,7 +5954,6 @@
             if (countdownEl) countdownEl.textContent = '⏳';
             
             try {
-                console.log('[Automation] Running automation cycle...');
                 const resp = await authenticatedFetch('/api/automation/cycle', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -6030,7 +5962,6 @@
                 const data = await resp.json();
                 
                 if (data.errno === 0) {
-                    console.log('[Automation] Cycle complete:', data.result);
                     
                     // Store cycle result for debug display
                     window.lastCycleResult = data.result;
@@ -6061,9 +5992,7 @@
                             }
                         }
                     } else if (data.result?.skipped) {
-                        console.log('[Automation] Cycle skipped:', data.result.reason);
                     } else {
-                        console.log('[Automation] No rules triggered this cycle');
                     }
                     
                     // ALWAYS refresh automation status after cycle to show current state (active rule, etc.)
@@ -6083,7 +6012,6 @@
                                     }
                                 }
                             }
-                            console.log('[Automation] Status refreshed after cycle:', statusData.result.activeRule ? `Active: ${statusData.result.activeRule}` : 'No active rule');
                             updateBackendAutomationUI(statusData.result);
                         }
                     } catch (statusErr) {

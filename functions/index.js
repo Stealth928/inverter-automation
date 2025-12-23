@@ -325,22 +325,15 @@ app.use((err, req, res, next) => {
 });
 
 // ==================== AUTH MIDDLEWARE ====================
-// All authentication functions have been extracted to api/auth.js
-// Functions are initialized at module load and reinit after dependencies are available (line ~4110)
-// Access via authAPI.authenticateUser (middleware) and authAPI.tryAttachUser (optional auth)
-
-// Create convenience aliases for direct middleware use
+// All authentication helpers live in api/auth.js (initialized above)
 const authenticateUser = (req, res, next) => authAPI.authenticateUser(req, res, next);
 const tryAttachUser = (req) => authAPI.tryAttachUser(req);
-
-// ==================== UNPROTECTED ENDPOINTS (Before Auth Middleware) ====================
 
 // Health check (no auth required)
 app.get('/api/health', async (req, res) => {
   try {
     await tryAttachUser(req);
     const userId = req.user?.uid;
-    console.log('[Health] Request received - userId:', userId || '(not authenticated)');
     
     // Check if user is authenticated and has tokens saved
     let foxessTokenPresent = false;
@@ -352,21 +345,16 @@ app.get('/api/health', async (req, res) => {
         const config = configDoc.data() || {};
         foxessTokenPresent = !!config.foxessToken;
         amberApiKeyPresent = !!config.amberApiKey;
-        console.log('[Health] User config check for', userId, '- foxessToken present:', foxessTokenPresent, '- amberApiKey present:', amberApiKeyPresent);
       } catch (e) {
         console.warn('[Health] Failed to check config:', e.message);
       }
-    } else {
-      console.log('[Health] No userId - user not authenticated');
     }
     
-    const response = { 
+    res.json({ 
       ok: true,
       FOXESS_TOKEN: foxessTokenPresent,
       AMBER_API_KEY: amberApiKeyPresent
-    };
-    console.log('[Health] Returning response:', response);
-    res.json(response);
+    });
   } catch (error) {
     console.error('[Health] Error:', error);
     res.json({ 
@@ -485,26 +473,13 @@ app.post('/api/config/validate-keys', async (req, res) => {
 // Check if user setup is complete (no auth required for initial check during setup flow)
 app.get('/api/config/setup-status', async (req, res) => {
   try {
-    // Log only whether auth header is present (not its contents for security)
-    console.log(`[Setup Status] Request - hasAuth: ${!!req.headers.authorization}`);
-    
     await tryAttachUser(req);
-    
-    console.log(`[Setup Status] After tryAttachUser - User:`, req.user ? req.user.uid : '(not authenticated)');
     
     const serverConfig = getConfig();
     
     // If user is authenticated (has ID token), check their Firestore config
     if (req.user?.uid) {
       const userConfig = await getUserConfig(req.user.uid);
-      console.log(`[Setup Status] getUserConfig result for ${req.user.uid}:`, {
-        found: !!userConfig,
-        deviceSn: userConfig?.deviceSn ? '(present)' : '(missing)',
-        foxessToken: userConfig?.foxessToken ? '(present)' : '(missing)',
-        amberApiKey: userConfig?.amberApiKey ? '(present)' : '(missing)',
-        setupComplete: userConfig?.setupComplete,
-        source: userConfig?._source
-      });
       
       // Treat setupComplete as true if explicitly set OR if both critical fields are present
       const setupComplete = !!((userConfig?.setupComplete === true) || (userConfig?.deviceSn && userConfig?.foxessToken));
@@ -525,11 +500,6 @@ app.get('/api/config/setup-status', async (req, res) => {
         }
       };
       
-      console.log('[Setup Status] Returning user config with TTLs:', {
-        setupComplete,
-        configCache: config.cache,
-        configAutomation: config.automation
-      });
       return res.json({ 
         errno: 0, 
         result: { 
@@ -544,15 +514,10 @@ app.get('/api/config/setup-status', async (req, res) => {
     }
     
     // Unauthenticated user - fall back to shared server config (if present)
-    console.log(`[Setup Status] No user authenticated, checking shared serverConfig...`);
     try {
       const sharedDoc = await db.collection('shared').doc('serverConfig').get();
       if (sharedDoc.exists) {
         const cfg = sharedDoc.data() || {};
-        console.log(`[Setup Status] Found shared serverConfig:`, {
-          deviceSn: cfg.deviceSn ? '(present)' : '(missing)',
-          foxessToken: cfg.foxessToken ? '(present)' : '(missing)'
-        });
         const setupComplete = !!(cfg.setupComplete && cfg.deviceSn && cfg.foxessToken);
         
         // Include server default config
@@ -562,11 +527,6 @@ app.get('/api/config/setup-status', async (req, res) => {
           defaults: { cooldownMinutes: 5, durationMinutes: 30 }
         };
         
-        console.log('[Setup Status] Returning shared config with TTLs:', {
-          setupComplete,
-          configCache: config.cache,
-          configAutomation: config.automation
-        });
         return res.json({ 
           errno: 0, 
           result: { 
@@ -584,17 +544,11 @@ app.get('/api/config/setup-status', async (req, res) => {
     }
 
     // No shared config found - setup not complete, but include server defaults
-    console.log(`[Setup Status] No shared config found, setup not complete`);
     const config = {
       automation: { intervalMs: serverConfig.automation.intervalMs },
       cache: serverConfig.automation.cacheTtl,
       defaults: { cooldownMinutes: 5, durationMinutes: 30 }
     };
-    console.log('[Setup Status] Returning fallback config with TTLs:', {
-      setupComplete: false,
-      configCache: config.cache,
-      configAutomation: config.automation
-    });
     res.json({ 
       errno: 0, 
       result: { 
@@ -619,7 +573,6 @@ app.get('/api/amber/sites', async (req, res) => {
     const userId = req.user?.uid;
     const debug = req.query.debug === 'true';
     
-    console.log(`[Amber] /sites request (pre-auth-middleware) from user: ${userId}`);
 
     if (!userId) {
       // No user signed in - safe empty response for UI
@@ -630,7 +583,6 @@ app.get('/api/amber/sites', async (req, res) => {
 
     const userConfig = await getUserConfig(userId);
     const hasKey = userConfig?.amberApiKey;
-    console.log(`[Amber] User config (pre-auth) for ${userId}:`, userConfig ? 'found' : 'not found', hasKey ? '(has key)' : '(no key)');
 
     if (!userConfig || !hasKey) {
       const response = { errno: 0, result: [] };
@@ -643,16 +595,13 @@ app.get('/api/amber/sites', async (req, res) => {
     // Try cache first
     let cachedSites = await amberAPI.getCachedAmberSites(userId);
     if (cachedSites) {
-      console.log(`[Amber] Returning ${cachedSites.length} cached sites for ${userId}`);
       return res.json({ errno: 0, result: cachedSites, _cached: true });
     }
 
     // Cache miss - call API
-    console.log(`[Amber] Sites cache miss for ${userId}, calling API`);
     incrementApiCount(userId, 'amber').catch(err => console.warn('[Amber] Failed to log API call:', err.message));
     const result = await amberAPI.callAmberAPI('/sites', {}, userConfig, userId, true);
 
-    console.log(`[Amber] API result for ${userId}:`, result && result.errno === 0 ? 'success' : `error(${result?.errno}): ${result?.error || result?.msg}`);
 
     let sites = [];
     if (result && result.data && Array.isArray(result.data)) sites = result.data;
@@ -690,19 +639,16 @@ app.get('/api/amber/prices/current', async (req, res) => {
   try {
     await tryAttachUser(req);
     const userId = req.user?.uid;
-    console.log(`[Amber /prices/current] Request from user: ${userId || 'anonymous'}`);
     if (!userId) return res.json({ errno: 0, result: [] });
 
     const userConfig = await getUserConfig(userId);
     if (!userConfig || !userConfig.amberApiKey) {
-      console.log(`[Amber /prices/current] No config or API key for ${userId}`);
       return res.json({ errno: 0, result: [] });
     }
 
     const siteId = req.query.siteId;
     const next = Number(req.query.next || '1') || 1;
     const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
-    console.log(`[Amber /prices/current] siteId=${siteId}, next=${next}, forceRefresh=${forceRefresh}`);
 
     if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
 
@@ -710,7 +656,6 @@ app.get('/api/amber/prices/current', async (req, res) => {
     let result = null;
     if (!forceRefresh) {
       result = await amberAPI.getCachedAmberPricesCurrent(siteId, userId, userConfig);
-      console.log(`[Amber /prices/current] Cache result: ${result ? 'found' : 'miss'}, length: ${result?.length || 0}`);
     }
     
     if (!result) {
@@ -718,7 +663,6 @@ app.get('/api/amber/prices/current', async (req, res) => {
       
       // Check if another request is already fetching this data
       if (amberPricesInFlight.has(inflightKey)) {
-        console.log(`[Amber /prices/current] Another request is fetching prices for ${userId}, waiting...`);
         try {
           result = await amberPricesInFlight.get(inflightKey);
         } catch (err) {
@@ -728,10 +672,8 @@ app.get('/api/amber/prices/current', async (req, res) => {
       
       // If still no data (first request or in-flight failed), fetch it
       if (!result) {
-        console.log(`[Amber /prices/current] Calling Amber API for ${userId}`);
         const fetchPromise = amberAPI.callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId)
           .then(async (data) => {
-            console.log(`[Amber /prices/current] API returned data, type: ${Array.isArray(data) ? 'array' : typeof data}, length: ${data?.length || 0}`);
             if (Array.isArray(data) && data.length > 0) {
               await amberAPI.cacheAmberPricesCurrent(siteId, data, userId, userConfig);
             }
@@ -747,7 +689,6 @@ app.get('/api/amber/prices/current', async (req, res) => {
     }
     
     // Normalize response to wrapped format
-    console.log(`[Amber /prices/current] Final result type: ${Array.isArray(result) ? 'array' : typeof result}, length: ${result?.length || 0}`);
     if (Array.isArray(result)) {
       return res.json({ errno: 0, result });
     }
@@ -794,14 +735,6 @@ app.get('/api/amber/prices', async (req, res) => {
     if (startDate || endDate) {
       const resolution = req.query.resolution || 30;
       
-      console.log(`[Prices] Fetching historical prices for ${siteId}:`, {
-        startDate,
-        endDate,
-        resolution,
-        actualOnly,
-        queryActualOnly: req.query.actual_only,
-        fullQuery: req.query
-      });
       
       // If actualOnly is set, check if this is a recent date range
       // For dates older than 3 days, use cache since they're definitely materialized
@@ -811,16 +744,12 @@ app.get('/api/amber/prices', async (req, res) => {
         const now = new Date();
         const daysSinceEnd = Math.floor((now - endDateObj) / (1000 * 60 * 60 * 24));
         
-        console.log(`[Prices] actual_only=true, end date: ${endDate}, days since: ${daysSinceEnd}`);
-        
         if (daysSinceEnd > 3) {
           // Old data - safe to use cache (it's all materialized)
-          console.log(`[Prices] End date is ${daysSinceEnd} days old, using cache for materialized data`);
           const result = await amberAPI.fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, resolution, userConfig, userId);
           return res.json(result);
         } else {
           // Recent data - fetch fresh to avoid forecast pollution
-          console.log(`[Prices] End date is recent (${daysSinceEnd} days), fetching fresh without cache`);
           const result = await amberAPI.fetchAmberHistoricalPricesActualOnly(siteId, startDate, endDate, resolution, userConfig, userId);
           return res.json(result);
         }
@@ -938,22 +867,14 @@ app.get('/api/amber/prices/actual', authenticateUser, async (req, res) => {
       
       res.json({
         errno: 0,
-        result: {
-          type: matchingInterval.type,
-          channelType: matchingInterval.channelType,
-          perKwh: matchingInterval.perKwh,
-          spotPerKwh: matchingInterval.spotPerKwh,
-          startTime: matchingInterval.startTime,
-          endTime: matchingInterval.endTime,
-          descriptor: matchingInterval.descriptor
-        }
+        result: matchingInterval
       });
-    } catch (apiError) {
-      console.error(`[Amber Actual] API call failed:`, apiError.message);
-      return res.status(500).json({ errno: 500, error: apiError.message, result: null });
+    } catch (error) {
+      console.warn('[Amber Actual] Error fetching actual prices:', error.message);
+      res.status(500).json({ errno: 500, error: error.message });
     }
   } catch (error) {
-    console.error('[Amber Actual] Endpoint error:', error.message);
+    console.warn('[Amber Actual] Error in route handler:', error.message);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
@@ -964,20 +885,12 @@ app.get('/api/metrics/api-calls', async (req, res) => {
   const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
   
   try {
-    // Debug: log incoming request
-    const authHeader = req.headers.authorization;
-    console.log(`[Metrics] GET /api/metrics/api-calls - days=${days}, scope=${req.query.scope}`);
-    console.log(`[Metrics] Authorization header present: ${!!authHeader}, First 20 chars: ${authHeader ? authHeader.substring(0, 20) : 'none'}`);
-    console.log(`[Metrics] req.user before tryAttachUser: ${req.user ? req.user.uid : 'undefined'}`);
-    
     // Attach optional user (don't require auth globally here)
     await tryAttachUser(req);
 
     const scope = String(req.query.scope || 'global');
-    console.log(`[Metrics] req.user after tryAttachUser: ${req.user ? req.user.uid : 'undefined'}, scope=${scope}`);
 
     if (!db) {
-      console.warn('[Metrics] Firestore not initialized - returning zeroed metrics');
       const result = {};
       const endDate = new Date();
       for (let i = 0; i < days; i++) {
@@ -993,7 +906,6 @@ app.get('/api/metrics/api-calls', async (req, res) => {
 
     if (scope === 'user') {
       const userId = req.user?.uid;
-      console.log(`[Metrics] User scope requested - userId: ${userId}`);
       if (!userId) {
         console.warn(`[Metrics] User scope requested but no userId - returning 401`);
         return res.status(401).json({ errno: 401, error: 'Unauthorized: user scope requested' });
@@ -1004,8 +916,6 @@ app.get('/api/metrics/api-calls', async (req, res) => {
       const metricsSnapshot = await db.collection('users').doc(userId)
         .collection('metrics')
         .get();
-
-      console.log(`[Metrics] Queried /users/${userId}/metrics - found ${metricsSnapshot.size} documents`);
 
       const result = {};
       const allDocs = [];
@@ -1029,7 +939,6 @@ app.get('/api/metrics/api-calls', async (req, res) => {
           amber: doc.amber,
           weather: doc.weather
         };
-        console.log(`[Metrics]   ${doc.id}: foxess=${result[doc.id].foxess}, amber=${result[doc.id].amber}, weather=${result[doc.id].weather}`);
       });
 
       // Fill in missing days with zeros (Australia/Sydney local date)
@@ -1040,7 +949,6 @@ app.get('/api/metrics/api-calls', async (req, res) => {
         if (!result[key]) result[key] = { foxess: 0, amber: 0, weather: 0 };
       }
 
-      console.log(`[Metrics] Returning user scope metrics for ${Object.keys(result).length} days`);
       return res.json({ errno: 0, result });
 
     }
@@ -1135,7 +1043,6 @@ async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
       longitude = selectedResult.longitude;
       resolvedName = selectedResult.name;
       country = selectedResult.country;
-      console.log(`[Weather] Geocoded "${place}" to "${resolvedName}, ${country}" (${latitude}, ${longitude})`);
     } else {
       // Fallback to Sydney when geocoding returns no results
       fallback = true;
@@ -1145,7 +1052,6 @@ async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
       longitude = 151.0390;
       resolvedName = place;
       country = 'AU';
-      console.log(`[Weather] Geocoding failed for "${place}" - falling back to Sydney (${latitude}, ${longitude})`);
     }
     
     // Extended hourly variables including solar radiation and cloud cover
@@ -1184,7 +1090,6 @@ async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
     
     // Extract timezone from Open-Meteo response (e.g., "America/New_York", "Europe/London", "Australia/Sydney")
     const detectedTimezone = forecastJson.timezone || 'Australia/Sydney';
-    console.log(`[Weather] Detected timezone for ${resolvedName}: ${detectedTimezone}`);
     
     return {
       errno: 0,
@@ -1238,19 +1143,11 @@ async function getCachedWeatherData(userId, place = 'Sydney', days = 16, forceRe
         // Use cache if it has >= requested days (e.g., cached 7 days can serve a request for 6 days)
         // IMPORTANT: Force cache MISS if location changed - this allows timezone to update
         if (!placesMatch) {
-          console.log(`[Cache] Weather MISS - location changed (cached="${cachedPlace}", requested="${place}") - forcing refresh for timezone update`);
           // Fall through to fetch fresh data
         } else if (ageMs < ttlMs && cachedDays >= days && cachedDayCount >= days) {
-          console.log(`[Cache] Weather HIT - age: ${Math.round(ageMs/1000)}s, cached ${cachedDays} days, requested ${days}, place: ${cachedPlace}`);
           return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
-        } else {
-          console.log(`[Cache] Weather MISS - TTL ok=${ageMs < ttlMs}, enough days=${cachedDays >= days} (cached=${cachedDays}, requested=${days}), data count=${cachedDayCount}`);
         }
-      } else {
-        console.log(`[Cache] No cached weather data - fetching fresh`);
       }
-    } else {
-      console.log(`[Cache] Weather BYPASS - forceRefresh requested`);
     }
     
     // Fetch fresh data from Open-Meteo
@@ -1259,7 +1156,6 @@ async function getCachedWeatherData(userId, place = 'Sydney', days = 16, forceRe
     // If weather fetch succeeded and returned a timezone, update user config with detected timezone
     if (data?.errno === 0 && data?.result?.place?.timezone && userId) {
       const detectedTimezone = data.result.place.timezone;
-      console.log(`[Weather] Auto-updating user ${userId} timezone to: ${detectedTimezone}`);
       try {
         await db.collection('users').doc(userId).collection('config').doc('main').set(
           { timezone: detectedTimezone },
@@ -1294,7 +1190,6 @@ async function getCachedWeatherData(userId, place = 'Sydney', days = 16, forceRe
       }, { merge: true }).catch(cacheErr => {
         console.warn(`[Cache] Failed to store weather cache: ${cacheErr.message}`);
       });
-      console.log(`[Cache] Stored fresh weather data in cache (TTL: ${ttlMs}ms, stored days: ${data.result?.daily?.time?.length || 0}, place: ${place})`);
     }
     
     return { ...data, __cacheHit: false, __cacheAgeMs: 0, __cacheTtlMs: ttlMs };
@@ -1346,17 +1241,14 @@ async function getUserConfig(userId) {
       console.log(`[Config] Found config at users/${userId}/config/main:`, { hasDeviceSn: !!data.deviceSn, hasFoxessToken: !!data.foxessToken });
       return { ...data, _source: 'config-main' };
     }
-    console.log(`[Config] No config at users/${userId}/config/main`);
 
     // Backward compatibility: older deployments stored credentials directly on users/{uid}.credentials
     const userDoc = await db.collection('users').doc(userId).get();
     if (userDoc.exists) {
       const data = userDoc.data() || {};
-      console.log(`[Config] Found user doc for ${userId}, has credentials?`, !!data.credentials);
-      
+
       // If the older 'credentials' object exists, map its snake_case fields to the config shape
-        if (data.credentials && (data.credentials.device_sn || data.credentials.foxess_token || data.credentials.amber_api_key)) {
-        console.log(`[Config] Found legacy credentials for ${userId}`);
+      if (data.credentials && (data.credentials.device_sn || data.credentials.foxess_token || data.credentials.amber_api_key)) {
         return {
           deviceSn: data.credentials.device_sn || '',
           foxessToken: data.credentials.foxess_token || '',
@@ -1369,7 +1261,6 @@ async function getUserConfig(userId) {
 
       // If top-level config keys exist directly on the user doc, use them too
       if (data.deviceSn || data.foxessToken || data.amberApiKey) {
-        console.log(`[Config] Found top-level config keys for ${userId}`);
         return {
           deviceSn: data.deviceSn || '',
           foxessToken: data.foxessToken || '',
@@ -1379,8 +1270,7 @@ async function getUserConfig(userId) {
         };
       }
     }
-    
-    console.log(`[Config] No config found for user ${userId}`);
+
     return null;
   } catch (error) {
     console.error('Error getting user config:', error);
@@ -1396,10 +1286,8 @@ async function getUserAutomationState(userId) {
     const stateDoc = await db.collection('users').doc(userId).collection('automation').doc('state').get();
     if (stateDoc.exists) {
       const data = stateDoc.data();
-      console.log(`[State] User ${userId}: Found state document - enabled=${data.enabled} (type: ${typeof data.enabled})`);
       return data;
     }
-    console.log(`[State] User ${userId}: No state document found - returning default with enabled=false`);
     return {
       enabled: false,
       lastCheck: null,
@@ -1550,65 +1438,38 @@ app.post('/api/config', async (req, res) => {
     }
 
     const userId = req.user.uid;
-    console.log('\n\n🔵🔵🔵🔵🔵 [Config] ========== CONFIG SAVE START ==========');
-    console.log('[Config] User ID:', userId);
-    console.log('[Config] Full incoming payload:', JSON.stringify(req.body, null, 2));
-    console.log('[Config] Incoming browserTimezone:', newConfig.browserTimezone);
-    console.log('[Config] Incoming timezone:', newConfig.timezone);
-    console.log('[Config] Incoming location:', newConfig.location);
-    console.log('[Config] isValidTimezone(browserTimezone):', newConfig.browserTimezone ? isValidTimezone(newConfig.browserTimezone) : 'N/A');
 
     // Get existing config to check if location changed
     const existingConfig = await getUserConfig(userId);
-    console.log('[Config] Existing config:', JSON.stringify(existingConfig, null, 2));
-    console.log('[Config] Existing timezone:', existingConfig?.timezone);
-    console.log('[Config] Existing location:', existingConfig?.location);
-    
     const locationChanged = newConfig.location && newConfig.location !== existingConfig?.location;
-    console.log('[Config] Location changed:', locationChanged, `(new: "${newConfig.location}", existing: "${existingConfig?.location}")`);
     
     // PRIORITY 1: If browser sent timezone, ALWAYS use it (most reliable - from user's OS)
     if (newConfig.browserTimezone && isValidTimezone(newConfig.browserTimezone)) {
-      console.log(`[Config] 🟢 PRIORITY 1: Using browser timezone: ${newConfig.browserTimezone}`);
       newConfig.timezone = newConfig.browserTimezone;
     }
     // PRIORITY 2: If location changed or no timezone set, detect from location
     else if (locationChanged || !newConfig.timezone) {
       const locationToUse = newConfig.location || existingConfig?.location || 'Sydney';
-      console.log(`[Config] 🟡 PRIORITY 2: Detecting timezone from location: "${locationToUse}"`);
       try {
         const weatherData = await callWeatherAPI(locationToUse, 1, userId);
-        console.log(`[Config] Weather API response:`, JSON.stringify(weatherData, null, 2));
-        console.log(`[Config] Weather API errno: ${weatherData?.errno}`);
-        console.log(`[Config] Weather API place:`, JSON.stringify(weatherData?.result?.place, null, 2));
-        console.log(`[Config] Weather API timezone: ${weatherData?.result?.place?.timezone}`);
         const tzValid = weatherData?.result?.place?.timezone && isValidTimezone(weatherData.result.place.timezone);
-        console.log(`[Config] Is valid timezone: ${tzValid}`);
         if (tzValid) {
           newConfig.timezone = weatherData.result.place.timezone;
-          console.log(`[Config] 🟢 Detected timezone from location: ${newConfig.timezone}`);
-        } else {
-          console.log(`[Config] ❌ No valid timezone in weather response`);
         }
       } catch (err) {
-        console.warn(`[Config] ❌ Failed to detect timezone from location:`, err.message, err.stack);
+        console.error(`[Config] Failed to detect timezone from location:`, err.message);
       }
     }
     // PRIORITY 3: Keep existing timezone if still valid
     else if (newConfig.timezone && isValidTimezone(newConfig.timezone)) {
-      console.log(`[Config] 🟢 PRIORITY 3: Keeping existing timezone: ${newConfig.timezone}`);
+      // timezone already set
     }
-    
-    console.log('[Config] ⭐ Final timezone to save:', newConfig.timezone);
     
     // Remove browserTimezone from stored config (it's transient, only for detection)
     delete newConfig.browserTimezone;
 
     // Persist to Firestore under user's config/main
-    console.log('[Config] 📝 Saving to Firestore at users/' + userId + '/config/main');
     await db.collection('users').doc(userId).collection('config').doc('main').set(newConfig, { merge: true });
-    console.log('[Config] ✅ Firestore save complete');
-    console.log('[Config] ========== CONFIG SAVE END ==========\n\n');
     res.json({ errno: 0, msg: 'Config saved', result: newConfig });
   } catch (error) {
     console.error('[API] /api/config save error:', error && error.stack ? error.stack : String(error));
@@ -1619,8 +1480,6 @@ app.post('/api/config', async (req, res) => {
 // Clear credentials (clear deviceSN, foxessToken, amberApiKey from user config)
 app.post('/api/config/clear-credentials', authenticateUser, async (req, res) => {
   try {
-    console.log('[API] /api/config/clear-credentials called by user:', req.user.uid);
-
     const updates = {
       deviceSn: admin.firestore.FieldValue.delete(),
       foxessToken: admin.firestore.FieldValue.delete(),
@@ -1649,49 +1508,25 @@ app.get('/api/automation/status', async (req, res) => {
     
     console.log(`[Status] === TIMEZONE DEBUG ===`);
     console.log(`[Status] User ID: ${req.user.uid}`);
-    console.log(`[Status] Config location: ${userConfig?.location}`);
-    console.log(`[Status] Config timezone: ${userConfig?.timezone}`);
-    
-    // AGGRESSIVE timezone sync: fetch weather to ensure timezone matches location
-    // This runs every status check, so timezone is always current
+    // Aggressive timezone sync: fetch weather to ensure timezone matches location.
+    // Keep only warnings/errors; avoid verbose debug output.
     if (userConfig?.location) {
-      console.log(`[Status] Location is set, fetching weather for timezone detection...`);
       try {
         const weatherData = await getCachedWeatherData(req.user.uid, userConfig.location, 1);
-        console.log(`[Status] Weather data errno: ${weatherData?.errno}`);
-        console.log(`[Status] Weather data place: ${JSON.stringify(weatherData?.result?.place)}`);
-        
         if (weatherData?.result?.place?.timezone) {
           const weatherTimezone = weatherData.result.place.timezone;
-          console.log(`[Status] ✅ Weather timezone extracted: ${weatherTimezone}`);
-          console.log(`[Status] Is valid timezone: ${isValidTimezone(weatherTimezone)}`);
-          
-          // Update config if timezone is missing or different from weather
           if (userConfig.timezone !== weatherTimezone) {
-            console.log(`[Status] ⚠️ TIMEZONE MISMATCH: config has "${userConfig.timezone}", weather has "${weatherTimezone}"`);
-            console.log(`[Status] 🔄 Updating Firestore config...`);
             await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(
               { timezone: weatherTimezone },
               { merge: true }
             );
-            console.log(`[Status] ✅ Config updated in Firestore`);
             userConfig.timezone = weatherTimezone;
-          } else {
-            console.log(`[Status] ✅ Timezone already matches: ${weatherTimezone}`);
           }
-        } else {
-          console.log(`[Status] ❌ No timezone in weather data`);
-          console.log(`[Status] Weather result: ${JSON.stringify(weatherData?.result)}`);
         }
       } catch (err) {
-        console.warn('[Status] ❌ Failed to sync timezone from weather:', err.message, err.stack);
+        console.warn('[Status] Failed to sync timezone from weather:', err && err.message ? err.message : String(err));
       }
-    } else {
-      console.log(`[Status] ⚠️ No location set in config`);
     }
-    
-    console.log(`[Status] Final timezone for response: ${userConfig?.timezone || DEFAULT_TIMEZONE}`);
-    console.log(`[Status] === END TIMEZONE DEBUG ===`);
     
     // Use user's timezone for blackout window check
     const userTimezone = getAutomationTimezone(userConfig);
@@ -1915,13 +1750,11 @@ app.post('/api/automation/reset', async (req, res) => {
 app.post('/api/automation/cycle', async (req, res) => {
   try {
     const userId = req.user.uid;
-    console.log(`[Automation] Running cycle for user ${userId}`);
     
     // Get user's automation state
     const state = await getUserAutomationState(userId);
     // Check explicitly for enabled === false (not undefined which means not set yet)
     if (state && state.enabled === false) {
-      console.log(`[Automation] 🛑 Master switch is DISABLED (state.enabled === false)`);
       
       // Always update lastCheck timestamp to prevent scheduler from calling cycle repeatedly
       await saveUserAutomationState(userId, { 
@@ -1935,12 +1768,10 @@ app.post('/api/automation/cycle', async (req, res) => {
       // Only clear segments if they haven't been cleared already for this disabled state
       // Track with a flag in the state to avoid redundant API calls on every cycle
       if (state.segmentsCleared !== true) {
-        console.log(`[Automation] 📡 Segments not yet cleared for disabled state - sending clear command...`);
         try {
           const userConfig = await getUserConfig(userId);
           const deviceSN = userConfig?.deviceSn;
           if (deviceSN) {
-            console.log(`[Automation] 📡 Sending clear command to device ${deviceSN}...`);
             const clearedGroups = [];
             for (let i = 0; i < 8; i++) {
               clearedGroups.push({
@@ -1957,7 +1788,6 @@ app.post('/api/automation/cycle', async (req, res) => {
             // Real API call - counted in metrics for accurate quota tracking
             const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
             if (clearResult?.errno === 0) {
-              console.log(`[Automation] ✅ All segments CLEARED successfully (errno=0)`);
               // Mark segments as cleared so we don't do this again every cycle
               await saveUserAutomationState(userId, { segmentsCleared: true });
             } else {
@@ -1969,18 +1799,14 @@ app.post('/api/automation/cycle', async (req, res) => {
         } catch (err) {
           console.error(`[Automation] ❌ Error clearing segments on disable:`, err.message);
         }
-      } else {
-        console.log(`[Automation] ✅ Segments already cleared for disabled state - skipping API call`);
       }
-      
+
       // Clear lastTriggered on the active rule if one exists (so it can re-trigger when automation re-enabled)
       if (state.activeRule) {
-        console.log(`[Automation] 🧹 Active rule detected: ${state.activeRuleName || state.activeRule} - clearing lastTriggered`);
         try {
           await db.collection('users').doc(userId).collection('rules').doc(state.activeRule).set({
             lastTriggered: null
           }, { merge: true });
-          console.log(`[Automation] ✅ Cleared lastTriggered for rule ${state.activeRuleName || state.activeRule}`);
           
           // Create audit entry showing the active rule was deactivated due to automation being disabled
           // This ensures the ROI calculator shows the rule as "ended" not "ongoing"
@@ -2010,7 +1836,6 @@ app.post('/api/automation/cycle', async (req, res) => {
               cycleDurationMs: durationMs,
               automationDisabled: true  // Flag indicating this was due to automation being disabled
             });
-            console.log(`[Automation] 📝 Created audit entry for rule deactivation (${Math.round(durationMs / 1000)}s duration)`);
           } catch (auditErr) {
             console.warn(`[Automation] ⚠️ Failed to create audit entry:`, auditErr.message);
           }
@@ -2018,8 +1843,6 @@ app.post('/api/automation/cycle', async (req, res) => {
           console.warn(`[Automation] ⚠️ Error clearing rule lastTriggered:`, err.message);
         }
       }
-      
-      console.log(`[Automation] ✅ Automation state updated with lastCheck timestamp`);
       
       return res.json({ errno: 0, result: { skipped: true, reason: 'Automation disabled', segmentsCleared: state.segmentsCleared === true } });
     }
@@ -2033,7 +1856,6 @@ app.post('/api/automation/cycle', async (req, res) => {
     const userTime = getUserTime(userTimezone);
     const currentMinutes = userTime.hour * 60 + userTime.minute;
     
-    console.log(`[Automation] User timezone: ${userTimezone}, current time: ${String(userTime.hour).padStart(2,'0')}:${String(userTime.minute).padStart(2,'0')}`, blackoutWindows);
     
     let inBlackout = false;
     let currentBlackoutWindow = null;
@@ -2070,7 +1892,6 @@ app.post('/api/automation/cycle', async (req, res) => {
     // Get user's rules
     const rules = await getUserRules(userId);
     const totalRules = Object.keys(rules).length;
-    console.log(`[Automation] Found ${totalRules} total rules`);
     
     if (totalRules === 0) {
       await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
@@ -2079,7 +1900,6 @@ app.post('/api/automation/cycle', async (req, res) => {
     
     // Check if a rule was just disabled and we need to clear segments (via flag)
     if (state.clearSegmentsOnNextCycle) {
-      console.log('[Cycle] 🧹 clearSegmentsOnNextCycle flag detected - clearing all segments immediately');
       try {
         const deviceSN = userConfig?.deviceSn;
         if (deviceSN) {
@@ -2098,8 +1918,8 @@ app.post('/api/automation/cycle', async (req, res) => {
           }
           // Real API call - counted in metrics for accurate quota tracking
           const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
-          if (clearResult?.errno === 0) {
-            console.log(`[Cycle] ✅ Segments cleared successfully due to rule disable flag`);
+          if (clearResult?.errno !== 0) {
+            console.warn(`[Cycle] ⚠️ Failed to clear segments due to rule disable flag: errno=${clearResult?.errno}`);
           }
         }
       } catch (err) {
@@ -2117,7 +1937,6 @@ app.post('/api/automation/cycle', async (req, res) => {
     // Check if the active rule was disabled (CRITICAL: Must check BEFORE filtering)
     // If activeRule exists but is now disabled, we need to clear segments
     if (state.activeRule && rules[state.activeRule] && !rules[state.activeRule].enabled) {
-      console.log(`[Automation] 🧹 Active rule '${state.activeRuleName || state.activeRule}' was DISABLED - clearing segments`);
       try {
         const deviceSN = userConfig?.deviceSn;
         if (deviceSN) {
@@ -2136,9 +1955,7 @@ app.post('/api/automation/cycle', async (req, res) => {
           }
           // Real API call - counted in metrics for accurate quota tracking
           const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
-          if (clearResult?.errno === 0) {
-            console.log(`[Automation] ✅ Segments cleared successfully after rule disable`);
-          } else {
+          if (clearResult?.errno !== 0) {
             console.warn(`[Automation] ⚠️ Failed to clear segments: errno=${clearResult?.errno}`);
           }
         }
@@ -2153,7 +1970,6 @@ app.post('/api/automation/cycle', async (req, res) => {
         activeSegment: null,
         activeSegmentEnabled: false
       });
-      console.log(`[Automation] ✅ Automation state cleared after rule disable`);
       return res.json({ errno: 0, result: { skipped: true, reason: 'Active rule was disabled', segmentsCleared: true } });
     }
     
@@ -2178,7 +1994,6 @@ app.post('/api/automation/cycle', async (req, res) => {
         // Try cache first to avoid duplicate API call
         let sites = await amberAPI.getCachedAmberSites(userId);
         if (!sites) {
-          console.log(`[Automation] Sites cache miss for ${userId}, calling API`);
           sites = await amberAPI.callAmberAPI('/sites', {}, userConfig, userId);
           if (Array.isArray(sites) && sites.length > 0) {
             await amberAPI.cacheAmberSites(userId, sites);
@@ -2195,7 +2010,6 @@ app.post('/api/automation/cycle', async (req, res) => {
             
             // Check if another request is already fetching this data
             if (amberPricesInFlight.has(inflightKey)) {
-              console.log(`[Automation] Another request is fetching prices for ${userId}, waiting for it...`);
               try {
                 amberData = await amberPricesInFlight.get(inflightKey);
               } catch (err) {
@@ -2205,7 +2019,6 @@ app.post('/api/automation/cycle', async (req, res) => {
             
             // If still no data (first request or in-flight failed), fetch it
             if (!amberData) {
-              console.log(`[Automation] Current prices cache miss for ${userId}, calling API`);
               const fetchPromise = amberAPI.callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig, userId)
                 .then(async (data) => {
                   if (Array.isArray(data) && data.length > 0) {
@@ -2223,26 +2036,22 @@ app.post('/api/automation/cycle', async (req, res) => {
           }
           
           if (amberData) {
-            console.log(`[Automation] Amber data fetched: ${Array.isArray(amberData) ? amberData.length : 0} intervals`);
             const forecastCount = amberData.filter(p => p.type === 'ForecastInterval').length;
             const currentCount = amberData.filter(p => p.type === 'CurrentInterval').length;
             const generalForecasts = amberData.filter(p => p.type === 'ForecastInterval' && p.channelType === 'general');
             const feedInForecasts = amberData.filter(p => p.type === 'ForecastInterval' && p.channelType === 'feedIn');
-            console.log(`[Automation] Breakdown: ${currentCount} current, ${forecastCount} forecast (${generalForecasts.length} general, ${feedInForecasts.length} feedIn)`);
             // Show time range and price extremes for BOTH channels
             if (generalForecasts.length > 0) {
               const generalPrices = generalForecasts.map(f => f.perKwh);
               const maxGeneral = Math.max(...generalPrices);
               const firstTime = new Date(generalForecasts[0].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
               const lastTime = new Date(generalForecasts[generalForecasts.length - 1].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
-              console.log(`[Automation] General (buy) forecasts: ${firstTime} to ${lastTime}, max=${maxGeneral.toFixed(1)}¢`);
             }
             if (feedInForecasts.length > 0) {
               const feedInPrices = feedInForecasts.map(f => -f.perKwh); // Negate for display (you earn positive)
               const maxFeedIn = Math.max(...feedInPrices);
               const firstTime = new Date(feedInForecasts[0].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
               const lastTime = new Date(feedInForecasts[feedInForecasts.length - 1].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
-              console.log(`[Automation] FeedIn forecasts: ${firstTime} to ${lastTime}, max=${maxFeedIn.toFixed(1)}¢`);
             }
           }
         }
@@ -2256,7 +2065,6 @@ app.post('/api/automation/cycle', async (req, res) => {
     
     // Evaluate rules (sorted by priority - lower number = higher priority)
     const enabledRules = Object.entries(rules).filter(([_, rule]) => rule.enabled);
-    console.log(`[Automation] ${enabledRules.length} of ${totalRules} rules are enabled`);
     
     if (enabledRules.length === 0) {
       await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
@@ -2303,7 +2111,6 @@ app.post('/api/automation/cycle', async (req, res) => {
         // Always fetch 7 days to maximize cache hits - any rule requesting ≤7 days will use cached data
         // This prevents cache busting when different rules request different day counts
         const daysToFetch = 7;
-        console.log(`[Automation] Rules need ${maxDaysNeeded} days, fetching ${daysToFetch} days for optimal caching`);
         weatherData = await getCachedWeatherData(userId, place, daysToFetch);
         cache.weather = weatherData.result || weatherData;
       } catch (e) {
@@ -2317,7 +2124,6 @@ app.post('/api/automation/cycle', async (req, res) => {
     const evaluationResults = [];
     
     for (const [ruleId, rule] of sortedRules) {
-      console.log(`[Automation] Checking rule '${rule.name}' (priority ${rule.priority})`);
       
       // BUG FIX: Check if this is the ACTIVE rule
       // Active rules should always be re-evaluated to verify conditions still hold, even if in cooldown
@@ -2334,7 +2140,6 @@ app.post('/api/automation/cycle', async (req, res) => {
           : lastTriggered;
         if (Date.now() - lastTriggeredMs < cooldownMs) {
           const remaining = Math.round((cooldownMs - (Date.now() - lastTriggeredMs)) / 1000);
-          console.log(`[Automation] Rule '${rule.name}' in cooldown (${remaining}s remaining)`);
           evaluationResults.push({ rule: rule.name, result: 'cooldown', remaining });
           continue;
         }
@@ -2356,7 +2161,6 @@ app.post('/api/automation/cycle', async (req, res) => {
           
           // Check if cooldown has EXPIRED - if so, reset and re-trigger in SAME cycle
           if (Date.now() - lastTriggeredMs >= cooldownMs) {
-            console.log(`[Automation] ⏰ Active rule '${rule.name}' COOLDOWN EXPIRED (active ${activeForSec}s) - resetting to allow re-trigger IN SAME CYCLE`);
             
             try {
               // Reset lastTriggered to allow immediate re-trigger
@@ -2374,7 +2178,6 @@ app.post('/api/automation/cycle', async (req, res) => {
                 activeSegmentEnabled: false
               });
               
-              console.log(`[Automation] Rule '${ruleId}' reset after cooldown expiry - treating as NEW rule this cycle`);
             } catch (err) {
               console.error(`[Automation] Error resetting rule after cooldown expiry:`, err.message);
             }
@@ -2390,7 +2193,6 @@ app.post('/api/automation/cycle', async (req, res) => {
             
             // Fall through to NEW trigger logic below (isActiveRule is still true in variable but state is cleared)
             // We need to manually apply the action since we're not going through the normal path
-            console.log(`[Automation] ✅ Rule '${rule.name}' RE-TRIGGERING after cooldown expiry with updated times`);
             
             // Apply the rule action with NEW timestamps
             const isNewTrigger = true; // Treat as new trigger
@@ -2398,11 +2200,9 @@ app.post('/api/automation/cycle', async (req, res) => {
             
             let actionResult = null;
             try {
-              console.log(`[Automation] 🔄 Calling applyRuleAction to ATOMICALLY update segment with new times...`);
               const applyStart = Date.now();
               actionResult = await applyRuleAction(userId, rule, userConfig);
               const applyDuration = Date.now() - applyStart;
-              console.log(`[Automation] ✅ applyRuleAction completed in ${applyDuration}ms - errno=${actionResult?.errno}, msg=${actionResult?.msg}`);
               if (actionResult?.retrysFailed) {
                 console.warn(`[Automation] ⚠️ Some retries failed during atomic segment update`);
               }
@@ -2432,7 +2232,6 @@ app.post('/api/automation/cycle', async (req, res) => {
             break; // Rule applied, exit loop
           } else {
             // Cooldown still active - rule continues
-            console.log(`[Automation] ✅ Active rule '${rule.name}' conditions STILL MET - continuing (active ${activeForSec}s, cooldown ${cooldownRemaining}s remaining)`);
             
             // Mark as 'continuing' in evaluation results with cooldown info
             evaluationResults.push({ 
@@ -2464,11 +2263,9 @@ app.post('/api/automation/cycle', async (req, res) => {
             const newRulePriority = rule.priority || 99;
             if (newRulePriority > activeRulePriority) {
               // New rule is LOWER priority than active rule - don't trigger
-              console.log(`[Automation] Rule '${rule.name}' (P${newRulePriority}) would trigger but active rule P${activeRulePriority} has higher priority - skipping`);
               continue;
             } else if (newRulePriority < activeRulePriority) {
               // New rule has HIGHER priority (lower number) - cancel active rule first
-              console.log(`[Automation] 🔥 Rule '${rule.name}' (P${newRulePriority}) has HIGHER priority than active rule P${activeRulePriority} - canceling active rule`);
               try {
                 const deviceSN = userConfig?.deviceSn;
                 if (deviceSN) {
@@ -2487,7 +2284,6 @@ app.post('/api/automation/cycle', async (req, res) => {
                   }
                   // Real API call - counted in metrics for accurate quota tracking
                   await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
-                  console.log(`[Automation] ✅ Cleared lower-priority active rule's segment`);
                   await new Promise(resolve => setTimeout(resolve, 2500)); // Wait for inverter to process
                 }
               } catch (err) {
@@ -2500,7 +2296,6 @@ app.post('/api/automation/cycle', async (req, res) => {
             }
           }
           // New rule triggered with higher priority or no active rule exists
-          console.log(`[Automation] ✅ Rule '${rule.name}' TRIGGERED! Applying action...`);
         }
         // Mark whether this is a new trigger or a continuing active rule
         const isNewTrigger = !isActiveRule;
@@ -2512,7 +2307,6 @@ app.post('/api/automation/cycle', async (req, res) => {
           let actionResult = null;
           try {
             actionResult = await applyRuleAction(userId, rule, userConfig);
-            console.log(`[Automation] Action result for '${rule.name}': errno=${actionResult?.errno}, msg=${actionResult?.msg}`);
           } catch (actionError) {
             console.error(`[Automation] Action failed:`, actionError);
             actionResult = { errno: -1, msg: actionError.message || 'Action failed' };
@@ -2541,12 +2335,7 @@ app.post('/api/automation/cycle', async (req, res) => {
           // Transform evaluationResults to frontend-friendly format
           const allRulesForAudit = evaluationResults.map(evalResult => {
             const ruleData = sortedRules.find(([_id, r]) => r.name === evalResult.rule);
-const [evalRuleId] = ruleData || [null];
-            
-            // DEBUG: Log prices being stored
-            if (evalResult.details?.feedInPrice !== undefined || evalResult.details?.buyPrice !== undefined) {
-              console.log(`[Audit] Rule '${evalResult.rule}': feedInPrice=${evalResult.details?.feedInPrice}, buyPrice=${evalResult.details?.buyPrice}`);
-            }
+            const [evalRuleId] = ruleData || [null];
             
             return {
               name: evalResult.rule,
@@ -2620,15 +2409,6 @@ const [evalRuleId] = ruleData || [null];
           const loadKeys = ['loadspower', 'loadpower', 'load', 'houseload', 'house_load', 'consumption', 'load_active_power', 'loadactivepower', 'loadsPower'];
           let houseLoadW = findValue(datas, loadKeys);
           
-          // DEBUG: Log all available variables to help debug missing house load
-          if (datas.length > 0 && datas.length <= 30) {
-            const availableVars = datas.map(d => `${d.variable || d.key}=${d.value}`).join(', ');
-            console.log(`[Automation ROI DEBUG] Available datapoints (${datas.length}): ${availableVars}`);
-          } else if (datas.length > 30) {
-            const sample = datas.slice(0, 5).map(d => `${d.variable || d.key}=${d.value}`).join(', ');
-            console.log(`[Automation ROI DEBUG] Sample datapoints (${datas.length} total): ${sample}...`);
-          }
-          
           // Convert to number, but preserve null if data not found (don't default to 0)
           if (houseLoadW !== null && houseLoadW !== undefined) {
             houseLoadW = Number(houseLoadW);
@@ -2643,14 +2423,11 @@ const [evalRuleId] = ruleData || [null];
               if (Math.abs(houseLoadW) < 100) {
                 const originalValue = houseLoadW;
                 houseLoadW = houseLoadW * 1000; // Convert kW to W
-                console.log(`[Automation ROI] Converted house load from kW to W: ${originalValue}kW → ${houseLoadW}W`);
               }
             }
           }
           
-          if (houseLoadW !== null) {
-            console.log(`[Automation ROI] ✓ Successfully extracted house load: ${houseLoadW}W from ${datas.length} datapoints`);
-          } else {
+          if (houseLoadW === null) {
             console.error(`[Automation ROI] ❌ FAILED to extract house load from ${datas.length} datapoints - tried keys: ${loadKeys.join(', ')}`);
             // Log what variables ARE present to help diagnose
             if (datas.length > 0) {
@@ -2670,7 +2447,6 @@ const [evalRuleId] = ruleData || [null];
           const buyPrice = result.buyPrice ?? 0; // In cents/kWh from Amber API
           
           // DEBUG: Validate price format
-          console.log(`[Automation ROI] Prices from evaluateRule: feedInPrice=${feedInPrice}¢/kWh, buyPrice=${buyPrice}¢/kWh (type: ${typeof feedInPrice}, ${typeof buyPrice})`);
           
           const durationHours = (rule.action?.durationMinutes || 30) / 60;
           
@@ -2694,7 +2470,6 @@ const [evalRuleId] = ruleData || [null];
             estimatedRevenue = -(gridDrawW * pricePerKwh * durationHours);
             
             const profitOrCost = estimatedRevenue >= 0 ? 'PROFIT' : 'COST';
-            console.log(`[Automation ROI] ⚡ CHARGE Rule '${rule.name}': (${fdPwr}W charge + ${houseLoadW !== null ? houseLoadW + 'W' : '0W'} house) = ${gridDrawW}W @ ${buyPrice}¢/kWh × ${durationHours.toFixed(4)}h = $${estimatedRevenue.toFixed(4)} (${profitOrCost})`);
           } else if (isDischargeRule) {
             // DISCHARGE RULE: Exporting power TO the grid
             // - Positive feedInPrice: You get PAID for export = POSITIVE profit (revenue)  
@@ -2705,10 +2480,8 @@ const [evalRuleId] = ruleData || [null];
             estimatedRevenue = estimatedGridExportW * pricePerKwh * durationHours;
             
             const profitOrCost = estimatedRevenue >= 0 ? 'REVENUE' : 'COST';
-            console.log(`[Automation ROI] 📤 DISCHARGE Rule '${rule.name}': ${fdPwr}W - ${houseLoadW !== null ? houseLoadW + 'W' : '0W'} = ${estimatedGridExportW}W @ ${feedInPrice}¢/kWh × ${durationHours.toFixed(4)}h = $${estimatedRevenue.toFixed(4)} (${profitOrCost})`);
           } else {
             // Other modes (SelfUse, Backup, etc) - no grid transaction
-            console.log(`[Automation ROI] ℹ️ Rule '${rule.name}': workMode=${workMode} - no grid transaction calculated`);
           }
           
           await addAutomationAuditEntry(userId, {
@@ -2747,7 +2520,6 @@ const [evalRuleId] = ruleData || [null];
           triggeredRule.actionResult = actionResult;
         } else {
           // Active rule is continuing - just update check timestamp, no re-apply needed
-          console.log(`[Automation] Continuing with active rule - segment remains active`);
           await saveUserAutomationState(userId, {
             lastCheck: Date.now(),
             inBlackout: false,
@@ -2764,7 +2536,6 @@ const [evalRuleId] = ruleData || [null];
         
         // Active rule's conditions NO LONGER hold during evaluation
         if (isActiveRule) {
-          console.log(`[Automation] Active rule '${rule.name}' conditions NO LONGER MET - canceling segment`);
           let segmentClearSuccess = false;
           try {
             // Clear all scheduler segments
@@ -2789,16 +2560,13 @@ const [evalRuleId] = ruleData || [null];
               let clearResult = null;
               while (clearAttempt < 3 && !segmentClearSuccess) {
                 clearAttempt++;
-                console.log(`[Automation] Segment clear attempt ${clearAttempt}/3...`);
                 clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
                 
                 if (clearResult?.errno === 0) {
-                  console.log(`[Automation] ✓ Cleared all scheduler segments (attempt ${clearAttempt})`);
                   segmentClearSuccess = true;
                 } else {
                   console.warn(`[Automation] Segment clear attempt ${clearAttempt} failed: errno=${clearResult?.errno}, msg=${clearResult?.msg}`);
                   if (clearAttempt < 3) {
-                    console.log(`[Automation] ⏳ Waiting 1.2s before retry...`);
                     await new Promise(resolve => setTimeout(resolve, 1200));
                   }
                 }
@@ -2812,9 +2580,7 @@ const [evalRuleId] = ruleData || [null];
               
               // Wait for inverter to process segment clearing before continuing evaluation
               // Extended delay to ensure hardware is ready (2.5s total wait)
-              console.log(`[Automation] ⏳ Waiting 2.5s for inverter to process segment clearing...`);
               await new Promise(resolve => setTimeout(resolve, 2500));
-              console.log(`[Automation] ✓ Inverter processing delay complete, ready to evaluate replacement rules`);
             }
             // Clear lastTriggered when rule is canceled (conditions failed)
             // This allows the rule to re-trigger immediately if conditions become valid again
@@ -2822,7 +2588,6 @@ const [evalRuleId] = ruleData || [null];
             await db.collection('users').doc(userId).collection('rules').doc(ruleId).set({
               lastTriggered: null
             }, { merge: true });
-            console.log(`[Automation] Rule '${ruleId}' canceled - cooldown reset, can re-trigger if conditions met`);
           } catch (cancelError) {
             console.error(`[Automation] Unexpected error during cancellation:`, cancelError.message);
             // Break on unexpected errors - don't risk applying a replacement
@@ -2846,11 +2611,6 @@ const [evalRuleId] = ruleData || [null];
             const allRulesForAudit = evaluationResults.map(evalResult => {
               const ruleData = sortedRules.find(([_id, r]) => r.name === evalResult.rule);
               const [evalRuleId] = ruleData || [null];
-              
-              // DEBUG: Log prices being stored
-              if (evalResult.details?.feedInPrice !== undefined || evalResult.details?.buyPrice !== undefined) {
-                console.log(`[Audit] Rule '${evalResult.rule}': feedInPrice=${evalResult.details?.feedInPrice}, buyPrice=${evalResult.details?.buyPrice}`);
-              }
               
               return {
                 name: evalResult.rule,
@@ -2882,11 +2642,9 @@ const [evalRuleId] = ruleData || [null];
             });
             
             // Continue to check if any other rule can trigger
-            console.log(`[Automation] 🔄 Continuing rule evaluation after cancellation...`);
             continue;
           } else {
             // Failed to clear - don't evaluate replacement rules this cycle
-            console.log(`[Automation] 🛑 Skipping replacement rule evaluation due to segment clear failure`);
             break;
           }
         }
@@ -2894,7 +2652,6 @@ const [evalRuleId] = ruleData || [null];
     }
     
     if (!triggeredRule) {
-      console.log(`[Automation] No new rules triggered and no active rule continuing this cycle`);
       
       // Just update lastCheck timestamp
       // Note: If an active rule's conditions no longer held, it was already handled in the main loop above
@@ -3947,9 +3704,7 @@ app.get('/api/weather', async (req, res) => {
     const place = req.query.place || 'Sydney';
     const days = parseInt(req.query.days || '3', 10);
     const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
-    console.log(`[Weather API] Request for place="${place}", days=${days}, forceRefresh=${forceRefresh}`);
     const result = await getCachedWeatherData(req.user?.uid || 'anonymous', place, days, forceRefresh);
-    console.log(`[Weather API] Returning: errno=${result.errno}, daily days=${result.result?.daily?.time?.length || 0}, cache hit=${result.__cacheHit || false}`);
     res.json(result);
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -4713,9 +4468,6 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       
       const codeDesc = currentCode <= 1 ? 'Clear' : currentCode <= 3 ? 'Partly Cloudy' : currentCode <= 48 ? 'Cloudy/Fog' : currentCode <= 67 ? 'Rain' : 'Storm';
       results.push({ condition: 'weather', met, type: 'weathercode', actual: codeDesc, target: weatherType, weatherCode: currentCode, legacy: true });
-      if (!met) {
-        console.log(`[Automation] Rule '${rule.name}' - Weather condition NOT met: ${codeDesc} (code ${currentCode}) != ${weatherType}`);
-      }
     } else {
       results.push({ condition: 'weather', met: false, reason: 'No weather data' });
     }
@@ -5244,7 +4996,6 @@ app.get('/api/inverter/history', authenticateUser, async (req, res) => {
     begin = Math.floor(begin);
     end = Math.floor(end);
     
-    console.log(`[History] Requesting: begin=${begin} (${new Date(begin).toISOString()}), end=${end} (${new Date(end).toISOString()}), sn=${sn}`);
     
     // Set a strict timeout for the FoxESS call
     const timeoutPromise = new Promise((_, reject) => 
@@ -5259,7 +5010,6 @@ app.get('/api/inverter/history', authenticateUser, async (req, res) => {
         // Check cache first
         const cachedResult = await getHistoryFromCacheFirestore(userId, sn, begin, end);
         if (cachedResult) {
-          console.log(`[History] Cache HIT for single chunk ${new Date(begin).toISOString()} - ${new Date(end).toISOString()}`);
           return res.json(cachedResult);
         }
         
@@ -5297,9 +5047,7 @@ app.get('/api/inverter/history', authenticateUser, async (req, res) => {
       for (const ch of chunks) {
         // Check cache for this chunk
         let chunkResp = await getHistoryFromCacheFirestore(userId, sn, ch.cbeg, ch.cend);
-        if (chunkResp) {
-          console.log(`[History] Cache HIT for chunk ${new Date(ch.cbeg).toISOString()} - ${new Date(ch.cend).toISOString()}`);
-        } else {
+        if (!chunkResp) {
           chunkResp = await foxessAPI.callFoxESSAPI('/op/v0/device/history/query', 'POST', {
             sn,
             begin: ch.cbeg,
@@ -5447,16 +5195,11 @@ async function runAutomationHandler(_context) {
     const serverConfig = getConfig();
     const defaultIntervalMs = serverConfig.automation.intervalMs; // Respects backend config!
     
-    console.log(`[Scheduler] Config: defaultIntervalMs=${defaultIntervalMs}ms, cacheTTL=${JSON.stringify(serverConfig.automation.cacheTtl)}`);
-    
     // Get all users
     const usersSnapshot = await db.collection('users').get();
     const totalUsers = usersSnapshot.size;
     
-    console.log(`[Scheduler] Found ${totalUsers} user(s)`);
-    
     if (totalUsers === 0) {
-      console.log(`[Scheduler] No users to check`);
       return null;
     }
     
