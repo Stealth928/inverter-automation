@@ -336,8 +336,45 @@ const tryAttachUser = (req) => authAPI.tryAttachUser(req);
 // ==================== UNPROTECTED ENDPOINTS (Before Auth Middleware) ====================
 
 // Health check (no auth required)
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true });
+app.get('/api/health', async (req, res) => {
+  try {
+    await tryAttachUser(req);
+    const userId = req.user?.uid;
+    console.log('[Health] Request received - userId:', userId || '(not authenticated)');
+    
+    // Check if user is authenticated and has tokens saved
+    let foxessTokenPresent = false;
+    let amberApiKeyPresent = false;
+    
+    if (userId) {
+      try {
+        const configDoc = await db.collection('users').doc(userId).collection('config').doc('main').get();
+        const config = configDoc.data() || {};
+        foxessTokenPresent = !!config.foxessToken;
+        amberApiKeyPresent = !!config.amberApiKey;
+        console.log('[Health] User config check for', userId, '- foxessToken present:', foxessTokenPresent, '- amberApiKey present:', amberApiKeyPresent);
+      } catch (e) {
+        console.warn('[Health] Failed to check config:', e.message);
+      }
+    } else {
+      console.log('[Health] No userId - user not authenticated');
+    }
+    
+    const response = { 
+      ok: true,
+      FOXESS_TOKEN: foxessTokenPresent,
+      AMBER_API_KEY: amberApiKeyPresent
+    };
+    console.log('[Health] Returning response:', response);
+    res.json(response);
+  } catch (error) {
+    console.error('[Health] Error:', error);
+    res.json({ 
+      ok: true,
+      FOXESS_TOKEN: false,
+      AMBER_API_KEY: false
+    });
+  }
 });
 
 // Password reset (no auth required)

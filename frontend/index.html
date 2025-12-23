@@ -3942,7 +3942,7 @@
                     // Display feed-in price (what you earn when exporting)
                     // Amber returns NEGATIVE values for feed-in (negative = you earn)
                     // Display as positive for user clarity: -9¢ displays as 9¢
-                    const displayVal = -Math.round(currentFeed.perKwh);
+                    const displayVal = -currentFeed.perKwh;
                     function feedClassFromVal(v) {
                         // v is display value in cents (positive = you earn at this rate)
                         if (v < -6) return 'price-high'; // red - paying money (negative feed-in)

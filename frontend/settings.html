@@ -473,6 +473,193 @@
             </div>
         </div>
 
+        <!-- Blackout Windows (Advanced) -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        🌙 Automation Blackout Windows
+                        <span class="badge badge-sync" id="blackoutBadge">Synced</span>
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="addBlackoutWindow()">➕ Add Window</button>
+            </div>
+            <div class="section-description">
+                Time periods when automation is paused. Useful for maintenance, peak tariffs, or overnight periods.
+            </div>
+            <div id="blackoutWindowsList" style="margin-top:16px">
+                <!-- Blackout windows will be rendered here -->
+                <div style="color:#8b949e;font-size:13px;text-align:center;padding:20px">No blackout windows configured</div>
+            </div>
+            <div class="faq-section">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> Frequently Asked Questions
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">When would I use a blackout window?</div>
+                        <div class="faq-answer">
+                            Common use cases include:<br>
+                            • <strong>Overnight quiet hours</strong> — Pause automation from 11pm-6am when you don't want mode changes<br>
+                            • <strong>Scheduled maintenance</strong> — Temporarily disable automation during system updates<br>
+                            • <strong>Peak demand events</strong> — Prevent discharge during grid emergencies when you want to keep battery full
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Do blackout windows work overnight (crossing midnight)?</div>
+                        <div class="faq-answer">
+                            Yes! A window from <code>22:00</code> to <code>06:00</code> correctly spans midnight. 
+                            The system understands that the end time is on the following day.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What happens during a blackout window?</div>
+                        <div class="faq-answer">
+                            Automation cycles are completely skipped — no rules are evaluated and no actions are taken. 
+                            Your inverter continues running in whatever mode it was in before the blackout started.
+                            <div class="faq-tip">Active scheduler segments from before the blackout will continue running until they expire naturally.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Credentials (FoxESS / Amber) -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        🔑 Credentials
+                        <span class="badge badge-sync" id="credentialsBadge">Synced</span>
+                    </div>
+                </div>
+                <div>
+                    <button class="btn-secondary" onclick="loadCredentials()">Reload</button>
+                </div>
+            </div>
+            <div class="section-description">
+                Configure your FoxESS device serial number, FoxESS API token, and Amber API key. Tokens are not shown by default for security — enter them when you want to update them.
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <div class="setting-label">FoxESS Device Serial Number</div>
+                    <div class="setting-hint">The serial number of your inverter (visible in FoxESS Cloud)</div>
+                    <div class="setting-input">
+                        <input type="text" id="credentials_deviceSn" placeholder="e.g., AFTWXK7A123456">
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">FoxESS API Token</div>
+                    <div class="setting-hint">Enter a FoxESS API token to allow the server to talk to your inverter (kept hidden)</div>
+                    <div class="setting-input">
+                        <input type="password" id="credentials_foxessToken" placeholder="•••••••• (leave blank to keep current)">
+                        <button type="button" class="btn-secondary" id="credentials_toggleFoxess">Show</button>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">Amber API Key (optional)</div>
+                    <div class="setting-hint">Optional API key for Amber electricity pricing (used for automation)</div>
+                    <div class="setting-input">
+                        <input type="password" id="credentials_amberKey" placeholder="•••••••• (optional)">
+                        <button type="button" class="btn-secondary" id="credentials_toggleAmber">Show</button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+                <button class="btn-primary" onclick="saveCredentials()" id="credentialsSaveBtn">💾 Save Credentials</button>
+                <button class="btn-secondary" onclick="clearCredentials()">🧹 Clear Credentials</button>
+                <div style="margin-left:12px;color:var(--muted);font-size:13px" id="credentialsStatus">Checking...</div>
+            </div>
+        </div>
+
+        <!-- Preferences (Weather, etc.) -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        🌤️ Preferences
+                        <span class="badge badge-sync" id="preferencesBadge">Synced</span>
+                    </div>
+                </div>
+            </div>
+            <div class="section-description">
+                Configure your personal preferences for the dashboard, including default weather location.
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <div class="setting-label">Default Weather Location</div>
+                    <div class="setting-hint">City and country for local weather forecasts (e.g., "Sydney, Australia")</div>
+                    <div class="setting-input">
+                        <input type="text" id="preferences_weatherPlace" data-section="preferences" data-key="weatherPlace" placeholder="e.g., Sydney, Australia" value="Sydney, Australia">
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Default Forecast Days</div>
+                    <div class="setting-hint">Number of days to display in weather forecast (1-16)</div>
+                    <div class="setting-input">
+                        <input type="number" id="preferences_forecastDays" data-section="preferences" data-key="forecastDays" min="1" max="16" step="1" value="6">
+                        <span class="unit">days</span>
+                    </div>
+                </div>
+            </div>
+            <div class="faq-section">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> Frequently Asked Questions
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">Why is weather location important?</div>
+                        <div class="faq-answer">
+                            Your weather location determines the local timezone, sunrise/sunset times, and cloud cover forecasts — all critical for solar production predictions. 
+                            Getting the location correct ensures automation reacts appropriately to local weather conditions. For example, a forecast heavy rain in your area 
+                            will reduce solar output and might trigger battery discharge modes to maximize export during remaining sunny hours.
+                            <div class="faq-tip">Use the format "City, Country" (e.g., "Sydney, Australia" or "Melbourne, Australia") for best results.</div>
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">How does location affect my automation rules?</div>
+                        <div class="faq-answer">
+                            Location determines the actual sunrise/sunset times and cloud cover for your area. If you set a rule like "Discharge during peak export hours",
+                            the system uses your location to calculate when peak sun is expected. Wrong location = wrong time windows = suboptimal discharge timing.
+                            Additionally, timezone information from your location is used to align with local electricity markets (e.g., Amber pricing in Australia uses local times).
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What happens if I change my location?</div>
+                        <div class="faq-answer">
+                            The system will fetch new weather data for the new location on the next update cycle. Historical weather data for the old location is discarded,
+                            and your weather cache resets. Automation rules will immediately start using the new sunrise/sunset times and timezone. No manual adjustment needed.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Why does weather data cache for 30 minutes?</div>
+                        <div class="faq-answer">
+                            Weather forecasts typically update hourly from data providers. A <code>30 minute</code> cache reduces unnecessary API calls while keeping your forecast fresh enough
+                            for automation decisions. Shorter caching would hit rate limits; longer caching might miss rapid weather changes like sudden cloud cover.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Can I use coordinates instead of a city name?</div>
+                        <div class="faq-answer">
+                            Currently, the system accepts location names (e.g., "Sydney, Australia"). The weather provider resolves the name to coordinates internally. 
+                            Using specific addresses or coordinates isn't supported, but city/state is precise enough for weather forecasting.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">How many forecast days should I use?</div>
+                        <div class="faq-answer">
+                            <code>6 days</code> (default) is ideal for most users — it's enough to plan weekly without overwhelming the UI. If you want to see longer-term trends,
+                            increase to <code>10-16 days</code>. For real-time operation focused on today/tomorrow, reduce to <code>2-3 days</code>.
+                            <div class="faq-tip">More forecast days = slightly slower dashboard load times. Balance visibility with performance.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Cache Settings -->
         <div class="section">
             <div class="section-header">
@@ -683,193 +870,6 @@
             </div>
         </div>
 
-        <!-- Credentials (FoxESS / Amber) -->
-        <div class="section">
-            <div class="section-header">
-                <div>
-                    <div class="section-title">
-                        🔑 Credentials
-                        <span class="badge badge-sync" id="credentialsBadge">Synced</span>
-                    </div>
-                </div>
-                <div>
-                    <button class="btn-secondary" onclick="loadCredentials()">Reload</button>
-                </div>
-            </div>
-            <div class="section-description">
-                Configure your FoxESS device serial number, FoxESS API token, and Amber API key. Tokens are not shown by default for security — enter them when you want to update them.
-            </div>
-            <div class="settings-grid">
-                <div class="setting-item">
-                    <div class="setting-label">FoxESS Device Serial Number</div>
-                    <div class="setting-hint">The serial number of your inverter (visible in FoxESS Cloud)</div>
-                    <div class="setting-input">
-                        <input type="text" id="credentials_deviceSn" placeholder="e.g., AFTWXK7A123456">
-                    </div>
-                </div>
-
-                <div class="setting-item">
-                    <div class="setting-label">FoxESS API Token</div>
-                    <div class="setting-hint">Enter a FoxESS API token to allow the server to talk to your inverter (kept hidden)</div>
-                    <div class="setting-input">
-                        <input type="password" id="credentials_foxessToken" placeholder="•••••••• (leave blank to keep current)">
-                        <button type="button" class="btn-secondary" id="credentials_toggleFoxess">Show</button>
-                    </div>
-                </div>
-
-                <div class="setting-item">
-                    <div class="setting-label">Amber API Key (optional)</div>
-                    <div class="setting-hint">Optional API key for Amber electricity pricing (used for automation)</div>
-                    <div class="setting-input">
-                        <input type="password" id="credentials_amberKey" placeholder="•••••••• (optional)">
-                        <button type="button" class="btn-secondary" id="credentials_toggleAmber">Show</button>
-                    </div>
-                </div>
-            </div>
-
-            <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
-                <button class="btn-primary" onclick="saveCredentials()" id="credentialsSaveBtn">💾 Save Credentials</button>
-                <button class="btn-secondary" onclick="clearCredentials()">🧹 Clear Credentials</button>
-                <div style="margin-left:12px;color:var(--muted);font-size:13px" id="credentialsStatus">Checking...</div>
-            </div>
-        </div>
-
-        <!-- Preferences (Weather, etc.) -->
-        <div class="section">
-            <div class="section-header">
-                <div>
-                    <div class="section-title">
-                        🌤️ Preferences
-                        <span class="badge badge-sync" id="preferencesBadge">Synced</span>
-                    </div>
-                </div>
-            </div>
-            <div class="section-description">
-                Configure your personal preferences for the dashboard, including default weather location.
-            </div>
-            <div class="settings-grid">
-                <div class="setting-item">
-                    <div class="setting-label">Default Weather Location</div>
-                    <div class="setting-hint">City and country for local weather forecasts (e.g., "Sydney, Australia")</div>
-                    <div class="setting-input">
-                        <input type="text" id="preferences_weatherPlace" data-section="preferences" data-key="weatherPlace" placeholder="e.g., Sydney, Australia" value="Sydney, Australia">
-                    </div>
-                </div>
-                <div class="setting-item">
-                    <div class="setting-label">Default Forecast Days</div>
-                    <div class="setting-hint">Number of days to display in weather forecast (1-16)</div>
-                    <div class="setting-input">
-                        <input type="number" id="preferences_forecastDays" data-section="preferences" data-key="forecastDays" min="1" max="16" step="1" value="6">
-                        <span class="unit">days</span>
-                    </div>
-                </div>
-            </div>
-            <div class="faq-section">
-                <div class="faq-toggle" onclick="toggleFaq(this)">
-                    <span class="arrow">▶</span> Frequently Asked Questions
-                </div>
-                <div class="faq-content">
-                    <div class="faq-item">
-                        <div class="faq-question">Why is weather location important?</div>
-                        <div class="faq-answer">
-                            Your weather location determines the local timezone, sunrise/sunset times, and cloud cover forecasts — all critical for solar production predictions. 
-                            Getting the location correct ensures automation reacts appropriately to local weather conditions. For example, a forecast heavy rain in your area 
-                            will reduce solar output and might trigger battery discharge modes to maximize export during remaining sunny hours.
-                            <div class="faq-tip">Use the format "City, Country" (e.g., "Sydney, Australia" or "Melbourne, Australia") for best results.</div>
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question">How does location affect my automation rules?</div>
-                        <div class="faq-answer">
-                            Location determines the actual sunrise/sunset times and cloud cover for your area. If you set a rule like "Discharge during peak export hours",
-                            the system uses your location to calculate when peak sun is expected. Wrong location = wrong time windows = suboptimal discharge timing.
-                            Additionally, timezone information from your location is used to align with local electricity markets (e.g., Amber pricing in Australia uses local times).
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question">What happens if I change my location?</div>
-                        <div class="faq-answer">
-                            The system will fetch new weather data for the new location on the next update cycle. Historical weather data for the old location is discarded,
-                            and your weather cache resets. Automation rules will immediately start using the new sunrise/sunset times and timezone. No manual adjustment needed.
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question">Why does weather data cache for 30 minutes?</div>
-                        <div class="faq-answer">
-                            Weather forecasts typically update hourly from data providers. A <code>30 minute</code> cache reduces unnecessary API calls while keeping your forecast fresh enough
-                            for automation decisions. Shorter caching would hit rate limits; longer caching might miss rapid weather changes like sudden cloud cover.
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question">Can I use coordinates instead of a city name?</div>
-                        <div class="faq-answer">
-                            Currently, the system accepts location names (e.g., "Sydney, Australia"). The weather provider resolves the name to coordinates internally. 
-                            Using specific addresses or coordinates isn't supported, but city/state is precise enough for weather forecasting.
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question">How many forecast days should I use?</div>
-                        <div class="faq-answer">
-                            <code>6 days</code> (default) is ideal for most users — it's enough to plan weekly without overwhelming the UI. If you want to see longer-term trends,
-                            increase to <code>10-16 days</code>. For real-time operation focused on today/tomorrow, reduce to <code>2-3 days</code>.
-                            <div class="faq-tip">More forecast days = slightly slower dashboard load times. Balance visibility with performance.</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Blackout Windows (Advanced) -->
-        <div class="section">
-            <div class="section-header">
-                <div>
-                    <div class="section-title">
-                        🌙 Automation Blackout Windows
-                        <span class="badge badge-sync" id="blackoutBadge">Synced</span>
-                    </div>
-                </div>
-                <button class="btn-secondary" onclick="addBlackoutWindow()">➕ Add Window</button>
-            </div>
-            <div class="section-description">
-                Time periods when automation is paused. Useful for maintenance, peak tariffs, or overnight periods.
-            </div>
-            <div id="blackoutWindowsList" style="margin-top:16px">
-                <!-- Blackout windows will be rendered here -->
-                <div style="color:#8b949e;font-size:13px;text-align:center;padding:20px">No blackout windows configured</div>
-            </div>
-            <div class="faq-section">
-                <div class="faq-toggle" onclick="toggleFaq(this)">
-                    <span class="arrow">▶</span> Frequently Asked Questions
-                </div>
-                <div class="faq-content">
-                    <div class="faq-item">
-                        <div class="faq-question">When would I use a blackout window?</div>
-                        <div class="faq-answer">
-                            Common use cases include:<br>
-                            • <strong>Overnight quiet hours</strong> — Pause automation from 11pm-6am when you don't want mode changes<br>
-                            • <strong>Scheduled maintenance</strong> — Temporarily disable automation during system updates<br>
-                            • <strong>Peak demand events</strong> — Prevent discharge during grid emergencies when you want to keep battery full
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question">Do blackout windows work overnight (crossing midnight)?</div>
-                        <div class="faq-answer">
-                            Yes! A window from <code>22:00</code> to <code>06:00</code> correctly spans midnight. 
-                            The system understands that the end time is on the following day.
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question">What happens during a blackout window?</div>
-                        <div class="faq-answer">
-                            Automation cycles are completely skipped — no rules are evaluated and no actions are taken. 
-                            Your inverter continues running in whatever mode it was in before the blackout started.
-                            <div class="faq-tip">Active scheduler segments from before the blackout will continue running until they expire naturally.</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <div class="actions">
             <button class="btn-secondary" onclick="resetToFactoryDefaults()" style="color:#f85149;border-color:#f85149">🔄 Factory Reset</button>
             <button class="btn-secondary" onclick="loadSettings()">🔄 Reload from Server</button>
@@ -878,7 +878,7 @@
     </div>
 
     <script>
-        console.log('Settings page script loaded');
+        // Settings page loaded
         let currentConfig = {};
         let originalConfig = {};
         let hasUnsavedChanges = false;
@@ -969,7 +969,6 @@
 
         // Load current settings from server
         async function reloadFromServer() {
-            console.log('=== reloadFromServer called ===');
             try {
                 showMessage('Reloading settings from server...', 'info');
                 await loadSettings();
@@ -981,7 +980,6 @@
         }
 
         async function loadSettings() {
-            console.log('=== loadSettings called ===');
             try {
                 document.getElementById('configStatus').innerHTML = '<span class="spinner"></span> Loading...';
                 
@@ -1007,7 +1005,6 @@
                     showMessage('warning', 'Invalid response from server — check network or server logs');
                     return;
                 }
-                console.log('API response:', data);
 
                 if (!data || data.errno !== 0 || !data.result) {
                     // Provide clearer message rather than a thrown exception which can cause missing cleanup
@@ -1018,31 +1015,24 @@
                 
                 // Set current config
                 currentConfig = data.result;
-                console.log('Setting currentConfig to:', currentConfig);
                 
                 // Helper to safely set input value
                 const setInput = (id, value) => {
                     const input = document.getElementById(id);
                     if (input) {
                         input.value = value;
-                        console.log(`Set ${id} = ${value}`);
-                    } else {
-                        console.error(`Element not found: ${id}`);
                     }
                 };
                 
                 // Automation
                 if (currentConfig.automation) {
-                    console.log('Setting automation values:', currentConfig.automation);
                     setInput('automation_intervalMs', currentConfig.automation.intervalMs);
                     setInput('automation_startDelayMs', currentConfig.automation.startDelayMs);
                     setInput('automation_gatherDataTimeoutMs', currentConfig.automation.gatherDataTimeoutMs);
-
                 }
                 
                 // Cache
                 if (currentConfig.cache) {
-                    console.log('Setting cache values:', currentConfig.cache);
                     setInput('cache_amber', currentConfig.cache.amber);
                     setInput('cache_inverter', currentConfig.cache.inverter);
                     setInput('cache_weather', currentConfig.cache.weather);
@@ -1050,7 +1040,6 @@
                 
                 // Defaults
                 if (currentConfig.defaults) {
-                    console.log('Setting defaults values:', currentConfig.defaults);
                     setInput('defaults_cooldownMinutes', currentConfig.defaults.cooldownMinutes);
                     setInput('defaults_durationMinutes', currentConfig.defaults.durationMinutes);
                     setInput('defaults_fdPwr', currentConfig.defaults.fdPwr);
@@ -1058,19 +1047,16 @@
                 
                 // API retry
                 if (currentConfig.api) {
-                    console.log('Setting api values:', currentConfig.api);
                     setInput('api_retryCount', currentConfig.api.retryCount);
                     setInput('api_retryDelayMs', currentConfig.api.retryDelayMs);
                 }
 
                 // Preferences
                 if (currentConfig.preferences) {
-                    console.log('Setting preferences values:', currentConfig.preferences);
                     setInput('preferences_weatherPlace', currentConfig.preferences.weatherPlace || 'Sydney, Australia');
                     setInput('preferences_forecastDays', currentConfig.preferences.forecastDays || 6);
                 } else if (currentConfig.weatherPlace) {
                     // Fallback: if weatherPlace is at root level, set it
-                    console.log('Setting weatherPlace from root config:', currentConfig.weatherPlace);
                     setInput('preferences_weatherPlace', currentConfig.weatherPlace);
                     setInput('preferences_forecastDays', 6);
                 }
@@ -1081,26 +1067,68 @@
                     // Initialize originalCredentials to reflect what we just loaded so the
                     // UI doesn't consider the credentials section "modified" by default.
                     originalCredentials.deviceSn = currentConfig.deviceSn || '';
-                    originalCredentials.foxessToken = originalCredentials.foxessToken || '';
-                    originalCredentials.amberKey = originalCredentials.amberKey || '';
-                    // Check presence of FoxESS token via /health endpoint (returns boolean)
+                    originalCredentials.deviceSn = currentConfig.deviceSn || '';
+                    // For credentials, store masked dots in originalCredentials to match the display
+                    // The actual values are stored in the dataset for Show/Hide functionality
+                    
+                    // Store actual credentials in a data attribute for Show/Hide functionality
+                    const foxessInput = document.getElementById('credentials_foxessToken');
+                    const amberInput = document.getElementById('credentials_amberKey');
+                    if (foxessInput && currentConfig.foxessToken) {
+                        foxessInput.dataset.actualValue = currentConfig.foxessToken;
+                    }
+                    if (amberInput && currentConfig.amberApiKey) {
+                        amberInput.dataset.actualValue = currentConfig.amberApiKey;
+                    }
+                    
+                    // Check presence of both FoxESS token and Amber API key via /api/health endpoint
                     try {
-                        const healthResp = await authenticatedFetch('/health');
+                        const healthResp = await authenticatedFetch('/api/health');
                         const health = await healthResp.json();
                         const credStatusEl = document.getElementById('credentialsStatus');
                         const badge = document.getElementById('credentialsBadge');
-                            if (health && health.FOXESS_TOKEN) {
-                                if (credStatusEl) credStatusEl.textContent = 'FoxESS token is present on server (hidden)';
-                                if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
-                            } else {
-                                // No token present on server — treat as "not set" rather than "modified".
-                                // The badge indicates sync state vs user edits; we should only show
-                                // "Modified" when the user changes fields locally.
-                                if (credStatusEl) credStatusEl.textContent = 'FoxESS token not set';
-                                if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
+                        
+                        const hasFoxess = !!(health && health.FOXESS_TOKEN);
+                        const hasAmber = !!(health && health.AMBER_API_KEY);
+                        
+                        // Show masked placeholder in input fields to indicate credentials are saved
+                        if (hasFoxess) {
+                            if (foxessInput && !foxessInput.value) {
+                                foxessInput.value = '••••••••';
+                                originalCredentials.foxessToken = '••••••••';  // Match the display
                             }
+                        } else {
+                            originalCredentials.foxessToken = '';
+                        }
+                        
+                        if (hasAmber) {
+                            if (amberInput && !amberInput.value) {
+                                amberInput.value = '••••••••';
+                                originalCredentials.amberKey = '••••••••';  // Match the display
+                            }
+                        } else {
+                            originalCredentials.amberKey = '';
+                        }
+                        
+                        if (hasFoxess && hasAmber) {
+                            // Both credentials present
+                            if (credStatusEl) credStatusEl.textContent = 'FoxESS token and Amber API key are present (hidden)';
+                            if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
+                        } else if (hasFoxess && !hasAmber) {
+                            // Only FoxESS present
+                            if (credStatusEl) credStatusEl.textContent = 'FoxESS token is present (hidden) — Amber API key not set';
+                            if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
+                        } else if (!hasFoxess && hasAmber) {
+                            // Only Amber present
+                            if (credStatusEl) credStatusEl.textContent = 'Amber API key is present (hidden) — FoxESS token not set';
+                            if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
+                        } else {
+                            // Neither present
+                            if (credStatusEl) credStatusEl.textContent = 'No credentials detected';
+                            if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
+                        }
                     } catch (hErr) {
-                        console.warn('Health check failed', hErr);
+                        console.warn('[Settings] Health check failed:', hErr);
                     }
                 } catch (credErr) {
                     console.warn('Failed to populate credentials fields', credErr);
@@ -1111,12 +1139,10 @@
                 
                 // NOW set originalConfig to match what we just loaded (so no unsaved changes)
                 originalConfig = JSON.parse(JSON.stringify(data.result));
-                console.log('Set originalConfig to:', originalConfig);
                 
                 updateAllTimeDisplays();
                 updateStatus();
                 showMessage('success', 'Configuration loaded from server');
-                console.log('=== loadSettings complete ===');
             } catch (error) {
                 console.error('loadSettings error:', error);
                 document.getElementById('configStatus').textContent = 'Error';
@@ -1229,8 +1255,6 @@
         // Save all settings
         async function saveAllSettings() {
             try {
-                console.log('[Settings] ========== SAVE SETTINGS START ==========');
-                
                 // Collect all values
                 const newConfig = {
                     automation: {
@@ -1261,10 +1285,6 @@
                     // Also save location at root level for timezone detection
                     location: document.getElementById('preferences_weatherPlace')?.value || 'Sydney, Australia'
                 };
-
-                console.log('[Settings] newConfig.location:', newConfig.location);
-                console.log('[Settings] preferences.weatherPlace:', newConfig.preferences.weatherPlace);
-                console.log('[Settings] Full newConfig before adding browserTimezone:', JSON.stringify(newConfig));
 
                 // Comprehensive validation
                 const validationErrors = [];
@@ -1326,19 +1346,12 @@
                 // Add browser timezone for detection (most reliable source)
                 const browserTz = apiClient.getBrowserTimezone();
                 newConfig.browserTimezone = browserTz;
-                console.log('[Settings] Browser timezone detected:', browserTz);
-                console.log('[Settings] ✅ About to send config to /api/config');
-                console.log('[Settings] Full payload being sent:', JSON.stringify(newConfig, null, 2));
 
                 const resp = await authenticatedFetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(newConfig)
                 });
-
-                console.log('[Settings] HTTP Response status:', resp.status, resp.ok);
-                console.log('[Settings] Response headers:', [...resp.headers.entries()]);
-
 
                 if (!resp.ok) {
                     // Try to extract structured error payload
@@ -1351,26 +1364,17 @@
                 }
 
                 const data = await resp.json();
-                console.log('[Settings] Server response errno:', data.errno);
-                console.log('[Settings] Server response:', JSON.stringify(data, null, 2));
                 if (data.errno !== 0) throw new Error(data.msg || 'Failed to save config');
 
                 // Update original config from server response
                 originalConfig = JSON.parse(JSON.stringify(data.result));
                 currentConfig = data.result;
-                
-                console.log('[Settings] ✅ Config saved successfully!');
-                console.log('[Settings] Returned config timezone:', data.result?.timezone);
-                console.log('[Settings] Returned config location:', data.result?.location);
-                console.log('[Settings] ========== SAVE SETTINGS END ==========');
 
-                
                 updateStatus();
                 document.getElementById('lastSaved').textContent = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
                 
                 showMessage('success', '✅ Configuration saved to server and persisted to disk!');
             } catch (error) {
-                console.error('Failed to save settings:', error);
                 showMessage('warning', `Failed to save configuration: ${error.message}`);
                 updateStatus();
             }
@@ -1561,7 +1565,7 @@
 
         // Add change listeners to all inputs
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('DOM Content Loaded - initializing settings page');
+            console.log('DOM Content Loaded');
             
             // Add change listeners for status and time displays
             document.querySelectorAll('input[type="number"]').forEach(input => {
@@ -1589,21 +1593,37 @@
             
             // Initialize time displays
             updateAllTimeDisplays();
-            console.log('Settings page initialization complete');
             // Credentials toggles
             const tFox = document.getElementById('credentials_toggleFoxess');
             const tAmber = document.getElementById('credentials_toggleAmber');
-            if (tFox) tFox.addEventListener('click', () => togglePasswordField('credentials_foxessToken', tFox));
-            if (tAmber) tAmber.addEventListener('click', () => togglePasswordField('credentials_amberKey', tAmber));
+            if (tFox) {
+                tFox.addEventListener('click', (e) => {
+                    togglePasswordField('credentials_foxessToken', tFox);
+                });
+            }
+            if (tAmber) {
+                tAmber.addEventListener('click', (e) => {
+                    togglePasswordField('credentials_amberKey', tAmber);
+                });
+            }
         });
 
         function togglePasswordField(inputId, btn) {
             const input = document.getElementById(inputId);
-            if (!input) return;
+            if (!input) {
+                return;
+            }
+            
             if (input.type === 'password') {
+                // Show actual value when toggling to text
+                if (input.dataset.actualValue) {
+                    input.value = input.dataset.actualValue;
+                }
                 input.type = 'text';
                 btn.textContent = 'Hide';
             } else {
+                // Hide - show masked dots again
+                input.value = '••••••••';
                 input.type = 'password';
                 btn.textContent = 'Show';
             }
@@ -1643,15 +1663,51 @@
                 }
                 
                 // Clear token inputs on reload (for security - tokens aren't returned by API)
-                document.getElementById('credentials_foxessToken').value = '';
-                document.getElementById('credentials_amberKey').value = '';
-                originalCredentials.foxessToken = '';
-                originalCredentials.amberKey = '';
-                
-                const healthResp = await authenticatedFetch('/health');
+                // But show masked dots if credentials exist, with actual values stored for Show/Hide
+                const healthResp = await authenticatedFetch('/api/health');
                 const health = await healthResp.json();
+                const foxessPresent = health && health.FOXESS_TOKEN;
+                const amberPresent = health && health.AMBER_API_KEY;
+                
+                // Get actual credential values from config
+                const actualFoxess = data.result?.foxessToken || '';
+                const actualAmber = data.result?.amberApiKey || '';
+                
+                const foxessInput = document.getElementById('credentials_foxessToken');
+                const amberInput = document.getElementById('credentials_amberKey');
+                
+                // Show masked credentials if they exist, but store actual values for Show/Hide
+                if (foxessPresent && actualFoxess) {
+                    foxessInput.value = '••••••••';
+                    foxessInput.dataset.actualValue = actualFoxess;
+                    originalCredentials.foxessToken = '••••••••';
+                } else {
+                    foxessInput.value = '';
+                    delete foxessInput.dataset.actualValue;
+                    originalCredentials.foxessToken = '';
+                }
+                
+                if (amberPresent && actualAmber) {
+                    amberInput.value = '••••••••';
+                    amberInput.dataset.actualValue = actualAmber;
+                    originalCredentials.amberKey = '••••••••';
+                } else {
+                    amberInput.value = '';
+                    delete amberInput.dataset.actualValue;
+                    originalCredentials.amberKey = '';
+                }
+                
                 const credStatusEl = document.getElementById('credentialsStatus');
-                if (health && health.FOXESS_TOKEN) credStatusEl.textContent = 'FoxESS token is present on server (hidden)'; else credStatusEl.textContent = 'FoxESS token not set';
+                
+                if (foxessPresent && amberPresent) {
+                  credStatusEl.textContent = 'FoxESS token and Amber API key are present (hidden)';
+                } else if (foxessPresent) {
+                  credStatusEl.textContent = 'FoxESS token is present (hidden) — Amber API key not set';
+                } else if (amberPresent) {
+                  credStatusEl.textContent = 'Amber API key is present (hidden) — FoxESS token not set';
+                } else {
+                  credStatusEl.textContent = 'No credentials detected';
+                }
                 
                 // Update badge after reload
                 checkCredentialsChanged();
@@ -1664,12 +1720,24 @@
         // Save credentials by calling validate-keys endpoint which also sets them on server when valid
         async function saveCredentials() {
             const deviceSn = (document.getElementById('credentials_deviceSn')?.value || '').trim();
-            const foxessToken = (document.getElementById('credentials_foxessToken')?.value || '').trim();
-            const amberKey = (document.getElementById('credentials_amberKey')?.value || '').trim();
+            const foxessInput = document.getElementById('credentials_foxessToken');
+            const amberInput = document.getElementById('credentials_amberKey');
+            
+            // Get the displayed value (either masked dots or actual)
+            const foxessDisplayed = (foxessInput?.value || '').trim();
+            const amberDisplayed = (amberInput?.value || '').trim();
+            
+            // Check if values are masked (just dots) - if so, use the stored actual value
+            const foxessToken = (foxessDisplayed === '••••••••' && foxessInput?.dataset.actualValue) 
+                ? foxessInput.dataset.actualValue 
+                : foxessDisplayed;
+            const amberKey = (amberDisplayed === '••••••••' && amberInput?.dataset.actualValue) 
+                ? amberInput.dataset.actualValue 
+                : amberDisplayed;
 
-            // If token fields are empty, use original values (user didn't change them)
-            const tokenToSend = foxessToken || originalCredentials.foxessToken || null;
-            const amberToSend = amberKey || originalCredentials.amberKey || null;
+            // If token fields are empty, use original stored values (user didn't change them)
+            const tokenToSend = foxessToken || null;
+            const amberToSend = amberKey || null;
 
             if (!deviceSn) { showMessage('warning', 'Device Serial Number is required'); return; }
 
@@ -1693,9 +1761,7 @@
                     return;
                 }
 
-                // Success - clear token inputs for safety and reload status
-                document.getElementById('credentials_foxessToken').value = '';
-                document.getElementById('credentials_amberKey').value = '';
+                // Success - reload credentials to reset display
                 await loadCredentials();
                 showMessage('success', 'Credentials validated and stored on server');
             } catch (e) {
@@ -1734,22 +1800,6 @@
                 e.preventDefault();
                 e.returnValue = '';
             }
-        });
-        
-        // Credentials toggles
-        document.getElementById('credentials_toggleFoxess')?.addEventListener('click', () => {
-            const input = document.getElementById('credentials_foxessToken');
-            const btn = document.getElementById('credentials_toggleFoxess');
-            const isPassword = input.type === 'password';
-            input.type = isPassword ? 'text' : 'password';
-            btn.textContent = isPassword ? '🔒' : '👁️';
-        });
-        document.getElementById('credentials_toggleAmber')?.addEventListener('click', () => {
-            const input = document.getElementById('credentials_amberKey');
-            const btn = document.getElementById('credentials_toggleAmber');
-            const isPassword = input.type === 'password';
-            input.type = isPassword ? 'text' : 'password';
-            btn.textContent = isPassword ? '🔒' : '👁️';
         });
         
         // Track changes to credential fields
