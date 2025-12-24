@@ -1045,7 +1045,7 @@
         </div>
 
         <div class="actions">
-            <button class="btn-secondary" onclick="resetToFactoryDefaults()" style="color:#f85149;border-color:#f85149">🔄 Factory Reset</button>
+            <!-- Factory Reset button removed for safety -->
             <button class="btn-secondary" onclick="loadSettings()">🔄 Reload from Server</button>
             <button class="btn-primary" onclick="saveAllSettings()">💾 Save All Changes</button>
         </div>
@@ -1763,33 +1763,8 @@
             updateStatus();
         }
         
-        // Factory reset
-        async function resetToFactoryDefaults() {
-            if (!confirm('⚠️ This will reset ALL settings to factory defaults. Are you sure?')) return;
-            if (!confirm('This action cannot be undone. Continue?')) return;
-            
-            try {
-                const statusEl = document.getElementById('configStatus');
-                statusEl.innerHTML = '<span class="spinner"></span> Resetting...';
-                
-                const resp = await authenticatedFetch('/api/config/reset', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({}) // Reset all
-                });
-                
-                const data = await resp.json();
-                if (data.errno !== 0) throw new Error(data.msg || 'Reset failed');
-                
-                // Reload settings from server
-                await loadSettings();
-                showMessage('success', '✅ All settings reset to factory defaults');
-            } catch (error) {
-                console.error('Factory reset failed:', error);
-                showMessage('warning', `Factory reset failed: ${error.message}`);
-                updateStatus();
-            }
-        }
+        // Factory reset removed for safety — endpoint not present in backend
+        // If you need a safe reset flow, implement /api/config/reset on the server
 
         // Define validation rules for each input
         const validationRules = {
