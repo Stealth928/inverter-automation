@@ -108,5 +108,15 @@ service cloud.firestore {
       allow delete: if isOwner(userId);
       allow create: if false; // Only Cloud Functions can create
     }
+
+    // ==================== SHARED SERVER CONFIG ====================
+    // NOTE: TESLA TOKENS ARE STRICTLY PER-USER AT users/{userId}/config/tesla
+    // Shared collection holds only non-sensitive server configuration:
+    // - shared/config: OAuth app config (Tesla client_id, client_secret) - admin only
+    // - shared/serverConfig: FoxESS/Amber/Weather config from unauthenticated setup - admin only
+    match /shared/{docId} {
+      allow read: if isAuthenticated(); // Authenticated users can read (e.g., to check if Tesla is configured)
+      allow write: if false; // Only Cloud Functions (Admin SDK) can write - NEVER from client
+    }
   }
 }

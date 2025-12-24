@@ -1,5 +1,8 @@
 # ROI Actual Prices Implementation
 
+
+Note: This document is a point-in-time report. For current test counts and coverage, see TESTING_GUIDE.md and docs/TEST_COVERAGE_REPORT.md.
+
 **Date:** 2025-12-21  
 **Commit:** 26b1541  
 **Status:** ✅ DEPLOYED TO PRODUCTION

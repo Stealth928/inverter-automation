@@ -3,7 +3,6 @@
     "public": "frontend",
     "ignore": [
       "firebase.json",
-      "**/.*",
       "**/node_modules/**"
     ],
     
@@ -50,5 +49,16 @@
     "source": "functions",
     "runtime": "nodejs20",
     "codebase": "default"
+  }
+  ,
+  "emulators": {
+    "auth": { "port": 9099 },
+    "firestore": { "port": 8080 },
+    "pubsub": { "port": 8085 },
+    
+    "functions": { "port": 5001 },
+    "hosting": { "port": 5000 },
+    "ui": { "enabled": true, "port": 4000 },
+    "hub": { "port": 4400 }
   }
 }

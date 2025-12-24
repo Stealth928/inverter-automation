@@ -17,7 +17,7 @@ A critical bug (`amberPricesInFlight is not defined`) broke Amber price fetching
 
 This script runs 7 comprehensive checks before deployment:
 
-1. **Test Suite** - All 323 tests must pass (Jest)
+1. **Test Suite** - All Jest tests must pass (current count in TESTING_GUIDE.md)
 2. **Linting** - No code quality errors (ESLint)
 3. **Module Exports** - Validates critical modules export required functions
 4. **Module Imports** - Validates index.js imports all required modules
@@ -39,7 +39,7 @@ npm --prefix functions run pre-deploy
 
 Automatically runs on every push to `main`:
 
-- Unit tests (323 tests)
+- Unit tests (Jest)
 - ESLint validation
 - Security audit (npm audit)
 - Module verification
@@ -159,7 +159,7 @@ npm --prefix functions run pre-deploy && firebase deploy --only functions
 ## Testing Coverage
 
 **Current:** 323 automated tests
-- 310 unit tests (auth, amber, foxess, automation, etc.)
+- Jest suite covers auth, amber, foxess, automation, and more (see TESTING_GUIDE.md for current counts)
 - 13 integration tests (route verification)
 
 **What's Tested:**

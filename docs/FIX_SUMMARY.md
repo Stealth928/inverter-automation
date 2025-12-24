@@ -1,5 +1,8 @@
 # Fix Summary: User Profile Initialization & Background Scheduler
 
+Note: This document is a point-in-time report. For current test counts and coverage, see TESTING_GUIDE.md and docs/TEST_COVERAGE_REPORT.md.
+
+
 ## Commit: `37e60b3`
 **Date:** December 14, 2025  
 **Status:** ✅ Deployed & Validated  

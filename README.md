@@ -35,9 +35,7 @@ See [docs/SETUP.md](docs/SETUP.md) for detailed setup instructions.
 | [docs/API.md](docs/API.md) | **API reference** - all endpoints and parameters |
 | [docs/SETUP.md](docs/SETUP.md) | **Setup guide** - deployment and configuration |
 | [docs/FOXESS_SCHEDULER_REORDERING.md](docs/FOXESS_SCHEDULER_REORDERING.md) | FoxESS API quirks and workarounds |
-| [TESTING_GUIDE.md](TESTING_GUIDE.md) | **Testing guide** - 167 automated tests, usage, coverage |
-| [FRONTEND_TESTING_STRATEGY.md](FRONTEND_TESTING_STRATEGY.md) | **Frontend testing** - UI testing strategy with Playwright |
-| [TEST_ENHANCEMENT_SUMMARY.md](TEST_ENHANCEMENT_SUMMARY.md) | **Test summary** - Complete test coverage overview |
+| [TESTING_GUIDE.md](TESTING_GUIDE.md) | **Testing guide** - how to run tests, current coverage, known gaps |
 
 ## Architecture
 
@@ -181,13 +179,13 @@ cd frontend && python -m http.server 8000
 ### Running Tests
 
 ```powershell
-# Run all tests (167 automated tests)
+# Run all tests (backend + frontend)
 .\run-tests.ps1
 
 # Run specific test suites
-.\run-tests.ps1 -Type unit          # Unit tests (33 tests)
-.\run-tests.ps1 -Type e2e           # End-to-end tests (34 tests)
-.\run-tests.ps1 -Type auth          # Auth flow tests (40 tests)
+.\run-tests.ps1 -Type unit          # Unit tests (Jest)
+.\run-tests.ps1 -Type e2e           # End-to-end tests (requires e2e script)
+.\run-tests.ps1 -Type auth          # Auth flow tests
 
 # Run with authentication
 .\run-tests.ps1 -Type e2e -AuthToken "your-firebase-id-token"
@@ -221,7 +219,7 @@ firebase deploy --only functions
 ```
 
 **The pre-deploy script verifies:**
-- ✓ All 323 tests pass
+- ✓ All Jest tests pass (current count in TESTING_GUIDE.md)
 - ✓ No linting errors
 - ✓ All critical modules properly imported/exported
 - ✓ All critical routes defined and functional
@@ -233,7 +231,7 @@ firebase deploy --only functions
 ### Automated Quality Control (GitHub Actions)
 
 Every push to `main` automatically runs:
-- Unit tests (323 tests)
+- Unit tests (Jest)
 - Linting (ESLint)
 - Module verification
 - Security audit

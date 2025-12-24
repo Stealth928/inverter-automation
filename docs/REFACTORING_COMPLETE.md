@@ -1,10 +1,13 @@
 # Refactoring Project Complete ✅
 
+Note: This document is a snapshot of the refactor milestone. For current test counts and coverage, see TESTING_GUIDE.md and docs/TEST_COVERAGE_REPORT.md.
+
+
 ## Executive Summary
 
 Successfully completed comprehensive refactoring of the inverter-automation Cloud Functions codebase. Reduced monolithic `index.js` from **6,257 lines to 5,565 lines** (-11.1%, -692 lines) by extracting three focused API modules while maintaining 100% backward compatibility and zero regressions.
 
-**Status**: All 8 tasks complete, 323 tests passing, pushed to GitHub main branch.
+**Status**: All 8 tasks complete, Jest tests passing (see TESTING_GUIDE.md for current count), pushed to GitHub main branch.
 
 ---
 
@@ -35,14 +38,14 @@ Successfully completed comprehensive refactoring of the inverter-automation Clou
 **Pattern**: All modules follow consistent `init()` pattern with dependency injection (db, logger, getConfig, incrementApiCount for API modules; admin, logger for auth).
 
 ### Testing Infrastructure (Task 5)
-✅ **Integration Tests** (`routes-integration.test.js`) - 13 tests
+✅ **Integration Tests** (`routes-integration.test.js`) - 13 tests (then-current)
 - Installed supertest for HTTP endpoint testing
 - Tests public endpoints (health, metrics, Amber sites/prices)
 - Tests protected endpoints (config, automation, inverter)
 - Validates auth middleware (401 responses, optional auth)
 - Tests error handling (malformed JSON, 404/401 routing)
 - Response envelope validation ({ errno, result/error })
-- **All 13 tests passing**
+- **All 13 tests (then-current) passing**
 - Commit: `f8c9cd1`
 
 ### Documentation (Tasks 6-7)
@@ -50,7 +53,7 @@ Successfully completed comprehensive refactoring of the inverter-automation Clou
 - Comprehensive table of 48 API routes
 - Coverage status per endpoint (✅ Integration/Unit/E2E, ⚠️ Manual-only)
 - Public vs protected endpoint classification
-- **90% route coverage** (43/48 routes tested)
+- **90% route coverage** (then-current estimate; see note at top for current status)
 - 5 diagnostic routes are manual-only (topology detection, etc.)
 - Commit: `f8c9cd1`
 
@@ -74,7 +77,7 @@ foxess.js  |      25 |     9.09 |      25 |   25.53
 - **foxess.js** at 25.5% is moderate (core API client tested, scheduler logic in index.js)
 - **amber.js** at 3.3% is expected (complex caching tested via integration, not unit tests)
 
-**Overall**: Modules are well-tested through existing 310 unit tests + 13 integration tests. Low direct coverage numbers reflect that business logic tests exercise these modules indirectly.
+**Overall**: Modules are well-tested through existing 310 unit tests (then-current) + 13 integration tests. Low direct coverage numbers reflect that business logic tests exercise these modules indirectly.
 
 ---
 
@@ -151,7 +154,7 @@ Zero breaking changes:
 ## Deployment Checklist
 
 ✅ **Pre-Deployment**
-- [x] All 323 tests passing
+- [x] All tests passing at the time of this report (see note at top for current counts)
 - [x] No lint errors (`npm run lint`)
 - [x] Coverage measured (auth.js 67.7%, foxess.js 25.5%)
 - [x] Git commits clean and descriptive
@@ -213,3 +216,5 @@ This refactoring project successfully modernized the Cloud Functions codebase wh
 *Tests Added: 13*  
 *Modules Created: 3*  
 *Zero Regressions: ✅*
+
+

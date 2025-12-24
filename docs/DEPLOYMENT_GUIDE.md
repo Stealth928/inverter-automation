@@ -32,9 +32,9 @@ npm --prefix functions test
 ```
 
 Requires:
-- All 323+ tests passing
+- All Jest tests passing (see TESTING_GUIDE.md for current counts)
 - No test errors or failures
-- Coverage for all API endpoints
+- Coverage reports generated as needed
 
 ### 3. Code Review ✓
 - Review all code changes since last deployment
@@ -132,7 +132,7 @@ Visit your production app and verify:
 ### What Each Check Does
 
 #### 1. Test Suite (Jest)
-- Runs 323+ unit tests across all modules
+- Runs the full Jest suite across all modules (see TESTING_GUIDE.md for current counts)
 - Validates API endpoints with supertest
 - Tests automation logic, timezone handling, caching
 - Catches: logic errors, broken routes, middleware issues
@@ -176,7 +176,7 @@ Visit your production app and verify:
 
 Every push to `main` branch automatically runs:
 
-1. **Unit Tests** - All 323 tests must pass
+1. **Unit Tests** - All Jest tests must pass (current count in TESTING_GUIDE.md)
 2. **Linting** - Code quality checks
 3. **Module Verification** - Exports/imports validated
 4. **Security Audit** - npm audit for vulnerabilities

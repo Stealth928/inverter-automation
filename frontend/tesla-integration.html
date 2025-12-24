@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tesla Integration - WIP</title>
+    <link rel="stylesheet" href="/css/shared-styles.css">
+    <!-- Firebase compat SDKs (provide global `firebase` used by firebase-auth.js) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <!-- Load Firebase config (exposes window.firebaseConfig) -->
+    <script src="/js/firebase-config.js"></script>
+    <!-- Load authentication and app shell before inline scripts -->
+    <script src="/js/firebase-auth.js"></script>
+    <script src="/js/shared-utils.js"></script>
+    <script src="/js/api-client.js"></script>
+    <script src="/js/app-shell.js"></script>
+    <style>
+        /* Header styling */
+        header {
+            margin-bottom: 24px;
+            padding: 0 0 16px 0;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+        }
+        
+        header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .wip-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
+        }
+        
+        .wip-banner small {
+            display: block;
+            font-weight: 400;
+            opacity: 0.95;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+        
+        .tesla-section {
+            background: rgba(13, 17, 23, 0.5);
+            border: 1px solid rgba(48, 54, 61, 0.6);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: all 0.2s ease;
+        }
+        
+        .tesla-section:hover {
+            border-color: rgba(88, 166, 255, 0.3);
+        }
+        
+        .tesla-section h2 {
+            color: var(--accent-blue);
+            margin-top: 0;
+            margin-bottom: 16px;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .tesla-section h3 {
+            color: var(--text-primary);
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 20px;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #8b949e;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-top: 15px;
+        }
+        
+        .info-box {
+            background: rgba(13, 17, 23, 0.6);
+            padding: 14px;
+            border-radius: 8px;
+            border-left: 3px solid var(--accent-blue);
+            transition: all 0.2s ease;
+        }
+        
+        .info-box:hover {
+            background: rgba(13, 17, 23, 0.8);
+            border-left-color: #58a6ff;
+        }
+        
+        .info-box label {
+            display: block;
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .info-box .value {
+            font-size: 18px;
+            color: var(--text-primary);
+            font-weight: 600;
+            font-family: 'SF Mono', 'Consolas', monospace;
+        }
+        
+        .control-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .control-group label {
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .control-group input[type="number"],
+        .control-group input[type="text"],
+        .control-group input[type="password"] {
+            width: 80px;
+            padding: 8px 12px;
+            background: rgba(13, 17, 23, 0.6);
+            border: 1px solid rgba(48, 54, 61, 0.8);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 13px;
+            transition: all 0.2s ease;
+        }
+        
+        .control-group input[type="number"]:focus,
+        .control-group input[type="text"]:focus,
+        .control-group input[type="password"]:focus {
+            outline: none;
+            border-color: #58a6ff;
+            background: rgba(13, 17, 23, 0.8);
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+        }
+        
+        .log-container {
+            background: rgba(13, 17, 23, 0.6);
+            border: 1px solid rgba(48, 54, 61, 0.6);
+            border-radius: 8px;
+            padding: 12px;
+            max-height: 350px;
+            overflow-y: auto;
+            font-family: 'SF Mono', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        
+        .log-entry {
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.3);
+            display: flex;
+            gap: 8px;
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .log-timestamp {
+            color: #6e7681;
+            font-weight: 500;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        
+        .log-info { color: #58a6ff; }
+        .log-success { color: #3fb950; }
+        .log-warning { color: #d29922; }
+        .log-error { color: #f85149; }
+        
+        .research-notes {
+            background: rgba(255, 193, 7, 0.08);
+            border-left: 3px solid #d29922;
+            padding: 14px;
+            margin-top: 12px;
+            margin-bottom: 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        
+        .research-notes h4 {
+            margin: 0 0 10px 0;
+            color: #d29922;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .research-notes ul {
+            margin: 8px 0;
+            padding-left: 20px;
+            color: var(--text-secondary);
+        }
+        
+        .research-notes li {
+            margin-bottom: 6px;
+        }
+        
+        .research-notes code {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'SF Mono', 'Consolas', monospace;
+            color: #58a6ff;
+            font-size: 12px;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn-group .btn {
+            margin-bottom: 0;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .status-online { background: rgba(63, 185, 80, 0.2); color: #3fb950; border: 1px solid rgba(63, 185, 80, 0.3); }
+        .status-asleep { background: rgba(210, 153, 34, 0.2); color: #d29922; border: 1px solid rgba(210, 153, 34, 0.3); }
+        .status-offline { background: rgba(110, 118, 129, 0.2); color: #8b949e; border: 1px solid rgba(110, 118, 129, 0.3); }
+        .status-charging { background: rgba(88, 166, 255, 0.2); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.3); }
+        
+        /* Container padding for fixed nav */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px 16px;
+        }
+        
+        @media (max-width: 768px) {
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .tesla-section {
+                padding: 16px;
+            }
+            
+            header h1 {
+                font-size: 24px;
+            }
+            
+            .control-group {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .control-group input[type="number"],
+            .control-group input[type="text"],
+            .control-group input[type="password"] {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body class="has-fixed-nav">
+    <nav class="nav-main">
+        <div class="nav-links">
+            <a href="/" class="nav-link">🏠 Overview</a>
+            <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
+            <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
+            <a href="/history.html" class="nav-link">📊 Reports</a>
+            <a href="/control.html" class="nav-link">🎮 Controls</a>
+            <a href="/settings.html" class="nav-link">⚙️ Settings</a>
+            <a href="/curtailment-discovery.html" class="nav-link">🔬 WIP - Topology Discovery</a>
+            <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink">⚡ WIP - Tesla Integration</a>
+        </div>
+        <div class="nav-right">
+            <div class="device-input">
+                <label>Device SN</label>
+                <input type="text" id="deviceSn" placeholder="Auto-detect from .env">
+            </div>
+            <div class="user-menu" data-user-menu>
+                <button class="user-avatar" type="button" data-user-avatar>
+                    <span data-user-initials>?</span>
+                </button>
+                <div class="user-dropdown" data-user-dropdown>
+                    <div class="user-dropdown-header">
+                        <div class="user-name" data-user-name>Guest</div>
+                        <div class="user-email" data-user-email>Not signed in</div>
+                    </div>
+                    <button class="user-dropdown-item" type="button" data-go-settings>⚙️ Settings</button>
+                    <button class="user-dropdown-item" type="button" data-contact-us>💬 Contact Us</button>
+                    <button class="user-dropdown-item danger" type="button" data-signout>🚪 Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <div class="container">
+        <div class="wip-banner">
+            🚧 Work In Progress - Tesla Integration Playground 🚧
+            <br><small>Experimental page for Tesla Fleet API exploration</small>
+        </div>
+
+        <header style="margin-top: 0; display: flex; justify-content: space-between; align-items: center;">
+            <h1 style="margin-top: 0;">⚡ Tesla Integration</h1>
+        </header>
+
+        <!-- Server Configuration Section -->
+        <div id="configSection">
+            <div class="tesla-section" style="background: linear-gradient(135deg, rgba(88, 166, 255, 0.1), rgba(79, 195, 247, 0.1)); border: 2px solid rgba(88, 166, 255, 0.5);">
+                <h2>⚙️ Tesla Fleet API Setup</h2>
+                <p style="color: #8b949e; margin-bottom: 15px;">Configure your Tesla Fleet API credentials. You only need to do this once - these credentials will be used for all user OAuth flows.</p>
+                
+                <form id="teslaConfigForm" style="background: rgba(13, 17, 23, 0.8); padding: 20px; border-radius: 8px;">
+                    <div style="margin-bottom: 15px;">
+                        <label for="clientIdInput" style="display: block; color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Client ID</label>
+                        <input 
+                            type="password" 
+                            id="clientIdInput" 
+                            placeholder="Enter your Tesla Client ID" 
+                            style="width: 100%; padding: 10px; border: 1px solid rgba(48, 54, 61, 0.8); background: rgba(13, 17, 23, 0.6); color: #e6edf3; border-radius: 6px; font-family: 'SF Mono', monospace; font-size: 13px;"
+                            autocomplete="off"
+                        >
+                        <small style="color: #6e7681; display: block; margin-top: 5px;">Get this from <a href="https://developer.tesla.com" style="color: #58a6ff; text-decoration: none;" target="_blank">Tesla Developer Portal</a></small>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label for="clientSecretInput" style="display: block; color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Client Secret</label>
+                        <input 
+                            type="password" 
+                            id="clientSecretInput" 
+                            placeholder="Enter your Tesla Client Secret" 
+                            style="width: 100%; padding: 10px; border: 1px solid rgba(48, 54, 61, 0.8); background: rgba(13, 17, 23, 0.6); color: #e6edf3; border-radius: 6px; font-family: 'SF Mono', monospace; font-size: 13px;"
+                            autocomplete="off"
+                        >
+                        <small style="color: #6e7681; display: block; margin-top: 5px;">Keep this secret! Only share with trusted applications.</small>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button type="button" id="saveTeslaConfigBtn" class="btn" style="background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 100%);">
+                            <span id="saveBtnText">Save Credentials</span>
+                        </button>
+                        <button type="button" id="showHideTokensBtn" class="btn secondary">👁️ Show</button>
+                    </div>
+                    
+                    <div id="configStatus" style="margin-top: 15px; padding: 12px; border-radius: 6px; display: none;">
+                        <!-- Status message populated by JS -->
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- OAuth & Authentication Section -->
+        <div class="tesla-section">
+            <h2>🔐 Authentication & Setup</h2>
+            
+            <div class="research-notes">
+                <h4>Tesla Fleet API OAuth</h4>
+                <ul>
+                    <li>Requires OAuth 2.0 third-party tokens (not legacy Owner API)</li>
+                    <li>Scopes needed: vehicle data + vehicle commands</li>
+                    <li>Tokens stored securely with refresh capability</li>
+                </ul>
+            </div>
+
+            <!-- Connection Status Display -->
+            <div id="connectionStatus" style="display: none; margin-top: 15px;">
+                <!-- Populated by JS -->
+            </div>
+            
+            <!-- Configuration Check -->
+            <div id="configCheck" style="display: none; margin-top: 15px;">
+                <!-- Populated by JS -->
+            </div>
+
+            <div id="connectionOptions" style="margin-top: 15px;">
+                <div style="margin-bottom: 20px; padding: 15px; background: rgba(88, 166, 255, 0.1); border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 8px;">
+                    <h4 style="margin: 0 0 10px 0; color: #58a6ff;">🔗 Recommended: OAuth 2.0 Connection</h4>
+                    <p style="margin: 0 0 10px 0; color: #8b949e; font-size: 13px;">Securely connect your Tesla account. No need to enter tokens manually.</p>
+                    <button class="btn" id="connectTeslaBtn" style="background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 100%);" disabled>
+                        <span id="connectBtnText">Connect with Tesla</span>
+                    </button>
+                    <div id="connectBtnStatus" style="margin-top: 8px; font-size: 12px; color: #8b949e;"></div>
+                </div>
+
+                <div style="margin-bottom: 20px; padding: 15px; background: rgba(88, 166, 255, 0.05); border: 1px solid rgba(88, 166, 255, 0.2); border-radius: 8px;">
+                    <h4 style="margin: 0 0 10px 0; color: #8b949e; font-size: 12px;">OR: Manual Token Entry (Advanced)</h4>
+                    <p style="margin: 0 0 10px 0; color: #8b949e; font-size: 13px;">If you have tokens from another source, you can paste them here.</p>
+                    
+                    <label>Tesla Access Token</label>
+                    <input type="password" id="tesla_accessToken" placeholder="eyJ0eXAiOiJKV1QiLCJhbGc..." style="width: 100%; margin-bottom: 10px; padding: 8px; border: 1px solid rgba(48, 54, 61, 0.8); background: rgba(13, 17, 23, 0.6); color: #e6edf3; border-radius: 6px;" autocomplete="off">
+                    
+                    <label>Refresh Token (Optional)</label>
+                    <input type="password" id="tesla_refreshToken" placeholder="Enter refresh token" style="width: 100%; margin-bottom: 10px; padding: 8px; border: 1px solid rgba(48, 54, 61, 0.8); background: rgba(13, 17, 23, 0.6); color: #e6edf3; border-radius: 6px;" autocomplete="off">
+                    
+                    <button class="btn" id="saveTokensBtn">Save Tokens</button>
+                    <button class="btn secondary" id="testAuthBtn">Test Authentication</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vehicle Discovery Section -->
+        <div class="tesla-section">
+            <h2>🚗 Vehicle Discovery</h2>
+            
+            <div class="btn-group">
+                <button class="btn" id="listVehiclesBtn">List Vehicles</button>
+                <button class="btn secondary" id="checkFleetStatusBtn">Check Fleet Status</button>
+            </div>
+
+            <div id="vehiclesList" style="margin-top: 15px;"></div>
+        </div>
+
+        <!-- Vehicle State Section -->
+        <div class="tesla-section">
+            <h2>📊 Vehicle State & Telemetry</h2>
+            
+            <div class="research-notes">
+                <h4>Important: Avoid Expensive Polling</h4>
+                <ul>
+                    <li><code>vehicle_data</code> is expensive - use sparingly</li>
+                    <li>Prefer Fleet Telemetry streaming for frequent updates</li>
+                    <li>Don't wake the car unless absolutely necessary</li>
+                </ul>
+            </div>
+
+            <div class="btn-group" style="margin-top: 15px;">
+                <button class="btn" id="getVehicleDataBtn" disabled>Get Vehicle Data (Sparingly)</button>
+                <button class="btn secondary" id="wakeVehicleBtn" disabled>Wake Vehicle</button>
+            </div>
+
+            <div class="info-grid" id="vehicleState" style="margin-top: 15px;">
+                <!-- Vehicle state boxes populated by JS -->
+            </div>
+        </div>
+
+        <!-- Charging Control Section -->
+        <div class="tesla-section">
+            <h2>🔋 Charging Control</h2>
+            
+            <div class="research-notes">
+                <h4>Charging Commands</h4>
+                <ul>
+                    <li><code>charge_start</code> / <code>charge_stop</code> - Start/stop charging session</li>
+                    <li><code>set_charging_amps</code> - Control current (amps) drawn by vehicle</li>
+                    <li><code>set_charge_limit</code> - Set battery SoC target (0-100%)</li>
+                    <li>Some vehicles require <code>signed_command</code> (vehicle-command protocol)</li>
+                </ul>
+            </div>
+
+            <h3>Manual Controls</h3>
+            <div class="control-group">
+                <button class="btn" id="startChargingBtn" disabled>Start Charging</button>
+                <button class="btn secondary" id="stopChargingBtn" disabled>Stop Charging</button>
+            </div>
+
+            <div class="control-group" style="margin-top: 15px;">
+                <label>Charging Amps:</label>
+                <input type="number" id="targetAmps" min="5" max="32" value="16" disabled>
+                <span style="color: #8b949e; font-size: 13px; margin: 0 5px;">≈</span>
+                <input type="number" id="targetKw" min="1.1" max="7.4" step="0.1" value="3.7" style="width: 70px;" disabled>
+                <label style="margin-left: 5px;">kW</label>
+                <button class="btn" id="setAmpsBtn" style="margin-left: 10px;" disabled>Set Amps</button>
+            </div>
+
+            <div class="control-group" style="margin-top: 15px;">
+                <label>Charge Limit (%):</label>
+                <input type="number" id="chargeLimit" min="50" max="100" value="80" disabled>
+                <button class="btn" id="setLimitBtn" disabled>Set Limit</button>
+            </div>
+        </div>
+
+        <!-- Decision Engine Section -->
+        <div class="tesla-section">
+            <h2>🧠 Decision Engine (Automation Logic)</h2>
+            
+            <div class="research-notes">
+                <h4>Integration Points</h4>
+                <ul>
+                    <li><strong>FoxESS Data:</strong> PV power, battery SoC, grid import/export</li>
+                    <li><strong>Amber Prices:</strong> Import/export pricing, negative price detection</li>
+                    <li><strong>Weather:</strong> PV forecast for next 3h / next 30m</li>
+                    <li><strong>Constraints:</strong> Min house battery SoC, max circuit amps, departure time/SoC</li>
+                </ul>
+            </div>
+
+            <h3>Current Snapshot</h3>
+            <div class="info-grid" id="energySnapshot">
+                <div class="info-box">
+                    <label>PV Power</label>
+                    <div class="value" id="snap_pv">—</div>
+                </div>
+                <div class="info-box">
+                    <label>Grid Import</label>
+                    <div class="value" id="snap_grid">—</div>
+                </div>
+                <div class="info-box">
+                    <label>Battery SoC</label>
+                    <div class="value" id="snap_battery">—</div>
+                </div>
+                <div class="info-box">
+                    <label>Import Price</label>
+                    <div class="value" id="snap_price">—</div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <button class="btn" id="runDecisionEngineBtn" disabled>Run Decision Engine</button>
+                <button class="btn secondary" id="refreshSnapshotBtn">Refresh Snapshot</button>
+            </div>
+
+            <div id="decisionOutput" style="margin-top: 15px;"></div>
+        </div>
+
+        <!-- Activity Log Section -->
+        <div class="tesla-section">
+            <h2>📝 Activity Log</h2>
+            <div class="log-container" id="activityLog">
+                <div class="log-entry">
+                    <span class="log-timestamp">[00:00:00]</span>
+                    <span class="log-info">Tesla Integration page initialized. Ready to configure.</span>
+                </div>
+            </div>
+            <button class="btn secondary" style="margin-top: 10px;" id="clearLogBtn">Clear Log</button>
+        </div>
+    </div>
+
+    <!-- API call metrics footer -->
+    <div id="apiMetricsFooter" class="api-metrics-footer">
+        <div class="metrics-icon">📊</div>
+        <div id="metricsDate" class="metrics-date">—</div>
+        <div id="metricsCounts" class="metrics-counts">
+            <div class="metric-fox">Fox: <span id="countFox" class="metric-value">0</span></div>
+            <div class="metric-amber">Amb: <span id="countAmber" class="metric-value">0</span></div>
+            <div class="metric-weather">Wea: <span id="countWeather" class="metric-value">0</span></div>
+        </div>
+        <button class="btn btn-sm" onclick="loadApiMetrics(1)" title="Refresh metrics">🔄</button>
+    </div>
+
+    <script>
+        // ========== COMPREHENSIVE CONSOLE LOGGING & DEBUGGING ==========
+        console.log('%c🚗 Tesla Integration Page - Debug Mode', 'color: #58a6ff; font-size: 14px; font-weight: bold;');
+        console.log('%cPage initialized at:', 'color: #8b949e;', new Date().toLocaleString());
+        
+        // Log available window objects
+        console.group('📦 Available Global Objects');
+        console.log('window.firebaseAuth:', window.firebaseAuth ? '✓ Available' : '✗ Missing');
+        console.log('window.initializeAuth:', window.initializeAuth ? '✓ Available (function)' : '✗ Missing');
+        console.log('window.authenticatedFetch:', window.authenticatedFetch ? '✓ Available (function)' : '✗ Missing');
+        console.log('window.auth:', window.auth ? '✓ Available' : '✗ Missing');
+        console.log('window.AppShell:', window.AppShell ? '✓ Available' : '✗ Missing');
+        console.log('window.firebaseConfig:', window.firebaseConfig ? '✓ Available' : '✗ Missing');
+        console.groupEnd();
+
+        console.log('%c📥 Module References', 'color: #7ee787; font-weight: bold;');
+        console.log('window.initializeAuth type:', typeof window.initializeAuth);
+        console.log('window.authenticatedFetch type:', typeof window.authenticatedFetch);
+        console.log('window.AppShell.init type:', typeof (window.AppShell?.init));
+
+        let selectedVehicleTag = null;
+        const VOLTAGE = 230; // Standard voltage for AU/EU
+
+        // ========== UTILITY: Enhanced Activity Logging ==========
+        function addLog(message, type = 'info') {
+            const logContainer = document.getElementById('activityLog');
+            const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `
+                <span class="log-timestamp">[${timestamp}]</span>
+                <span class="log-${type}">${message}</span>
+            `;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            // Also log to console
+            const consoleStyle = {
+                'info': 'color: #58a6ff;',
+                'success': 'color: #3fb950;',
+                'warning': 'color: #d29922;',
+                'error': 'color: #f85149;'
+            }[type] || 'color: #8b949e;';
+            console.log(`%c[${timestamp}] ${message}`, consoleStyle);
+        }
+
+        // ========== USER AUTHENTICATION ==========
+        function checkUserAccess() {
+            console.log('%c🔐 Checking User Access', 'color: #a371f7; font-weight: bold;');
+            
+            return new Promise((resolve) => {
+                try {
+                    console.log('Calling window.initializeAuth()...');
+                    if (!window.initializeAuth) {
+                        throw new Error('window.initializeAuth is not defined');
+                    }
+                    
+                    window.initializeAuth().then(() => {
+                        console.log('✓ initializeAuth completed');
+                        
+                        // Use onAuthStateChanged to wait for Firebase to set the user
+                        let unsubscribe;
+                        unsubscribe = window.auth.onAuthStateChanged((user) => {
+                            // Unsubscribe immediately to avoid multiple calls
+                            if (unsubscribe) unsubscribe();
+                            
+                            console.log('Current user:', user);
+                            
+                            if (!user) {
+                                console.warn('❌ No user logged in');
+                                addLog('No user logged in. Redirecting to login...', 'error');
+                                setTimeout(() => window.location.href = '/login.html', 2000);
+                                resolve(false);
+                                return;
+                            }
+
+                            // Restrict to specific user
+                            const allowedEmail = 'sardanapalos928@hotmail.com';
+                            console.log('User email:', user.email);
+                            console.log('Allowed email:', allowedEmail);
+                            console.log('Access check:', user.email === allowedEmail ? '✓ PASS' : '✗ FAIL');
+                            
+                            if (user.email !== allowedEmail) {
+                                console.error('❌ Access denied for user:', user.email);
+                                addLog(`Access denied. This page is restricted to ${allowedEmail}`, 'error');
+                                document.body.innerHTML = `
+                                    <div class="container" style="text-align: center; padding: 50px;">
+                                        <h1>🚫 Access Denied</h1>
+                                        <p>This page is currently restricted to authorized users only.</p>
+                                        <a href="/index.html" class="btn">Back to Dashboard</a>
+                                    </div>
+                                `;
+                                resolve(false);
+                                return;
+                            }
+
+                            console.log('%c✓ Access granted for:', 'color: #3fb950;', user.email);
+                            addLog(`Access granted for ${user.email}`, 'success');
+                            resolve(true);
+                        });
+                    }).catch((error) => {
+                        console.error('%c❌ Auth Error:', 'color: #f85149;', error);
+                        console.error('Error message:', error.message);
+                        console.error('Error stack:', error.stack);
+                        addLog(`Auth error: ${error.message}`, 'error');
+                        resolve(false);
+                    });
+                } catch (error) {
+                    console.error('%c❌ Auth Error:', 'color: #f85149;', error);
+                    console.error('Error message:', error.message);
+                    console.error('Error stack:', error.stack);
+                    addLog(`Auth error: ${error.message}`, 'error');
+                    resolve(false);
+                }
+            });
+        }
+
+        // ========== PAGE INITIALIZATION ==========
+        console.log('%c⚙️ Starting Page Initialization', 'color: #d29922; font-weight: bold;');
+        
+        (async () => {
+            try {
+                console.log('Step 1: Checking user access...');
+                const hasAccess = await checkUserAccess();
+                
+                if (!hasAccess) {
+                    console.error('Access check failed, aborting initialization');
+                    return;
+                }
+
+                console.log('Step 2: Initializing AppShell...');
+                if (window.AppShell?.init) {
+                    const shellResult = await window.AppShell.init();
+                    console.log('✓ AppShell initialized:', shellResult);
+                } else {
+                    console.warn('⚠️ AppShell not available, skipping initialization');
+                }
+
+                console.log('Step 3: Setting up event listeners...');
+                setupEventListeners();
+                console.log('✓ Event listeners configured');
+
+                console.log('Step 3.5: Starting API metrics refresh...');
+                if (typeof startMetricsAutoRefresh === 'function') {
+                    startMetricsAutoRefresh(60000);
+                    console.log('✓ API metrics auto-refresh started');
+                }
+                
+                // Initial load of metrics
+                if (typeof loadApiMetrics === 'function') {
+                    loadApiMetrics(1);
+                }
+                
+                console.log('Step 4: Loading configuration if needed...');
+                await showConfigSection();
+                console.log('✓ Configuration section loaded');
+                
+                console.log('Step 5: Checking Tesla configuration and status...');
+                await checkTeslaConfiguration();
+                await checkConnectionStatus();
+                console.log('✓ Configuration and status checks complete');
+
+                console.log('Step 6: Refreshing energy snapshot...');
+                try {
+                    await refreshEnergySnapshot();
+                } catch (e) {
+                    console.warn('Failed to load initial energy snapshot:', e);
+                }
+                
+                console.log('%c✅ INITIALIZATION COMPLETE', 'color: #3fb950; font-weight: bold; font-size: 12px;');
+                addLog('Tesla Integration page loaded. Configure credentials if needed.', 'info');
+            } catch (error) {
+                console.error('%c❌ INITIALIZATION FAILED:', 'color: #f85149; font-weight: bold;', error);
+                addLog(`Initialization error: ${error.message}`, 'error');
+            }
+        })();
+
+        // ========== CONFIGURATION & STATUS CHECKS ==========
+        
+        async function checkTeslaConfiguration() {
+            try {
+                const resp = await window.authenticatedFetch('/api/tesla/check-config');
+                const data = await resp.json();
+                
+                const configDiv = document.getElementById('configCheck');
+                
+                if (resp.ok && data.errno === 0 && data.result.configured) {
+                    console.log('✓ Tesla user credentials configured');
+                    configDiv.style.display = 'none';
+                    // Enable connect button
+                    const connectBtn = document.getElementById('connectTeslaBtn');
+                    if (connectBtn) {
+                        connectBtn.disabled = false;
+                        document.getElementById('connectBtnStatus').textContent = '✓ Ready to connect';
+                        document.getElementById('connectBtnStatus').style.color = '#3fb950';
+                    }
+                    // Note: We don't populate the input fields with saved credentials for security
+                    // User can re-enter them or they'll be used from storage during OAuth flow
+                } else {
+                    console.warn('⚠️ Tesla user credentials not configured');
+                    configDiv.style.display = 'block';
+                    configDiv.innerHTML = `
+                        <div style="padding: 15px; background: rgba(217, 153, 34, 0.1); border: 1px solid rgba(217, 153, 34, 0.3); border-radius: 8px;">
+                            <h4 style="margin: 0 0 10px 0; color: #d29922;">⚠️ Tesla Credentials Required</h4>
+                            <p style="margin: 0 0 10px 0; color: #8b949e; font-size: 13px;">
+                                You need to configure your personal Tesla OAuth app credentials below before connecting your account.
+                            </p>
+                            <details style="margin-top: 10px;">
+                                <summary style="cursor: pointer; color: #58a6ff; font-size: 13px;">How to get Tesla OAuth credentials</summary>
+                                <ol style="background: rgba(13, 17, 23, 0.6); padding: 15px; border-radius: 6px; margin-top: 8px; font-size: 12px; color: #8b949e;">
+                                  <li>Go to <a href="https://developer.tesla.com" target="_blank" style="color: #58a6ff;">Tesla Developer Portal</a></li>
+                                  <li>Create or select your OAuth app</li>
+                                  <li>Copy your app's <strong>Client ID</strong> and <strong>Client Secret</strong></li>
+                                  <li>Paste them below and click "Save Credentials"</li>
+                                </ol>
+                            </details>
+                        </div>`;
+                    // Disable connect button
+                    const connectBtn = document.getElementById('connectTeslaBtn');
+                    if (connectBtn) {
+                        connectBtn.disabled = true;
+                        document.getElementById('connectBtnStatus').textContent = '⚠️ Server configuration required';
+                        document.getElementById('connectBtnStatus').style.color = '#d29922';
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking Tesla configuration:', error);
+                // Show error but don't crash initialization
+                const configDiv = document.getElementById('configCheck');
+                configDiv.style.display = 'block';
+                configDiv.innerHTML = `
+                    <div style="padding: 15px; background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.3); border-radius: 8px;">
+                        <h4 style="margin: 0 0 10px 0; color: #f85149;">⚠️ Configuration Check Failed</h4>
+                        <p style="margin: 0; color: #8b949e; font-size: 12px;">
+                            Could not verify server configuration. Error: ${error.message}
+                        </p>
+                    </div>
+                `;
+                addLog(`Config check failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function checkConnectionStatus() {
+            try {
+                const resp = await window.authenticatedFetch('/api/tesla/status');
+                const data = await resp.json();
+                
+                const statusDiv = document.getElementById('connectionStatus');
+                const optionsDiv = document.getElementById('connectionOptions');
+                
+                if (resp.ok && data.errno === 0 && data.result.connected) {
+                    console.log('✓ Tesla account connected');
+                    statusDiv.style.display = 'block';
+                    optionsDiv.style.display = 'none';
+                    
+                    const connectedAt = data.result.connectedAt ? new Date(data.result.connectedAt).toLocaleString() : 'Unknown';
+                    const expiresAt = data.result.expiresAt ? new Date(data.result.expiresAt).toLocaleString() : 'Unknown';
+                    const partnerRegistered = data.result.partnerRegistered;
+                    
+                    statusDiv.innerHTML = `
+                        <div style="padding: 20px; background: rgba(63, 185, 80, 0.05); border: 1px solid rgba(63, 185, 80, 0.2); border-radius: 12px; display: flex; flex-direction: column; gap: 15px;">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div style="width: 40px; height: 40px; background: rgba(63, 185, 80, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px;">✅</div>
+                                <div>
+                                    <h4 style="margin: 0; color: #3fb950; font-size: 16px;">Tesla Account Connected</h4>
+                                    <p style="margin: 2px 0 0 0; color: #8b949e; font-size: 13px;">Your account is linked and ready for automation.</p>
+                                </div>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; background: rgba(13, 17, 23, 0.4); border-radius: 8px; border: 1px solid rgba(48, 54, 61, 0.4);">
+                                <div>
+                                    <div style="font-size: 10px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.5px;">Connected Since</div>
+                                    <div style="font-size: 13px; color: #e6edf3; margin-top: 2px;">${connectedAt}</div>
+                                </div>
+                                <div>
+                                    <div style="font-size: 10px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.5px;">Token Expiry</div>
+                                    <div style="font-size: 13px; color: #e6edf3; margin-top: 2px;">${expiresAt}</div>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                                ${!partnerRegistered ? `
+                                    <button class="btn" id="registerPartnerBtn" style="background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 100%); border: none; box-shadow: 0 4px 12px rgba(88, 166, 255, 0.2);">
+                                        Register Partner Account
+                                    </button>
+                                ` : `
+                                    <div style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(88, 166, 255, 0.1); border: 1px solid rgba(88, 166, 255, 0.2); border-radius: 20px; font-size: 12px; color: #58a6ff;">
+                                        <span>✓ Partner Registered</span>
+                                    </div>
+                                `}
+                                <button class="btn secondary" id="disconnectBtn" style="border-color: rgba(248, 81, 73, 0.3); color: #f85149;">
+                                    Disconnect Account
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Add register partner handler
+                    const registerPartnerBtn = document.getElementById('registerPartnerBtn');
+                    if (registerPartnerBtn) {
+                        registerPartnerBtn.addEventListener('click', async () => {
+                            try {
+                                addLog('Registering partner account with Tesla...', 'info');
+                                registerPartnerBtn.disabled = true;
+                                registerPartnerBtn.textContent = 'Registering...';
+                                
+                                const resp = await window.authenticatedFetch('/api/tesla/register-partner', {
+                                    method: 'POST'
+                                });
+                                const data = await resp.json();
+                                
+                                if (resp.ok && data.errno === 0) {
+                                    addLog('✓ Partner account registered successfully!', 'success');
+                                    alert('Partner account registered successfully! You can now list your vehicles.');
+                                    await checkConnectionStatus(); // Refresh UI to hide button
+                                } else {
+                                    addLog(`✗ Registration failed: ${data.error || 'Unknown error'}`, 'error');
+                                    alert(`Registration failed: ${data.error || 'Unknown error'}`);
+                                }
+                            } catch (error) {
+                                addLog(`Error registering partner: ${error.message}`, 'error');
+                            } finally {
+                                registerPartnerBtn.disabled = false;
+                                registerPartnerBtn.textContent = 'Register Partner Account';
+                            }
+                        });
+                    }
+                    
+                    // Add disconnect handler
+                    const disconnectBtn = document.getElementById('disconnectBtn');
+                    if (disconnectBtn) {
+                        disconnectBtn.addEventListener('click', async () => {
+                            if (!confirm('Are you sure you want to disconnect your Tesla account? You will need to reconnect to control your vehicles.')) {
+                                return;
+                            }
+                            try {
+                                addLog('Disconnecting Tesla account...', 'info');
+                                const resp = await window.authenticatedFetch('/api/tesla/disconnect', {
+                                    method: 'POST'
+                                });
+                                const data = await resp.json();
+                                if (resp.ok && data.errno === 0) {
+                                    addLog('✓ Tesla account disconnected', 'success');
+                                    await checkConnectionStatus(); // Refresh status
+                                } else {
+                                    addLog(`✗ Failed to disconnect: ${data.error || 'Unknown error'}`, 'error');
+                                }
+                            } catch (error) {
+                                addLog(`Error disconnecting: ${error.message}`, 'error');
+                            }
+                        });
+                    }
+                    
+                    addLog('Tesla account is connected', 'success');
+                } else {
+                    console.log('Tesla account not connected');
+                    statusDiv.style.display = 'none';
+                    optionsDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error checking connection status:', error);
+                // If the status endpoint fails, assume not connected and show options
+                const statusDiv = document.getElementById('connectionStatus');
+                const optionsDiv = document.getElementById('connectionOptions');
+                statusDiv.style.display = 'none';
+                optionsDiv.style.display = 'block';
+            }
+        }
+
+        // Handle OAuth redirect from Tesla
+        function handleOAuthRedirect() {
+            const params = new URLSearchParams(window.location.search);
+            const oauthSuccess = params.get('oauth_success');
+            const oauthError = params.get('oauth_error');
+            
+            if (oauthSuccess === 'true') {
+                console.log('%c✓ OAuth successful!', 'color: #3fb950; font-weight: bold;');
+                addLog('✓ Tesla account successfully connected! Tokens are now saved.', 'success');
+                // Refresh connection status
+                setTimeout(() => {
+                    checkConnectionStatus();
+                }, 1000);
+                // Clean up URL
+                window.history.replaceState({}, document.title, '/tesla-integration.html');
+            } else if (oauthError) {
+                console.error('%c❌ OAuth error:', 'color: #f85149;', oauthError);
+                addLog(`✗ Connection failed: ${oauthError}`, 'error');
+                // Clean up URL
+                window.history.replaceState({}, document.title, '/tesla-integration.html');
+            }
+        }
+
+        // ========== CONFIGURATION SETUP ==========
+        
+        async function showConfigSection() {
+            try {
+                // Check current configuration
+                const resp = await window.authenticatedFetch('/api/tesla/check-config');
+                const data = await resp.json();
+                
+                const configSection = document.getElementById('configSection');
+                
+                if (resp.ok && data.errno === 0 && data.result.configured) {
+                    // Already configured, hide the setup section
+                    configSection.style.display = 'none';
+                } else {
+                    // Not configured or error, show setup section
+                    configSection.style.display = 'block';
+                    
+                    // Don't try to load existing credentials - they're per-user
+                    // User should enter their own Tesla OAuth app credentials
+                }
+            } catch (error) {
+                console.error('Error loading config section:', error);
+                // Still show the config section even if there's an error
+                document.getElementById('configSection').style.display = 'block';
+            }
+        }
+        
+        function showConfigStatus(message, type) {
+            const statusDiv = document.getElementById('configStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = type === 'success' ? 'rgba(88, 166, 255, 0.1)' : 'rgba(217, 153, 34, 0.1)';
+            statusDiv.style.border = `1px solid ${type === 'success' ? 'rgba(88, 166, 255, 0.3)' : 'rgba(217, 153, 34, 0.3)'}`;
+            statusDiv.style.color = type === 'success' ? '#58a6ff' : '#d29922';
+            statusDiv.textContent = message;
+        }
+
+        function setupEventListeners() {
+            console.log('%c🔧 Setting up Event Listeners', 'color: #58a6ff; font-weight: bold;');
+            
+            // Handle OAuth redirect
+            handleOAuthRedirect();
+            
+            // ===== CONFIGURATION LISTENERS =====
+            const saveTeslaConfigBtn = document.getElementById('saveTeslaConfigBtn');
+            if (saveTeslaConfigBtn) {
+                saveTeslaConfigBtn.addEventListener('click', async () => {
+                    const clientId = document.getElementById('clientIdInput').value.trim();
+                    const clientSecret = document.getElementById('clientSecretInput').value.trim();
+                    
+                    if (!clientId || !clientSecret) {
+                        showConfigStatus('Both Client ID and Client Secret are required', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        const originalText = document.getElementById('saveBtnText').textContent;
+                        document.getElementById('saveBtnText').textContent = 'Saving...';
+                        saveTeslaConfigBtn.disabled = true;
+                        
+                        const resp = await window.authenticatedFetch('/api/tesla/save-credentials', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ clientId, clientSecret })
+                        });
+                        
+                        const data = await resp.json();
+                        if (data.errno === 0) {
+                            showConfigStatus('✓ Tesla credentials saved successfully!', 'success');
+                            addLog('Tesla credentials configured successfully', 'success');
+                            // Refresh configuration check
+                            setTimeout(() => {
+                                checkTeslaConfiguration();
+                                checkConnectionStatus();
+                            }, 500);
+                        } else {
+                            showConfigStatus(`❌ Error: ${data.error}`, 'error');
+                        }
+                    } catch (error) {
+                        showConfigStatus(`Error saving configuration: ${error.message}`, 'error');
+                    } finally {
+                        document.getElementById('saveBtnText').textContent = 'Save Configuration';
+                        saveTeslaConfigBtn.disabled = false;
+                    }
+                });
+            }
+            
+            // Toggle show/hide tokens
+            const showHideBtn = document.getElementById('showHideTokensBtn');
+            if (showHideBtn) {
+                let isShown = false;
+                showHideBtn.addEventListener('click', () => {
+                    isShown = !isShown;
+                    document.getElementById('clientIdInput').type = isShown ? 'text' : 'password';
+                    document.getElementById('clientSecretInput').type = isShown ? 'text' : 'password';
+                    showHideBtn.textContent = isShown ? '🙈 Hide' : '👁️ Show';
+                });
+            }
+            
+            // Connect with Tesla (OAuth button)
+            const connectBtn = document.getElementById('connectTeslaBtn');
+            if (connectBtn) {
+                connectBtn.addEventListener('click', async () => {
+                    console.log('%c🔐 Connect with Tesla Clicked', 'color: #58a6ff;');
+                    
+                    // Check if button is disabled
+                    if (connectBtn.disabled) {
+                        addLog('Please configure server credentials first', 'warning');
+                        return;
+                    }
+                    
+                    try {
+                        // Show loading state
+                        const originalText = document.getElementById('connectBtnText').textContent;
+                        document.getElementById('connectBtnText').textContent = 'Connecting...';
+                        connectBtn.disabled = true;
+                        
+                        // Get clientId from input field, or fetch from Firestore if not in input
+                        let clientId = document.getElementById('clientIdInput').value.trim();
+                        
+                        if (!clientId) {
+                            addLog('Client ID not in form, checking Firestore...', 'info');
+                            try {
+                                const configResp = await window.authenticatedFetch('/api/tesla/check-config');
+                                const configData = await configResp.json();
+                                
+                                if (configResp.ok && configData.errno === 0 && configData.result?.configured) {
+                                    // Credentials exist in Firestore, try to retrieve the full config
+                                    addLog('Using stored Tesla credentials...', 'info');
+                                    try {
+                                        const fullConfigResp = await window.authenticatedFetch('/api/tesla/get-config');
+                                        const fullConfigData = await fullConfigResp.json();
+                                        if (fullConfigResp.ok && fullConfigData.errno === 0 && fullConfigData.result?.clientId) {
+                                            clientId = fullConfigData.result.clientId;
+                                            console.log('Retrieved clientId from Firestore:', clientId.substring(0, 10) + '...');
+                                        } else {
+                                            addLog('❌ Could not retrieve stored credentials. Please re-enter them.', 'error');
+                                            document.getElementById('connectBtnText').textContent = originalText;
+                                            connectBtn.disabled = false;
+                                            return;
+                                        }
+                                    } catch (err) {
+                                        console.error('Error fetching full config:', err);
+                                        addLog('❌ Error retrieving credentials from storage.', 'error');
+                                        document.getElementById('connectBtnText').textContent = originalText;
+                                        connectBtn.disabled = false;
+                                        return;
+                                    }
+                                } else {
+                                    addLog('❌ No Tesla OAuth credentials found. Please enter your Tesla OAuth app Client ID and Client Secret first.', 'error');
+                                    document.getElementById('connectBtnText').textContent = originalText;
+                                    connectBtn.disabled = false;
+                                    return;
+                                }
+                            } catch (err) {
+                                console.warn('Could not fetch config:', err.message);
+                                addLog('❌ Error checking credentials. Please try again.', 'error');
+                                document.getElementById('connectBtnText').textContent = originalText;
+                                connectBtn.disabled = false;
+                                return;
+                            }
+                        }
+                        
+                        addLog('Getting authentication token...', 'info');
+                        // Get the Firebase ID token before redirecting
+                        const token = await window.auth.getIdToken(false);
+                        console.log('Got ID token, redirecting to OAuth...');
+                        addLog('Redirecting to Tesla OAuth...', 'info');
+                        // Redirect with token and clientId as query params
+                        window.location.href = `/api/tesla/oauth-authorize?idToken=${encodeURIComponent(token)}&clientId=${encodeURIComponent(clientId)}`;
+                    } catch (err) {
+                        console.error('%c❌ Error initiating OAuth:', 'color: #f85149;', err);
+                        addLog(`Error initiating OAuth: ${err.message}`, 'error');
+                        // Reset button state
+                        document.getElementById('connectBtnText').textContent = 'Connect with Tesla';
+                        connectBtn.disabled = false;
+                    }
+                });
+            } else {
+                console.warn('⚠️ connectTeslaBtn element not found');
+            }
+            
+            // Save tokens (manual entry)
+            const saveBtn = document.getElementById('saveTokensBtn');
+            if (!saveBtn) {
+                console.error('❌ saveTokensBtn element not found');
+                return;
+            }
+            
+            saveBtn.addEventListener('click', async () => {
+                console.log('%c💾 Save Tokens Clicked', 'color: #58a6ff;');
+                const accessToken = document.getElementById('tesla_accessToken').value.trim();
+                const refreshToken = document.getElementById('tesla_refreshToken').value.trim();
+
+                console.log('Access token length:', accessToken.length);
+                console.log('Refresh token length:', refreshToken.length);
+
+                if (!accessToken) {
+                    console.warn('⚠️ Access token is empty');
+                    addLog('Access token is required', 'error');
+                    return;
+                }
+
+                try {
+                    console.log('Calling window.authenticatedFetch to /api/tesla/save-tokens...');
+                    addLog('Saving Tesla tokens...', 'info');
+                    
+                    const resp = await window.authenticatedFetch('/api/tesla/save-tokens', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ accessToken, refreshToken })
+                    });
+
+                    console.log('Response received:', resp.status, resp.statusText);
+                    const data = await resp.json();
+                    console.log('Response data:', data);
+                    
+                    if (data.errno === 0) {
+                        console.log('%c✓ Tokens saved successfully', 'color: #3fb950;');
+                        addLog('✓ Tokens saved successfully', 'success');
+                    } else {
+                        console.error('API error:', data.error);
+                        addLog(`✗ Failed to save tokens: ${data.error}`, 'error');
+                    }
+                } catch (err) {
+                    console.error('%c❌ Error saving tokens:', 'color: #f85149;', err);
+                    addLog(`Error saving tokens: ${err.message}`, 'error');
+                }
+            });
+
+            // Test authentication
+            const testBtn = document.getElementById('testAuthBtn');
+            if (testBtn) {
+                testBtn.addEventListener('click', async () => {
+                    console.log('%c🧪 Test Auth Clicked', 'color: #58a6ff;');
+                    try {
+                        console.log('Calling window.authenticatedFetch to /api/tesla/test-auth...');
+                        addLog('Testing Tesla API authentication...', 'info');
+                        
+                        const resp = await window.authenticatedFetch('/api/tesla/test-auth', {
+                            method: 'GET'
+                        });
+
+                        console.log('Response received:', resp.status);
+                        const data = await resp.json();
+                        console.log('Response data:', data);
+                        
+                        if (data.errno === 0) {
+                            console.log('%c✓ Auth test passed:', 'color: #3fb950;', data.result.message);
+                            addLog(`✓ Authentication successful: ${data.result.message}`, 'success');
+                        } else {
+                            console.error('Auth test failed:', data.error);
+                            addLog(`✗ Authentication failed: ${data.error}`, 'error');
+                        }
+                    } catch (err) {
+                        console.error('%c❌ Error testing auth:', 'color: #f85149;', err);
+                        addLog(`Error testing auth: ${err.message}`, 'error');
+                    }
+                });
+            }
+
+            // List vehicles
+            const listBtn = document.getElementById('listVehiclesBtn');
+            if (listBtn) {
+                listBtn.addEventListener('click', async () => {
+                    console.log('%c🚗 List Vehicles Clicked', 'color: #58a6ff;');
+                    try {
+                        console.log('Fetching vehicles from /api/tesla/vehicles...');
+                        addLog('Fetching vehicle list...', 'info');
+                        
+                        const resp = await window.authenticatedFetch('/api/tesla/vehicles', { method: 'GET' });
+                        const data = await resp.json();
+                        console.log('Vehicles response:', data);
+
+                        if (data.errno === 0 && data.result?.vehicles) {
+                            const vehicles = data.result.vehicles;
+                            console.log('%c✓ Found vehicles:', 'color: #3fb950;', vehicles.length);
+                            addLog(`✓ Found ${vehicles.length} vehicle(s)`, 'success');
+
+                            const container = document.getElementById('vehiclesList');
+                            container.innerHTML = vehicles.map(v => `
+                                <div class="info-box" style="margin-top: 10px;">
+                                    <strong>${v.display_name || 'Tesla Vehicle'}</strong> (${v.vin})
+                                    <br><small>State: <span class="status-badge status-${v.state}">${v.state}</span></small>
+                                    <br><button class="btn secondary" style="margin-top: 8px;" onclick="selectVehicle('${v.id_s}', '${v.display_name}')">Select</button>
+                                </div>
+                            `).join('');
+                        } else if (data.errno === 412) {
+                            console.error('Partner registration required (412):', data.error);
+                            addLog('✗ Partner registration required. Click "Register Partner Account" above.', 'warning');
+                            alert('Your Tesla account is connected, but your application needs to be registered as a partner in this region. Please click the "Register Partner Account" button in the Authentication section above.');
+                        } else {
+                            console.error('Failed to list vehicles:', data.error);
+                            addLog(`✗ Failed to list vehicles: ${data.error || 'Unknown error'}`, 'error');
+                        }
+                    } catch (err) {
+                        console.error('%c❌ Error listing vehicles:', 'color: #f85149;', err);
+                        addLog(`Error listing vehicles: ${err.message}`, 'error');
+                    }
+                });
+            }
+
+            // Check Fleet Status
+            const fleetStatusBtn = document.getElementById('checkFleetStatusBtn');
+            if (fleetStatusBtn) {
+                fleetStatusBtn.addEventListener('click', async () => {
+                    console.log('%c📋 Check Fleet Status Clicked', 'color: #58a6ff;');
+                    try {
+                        addLog('Checking Tesla Fleet API status...', 'info');
+                        const resp = await window.authenticatedFetch('/api/tesla/fleet-status', { method: 'POST' });
+                        const data = await resp.json();
+                        if (data.errno === 0) {
+                            addLog('✓ Fleet API is healthy', 'success');
+                            console.log('Fleet status:', data.result);
+                        } else {
+                            addLog(`✗ Fleet status check failed: ${data.error}`, 'error');
+                        }
+                    } catch (err) {
+                        addLog(`Error checking fleet status: ${err.message}`, 'error');
+                    }
+                });
+            }
+
+            // Get Vehicle Data
+            const getDataBtn = document.getElementById('getVehicleDataBtn');
+            if (getDataBtn) {
+                getDataBtn.addEventListener('click', async () => {
+                    if (!selectedVehicleTag) return;
+                    console.log('%c📊 Get Vehicle Data Clicked', 'color: #58a6ff;');
+                    try {
+                        addLog(`Fetching data for vehicle ${selectedVehicleTag}...`, 'info');
+                        const resp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleTag}/data`);
+                        const data = await resp.json();
+                        if (data.errno === 0) {
+                            addLog('✓ Vehicle data retrieved', 'success');
+                            updateVehicleStateDisplay(data.result);
+                        } else {
+                            addLog(`✗ Failed to get vehicle data: ${data.error}`, 'error');
+                        }
+                    } catch (err) {
+                        addLog(`Error getting vehicle data: ${err.message}`, 'error');
+                    }
+                });
+            }
+
+            // Wake Vehicle
+            const wakeBtn = document.getElementById('wakeVehicleBtn');
+            if (wakeBtn) {
+                wakeBtn.addEventListener('click', async () => {
+                    if (!selectedVehicleTag) return;
+                    console.log('%c⏰ Wake Vehicle Clicked', 'color: #58a6ff;');
+                    try {
+                        addLog(`Sending wake command to ${selectedVehicleTag}...`, 'info');
+                        const resp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleTag}/wake`, { method: 'POST' });
+                        const data = await resp.json();
+                        if (data.errno === 0) {
+                            addLog(`✓ Wake command sent. Status: ${data.result?.state || 'sent'}`, 'success');
+                        } else {
+                            addLog(`✗ Failed to wake vehicle: ${data.error}`, 'error');
+                        }
+                    } catch (err) {
+                        addLog(`Error waking vehicle: ${err.message}`, 'error');
+                    }
+                });
+            }
+
+            // Start Charging
+            const startBtn = document.getElementById('startChargingBtn');
+            if (startBtn) {
+                startBtn.addEventListener('click', async () => {
+                    if (!selectedVehicleTag) return;
+                    console.log('%c🔋 Start Charging Clicked', 'color: #58a6ff;');
+                    try {
+                        addLog('Sending charge start command...', 'info');
+                        const resp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleTag}/charge/start`, { method: 'POST' });
+                        const data = await resp.json();
+                        if (data.errno === 0) {
+                            addLog('✓ Charge start command successful', 'success');
+                        } else {
+                            addLog(`✗ Failed to start charging: ${data.error}`, 'error');
+                        }
+                    } catch (err) {
+                        addLog(`Error starting charge: ${err.message}`, 'error');
+                    }
+                });
+            }
+
+            // Stop Charging
+            const stopBtn = document.getElementById('stopChargingBtn');
+            if (stopBtn) {
+                stopBtn.addEventListener('click', async () => {
+                    if (!selectedVehicleTag) return;
+                    console.log('%c🛑 Stop Charging Clicked', 'color: #58a6ff;');
+                    try {
+                        addLog('Sending charge stop command...', 'info');
+                        const resp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleTag}/charge/stop`, { method: 'POST' });
+                        const data = await resp.json();
+                        if (data.errno === 0) {
+                            addLog('✓ Charge stop command successful', 'success');
+                        } else {
+                            addLog(`✗ Failed to stop charging: ${data.error}`, 'error');
+                        }
+                    } catch (err) {
+                        addLog(`Error stopping charge: ${err.message}`, 'error');
+                    }
+                });
+            }
+
+            // Set Amps
+            const targetAmpsInput = document.getElementById('targetAmps');
+            const targetKwInput = document.getElementById('targetKw');
+
+            if (targetAmpsInput && targetKwInput) {
+                targetAmpsInput.addEventListener('input', () => {
+                    const amps = parseFloat(targetAmpsInput.value) || 0;
+                    targetKwInput.value = ((amps * VOLTAGE) / 1000).toFixed(1);
+                });
+
+                targetKwInput.addEventListener('input', () => {
+                    const kw = parseFloat(targetKwInput.value) || 0;
+                    targetAmpsInput.value = Math.round((kw * 1000) / VOLTAGE);
+                });
+            }
+
+            const setAmpsBtn = document.getElementById('setAmpsBtn');
+            if (setAmpsBtn) {
+                setAmpsBtn.addEventListener('click', async () => {
+                    if (!selectedVehicleTag) return;
+                    const amps = parseInt(document.getElementById('targetAmps').value);
+                    console.log('%c⚡ Set Amps Clicked:', 'color: #58a6ff;', amps);
+                    try {
+                        addLog(`Setting charging current to ${amps}A...`, 'info');
+                        const resp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleTag}/charge/set-amps`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ amps })
+                        });
+                        const data = await resp.json();
+                        if (data.errno === 0) {
+                            addLog(`✓ Successfully set current to ${amps}A`, 'success');
+                        } else {
+                            addLog(`✗ Failed to set amps: ${data.error}`, 'error');
+                        }
+                    } catch (err) {
+                        addLog(`Error setting amps: ${err.message}`, 'error');
+                    }
+                });
+            }
+
+            // Set Limit
+            const setLimitBtn = document.getElementById('setLimitBtn');
+            if (setLimitBtn) {
+                setLimitBtn.addEventListener('click', async () => {
+                    if (!selectedVehicleTag) return;
+                    const percent = parseInt(document.getElementById('chargeLimit').value);
+                    console.log('%c🎯 Set Limit Clicked:', 'color: #58a6ff;', percent);
+                    try {
+                        addLog(`Setting charge limit to ${percent}%...`, 'info');
+                        const resp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleTag}/charge/set-limit`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ percent })
+                        });
+                        const data = await resp.json();
+                        if (data.errno === 0) {
+                            addLog(`✓ Successfully set limit to ${percent}%`, 'success');
+                        } else {
+                            addLog(`✗ Failed to set limit: ${data.error}`, 'error');
+                        }
+                    } catch (err) {
+                        addLog(`Error setting limit: ${err.message}`, 'error');
+                    }
+                });
+            }
+
+            // Run Decision Engine
+            const runDecisionBtn = document.getElementById('runDecisionEngineBtn');
+            if (runDecisionBtn) {
+                runDecisionBtn.addEventListener('click', async () => {
+                    if (!selectedVehicleTag) return;
+                    console.log('%c🧠 Run Decision Engine Clicked', 'color: #58a6ff;');
+                    try {
+                        addLog('Running automation decision engine (simulation)...', 'info');
+                        
+                        // Simulate a decision process
+                        const output = document.getElementById('decisionOutput');
+                        output.innerHTML = '<div style="padding: 15px; background: rgba(88, 166, 255, 0.1); border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 8px; color: #8b949e;">Analyzing PV power, battery SoC, and Amber prices...</div>';
+                        
+                        // Fetch current snapshot first
+                        await refreshEnergySnapshot();
+                        
+                        setTimeout(() => {
+                            const pv = parseFloat(document.getElementById('snap_pv').textContent) || 0;
+                            const soc = parseFloat(document.getElementById('snap_battery').textContent) || 0;
+                            const price = parseFloat(document.getElementById('snap_price').textContent) || 0;
+                            
+                            let decision = "IDLE";
+                            let reason = "No clear trigger for charging.";
+                            let color = "#8b949e";
+                            
+                            if (price < 0) {
+                                decision = "CHARGE (MAX)";
+                                reason = "Negative prices detected! Charging at maximum rate.";
+                                color = "#3fb950";
+                            } else if (pv > 3.0 && soc > 90) {
+                                decision = "CHARGE (EXCESS)";
+                                reason = "Excess solar detected and house battery is full.";
+                                color = "#58a6ff";
+                            } else if (price > 50) {
+                                decision = "STOP CHARGING";
+                                reason = "High price spike detected. Avoiding grid import.";
+                                color = "#f85149";
+                            }
+                            
+                            output.innerHTML = `
+                                <div style="padding: 15px; background: rgba(13, 17, 23, 0.8); border: 1px solid rgba(48, 54, 61, 0.6); border-radius: 8px;">
+                                    <h4 style="margin: 0 0 10px 0; color: ${color};">Decision: ${decision}</h4>
+                                    <p style="margin: 0; font-size: 13px; color: #8b949e;">${reason}</p>
+                                    <div style="margin-top: 10px; font-size: 11px; color: #6e7681;">
+                                        Inputs: PV=${pv}kW, SoC=${soc}%, Price=${price}¢
+                                    </div>
+                                </div>
+                            `;
+                            addLog(`✓ Decision Engine run complete: ${decision}`, 'success');
+                        }, 1500);
+                        
+                    } catch (err) {
+                        addLog(`Error running decision engine: ${err.message}`, 'error');
+                    }
+                });
+            }
+
+            // Clear log
+            const clearBtn = document.getElementById('clearLogBtn');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    console.log('📋 Clearing activity log');
+                    document.getElementById('activityLog').innerHTML = '';
+                    addLog('Log cleared', 'info');
+                });
+            }
+
+            // Refresh snapshot
+            const refreshBtn = document.getElementById('refreshSnapshotBtn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', refreshEnergySnapshot);
+            }
+            
+            console.log('✓ All event listeners attached');
+        }
+
+        // Select vehicle (enables buttons)
+        window.selectVehicle = (vehicleId, displayName) => {
+            console.log('%c🚗 Vehicle Selected:', 'color: #58a6ff;', { vehicleId, displayName });
+            selectedVehicleTag = vehicleId;
+            addLog(`Selected vehicle: ${displayName} (${vehicleId})`, 'success');
+            
+            // Enable buttons
+            ['getVehicleDataBtn', 'wakeVehicleBtn', 'startChargingBtn', 'stopChargingBtn', 
+             'setAmpsBtn', 'setLimitBtn', 'targetAmps', 'targetKw', 'chargeLimit', 'runDecisionEngineBtn'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.disabled = false;
+            });
+        };
+
+        // Update vehicle state display
+        function updateVehicleStateDisplay(data) {
+            const container = document.getElementById('vehicleState');
+            if (!container || !data) return;
+            
+            // Extract useful fields from Tesla response
+            const vehicle = data.response || data;
+            const drive = vehicle.drive_state || {};
+            const charge = vehicle.charge_state || {};
+            const climate = vehicle.climate_state || {};
+            
+            container.innerHTML = `
+                <div class="info-box">
+                    <label>Battery Level</label>
+                    <div class="value">${charge.battery_level || 0}%</div>
+                </div>
+                <div class="info-box">
+                    <label>Range</label>
+                    <div class="value">${((charge.battery_range || 0) * 1.60934).toFixed(1)} km</div>
+                </div>
+                <div class="info-box">
+                    <label>Charge State</label>
+                    <div class="value">${charge.charging_state || 'Disconnected'}</div>
+                </div>
+                <div class="info-box">
+                    <label>Charger Power</label>
+                    <div class="value">${charge.charger_power || 0} kW</div>
+                </div>
+                <div class="info-box">
+                    <label>Inside Temp</label>
+                    <div class="value">${(climate.inside_temp || 0).toFixed(1)}°C</div>
+                </div>
+                <div class="info-box">
+                    <label>Location</label>
+                    <div class="value">${drive.latitude ? '📍 Active' : 'Unknown'}</div>
+                </div>
+            `;
+
+            // Update control inputs if available
+            if (charge.charge_current_request !== undefined) {
+                const ampsInput = document.getElementById('targetAmps');
+                const kwInput = document.getElementById('targetKw');
+                if (ampsInput) ampsInput.value = charge.charge_current_request;
+                if (kwInput) kwInput.value = ((charge.charge_current_request * VOLTAGE) / 1000).toFixed(1);
+            }
+            if (charge.charge_limit_soc !== undefined) {
+                const limitInput = document.getElementById('chargeLimit');
+                if (limitInput) limitInput.value = charge.charge_limit_soc;
+            }
+        }
+
+        // Refresh energy snapshot
+        async function refreshEnergySnapshot() {
+            console.log('%c🔄 Refreshing Energy Snapshot', 'color: #58a6ff;');
+            try {
+                addLog('Fetching energy snapshot (inverter, prices, weather)...', 'info');
+                
+                // Parallel fetch inverter, amber, weather
+                const [inverterResp, priceResp] = await Promise.all([
+                    window.authenticatedFetch('/api/inverter/real-time'),
+                    window.authenticatedFetch('/api/amber/prices/current')
+                ]);
+                
+                const inverterData = await inverterResp.json();
+                const priceData = await priceResp.json();
+                
+                // Update snapshot display
+                if (inverterData.errno === 0 && inverterData.result) {
+                    const result = Array.isArray(inverterData.result) ? inverterData.result[0] : inverterData.result;
+                    const datas = result.datas || [];
+                    
+                    const getVal = (variable) => {
+                        const item = datas.find(d => d.variable === variable);
+                        return item ? parseFloat(item.value) : 0;
+                    };
+                    
+                    // FoxESS variables: pvPower, loadsPower, feedinPower, gridConsumptionPower, SoC
+                    const pv = getVal('pvPower');
+                    const grid = getVal('feedinPower') - getVal('gridConsumptionPower');
+                    const soc = getVal('SoC');
+                    
+                    document.getElementById('snap_pv').textContent = `${pv.toFixed(2)} kW`;
+                    document.getElementById('snap_grid').textContent = `${grid.toFixed(2)} kW`;
+                    document.getElementById('snap_battery').textContent = `${soc.toFixed(0)}%`;
+                }
+
+                if (priceData.errno === 0 && priceData.result) {
+                    const priceList = Array.isArray(priceData.result) ? priceData.result : [];
+                    const generalPrice = priceList.find(p => p.channelType === 'general');
+                    const price = generalPrice ? generalPrice.perKwh : null;
+                    document.getElementById('snap_price').textContent = price !== null ? `${price.toFixed(2)} ¢/kWh` : '—';
+                }
+
+                console.log('%c✓ Energy snapshot refreshed', 'color: #3fb950;');
+                addLog('✓ Energy snapshot refreshed', 'success');
+            } catch (err) {
+                console.error('%c❌ Error refreshing snapshot:', 'color: #f85149;', err);
+                addLog(`Error refreshing snapshot: ${err.message}`, 'error');
+            }
+        }
+        
+        console.log('%c========== DEBUG LOGGING SETUP COMPLETE ==========', 'color: #7ee787; font-weight: bold;');
+    </script>
+</body>
+</html>

@@ -466,6 +466,7 @@
                 <a href="/control.html" class="nav-link">🎮 Controls</a>
                 <a href="/settings.html" class="nav-link">⚙️ Settings</a>
                 <a href="/curtailment-discovery.html" class="nav-link">🔬 WIP - Topology Discovery</a>
+                <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
             </div>
             <div class="nav-right">
                 <span class="nav-subtitle">Setup assistant</span>
@@ -510,11 +511,6 @@
                         <div class="step-dot">3</div>
                         <span class="step-label">Amber</span>
                     </div>
-                </div>
-
-                <div class="info-box">
-                    <span class="info-icon">💡</span>
-                    <span>Need help finding your credentials? Check the <a href="/settings.html" target="_blank">Settings page</a> for detailed instructions.</span>
                 </div>
 
                 <form id="setupForm">
@@ -956,6 +952,15 @@
         function clearFieldState(fieldId) {
             const group = document.getElementById(fieldId).closest('.form-group');
             group.classList.remove('error', 'success');
+        }
+
+        // Tesla Integration nav link visibility
+        if (typeof window.auth !== 'undefined' && window.auth) {
+            window.auth.onAuthStateChanged((user) => {
+                if (user && user.email === 'sardanapalos928@hotmail.com') {
+                    document.getElementById('teslaNavLink').style.display = '';
+                }
+            });
         }
     </script>
 </body>

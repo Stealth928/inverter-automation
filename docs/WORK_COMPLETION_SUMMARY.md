@@ -2,6 +2,9 @@
 ## Testing & Cost Analysis for Inverter Automation
 ### December 23, 2025
 
+Note: This summary reflects the state as of 2025-12-23. Current test counts and coverage are in TESTING_GUIDE.md and docs/TEST_COVERAGE_REPORT.md.
+
+
 ---
 
 ## Overview
@@ -88,7 +91,7 @@ Scheduling & Cycles           28 tests ✅ Good
 Error Handling                 31 tests ✅ Very Good
 Cache & Performance            24 tests ✅ Good
 ─────────────────────────────────────────
-TOTAL                         343 tests ✅
+TOTAL                         343 tests (then-current) ✅
 ```
 
 #### Quality Assessment
@@ -337,7 +340,7 @@ Production:   ✅ Ready for deployment
 ```
 ✅ Frontend:         Live (credential masking deployed Dec 23)
 ✅ Backend:          Live (health endpoint deployed earlier)
-✅ Tests:            All passing (343/343)
+✅ Tests:            All passing at the time (343/343)
 ✅ Documentation:    Complete
 ✅ Ready for:        Production use
 ```
@@ -349,7 +352,7 @@ Production:   ✅ Ready for deployment
 ✅ Hide button re-masks values
 ✅ "SYNCED" badge appears on fresh load
 ✅ No verbose logging in console
-✅ All 343 tests passing
+✅ All 343 tests (then-current) passing
 ```
 
 ---
@@ -402,7 +405,7 @@ Production:   ✅ Ready for deployment
 The Inverter Automation project is **well-tested, well-documented, and cost-effective** for Firebase deployment.
 
 ### Strengths
-✅ **Comprehensive testing** - 343 tests, 99.7% pass rate  
+✅ **Comprehensive testing** - 343 tests (then-current), 99.7% pass rate  
 ✅ **Secure credential handling** - 19 dedicated security tests  
 ✅ **Predictable costs** - $0.25-$0.26 per user monthly  
 ✅ **Scalable architecture** - Costs scale linearly with users  
@@ -423,4 +426,6 @@ The Inverter Automation project is **well-tested, well-documented, and cost-effe
 **Date:** December 23, 2025  
 **Status:** ✅ COMPLETE  
 **Next review:** Quarterly or when user count increases by 50%
+
+
 

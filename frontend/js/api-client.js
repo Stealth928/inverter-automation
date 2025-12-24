@@ -413,6 +413,13 @@ function safeRedirect(target, maxBounceMs = 5000) {
   }
 }
 
+// Expose to window for direct script access
+if (typeof window !== 'undefined') {
+  window.initAPIClient = initAPIClient;
+  window.isAPIClientReady = isAPIClientReady;
+  window.waitForAPIClient = waitForAPIClient;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { APIClient, initAPIClient, isAPIClientReady, waitForAPIClient };
 }

@@ -1050,7 +1050,7 @@
             border: 1px solid rgba(48, 54, 61, 0.8);
             border-radius: 16px;
             width: 90%;
-            max-width: 700px;
+            max-width: 840px;
             max-height: 90vh;
             overflow-y: auto;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -1375,6 +1375,7 @@
             <a href="/control.html" class="nav-link">🎮 Controls</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
             <a href="/curtailment-discovery.html" class="nav-link">🔬 WIP - Topology Discovery</a>
+            <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
         </div>
         <div class="nav-right">
             <div class="device-input">
@@ -5571,7 +5572,11 @@
             try { loadAutomationRules(); } catch (e) { console.error('Error loading automation rules:', e); }
             
             // 5) Load backend automation status
-            try { setTimeout(() => { loadBackendAutomationStatus(); }, 300); } catch(e) { console.warn('Failed to load automation status:', e); }
+            try { 
+                // Initialize curtailment state variable
+                window.curtailmentState = { active: false, enabled: false, triggered: false };
+                setTimeout(() => { loadBackendAutomationStatus(); }, 300); 
+            } catch(e) { console.warn('Failed to load automation status:', e); }
             
             // 6) Load API call metrics
             try { loadApiMetrics(1); } catch(e) { console.warn('Failed to load API metrics:', e); }
@@ -5769,13 +5774,15 @@
                     
                     const priorityClass = rule.priority >= 1 && rule.priority <= 10 ? `p${rule.priority}` : 'p-low';
                     const isActive = status.activeRule === ruleName;
+                    const segmentStatus = isActive && status.activeSegmentEnabled ? '✓' : (isActive && !status.activeSegmentEnabled ? '⚠️' : '');
+                    const segmentStatusTitle = isActive && !status.activeSegmentEnabled ? 'Segment pending or failed to send to inverter' : '';
                     html += `
-                    <div style="background:${isActive ? 'rgba(126,231,135,0.1)' : '#21262d'};border:1px solid ${isActive ? '#7ee787' : (rule.enabled && masterEnabled ? '#58a6ff' : '#30363d')};border-radius:8px;padding:12px;margin-bottom:8px;opacity:${masterEnabled ? 1 : 0.6};border-left:${isActive ? '3px solid #7ee787' : '1px solid ' + (rule.enabled && masterEnabled ? '#58a6ff' : '#30363d')}">
+                    <div style="background:${isActive ? (status.activeSegmentEnabled ? 'rgba(126,231,135,0.1)' : 'rgba(240,136,62,0.1)') : '#21262d'};border:1px solid ${isActive ? (status.activeSegmentEnabled ? '#7ee787' : '#f0883e') : (rule.enabled && masterEnabled ? '#58a6ff' : '#30363d')};border-radius:8px;padding:12px;margin-bottom:8px;opacity:${masterEnabled ? 1 : 0.6};border-left:${isActive ? (status.activeSegmentEnabled ? '3px solid #7ee787' : '3px solid #f0883e') : '1px solid ' + (rule.enabled && masterEnabled ? '#58a6ff' : '#30363d')}">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                             <div style="display:flex;align-items:center;gap:8px">
                                 <span class="priority-badge ${priorityClass}" title="Priority ${rule.priority || '?'} - Lower number = Higher priority">P${rule.priority || '?'}</span>
-                                <span style="font-weight:600;color:${isActive ? '#7ee787' : '#58a6ff'};font-size:14px">${rule.name || ruleName}</span>
-                                ${isActive ? '<span style="background:#7ee787;color:#000;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700">ACTIVE NOW</span>' : ''}
+                                <span style="font-weight:600;color:${isActive ? (status.activeSegmentEnabled ? '#7ee787' : '#f0883e') : '#58a6ff'};font-size:14px">${rule.name || ruleName}</span>
+                                ${isActive ? `<span style="background:${status.activeSegmentEnabled ? '#7ee787' : '#f0883e'};color:${status.activeSegmentEnabled ? '#000' : '#000'};padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;title='${segmentStatusTitle}'">${status.activeSegmentEnabled ? '✅ ACTIVE' : '⚠️ PENDING'}</span>` : ''}
                             </div>
                             <div style="display:flex;align-items:center;gap:6px">
                                 <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
@@ -5831,6 +5838,24 @@
                 html += `
                     <div style="margin-top:12px;padding:8px;background:#161b22;border-radius:6px;font-size:11px;color:#8b949e;text-align:center">
                         Last automation: ${formatDate(status.lastTriggered, true)} (${status.activeRuleName || status.activeRule || 'unknown'})
+                    </div>
+                `;
+            }
+            
+            // Curtailment status indicator (if active)
+            if (window.curtailmentState && window.curtailmentState.active) {
+                html += `
+                    <div style="margin-top:12px;padding:10px;background:linear-gradient(135deg,#f0883e 0%,#da3633 100%);border-radius:6px;border-left:3px solid #ff6b35">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                            <div style="display:flex;align-items:center;gap:6px;flex:1">
+                                <span style="font-size:14px">☀️</span>
+                                <div style="flex:1">
+                                    <div style="font-weight:600;color:#fff;font-size:11px">Solar Curtailment Active</div>
+                                    <div style="font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px">${window.curtailmentState.currentPrice ? (window.curtailmentState.currentPrice.toFixed(2) + '¢ < ' + window.curtailmentState.priceThreshold + '¢') : 'Price below threshold'}</div>
+                                </div>
+                            </div>
+                            <div style="font-size:11px;color:#fff;font-weight:700;background:rgba(0,0,0,0.3);padding:4px 8px;border-radius:3px;white-space:nowrap">Export: 0W</div>
+                        </div>
                     </div>
                 `;
             }
@@ -5966,6 +5991,28 @@
                     // Store cycle result for debug display
                     window.lastCycleResult = data.result;
                     
+                    // Handle curtailment feedback
+                    if (data.result?.curtailment) {
+                        const curtailment = data.result.curtailment;
+                        // Store curtailment state for display in info box
+                        window.curtailmentState = {
+                            active: curtailment.enabled && curtailment.triggered,
+                            enabled: curtailment.enabled,
+                            triggered: curtailment.triggered,
+                            currentPrice: curtailment.currentPrice,
+                            priceThreshold: curtailment.priceThreshold
+                        };
+                        if (curtailment.error) {
+                            showMessage('warning', `☀️ Curtailment error: ${curtailment.error}`, 5000);
+                        } else if (curtailment.stateChanged) {
+                            if (curtailment.action === 'activated') {
+                                showMessage('info', `☀️ Solar curtailment activated (price ${curtailment.currentPrice.toFixed(2)}¢ < ${curtailment.priceThreshold}¢)`, 5000);
+                            } else if (curtailment.action === 'deactivated') {
+                                showMessage('success', `☀️ Solar curtailment deactivated (price ${curtailment.currentPrice.toFixed(2)}¢ >= ${curtailment.priceThreshold}¢)`, 5000);
+                            }
+                        }
+                    }
+                    
                     // Immediately update debug box if visible
                     const debugContent = document.getElementById('debugContent');
                     const debugTimestamp = document.getElementById('debugTimestamp');
@@ -6043,7 +6090,7 @@
         function showAddRuleModal() {
             const modalHtml = `
                 <div id="addRuleModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:10000">
-                    <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;width:95%;max-width:700px;max-height:90vh;overflow-y:auto">
+                    <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;width:95%;max-width:840px;max-height:90vh;overflow-y:auto">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
                             <h3 style="margin:0;font-size:18px;color:#e6edf3">➕ Create New Automation Rule</h3>
                             <button onclick="closeAddRuleModal()" style="background:none;border:none;color:#8b949e;font-size:20px;cursor:pointer">✕</button>
@@ -7575,6 +7622,15 @@
                 try { initializePageData(); } catch (err) { console.error('Failed to initialize dashboard', err); }
             }
         });
+
+        // Tesla Integration nav link visibility
+        if (typeof window.auth !== 'undefined' && window.auth) {
+            window.auth.onAuthStateChanged((user) => {
+                if (user && user.email === 'sardanapalos928@hotmail.com') {
+                    document.getElementById('teslaNavLink').style.display = '';
+                }
+            });
+        }
     </script>
 </body>
 </html>

@@ -375,6 +375,7 @@
             <a href="/control.html" class="nav-link">🎮 Controls</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
             <a href="/curtailment-discovery.html" class="nav-link">🔬 WIP - Topology Discovery</a>
+            <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
         </div>
         <div class="nav-right">
             <span class="nav-subtitle">Sign in to continue</span>
@@ -431,7 +432,7 @@
                         <div class="form-group">
                             <label for="signinPassword">Password</label>
                             <div class="input-wrapper">
-                                <input type="password" id="signinPassword" placeholder="••••••••" required>
+                                <input type="password" id="signinPassword" placeholder="••••••••" autocomplete="current-password" required>
                                 <span class="input-icon">🔒</span>
                                 <button type="button" class="password-toggle" data-target="signinPassword" aria-label="Toggle password visibility">👁️</button>
                             </div>
@@ -466,7 +467,7 @@
                         <div class="form-group">
                             <label for="signupPassword">Password</label>
                             <div class="input-wrapper">
-                                <input type="password" id="signupPassword" placeholder="••••••••" minlength="6" required>
+                                <input type="password" id="signupPassword" placeholder="••••••••" minlength="6" autocomplete="new-password" required>
                                 <span class="input-icon">🔒</span>
                                 <button type="button" class="password-toggle" data-target="signupPassword" aria-label="Toggle password visibility">👁️</button>
                             </div>
@@ -474,7 +475,7 @@
                         <div class="form-group">
                             <label for="signupPasswordConfirm">Confirm Password</label>
                             <div class="input-wrapper">
-                                <input type="password" id="signupPasswordConfirm" placeholder="••••••••" required>
+                                <input type="password" id="signupPasswordConfirm" placeholder="••••••••" autocomplete="new-password" required>
                                 <span class="input-icon">🔒</span>
                                 <button type="button" class="password-toggle" data-target="signupPasswordConfirm" aria-label="Toggle password visibility">👁️</button>
                             </div>
@@ -809,6 +810,15 @@
                 'auth/popup-blocked': 'Sign-in popup was blocked. Please allow popups for this site.'
             };
             return messages[code] || 'An error occurred. Please try again.';
+        }
+
+        // Tesla Integration nav link visibility
+        if (typeof window.auth !== 'undefined' && window.auth) {
+            window.auth.onAuthStateChanged((user) => {
+                if (user && user.email === 'sardanapalos928@hotmail.com') {
+                    document.getElementById('teslaNavLink').style.display = '';
+                }
+            });
         }
     </script>
 </body>

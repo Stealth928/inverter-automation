@@ -240,6 +240,7 @@
       <a href="/control.html" class="nav-link">🎮 Controls</a>
       <a href="/settings.html" class="nav-link">⚙️ Settings</a>
       <a href="/curtailment-discovery.html" class="nav-link">🔬 WIP - Topology Discovery</a>
+      <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
     </div>
     <div class="nav-right">
       <div class="user-menu" data-user-menu>
@@ -1037,6 +1038,15 @@
         btn.disabled = false;
         btn.textContent = '📊 Get All Real-Time Data (No Filters)';
       }
+    }
+
+    // Show Tesla link only for allowed user
+    if (typeof window.auth !== 'undefined' && window.auth) {
+      window.auth.onAuthStateChanged((user) => {
+        if (user && user.email === 'sardanapalos928@hotmail.com') {
+          document.getElementById('teslaNavLink').style.display = '';
+        }
+      });
     }
 
     // Initialize Firebase on page load

@@ -343,6 +343,56 @@
                 transform: translateY(0);
             }
         }
+        /* Curtailment Toggle Button */
+        .curtailment-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 12px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 2px solid var(--border-primary);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+            min-width: 180px;
+        }
+        .curtailment-toggle:hover {
+            border-color: var(--accent-blue);
+            background: var(--border-primary);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(88, 166, 255, 0.15);
+        }
+        .curtailment-toggle:active {
+            transform: translateY(0);
+        }
+        .curtailment-toggle.active {
+            background: var(--gradient-success);
+            border-color: var(--color-success-dark);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(35, 134, 54, 0.25);
+        }
+        .curtailment-toggle.active:hover {
+            background: linear-gradient(135deg, #2ea043, #238636);
+            border-color: #2ea043;
+            box-shadow: 0 8px 24px rgba(35, 134, 54, 0.35);
+        }
+        .curtailment-icon {
+            font-size: 16px;
+            display: inline-block;
+            transition: transform 0.3s ease;
+        }
+        .curtailment-toggle.active .curtailment-icon {
+            transform: rotate(180deg);
+        }
+        .curtailment-state {
+            display: inline-block;
+            min-width: 70px;
+            text-align: left;
+        }
     </style>
 </head>
 <body>
@@ -355,6 +405,7 @@
             <a href="/control.html" class="nav-link">🎮 Controls</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
             <a href="/curtailment-discovery.html" class="nav-link">🔬 WIP - Topology Discovery</a>
+            <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
         </div>
         <div class="nav-right">
             <div class="nav-subtitle">Configuration Manager</div>
@@ -524,6 +575,127 @@
             </div>
         </div>
 
+        <!-- Solar Curtailment -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        ☀️ Solar Curtailment
+                        <span class="badge badge-sync" id="curtailmentBadge">Synced</span>
+                    </div>
+                </div>
+            </div>
+            <div class="section-description">
+                Automatically reduce export power to 0 when feed-in price falls below your threshold. Prevents negative revenue during low or negative price periods.
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <div class="setting-label">Solar Curtailment Status</div>
+                    <div class="setting-hint" id="curtailmentStatusHint">Click to enable automatic export control</div>
+                    <div class="setting-input">
+                        <button type="button" id="curtailment_enabled" class="curtailment-toggle btn-secondary" onclick="toggleCurtailmentButton(this)">
+                            <span class="curtailment-icon">⚙️</span>
+                            <span class="curtailment-state">Disabled</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Price Threshold (cents/kWh)</div>
+                    <div class="setting-hint">Curtail solar export when feed-in price drops below this value (e.g., -2 for negative 2 cents)</div>
+                    <div class="setting-input">
+                        <input type="number" id="curtailment_priceThreshold" placeholder="-2" step="0.1" style="width: 120px;" onchange="updateCurtailmentChanges()">
+                        <span style="margin-left: 8px; color: var(--text-secondary);">cents/kWh</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Manual Override Controls -->
+            <div class="faq-section" style="margin-top: 16px;">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> 🛠️ Manual Override (Advanced)
+                </div>
+                <div class="faq-content">
+                    <div style="padding: 12px; background: rgba(255, 212, 59, 0.08); border: 1px solid rgba(255, 212, 59, 0.3); border-radius: 8px; margin-bottom: 16px;">
+                        <div style="font-size: 13px; color: #ffd43b; font-weight: 600; margin-bottom: 6px;">⚠️ Last Resort Tool</div>
+                        <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5;">
+                            Use these controls only if curtailment automation fails or your inverter gets stuck at 0W export. 
+                            These directly query and modify inverter settings, bypassing normal automation.
+                        </div>
+                    </div>
+                    
+                    <div class="settings-grid" style="margin-bottom: 16px;">
+                        <div class="setting-item">
+                            <div class="setting-label">Current Export Limit</div>
+                            <div class="setting-hint">Read the current ExportLimit setting from your inverter</div>
+                            <div class="setting-input" style="display: flex; gap: 8px; align-items: center;">
+                                <button type="button" class="btn-secondary" onclick="event.preventDefault(); readExportLimit(); return false;" style="padding: 8px 14px;">
+                                    👁️ Read Current
+                                </button>
+                                <span id="currentExportLimit" style="font-size: 13px; color: var(--text-secondary); font-weight: 500;">—</span>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="setting-label">Force Set Export Limit</div>
+                            <div class="setting-hint">Manually set ExportLimit value (0 = curtailed, 12000 = normal)</div>
+                            <div class="setting-input" style="display: flex; gap: 8px; align-items: center;">
+                                <input type="number" id="manualExportLimit" placeholder="12000" min="0" max="12000" step="1000" style="width: 100px;" value="12000">
+                                <span style="margin-left: 2px; color: var(--text-secondary); font-size: 12px;">W</span>
+                                <button type="button" class="btn-danger" onclick="event.preventDefault(); forceSetExportLimit(); return false;" style="padding: 8px 14px; margin-left: 4px;">
+                                    🔧 Force Set
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="padding: 10px; background: rgba(88, 166, 255, 0.08); border-radius: 6px; font-size: 12px; color: var(--text-secondary); line-height: 1.5;">
+                        <strong style="color: #79c0ff;">💡 Quick Actions:</strong><br>
+                        • Set to <strong>12000W</strong> to restore normal solar export<br>
+                        • Set to <strong>0W</strong> to manually curtail export<br>
+                        • Always read current value first to verify state
+                    </div>
+                </div>
+            </div>
+            
+            <div class="faq-section">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> How Solar Curtailment Works
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">When does curtailment activate?</div>
+                        <div class="faq-answer">
+                            During each automation cycle (every 1 minute by default), the system checks if:<br>
+                            • Curtailment is enabled<br>
+                            • Current feed-in price is below your threshold<br>
+                            If both conditions are met, export power is set to 0 watts.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">When does it restore normal operation?</div>
+                        <div class="faq-answer">
+                            When the feed-in price rises above your threshold, export power is automatically restored to 12000 watts (normal operation).
+                            The system tracks state to avoid sending redundant commands to your inverter.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">How does this interact with automation rules?</div>
+                        <div class="faq-answer">
+                            Curtailment runs AFTER automation rules in each cycle. If a rule updates your scheduler segments, 
+                            curtailment will execute afterward. Both can operate in the same cycle without conflict.
+                            <div class="faq-tip">Curtailment failures won't affect your automation rules — they execute independently.</div>
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What if curtailment fails?</div>
+                        <div class="faq-answer">
+                            If the system can't update export power (e.g., inverter offline, API error), an alert will appear on your dashboard. 
+                            The automation cycle continues normally — curtailment errors don't disrupt rule execution.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Credentials (FoxESS / Amber) -->
         <div class="section">
             <div class="section-header">
@@ -549,23 +721,25 @@
                     </div>
                 </div>
 
-                <div class="setting-item">
-                    <div class="setting-label">FoxESS API Token</div>
-                    <div class="setting-hint">Enter a FoxESS API token to allow the server to talk to your inverter (kept hidden)</div>
-                    <div class="setting-input">
-                        <input type="password" id="credentials_foxessToken" placeholder="•••••••• (leave blank to keep current)">
-                        <button type="button" class="btn-secondary" id="credentials_toggleFoxess">Show</button>
+                <form id="credentials-form">
+                    <div class="setting-item">
+                        <div class="setting-label">FoxESS API Token</div>
+                        <div class="setting-hint">Enter a FoxESS API token to allow the server to talk to your inverter (kept hidden)</div>
+                        <div class="setting-input">
+                            <input type="password" id="credentials_foxessToken" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
+                            <button type="button" class="btn-secondary" id="credentials_toggleFoxess">Show</button>
+                        </div>
                     </div>
-                </div>
 
-                <div class="setting-item">
-                    <div class="setting-label">Amber API Key (optional)</div>
-                    <div class="setting-hint">Optional API key for Amber electricity pricing (used for automation)</div>
-                    <div class="setting-input">
-                        <input type="password" id="credentials_amberKey" placeholder="•••••••• (optional)">
-                        <button type="button" class="btn-secondary" id="credentials_toggleAmber">Show</button>
+                    <div class="setting-item">
+                        <div class="setting-label">Amber API Key (optional)</div>
+                        <div class="setting-hint">Optional API key for Amber electricity pricing (used for automation)</div>
+                        <div class="setting-input">
+                            <input type="password" id="credentials_amberKey" placeholder="•••••••• (optional)" autocomplete="new-password">
+                            <button type="button" class="btn-secondary" id="credentials_toggleAmber">Show</button>
+                        </div>
                     </div>
-                </div>
+                </form>
             </div>
 
             <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
@@ -1052,12 +1226,21 @@
                 }
 
                 // Preferences
-                if (currentConfig.preferences) {
+                if (currentConfig.location) {
+                    // Location is set from setup flow - use it
+                    setInput('preferences_weatherPlace', currentConfig.location);
+                    setInput('preferences_forecastDays', currentConfig.preferences?.forecastDays || 6);
+                } else if (currentConfig.preferences) {
+                    // Fallback: old format with preferences object
                     setInput('preferences_weatherPlace', currentConfig.preferences.weatherPlace || 'Sydney, Australia');
                     setInput('preferences_forecastDays', currentConfig.preferences.forecastDays || 6);
                 } else if (currentConfig.weatherPlace) {
-                    // Fallback: if weatherPlace is at root level, set it
+                    // Fallback: weatherPlace at root level
                     setInput('preferences_weatherPlace', currentConfig.weatherPlace);
+                    setInput('preferences_forecastDays', 6);
+                } else {
+                    // Default fallback
+                    setInput('preferences_weatherPlace', 'Sydney, Australia');
                     setInput('preferences_forecastDays', 6);
                 }
 
@@ -1137,8 +1320,49 @@
                 // Blackout windows
                 renderBlackoutWindows(currentConfig.automation?.blackoutWindows || []);
                 
+                // Solar curtailment - ensure defaults are applied
+                const curtailmentConfig = currentConfig.curtailment || { enabled: false, priceThreshold: -2 };
+                if (currentConfig.curtailment) {
+                    const enabledButton = document.getElementById('curtailment_enabled');
+                    const thresholdInput = document.getElementById('curtailment_priceThreshold');
+                    const isEnabled = curtailmentConfig.enabled === true;
+                    
+                    // Update button state
+                    if (enabledButton) {
+                        if (isEnabled) {
+                            enabledButton.classList.add('active');
+                            enabledButton.querySelector('.curtailment-state').textContent = 'Enabled';
+                        } else {
+                            enabledButton.classList.remove('active');
+                            enabledButton.querySelector('.curtailment-state').textContent = 'Disabled';
+                        }
+                    }
+                    
+                    if (thresholdInput) {
+                        thresholdInput.value = curtailmentConfig.priceThreshold !== undefined ? curtailmentConfig.priceThreshold : -2;
+                    }
+                } else {
+                    // Initialize defaults if no curtailment config exists
+                    const enabledButton = document.getElementById('curtailment_enabled');
+                    const thresholdInput = document.getElementById('curtailment_priceThreshold');
+                    
+                    if (enabledButton) {
+                        enabledButton.classList.remove('active');
+                        enabledButton.querySelector('.curtailment-state').textContent = 'Disabled';
+                    }
+                    
+                    if (thresholdInput) {
+                        thresholdInput.value = -2;
+                    }
+                }
+                
                 // NOW set originalConfig to match what we just loaded (so no unsaved changes)
                 originalConfig = JSON.parse(JSON.stringify(data.result));
+                
+                // Ensure curtailment config is properly initialized in originalConfig
+                if (!originalConfig.curtailment) {
+                    originalConfig.curtailment = { enabled: false, priceThreshold: -2 };
+                }
                 
                 updateAllTimeDisplays();
                 updateStatus();
@@ -1238,6 +1462,42 @@
                 }
             }
             
+            // Check curtailment settings separately
+            const enabledButton = document.getElementById('curtailment_enabled');
+            const thresholdInput = document.getElementById('curtailment_priceThreshold');
+            
+            const currentCurtailment = {
+                enabled: enabledButton?.classList.contains('active') === true,
+                priceThreshold: parseFloat(thresholdInput?.value) || -2
+            };
+            
+            // Normalize original curtailment values to match current format
+            const originalCurtailment = originalConfig.curtailment || { enabled: false, priceThreshold: -2 };
+            const normalizedOriginal = {
+                enabled: originalCurtailment.enabled === true,
+                priceThreshold: parseFloat(originalCurtailment.priceThreshold) || -2
+            };
+
+            // Compare values directly instead of JSON strings to avoid precision issues
+            const curtailmentChanged = 
+                currentCurtailment.enabled !== normalizedOriginal.enabled ||
+                currentCurtailment.priceThreshold !== normalizedOriginal.priceThreshold;
+
+            if (curtailmentChanged) {
+                hasChanges = true;
+                const badge = document.getElementById('curtailmentBadge');
+                if (badge) {
+                    badge.textContent = 'Modified';
+                    badge.className = 'badge badge-modified';
+                }
+            } else {
+                const badge = document.getElementById('curtailmentBadge');
+                if (badge) {
+                    badge.textContent = 'Synced';
+                    badge.className = 'badge badge-sync';
+                }
+            }
+            
             hasUnsavedChanges = hasChanges;
             return hasChanges;
         }
@@ -1279,10 +1539,14 @@
                         retryDelayMs: getInputValue('api_retryDelayMs')
                     },
                     preferences: {
-                        weatherPlace: document.getElementById('preferences_weatherPlace')?.value || 'Sydney, Australia',
                         forecastDays: getInputValue('preferences_forecastDays') || 6
                     },
-                    // Also save location at root level for timezone detection
+                    // Solar curtailment
+                    curtailment: {
+                        enabled: document.getElementById('curtailment_enabled')?.classList.contains('active') === true,
+                        priceThreshold: parseFloat(document.getElementById('curtailment_priceThreshold')?.value) || -2
+                    },
+                    // Save location at root level (matches backend location field)
                     location: document.getElementById('preferences_weatherPlace')?.value || 'Sydney, Australia'
                 };
 
@@ -1335,6 +1599,13 @@
                     validationErrors.push('Forecast days: must be 1-16 days');
                 }
                 
+                // Curtailment validation
+                if (newConfig.curtailment.enabled) {
+                    if (isNaN(newConfig.curtailment.priceThreshold) || newConfig.curtailment.priceThreshold < -50 || newConfig.curtailment.priceThreshold > 50) {
+                        validationErrors.push('Curtailment price threshold: must be -50 to 50 cents/kWh');
+                    }
+                }
+                
                 if (validationErrors.length > 0) {
                     showMessage('warning', 'Validation errors:\n• ' + validationErrors.join('\n• '));
                     return;
@@ -1368,6 +1639,12 @@
 
                 // Update original config from server response
                 originalConfig = JSON.parse(JSON.stringify(data.result));
+                
+                // Ensure curtailment config is properly initialized in originalConfig
+                if (!originalConfig.curtailment) {
+                    originalConfig.curtailment = { enabled: false, priceThreshold: -2 };
+                }
+                
                 currentConfig = data.result;
 
                 updateStatus();
@@ -1409,8 +1686,10 @@
                 const daysStr = w.days && w.days.length > 0 
                     ? w.days.map(d => dayNames[d]).join(', ')
                     : 'Every day';
+                // Store the entire original object in a data attribute so getBlackoutWindowsFromUI can preserve all properties
+                const windowData = JSON.stringify(w);
                 html += `
-                    <div class="setting-item" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px" data-window-idx="${idx}">
+                    <div class="setting-item" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px" data-window-idx="${idx}" data-window-original="${windowData.replace(/"/g, '&quot;')}">
                         <div style="display:flex;align-items:center;gap:12px">
                             <input type="time" class="blackout-start" value="${w.start || '00:00'}" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:6px;border-radius:4px">
                             <span style="color:#8b949e">to</span>
@@ -1437,7 +1716,21 @@
                 const start = item.querySelector('.blackout-start')?.value;
                 const end = item.querySelector('.blackout-end')?.value;
                 if (start && end) {
-                    windows.push({ enabled: true, start, end, days: [] }); // enabled: true, days: [] means every day
+                    // Try to get the original object from the data attribute to preserve all properties
+                    const originalData = item.getAttribute('data-window-original');
+                    if (originalData) {
+                        try {
+                            const original = JSON.parse(originalData);
+                            // Update only the times, keep everything else
+                            windows.push({ ...original, start, end });
+                        } catch (e) {
+                            // Fallback if parsing fails
+                            windows.push({ enabled: true, start, end, days: [] });
+                        }
+                    } else {
+                        // Fallback for new windows that haven't been saved yet
+                        windows.push({ enabled: true, start, end, days: [] });
+                    }
                 }
             });
             return windows;
@@ -1454,6 +1747,19 @@
             const current = getBlackoutWindowsFromUI();
             current.splice(idx, 1);
             renderBlackoutWindows(current);
+            updateStatus();
+        }
+        
+        // Curtailment toggle button handler
+        function toggleCurtailmentButton(button) {
+            button.classList.toggle('active');
+            const isActive = button.classList.contains('active');
+            button.querySelector('.curtailment-state').textContent = isActive ? 'Enabled' : 'Disabled';
+            updateCurtailmentChanges();
+        }
+        
+        // Update curtailment change status
+        function updateCurtailmentChanges() {
             updateStatus();
         }
         
@@ -1809,6 +2115,103 @@
                 updateStatus();
             });
         });
+
+        // Tesla Integration nav link visibility
+        if (typeof window.auth !== 'undefined' && window.auth) {
+            window.auth.onAuthStateChanged((user) => {
+                if (user && user.email === 'sardanapalos928@hotmail.com') {
+                    document.getElementById('teslaNavLink').style.display = '';
+                }
+            });
+        }
+
+        // ==================== CURTAILMENT MANUAL OVERRIDE ====================
+        
+        async function readExportLimit() {
+            const statusEl = document.getElementById('currentExportLimit');
+            try {
+                statusEl.textContent = '⏳ Reading...';
+                statusEl.style.color = '#ffd43b';
+                
+                const resp = await authenticatedFetch('/api/inverter/settings?key=ExportLimit');
+                const data = await resp.json();
+                
+                if (data.errno === 0 && data.result && data.result.value !== undefined) {
+                    const value = data.result.value;
+                    statusEl.textContent = `${value}W`;
+                    statusEl.style.color = value === 0 ? '#f85149' : '#7ee787';
+                    
+                    // Show user-friendly message
+                    if (value === 0) {
+                        showMessage('warning', `⚠️ Export is currently CURTAILED (0W). Use Force Set to restore.`);
+                    } else {
+                        showMessage('success', `✅ Export limit is ${value}W (normal operation)`);
+                    }
+                } else {
+                    statusEl.textContent = '❌ Failed';
+                    statusEl.style.color = '#f85149';
+                    showMessage('warning', `Failed to read ExportLimit: ${data.error || data.msg || 'Unknown error'}`);
+                }
+            } catch (error) {
+                statusEl.textContent = '❌ Error';
+                statusEl.style.color = '#f85149';
+                showMessage('warning', `Error reading ExportLimit: ${error.message}`);
+            }
+        }
+        
+        async function forceSetExportLimit() {
+            const input = document.getElementById('manualExportLimit');
+            const value = parseInt(input.value);
+            
+            if (isNaN(value) || value < 0 || value > 12000) {
+                showMessage('warning', '⚠️ Please enter a valid value between 0 and 12000');
+                return;
+            }
+            
+            const actionDesc = value === 0 ? 'CURTAIL export (0W)' : value === 12000 ? 'RESTORE normal export (12000W)' : `set export to ${value}W`;
+            if (!confirm(`⚠️ Force ${actionDesc}?\n\nThis will directly modify your inverter settings, bypassing automation. Only proceed if automation has failed or your system is stuck.`)) {
+                return;
+            }
+            
+            try {
+                showMessage('info', `⏳ Setting ExportLimit to ${value}W...`);
+                
+                const resp = await authenticatedFetch('/api/device/setting/set', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        key: 'ExportLimit',
+                        value: value
+                    })
+                });
+                
+                const data = await resp.json();
+                
+                if (data.errno === 0) {
+                    showMessage('success', `✅ Export limit successfully set to ${value}W!`);
+                    
+                    // Update the read display
+                    const statusEl = document.getElementById('currentExportLimit');
+                    statusEl.textContent = `${value}W`;
+                    statusEl.style.color = value === 0 ? '#f85149' : '#7ee787';
+                    
+                    // Show appropriate follow-up message
+                    if (value === 12000) {
+                        setTimeout(() => {
+                            showMessage('info', '💡 Export restored to normal. Monitor your dashboard to verify operation.', 8000);
+                        }, 2000);
+                    } else if (value === 0) {
+                        setTimeout(() => {
+                            showMessage('warning', '⚠️ Export is now curtailed. Set to 12000W to restore normal operation.', 8000);
+                        }, 2000);
+                    }
+                } else {
+                    showMessage('warning', `❌ Failed to set ExportLimit: ${data.error || data.msg || 'Unknown error'}`);
+                }
+            } catch (error) {
+                showMessage('warning', `❌ Error setting ExportLimit: ${error.message}`);
+            }
+        }
     </script>
 </body>
 </html>

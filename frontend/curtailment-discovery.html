@@ -308,6 +308,7 @@
             <a href="/control.html" class="nav-link">🎮 Controls</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
             <a href="/curtailment-discovery.html" class="nav-link">🔬 WIP - Topology Discovery</a>
+            <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
         </div>
         <div class="nav-right">
             <div class="user-menu" data-user-menu>
@@ -717,24 +718,55 @@
                     const data = await resp.json();
                     const row = tbody.insertRow();
 
+                    // 🔍 AGGRESSIVE DEBUG LOGGING
+                    console.group(`%c🔍 DEBUG: ${key}`, 'color: #58a6ff; font-weight: bold; font-size: 12px;');
+                    console.log('Full Response:', data);
+                    console.log('Response errno:', data.errno);
+                    console.log('Response result:', data.result);
+                    console.log('result.data:', data.result?.data);
+                    console.log('result.value:', data.result?.value);
+                    console.log('data.data:', data.data);
+                    console.log('data.value:', data.value);
+                    console.log('Status HTTP:', resp.status, resp.statusText);
+                    console.groupEnd();
+                    addLog(`[DEBUG] Full response for ${key}: ${JSON.stringify(data)}`, 'info');
+
                     if (data.errno === 0) {
-                        const value = data.result?.data?.value ?? 'N/A';
-                        row.innerHTML = `
-                            <td><strong>${key}</strong></td>
-                            <td><span style="color: #7ee787;">✓ Available</span></td>
-                            <td class="value">${value}</td>
-                            <td>Key exists on device</td>
-                        `;
-                        discoveryState.keysProbed[key] = { status: 'available', value };
-                        addLog(`✓ Key available: ${key} = ${value}`, 'success');
+                        const resultIsEmpty = data.result && Object.keys(data.result).length === 0;
+                        const value = data.result?.data?.value ?? data.result?.value ?? data.data?.value ?? data.value ?? 'N/A';
+                        
+                        if (resultIsEmpty) {
+                            // Empty result means setting not available on this device
+                            console.log(`%c⚠️ ${key} - Key exists but not available on device (empty result)`, 'color: #d29922; font-weight: bold;');
+                            row.innerHTML = `
+                                <td><strong>${key}</strong></td>
+                                <td><span style="color: #d29922;">⚠ Not Available</span></td>
+                                <td>—</td>
+                                <td>Device doesn't support this setting</td>
+                            `;
+                            discoveryState.keysProbed[key] = { status: 'not-supported', value: null };
+                            addLog(`⚠️ Key not supported on device: ${key}`, 'warning');
+                        } else {
+                            // Value available
+                            const numValue = typeof value === 'string' && !isNaN(value) ? parseFloat(value) : value;
+                            console.log(`%c✓ Extracted value for ${key}: ${numValue}`, 'color: #7ee787; font-weight: bold;');
+                            row.innerHTML = `
+                                <td><strong>${key}</strong></td>
+                                <td><span style="color: #7ee787;">✓ Available</span></td>
+                                <td class="value">${numValue}</td>
+                                <td>Key exists on device</td>
+                            `;
+                            discoveryState.keysProbed[key] = { status: 'available', value: numValue };
+                            addLog(`✓ Key available: ${key} = ${numValue}`, 'success');
+                        }
                     } else {
                         row.innerHTML = `
                             <td><strong>${key}</strong></td>
                             <td><span style="color: #8b949e;">✗ Not Available</span></td>
                             <td>—</td>
-                            <td>${data.error || 'Key not found'}</td>
+                            <td>${data.msg || data.error || 'Key not found'}</td>
                         `;
-                        discoveryState.keysProbed[key] = { status: 'not-available', error: data.error };
+                        discoveryState.keysProbed[key] = { status: 'not-available', error: data.msg || data.error };
                         addLog(`✗ Key not available: ${key}`, 'warning');
                     }
                 } catch (err) {
@@ -793,29 +825,83 @@
                         });
 
                         const data = await resp.json();
+                        
+                        // 🔍 AGGRESSIVE DEBUG LOGGING FOR SETTINGS READ
+                        console.group(`%c🔍 DEBUG: readCurrentSettings - ${key}`, 'color: #d29922; font-weight: bold; font-size: 12px;');
+                        console.log('Full Response:', data);
+                        console.log('HTTP Status:', resp.status, resp.statusText);
+                        console.log('errno:', data.errno);
+                        console.log('data.result:', data.result);
+                        console.log('data.result?.data:', data.result?.data);
+                        console.log('data.result?.value:', data.result?.value);
+                        console.log('data.data?.value:', data.data?.value);
+                        console.log('All keys in response:', Object.keys(data));
+                        if (data.result) console.log('All keys in result:', Object.keys(data.result));
+                        if (data.result?.data) console.log('All keys in result.data:', Object.keys(data.result.data));
+                        console.groupEnd();
+                        
+                        console.log(`%c[${key}] Full JSON: ${JSON.stringify(data, null, 2)}`, 'color: #79c0ff; font-family: monospace;');
+                        
                         if (data.errno === 0) {
-                            settings[key] = data.result?.data?.value ?? null;
-                            addLog(`✓ ${key}: ${settings[key]}`, 'success');
+                            // Try multiple paths for the value
+                            let value = data.result?.data?.value ?? data.result?.value ?? data.data?.value ?? null;
+                            
+                            // Check if result is empty (means setting not available on device)
+                            const resultIsEmpty = data.result && Object.keys(data.result).length === 0;
+                            if (resultIsEmpty) {
+                                console.log(`%c⚠️ ${key} - Not available on this device (empty result)`, 'color: #d29922; font-weight: bold;');
+                                settings[key] = null;
+                                addLog(`⚠️ ${key}: Not available on this device`, 'warning');
+                            } else if (value !== null && value !== undefined) {
+                                // Convert string numbers to actual numbers
+                                const numValue = typeof value === 'string' ? parseFloat(value) : value;
+                                console.log(`%c✓ ${key} - Extracted value: ${numValue} (original type: ${typeof value}, converted to: ${typeof numValue})`, 'color: #7ee787; font-weight: bold;');
+                                settings[key] = numValue;
+                                addLog(`✓ ${key}: ${numValue}`, 'success');
+                            } else {
+                                console.log(`%c⚠️ ${key} - No value in result`, 'color: #d29922; font-weight: bold;');
+                                settings[key] = null;
+                                addLog(`⚠️ ${key}: No value available`, 'warning');
+                            }
+                        } else {
+                            console.log(`%c✗ ${key} - API Error: errno=${data.errno} msg=${data.msg}`, 'color: #f85149; font-weight: bold;');
+                            addLog(`✗ ${key}: API error ${data.errno} - ${data.msg}`, 'error');
                         }
                     } catch (err) {
-                        addLog(`Failed to read ${key}: ${err.message}`, 'error');
+                        console.error(`%c✗ Exception for ${key}: ${err.message}`, 'color: #f85149; font-weight: bold;', err);
+                        addLog(`✗ ${key}: ${err.message}`, 'error');
                     }
                 }
 
                 container.innerHTML = `
                     <div class="info-card">
-                        <div class="info-card-title">Export Limit Enabled</div>
+                        <div class="info-card-title">Export Limit Power (Watts)</div>
                         <div class="info-card-value">${settings.ExportLimit ?? '?'}</div>
-                        <small style="color: #8b949e; margin-top: 5px; display: block;">1 = enabled, 0 = disabled</small>
+                        <small style="color: #8b949e; margin-top: 5px; display: block;">Current maximum export to grid</small>
                     </div>
+                    ${settings.ExportLimitPower === null ? `
+                    <div class="info-card" style="margin-top: 15px; background: rgba(210, 153, 34, 0.1); border-left: 3px solid #d29922;">
+                        <div class="info-card-title">⚠️ ExportLimitPower Not Available</div>
+                        <div style="color: #d29922; font-size: 13px; margin-top: 5px;">
+                            <p style="margin: 0 0 10px 0;">This device does not report the ExportLimitPower setting. This can happen if:</p>
+                            <ul style="margin: 5px 0; padding-left: 20px;">
+                                <li>The FoxESS API is temporarily unavailable</li>
+                                <li>Your device firmware doesn't support this setting</li>
+                                <li>The setting was recently disabled in the device configuration</li>
+                            </ul>
+                            <button onclick="readCurrentSettings()" style="margin-top: 10px; padding: 6px 12px; background: rgba(210, 153, 34, 0.2); border: 1px solid #d29922; color: #d29922; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">🔄 Retry Reading</button>
+                        </div>
+                    </div>
+                    ` : `
                     <div class="info-card" style="margin-top: 15px;">
                         <div class="info-card-title">Export Limit Power (Watts)</div>
-                        <div class="info-card-value">${settings.ExportLimitPower ?? '?'}</div>
-                        <small style="color: #8b949e; margin-top: 5px; display: block;">Maximum export to grid in Watts</small>
+                        <div class="info-card-value">${settings.ExportLimitPower}</div>
+                        <small style="color: #8b949e; margin-top: 5px; display: block;">Alternative power control</small>
                     </div>
+                    `}
                 `;
 
-                discoveryState.exportLimitValue = settings.ExportLimitPower;
+                discoveryState.exportLimitValue = settings.ExportLimit;
             } catch (err) {
                 container.innerHTML = `<div class="test-result failure">Error reading settings: ${err.message}</div>`;
                 addLog(`Settings read failed: ${err.message}`, 'error');
@@ -846,30 +932,17 @@
             const container = document.getElementById('controlTestLog');
 
             try {
-                // First, enable export limiting
-                const enableResp = await authenticatedFetch('/api/device/setting/set', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ key: 'ExportLimit', value: 1, sn: discoveryState.deviceSn })
-                });
-
-                const enableData = await enableResp.json();
-                if (enableData.errno !== 0) {
-                    throw new Error(`Failed to enable export limit: ${enableData.error}`);
-                }
-
-                addLog('✓ Export limiting enabled on device', 'success');
-
-                // Then, set the limit value
+                // Set export limit directly (ExportLimit handles both enable and value)
+                // Note: value 0 disables export limiting, any other value enables it with that limit
                 const setResp = await authenticatedFetch('/api/device/setting/set', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ key: 'ExportLimitPower', value: limitValue, sn: discoveryState.deviceSn })
+                    body: JSON.stringify({ key: 'ExportLimit', value: limitValue, sn: discoveryState.deviceSn })
                 });
 
                 const setData = await setResp.json();
                 if (setData.errno !== 0) {
-                    throw new Error(`Failed to set export limit power: ${setData.error}`);
+                    throw new Error(`Failed to set export limit: ${setData.error || setData.msg}`);
                 }
 
                 addLog(`✓ Export limit set to ${limitValue}W on device`, 'success');
@@ -1036,6 +1109,15 @@
             });
         } else {
             addLog('AppShell not available', 'warning');
+        }
+
+        // Tesla Integration nav link visibility
+        if (typeof window.auth !== 'undefined' && window.auth) {
+            window.auth.onAuthStateChanged((user) => {
+                if (user && user.email === 'sardanapalos928@hotmail.com') {
+                    document.getElementById('teslaNavLink').style.display = '';
+                }
+            });
         }
     </script>
 </body>

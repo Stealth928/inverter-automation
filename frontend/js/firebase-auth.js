@@ -106,6 +106,15 @@ class FirebaseAuth {
       this.app = appRef;
       this.auth = firebase.auth();
       this.db = firebase.firestore();
+      
+      // Use Auth emulator for localhost development
+      const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
+      const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+      if (isLocalhost && !this.auth.emulatorConfig) {
+        this.auth.useEmulator('http://127.0.0.1:9099');
+        console.log('[FirebaseAuth] Using Auth emulator at http://127.0.0.1:9099');
+      }
+      
       try {
         if (firebase.analytics && typeof firebase.analytics === 'function') {
           firebase.analytics();
@@ -546,12 +555,44 @@ class FirebaseAuth {
 
 // Export singleton instance
 const firebaseAuth = new FirebaseAuth();
+
+// Helper function for authenticated API calls (for module imports)
+async function authenticatedFetch(url, options = {}) {
+  return firebaseAuth.fetchWithAuth(url, options);
+}
+
+// Helper to initialize auth (for module imports)
+async function initializeAuth(config = null, opts = {}) {
+  if (!config && typeof window !== 'undefined' && window.firebaseConfig) {
+    config = window.firebaseConfig;
+  }
+  return firebaseAuth.init(config, opts);
+}
+
 // Expose to browser global for scripts that expect `window.firebaseAuth`
 if (typeof window !== 'undefined') {
   window.firebaseAuth = firebaseAuth;
+  // Expose functions to window for global access
+  window.initializeAuth = initializeAuth;
+  window.authenticatedFetch = authenticatedFetch;
+  // Backwards-compatibility: some pages reference `window.auth`
+  // Provide a compatible alias so older pages don't need edits.
+  if (typeof window.auth === 'undefined') {
+    window.auth = firebaseAuth;
+  }
 }
 
-// Also export class for testing
+// Exports for different module systems
+// CommonJS (Node.js/testing)
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { FirebaseAuth, firebaseAuth };
+  module.exports = { FirebaseAuth, firebaseAuth, authenticatedFetch, initializeAuth };
+}
+
+// ES6 module exports (for browser import statements)
+// Make functions available as named exports
+if (typeof globalThis !== 'undefined') {
+  globalThis.authenticatedFetch = authenticatedFetch;
+  globalThis.initializeAuth = initializeAuth;
+  globalThis.FirebaseAuth = FirebaseAuth;
+  globalThis.firebaseAuth = firebaseAuth;
 }

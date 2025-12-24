@@ -49,12 +49,20 @@ function init(deps) {
  * @param {Function} next - Express next middleware function
  */
 const authenticateUser = async (req, res, next) => {
+  let idToken = null;
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    idToken = authHeader.split('Bearer ')[1];
+  } else if (req.query && req.query.idToken) {
+    // Support idToken in query params for redirect-based flows
+    idToken = req.query.idToken;
+  }
+
+  if (!idToken) {
     return res.status(401).json({ errno: 401, error: 'Unauthorized: No token provided' });
   }
   
-  const idToken = authHeader.split('Bearer ')[1];
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     req.user = decodedToken;
@@ -79,12 +87,19 @@ const tryAttachUser = async (req) => {
     return req.user;
   }
 
+  let idToken = null;
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    idToken = authHeader.split('Bearer ')[1];
+  } else if (req.query && req.query.idToken) {
+    idToken = req.query.idToken;
+  }
+
+  if (!idToken) {
     return null;
   }
 
-  const idToken = authHeader.split('Bearer ')[1];
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     req.user = decodedToken;

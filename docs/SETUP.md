@@ -3,7 +3,7 @@
 ## Quick Start
 
 ### Prerequisites
-- Node.js 18+ installed
+- Node.js 20+ installed
 - Firebase CLI: `npm install -g firebase-tools`
 - A Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
 

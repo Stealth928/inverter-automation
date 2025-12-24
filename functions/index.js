@@ -23,6 +23,23 @@ if (!admin.apps || admin.apps.length === 0) {
   admin.initializeApp();
 }
 const db = admin.firestore();
+// Helper to safely access serverTimestamp() when running against emulators
+const serverTimestamp = () => {
+  try {
+    return (admin && admin.firestore && admin.firestore.FieldValue) ? admin.firestore.FieldValue.serverTimestamp() : new Date();
+  } catch (e) {
+    return new Date();
+  }
+};
+
+// Helper to safely access FieldValue.delete() when running against emulators
+const deleteField = () => {
+  try {
+    return (admin && admin.firestore && admin.firestore.FieldValue) ? admin.firestore.FieldValue.delete() : null;
+  } catch (e) {
+    return null;
+  }
+};
 
 // Initialize API modules with dependencies
 const amberAPI = amberModule.init({
@@ -226,7 +243,7 @@ async function addAutomationAuditEntry(userId, cycleData) {
   try {
     const docId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const auditEntry = {
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: serverTimestamp(),
       epochMs: Date.now(),
       cycleId: cycleData.cycleId || docId,
       
@@ -441,7 +458,7 @@ app.post('/api/config/validate-keys', async (req, res) => {
         amberApiKey: amber_api_key || '',
         location: weather_place || 'Sydney',  // Save location for timezone detection
         setupComplete: true,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: serverTimestamp()
       };
 
       if (req.user?.uid) {
@@ -646,9 +663,17 @@ app.get('/api/amber/prices/current', async (req, res) => {
       return res.json({ errno: 0, result: [] });
     }
 
-    const siteId = req.query.siteId;
+    let siteId = req.query.siteId || userConfig.amberSiteId;
     const next = Number(req.query.next || '1') || 1;
     const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
+
+    if (!siteId) {
+      // Try to fetch sites and use the first one if not configured
+      const sites = await amberAPI.callAmberAPI('/sites', {}, userConfig, userId);
+      if (Array.isArray(sites) && sites.length > 0) {
+        siteId = sites[0].id;
+      }
+    }
 
     if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
 
@@ -719,7 +744,15 @@ app.get('/api/amber/prices', async (req, res) => {
     if (!userConfig || !userConfig.amberApiKey) {
       return res.status(400).json({ errno: 400, error: 'Amber not configured', result: [] });
     }
-    const siteId = req.query.siteId;
+    let siteId = req.query.siteId || userConfig.amberSiteId;
+    
+    if (!siteId) {
+      // Try to fetch sites and use the first one if not configured
+      const sites = await amberAPI.callAmberAPI('/sites', {}, userConfig, userId);
+      if (Array.isArray(sites) && sites.length > 0) {
+        siteId = sites[0].id;
+      }
+    }
     
     if (!siteId) {
       return res.status(400).json({ errno: 400, error: 'Site ID is required' });
@@ -783,8 +816,16 @@ app.get('/api/amber/prices/actual', authenticateUser, async (req, res) => {
       return res.status(400).json({ errno: 400, error: 'Amber not configured' });
     }
     
-    const siteId = req.query.siteId;
+    let siteId = req.query.siteId || userConfig.amberSiteId;
     const timestamp = req.query.timestamp; // ISO 8601 timestamp
+    
+    if (!siteId) {
+      // Try to fetch sites and use the first one if not configured
+      const sites = await amberAPI.callAmberAPI('/sites', {}, userConfig, userId);
+      if (Array.isArray(sites) && sites.length > 0) {
+        siteId = sites[0].id;
+      }
+    }
     
     if (!siteId) {
       return res.status(400).json({ errno: 400, error: 'Site ID is required' });
@@ -981,6 +1022,236 @@ app.get('/api/metrics/api-calls', async (req, res) => {
       result[key] = { foxess: 0, amber: 0, weather: 0 };
     }
     return res.json({ errno: 0, result });
+  }
+});
+
+// ==================== TESLA OAUTH ENDPOINTS (Before Auth Middleware) ====================
+// These endpoints must be before app.use('/api', authenticateUser) because:
+// 1. oauth-authorize manually verifies the token from query param
+// 2. oauth-callback receives redirect from Tesla (no auth headers)
+
+// OAuth authorize endpoint - redirects to Tesla
+// Note: This endpoint receives idToken as query param since redirects don't send Authorization headers
+// It manually handles authentication to support query param tokens
+app.get('/api/tesla/oauth-authorize', async (req, res) => {
+  try {
+    // Manually authenticate using query param token
+    const { idToken, clientId } = req.query;
+    if (!idToken) {
+      return res.status(401).json({ errno: 401, error: 'No authentication token provided' });
+    }
+    
+    if (!clientId) {
+      return res.status(400).json({ errno: 400, error: 'clientId is required in query params' });
+    }
+    
+    let user;
+    try {
+      user = await admin.auth().verifyIdToken(idToken);
+    } catch (tokenError) {
+      console.error('[Tesla] Token verification failed:', tokenError.message);
+      return res.status(401).json({ errno: 401, error: 'Invalid or expired token' });
+    }
+    
+    // Check if user is authorized for Tesla
+    const allowedEmail = 'sardanapalos928@hotmail.com';
+    if (user.email !== allowedEmail) {
+      return res.status(403).json({ 
+        errno: 403, 
+        error: 'Access denied. Tesla integration is currently restricted to authorized users.' 
+      });
+    }
+    
+    // Generate state token for CSRF protection
+    const stateToken = crypto.randomBytes(32).toString('hex');
+    const state = Buffer.from(JSON.stringify({ 
+      userId: user.uid, 
+      clientId: clientId.trim(),  // Store clientId in state for use in callback
+      timestamp: Date.now(),
+      nonce: crypto.randomBytes(16).toString('hex')
+    })).toString('base64');
+    
+    // Tesla OAuth authorize URL
+    const teslaAuthUrl = 'https://auth.tesla.com/oauth2/v3/authorize';
+    // Get the original host from the referer or use X-Forwarded-Host header
+    // When called from Firebase Hosting, X-Forwarded-Host will be the Firebase domain
+    // If not available, use a hardcoded Firebase domain since that's where OAuth will redirect to
+    const host = req.get('X-Forwarded-Host') || req.get('referer')?.split('/')[2] || 'inverter-automation-firebase.web.app';
+    const redirectUri = `https://${host}/api/tesla/oauth-callback`;
+    // Tesla Fleet API scopes: vehicle_device_data (read), vehicle_cmds (control), vehicle_charging_cmds (charging), offline_access (refresh tokens)
+    const scope = 'openid vehicle_device_data vehicle_cmds vehicle_charging_cmds offline_access';
+    
+    const authorizeUrl = `${teslaAuthUrl}?` +
+      `client_id=${encodeURIComponent(clientId)}&` +
+      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+      `response_type=code&` +
+      `scope=${encodeURIComponent(scope)}&` +
+      `state=${encodeURIComponent(state)}`;
+    
+    console.log(`[Tesla] User ${user.uid} initiating OAuth flow`);
+    res.redirect(authorizeUrl);
+  } catch (error) {
+    console.error('[Tesla] oauth-authorize error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// OAuth callback endpoint - handles redirect from Tesla
+app.get('/api/tesla/oauth-callback', async (req, res) => {
+  try {
+    const { code, state, error: teslaError } = req.query;
+    
+    // Check for errors from Tesla
+    if (teslaError) {
+      console.error('[Tesla] OAuth error from Tesla:', teslaError);
+      return res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent(teslaError)}`);
+    }
+    
+    if (!code || !state) {
+      console.error('[Tesla] Missing code or state in callback');
+      return res.redirect('/tesla-integration.html?oauth_error=missing_code_or_state');
+    }
+    
+    // Decode and verify state
+    let stateData;
+    try {
+      stateData = JSON.parse(Buffer.from(state, 'base64').toString());
+      
+      // Verify state has required fields
+      if (!stateData.userId || !stateData.timestamp || !stateData.nonce) {
+        console.error('[Tesla] State missing required fields:', stateData);
+        return res.redirect('/tesla-integration.html?oauth_error=invalid_state_format');
+      }
+      
+      // Check state age (15 minutes max)
+      const stateAge = Date.now() - stateData.timestamp;
+      if (stateAge > 15 * 60 * 1000) {
+        console.error('[Tesla] State token expired:', stateAge / 1000, 'seconds old');
+        return res.redirect('/tesla-integration.html?oauth_error=state_expired');
+      }
+      
+      console.log(`[Tesla] Valid state token for user ${stateData.userId}`);
+    } catch (e) {
+      console.error('[Tesla] Invalid state token:', e);
+      return res.redirect('/tesla-integration.html?oauth_error=invalid_state');
+    }
+    
+    const userId = stateData.userId;
+    const clientId = stateData.clientId;  // Retrieved from state token
+    
+    console.log(`[Tesla] oauth-callback received, attempting token exchange for user ${userId}`);
+    
+    // Get user's client secret from Firestore
+    let clientSecret = '';
+    try {
+      const userTeslaConfig = await db.collection('users').doc(userId).collection('config').doc('tesla').get();
+      if (userTeslaConfig.exists) {
+        clientSecret = userTeslaConfig.data().clientSecret;
+      }
+    } catch (err) {
+      console.warn('[Tesla] Error fetching user Tesla config:', err.message);
+    }
+    
+    if (!clientId || !clientSecret) {
+      console.error('[Tesla] Missing Tesla clientSecret for user or clientId in state');
+      return res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent('User Tesla credentials not configured')}`);
+    }
+    
+    // Exchange authorization code for tokens
+    // Get the original host from X-Forwarded-Host or use hardcoded Firebase domain
+    const host = req.get('X-Forwarded-Host') || 'inverter-automation-firebase.web.app';
+    const redirectUri = `https://${host}/api/tesla/oauth-callback`;
+    const tokenUrl = 'https://auth.tesla.com/oauth2/v3/token';
+    
+    console.log(`[Tesla] Token exchange - redirectUri: ${redirectUri}, clientId: ${clientId}`);
+    
+    const tokenResponse = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Tesla-Automation/1.0'
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri
+      }),
+      redirect: 'manual'  // Don't follow redirects - handle manually if needed
+    });
+    
+    let tokenData;
+    const responseText = await tokenResponse.text();
+    
+    console.log(`[Tesla] Token endpoint response status: ${tokenResponse.status} ${tokenResponse.statusText}`);
+    console.log(`[Tesla] Response headers:`, {
+      contentType: tokenResponse.headers.get('content-type'),
+      contentLength: tokenResponse.headers.get('content-length')
+    });
+    console.log(`[Tesla] Response body (first 1000 chars):`, responseText.substring(0, 1000));
+    
+    try {
+      tokenData = JSON.parse(responseText);
+    } catch (parseError) {
+      // If response is not JSON, it's likely an HTML error page from Tesla
+      console.error('[Tesla] Token response is not JSON:', {
+        status: tokenResponse.status,
+        statusText: tokenResponse.statusText,
+        headers: Object.fromEntries(tokenResponse.headers),
+        body: responseText.substring(0, 500)
+      });
+      console.error('[Tesla] Full request details:', {
+        redirect_uri: redirectUri,
+        client_id: clientId,
+        code: code.substring(0, 50) + '...'
+      });
+      return res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent('Tesla API error: ' + tokenResponse.statusText)}`);
+    }
+    
+    if (!tokenResponse.ok) {
+      const errorDetail = tokenData.error_description || tokenData.error || 'Unknown error';
+      console.error('[Tesla] Token exchange failed:', {
+        status: tokenResponse.status,
+        error: tokenData.error,
+        description: tokenData.error_description,
+        raw: tokenData
+      });
+      console.error('[Tesla] FORBIDDEN details:', {
+        client_id_starts_with: clientId.substring(0, 10),
+        client_secret_starts_with: clientSecret.substring(0, 10),
+        redirect_uri: redirectUri,
+        code_starts_with: code.substring(0, 20)
+      });
+      return res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent('Token exchange failed: ' + errorDetail)}`);
+    }
+    
+    if (!tokenData.access_token) {
+      console.error('[Tesla] No access token in response:', tokenData);
+      return res.redirect('/tesla-integration.html?oauth_error=no_access_token');
+    }
+    
+    console.log(`[Tesla] Successfully exchanged code for tokens (access_token: ${tokenData.access_token.substring(0, 20)}..., refresh_token: ${tokenData.refresh_token ? 'present' : 'missing'})`);
+    
+    // Save tokens to Firestore
+    try {
+      await teslaAPI.saveUserTokens(
+        userId,
+        tokenData.access_token,
+        tokenData.refresh_token || null,
+        tokenData.expires_in || null
+      );
+      console.log(`[Tesla] Tokens saved for user ${userId}`);
+    } catch (saveError) {
+      console.error('[Tesla] Failed to save tokens:', saveError);
+      return res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent('Failed to save tokens')}`);
+    }
+    
+    // Redirect back to tesla-integration page with success
+    res.redirect('/tesla-integration.html?oauth_success=true');
+  } catch (error) {
+    console.error('[Tesla] oauth-callback error:', error);
+    res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent(error.message)}`);
   }
 });
 
@@ -1314,6 +1585,160 @@ async function saveUserAutomationState(userId, state) {
 }
 
 /**
+ * Check and apply solar curtailment if conditions are met
+ * This runs AFTER automation rules to avoid conflicts
+ * 
+ * @param {string} userId - User ID
+ * @param {object} userConfig - User configuration
+ * @param {array} amberData - Current Amber price data
+ * @returns {object} Result of curtailment check and action
+ */
+async function checkAndApplyCurtailment(userId, userConfig, amberData) {
+  const result = {
+    enabled: false,
+    triggered: false,
+    priceThreshold: null,
+    currentPrice: null,
+    action: null,
+    error: null,
+    stateChanged: false
+  };
+
+  try {
+    // OPTIMIZATION: If curtailment is not enabled, skip state check
+    if (!userConfig?.curtailment?.enabled) {
+      result.enabled = false;
+      
+      // Only check and restore if we have a device and might need to deactivate
+      if (userConfig?.deviceSn) {
+        // Do a quick check if state exists WITHOUT reading full document
+        // We only need to know if it was previously active
+        const stateDoc = await db.collection('users').doc(userId).collection('curtailment').doc('state').get();
+        const curtailmentState = stateDoc.exists ? stateDoc.data() : { active: false };
+        
+        // If it was previously active, restore power
+        if (curtailmentState.active) {
+          console.log(`[Curtailment] Restoring power (was active, now disabled)`);
+          
+          const setResult = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', {
+            sn: userConfig.deviceSn,
+            key: 'ExportLimit',
+            value: 12000
+          }, userConfig, userId);
+          
+          if (setResult?.errno === 0) {
+            result.action = 'deactivated_by_disable';
+            result.stateChanged = true;
+            await db.collection('users').doc(userId).collection('curtailment').doc('state').set({
+              active: false,
+              lastPrice: null,
+              lastDeactivated: Date.now(),
+              disabledByUser: true
+            });
+          } else {
+            result.error = `Failed to restore export limit: ${setResult?.msg || 'Unknown error'}`;
+          }
+        }
+      }
+      
+      return result;
+    }
+
+    // Curtailment is ENABLED - do full check
+    result.enabled = true;
+    result.priceThreshold = userConfig.curtailment.priceThreshold;
+
+    // Get current feed-in price from Amber data
+    if (!Array.isArray(amberData) || amberData.length === 0) {
+      result.error = 'No Amber price data available';
+      return result;
+    }
+
+    const currentInterval = amberData.find(p => p.type === 'CurrentInterval' && p.channelType === 'feedIn');
+    if (!currentInterval) {
+      result.error = 'No current feed-in price found';
+      return result;
+    }
+
+    // Negate the feed-in price for display (Amber API returns negative values for feed-in)
+    // This makes it positive for display and comparison
+    result.currentPrice = -currentInterval.perKwh;
+
+    // Get curtailment state from Firestore
+    const stateDoc = await db.collection('users').doc(userId).collection('curtailment').doc('state').get();
+    const curtailmentState = stateDoc.exists ? stateDoc.data() : { active: false, lastPrice: null };
+
+    // Determine if we should curtail (price below threshold)
+    const shouldCurtail = result.currentPrice < result.priceThreshold;
+    result.triggered = shouldCurtail;
+
+    // Only take action if state has changed (avoid redundant API calls)
+    if (shouldCurtail && !curtailmentState.active) {
+      // Activate curtailment: set ExportLimit to 0
+      console.log(`[Curtailment] Activating (price ${result.currentPrice.toFixed(2)}¢ < ${result.priceThreshold}¢)`);
+      
+      if (!userConfig?.deviceSn) {
+        result.error = 'No device SN configured';
+        return result;
+      }
+
+      const setResult = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', {
+        sn: userConfig.deviceSn,
+        key: 'ExportLimit',
+        value: 0
+      }, userConfig, userId);
+
+      if (setResult?.errno === 0) {
+        result.action = 'activated';
+        result.stateChanged = true;
+        await db.collection('users').doc(userId).collection('curtailment').doc('state').set({
+          active: true,
+          lastPrice: result.currentPrice,
+          lastActivated: Date.now(),
+          threshold: result.priceThreshold
+        });
+      } else {
+        result.error = `Failed to set export limit: ${setResult?.msg || 'Unknown error'}`;
+      }
+
+    } else if (!shouldCurtail && curtailmentState.active) {
+      // Deactivate curtailment: restore ExportLimit to 12000
+      console.log(`[Curtailment] Deactivating (price ${result.currentPrice.toFixed(2)}¢ >= ${result.priceThreshold}¢)`);
+      
+      if (!userConfig?.deviceSn) {
+        result.error = 'No device SN configured';
+        return result;
+      }
+
+      const setResult = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', {
+        sn: userConfig.deviceSn,
+        key: 'ExportLimit',
+        value: 12000
+      }, userConfig, userId);
+
+      if (setResult?.errno === 0) {
+        result.action = 'deactivated';
+        result.stateChanged = true;
+        await db.collection('users').doc(userId).collection('curtailment').doc('state').set({
+          active: false,
+          lastPrice: result.currentPrice,
+          lastDeactivated: Date.now(),
+          threshold: result.priceThreshold
+        });
+      } else {
+        result.error = `Failed to restore export limit: ${setResult?.msg || 'Unknown error'}`;
+      }
+    }
+
+  } catch (error) {
+    result.error = error.message;
+    console.error('[Curtailment] Error:', error);
+  }
+
+  return result;
+}
+
+/**
  * Get user automation rules from Firestore
  */
 async function getUserRules(userId) {
@@ -1378,7 +1803,7 @@ async function addHistoryEntry(userId, entry) {
   try {
     await db.collection('users').doc(userId).collection('history').add({
       ...entry,
-      timestamp: admin.firestore.FieldValue.serverTimestamp()
+      timestamp: serverTimestamp()
     });
     return true;
   } catch (error) {
@@ -1481,11 +1906,11 @@ app.post('/api/config', async (req, res) => {
 app.post('/api/config/clear-credentials', authenticateUser, async (req, res) => {
   try {
     const updates = {
-      deviceSn: admin.firestore.FieldValue.delete(),
-      foxessToken: admin.firestore.FieldValue.delete(),
-      amberApiKey: admin.firestore.FieldValue.delete(),
+      deviceSn: deleteField(),
+      foxessToken: deleteField(),
+      amberApiKey: deleteField(),
       setupComplete: false,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: serverTimestamp()
     };
 
     // Update the user's config/main document to clear these fields
@@ -1611,8 +2036,8 @@ app.post('/api/user/init-profile', authenticateUser, async (req, res) => {
     await db.collection('users').doc(userId).set({
       uid: userId,
       email: req.user.email || '',
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: serverTimestamp(),
+      lastUpdated: serverTimestamp()
     }, { merge: true });
     
     // Ensure automation state exists and is enabled
@@ -1626,7 +2051,7 @@ app.post('/api/user/init-profile', authenticateUser, async (req, res) => {
         lastCheck: null,
         lastTriggered: null,
         activeRule: null,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: serverTimestamp()
       });
       console.log(`[API] ✅ Created new automation state for ${userId} with enabled=false`);
     } else {
@@ -1710,7 +2135,7 @@ app.post('/api/automation/trigger', async (req, res) => {
     
     // Update rule's lastTriggered
     await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).set({
-      lastTriggered: admin.firestore.FieldValue.serverTimestamp()
+      lastTriggered: serverTimestamp()
     }, { merge: true });
     
     res.json({ errno: 0, result, ruleName });
@@ -2150,7 +2575,9 @@ app.post('/api/automation/cycle', async (req, res) => {
       const result = await evaluateRule(userId, ruleId, rule, cache, inverterData, userConfig, isActiveRule /* skipCooldownCheck */);
       
       if (result.triggered) {
+        console.log(`[Automation] 🎯 Rule '${rule.name}' (${ruleId}) conditions MET - triggered=${result.triggered}`);
         if (isActiveRule) {
+          console.log(`[Automation] 🔄 Rule '${rule.name}' is ACTIVE (continuing) - checking segment status...`);
           // Active rule continues - conditions still hold
           // Calculate how long rule has been active
           const lastTriggeredMs = typeof lastTriggered === 'object' 
@@ -2158,6 +2585,38 @@ app.post('/api/automation/cycle', async (req, res) => {
             : (lastTriggered || Date.now());
           const activeForSec = Math.round((Date.now() - lastTriggeredMs) / 1000);
           const cooldownRemaining = Math.max(0, Math.round((cooldownMs - (Date.now() - lastTriggeredMs)) / 1000));
+          console.log(`[Automation] ⏱️ Active for ${activeForSec}s, cooldown remaining: ${cooldownRemaining}s`);
+          console.log(`[Automation] 📊 Current segment status: activeSegmentEnabled=${state.activeSegmentEnabled}`);
+          
+          // CRITICAL: If segment failed to send but rule is active, attempt to re-send the segment
+          if (state.activeSegmentEnabled === false && state.activeRule === ruleId) {
+            console.log(`[Automation] ⚠️ Segment previously failed for active rule '${rule.name}' - attempting RETRY...`);
+            console.log(`[Automation] 🔧 Retry attempt for userId=${userId}, ruleId=${ruleId}`);
+            let retryResult = null;
+            try {
+              retryResult = await applyRuleAction(userId, rule, userConfig);
+              console.log(`[Automation] 📤 Retry result: errno=${retryResult?.errno}, msg=${retryResult?.msg}`);
+            } catch (retryErr) {
+              console.error(`[Automation] ❌ Retry exception:`, retryErr);
+              retryResult = { errno: -1, msg: retryErr.message || 'Retry failed' };
+            }
+            
+            // Update state with retry result
+            console.log(`[Automation] 💾 Updating state after retry: activeSegmentEnabled=${retryResult?.errno === 0}`);
+            await saveUserAutomationState(userId, {
+              lastCheck: Date.now(),
+              activeSegmentEnabled: retryResult?.errno === 0,
+              lastActionResult: retryResult,
+              inBlackout: false
+            });
+            
+            if (retryResult?.errno === 0) {
+              console.log(`[Automation] ✅ Segment re-send SUCCESSFUL - segment should now be on device`);
+            } else {
+              console.error(`[Automation] ❌ Segment re-send FAILED: ${retryResult?.msg || 'unknown error'}`);
+            }
+            break;
+          }
           
           // Check if cooldown has EXPIRED - if so, reset and re-trigger in SAME cycle
           if (Date.now() - lastTriggeredMs >= cooldownMs) {
@@ -2213,7 +2672,7 @@ app.post('/api/automation/cycle', async (req, res) => {
             
             // Update rule's lastTriggered (new trigger)
             await db.collection('users').doc(userId).collection('rules').doc(ruleId).set({
-              lastTriggered: admin.firestore.FieldValue.serverTimestamp()
+              lastTriggered: serverTimestamp()
             }, { merge: true });
             
             // Update automation state with NEW active rule
@@ -2242,19 +2701,26 @@ app.post('/api/automation/cycle', async (req, res) => {
               details: result 
             });
             
+            console.log(`[Automation] ✅ Rule '${rule.name}' continuing (cooldown ${cooldownRemaining}s remaining) - segment already sent`);
+            console.log(`[Automation] 📊 Preserving segment state: activeSegmentEnabled=${state.activeSegmentEnabled}`);
             // Mark this as the triggered rule for response (continuing state)
             triggeredRule = { ruleId, ...rule, isNewTrigger: false, status: 'continuing' };
             
             // Update check timestamp only, don't re-apply segment
+            // CRITICAL: Preserve activeSegmentEnabled from previous state - if the segment failed to send,
+            // don't falsely claim it's enabled on subsequent cycles
             await saveUserAutomationState(userId, {
               lastCheck: Date.now(),
-              inBlackout: false,
-              activeSegmentEnabled: true
+              inBlackout: false
+              // DO NOT UPDATE activeSegmentEnabled - preserve prior state
             });
+            console.log(`[Automation] 💾 State updated - rule continues without re-sending segment`);
             
             break; // Rule still active, exit loop
           }
         } else {
+          console.log(`[Automation] 🆕 NEW rule triggered: '${rule.name}' (${ruleId})`);
+          console.log(`[Automation] 📊 Current active rule: ${state.activeRule || 'none'}`);
           // Mark as 'triggered' for new rules
           evaluationResults.push({ rule: rule.name, result: 'triggered', details: result });
           // New rule triggered - check priority vs active rule
@@ -2303,20 +2769,28 @@ app.post('/api/automation/cycle', async (req, res) => {
         
         // Only apply the rule action if this is a NEW rule (not the active one continuing)
         if (!isActiveRule) {
+          console.log(`[Automation] 🚀 Applying NEW rule action for '${rule.name}'...`);
+          console.log(`[Automation] 🎬 Calling applyRuleAction(userId=${userId}, rule=${rule.name})`);
           // Actually apply the rule action (create scheduler segment)
           let actionResult = null;
           try {
+            const applyStart = Date.now();
             actionResult = await applyRuleAction(userId, rule, userConfig);
+            const applyDuration = Date.now() - applyStart;
+            console.log(`[Automation] 📤 applyRuleAction completed in ${applyDuration}ms: errno=${actionResult?.errno}`);
+            console.log(`[Automation] 📋 Action result details:`, JSON.stringify({errno: actionResult?.errno, msg: actionResult?.msg, segment: actionResult?.segment ? 'present' : 'missing'}, null, 2));
           } catch (actionError) {
-            console.error(`[Automation] Action failed:`, actionError);
+            console.error(`[Automation] ❌ Action exception:`, actionError);
             actionResult = { errno: -1, msg: actionError.message || 'Action failed' };
           }
           
           // Update rule's lastTriggered (new rule triggered)
           await db.collection('users').doc(userId).collection('rules').doc(ruleId).set({
-            lastTriggered: admin.firestore.FieldValue.serverTimestamp()
+            lastTriggered: serverTimestamp()
           }, { merge: true });
           
+          console.log(`[Automation] 💾 Saving automation state for new rule...`);
+          console.log(`[Automation] 📊 State to save: activeRule=${ruleId}, activeSegmentEnabled=${actionResult?.errno === 0}`);
           // Update automation state
           // IMPORTANT: Save ruleId (doc key) not rule.name so UI can match activeRule with rule keys
           await saveUserAutomationState(userId, {
@@ -2329,6 +2803,11 @@ app.post('/api/automation/cycle', async (req, res) => {
             inBlackout: false,
             lastActionResult: actionResult
           });
+          console.log(`[Automation] ✅ State saved successfully - activeRule is now '${rule.name}'`);
+          console.log(`[Automation] 🔍 Final segment status: ${actionResult?.errno === 0 ? 'ENABLED ✅' : 'FAILED ❌'}`);
+          if (actionResult?.errno !== 0) {
+            console.error(`[Automation] 🚨 SEGMENT SEND FAILED - errno=${actionResult?.errno}, msg=${actionResult?.msg}`);
+          }
           
           // Log to audit trail - Rule turned ON
           // Include full evaluation context: ALL rules and their condition states
@@ -2658,6 +3137,23 @@ app.post('/api/automation/cycle', async (req, res) => {
       await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
     }
 
+    // ========== SOLAR CURTAILMENT CHECK ==========
+    // Run AFTER automation rules to ensure sequential execution
+    // Curtailment failures don't affect automation cycle
+    let curtailmentResult = null;
+    try {
+      console.log(`[Cycle] 🌞 Starting curtailment check with amberData: ${amberData ? amberData.length : 'null'} items`);
+      console.log(`[Cycle] 🔍 FULL userConfig:`, JSON.stringify(userConfig));
+      console.log(`[Cycle] 🔍 userConfig.curtailment specifically:`, JSON.stringify(userConfig?.curtailment));
+      curtailmentResult = await checkAndApplyCurtailment(userId, userConfig, amberData);
+      console.log(`[Cycle] 🌞 Curtailment result:`, JSON.stringify(curtailmentResult));
+      if (curtailmentResult.error) {
+        console.warn(`[Cycle] ⚠️ Curtailment check failed: ${curtailmentResult.error}`);
+      }
+    } catch (curtErr) {
+      console.error('[Cycle] ❌ Curtailment exception:', curtErr);
+      curtailmentResult = { error: curtErr.message, enabled: userConfig?.curtailment?.enabled || false };
+    }
     
     // Calculate cycle duration
     const cycleDurationMs = Date.now() - cycleStartTime;
@@ -2672,6 +3168,8 @@ app.post('/api/automation/cycle', async (req, res) => {
         totalRules,
         evaluationResults,
         lastCheck: Date.now(),
+        // Curtailment result (for UI feedback)
+        curtailment: curtailmentResult,
         // Performance
         cycleDurationMs
       }
@@ -2745,7 +3243,7 @@ app.post('/api/automation/cancel', async (req, res) => {
     try {
       await addHistoryEntry(userId, {
         type: 'automation_cancel',
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
+        timestamp: serverTimestamp()
       });
     } catch (e) { /* ignore */ }
     
@@ -2878,8 +3376,8 @@ app.post('/api/automation/rule/create', async (req, res) => {
       conditions: conditions || {},
       action: action || {},
       cooldownMinutes: typeof cooldownMinutes === 'number' ? cooldownMinutes : 5,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
     };
     
     await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).set(rule);
@@ -2903,7 +3401,7 @@ app.post('/api/automation/rule/update', async (req, res) => {
     
     // Build update object with ONLY provided fields to avoid overwriting existing data
     const update = {
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: serverTimestamp()
     };
     
     // Only include fields that were explicitly provided in the request
@@ -3310,16 +3808,72 @@ app.post('/api/device/battery/soc/set', async (req, res) => {
 // ==================== DEVICE SETTINGS (Curtailment Discovery) ====================
 
 // Read device setting (for discovery / testing)
+// NOTE: Includes retry logic for empty results (transient failures)
 app.post('/api/device/setting/get', authenticateUser, async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
     const sn = req.body.sn || userConfig?.deviceSn;
     const key = req.body.key;
     
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[DeviceSetting] REQUEST - Key: ${key}, SN: ${sn}`);
+    console.log(`[DeviceSetting] User: ${req.user.uid}`);
+    
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     if (!key) return res.status(400).json({ errno: 400, error: 'Missing required parameter: key' });
     
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key }, userConfig, req.user.uid);
+    // Retry logic: if result is empty, retry once after short delay
+    let result = null;
+    let retryCount = 0;
+    const maxRetries = 1;
+    
+    while (retryCount <= maxRetries) {
+      if (retryCount > 0) {
+        console.log(`[DeviceSetting] Retry ${retryCount}/${maxRetries} for key ${key} after 500ms delay...`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      console.log(`[DeviceSetting] Calling FoxESS API with:`, { sn, key });
+      result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key }, userConfig, req.user.uid);
+      
+      // 🔍 AGGRESSIVE DEBUG LOGGING
+      console.log(`[DeviceSetting] FULL RESPONSE OBJECT:`, JSON.stringify(result, null, 2));
+      console.log(`[DeviceSetting] errno:`, result?.errno);
+      console.log(`[DeviceSetting] result field:`, JSON.stringify(result?.result, null, 2));
+      console.log(`[DeviceSetting] result.data:`, JSON.stringify(result?.result?.data, null, 2));
+      console.log(`[DeviceSetting] result.value:`, result?.result?.value);
+      console.log(`[DeviceSetting] error field:`, result?.error);
+      console.log(`[DeviceSetting] msg field:`, result?.msg);
+      
+      // Check if result is not empty or if we got an explicit error (don't retry those)
+      const resultIsEmpty = result?.result && Object.keys(result.result).length === 0;
+      const hasError = result?.errno !== 0 && result?.error;
+      
+      if (!resultIsEmpty || hasError) {
+        // Either we got data or an explicit error - don't retry
+        console.log(`[DeviceSetting] Result received${resultIsEmpty ? ' (empty)' : ''}${hasError ? ` (error: ${result.errno})` : ''} - stopping retries`);
+        break;
+      }
+      
+      // Empty result and no explicit error - this might be transient
+      if (resultIsEmpty && retryCount < maxRetries) {
+        console.log(`[DeviceSetting] ⚠️ Empty result received for ${key} (possible transient failure) - will retry...`);
+        retryCount++;
+        continue;
+      } else if (resultIsEmpty && retryCount >= maxRetries) {
+        console.log(`[DeviceSetting] ⚠️ Empty result received for ${key} after ${maxRetries + 1} attempts (device may not support this setting)`);
+        break;
+      }
+    }
+    
+    if (result?.result?.data) {
+      console.log(`[DeviceSetting] Keys in result.data:`, Object.keys(result.result.data));
+      Object.entries(result.result.data).forEach(([k, v]) => {
+        console.log(`  - ${k}: ${JSON.stringify(v)} (type: ${typeof v})`);
+      });
+    }
+    console.log(`${'='.repeat(80)}\n`);
+    
     res.json(result);
   } catch (error) {
     console.error('[API] /api/device/setting/get error:', error);
@@ -3329,22 +3883,111 @@ app.post('/api/device/setting/get', authenticateUser, async (req, res) => {
 
 // Write device setting (for discovery / testing and curtailment control)
 app.post('/api/device/setting/set', authenticateUser, async (req, res) => {
+  let key, value;
   try {
     const userConfig = await getUserConfig(req.user.uid);
     const sn = req.body.sn || userConfig?.deviceSn;
-    const key = req.body.key;
-    const value = req.body.value;
+    key = req.body.key;
+    value = req.body.value;
+    
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[DeviceSetting] SET REQUEST`);
+    console.log(`  User: ${req.user.uid}`);
+    console.log(`  Device SN: ${sn}`);
+    console.log(`  Key: ${key}`);
+    console.log(`  Value: ${value} (type: ${typeof value})`);
     
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     if (!key) return res.status(400).json({ errno: 400, error: 'Missing required parameter: key' });
     if (value === undefined || value === null) return res.status(400).json({ errno: 400, error: 'Missing required parameter: value' });
     
-    console.log(`[DeviceSetting] User ${req.user.uid} setting ${key}=${value} on device ${sn}`);
-    
+    console.log(`[DeviceSetting] Calling FoxESS API...`);
     const result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', { sn, key, value }, userConfig, req.user.uid);
+    
+    // 🔍 AGGRESSIVE DEBUG LOGGING
+    console.log(`[DeviceSetting] SET RESPONSE:`);
+    console.log(`  Full response:`, JSON.stringify(result, null, 2));
+    console.log(`  errno:`, result?.errno);
+    console.log(`  result:`, JSON.stringify(result?.result, null, 2));
+    console.log(`  error:`, result?.error);
+    console.log(`  msg:`, result?.msg);
+    console.log(`${'='.repeat(80)}\n`);
+    
     res.json(result);
   } catch (error) {
-    console.error('[API] /api/device/setting/set error:', error);
+    console.error(`[DeviceSetting] SET ERROR for ${key}=${value}:`, error);
+    console.log(`${'='.repeat(80)}\n`);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Device status check (diagnostic endpoint to verify device connectivity and API responsiveness)
+app.get('/api/device/status/check', authenticateUser, async (req, res) => {
+  try {
+    const userConfig = await getUserConfig(req.user.uid);
+    const sn = req.query.sn || userConfig?.deviceSn;
+    
+    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    
+    console.log(`[DeviceStatusCheck] Checking device status for SN: ${sn}`);
+    
+    // Try to fetch device list - this tells us if the API is responding and device is online
+    const deviceListResult = await foxessAPI.callFoxESSAPI('/op/v0/device/list', 'GET', null, userConfig, req.user.uid);
+    
+    let deviceFound = false;
+    let deviceInfo = null;
+    
+    if (deviceListResult?.errno === 0 && deviceListResult?.result?.data?.length > 0) {
+      const devices = deviceListResult.result.data;
+      deviceInfo = devices.find(d => d.sn === sn);
+      deviceFound = !!deviceInfo;
+    }
+    
+    // Try to fetch real-time data - this verifies the device is actively reporting
+    const realtimeResult = await foxessAPI.callFoxESSAPI(`/op/v0/device/real-time?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
+    
+    const realtimeWorking = realtimeResult?.errno === 0 && realtimeResult?.result?.data;
+    
+    // Try to fetch a sample setting to verify settings API is working
+    const settingResult = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key: 'ExportLimit' }, userConfig, req.user.uid);
+    
+    const settingResponseOk = settingResult?.errno === 0;
+    const settingHasData = settingResult?.result && Object.keys(settingResult.result).length > 0;
+    
+    return res.json({
+      errno: 0,
+      result: {
+        deviceSn: sn,
+        deviceFound,
+        deviceInfo: deviceInfo ? { sn: deviceInfo.sn, deviceName: deviceInfo.deviceName, deviceType: deviceInfo.deviceType } : null,
+        realtimeWorking,
+        settingResponseOk,
+        settingHasData,
+        diagnosticSummary: {
+          apiResponsive: deviceListResult?.errno === 0,
+          deviceOnline: deviceFound,
+          realtimeDataAvailable: realtimeWorking,
+          settingReadSupported: settingResponseOk && settingHasData,
+          potentialIssues: []
+        }
+      }
+    });
+    
+    // Add potential issues
+    const result = res.locals?.statusResult || {
+      deviceFound: false,
+      realtimeWorking: false,
+      settingResponseOk: false,
+      settingHasData: false
+    };
+    
+    if (!result.deviceFound) result.potentialIssues.push('Device not found in device list - may be offline or using wrong SN');
+    if (!result.realtimeWorking) result.potentialIssues.push('Real-time data API not responding - device may be offline');
+    if (!result.settingResponseOk) result.potentialIssues.push('Settings API error - possible API issue with FoxESS');
+    if (result.settingResponseOk && !result.settingHasData) result.potentialIssues.push('Settings API returned empty result - this setting may not be supported by your device');
+    
+  } catch (error) {
+    console.error('[API] /api/device/status/check error:', error);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
@@ -3839,7 +4482,7 @@ async function incrementApiCount(userId, apiType) {
         const doc = await transaction.get(docRef);
         const data = doc.exists ? doc.data() : { foxess: 0, amber: 0, weather: 0 };
         data[apiType] = (data[apiType] || 0) + 1;
-        data.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        data.updatedAt = serverTimestamp();
         transaction.set(docRef, data, { merge: true });
         console.log(`[Metrics] ✓ Incremented ${apiType} to ${data[apiType]}`);
       });
@@ -3890,7 +4533,7 @@ async function incrementGlobalApiCount(apiType) {
 
     await docRef.set({
       [apiType]: admin.firestore.FieldValue.increment(1),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: serverTimestamp()
     }, { merge: true });
   } catch (error) {
     console.error('[Metrics] Failed to increment global count:', error && error.message ? error.message : error);
@@ -3968,7 +4611,7 @@ app.post('/api/scheduler/v1/clear-all', authenticateUser, async (req, res) => {
       await db.collection('users').doc(userId).collection('history').add({
         type: 'scheduler_clear',
         by: userId,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
+        timestamp: serverTimestamp()
       });
     } catch (e) { console.warn('[Scheduler] Failed to write history entry:', e && e.message); }
 
@@ -3982,6 +4625,381 @@ app.post('/api/scheduler/v1/clear-all', authenticateUser, async (req, res) => {
   } catch (err) {
     console.error('[Scheduler] clear-all error:', err.message || err);
     res.status(500).json({ errno: 500, error: err.message || String(err) });
+  }
+});
+
+// ==================== TESLA INTEGRATION (WIP - Restricted Access) ====================
+// Initialize Tesla API module
+const teslaModule = require('./api/tesla');
+const teslaAPI = teslaModule.init({
+  db,
+  logger
+});
+
+// Middleware to restrict Tesla routes to specific user
+const restrictToTeslaUser = (req, res, next) => {
+  const allowedEmail = 'sardanapalos928@hotmail.com';
+  
+  if (!req.user || req.user.email !== allowedEmail) {
+    return res.status(403).json({ 
+      errno: 403, 
+      error: 'Access denied. Tesla integration is currently restricted to authorized users.' 
+    });
+  }
+  
+  next();
+};
+
+// Save Tesla tokens
+app.post('/api/tesla/save-tokens', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const { accessToken, refreshToken } = req.body;
+    
+    if (!accessToken) {
+      return res.status(400).json({ errno: 400, error: 'Access token is required' });
+    }
+    
+    await teslaAPI.saveUserTokens(req.user.uid, accessToken, refreshToken);
+    res.json({ errno: 0, msg: 'Tokens saved successfully' });
+  } catch (error) {
+    console.error('[Tesla] save-tokens error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Test authentication
+app.get('/api/tesla/test-auth', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    // Just try to list vehicles as a test
+    const result = await teslaAPI.listVehicles(req.user.uid);
+    
+    if (result.errno === 0) {
+      res.json({ errno: 0, result: { message: 'Authentication successful', vehicleCount: result.result?.vehicles?.length || 0 } });
+    } else {
+      res.json({ errno: result.errno, error: result.error });
+    }
+  } catch (error) {
+    console.error('[Tesla] test-auth error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Register partner account (required once per region)
+app.post('/api/tesla/register-partner', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const result = await teslaAPI.registerPartner(userId);
+    res.json(result);
+  } catch (error) {
+    console.error('[Tesla] register-partner error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// List vehicles
+app.get('/api/tesla/vehicles', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const result = await teslaAPI.listVehicles(req.user.uid);
+    res.json(result);
+  } catch (error) {
+    console.error('[Tesla] list-vehicles error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Get vehicle data (use sparingly)
+app.get('/api/tesla/vehicles/:vehicleTag/data', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const { vehicleTag } = req.params;
+    const result = await teslaAPI.getVehicleData(req.user.uid, vehicleTag);
+    res.json(result);
+  } catch (error) {
+    console.error('[Tesla] get-vehicle-data error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Wake vehicle
+app.post('/api/tesla/vehicles/:vehicleTag/wake', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const { vehicleTag } = req.params;
+    const result = await teslaAPI.wakeVehicle(req.user.uid, vehicleTag);
+    res.json(result);
+  } catch (error) {
+    console.error('[Tesla] wake-vehicle error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Check fleet status
+app.post('/api/tesla/fleet-status', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const { vehicleTags } = req.body;
+    const result = await teslaAPI.checkFleetStatus(req.user.uid, vehicleTags);
+    res.json(result);
+  } catch (error) {
+    console.error('[Tesla] fleet-status error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Start charging
+app.post('/api/tesla/vehicles/:vehicleTag/charge/start', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const { vehicleTag } = req.params;
+    console.log(`[Tesla] User ${req.user.uid} starting charge on vehicle ${vehicleTag}`);
+    const result = await teslaAPI.startCharging(req.user.uid, vehicleTag);
+    res.json(result);
+  } catch (error) {
+    console.error('[Tesla] start-charging error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Stop charging
+app.post('/api/tesla/vehicles/:vehicleTag/charge/stop', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const { vehicleTag } = req.params;
+    console.log(`[Tesla] User ${req.user.uid} stopping charge on vehicle ${vehicleTag}`);
+    const result = await teslaAPI.stopCharging(req.user.uid, vehicleTag);
+    res.json(result);
+  } catch (error) {
+    console.error('[Tesla] stop-charging error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Set charging amps
+app.post('/api/tesla/vehicles/:vehicleTag/charge/set-amps', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const { vehicleTag } = req.params;
+    const { amps } = req.body;
+    
+    if (typeof amps !== 'number' || amps < 5 || amps > 32) {
+      return res.status(400).json({ errno: 400, error: 'Amps must be a number between 5 and 32' });
+    }
+    
+    console.log(`[Tesla] User ${req.user.uid} setting ${amps}A on vehicle ${vehicleTag}`);
+    const result = await teslaAPI.setChargingAmps(req.user.uid, vehicleTag, amps);
+    res.json(result);
+  } catch (error) {
+    console.error('[Tesla] set-amps error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Set charge limit
+app.post('/api/tesla/vehicles/:vehicleTag/charge/set-limit', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const { vehicleTag } = req.params;
+    const { percent } = req.body;
+    
+    if (typeof percent !== 'number' || percent < 50 || percent > 100) {
+      return res.status(400).json({ errno: 400, error: 'Charge limit must be a number between 50 and 100' });
+    }
+    
+    console.log(`[Tesla] User ${req.user.uid} setting charge limit to ${percent}% on vehicle ${vehicleTag}`);
+    const result = await teslaAPI.setChargeLimit(req.user.uid, vehicleTag, percent);
+    res.json(result);
+  } catch (error) {
+    console.error('[Tesla] set-limit error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// ==================== TESLA ADMIN CONFIGURATION ====================
+
+// Get Tesla server configuration
+// Check if user has their own Tesla OAuth credentials configured
+app.get('/api/tesla/check-config', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    console.log('[Tesla] check-config: checking user credentials for user =', userId);
+    
+    try {
+      const teslaDoc = await db.collection('users').doc(userId).collection('config').doc('tesla').get();
+      
+      if (teslaDoc.exists && teslaDoc.data()) {
+        const data = teslaDoc.data();
+        const hasClientId = !!data.clientId;
+        const hasClientSecret = !!data.clientSecret;
+        console.log('[Tesla] check-config: user has credentials -', { hasClientId, hasClientSecret });
+        
+        return res.json({ 
+          errno: 0, 
+          result: {
+            configured: hasClientId && hasClientSecret,
+            hasClientId,
+            hasClientSecret
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('[Tesla] check-config: Error reading user config -', err.message);
+    }
+    
+    // No credentials found
+    res.json({ 
+      errno: 0, 
+      result: {
+        configured: false,
+        hasClientId: false,
+        hasClientSecret: false
+      }
+    });
+  } catch (error) {
+    console.error('[Tesla] check-config error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Get user's stored Tesla OAuth app credentials
+app.get('/api/tesla/get-config', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    console.log('[Tesla] get-config: retrieving credentials for user =', userId);
+    
+    try {
+      const teslaDoc = await db.collection('users').doc(userId).collection('config').doc('tesla').get();
+      
+      if (teslaDoc.exists && teslaDoc.data()) {
+        const data = teslaDoc.data();
+        console.log('[Tesla] get-config: user credentials retrieved');
+        
+        return res.json({ 
+          errno: 0, 
+          result: {
+            clientId: data.clientId || null,
+            clientSecret: data.clientSecret || null,
+            accessToken: data.accessToken || null,
+            refreshToken: data.refreshToken || null,
+            hasClientId: !!data.clientId,
+            hasClientSecret: !!data.clientSecret,
+            hasAccessToken: !!data.accessToken,
+            hasRefreshToken: !!data.refreshToken
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('[Tesla] get-config: Error reading user config -', err.message);
+    }
+    
+    // No credentials found
+    res.json({ 
+      errno: 0, 
+      result: {
+        clientId: null,
+        clientSecret: null,
+        accessToken: null,
+        refreshToken: null,
+        hasClientId: false,
+        hasClientSecret: false,
+        hasAccessToken: false,
+        hasRefreshToken: false
+      }
+    });
+  } catch (error) {
+    console.error('[Tesla] get-config error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Save user's Tesla OAuth app credentials (client_id and client_secret)
+app.post('/api/tesla/save-credentials', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const { clientId, clientSecret } = req.body;
+    const userId = req.user.uid;
+    
+    if (!clientId || typeof clientId !== 'string' || clientId.trim().length === 0) {
+      return res.status(400).json({ errno: 400, error: 'clientId is required and must be a non-empty string' });
+    }
+    
+    if (!clientSecret || typeof clientSecret !== 'string' || clientSecret.trim().length === 0) {
+      return res.status(400).json({ errno: 400, error: 'clientSecret is required and must be a non-empty string' });
+    }
+    
+    try {
+      await teslaAPI.saveUserCredentials(userId, clientId, clientSecret);
+      console.log(`[Tesla] OAuth credentials saved for user ${userId}`);
+      res.json({ errno: 0, result: { success: true }, msg: 'Credentials saved successfully' });
+    } catch (saveError) {
+      console.error('[Tesla] Failed to save credentials:', saveError);
+      res.status(500).json({ errno: 500, error: 'Failed to save credentials: ' + saveError.message });
+    }
+  } catch (error) {
+    console.error('[Tesla] save-credentials error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Check user's Tesla connection status
+app.get('/api/tesla/status', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const teslaDoc = await db.collection('users').doc(userId).collection('config').doc('tesla').get();
+    
+    if (!teslaDoc.exists) {
+      return res.json({ 
+        errno: 0, 
+        result: { 
+          connected: false 
+        }
+      });
+    }
+    
+    try {
+      const data = teslaDoc.data() || {};
+      const hasTokens = !!(data.accessToken && data.refreshToken);
+      
+      // Check global partner registration status
+      let partnerRegistered = false;
+      try {
+        const sharedDoc = await db.collection('shared').doc('config').get();
+        if (sharedDoc.exists && sharedDoc.data().teslaPartnerRegistered) {
+          partnerRegistered = true;
+        }
+      } catch (sharedError) {
+        console.warn('[Tesla] Error checking shared config:', sharedError.message);
+      }
+      
+      res.json({ 
+        errno: 0, 
+        result: {
+          connected: hasTokens,
+          partnerRegistered,
+          connectedAt: data.updatedAt ? (data.updatedAt.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt) : null,
+          expiresAt: data.expiresAt ? (data.expiresAt.toDate ? data.expiresAt.toDate().toISOString() : data.expiresAt) : null
+        }
+      });
+    } catch (dataError) {
+      console.warn('[Tesla] Error reading tesla doc data:', dataError);
+      res.json({ 
+        errno: 0, 
+        result: { 
+          connected: false 
+        }
+      });
+    }
+  } catch (error) {
+    console.error('[Tesla] status error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Disconnect Tesla account (remove stored tokens)
+app.post('/api/tesla/disconnect', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    await db.collection('users').doc(userId).collection('config').doc('tesla').delete();
+    
+    console.log(`[Tesla] User ${userId} disconnected Tesla account`);
+    res.json({ 
+      errno: 0, 
+      result: { success: true }
+    });
+  } catch (error) {
+    console.error('[Tesla] disconnect error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
   }
 });
 
@@ -4683,15 +5701,17 @@ function addMinutes(hour, minute, addMins) {
  * Uses the same v1 API pattern as the manual scheduler endpoints
  */
 async function applyRuleAction(userId, rule, userConfig) {
+  console.log(`[SegmentSend] ========== START applyRuleAction for '${rule.name}' ==========`);
   const action = rule.action || {};
   const deviceSN = userConfig?.deviceSn;
   
   if (!deviceSN) {
-    console.warn(`[Automation] Cannot apply rule action - no deviceSN for user ${userId}`);
+    console.error(`[SegmentSend] ❌ CRITICAL: No deviceSN configured for user ${userId}`);
     return { errno: -1, msg: 'No device SN configured' };
   }
   
-  console.log(`[Automation] Applying action for user ${userId}:`, JSON.stringify(action).slice(0, 300));
+  console.log(`[SegmentSend] 🎯 Target device: ${deviceSN}`);
+  console.log(`[SegmentSend] 📋 Action config:`, JSON.stringify(action, null, 2));
   
   // Get user's timezone from config (or configured default)
   const userTimezone = getAutomationTimezone(userConfig);
@@ -4706,10 +5726,24 @@ async function applyRuleAction(userId, rule, userConfig) {
   // Calculate end time based on duration
   const durationMins = action.durationMinutes || 30;
   const endTimeObj = addMinutes(startHour, startMinute, durationMins);
-  const endHour = endTimeObj.hour;
-  const endMinute = endTimeObj.minute;
+  let endHour = endTimeObj.hour;
+  let endMinute = endTimeObj.minute;
   
-  console.log(`[Automation] Creating segment: ${String(startHour).padStart(2,'0')}:${String(startMinute).padStart(2,'0')} - ${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} (${durationMins}min)`);
+  // CRITICAL FIX: FoxESS does NOT support segments that cross midnight (00:00)
+  // If the calculated end time is earlier than start time (wrapped around), cap at 23:59
+  const startTotalMins = startHour * 60 + startMinute;
+  const endTotalMins = endHour * 60 + endMinute;
+  
+  if (endTotalMins <= startTotalMins) {
+    // Segment would cross midnight - cap at 23:59 instead
+    console.warn(`[SegmentSend] ⚠️ MIDNIGHT CROSSING DETECTED: Original end time ${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} would cross midnight`);
+    endHour = 23;
+    endMinute = 59;
+    const actualDuration = (endHour * 60 + endMinute) - startTotalMins;
+    console.warn(`[SegmentSend] 🔧 CAPPED at 23:59 - Reduced duration from ${durationMins}min to ${actualDuration}min to respect FoxESS constraint`);
+  }
+  
+  console.log(`[Automation] Creating segment: ${String(startHour).padStart(2,'0')}:${String(startMinute).padStart(2,'0')} - ${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} (${durationMins}min requested)`);
   
   // Get current scheduler from device (v1 API)
   let currentGroups = [];
@@ -4759,6 +5793,14 @@ async function applyRuleAction(userId, rule, userConfig) {
     console.log(`[Automation] Cleared ${clearedCount} existing segment(s)`);
   }
   
+  // Final validation: Ensure end time is after start time (no midnight crossing)
+  const startTotalMinsCheck = startHour * 60 + startMinute;
+  const endTotalMinsCheck = endHour * 60 + endMinute;
+  if (endTotalMinsCheck <= startTotalMinsCheck) {
+    console.error(`[SegmentSend] ❌ CRITICAL: Final validation failed - end time ${endHour}:${String(endMinute).padStart(2,'0')} is not after start time ${startHour}:${String(startMinute).padStart(2,'0')}`);
+    throw new Error(`Invalid segment: end time must be after start time (no midnight crossing allowed by FoxESS)`);
+  }
+  
   // Build the new segment (V1 flat structure)
   const segment = {
     enable: 1,
@@ -4775,29 +5817,41 @@ async function applyRuleAction(userId, rule, userConfig) {
   
   // Always use Group 1 (index 0) for automation - clean slate approach
   currentGroups[0] = segment;
+  console.log(`[SegmentSend] 📦 Final segment prepared for Group 1:`, JSON.stringify(segment, null, 2));
+  console.log(`[SegmentSend] 📊 Total groups to send: ${currentGroups.length}`);
   
-  console.log(`[Automation] Applying segment: ${String(startHour).padStart(2,'0')}:${String(startMinute).padStart(2,'0')}-${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} ${segment.workMode} fdSoc=${segment.fdSoc}`);
+  console.log(`[SegmentSend] 🚀 Sending segment: ${String(startHour).padStart(2,'0')}:${String(startMinute).padStart(2,'0')}-${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} ${segment.workMode} fdSoc=${segment.fdSoc}`);
   
   // Send to device via v1 API with retry logic (up to 3 attempts)
   let applyAttempt = 0;
   let result = null;
+  console.log(`[SegmentSend] 🔄 Starting API call with up to 3 retry attempts...`);
   while (applyAttempt < 3) {
     applyAttempt++;
+    console.log(`[SegmentSend] 📡 Attempt ${applyAttempt}/3: Calling FoxESS /op/v1/device/scheduler/enable...`);
+    const callStart = Date.now();
     result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: currentGroups }, userConfig, userId);
+    const callDuration = Date.now() - callStart;
+    console.log(`[SegmentSend] ⏱️ API call completed in ${callDuration}ms`);
+    console.log(`[SegmentSend] 📥 Response: errno=${result?.errno}, msg=${result?.msg}`);
     
     if (result?.errno === 0) {
-      console.log(`[Automation] ✓ Segment sent (attempt ${applyAttempt})`);
+      console.log(`[SegmentSend] ✅ Segment sent successfully (attempt ${applyAttempt})`);
       break;
     } else {
-      console.warn(`[Automation] Attempt ${applyAttempt} failed: errno=${result?.errno}`);
+      console.error(`[SegmentSend] ❌ Attempt ${applyAttempt} FAILED: errno=${result?.errno}, msg=${result?.msg}`);
       if (applyAttempt < 3) {
+        console.log(`[SegmentSend] ⏳ Waiting 1200ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, 1200));
       }
     }
   }
   
   if (result?.errno !== 0) {
-    console.error(`[Automation] ❌ Segment failed after 3 attempts: ${result?.msg}`);
+    console.error(`[SegmentSend] 🚨 CRITICAL FAILURE: Segment failed after 3 attempts`);
+    console.error(`[SegmentSend] 💥 Final error: errno=${result?.errno}, msg=${result?.msg}`);
+    console.error(`[SegmentSend] 📦 Failed segment details:`, JSON.stringify(segment, null, 2));
+    console.log(`[SegmentSend] ========== END applyRuleAction (FAILED) ==========`);
     return {
       errno: result?.errno || -1,
       msg: result?.msg || 'Failed to apply segment after 3 retry attempts',
@@ -4809,20 +5863,23 @@ async function applyRuleAction(userId, rule, userConfig) {
   }
   
   // Set the scheduler flag to enabled (required for FoxESS app to show schedule)
+  console.log(`[SegmentSend] 🚩 Setting scheduler flag to ENABLED...`);
   let flagResult = null;
   let flagAttempt = 0;
   while (flagAttempt < 2) {
     flagAttempt++;
     try {
+      console.log(`[SegmentSend] 📡 Flag attempt ${flagAttempt}/2: Calling /op/v1/device/scheduler/set/flag...`);
       flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 1 }, userConfig, userId);
+      console.log(`[SegmentSend] 📥 Flag response: errno=${flagResult?.errno}, msg=${flagResult?.msg}`);
       if (flagResult?.errno === 0) {
-        console.log(`[Automation] ✓ Flag set successfully (attempt ${flagAttempt})`);
+        console.log(`[SegmentSend] ✅ Scheduler flag set successfully (attempt ${flagAttempt})`);
         break;
       } else {
-        console.warn(`[Automation] Flag set attempt ${flagAttempt} failed: errno=${flagResult?.errno}`);
+        console.error(`[SegmentSend] ❌ Flag set attempt ${flagAttempt} failed: errno=${flagResult?.errno}`);
       }
     } catch (flagErr) {
-      console.warn('[Automation] Flag set attempt failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
+      console.error(`[SegmentSend] ❌ Flag set exception:`, flagErr && flagErr.message ? flagErr.message : flagErr);
     }
     if (flagAttempt < 2) {
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -4831,24 +5888,30 @@ async function applyRuleAction(userId, rule, userConfig) {
   
   // Wait 3 seconds for FoxESS to process the request before verification
   // Extended from 2s to 3s for better reliability
-  console.log(`[Automation] ⏳ Waiting 3s for FoxESS to process...`);
+  console.log(`[SegmentSend] ⏳ Waiting 3000ms for FoxESS device to process segment...`);
   await new Promise(resolve => setTimeout(resolve, 3000));
   
   // Verification read to confirm device accepted the segment (with retry)
+  console.log(`[SegmentSend] 🔍 Starting verification read to confirm segment on device...`);
   let verify = null;
   let verifyAttempt = 0;
   while (verifyAttempt < 2) {
     verifyAttempt++;
     try {
+      console.log(`[SegmentSend] 📡 Verify attempt ${verifyAttempt}/2: Calling /op/v1/device/scheduler/get...`);
       verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+      console.log(`[SegmentSend] 📥 Verify response: errno=${verify?.errno}, groups=${verify?.result?.groups?.length || 0}`);
       if (verify?.errno === 0) {
-        console.log(`[Automation] ✓ Verification read successful (attempt ${verifyAttempt}): groups count=${verify?.result?.groups?.length || 0}`);
+        console.log(`[SegmentSend] ✅ Verification read successful (attempt ${verifyAttempt})`);
+        if (verify?.result?.groups?.[0]) {
+          console.log(`[SegmentSend] 📊 Group 0 on device:`, JSON.stringify(verify.result.groups[0], null, 2));
+        }
         break;
       } else {
-        console.warn(`[Automation] Verification read attempt ${verifyAttempt} failed: errno=${verify?.errno}`);
+        console.error(`[SegmentSend] ❌ Verification read attempt ${verifyAttempt} failed: errno=${verify?.errno}`);
       }
     } catch (verifyErr) {
-      console.warn(`[Automation] Verification read attempt ${verifyAttempt} error:`, verifyErr.message);
+      console.error(`[SegmentSend] ❌ Verification read exception:`, verifyErr.message);
     }
     if (verifyAttempt < 2) {
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -4856,10 +5919,18 @@ async function applyRuleAction(userId, rule, userConfig) {
   }
   
   if (verify?.result?.groups?.[0]) {
-    if (verify.result.groups[0].enable === 1) {
-      console.log(`[Automation] ✓ Segment CONFIRMED on device`);
+    const deviceSegment = verify.result.groups[0];
+    if (deviceSegment.enable === 1) {
+      console.log(`[SegmentSend] ✅ Segment CONFIRMED ENABLED on device!`);
+      console.log(`[SegmentSend] 🎉 Device segment: ${deviceSegment.startHour}:${deviceSegment.startMinute}-${deviceSegment.endHour}:${deviceSegment.endMinute} ${deviceSegment.workMode}`);
+    } else {
+      console.warn(`[SegmentSend] ⚠️ Segment on device but DISABLED (enable=${deviceSegment.enable})`);
     }
+  } else {
+    console.warn(`[SegmentSend] ⚠️ No verification data available for Group 0`);
   }
+  console.log(`[SegmentSend] ========== END applyRuleAction (SUCCESS) ==========`);
+  console.log(`[SegmentSend] 🏁 Final result: errno=0, segment sent and verified`);
   
   // Log to user history
   try {
@@ -4869,7 +5940,7 @@ async function applyRuleAction(userId, rule, userConfig) {
       action,
       segment,
       result: result.errno === 0 ? 'success' : 'failed',
-      timestamp: admin.firestore.FieldValue.serverTimestamp()
+      timestamp: serverTimestamp()
     });
   } catch (e) {
     console.warn('[Automation] Failed to log history:', e && e.message ? e.message : e);
@@ -4901,8 +5972,8 @@ app.post('/api/auth/init-user', async (req, res) => {
       email,
       displayName: displayName || '',
       photoURL: req.user.photoURL || '',
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
     }, { merge: true });
     
     // Create default config
@@ -4916,7 +5987,7 @@ app.post('/api/auth/init-user', async (req, res) => {
         intervalMs: 60000,
         enabled: true
       },
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: serverTimestamp()
     }, { merge: true });
     
     // Create default automation state

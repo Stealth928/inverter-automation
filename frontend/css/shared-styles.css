@@ -225,6 +225,11 @@ body.has-fixed-nav {
     order: 7 !important;
 }
 
+/* Ensure Tesla Integration link appears at the very end of the nav */
+.nav-link[href="/tesla-integration.html"] {
+    order: 9999 !important;
+}
+
 .nav-right {
     display: flex;
     align-items: center;
