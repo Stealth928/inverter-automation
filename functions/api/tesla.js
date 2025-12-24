@@ -88,6 +88,8 @@ async function getUserTokens(userId) {
 async function refreshAccessToken(userId, clientId, clientSecret, refreshToken) {
   try {
     const tokenUrl = 'https://auth.tesla.com/oauth2/v3/token';
+    logger.info(`[TeslaAPI] Attempting token refresh for user ${userId} at ${tokenUrl}`);
+    
     const response = await fetch(tokenUrl, {
       method: 'POST',
       headers: { 
@@ -104,6 +106,8 @@ async function refreshAccessToken(userId, clientId, clientSecret, refreshToken) 
       redirect: 'manual'
     });
 
+    logger.info(`[TeslaAPI] Token refresh response status: ${response.status}`);
+    
     const text = await response.text();
     let data;
     try {
@@ -114,10 +118,11 @@ async function refreshAccessToken(userId, clientId, clientSecret, refreshToken) 
     }
 
     if (!response.ok) {
+      logger.error(`[TeslaAPI] Token refresh failed (${response.status}):`, data);
       throw new Error(`Token refresh error: ${data.error_description || data.error || response.statusText}`);
     }
 
-    logger.info(`[TeslaAPI] Access token refreshed for user ${userId}`);
+    logger.info(`[TeslaAPI] Access token refreshed successfully for user ${userId}, expires in ${data.expires_in}s`);
     return {
       accessToken: data.access_token,
       refreshToken: data.refresh_token || refreshToken, // Use new refresh token if provided, else keep old
@@ -139,33 +144,57 @@ async function ensureValidToken(userId) {
     const tokens = await getUserTokens(userId);
     const { accessToken, refreshToken, expiresAt } = tokens;
 
+    logger.info(`[TeslaAPI] ensureValidToken called for user ${userId}`);
+    logger.info(`[TeslaAPI]   expiresAt: ${expiresAt ? new Date(expiresAt).toISOString() : 'not set'}`);
+    logger.info(`[TeslaAPI]   hasRefreshToken: ${!!refreshToken}`);
+
     // Check if token is expired or will expire in next 5 minutes
     if (expiresAt) {
       const expiryTime = expiresAt instanceof Date ? expiresAt.getTime() : new Date(expiresAt).getTime();
       const bufferMs = 5 * 60 * 1000; // 5 minute buffer
+      const timeUntilExpiry = expiryTime - Date.now();
+      
+      logger.info(`[TeslaAPI]   timeUntilExpiry: ${timeUntilExpiry}ms, bufferMs: ${bufferMs}ms`);
+      
       if (Date.now() + bufferMs >= expiryTime) {
-        logger.info(`[TeslaAPI] Token expired or expiring soon for user ${userId}, refreshing...`);
+        logger.info(`[TeslaAPI] Token expired or expiring soon for user ${userId}, attempting refresh...`);
         
         if (!refreshToken) {
+          logger.error(`[TeslaAPI] No refresh token available for user ${userId}`);
           throw new Error('No refresh token available; user must re-authenticate');
         }
 
         // Get OAuth credentials needed for refresh
         const doc = await db.collection('users').doc(userId).collection('config').doc('tesla').get();
-        if (!doc.exists || !doc.data().clientId || !doc.data().clientSecret) {
-          throw new Error('Tesla OAuth credentials not found');
+        if (!doc.exists) {
+          logger.error(`[TeslaAPI] Tesla config doc not found for user ${userId}`);
+          throw new Error('Tesla configuration not found');
+        }
+        
+        const data = doc.data();
+        logger.info(`[TeslaAPI]   hasClientId: ${!!data.clientId}, hasClientSecret: ${!!data.clientSecret}`);
+        
+        if (!data.clientId || !data.clientSecret) {
+          logger.error(`[TeslaAPI] OAuth credentials missing for user ${userId}`);
+          throw new Error('Tesla OAuth credentials not found; re-authenticate required');
         }
 
-        const { clientId, clientSecret } = doc.data();
+        const { clientId, clientSecret } = data;
         
         // Refresh the token
+        logger.info(`[TeslaAPI] Calling refreshAccessToken for user ${userId}`);
         const newTokens = await refreshAccessToken(userId, clientId, clientSecret, refreshToken);
         
         // Save the new tokens
         await saveUserTokens(userId, newTokens.accessToken, newTokens.refreshToken, newTokens.expiresIn);
+        logger.info(`[TeslaAPI] Tokens refreshed successfully for user ${userId}`);
         
         return newTokens.accessToken;
+      } else {
+        logger.info(`[TeslaAPI] Token still valid for user ${userId}, using stored token`);
       }
+    } else {
+      logger.warn(`[TeslaAPI] expiresAt not set for user ${userId}, using token as-is`);
     }
 
     return accessToken;
