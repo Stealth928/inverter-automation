@@ -68,10 +68,109 @@ async function getUserTokens(userId) {
     const data = doc.data();
     return {
       accessToken: data.accessToken,
-      refreshToken: data.refreshToken
+      refreshToken: data.refreshToken,
+      expiresAt: data.expiresAt
     };
   } catch (error) {
     logger.error(`[TeslaAPI] Error fetching tokens for user ${userId}:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * Refresh user's Tesla access token using refresh token
+ * @param {string} userId - User ID
+ * @param {string} clientId - OAuth app client ID
+ * @param {string} clientSecret - OAuth app client secret
+ * @param {string} refreshToken - Current refresh token
+ * @returns {Promise<Object>} { accessToken, refreshToken, expiresIn }
+ */
+async function refreshAccessToken(userId, clientId, clientSecret, refreshToken) {
+  try {
+    const tokenUrl = 'https://auth.tesla.com/oauth2/v3/token';
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Tesla-Automation/1.0'
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        scope: 'openid vehicle_device_data vehicle_cmds vehicle_charging_cmds'
+      }),
+      redirect: 'manual'
+    });
+
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      logger.error(`[TeslaAPI] Token refresh response is not JSON:`, text.substring(0, 500));
+      throw new Error(`Tesla API error: ${response.statusText}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Token refresh error: ${data.error_description || data.error || response.statusText}`);
+    }
+
+    logger.info(`[TeslaAPI] Access token refreshed for user ${userId}`);
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token || refreshToken, // Use new refresh token if provided, else keep old
+      expiresIn: data.expires_in
+    };
+  } catch (error) {
+    logger.error(`[TeslaAPI] Error refreshing access token for user ${userId}:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * Ensure user has a valid access token, refreshing if necessary
+ * @param {string} userId - User ID
+ * @returns {Promise<string>} Valid access token
+ */
+async function ensureValidToken(userId) {
+  try {
+    const tokens = await getUserTokens(userId);
+    const { accessToken, refreshToken, expiresAt } = tokens;
+
+    // Check if token is expired or will expire in next 5 minutes
+    if (expiresAt) {
+      const expiryTime = expiresAt instanceof Date ? expiresAt.getTime() : new Date(expiresAt).getTime();
+      const bufferMs = 5 * 60 * 1000; // 5 minute buffer
+      if (Date.now() + bufferMs >= expiryTime) {
+        logger.info(`[TeslaAPI] Token expired or expiring soon for user ${userId}, refreshing...`);
+        
+        if (!refreshToken) {
+          throw new Error('No refresh token available; user must re-authenticate');
+        }
+
+        // Get OAuth credentials needed for refresh
+        const doc = await db.collection('users').doc(userId).collection('config').doc('tesla').get();
+        if (!doc.exists || !doc.data().clientId || !doc.data().clientSecret) {
+          throw new Error('Tesla OAuth credentials not found');
+        }
+
+        const { clientId, clientSecret } = doc.data();
+        
+        // Refresh the token
+        const newTokens = await refreshAccessToken(userId, clientId, clientSecret, refreshToken);
+        
+        // Save the new tokens
+        await saveUserTokens(userId, newTokens.accessToken, newTokens.refreshToken, newTokens.expiresIn);
+        
+        return newTokens.accessToken;
+      }
+    }
+
+    return accessToken;
+  } catch (error) {
+    logger.error(`[TeslaAPI] Error ensuring valid token for user ${userId}:`, error.message);
     throw error;
   }
 }
@@ -275,7 +374,7 @@ async function callTeslaAPI(endpoint, method = 'GET', body = null, accessToken) 
  */
 async function listVehicles(userId) {
   try {
-    const { accessToken } = await getUserTokens(userId);
+    const accessToken = await ensureValidToken(userId);
     const response = await callTeslaAPI('/api/1/vehicles', 'GET', null, accessToken);
     
     if (response.errno === 0) {
@@ -299,7 +398,7 @@ async function listVehicles(userId) {
  */
 async function getVehicleData(userId, vehicleTag) {
   try {
-    const { accessToken } = await getUserTokens(userId);
+    const accessToken = await ensureValidToken(userId);
     const response = await callTeslaAPI(`/api/1/vehicles/${vehicleTag}/vehicle_data`, 'GET', null, accessToken);
     
     if (response.errno === 0) {
@@ -321,7 +420,7 @@ async function getVehicleData(userId, vehicleTag) {
  */
 async function wakeVehicle(userId, vehicleTag) {
   try {
-    const { accessToken } = await getUserTokens(userId);
+    const accessToken = await ensureValidToken(userId);
     const response = await callTeslaAPI(`/api/1/vehicles/${vehicleTag}/wake_up`, 'POST', null, accessToken);
     
     if (response.errno === 0) {
@@ -343,7 +442,7 @@ async function wakeVehicle(userId, vehicleTag) {
  */
 async function checkFleetStatus(userId, vehicleTags) {
   try {
-    const { accessToken } = await getUserTokens(userId);
+    const accessToken = await ensureValidToken(userId);
     const response = await callTeslaAPI('/api/1/vehicles/fleet_status', 'POST', { vins: vehicleTags }, accessToken);
     
     if (response.errno === 0) {
@@ -365,7 +464,7 @@ async function checkFleetStatus(userId, vehicleTags) {
  */
 async function startCharging(userId, vehicleTag) {
   try {
-    const { accessToken } = await getUserTokens(userId);
+    const accessToken = await ensureValidToken(userId);
     const response = await callTeslaAPI(`/api/1/vehicles/${vehicleTag}/command/charge_start`, 'POST', null, accessToken);
     
     if (response.errno === 0) {
@@ -387,7 +486,7 @@ async function startCharging(userId, vehicleTag) {
  */
 async function stopCharging(userId, vehicleTag) {
   try {
-    const { accessToken } = await getUserTokens(userId);
+    const accessToken = await ensureValidToken(userId);
     const response = await callTeslaAPI(`/api/1/vehicles/${vehicleTag}/command/charge_stop`, 'POST', null, accessToken);
     
     if (response.errno === 0) {
@@ -410,7 +509,7 @@ async function stopCharging(userId, vehicleTag) {
  */
 async function setChargingAmps(userId, vehicleTag, amps) {
   try {
-    const { accessToken } = await getUserTokens(userId);
+    const accessToken = await ensureValidToken(userId);
     const response = await callTeslaAPI(
       `/api/1/vehicles/${vehicleTag}/command/set_charging_amps`,
       'POST',
@@ -438,7 +537,7 @@ async function setChargingAmps(userId, vehicleTag, amps) {
  */
 async function setChargeLimit(userId, vehicleTag, percent) {
   try {
-    const { accessToken } = await getUserTokens(userId);
+    const accessToken = await ensureValidToken(userId);
     const response = await callTeslaAPI(
       `/api/1/vehicles/${vehicleTag}/command/set_charge_limit`,
       'POST',

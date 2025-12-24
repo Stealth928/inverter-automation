@@ -1246,6 +1246,10 @@
                                     <br><button class="btn secondary" style="margin-top: 8px;" onclick="selectVehicle('${v.id_s}', '${v.display_name}')">Select</button>
                                 </div>
                             `).join('');
+                        } else if (data.errno === 401) {
+                            console.error('Token expired (401):', data.error);
+                            addLog('✗ Tesla authentication expired. Please re-authenticate.', 'warning');
+                            alert('Your Tesla authentication has expired. Please update your Tesla credentials in the Authentication section above and try again.');
                         } else if (data.errno === 412) {
                             console.error('Partner registration required (412):', data.error);
                             addLog('✗ Partner registration required. Click "Register Partner Account" above.', 'warning');
