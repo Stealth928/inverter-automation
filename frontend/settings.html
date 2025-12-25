@@ -1468,14 +1468,14 @@
             
             const currentCurtailment = {
                 enabled: enabledButton?.classList.contains('active') === true,
-                priceThreshold: parseFloat(thresholdInput?.value) || -2
+                priceThreshold: thresholdInput?.value !== '' && thresholdInput?.value !== null ? parseFloat(thresholdInput.value) : -2
             };
             
             // Normalize original curtailment values to match current format
             const originalCurtailment = originalConfig.curtailment || { enabled: false, priceThreshold: -2 };
             const normalizedOriginal = {
                 enabled: originalCurtailment.enabled === true,
-                priceThreshold: parseFloat(originalCurtailment.priceThreshold) || -2
+                priceThreshold: originalCurtailment.priceThreshold !== undefined ? parseFloat(originalCurtailment.priceThreshold) : -2
             };
 
             // Compare values directly instead of JSON strings to avoid precision issues
@@ -1544,7 +1544,10 @@
                     // Solar curtailment
                     curtailment: {
                         enabled: document.getElementById('curtailment_enabled')?.classList.contains('active') === true,
-                        priceThreshold: parseFloat(document.getElementById('curtailment_priceThreshold')?.value) || -2
+                        priceThreshold: (() => {
+                            const val = document.getElementById('curtailment_priceThreshold')?.value;
+                            return val !== '' && val !== null ? parseFloat(val) : -2;
+                        })()
                     },
                     // Save location at root level (matches backend location field)
                     location: document.getElementById('preferences_weatherPlace')?.value || 'Sydney, Australia'
