@@ -184,6 +184,36 @@ Once you know your system:
 
 ---
 
+## Configuring the Price Threshold
+
+**What is it?** A dynamic trigger value that activates curtailment based on feed-in electricity price.
+
+**Location:** Settings → Solar Curtailment → Price Threshold (cents/kWh)
+
+**Configuration Guide:**
+
+| Scenario | Threshold Setting | Why |
+|----------|-------------------|-----|
+| Avoid negative pricing (grid penalizes export) | -50 to -10 | Curtail only when you'd lose money |
+| Break-even point (price covers costs) | -5 to 0 | Curtail when export isn't worth it |
+| Peak-hour avoidance (low afternoon prices) | 5 to 15 | Curtail during low-price periods |
+| Aggressive conservation | 20+ | Curtail most exports (advanced) |
+
+**Example:** If you set threshold to 5¢/kWh:
+- Current price 3¢ → Curtailment ACTIVE (3 < 5) ✓
+- Current price 8¢ → Curtailment INACTIVE (8 ≥ 5) ✗
+
+**Range:** -999 to +999 cents/kWh  
+**Default:** 0 cents/kWh (curtail when price ≤ 0)
+
+**How It Works:**
+- Every automation cycle (~2 minutes), system checks: Is price < threshold?
+- If YES: Activate curtailment (reduce/stop exports)
+- If NO: Deactivate curtailment (allow normal exports)
+- All transitions logged for ROI tracking
+
+---
+
 ## Key Numbers
 
 - **Topology Detection Accuracy:** 85-95% for DC-coupled

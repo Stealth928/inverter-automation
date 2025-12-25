@@ -13,22 +13,22 @@ describe('Solar Curtailment Feature', () => {
     test('should validate curtailment config structure', () => {
       const validConfig = {
         enabled: true,
-        priceThreshold: -2
+        priceThreshold: 0
       };
 
       expect(validConfig.enabled).toBe(true);
-      expect(validConfig.priceThreshold).toBe(-2);
+      expect(validConfig.priceThreshold).toBe(0);
       expect(typeof validConfig.enabled).toBe('boolean');
       expect(typeof validConfig.priceThreshold).toBe('number');
     });
 
     test('should validate curtailment price threshold range', () => {
-      const validThresholds = [-50, -10, -2, 0, 10, 50];
-      const invalidThresholds = [-51, -100, 51, 100];
+      const validThresholds = [-999, -100, -10, 0, 10, 100, 999];
+      const invalidThresholds = [-1000, -1001, 1000, 1001];
 
       validThresholds.forEach(threshold => {
-        expect(threshold).toBeGreaterThanOrEqual(-50);
-        expect(threshold).toBeLessThanOrEqual(50);
+        expect(threshold).toBeGreaterThanOrEqual(-999);
+        expect(threshold).toBeLessThanOrEqual(999);
       });
 
       invalidThresholds.forEach(threshold => {
@@ -135,7 +135,7 @@ describe('Solar Curtailment Feature', () => {
 
   describe('Error Handling Logic', () => {
     test('should handle disabled curtailment', () => {
-      const config = { enabled: false, priceThreshold: -2 };
+      const config = { enabled: false, priceThreshold: 0 };
       
       if (!config.enabled) {
         expect(true).toBe(true); // Should skip execution
@@ -229,7 +229,7 @@ describe('Solar Curtailment Feature', () => {
           enabled: true,
           triggered: true,
           currentPrice: -3,
-          priceThreshold: -2,
+          priceThreshold: 0,
           action: 'activated',
           stateChanged: true
         }

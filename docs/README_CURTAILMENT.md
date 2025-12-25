@@ -388,6 +388,52 @@ Ready for Phase 2 automation
 
 ---
 
+## Price Threshold Settings
+
+### What is the Curtailment Price Threshold?
+
+The **price threshold** is a dynamic control value that determines when solar curtailment should activate based on feed-in electricity price.
+
+**Key Points:**
+- **Range:** -999 to +999 cents/kWh
+- **Default:** 0 cents/kWh
+- **Meaning:** Curtail when feed-in price ≤ threshold value
+- **Example:** If set to 5, curtailment activates when price drops to 5¢ or lower
+
+### Use Cases by Value
+
+| Threshold | Use Case | Notes |
+|-----------|----------|-------|
+| **-50 to -10** | Avoid negative pricing | Curtail only when grid pays you to NOT export |
+| **-5 to 0** | Break-even curtailment | Curtail when export isn't profitable |
+| **1 to 15** | Peak pricing avoidance | Curtail during low-price periods |
+| **20+** | Aggressive conservation | Curtail most of the time (extreme case) |
+
+### Configuration
+
+Access in **Settings → Solar Curtailment → Price Threshold (cents/kWh)**
+
+**Example Setup:**
+```
+Price Threshold: 5 cents/kWh
+Current Market: 3¢/kWh
+Result: ✓ Curtailment ACTIVE (3 < 5)
+
+Price Threshold: 5 cents/kWh  
+Current Market: 8¢/kWh
+Result: ✗ Curtailment INACTIVE (8 >= 5)
+```
+
+### How It Works in Automation
+
+1. **Every automation cycle** (default: every 2 minutes)
+2. **Check:** Is curtailment enabled AND current price < threshold?
+3. **If YES:** Activate solar curtailment (reduce exports)
+4. **If NO:** Deactivate curtailment (allow normal exports)
+5. **Log:** Each state change with price/threshold comparison
+
+---
+
 ## Let's Go! 🚀
 
 1. **Open:** https://inverter-automation-firebase.web.app/curtailment-discovery.html

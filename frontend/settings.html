@@ -601,9 +601,9 @@
                 </div>
                 <div class="setting-item">
                     <div class="setting-label">Price Threshold (cents/kWh)</div>
-                    <div class="setting-hint">Curtail solar export when feed-in price drops below this value (e.g., -2 for negative 2 cents)</div>
+                    <div class="setting-hint">Curtail solar export when feed-in price drops below this value. Range: -999 to +999 cents/kWh. Default: 0 (curtail when price ≤ 0)</div>
                     <div class="setting-input">
-                        <input type="number" id="curtailment_priceThreshold" placeholder="-2" step="0.1" style="width: 120px;" onchange="updateCurtailmentChanges()">
+                        <input type="number" id="curtailment_priceThreshold" placeholder="0" step="0.1" style="width: 120px;" onchange="updateCurtailmentChanges()">
                         <span style="margin-left: 8px; color: var(--text-secondary);">cents/kWh</span>
                     </div>
                 </div>
@@ -1321,7 +1321,7 @@
                 renderBlackoutWindows(currentConfig.automation?.blackoutWindows || []);
                 
                 // Solar curtailment - ensure defaults are applied
-                const curtailmentConfig = currentConfig.curtailment || { enabled: false, priceThreshold: -2 };
+                const curtailmentConfig = currentConfig.curtailment || { enabled: false, priceThreshold: 0 };
                 if (currentConfig.curtailment) {
                     const enabledButton = document.getElementById('curtailment_enabled');
                     const thresholdInput = document.getElementById('curtailment_priceThreshold');
@@ -1339,7 +1339,7 @@
                     }
                     
                     if (thresholdInput) {
-                        thresholdInput.value = curtailmentConfig.priceThreshold !== undefined ? curtailmentConfig.priceThreshold : -2;
+                        thresholdInput.value = curtailmentConfig.priceThreshold !== undefined ? curtailmentConfig.priceThreshold : 0;
                     }
                 } else {
                     // Initialize defaults if no curtailment config exists
@@ -1352,7 +1352,7 @@
                     }
                     
                     if (thresholdInput) {
-                        thresholdInput.value = -2;
+                        thresholdInput.value = 0;
                     }
                 }
                 
@@ -1361,7 +1361,7 @@
                 
                 // Ensure curtailment config is properly initialized in originalConfig
                 if (!originalConfig.curtailment) {
-                    originalConfig.curtailment = { enabled: false, priceThreshold: -2 };
+                    originalConfig.curtailment = { enabled: false, priceThreshold: 0 };
                 }
                 
                 updateAllTimeDisplays();
@@ -1468,14 +1468,14 @@
             
             const currentCurtailment = {
                 enabled: enabledButton?.classList.contains('active') === true,
-                priceThreshold: thresholdInput?.value !== '' && thresholdInput?.value !== null ? parseFloat(thresholdInput.value) : -2
+                priceThreshold: thresholdInput?.value !== '' && thresholdInput?.value !== null ? parseFloat(thresholdInput.value) : 0
             };
             
             // Normalize original curtailment values to match current format
-            const originalCurtailment = originalConfig.curtailment || { enabled: false, priceThreshold: -2 };
+            const originalCurtailment = originalConfig.curtailment || { enabled: false, priceThreshold: 0 };
             const normalizedOriginal = {
                 enabled: originalCurtailment.enabled === true,
-                priceThreshold: originalCurtailment.priceThreshold !== undefined ? parseFloat(originalCurtailment.priceThreshold) : -2
+                priceThreshold: originalCurtailment.priceThreshold !== undefined ? parseFloat(originalCurtailment.priceThreshold) : 0
             };
 
             // Compare values directly instead of JSON strings to avoid precision issues
@@ -1541,12 +1541,12 @@
                     preferences: {
                         forecastDays: getInputValue('preferences_forecastDays') || 6
                     },
-                    // Solar curtailment
+                    // Solar curtailment (price threshold range: -999 to +999 cents/kWh)
                     curtailment: {
                         enabled: document.getElementById('curtailment_enabled')?.classList.contains('active') === true,
                         priceThreshold: (() => {
                             const val = document.getElementById('curtailment_priceThreshold')?.value;
-                            return val !== '' && val !== null ? parseFloat(val) : -2;
+                            return val !== '' && val !== null ? parseFloat(val) : 0;
                         })()
                     },
                     // Save location at root level (matches backend location field)
@@ -1604,8 +1604,8 @@
                 
                 // Curtailment validation
                 if (newConfig.curtailment.enabled) {
-                    if (isNaN(newConfig.curtailment.priceThreshold) || newConfig.curtailment.priceThreshold < -50 || newConfig.curtailment.priceThreshold > 50) {
-                        validationErrors.push('Curtailment price threshold: must be -50 to 50 cents/kWh');
+                    if (isNaN(newConfig.curtailment.priceThreshold) || newConfig.curtailment.priceThreshold < -999 || newConfig.curtailment.priceThreshold > 999) {
+                        validationErrors.push('Curtailment price threshold: must be -999 to 999 cents/kWh');
                     }
                 }
                 
@@ -1645,7 +1645,7 @@
                 
                 // Ensure curtailment config is properly initialized in originalConfig
                 if (!originalConfig.curtailment) {
-                    originalConfig.curtailment = { enabled: false, priceThreshold: -2 };
+                    originalConfig.curtailment = { enabled: false, priceThreshold: 0 };
                 }
                 
                 currentConfig = data.result;

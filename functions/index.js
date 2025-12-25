@@ -1593,6 +1593,18 @@ async function saveUserAutomationState(userId, state) {
  * @param {array} amberData - Current Amber price data
  * @returns {object} Result of curtailment check and action
  */
+/**
+ * Check and apply solar curtailment based on feed-in price and user config
+ * 
+ * @param {string} userId - User ID
+ * @param {Object} userConfig - User configuration with curtailment settings
+ *   - curtailment.enabled {boolean} - Is curtailment feature enabled?
+ *   - curtailment.priceThreshold {number} - Price threshold in cents/kWh (range: -999 to +999)
+ *     When feed-in price drops below this, curtailment activates
+ *     Default: 0 (curtail when price ≤ 0, useful for avoiding negative pricing)
+ * @param {Object} amberData - Current Amber electricity price data with currentPrice in cents/kWh
+ * @returns {Promise<Object>} Curtailment state and action taken
+ */
 async function checkAndApplyCurtailment(userId, userConfig, amberData) {
   const result = {
     enabled: false,
