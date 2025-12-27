@@ -18,6 +18,7 @@
  */
 
 const fetch = require('node-fetch');
+const crypto = require('crypto');
 
 // Module state - initialized via init()
 let db = null;
@@ -49,7 +50,9 @@ function init(deps) {
     setChargeLimit,
     saveUserCredentials,
     saveUserTokens,
-    registerPartner
+    registerPartner,
+    getSharedPrivateKey,
+    sendSignedCommand
   };
 }
 
@@ -145,23 +148,76 @@ async function ensureValidToken(userId) {
     const { accessToken, refreshToken, expiresAt } = tokens;
 
     logger.info(`[TeslaAPI] ensureValidToken called for user ${userId}`);
-    logger.info(`[TeslaAPI]   expiresAt: ${expiresAt ? new Date(expiresAt).toISOString() : 'not set'}`);
+    // Safely log expiresAt without throwing on invalid values
+    let expiresAtStr = 'not set';
+    if (expiresAt) {
+      try {
+        expiresAtStr = new Date(expiresAt).toISOString();
+      } catch (e) {
+        expiresAtStr = `invalid (${expiresAt})`;
+      }
+    }
+    logger.info(`[TeslaAPI]   expiresAt: ${expiresAtStr}`);
     logger.info(`[TeslaAPI]   hasRefreshToken: ${!!refreshToken}`);
 
     // Check if token is expired or will expire in next 5 minutes
     if (expiresAt) {
-      const expiryTime = expiresAt instanceof Date ? expiresAt.getTime() : new Date(expiresAt).getTime();
-      const bufferMs = 5 * 60 * 1000; // 5 minute buffer
-      const timeUntilExpiry = expiryTime - Date.now();
-      
-      logger.info(`[TeslaAPI]   timeUntilExpiry: ${timeUntilExpiry}ms, bufferMs: ${bufferMs}ms`);
-      
-      if (Date.now() + bufferMs >= expiryTime) {
-        logger.info(`[TeslaAPI] Token expired or expiring soon for user ${userId}, attempting refresh...`);
+      try {
+        const expiryTime = expiresAt instanceof Date ? expiresAt.getTime() : new Date(expiresAt).getTime();
+        // Validate expiryTime is a valid timestamp (not NaN)
+        if (isNaN(expiryTime)) {
+          logger.warn(`[TeslaAPI] Invalid expiresAt timestamp for user ${userId}: ${expiresAt}`);
+          logger.warn(`[TeslaAPI] Token will be treated as expired; attempting refresh...`);
+          throw new Error('Invalid expiry timestamp');
+        }
+        const bufferMs = 5 * 60 * 1000; // 5 minute buffer
+        const timeUntilExpiry = expiryTime - Date.now();
         
+        logger.info(`[TeslaAPI]   timeUntilExpiry: ${timeUntilExpiry}ms, bufferMs: ${bufferMs}ms`);
+        
+        if (Date.now() + bufferMs >= expiryTime) {
+          logger.info(`[TeslaAPI] Token expired or expiring soon for user ${userId}, attempting refresh...`);
+          
+          if (!refreshToken) {
+            logger.error(`[TeslaAPI] No refresh token available for user ${userId}`);
+            throw new Error('No refresh token available; user must re-authenticate');
+          }
+
+          // Get OAuth credentials needed for refresh
+          const doc = await db.collection('users').doc(userId).collection('config').doc('tesla').get();
+          if (!doc.exists) {
+            logger.error(`[TeslaAPI] Tesla config doc not found for user ${userId}`);
+            throw new Error('Tesla configuration not found');
+          }
+          
+          const data = doc.data();
+          logger.info(`[TeslaAPI]   hasClientId: ${!!data.clientId}, hasClientSecret: ${!!data.clientSecret}`);
+          
+          if (!data.clientId || !data.clientSecret) {
+            logger.error(`[TeslaAPI] OAuth credentials missing for user ${userId}`);
+            throw new Error('Tesla OAuth credentials not found; re-authenticate required');
+          }
+
+          const { clientId, clientSecret } = data;
+          
+          // Refresh the token
+          logger.info(`[TeslaAPI] Calling refreshAccessToken for user ${userId}`);
+          const newTokens = await refreshAccessToken(userId, clientId, clientSecret, refreshToken);
+          
+          // Save the new tokens
+          await saveUserTokens(userId, newTokens.accessToken, newTokens.refreshToken, newTokens.expiresIn);
+          logger.info(`[TeslaAPI] Tokens refreshed successfully for user ${userId}`);
+          
+          return newTokens.accessToken;
+        } else {
+          logger.info(`[TeslaAPI] Token still valid for user ${userId}, using stored token`);
+        }
+      } catch (dateError) {
+        // If date parsing fails, treat token as expired and attempt refresh
+        logger.warn(`[TeslaAPI] Error parsing expiry date for user ${userId}: ${dateError.message}`);
         if (!refreshToken) {
           logger.error(`[TeslaAPI] No refresh token available for user ${userId}`);
-          throw new Error('No refresh token available; user must re-authenticate');
+          throw new Error('Invalid token timestamp and no refresh token available');
         }
 
         // Get OAuth credentials needed for refresh
@@ -172,26 +228,17 @@ async function ensureValidToken(userId) {
         }
         
         const data = doc.data();
-        logger.info(`[TeslaAPI]   hasClientId: ${!!data.clientId}, hasClientSecret: ${!!data.clientSecret}`);
-        
         if (!data.clientId || !data.clientSecret) {
           logger.error(`[TeslaAPI] OAuth credentials missing for user ${userId}`);
           throw new Error('Tesla OAuth credentials not found; re-authenticate required');
         }
 
         const { clientId, clientSecret } = data;
-        
-        // Refresh the token
-        logger.info(`[TeslaAPI] Calling refreshAccessToken for user ${userId}`);
+        logger.info(`[TeslaAPI] Attempting token refresh due to invalid timestamp`);
         const newTokens = await refreshAccessToken(userId, clientId, clientSecret, refreshToken);
-        
-        // Save the new tokens
         await saveUserTokens(userId, newTokens.accessToken, newTokens.refreshToken, newTokens.expiresIn);
         logger.info(`[TeslaAPI] Tokens refreshed successfully for user ${userId}`);
-        
         return newTokens.accessToken;
-      } else {
-        logger.info(`[TeslaAPI] Token still valid for user ${userId}, using stored token`);
       }
     } else {
       logger.warn(`[TeslaAPI] expiresAt not set for user ${userId}, using token as-is`);
@@ -201,6 +248,106 @@ async function ensureValidToken(userId) {
   } catch (error) {
     logger.error(`[TeslaAPI] Error ensuring valid token for user ${userId}:`, error.message);
     throw error;
+  }
+}
+
+/**
+ * Get shared application private key for command signing
+ * All users use the same signing key
+ * @returns {Promise<string|null>} Private key in PEM format or null
+ */
+async function getSharedPrivateKey() {
+  try {
+    const doc = await db.collection('system').doc('tesla-signing-key').get();
+    if (!doc.exists) {
+      logger.error('[TeslaAPI] Shared Tesla signing key not found. Run: node scripts/generate-shared-tesla-key.js');
+      return null;
+    }
+    
+    const key = doc.data().privateKey || null;
+    if (!key) {
+      logger.error('[TeslaAPI] Private key field missing from tesla-signing-key document');
+    }
+    return key;
+  } catch (error) {
+    logger.error(`[TeslaAPI] Error getting shared private key:`, error.message);
+    return null;
+  }
+}
+
+/**
+ * Sign a command for Tesla Vehicle Command Protocol
+ * @param {string} privateKeyPem - Private key in PEM format
+ * @param {Object} payload - Command payload to sign
+ * @returns {Object} Signed command with signature
+ */
+function signCommand(privateKeyPem, payload) {
+  try {
+    // Create canonical payload string (sorted JSON keys, no whitespace)
+    const payloadStr = JSON.stringify(payload, Object.keys(payload).sort());
+    
+    // Create signature using ECDSA with SHA-256
+    const sign = crypto.createSign('SHA256');
+    sign.update(payloadStr);
+    sign.end();
+    
+    const signature = sign.sign(privateKeyPem, 'base64');
+    
+    return {
+      ...payload,
+      signature
+    };
+  } catch (error) {
+    logger.error(`[TeslaAPI] Error signing command:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * Send a signed command to Tesla vehicle
+ * @param {string} userId - User ID
+ * @param {string} vehicleTag - Vehicle ID
+ * @param {string} commandName - Command name (e.g., 'charge_start')
+ * @param {Object} params - Command parameters (optional)
+ * @returns {Promise<Object>} Command result
+ */
+async function sendSignedCommand(userId, vehicleTag, commandName, params = {}) {
+  try {
+    const accessToken = await ensureValidToken(userId);
+    const privateKey = await getSharedPrivateKey();
+    
+    if (!privateKey) {
+      return { 
+        errno: 500, 
+        error: 'Tesla signing key not configured on server. Contact administrator.' 
+      };
+    }
+    
+    // Build command payload
+    const payload = {
+      command: commandName,
+      ...params
+    };
+    
+    // Sign the command
+    const signedPayload = signCommand(privateKey, payload);
+    
+    // Send to Tesla signed_command endpoint
+    const response = await callTeslaAPI(
+      `/api/1/vehicles/${vehicleTag}/signed_command`,
+      'POST',
+      signedPayload,
+      accessToken
+    );
+    
+    if (response.errno === 0) {
+      return { errno: 0, result: response.result?.response || response.result };
+    }
+    
+    return response;
+  } catch (error) {
+    logger.error(`[TeslaAPI] sendSignedCommand(${commandName}) error:`, error.message);
+    return { errno: 500, error: error.message };
   }
 }
 
@@ -492,19 +639,7 @@ async function checkFleetStatus(userId, vehicleTags) {
  * @returns {Promise<Object>} Command result
  */
 async function startCharging(userId, vehicleTag) {
-  try {
-    const accessToken = await ensureValidToken(userId);
-    const response = await callTeslaAPI(`/api/1/vehicles/${vehicleTag}/command/charge_start`, 'POST', null, accessToken);
-    
-    if (response.errno === 0) {
-      return { errno: 0, result: response.result?.response || response.result };
-    }
-    
-    return response;
-  } catch (error) {
-    logger.error(`[TeslaAPI] startCharging error:`, error.message);
-    return { errno: 500, error: error.message };
-  }
+  return sendSignedCommand(userId, vehicleTag, 'charge_start');
 }
 
 /**
@@ -514,19 +649,7 @@ async function startCharging(userId, vehicleTag) {
  * @returns {Promise<Object>} Command result
  */
 async function stopCharging(userId, vehicleTag) {
-  try {
-    const accessToken = await ensureValidToken(userId);
-    const response = await callTeslaAPI(`/api/1/vehicles/${vehicleTag}/command/charge_stop`, 'POST', null, accessToken);
-    
-    if (response.errno === 0) {
-      return { errno: 0, result: response.result?.response || response.result };
-    }
-    
-    return response;
-  } catch (error) {
-    logger.error(`[TeslaAPI] stopCharging error:`, error.message);
-    return { errno: 500, error: error.message };
-  }
+  return sendSignedCommand(userId, vehicleTag, 'charge_stop');
 }
 
 /**
@@ -537,24 +660,7 @@ async function stopCharging(userId, vehicleTag) {
  * @returns {Promise<Object>} Command result
  */
 async function setChargingAmps(userId, vehicleTag, amps) {
-  try {
-    const accessToken = await ensureValidToken(userId);
-    const response = await callTeslaAPI(
-      `/api/1/vehicles/${vehicleTag}/command/set_charging_amps`,
-      'POST',
-      { charging_amps: amps },
-      accessToken
-    );
-    
-    if (response.errno === 0) {
-      return { errno: 0, result: response.result?.response || response.result };
-    }
-    
-    return response;
-  } catch (error) {
-    logger.error(`[TeslaAPI] setChargingAmps error:`, error.message);
-    return { errno: 500, error: error.message };
-  }
+  return sendSignedCommand(userId, vehicleTag, 'set_charging_amps', { charging_amps: amps });
 }
 
 /**
@@ -565,24 +671,9 @@ async function setChargingAmps(userId, vehicleTag, amps) {
  * @returns {Promise<Object>} Command result
  */
 async function setChargeLimit(userId, vehicleTag, percent) {
-  try {
-    const accessToken = await ensureValidToken(userId);
-    const response = await callTeslaAPI(
-      `/api/1/vehicles/${vehicleTag}/command/set_charge_limit`,
-      'POST',
-      { percent },
-      accessToken
-    );
-    
-    if (response.errno === 0) {
-      return { errno: 0, result: response.result?.response || response.result };
-    }
-    
-    return response;
-  } catch (error) {
-    logger.error(`[TeslaAPI] setChargeLimit error:`, error.message);
-    return { errno: 500, error: error.message };
-  }
+  return sendSignedCommand(userId, vehicleTag, 'set_charge_limit', { percent });
 }
 
-module.exports = { init };
+module.exports = { 
+  init
+};

@@ -155,7 +155,7 @@ let metricsTimerId = null;
 function startMetricsAutoRefresh(intervalMs = 60000) {
     // If timer already running, don't start another
     if (metricsTimerId) {
-        console.log('[Metrics] Auto-refresh already running');
+        // console.log('[Metrics] Auto-refresh already running');
         return null;
     }
     

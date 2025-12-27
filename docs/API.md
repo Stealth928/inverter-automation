@@ -669,6 +669,131 @@ Authorization: Bearer <token>
 
 ---
 
+## Tesla Integration
+
+### Overview
+
+Tesla integration uses the **Tesla Fleet API** with per-user OAuth credentials and the **Tesla Vehicle Command Protocol** for signed commands. See [TESLA_SIGNED_COMMANDS.md](TESLA_SIGNED_COMMANDS.md) for detailed implementation documentation.
+
+⚠️ **Important**: As of October 2023, Tesla requires cryptographic signatures for all vehicle commands. Direct REST API endpoints are deprecated.
+
+### Save Private Key
+```
+POST /api/tesla/save-private-key
+Authorization: Bearer <firebase-id-token>
+```
+
+Save user's ECDSA P-256 private key for signing vehicle commands.
+
+**Request:**
+```json
+{
+  "privateKey": "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEI...\n-----END EC PRIVATE KEY-----"
+}
+```
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": { "success": true },
+  "msg": "Private key saved successfully"
+}
+```
+
+**Errors:**
+- `400`: Invalid or missing private key
+- `500`: Failed to save key to Firestore
+
+**Key Generation:**
+```bash
+openssl ecparam -name prime256v1 -genkey -noout -out tesla-private-key.pem
+```
+
+### Get Public Key
+```
+GET /api/tesla/public-key
+Authorization: Bearer <firebase-id-token>
+```
+
+Retrieve user's public key (derived from private key) for Tesla Fleet API registration.
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": {
+    "publicKey": "-----BEGIN PUBLIC KEY-----\nMFkwEwYH...\n-----END PUBLIC KEY-----"
+  },
+  "msg": "Use this public key to register with Tesla Fleet API at https://developer.tesla.com"
+}
+```
+
+**Errors:**
+- `404`: No private key found (generate and save key first)
+- `500`: Failed to derive public key
+
+**Next Steps:**
+1. Copy the public key
+2. Visit https://developer.tesla.com
+3. Navigate to your application → Vehicle Command Keys
+4. Paste and save the public key
+
+### Vehicle Commands
+
+All commands now use signed protocol automatically. See [TESLA_SIGNED_COMMANDS.md](TESLA_SIGNED_COMMANDS.md) for details.
+
+#### Start Charging
+```
+POST /api/tesla/vehicles/{vehicleTag}/charge/start
+Authorization: Bearer <firebase-id-token>
+```
+
+#### Stop Charging
+```
+POST /api/tesla/vehicles/{vehicleTag}/charge/stop
+Authorization: Bearer <firebase-id-token>
+```
+
+#### Set Charging Amps
+```
+POST /api/tesla/vehicles/{vehicleTag}/charge/set-amps
+Authorization: Bearer <firebase-id-token>
+
+Body:
+{
+  "amps": 16
+}
+```
+
+#### Set Charge Limit
+```
+POST /api/tesla/vehicles/{vehicleTag}/charge/set-limit
+Authorization: Bearer <firebase-id-token>
+
+Body:
+{
+  "percent": 80
+}
+```
+
+**Command Response:**
+```json
+{
+  "errno": 0,
+  "result": {
+    "result": true
+  }
+}
+```
+
+**Common Errors:**
+- `404`: No private key found (save key first)
+- `401`: Invalid signature (check key registration)
+- `500`: Command execution failed
+
+---
+
 ## Error Codes
 
 | Code | Meaning |
@@ -691,5 +816,4 @@ Authorization: Bearer <token>
 | FoxESS (History) | ~60 req/hour | 30 minutes | `users/{uid}/cache/history_*` (per 24h chunk) |
 | Amber (Prices) | ~100 req/hour | 24 hours | `amber_prices/{siteId}` (global, shared) |
 | Open-Meteo (Weather) | Unlimited | 30 minutes | `users/{uid}/cache/weather` |
-
-All caches use Firestore TTL field for auto-cleanup. Enable TTL policy in Firestore console for automatic document expiration.
+| Tesla Fleet API | Per-user OAuth limits | N/A | Token-based rate limiting |

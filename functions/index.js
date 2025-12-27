@@ -391,7 +391,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       return res.status(400).json({ errno: 400, error: 'Email is required' });
     }
     
-    console.log(`[Auth] Password reset requested for: ${email}`);
+    logger.info('Auth', `Password reset requested for: ${email}`, true);
     res.json({ 
       errno: 0, 
       msg: 'If this email exists, a password reset link has been sent. Please check your email.' 
@@ -413,12 +413,12 @@ app.post('/api/config/validate-keys', async (req, res) => {
     // For unauthenticated setup, just validate the FoxESS token without saving
     // Once user is authenticated, they can complete setup via authenticated endpoint
     if (foxess_token && device_sn) {
-      console.log(`[Validation] Testing FoxESS token`);
+      logger.info('Validation', `Testing FoxESS token`, true);
       const testConfig = { foxessToken: foxess_token, deviceSn: device_sn };
       const foxResult = await foxessAPI.callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, testConfig, null);
       
       // Log only status, not full response (may contain sensitive device data)
-      console.log(`[Validation] FoxESS API response: errno=${foxResult?.errno}, devices=${foxResult?.result?.data?.length || 0}`);
+      logger.info('Validation', `FoxESS API response: errno=${foxResult?.errno}, devices=${foxResult?.result?.data?.length || 0}`, true);
       
       if (!foxResult || foxResult.errno !== 0) {
         failed_keys.push('foxess_token');
@@ -463,11 +463,11 @@ app.post('/api/config/validate-keys', async (req, res) => {
 
       if (req.user?.uid) {
         await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(configData, { merge: true });
-        console.log(`[Validation] Config saved successfully for user ${req.user.uid}`);
+        logger.info('Validation', `Config saved successfully for user ${req.user.uid}`, true);
       } else {
         // Persist to shared server config so the setup flow completes for unauthenticated users
         await db.collection('shared').doc('serverConfig').set(configData, { merge: true });
-        console.log('[Validation] Config saved to shared serverConfig (unauthenticated setup flow)');
+        logger.info('Validation', 'Config saved to shared serverConfig (unauthenticated setup flow)', true);
       }
     }
     
@@ -846,19 +846,19 @@ app.get('/api/amber/prices/actual', authenticateUser, async (req, res) => {
     }
     
     if (ageDays > 7) {
-      console.log(`[Amber Actual] Timestamp ${timestamp} is ${ageDays.toFixed(2)} days old (>7 days) - outside Amber data retention`);
+      logger.debug('Amber Actual', `Timestamp ${timestamp} is ${ageDays.toFixed(2)} days old (>7 days) - outside Amber data retention`);
       return res.json({ errno: 0, result: null, reason: 'outside_retention_window', ageDays: ageDays.toFixed(2) });
     }
     
     if (ageMs < 5 * 60 * 1000) {
-      console.log(`[Amber Actual] Timestamp ${timestamp} is only ${(ageMs / 60000).toFixed(1)} minutes old - price may not be settled yet`);
+      logger.debug('Amber Actual', `Timestamp ${timestamp} is only ${(ageMs / 60000).toFixed(1)} minutes old - price may not be settled yet`);
       return res.json({ errno: 0, result: null, reason: 'too_recent', ageMinutes: (ageMs / 60000).toFixed(1) });
     }
     
     // Calculate date for the timestamp (Amber uses date-based queries)
     const targetDate = targetTime.toISOString().split('T')[0]; // YYYY-MM-DD
     
-    console.log(`[Amber Actual] Fetching actual prices for ${targetDate} (timestamp: ${timestamp}, age: ${ageDays.toFixed(2)} days)`);
+    logger.debug('Amber Actual', `Fetching actual prices for ${targetDate} (timestamp: ${timestamp}, age: ${ageDays.toFixed(2)} days)`);
     
     // Fetch prices for that date (we'll filter to the specific interval)
     // Use the same resolution as the user's billing interval (5 or 30 minutes)
@@ -886,7 +886,7 @@ app.get('/api/amber/prices/actual', authenticateUser, async (req, res) => {
       }
       
       if (prices.length === 0) {
-        console.log(`[Amber Actual] No prices returned for ${targetDate}`);
+        logger.debug('Amber Actual', `No prices returned for ${targetDate}`);
         return res.json({ errno: 0, result: null, reason: 'no_data' });
       }
       
@@ -899,12 +899,12 @@ app.get('/api/amber/prices/actual', authenticateUser, async (req, res) => {
       });
       
       if (!matchingInterval) {
-        console.log(`[Amber Actual] No matching interval found for ${timestamp} in ${prices.length} price intervals`);
+        logger.debug('Amber Actual', `No matching interval found for ${timestamp} in ${prices.length} price intervals`);
         return res.json({ errno: 0, result: null, reason: 'no_matching_interval' });
       }
       
       // Return the actual price data
-      console.log(`[Amber Actual] Found matching interval: type=${matchingInterval.type}, channel=${matchingInterval.channelType}, price=${matchingInterval.perKwh}c/kWh`);
+      logger.debug('Amber Actual', `Found matching interval: type=${matchingInterval.type}, channel=${matchingInterval.channelType}, price=${matchingInterval.perKwh}c/kWh`);
       
       res.json({
         errno: 0,
@@ -1088,7 +1088,7 @@ app.get('/api/tesla/oauth-authorize', async (req, res) => {
       `scope=${encodeURIComponent(scope)}&` +
       `state=${encodeURIComponent(state)}`;
     
-    console.log(`[Tesla] User ${user.uid} initiating OAuth flow`);
+    logger.debug('Tesla', `User ${user.uid} initiating OAuth flow`);
     res.redirect(authorizeUrl);
   } catch (error) {
     console.error('[Tesla] oauth-authorize error:', error);
@@ -1130,7 +1130,7 @@ app.get('/api/tesla/oauth-callback', async (req, res) => {
         return res.redirect('/tesla-integration.html?oauth_error=state_expired');
       }
       
-      console.log(`[Tesla] Valid state token for user ${stateData.userId}`);
+      logger.debug('Tesla', `Valid state token for user ${stateData.userId}`);
     } catch (e) {
       console.error('[Tesla] Invalid state token:', e);
       return res.redirect('/tesla-integration.html?oauth_error=invalid_state');
@@ -1139,7 +1139,7 @@ app.get('/api/tesla/oauth-callback', async (req, res) => {
     const userId = stateData.userId;
     const clientId = stateData.clientId;  // Retrieved from state token
     
-    console.log(`[Tesla] oauth-callback received, attempting token exchange for user ${userId}`);
+    logger.debug('Tesla', `oauth-callback received, attempting token exchange for user ${userId}`);
     
     // Get user's client secret from Firestore
     let clientSecret = '';
@@ -1163,7 +1163,7 @@ app.get('/api/tesla/oauth-callback', async (req, res) => {
     const redirectUri = `https://${host}/api/tesla/oauth-callback`;
     const tokenUrl = 'https://auth.tesla.com/oauth2/v3/token';
     
-    console.log(`[Tesla] Token exchange - redirectUri: ${redirectUri}, clientId: ${clientId}`);
+    logger.debug('Tesla', `Token exchange - redirectUri: ${redirectUri}, clientId: ${clientId}`);
     
     const tokenResponse = await fetch(tokenUrl, {
       method: 'POST',
@@ -1184,7 +1184,7 @@ app.get('/api/tesla/oauth-callback', async (req, res) => {
     let tokenData;
     const responseText = await tokenResponse.text();
     
-    console.log(`[Tesla] Token endpoint response status: ${tokenResponse.status} ${tokenResponse.statusText}`);
+    logger.debug('Tesla', `Token endpoint response status: ${tokenResponse.status} ${tokenResponse.statusText}`);
     console.log(`[Tesla] Response headers:`, {
       contentType: tokenResponse.headers.get('content-type'),
       contentLength: tokenResponse.headers.get('content-length')
@@ -1231,7 +1231,7 @@ app.get('/api/tesla/oauth-callback', async (req, res) => {
       return res.redirect('/tesla-integration.html?oauth_error=no_access_token');
     }
     
-    console.log(`[Tesla] Successfully exchanged code for tokens (access_token: ${tokenData.access_token.substring(0, 20)}..., refresh_token: ${tokenData.refresh_token ? 'present' : 'missing'})`);
+    logger.debug('Tesla', `Successfully exchanged code for tokens (access_token: ${tokenData.access_token.substring(0, 20)}..., refresh_token: ${tokenData.refresh_token ? 'present' : 'missing'})`);
     
     // Save tokens to Firestore
     try {
@@ -1241,7 +1241,7 @@ app.get('/api/tesla/oauth-callback', async (req, res) => {
         tokenData.refresh_token || null,
         tokenData.expires_in || null
       );
-      console.log(`[Tesla] Tokens saved for user ${userId}`);
+      logger.debug('Tesla', `Tokens saved for user ${userId}`);
     } catch (saveError) {
       console.error('[Tesla] Failed to save tokens:', saveError);
       return res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent('Failed to save tokens')}`);
@@ -1503,13 +1503,13 @@ function getAutomationTimezone(userConfig) {
  */
 async function getUserConfig(userId) {
   try {
-    console.log(`[Config] Loading config for user: ${userId}`);
+    logger.debug('Config', `Loading config for user: ${userId}`);
     
     // Primary location: users/{uid}/config/main (newer code)
     const configDoc = await db.collection('users').doc(userId).collection('config').doc('main').get();
     if (configDoc.exists) {
       const data = configDoc.data() || {};
-      console.log(`[Config] Found config at users/${userId}/config/main:`, { hasDeviceSn: !!data.deviceSn, hasFoxessToken: !!data.foxessToken });
+      logger.debug('Config', `Found config at users/${userId}/config/main: { hasDeviceSn: ${!!data.deviceSn}, hasFoxessToken: ${!!data.foxessToken} }`);
       return { ...data, _source: 'config-main' };
     }
 
@@ -2175,7 +2175,7 @@ app.post('/api/automation/reset', async (req, res) => {
     });
     await batch.commit();
     
-    console.log(`[Automation] State reset for user ${req.user.uid}`);
+    logger.debug('Automation', `State reset for user ${req.user.uid}`);
     res.json({ errno: 0, result: 'Automation state reset' });
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -2587,9 +2587,9 @@ app.post('/api/automation/cycle', async (req, res) => {
       const result = await evaluateRule(userId, ruleId, rule, cache, inverterData, userConfig, isActiveRule /* skipCooldownCheck */);
       
       if (result.triggered) {
-        console.log(`[Automation] 🎯 Rule '${rule.name}' (${ruleId}) conditions MET - triggered=${result.triggered}`);
+        logger.debug('Automation', `🎯 Rule '${rule.name}' (${ruleId}) conditions MET - triggered=${result.triggered}`);
         if (isActiveRule) {
-          console.log(`[Automation] 🔄 Rule '${rule.name}' is ACTIVE (continuing) - checking segment status...`);
+          logger.debug('Automation', `🔄 Rule '${rule.name}' is ACTIVE (continuing) - checking segment status...`);
           // Active rule continues - conditions still hold
           // Calculate how long rule has been active
           const lastTriggeredMs = typeof lastTriggered === 'object' 
@@ -2597,24 +2597,24 @@ app.post('/api/automation/cycle', async (req, res) => {
             : (lastTriggered || Date.now());
           const activeForSec = Math.round((Date.now() - lastTriggeredMs) / 1000);
           const cooldownRemaining = Math.max(0, Math.round((cooldownMs - (Date.now() - lastTriggeredMs)) / 1000));
-          console.log(`[Automation] ⏱️ Active for ${activeForSec}s, cooldown remaining: ${cooldownRemaining}s`);
-          console.log(`[Automation] 📊 Current segment status: activeSegmentEnabled=${state.activeSegmentEnabled}`);
+          logger.debug('Automation', `⏱️ Active for ${activeForSec}s, cooldown remaining: ${cooldownRemaining}s`);
+          logger.debug('Automation', `📊 Current segment status: activeSegmentEnabled=${state.activeSegmentEnabled}`);
           
           // CRITICAL: If segment failed to send but rule is active, attempt to re-send the segment
           if (state.activeSegmentEnabled === false && state.activeRule === ruleId) {
-            console.log(`[Automation] ⚠️ Segment previously failed for active rule '${rule.name}' - attempting RETRY...`);
-            console.log(`[Automation] 🔧 Retry attempt for userId=${userId}, ruleId=${ruleId}`);
+            logger.debug('Automation', `⚠️ Segment previously failed for active rule '${rule.name}' - attempting RETRY...`);
+            logger.debug('Automation', `🔧 Retry attempt for userId=${userId}, ruleId=${ruleId}`);
             let retryResult = null;
             try {
               retryResult = await applyRuleAction(userId, rule, userConfig);
-              console.log(`[Automation] 📤 Retry result: errno=${retryResult?.errno}, msg=${retryResult?.msg}`);
+              logger.debug('Automation', `📤 Retry result: errno=${retryResult?.errno}, msg=${retryResult?.msg}`);
             } catch (retryErr) {
               console.error(`[Automation] ❌ Retry exception:`, retryErr);
               retryResult = { errno: -1, msg: retryErr.message || 'Retry failed' };
             }
             
             // Update state with retry result
-            console.log(`[Automation] 💾 Updating state after retry: activeSegmentEnabled=${retryResult?.errno === 0}`);
+            logger.debug('Automation', `💾 Updating state after retry: activeSegmentEnabled=${retryResult?.errno === 0}`);
             await saveUserAutomationState(userId, {
               lastCheck: Date.now(),
               activeSegmentEnabled: retryResult?.errno === 0,
@@ -2623,7 +2623,7 @@ app.post('/api/automation/cycle', async (req, res) => {
             });
             
             if (retryResult?.errno === 0) {
-              console.log(`[Automation] ✅ Segment re-send SUCCESSFUL - segment should now be on device`);
+              logger.debug('Automation', `✅ Segment re-send SUCCESSFUL - segment should now be on device`);
             } else {
               console.error(`[Automation] ❌ Segment re-send FAILED: ${retryResult?.msg || 'unknown error'}`);
             }
@@ -2713,8 +2713,8 @@ app.post('/api/automation/cycle', async (req, res) => {
               details: result 
             });
             
-            console.log(`[Automation] ✅ Rule '${rule.name}' continuing (cooldown ${cooldownRemaining}s remaining) - segment already sent`);
-            console.log(`[Automation] 📊 Preserving segment state: activeSegmentEnabled=${state.activeSegmentEnabled}`);
+            logger.debug('Automation', `✅ Rule '${rule.name}' continuing (cooldown ${cooldownRemaining}s remaining) - segment already sent`);
+            logger.debug('Automation', `📊 Preserving segment state: activeSegmentEnabled=${state.activeSegmentEnabled}`);
             // Mark this as the triggered rule for response (continuing state)
             triggeredRule = { ruleId, ...rule, isNewTrigger: false, status: 'continuing' };
             
@@ -2726,13 +2726,13 @@ app.post('/api/automation/cycle', async (req, res) => {
               inBlackout: false
               // DO NOT UPDATE activeSegmentEnabled - preserve prior state
             });
-            console.log(`[Automation] 💾 State updated - rule continues without re-sending segment`);
+            logger.debug('Automation', `💾 State updated - rule continues without re-sending segment`);
             
             break; // Rule still active, exit loop
           }
         } else {
-          console.log(`[Automation] 🆕 NEW rule triggered: '${rule.name}' (${ruleId})`);
-          console.log(`[Automation] 📊 Current active rule: ${state.activeRule || 'none'}`);
+          logger.debug('Automation', `🆕 NEW rule triggered: '${rule.name}' (${ruleId})`);
+          logger.debug('Automation', `📊 Current active rule: ${state.activeRule || 'none'}`);
           // Mark as 'triggered' for new rules
           evaluationResults.push({ rule: rule.name, result: 'triggered', details: result });
           // New rule triggered - check priority vs active rule
@@ -2781,15 +2781,15 @@ app.post('/api/automation/cycle', async (req, res) => {
         
         // Only apply the rule action if this is a NEW rule (not the active one continuing)
         if (!isActiveRule) {
-          console.log(`[Automation] 🚀 Applying NEW rule action for '${rule.name}'...`);
-          console.log(`[Automation] 🎬 Calling applyRuleAction(userId=${userId}, rule=${rule.name})`);
+          logger.debug('Automation', `🚀 Applying NEW rule action for '${rule.name}'...`);
+          logger.debug('Automation', `🎬 Calling applyRuleAction(userId=${userId}, rule=${rule.name})`);
           // Actually apply the rule action (create scheduler segment)
           let actionResult = null;
           try {
             const applyStart = Date.now();
             actionResult = await applyRuleAction(userId, rule, userConfig);
             const applyDuration = Date.now() - applyStart;
-            console.log(`[Automation] 📤 applyRuleAction completed in ${applyDuration}ms: errno=${actionResult?.errno}`);
+            logger.debug('Automation', `📤 applyRuleAction completed in ${applyDuration}ms: errno=${actionResult?.errno}`);
             console.log(`[Automation] 📋 Action result details:`, JSON.stringify({errno: actionResult?.errno, msg: actionResult?.msg, segment: actionResult?.segment ? 'present' : 'missing'}, null, 2));
           } catch (actionError) {
             console.error(`[Automation] ❌ Action exception:`, actionError);
@@ -2801,8 +2801,8 @@ app.post('/api/automation/cycle', async (req, res) => {
             lastTriggered: serverTimestamp()
           }, { merge: true });
           
-          console.log(`[Automation] 💾 Saving automation state for new rule...`);
-          console.log(`[Automation] 📊 State to save: activeRule=${ruleId}, activeSegmentEnabled=${actionResult?.errno === 0}`);
+          logger.debug('Automation', `💾 Saving automation state for new rule...`);
+          logger.debug('Automation', `📊 State to save: activeRule=${ruleId}, activeSegmentEnabled=${actionResult?.errno === 0}`);
           // Update automation state
           // IMPORTANT: Save ruleId (doc key) not rule.name so UI can match activeRule with rule keys
           await saveUserAutomationState(userId, {
@@ -2815,8 +2815,8 @@ app.post('/api/automation/cycle', async (req, res) => {
             inBlackout: false,
             lastActionResult: actionResult
           });
-          console.log(`[Automation] ✅ State saved successfully - activeRule is now '${rule.name}'`);
-          console.log(`[Automation] 🔍 Final segment status: ${actionResult?.errno === 0 ? 'ENABLED ✅' : 'FAILED ❌'}`);
+          logger.debug('Automation', `✅ State saved successfully - activeRule is now '${rule.name}'`);
+          logger.debug('Automation', `🔍 Final segment status: ${actionResult?.errno === 0 ? 'ENABLED ✅' : 'FAILED ❌'}`);
           if (actionResult?.errno !== 0) {
             console.error(`[Automation] 🚨 SEGMENT SEND FAILED - errno=${actionResult?.errno}, msg=${actionResult?.msg}`);
           }
@@ -3154,11 +3154,11 @@ app.post('/api/automation/cycle', async (req, res) => {
     // Curtailment failures don't affect automation cycle
     let curtailmentResult = null;
     try {
-      console.log(`[Cycle] 🌞 Starting curtailment check with amberData: ${amberData ? amberData.length : 'null'} items`);
-      console.log(`[Cycle] 🔍 FULL userConfig:`, JSON.stringify(userConfig));
-      console.log(`[Cycle] 🔍 userConfig.curtailment specifically:`, JSON.stringify(userConfig?.curtailment));
+      logger.debug('Cycle', `🌞 Starting curtailment check with amberData: ${amberData ? amberData.length : 'null'} items`);
+      logger.debug('Cycle', `🔍 FULL userConfig: ${JSON.stringify(userConfig)}`);
+      logger.debug('Cycle', `🔍 userConfig.curtailment specifically: ${JSON.stringify(userConfig?.curtailment)}`);
       curtailmentResult = await checkAndApplyCurtailment(userId, userConfig, amberData);
-      console.log(`[Cycle] 🌞 Curtailment result:`, JSON.stringify(curtailmentResult));
+      logger.debug('Cycle', `🌞 Curtailment result: ${JSON.stringify(curtailmentResult)}`);
       if (curtailmentResult.error) {
         console.warn(`[Cycle] ⚠️ Curtailment check failed: ${curtailmentResult.error}`);
       }
@@ -3208,7 +3208,7 @@ app.post('/api/automation/cancel', async (req, res) => {
       return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     }
     
-    console.log(`[Automation] Cancel request for user ${userId}, device ${deviceSN}`);
+    logger.debug('Automation', `Cancel request for user ${userId}, device ${deviceSN}`);
 
     // Create 8 empty/disabled segments (matching device's actual group count)
     const emptyGroups = [];
@@ -3227,13 +3227,13 @@ app.post('/api/automation/cancel', async (req, res) => {
     
     // Send to device via v1 API
     const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: emptyGroups }, userConfig, userId);
-    console.log(`[Automation] Cancel v1 result: errno=${result.errno}`);
+    logger.debug('Automation', `Cancel v1 result: errno=${result.errno}`);
     
     // Disable the scheduler flag
     let flagResult = null;
     try {
       flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
-      console.log(`[Automation] Cancel flag result: errno=${flagResult?.errno}`);
+      logger.debug('Automation', `Cancel flag result: errno=${flagResult?.errno}`);
     } catch (flagErr) {
       console.warn('[Automation] Flag disable failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
     }
@@ -3285,7 +3285,7 @@ app.post('/api/automation/rule/end', async (req, res) => {
     const actualRuleId = ruleId || (ruleName || '').toLowerCase().replace(/[^a-z0-9]+/g, '_');
     const endTimestamp = endTime || Date.now();
     
-    console.log(`[Automation] Manual rule end requested: ruleId=${actualRuleId}, endTime=${endTimestamp}`);
+    logger.debug('Automation', `Manual rule end requested: ruleId=${actualRuleId}, endTime=${endTimestamp}`);
     
     // Get automation audit logs to find the start event for this rule
     const auditLogs = await getAutomationAuditLogs(userId, 500);
@@ -3312,7 +3312,7 @@ app.post('/api/automation/rule/end', async (req, res) => {
       return res.status(400).json({ errno: 400, error: `No activation event found for rule ${actualRuleId}` });
     }
     
-    console.log(`[Automation] Found start event at ${new Date(startTimestamp).toISOString()}`);
+    logger.debug('Automation', `Found start event at ${new Date(startTimestamp).toISOString()}`);
     
     // Create an audit entry that shows the rule being deactivated
     // This creates the "off" event that pairs with the "on" event in the audit trail
@@ -3341,7 +3341,7 @@ app.post('/api/automation/rule/end', async (req, res) => {
     // Also clear the active rule from state if it's still set to this rule
     const state = await getUserAutomationState(userId);
     if (state && state.activeRule === actualRuleId) {
-      console.log(`[Automation] Clearing active rule state for ${actualRuleId}`);
+      logger.debug('Automation', `Clearing active rule state for ${actualRuleId}`);
       await saveUserAutomationState(userId, {
         activeRule: null,
         activeRuleName: null,
@@ -3351,7 +3351,7 @@ app.post('/api/automation/rule/end', async (req, res) => {
     }
     
     const durationMs = endTimestamp - startTimestamp;
-    console.log(`[Automation] ✅ Orphan rule ended: ${startEvent.ruleName} (${Math.round(durationMs / 1000)}s duration)`);
+    logger.debug('Automation', `✅ Orphan rule ended: ${startEvent.ruleName} (${Math.round(durationMs / 1000)}s duration)`);
     
     res.json({
       errno: 0,
@@ -3966,6 +3966,12 @@ app.get('/api/device/status/check', authenticateUser, async (req, res) => {
     const settingResponseOk = settingResult?.errno === 0;
     const settingHasData = settingResult?.result && Object.keys(settingResult.result).length > 0;
     
+    const potentialIssues = [];
+    if (!deviceFound) potentialIssues.push('Device not found in device list - may be offline or using wrong SN');
+    if (!realtimeWorking) potentialIssues.push('Real-time data API not responding - device may be offline');
+    if (!settingResponseOk) potentialIssues.push('Settings API error - possible API issue with FoxESS');
+    if (settingResponseOk && !settingHasData) potentialIssues.push('Settings API returned empty result - this setting may not be supported by your device');
+
     return res.json({
       errno: 0,
       result: {
@@ -3980,23 +3986,10 @@ app.get('/api/device/status/check', authenticateUser, async (req, res) => {
           deviceOnline: deviceFound,
           realtimeDataAvailable: realtimeWorking,
           settingReadSupported: settingResponseOk && settingHasData,
-          potentialIssues: []
+          potentialIssues
         }
       }
     });
-    
-    // Add potential issues
-    const result = res.locals?.statusResult || {
-      deviceFound: false,
-      realtimeWorking: false,
-      settingResponseOk: false,
-      settingHasData: false
-    };
-    
-    if (!result.deviceFound) result.potentialIssues.push('Device not found in device list - may be offline or using wrong SN');
-    if (!result.realtimeWorking) result.potentialIssues.push('Real-time data API not responding - device may be offline');
-    if (!result.settingResponseOk) result.potentialIssues.push('Settings API error - possible API issue with FoxESS');
-    if (result.settingResponseOk && !result.settingHasData) result.potentialIssues.push('Settings API returned empty result - this setting may not be supported by your device');
     
   } catch (error) {
     console.error('[API] /api/device/status/check error:', error);
@@ -4487,7 +4480,7 @@ async function incrementApiCount(userId, apiType) {
 
   // Only update per-user metrics when we have a valid userId
   if (userId) {
-    console.log(`[Metrics] Incrementing ${apiType} counter for user ${userId} on ${today}`);
+    logger.debug('Metrics', `Incrementing ${apiType} counter for user ${userId} on ${today}`);
     const docRef = db.collection('users').doc(userId).collection('metrics').doc(today);
     try {
       await db.runTransaction(async (transaction) => {
@@ -4759,7 +4752,7 @@ app.post('/api/tesla/fleet-status', authenticateUser, restrictToTeslaUser, async
 app.post('/api/tesla/vehicles/:vehicleTag/charge/start', authenticateUser, restrictToTeslaUser, async (req, res) => {
   try {
     const { vehicleTag } = req.params;
-    console.log(`[Tesla] User ${req.user.uid} starting charge on vehicle ${vehicleTag}`);
+    logger.debug('Tesla', `User ${req.user.uid} starting charge on vehicle ${vehicleTag}`);
     const result = await teslaAPI.startCharging(req.user.uid, vehicleTag);
     res.json(result);
   } catch (error) {
@@ -4772,7 +4765,7 @@ app.post('/api/tesla/vehicles/:vehicleTag/charge/start', authenticateUser, restr
 app.post('/api/tesla/vehicles/:vehicleTag/charge/stop', authenticateUser, restrictToTeslaUser, async (req, res) => {
   try {
     const { vehicleTag } = req.params;
-    console.log(`[Tesla] User ${req.user.uid} stopping charge on vehicle ${vehicleTag}`);
+    logger.debug('Tesla', `User ${req.user.uid} stopping charge on vehicle ${vehicleTag}`);
     const result = await teslaAPI.stopCharging(req.user.uid, vehicleTag);
     res.json(result);
   } catch (error) {
@@ -4791,7 +4784,7 @@ app.post('/api/tesla/vehicles/:vehicleTag/charge/set-amps', authenticateUser, re
       return res.status(400).json({ errno: 400, error: 'Amps must be a number between 5 and 32' });
     }
     
-    console.log(`[Tesla] User ${req.user.uid} setting ${amps}A on vehicle ${vehicleTag}`);
+    logger.debug('Tesla', `User ${req.user.uid} setting ${amps}A on vehicle ${vehicleTag}`);
     const result = await teslaAPI.setChargingAmps(req.user.uid, vehicleTag, amps);
     res.json(result);
   } catch (error) {
@@ -4810,7 +4803,7 @@ app.post('/api/tesla/vehicles/:vehicleTag/charge/set-limit', authenticateUser, r
       return res.status(400).json({ errno: 400, error: 'Charge limit must be a number between 50 and 100' });
     }
     
-    console.log(`[Tesla] User ${req.user.uid} setting charge limit to ${percent}% on vehicle ${vehicleTag}`);
+    logger.debug('Tesla', `User ${req.user.uid} setting charge limit to ${percent}% on vehicle ${vehicleTag}`);
     const result = await teslaAPI.setChargeLimit(req.user.uid, vehicleTag, percent);
     res.json(result);
   } catch (error) {
@@ -4876,7 +4869,7 @@ app.get('/api/tesla/get-config', authenticateUser, async (req, res) => {
       
       if (teslaDoc.exists && teslaDoc.data()) {
         const data = teslaDoc.data();
-        console.log('[Tesla] get-config: user credentials retrieved');
+        logger.debug('Tesla', 'get-config: user credentials retrieved');
         
         return res.json({ 
           errno: 0, 
@@ -4932,7 +4925,7 @@ app.post('/api/tesla/save-credentials', authenticateUser, restrictToTeslaUser, a
     
     try {
       await teslaAPI.saveUserCredentials(userId, clientId, clientSecret);
-      console.log(`[Tesla] OAuth credentials saved for user ${userId}`);
+      logger.debug('Tesla', `OAuth credentials saved for user ${userId}`);
       res.json({ errno: 0, result: { success: true }, msg: 'Credentials saved successfully' });
     } catch (saveError) {
       console.error('[Tesla] Failed to save credentials:', saveError);
@@ -4940,6 +4933,40 @@ app.post('/api/tesla/save-credentials', authenticateUser, restrictToTeslaUser, a
     }
   } catch (error) {
     console.error('[Tesla] save-credentials error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Get shared public key for Tesla Fleet API registration
+app.get('/api/tesla/public-key', authenticateUser, restrictToTeslaUser, async (req, res) => {
+  try {
+    const privateKey = await teslaAPI.getSharedPrivateKey();
+    
+    if (!privateKey) {
+      return res.status(500).json({ 
+        errno: 500, 
+        error: 'Shared signing key not configured on server. Contact administrator.' 
+      });
+    }
+    
+    try {
+      // Derive public key from private key
+      const crypto = require('crypto');
+      const keyObject = crypto.createPrivateKey(privateKey);
+      const publicKey = crypto.createPublicKey(keyObject);
+      const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' });
+      
+      res.json({ 
+        errno: 0, 
+        result: { publicKey: publicKeyPem },
+        msg: 'Public key is deployed at /.well-known/appspecific/com.tesla.3p.public-key.pem'
+      });
+    } catch (cryptoError) {
+      console.error('[Tesla] Failed to derive public key:', cryptoError);
+      res.status(500).json({ errno: 500, error: 'Failed to derive public key: ' + cryptoError.message });
+    }
+  } catch (error) {
+    console.error('[Tesla] public-key error:', error);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
@@ -5004,7 +5031,7 @@ app.post('/api/tesla/disconnect', authenticateUser, restrictToTeslaUser, async (
     const userId = req.user.uid;
     await db.collection('users').doc(userId).collection('config').doc('tesla').delete();
     
-    console.log(`[Tesla] User ${userId} disconnected Tesla account`);
+    logger.debug('Tesla', `User ${userId} disconnected Tesla account`);
     res.json({ 
       errno: 0, 
       result: { success: true }
@@ -5048,7 +5075,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   const userTime = getUserTime(userTimezone);
   const currentMinutes = userTime.hour * 60 + userTime.minute;
   
-  console.log(`[Automation] Evaluating rule '${rule.name}' in timezone ${userTimezone} (${String(userTime.hour).padStart(2,'0')}:${String(userTime.minute).padStart(2,'0')})`);
+  logger.debug('Automation', `Evaluating rule '${rule.name}' in timezone ${userTimezone} (${String(userTime.hour).padStart(2,'0')}:${String(userTime.minute).padStart(2,'0')})`);
   
   // Parse inverter data
   let soc = null;
@@ -5074,7 +5101,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
     if (generalInterval) buyPrice = generalInterval.perKwh;
   }
   
-  console.log(`[Automation] Evaluating rule '${rule.name}' - Live data: SoC=${soc}%, BatTemp=${batTemp}°C, FeedIn=${feedInPrice?.toFixed(1)}¢, Buy=${buyPrice?.toFixed(1)}¢`);
+  logger.debug('Automation', `Evaluating rule '${rule.name}' - Live data: SoC=${soc}%, BatTemp=${batTemp}°C, FeedIn=${feedInPrice?.toFixed(1)}¢, Buy=${buyPrice?.toFixed(1)}¢`);
   
   // Check SoC condition (support both 'op' and 'operator' field names)
   if (conditions.soc?.enabled) {
@@ -5091,11 +5118,11 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       }
       results.push({ condition: 'soc', met, actual: soc, operator, target: value });
       if (!met) {
-        console.log(`[Automation] Rule '${rule.name}' - SoC condition NOT met: ${soc} ${operator} ${value} = false`);
+        logger.debug('Automation', `Rule '${rule.name}' - SoC condition NOT met: ${soc} ${operator} ${value} = false`);
       }
     } else {
       results.push({ condition: 'soc', met: false, reason: 'No SoC data' });
-      console.log(`[Automation] Rule '${rule.name}' - SoC condition NOT met: No SoC data available`);
+      logger.debug('Automation', `Rule '${rule.name}' - SoC condition NOT met: No SoC data available`);
     }
   }
   
@@ -5118,13 +5145,13 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       }
       results.push({ condition: 'price', met, actual: actualPrice, operator, target: value, type: priceType });
       if (!met) {
-        console.log(`[Automation] Rule '${rule.name}' - Price (${priceType}) condition NOT met: actual=${actualPrice} (type: ${typeof actualPrice}), target=${value} (type: ${typeof value}), operator=${operator}, result: ${actualPrice} ${operator} ${value} = false`);
+        logger.debug('Automation', `Rule '${rule.name}' - Price (${priceType}) condition NOT met: actual=${actualPrice} (type: ${typeof actualPrice}), target=${value} (type: ${typeof value}), operator=${operator}, result: ${actualPrice} ${operator} ${value} = false`);
       } else {
-        console.log(`[Automation] Rule '${rule.name}' - Price (${priceType}) condition MET: ${actualPrice} ${operator} ${value} = true`);
+        logger.debug('Automation', `Rule '${rule.name}' - Price (${priceType}) condition MET: ${actualPrice} ${operator} ${value} = true`);
       }
     } else {
       results.push({ condition: 'price', met: false, reason: 'No Amber price data' });
-      console.log(`[Automation] Rule '${rule.name}' - Price condition NOT met: No Amber data available`);
+      logger.debug('Automation', `Rule '${rule.name}' - Price condition NOT met: No Amber data available`);
     }
   }
   
@@ -5143,13 +5170,13 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       }
       results.push({ condition: 'feedInPrice', met, actual: feedInPrice, operator, target: value });
       if (!met) {
-        console.log(`[Automation] Rule '${rule.name}' - FeedIn condition NOT met: actual=${feedInPrice} (type: ${typeof feedInPrice}), target=${value} (type: ${typeof value}), operator=${operator}, result: ${feedInPrice} ${operator} ${value} = false`);
+        logger.debug('Automation', `Rule '${rule.name}' - FeedIn condition NOT met: actual=${feedInPrice} (type: ${typeof feedInPrice}), target=${value} (type: ${typeof value}), operator=${operator}, result: ${feedInPrice} ${operator} ${value} = false`);
       } else {
-        console.log(`[Automation] Rule '${rule.name}' - FeedIn condition MET: ${feedInPrice} ${operator} ${value} = true`);
+        logger.debug('Automation', `Rule '${rule.name}' - FeedIn condition MET: ${feedInPrice} ${operator} ${value} = true`);
       }
     } else {
       results.push({ condition: 'feedInPrice', met: false, reason: 'No Amber data' });
-      console.log(`[Automation] Rule '${rule.name}' - FeedIn condition NOT met: No Amber data available`);
+      logger.debug('Automation', `Rule '${rule.name}' - FeedIn condition NOT met: No Amber data available`);
     }
   }
   
@@ -5168,13 +5195,13 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       }
       results.push({ condition: 'buyPrice', met, actual: buyPrice, operator, target: value });
       if (!met) {
-        console.log(`[Automation] Rule '${rule.name}' - BuyPrice condition NOT met: actual=${buyPrice} (type: ${typeof buyPrice}), target=${value} (type: ${typeof value}), operator=${operator}, result: ${buyPrice} ${operator} ${value} = false`);
+        logger.debug('Automation', `Rule '${rule.name}' - BuyPrice condition NOT met: actual=${buyPrice} (type: ${typeof buyPrice}), target=${value} (type: ${typeof value}), operator=${operator}, result: ${buyPrice} ${operator} ${value} = false`);
       } else {
-        console.log(`[Automation] Rule '${rule.name}' - BuyPrice condition MET: ${buyPrice} ${operator} ${value} = true`);
+        logger.debug('Automation', `Rule '${rule.name}' - BuyPrice condition MET: ${buyPrice} ${operator} ${value} = true`);
       }
     } else {
       results.push({ condition: 'buyPrice', met: false, reason: 'No Amber data' });
-      console.log(`[Automation] Rule '${rule.name}' - BuyPrice condition NOT met: No Amber data available`);
+      logger.debug('Automation', `Rule '${rule.name}' - BuyPrice condition NOT met: No Amber data available`);
     }
   }
   
@@ -5190,11 +5217,11 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const met = compareValue(actualTemp, operator, value);
       results.push({ condition: 'temperature', met, actual: actualTemp, operator, target: value, type: tempType });
       if (!met) {
-        console.log(`[Automation] Rule '${rule.name}' - Temperature condition NOT met: ${actualTemp} ${operator} ${value} = false`);
+        logger.debug('Automation', `Rule '${rule.name}' - Temperature condition NOT met: ${actualTemp} ${operator} ${value} = false`);
       }
     } else {
       results.push({ condition: 'temperature', met: false, reason: `No ${tempType} temperature data` });
-      console.log(`[Automation] Rule '${rule.name}' - Temperature condition NOT met: No ${tempType} temp data available`);
+      logger.debug('Automation', `Rule '${rule.name}' - Temperature condition NOT met: No ${tempType} temp data available`);
     }
   }
   
@@ -5218,7 +5245,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
     }
     results.push({ condition: 'time', met, actual: `${userTime.hour}:${String(userTime.minute).padStart(2,'0')}`, window: `${startTime}-${endTime}` });
     if (!met) {
-      console.log(`[Automation] Rule '${rule.name}' - Time condition NOT met: ${userTime.hour}:${String(userTime.minute).padStart(2,'0')} not in ${startTime}-${endTime}`);
+      logger.debug('Automation', `Rule '${rule.name}' - Time condition NOT met: ${userTime.hour}:${String(userTime.minute).padStart(2,'0')} not in ${startTime}-${endTime}`);
     }
   }
   
@@ -5323,7 +5350,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           incomplete: hasIncompleteData
         });
         if (!met) {
-          console.log(`[Automation] Rule '${rule.name}' - Solar radiation NOT met: ${checkType} ${actualValue?.toFixed(0)} W/m² ${operator} ${threshold} W/m²`);
+          logger.debug('Automation', `Rule '${rule.name}' - Solar radiation NOT met: ${checkType} ${actualValue?.toFixed(0)} W/m² ${operator} ${threshold} W/m²`);
         }
       } else {
         results.push({ condition: 'solarRadiation', met: false, reason: 'No radiation data for timeframe' });
@@ -5391,7 +5418,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           incomplete: hasIncompleteData
         });
         if (!met) {
-          console.log(`[Automation] Rule '${rule.name}' - Cloud cover NOT met: ${checkType} ${actualValue?.toFixed(0)}% ${operator} ${threshold}%`);
+          logger.debug('Automation', `Rule '${rule.name}' - Cloud cover NOT met: ${checkType} ${actualValue?.toFixed(0)}% ${operator} ${threshold}%`);
         }
       } else {
         results.push({ condition: 'cloudCover', met: false, reason: 'No cloud cover data' });
@@ -5615,15 +5642,15 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           incomplete: hasIncompleteData
         });
         if (!met) {
-          console.log(`[Automation] Rule '${rule.name}' - Forecast ${priceType} condition NOT met: ${checkType} ${actualValue?.toFixed(1)}¢ ${operator} ${value}¢ (${lookAheadDisplay})`);
+          logger.debug('Automation', `Rule '${rule.name}' - Forecast ${priceType} condition NOT met: ${checkType} ${actualValue?.toFixed(1)}¢ ${operator} ${value}¢ (${lookAheadDisplay})`);
         }
       } else {
         results.push({ condition: 'forecastPrice', met: false, reason: 'No forecast data' });
-        console.log(`[Automation] Rule '${rule.name}' - Forecast price condition NOT met: No forecast data available`);
+        logger.debug('Automation', `Rule '${rule.name}' - Forecast price condition NOT met: No forecast data available`);
       }
     } else {
       results.push({ condition: 'forecastPrice', met: false, reason: 'No Amber data' });
-      console.log(`[Automation] Rule '${rule.name}' - Forecast price condition NOT met: No Amber data available`);
+      logger.debug('Automation', `Rule '${rule.name}' - Forecast price condition NOT met: No Amber data available`);
     }
   }
   
@@ -5631,16 +5658,16 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   const allMet = results.length > 0 && results.every(r => r.met);
   
   if (enabledConditions.length === 0) {
-    console.log(`[Automation] Rule '${rule.name}' - No conditions enabled, skipping`);
+    logger.debug('Automation', `Rule '${rule.name}' - No conditions enabled, skipping`);
     return { triggered: false, reason: 'No conditions enabled', feedInPrice, buyPrice };
   }
   
   if (allMet) {
-    console.log(`[Automation] Rule '${rule.name}' - ALL ${enabledConditions.length} conditions MET!`);
+    logger.debug('Automation', `Rule '${rule.name}' - ALL ${enabledConditions.length} conditions MET!`);
     return { triggered: true, results, feedInPrice, buyPrice };
   }
   
-  console.log(`[Automation] Rule '${rule.name}' - Not all conditions met (${results.filter(r => r.met).length}/${results.length})`);
+  logger.debug('Automation', `Rule '${rule.name}' - Not all conditions met (${results.filter(r => r.met).length}/${results.length})`);
   return { triggered: false, results, feedInPrice, buyPrice };
 }
 
@@ -5728,7 +5755,7 @@ async function applyRuleAction(userId, rule, userConfig) {
   // Get user's timezone from config (or configured default)
   const userTimezone = getAutomationTimezone(userConfig);
   const tzSource = userConfig?.timezone ? 'config' : 'default';
-  console.log(`[Automation] Using timezone: ${userTimezone} (source: ${tzSource})`);
+  logger.debug('Automation', `Using timezone: ${userTimezone} (source: ${tzSource})`);
   
   // Get current time in user's timezone
   const userTime = getUserTime(userTimezone);
@@ -5755,7 +5782,7 @@ async function applyRuleAction(userId, rule, userConfig) {
     console.warn(`[SegmentSend] 🔧 CAPPED at 23:59 - Reduced duration from ${durationMins}min to ${actualDuration}min to respect FoxESS constraint`);
   }
   
-  console.log(`[Automation] Creating segment: ${String(startHour).padStart(2,'0')}:${String(startMinute).padStart(2,'0')} - ${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} (${durationMins}min requested)`);
+  logger.debug('Automation', `Creating segment: ${String(startHour).padStart(2,'0')}:${String(startMinute).padStart(2,'0')} - ${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} (${durationMins}min requested)`);
   
   // Get current scheduler from device (v1 API)
   let currentGroups = [];
@@ -5763,7 +5790,7 @@ async function applyRuleAction(userId, rule, userConfig) {
     const currentScheduler = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
     if (currentScheduler.errno === 0 && currentScheduler.result?.groups) {
       currentGroups = JSON.parse(JSON.stringify(currentScheduler.result.groups)); // Deep copy
-      console.log(`[Automation] Got ${currentGroups.length} groups from device`);
+      logger.debug('Automation', `Got ${currentGroups.length} groups from device`);
     }
   } catch (e) {
     console.warn('[Automation] Failed to get current scheduler:', e && e.message ? e.message : e);
@@ -5802,7 +5829,7 @@ async function applyRuleAction(userId, rule, userConfig) {
     }
   });
   if (clearedCount > 0) {
-    console.log(`[Automation] Cleared ${clearedCount} existing segment(s)`);
+    logger.debug('Automation', `Cleared ${clearedCount} existing segment(s)`);
   }
   
   // Final validation: Ensure end time is after start time (no midnight crossing)
@@ -6010,7 +6037,7 @@ app.post('/api/auth/init-user', async (req, res) => {
       activeRule: null
     }, { merge: true });
     
-    console.log(`[Auth] User ${userId} initialized successfully`);
+    logger.info('Auth', `User ${userId} initialized successfully`, true);
     res.json({ errno: 0, msg: 'User initialized' });
   } catch (error) {
     console.error('[Auth] Error initializing user:', error);
@@ -6026,7 +6053,7 @@ app.post('/api/auth/init-user', async (req, res) => {
 app.post('/api/auth/cleanup-user', authenticateUser, async (req, res) => {
   try {
     const userId = req.user.uid;
-    console.log(`[Auth] Cleaning up user: ${userId}`);
+    logger.info('Auth', `Cleaning up user: ${userId}`, true);
     
     // Delete user's subcollections
     const subcollections = ['config', 'automation', 'rules', 'history', 'notifications', 'metrics'];
@@ -6040,7 +6067,7 @@ app.post('/api/auth/cleanup-user', authenticateUser, async (req, res) => {
     // Delete user document
     await db.collection('users').doc(userId).delete();
     
-    console.log(`[Auth] User ${userId} data cleaned up successfully`);
+    logger.info('Auth', `User ${userId} data cleaned up successfully`, true);
     res.json({ errno: 0, msg: 'User data deleted' });
   } catch (error) {
     console.error(`[Auth] Error cleaning up user:`, error);
@@ -6440,3 +6467,11 @@ exports.runAutomation = onSchedule(
   },
   runAutomationHandler
 );
+
+
+
+
+
+
+
+// Force rebuild - 12/25/2025 22:24:27

@@ -227,7 +227,7 @@ class APIClient {
   getBrowserTimezone() {
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      console.log('[API] Detected browser timezone:', timezone);
+      // console.log('[API] Detected browser timezone:', timezone);
       return timezone;
     } catch (e) {
       console.warn('[API] Failed to detect browser timezone:', e);

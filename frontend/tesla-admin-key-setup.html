@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tesla Private Key Setup - Admin</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #0d1117;
+            color: #e6edf3;
+        }
+        h1 { color: #58a6ff; }
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 15px;
+            border: 1px solid #30363d;
+            background: #161b22;
+            color: #e6edf3;
+            border-radius: 6px;
+            font-family: 'SF Mono', monospace;
+            font-size: 12px;
+            margin: 15px 0;
+        }
+        button {
+            background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 100%);
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        button:hover { opacity: 0.9; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .success { color: #3fb950; padding: 15px; background: rgba(63, 185, 80, 0.1); border-radius: 6px; margin: 15px 0; }
+        .error { color: #f85149; padding: 15px; background: rgba(248, 81, 73, 0.1); border-radius: 6px; margin: 15px 0; }
+        .info { color: #8b949e; font-size: 13px; line-height: 1.6; background: rgba(48, 54, 61, 0.3); padding: 15px; border-radius: 6px; margin: 15px 0; }
+        code { background: rgba(48, 54, 61, 0.5); padding: 3px 6px; border-radius: 3px; }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <h1>🔐 Tesla Private Key Setup (Admin Only)</h1>
+    
+    <div class="info">
+        <strong>⚠️ Security Warning:</strong> This page allows you to store the Tesla signing private key in Firestore.
+        Only use this once during initial setup, then delete this file!
+        <br><br>
+        <strong>Steps:</strong>
+        <ol>
+            <li>The public key is already deployed at <code>/.well-known/appspecific/com.tesla.3p.public-key.pem</code></li>
+            <li>You need to generate a matching private key OR paste the one generated earlier</li>
+            <li>Click "Generate New Keypair" to create a fresh pair, OR paste your existing private key if you have it</li>
+            <li>Click "Save to Firestore" to store it securely</li>
+        </ol>
+    </div>
+
+    <h3>Option 1: Generate New Keypair (Recommended)</h3>
+    <button id="generateBtn" onclick="generateKeypair()">🔑 Generate New Tesla Signing Keypair</button>
+    
+    <div id="publicKeyDisplay" style="display: none; margin: 20px 0;">
+        <h4>Generated Public Key:</h4>
+        <textarea id="publicKeyText" readonly></textarea>
+        <p class="info">⚠️ Copy this public key and save it to <code>frontend/.well-known/appspecific/com.tesla.3p.public-key.pem</code>, then redeploy hosting!</p>
+    </div>
+
+    <h3>Option 2: Paste Existing Private Key</h3>
+    <p style="color: #8b949e; font-size: 13px;">If you already generated a key pair and have the private key:</p>
+    <textarea id="privateKeyInput" placeholder="-----BEGIN PRIVATE KEY-----
+...
+-----END PRIVATE KEY-----"></textarea>
+
+    <button id="saveBtn" onclick="savePrivateKey()">💾 Save Private Key to Firestore</button>
+
+    <div id="status"></div>
+
+    <script type="module">
+        // Initialize Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyCApXIVZ5W4qdkNyIbpR7rhfpGNP8r2Qmg",
+            authDomain: "inverter-automation-firebase.firebaseapp.com",
+            projectId: "inverter-automation-firebase",
+            storageBucket: "inverter-automation-firebase.firebasestorage.app",
+            messagingSenderId: "489485166959",
+            appId: "1:489485166959:web:8a662c69fcce9b3e17e0dc",
+            measurementId: "G-5Y9JZ9HBTL"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        window.db = firebase.firestore();
+        window.auth = firebase.auth();
+
+        // Auth check
+        auth.onAuthStateChanged(user => {
+            if (!user) {
+                document.body.innerHTML = '<div class="error">Please sign in with your admin account first! <a href="login.html">Login</a></div>';
+            }
+        });
+    </script>
+
+    <script>
+        let generatedPrivateKey = null;
+
+        async function generateKeypair() {
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = true;
+            btn.textContent = '🔄 Generating...';
+
+            try {
+                // Generate ECDSA P-256 keypair
+                const keyPair = await window.crypto.subtle.generateKey(
+                    { name: 'ECDSA', namedCurve: 'P-256' },
+                    true,
+                    ['sign', 'verify']
+                );
+
+                // Export private key
+                const privateKeyBuffer = await window.crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
+                generatedPrivateKey = bufferToPem(privateKeyBuffer, 'PRIVATE KEY');
+                document.getElementById('privateKeyInput').value = generatedPrivateKey;
+
+                // Export public key
+                const publicKeyBuffer = await window.crypto.subtle.exportKey('spki', keyPair.publicKey);
+                const publicKeyPem = bufferToPem(publicKeyBuffer, 'PUBLIC KEY');
+                document.getElementById('publicKeyText').value = publicKeyPem;
+                document.getElementById('publicKeyDisplay').style.display = 'block';
+
+                showStatus('✅ Keypair generated! Review the public key above and save the private key below.', 'success');
+            } catch (error) {
+                showStatus('❌ Failed to generate keypair: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔑 Generate New Tesla Signing Keypair';
+            }
+        }
+
+        async function savePrivateKey() {
+            const privateKey = document.getElementById('privateKeyInput').value.trim();
+            
+            if (!privateKey) {
+                showStatus('❌ Please enter or generate a private key first', 'error');
+                return;
+            }
+
+            if (!privateKey.includes('BEGIN PRIVATE KEY') && !privateKey.includes('BEGIN EC PRIVATE KEY')) {
+                showStatus('❌ Invalid private key format. Must be PEM format.', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('saveBtn');
+            btn.disabled = true;
+            btn.textContent = '💾 Saving...';
+
+            try {
+                const user = window.auth.currentUser;
+                if (!user) {
+                    throw new Error('Not signed in');
+                }
+
+                await window.db.collection('system').doc('tesla-signing-key').set({
+                    privateKey: privateKey,
+                    algorithm: 'ECDSA P-256',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    purpose: 'Shared signing key for all users Tesla Vehicle Command Protocol',
+                    domain: 'inverter-automation-firebase.web.app',
+                    createdBy: user.uid
+                });
+
+                showStatus('✅ Private key saved successfully to Firestore (system/tesla-signing-key)! Tesla integration is now ready for all users.', 'success');
+                
+                // Clear the textarea for security
+                setTimeout(() => {
+                    if (confirm('Clear private key from screen for security?')) {
+                        document.getElementById('privateKeyInput').value = '';
+                    }
+                }, 2000);
+            } catch (error) {
+                showStatus('❌ Failed to save private key: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '💾 Save Private Key to Firestore';
+            }
+        }
+
+        function bufferToPem(buffer, label) {
+            const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+            const formatted = base64.match(/.{1,64}/g).join('\n');
+            return `-----BEGIN ${label}-----\n${formatted}\n-----END ${label}-----`;
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = type;
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

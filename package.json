@@ -1,5 +1,8 @@
 {
   "devDependencies": {
     "@playwright/test": "^1.57.0"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.6.0"
   }
 }

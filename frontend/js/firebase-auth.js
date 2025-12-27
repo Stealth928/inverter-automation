@@ -112,7 +112,7 @@ class FirebaseAuth {
       const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
       if (isLocalhost && !this.auth.emulatorConfig) {
         this.auth.useEmulator('http://127.0.0.1:9099');
-        console.log('[FirebaseAuth] Using Auth emulator at http://127.0.0.1:9099');
+        // console.log('[FirebaseAuth] Using Auth emulator at http://127.0.0.1:9099');
       }
       
       try {
@@ -221,7 +221,7 @@ class FirebaseAuth {
         await result.user.updateProfile({ displayName });
       }
       
-      console.log('[FirebaseAuth] Sign up successful:', email);
+      // console.log('[FirebaseAuth] Sign up successful:', email);
       return { success: true, user: result.user };
     } catch (error) {
       console.error('[FirebaseAuth] Sign up error:', error);
@@ -353,7 +353,7 @@ class FirebaseAuth {
             
             // Redirect to login
             if (typeof window !== 'undefined' && window.location) {
-              console.log('[FirebaseAuth] Redirecting to login page');
+              // console.log('[FirebaseAuth] Redirecting to login page');
               window.location.href = '/login.html';
             }
           }

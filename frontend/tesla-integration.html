@@ -430,6 +430,61 @@
             </div>
         </div>
 
+        <!-- Command Signing Key Section -->
+        <div class="tesla-section" style="background: linear-gradient(135deg, rgba(163, 94, 255, 0.1), rgba(255, 94, 239, 0.1)); border: 2px solid rgba(163, 94, 255, 0.5);">
+            <h2>🔐 Vehicle Command Signing</h2>
+            <p style="color: #8b949e; margin-bottom: 15px;">Required for vehicle commands (charge start/stop, etc). Generate and save your ECDSA P-256 key pair.</p>
+            
+            <div class="research-notes" style="background: rgba(163, 94, 255, 0.1); border-color: rgba(163, 94, 255, 0.3);">
+                <h4>⚠️ Tesla Vehicle Command Protocol</h4>
+                <ul>
+                    <li>As of October 2023, all vehicle commands require cryptographic signatures</li>
+                    <li>Generate an ECDSA P-256 key pair locally (your private key never leaves your machine)</li>
+                    <li>Upload only the private key here (stored securely in Firestore)</li>
+                    <li>Register the public key with Tesla Fleet API</li>
+                    <li>Keys are per-user - each account needs their own key pair</li>
+                </ul>
+            </div>
+
+            <!-- One-Click Setup (Simplified) -->
+            <div style="margin: 20px 0; padding: 15px; background: rgba(13, 17, 23, 0.8); border: 1px solid rgba(48, 54, 61, 0.8); border-radius: 8px;">
+                <h4 style="margin: 0 0 10px 0; color: #a371f7;">Tesla Setup (Two Steps)</h4>
+                <p style="color: #8b949e; font-size: 13px; margin-bottom: 15px;">Simple setup process:</p>
+                <ol style="color: #8b949e; font-size: 13px; margin: 0 0 15px 20px; line-height: 1.8;">
+                    <li><strong>OAuth:</strong> Click "Authorize with Tesla" above to grant access to your vehicles</li>
+                    <li><strong>Pair Virtual Key:</strong> Complete one-time pairing with your vehicle (see below)</li>
+                </ol>
+                <p style="color: #58a6ff; font-size: 13px; margin: 0; padding: 10px; background: rgba(88, 166, 255, 0.1); border-radius: 6px;">
+                    ℹ️ <strong>No key generation needed!</strong> Command signing is handled automatically by the server.
+                </p>
+            </div>
+
+            <!-- Virtual Key Pairing (Required) -->
+            <div id="virtualKeySection" style="margin: 20px 0; padding: 15px; background: rgba(255, 94, 94, 0.1); border: 2px solid rgba(255, 94, 94, 0.5); border-radius: 8px;">
+                <h4 style="margin: 0 0 10px 0; color: #ff5e5e;">⚠️ Step 2: Virtual Key Pairing Required</h4>
+                <p style="color: #8b949e; font-size: 13px; margin-bottom: 15px;">After completing OAuth, pair your virtual key with your vehicle. Click the button below to open Tesla's pairing page:</p>
+                
+                <button class="btn" id="pairVirtualKeyBtn" style="background: linear-gradient(135deg, #ff5e5e 0%, #ff9e5e 100%); font-size: 15px; padding: 12px 24px;">
+                    🔑 Pair Virtual Key
+                </button>
+                
+                <p style="color: #8b949e; font-size: 13px; margin: 15px 0 0 0; line-height: 1.6;">
+                    This will open the Tesla app and guide you through the pairing process. If you have multiple vehicles, you can specify which one to pair.
+                </p>
+                
+                <div style="margin-top: 15px; padding: 10px; background: rgba(255, 94, 94, 0.1); border-radius: 6px;">
+                    <p style="margin: 0; font-size: 13px; color: #ff5e5e;">
+                        <strong>Without virtual key pairing, commands will fail.</strong> This is a one-time setup per vehicle.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Status Display -->
+            <div id="keySetupStatus" style="margin-top: 15px; padding: 12px; border-radius: 6px; display: none;">
+                <!-- Status message populated by JS -->
+            </div>
+        </div>
+
         <!-- Vehicle Discovery Section -->
         <div class="tesla-section">
             <h2>🚗 Vehicle Discovery</h2>
@@ -996,6 +1051,15 @@
             statusDiv.textContent = message;
         }
 
+        function showKeyStatus(message, type) {
+            const statusDiv = document.getElementById('keySetupStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = type === 'success' ? 'rgba(163, 94, 255, 0.1)' : 'rgba(217, 153, 34, 0.1)';
+            statusDiv.style.border = `1px solid ${type === 'success' ? 'rgba(163, 94, 255, 0.3)' : 'rgba(217, 153, 34, 0.3)'}`;
+            statusDiv.style.color = type === 'success' ? '#a371f7' : '#d29922';
+            statusDiv.textContent = message;
+        }
+
         function setupEventListeners() {
             console.log('%c🔧 Setting up Event Listeners', 'color: #58a6ff; font-weight: bold;');
             
@@ -1220,6 +1284,147 @@
                 });
             }
 
+            // ===== VIRTUAL KEY PAIRING =====
+            
+            // Pair Virtual Key
+            const pairVirtualKeyBtn = document.getElementById('pairVirtualKeyBtn');
+            if (pairVirtualKeyBtn) {
+                pairVirtualKeyBtn.addEventListener('click', async () => {
+                    console.log('%c🔑 Pair Virtual Key Clicked', 'color: #ff5e5e;');
+                    
+                    // Get selected vehicle VIN if available
+                    const selectedVehicleId = window.selectedVehicleId;
+                    let pairingUrl = 'https://tesla.com/_ak/inverter-automation-firebase.web.app';
+                    
+                    // If a vehicle is selected, try to get its VIN and add to URL
+                    if (selectedVehicleId) {
+                        try {
+                            const vehicleResp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleId}`, { method: 'GET' });
+                            const vehicleData = await vehicleResp.json();
+                            if (vehicleData.errno === 0 && vehicleData.result?.vin) {
+                                pairingUrl += `?vin=${vehicleData.result.vin}`;
+                                addLog(`Opening pairing flow for VIN: ${vehicleData.result.vin}`, 'info');
+                            }
+                        } catch (e) {
+                            console.warn('Could not fetch VIN, using generic pairing URL', e);
+                        }
+                    }
+                    
+                    addLog('Opening Tesla app pairing flow...', 'info');
+                    window.open(pairingUrl, '_blank');
+                    
+                    // Show follow-up message
+                    setTimeout(() => {
+                        addLog('Complete the pairing process in the Tesla app, then test your commands', 'info');
+                    }, 1000);
+                });
+            }
+            
+            // Save Manual Key
+            const saveManualKeyBtn = document.getElementById('saveManualKeyBtn');
+            if (saveManualKeyBtn) {
+                saveManualKeyBtn.addEventListener('click', async () => {
+                    console.log('%c🔐 Save Manual Key Clicked', 'color: #a371f7;');
+                    const privateKey = document.getElementById('manualPrivateKeyInput').value.trim();
+                    
+                    if (!privateKey) {
+                        showKeyStatus('Please paste your private key', 'error');
+                        addLog('Private key is required', 'error');
+                        return;
+                    }
+                    
+                    // Basic PEM format validation
+                    if (!privateKey.includes('BEGIN EC PRIVATE KEY') && !privateKey.includes('BEGIN PRIVATE KEY')) {
+                        showKeyStatus('Invalid key format. Must be PEM format (BEGIN EC PRIVATE KEY or BEGIN PRIVATE KEY)', 'error');
+                        addLog('Invalid private key format', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        const originalText = saveManualKeyBtn.textContent;
+                        saveManualKeyBtn.textContent = 'Saving...';
+                        saveManualKeyBtn.disabled = true;
+                        
+                        addLog('Saving private key...', 'info');
+                        const resp = await window.authenticatedFetch('/api/tesla/save-private-key', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ privateKey })
+                        });
+                        
+                        const data = await resp.json();
+                        if (data.errno === 0) {
+                            showKeyStatus('✓ Private key saved successfully! Now get your public key below.', 'success');
+                            addLog('✓ Private key saved successfully', 'success');
+                            document.getElementById('manualPrivateKeyInput').value = ''; // Clear for security
+                            
+                            // Auto-fetch public key
+                            setTimeout(() => {
+                                document.getElementById('getPublicKeyBtn').click();
+                            }, 500);
+                        } else {
+                            showKeyStatus(`❌ Error: ${data.error}`, 'error');
+                            addLog(`✗ Failed to save private key: ${data.error}`, 'error');
+                        }
+                    } catch (error) {
+                        showKeyStatus(`Error: ${error.message}`, 'error');
+                        addLog(`Error saving private key: ${error.message}`, 'error');
+                    } finally {
+                        saveManualKeyBtn.textContent = 'Upload Manual Key';
+                        saveManualKeyBtn.disabled = false;
+                    }
+                });
+            }
+            
+            // Check Key Status
+            const checkKeyStatusBtn = document.getElementById('checkKeyStatusBtn');
+            if (checkKeyStatusBtn) {
+                checkKeyStatusBtn.addEventListener('click', async () => {
+                    try {
+                        addLog('Checking key status...', 'info');
+                        const resp = await window.authenticatedFetch('/api/tesla/public-key');
+                        const data = await resp.json();
+                        
+                        if (resp.status === 404 || data.errno === 404) {
+                            showKeyStatus('❌ No private key found. Please generate and save a key pair first.', 'error');
+                            addLog('No private key configured', 'error');
+                        } else if (data.errno === 0) {
+                            showKeyStatus('✓ Private key is configured and valid!', 'success');
+                            addLog('✓ Private key is configured', 'success');
+                        } else {
+                            showKeyStatus(`❌ Error: ${data.error}`, 'error');
+                            addLog(`Error checking key: ${data.error}`, 'error');
+                        }
+                    } catch (error) {
+                        showKeyStatus(`Error: ${error.message}`, 'error');
+                        addLog(`Error checking key status: ${error.message}`, 'error');
+                    }
+                });
+            }
+            
+            // Copy Public Key to Clipboard
+            const copyPublicKeyBtn = document.getElementById('copyPublicKeyBtn');
+            if (copyPublicKeyBtn) {
+                copyPublicKeyBtn.addEventListener('click', async () => {
+                    const publicKey = document.getElementById('publicKeyOutput').value;
+                    try {
+                        await navigator.clipboard.writeText(publicKey);
+                        const originalText = copyPublicKeyBtn.textContent;
+                        copyPublicKeyBtn.textContent = '✓ Copied!';
+                        addLog('✓ Public key copied to clipboard', 'success');
+                        setTimeout(() => {
+                            copyPublicKeyBtn.textContent = originalText;
+                        }, 2000);
+                    } catch (error) {
+                        addLog('Failed to copy to clipboard', 'error');
+                        // Fallback: select the text
+                        document.getElementById('publicKeyOutput').select();
+                    }
+                });
+            }
+
+            // ===== VEHICLE DISCOVERY LISTENERS =====
+
             // List vehicles
             const listBtn = document.getElementById('listVehiclesBtn');
             if (listBtn) {
@@ -1298,6 +1503,24 @@
                         const data = await resp.json();
                         if (data.errno === 0) {
                             addLog('✓ Vehicle data retrieved', 'success');
+                            console.log('Full API response:', data);
+                            console.log('Result object keys:', Object.keys(data.result || {}));
+                            
+                            // Check for location data in different places
+                            const result = data.result || {};
+                            if (result.drive_state) {
+                                console.log('drive_state full:', result.drive_state);
+                                console.log('Current GPS location fields:', {
+                                    latitude: result.drive_state.latitude,
+                                    longitude: result.drive_state.longitude,
+                                    gps_as_of: result.drive_state.gps_as_of,
+                                    heading: result.drive_state.heading,
+                                    gps_heading: result.drive_state.gps_heading,
+                                    active_route_latitude: result.drive_state.active_route_latitude,
+                                    active_route_longitude: result.drive_state.active_route_longitude
+                                });
+                            }
+                            
                             updateVehicleStateDisplay(data.result);
                         } else {
                             addLog(`✗ Failed to get vehicle data: ${data.error}`, 'error');
@@ -1538,6 +1761,34 @@
             const drive = vehicle.drive_state || {};
             const charge = vehicle.charge_state || {};
             const climate = vehicle.climate_state || {};
+            const vehicleState = vehicle.vehicle_state || {};
+            
+            // Debug: Log drive_state to understand structure
+            console.log('Drive state available:', Object.keys(drive));
+            console.log('Full drive_state:', drive);
+            console.log('Full response object keys:', Object.keys(vehicle));
+            
+            // Format location display - use current GPS location
+            let locationDisplay = 'Not available';
+            
+            // Check for current GPS location
+            if (drive.latitude !== undefined && drive.longitude !== undefined) {
+                locationDisplay = `📍 ${drive.latitude.toFixed(4)}, ${drive.longitude.toFixed(4)}`;
+                if (drive.gps_as_of) {
+                    const gpsTime = new Date(drive.gps_as_of * 1000).toLocaleTimeString();
+                    locationDisplay += ` (${gpsTime})`;
+                }
+            }
+            // Fall back to vehicle_state
+            else if (vehicleState.latitude !== undefined && vehicleState.longitude !== undefined) {
+                locationDisplay = `📍 ${vehicleState.latitude.toFixed(4)}, ${vehicleState.longitude.toFixed(4)}`;
+            } 
+            else {
+                // Check if vehicle is sleeping or location disabled
+                if (drive.power === 0 && !drive.speed) {
+                    locationDisplay = 'Vehicle parked (GPS not available)';
+                }
+            }
             
             container.innerHTML = `
                 <div class="info-box">
@@ -1562,7 +1813,7 @@
                 </div>
                 <div class="info-box">
                     <label>Location</label>
-                    <div class="value">${drive.latitude ? '📍 Active' : 'Unknown'}</div>
+                    <div class="value">${locationDisplay}</div>
                 </div>
             `;
 

@@ -60,7 +60,6 @@ function init(dependencies) {
     
     // Track API call if userId provided (unless caller is handling it)
     if (userId && !skipCounter && incrementApiCount) {
-      console.log(`[Amber] callAmberAPI incrementing counter (skipCounter=${skipCounter})`);
       incrementApiCount(userId, 'amber').catch(() => {});
     }
     
@@ -70,9 +69,6 @@ function init(dependencies) {
         url.searchParams.set(k, String(queryParams[k]));
       }
     });
-    
-    console.log(`[Amber] Full URL being called: ${url.toString()}`);
-    console.log(`[Amber] Query params object:`, queryParams);
     
     const headers = {
       'Authorization': `Bearer ${apiKey}`,
@@ -86,8 +82,6 @@ function init(dependencies) {
       const resp = await fetch(url.toString(), { headers, signal: controller.signal });
       clearTimeout(timeout);
       const text = await resp.text();
-      
-      console.log(`[Amber] ${path} - HTTP ${resp.status}, Content-Type: ${resp.headers.get('content-type')}, Length: ${text.length}`);
       
       // Handle rate limiting (429 Too Many Requests)
       if (resp.status === 429) {
@@ -117,7 +111,6 @@ function init(dependencies) {
       
       try {
         const json = JSON.parse(text);
-        console.log(`[Amber] Successfully parsed JSON response from ${path}`);
         return json;
       } catch (e) {
         console.warn(`[Amber] Failed to parse JSON from ${path}:`, e.message, 'Response preview:', text.substring(0, 500));
@@ -211,7 +204,6 @@ function init(dependencies) {
       const snap = await cacheDoc.get();
       
       if (!snap.exists) {
-        console.log(`[Cache] No current prices cache found for user ${userId}, site ${siteId}`);
         return null;
       }
       
@@ -220,11 +212,9 @@ function init(dependencies) {
       const cacheTTL = getAmberCacheTTL(userConfig);
       
       if (cacheAge > cacheTTL) {
-        console.log(`[Cache] Current prices cache expired for user ${userId}, site ${siteId} (age: ${Math.round(cacheAge / 1000)}s, TTL: ${Math.round(cacheTTL / 1000)}s)`);
         return null;
       }
       
-      console.log(`[Cache] Using cached current prices for user ${userId}, site ${siteId} (age: ${Math.round(cacheAge / 1000)}s, TTL: ${Math.round(cacheTTL / 1000)}s, ${cached.prices?.length || 0} intervals)`);
       return cached.prices || null;
     } catch (error) {
       console.warn(`[Cache] Error reading current prices for user ${userId}, site ${siteId}:`, error.message);
@@ -252,8 +242,6 @@ function init(dependencies) {
         prices,
         cachedAt: admin.firestore.FieldValue.serverTimestamp()
       });
-      const ttl = getAmberCacheTTL(userConfig);
-      console.log(`[Cache] Stored ${prices.length} current prices in cache for user ${userId}, site ${siteId} (TTL: ${Math.round(ttl / 1000)}s)`);
     } catch (error) {
       console.warn(`[Cache] Error caching current prices for user ${userId}, site ${siteId}:`, error.message);
     }
@@ -273,7 +261,6 @@ function init(dependencies) {
   async function getCachedAmberPrices(siteId, startDate, endDate, userId) {
     try {
       if (!userId) {
-        console.warn(`[Cache] No userId provided for Amber cache lookup`);
         return [];
       }
       
@@ -281,7 +268,6 @@ function init(dependencies) {
       const snap = await cacheRef.get();
       
       if (!snap.exists) {
-        console.log(`[Cache] No cached data found for user ${userId}, site ${siteId}`);
         return [];
       }
       
@@ -297,7 +283,6 @@ function init(dependencies) {
         return priceMs >= startMs && priceMs <= endMs;
       });
       
-      console.log(`[Cache] Found ${cached.length} cached prices total for user ${userId}, ${filtered.length} in requested range [${startDate} to ${endDate}]`);
       return filtered;
     } catch (error) {
       console.warn(`[Cache] Error reading prices for user ${userId}, site ${siteId}:`, error.message);
@@ -319,12 +304,8 @@ function init(dependencies) {
     const startMs = new Date(startDate + 'T00:00:00Z').getTime();
     const endMs = new Date(endDate + 'T23:59:59Z').getTime();
     
-    console.log(`[Cache] findGaps: looking for gaps between ${startDate} and ${endDate}, have ${existingPrices.length} cached prices`);
-    console.log(`[Cache] findGaps time range: ${startMs} to ${endMs}`);
-    
     if (existingPrices.length === 0) {
       gaps.push({ start: startDate, end: endDate });
-      console.log(`[Cache] No cached prices - entire range is a gap`);
       return gaps;
     }
     
@@ -341,28 +322,18 @@ function init(dependencies) {
     const firstCachedDate = sorted[0].startTime.split('T')[0];
     const lastCachedDate = sorted[sorted.length - 1].startTime.split('T')[0];
     
-    console.log(`[Cache] Cached date range: ${firstCachedDate} to ${lastCachedDate} (ms: ${firstPriceMs} to ${lastPriceMs})`);
-    console.log(`[Cache] Requested date range: ${startDate} to ${endDate}`);
-    console.log(`[Cache] String comparison: startDate < firstCached? ${startDate} < ${firstCachedDate} = ${startDate < firstCachedDate}`);
-    console.log(`[Cache] String comparison: endDate > lastCached? ${endDate} > ${lastCachedDate} = ${endDate > lastCachedDate}`);
-    
     // Check if we need data before the first cached date
     if (startDate < firstCachedDate) {
-      // Need dates before cached range
       const gapEnd = new Date(new Date(firstCachedDate).getTime() - 86400000).toISOString().split('T')[0];
       gaps.push({ start: startDate, end: gapEnd });
-      console.log(`[Cache] Gap before cached data: ${startDate} to ${gapEnd}`);
     }
     
     // Check if we need data after the last cached date
     if (endDate > lastCachedDate) {
-      // Need dates after cached range
       const gapStart = new Date(new Date(lastCachedDate).getTime() + 86400000).toISOString().split('T')[0];
       gaps.push({ start: gapStart, end: endDate });
-      console.log(`[Cache] Gap after cached data: ${gapStart} to ${endDate}`);
     }
     
-    console.log(`[Cache] Total gaps found: ${gaps.length}`);
     return gaps;
   }
 
@@ -379,7 +350,6 @@ function init(dependencies) {
   async function cacheAmberPrices(siteId, newPrices, userId) {
     try {
       if (!userId) {
-        console.warn(`[Cache] No userId provided for Amber cache storage`);
         return;
       }
       
@@ -409,8 +379,6 @@ function init(dependencies) {
       merged.sort((a, b) => 
         new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
       );
-      
-      console.log(`[Cache] Storing ${merged.length} total prices for user ${userId}, site ${siteId} (${newPrices.length} new prices added)`);
       
       await cacheRef.set({
         siteId,
@@ -483,11 +451,8 @@ function init(dependencies) {
    * @returns {Promise<Object>} Response with actual prices only
    */
   async function fetchAmberHistoricalPricesActualOnly(siteId, startDate, endDate, resolution, userConfig, userId) {
-    console.log(`[Prices] Fetching actual-only prices (fresh, no cache) for ${siteId}:`, { startDate, endDate, resolution });
-    
     // Increment API counter once per request (bypassing cache means we're hitting the API)
     if (userId && incrementApiCount) {
-      console.log(`[Prices] actual_only request: incrementing Amber API counter for user ${userId}`);
       incrementApiCount(userId, 'amber').catch(() => {});
     }
     
@@ -496,10 +461,8 @@ function init(dependencies) {
     
     // Split range into 30-day chunks and fetch each from API (skip cache entirely)
     const chunks = splitRangeIntoChunks(startDate, endDate, 30);
-    console.log(`[Prices] Fetching ${chunks.length} chunk(s) from API`);
     
     for (const chunk of chunks) {
-      console.log(`[Prices] Fetching fresh chunk: ${chunk.start} to ${chunk.end}`);
       
       // Call Amber API directly (skip counter since we'll track at endpoint level)
       const result = await callAmberAPI(
@@ -516,7 +479,6 @@ function init(dependencies) {
       
       // Handle error responses
       if (result && result.errno && result.errno !== 0) {
-        console.warn(`[Prices] API error for chunk ${chunk.start} to ${chunk.end}:`, result.error);
         continue;
       }
       
@@ -530,19 +492,14 @@ function init(dependencies) {
         prices = result.data;
       }
       
-      console.log(`[Prices] Chunk ${chunk.start} to ${chunk.end} returned ${prices.length} prices`);
       allPrices = allPrices.concat(prices);
     }
     
     // Filter to keep ONLY prices where startTime <= now (actual, not forecast)
-    console.log(`[Prices] Filtering ${allPrices.length} prices to actual only (timestamp <= now)`);
-    
     const actualPrices = allPrices.filter(p => {
       const priceTime = new Date(p.startTime);
       return priceTime <= now;
     });
-    
-    console.log(`[Prices] Filtered result: ${actualPrices.length} actual prices (removed ${allPrices.length - actualPrices.length} future prices)`);
     
     // Sort by startTime
     actualPrices.sort((a, b) => 
@@ -576,11 +533,9 @@ function init(dependencies) {
    * @returns {Promise<Object>} Response with cached + fresh prices
    */
   async function fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, resolution, userConfig, userId) {
-    console.log(`[Cache] Fetching prices with cache for user ${userId}, ${siteId}:`, { startDate, endDate, resolution });
-    
     // Step 1: Get cached prices (per-user cache)
     const cachedPrices = await getCachedAmberPrices(siteId, startDate, endDate, userId);
-    console.log(`[Cache] Found ${cachedPrices.length} cached prices in range`);
+    logger.debug('AmberCache', `Found ${cachedPrices.length} cached prices in range`);
     
     // Step 2: Check if we have BOTH channels for the full range
     const channelCounts = {};
@@ -589,37 +544,29 @@ function init(dependencies) {
     });
     const hasGeneral = channelCounts['general'] || 0;
     const hasFeedin = channelCounts['feedIn'] || 0;
-    console.log(`[Cache] Cached channels - general: ${hasGeneral}, feedIn: ${hasFeedin}`);
     
     // If either channel is completely missing, treat entire range as gap to force fresh fetch
     let gaps = [];
     if (!hasGeneral || !hasFeedin) {
-      console.log(`[Cache] Missing channels (general: ${hasGeneral}, feedIn: ${hasFeedin}), fetching full range fresh`);
       gaps = [{ start: startDate, end: endDate }];
     } else {
       // Both channels present, use normal gap detection
-      console.log(`[Cache] Both channels present (general: ${hasGeneral}, feedIn: ${hasFeedin}), checking for gaps`);
       gaps = findGaps(startDate, endDate, cachedPrices);
     }
-    
-    console.log(`[Cache] Found ${gaps.length} gaps to fetch from API`);
     
     let newPrices = [];
     
     // Step 3: Fetch gaps from API (split into 30-day chunks)
     if (gaps.length > 0) {
       // Increment API counter once per cache miss (not per chunk)
-      console.log(`[Cache] Cache miss detected: ${gaps.length} gaps found, incrementing counter`);
       if (userId && incrementApiCount) {
         incrementApiCount(userId, 'amber').catch(() => {});
       }
       
       for (const gap of gaps) {
         const chunks = splitRangeIntoChunks(gap.start, gap.end, 30);
-        console.log(`[Cache] Fetching gap ${gap.start} to ${gap.end} in ${chunks.length} chunk(s)`);
         
         for (const chunk of chunks) {
-          console.log(`[Cache] Fetching chunk: ${chunk.start} to ${chunk.end}`);
           
           // Call Amber API directly (skip counter since we track at cache level)
           const result = await callAmberAPI(
@@ -636,7 +583,6 @@ function init(dependencies) {
           
           // Handle error responses
           if (result && result.errno && result.errno !== 0) {
-            console.warn(`[Cache] API error for chunk ${chunk.start} to ${chunk.end}:`, result.error);
             continue;
           }
           
@@ -648,19 +594,6 @@ function init(dependencies) {
             prices = result.result;
           } else if (result && result.data && Array.isArray(result.data)) {
             prices = result.data;
-          }
-          
-          // Debug: log channel types in this chunk
-          const chunkChannelCounts = {};
-          prices.forEach(p => {
-            chunkChannelCounts[p.channelType] = (chunkChannelCounts[p.channelType] || 0) + 1;
-          });
-          console.log(`[Cache] Chunk ${chunk.start} to ${chunk.end} returned ${prices.length} prices - channels:`, chunkChannelCounts);
-          
-          // Log first and last timestamp to verify date range
-          if (prices.length > 0) {
-            const sortedPrices = prices.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
-            console.log(`[Cache] Chunk actual date range: ${sortedPrices[0].startTime} to ${sortedPrices[sortedPrices.length - 1].startTime}`);
           }
           
           newPrices = newPrices.concat(prices);
@@ -687,13 +620,6 @@ function init(dependencies) {
     finalPrices.sort((a, b) => 
       new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
     );
-    
-    // Debug: log final channel breakdown
-    const finalChannels = {};
-    finalPrices.forEach(p => {
-      finalChannels[p.channelType] = (finalChannels[p.channelType] || 0) + 1;
-    });
-    console.log(`[Cache] Final result: ${finalPrices.length} total prices (${cachedPrices.length} from cache, ${newPrices.length} from API) - channels:`, finalChannels);
     
     return { 
       errno: 0, 

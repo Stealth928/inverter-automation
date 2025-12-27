@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Get Public Key</title>
+</head>
+<body>
+    <h1>Retrieve Your Tesla Public Key</h1>
+    <button onclick="getPublicKey()">Get Public Key</button>
+    <pre id="output" style="background: #f0f0f0; padding: 20px; margin-top: 20px;"></pre>
+    
+    <script src="/js/firebase-config.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    
+    <script>
+        firebase.initializeApp(window.firebaseConfig);
+        const auth = firebase.auth();
+        
+        async function getPublicKey() {
+            try {
+                const user = auth.currentUser;
+                if (!user) {
+                    document.getElementById('output').textContent = 'Not logged in. Please log in first.';
+                    window.location.href = '/login.html';
+                    return;
+                }
+                
+                const token = await user.getIdToken();
+                const response = await fetch('/api/tesla/public-key', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const data = await response.json();
+                if (data.errno === 0) {
+                    document.getElementById('output').textContent = data.result.publicKey;
+                    
+                    // Also save to file
+                    const blob = new Blob([data.result.publicKey], { type: 'application/x-pem-file' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'com.tesla.3p.public-key.pem';
+                    a.click();
+                } else {
+                    document.getElementById('output').textContent = `Error: ${data.error}`;
+                }
+            } catch (error) {
+                document.getElementById('output').textContent = `Error: ${error.message}`;
+            }
+        }
+        
+        // Auto-run on page load
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                getPublicKey();
+            }
+        });
+    </script>
+</body>
+</html>
