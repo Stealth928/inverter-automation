@@ -701,11 +701,12 @@
 
                             // Restrict to specific user
                             const allowedEmail = 'sardanapalos928@hotmail.com';
-                            console.log('User email:', user.email);
+                            const userEmail = (user.email || '').toLowerCase();
+                            console.log('User email:', userEmail);
                             console.log('Allowed email:', allowedEmail);
-                            console.log('Access check:', user.email === allowedEmail ? '✓ PASS' : '✗ FAIL');
+                            console.log('Access check:', userEmail === allowedEmail ? '✓ PASS' : '✗ FAIL');
                             
-                            if (user.email !== allowedEmail) {
+                            if (userEmail !== allowedEmail) {
                                 console.error('❌ Access denied for user:', user.email);
                                 addLog(`Access denied. This page is restricted to ${allowedEmail}`, 'error');
                                 document.body.innerHTML = `

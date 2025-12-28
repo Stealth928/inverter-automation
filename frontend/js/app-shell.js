@@ -156,6 +156,18 @@
                 avatar.innerHTML = `<span data-user-initials>${initial}</span>`;
             }
         }
+
+        // Reveal WIP admin-only nav links for the authorized user.
+        try {
+            const adminEmail = 'sardanapalos928@hotmail.com';
+            const isAdmin = !!(user && user.email && String(user.email).toLowerCase() === adminEmail);
+            const teslaLink = document.getElementById('teslaNavLink');
+            const topologyLink = document.getElementById('topologyNavLink');
+            if (teslaLink) teslaLink.style.display = isAdmin ? '' : 'none';
+            if (topologyLink) topologyLink.style.display = isAdmin ? '' : 'none';
+        } catch (e) {
+            console.warn('[AppShell] Failed to update admin nav links', e);
+        }
     }
 
     function setupNavHighlight() {
