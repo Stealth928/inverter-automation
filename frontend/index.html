@@ -370,6 +370,37 @@
             border-radius: 6px;
             color: inherit;
             background: rgba(255,255,255,0.02);
+            position: relative;
+        }
+        /* Curtailment badge on solar tile */
+        .stat-item.curtailed .tile-icon::after {
+            content: '';
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 14px;
+            height: 14px;
+            background: radial-gradient(circle, #ff6b35 0%, #f0883e 100%);
+            border-radius: 50%;
+            border: 2px solid rgba(13, 17, 23, 0.95);
+            box-shadow: 0 0 8px rgba(255, 107, 53, 0.6), inset 0 0 3px rgba(255, 255, 255, 0.3);
+            animation: curtailment-pulse 2s ease-in-out infinite;
+        }
+        @keyframes curtailment-pulse {
+            0%, 100% { 
+                transform: scale(1);
+                box-shadow: 0 0 8px rgba(255, 107, 53, 0.6), inset 0 0 3px rgba(255, 255, 255, 0.3);
+            }
+            50% { 
+                transform: scale(1.15);
+                box-shadow: 0 0 12px rgba(255, 107, 53, 0.8), inset 0 0 4px rgba(255, 255, 255, 0.4);
+            }
+        }
+        /* Border glow effect when curtailed */
+        .stat-item.curtailed {
+            border: 1px solid rgba(255, 107, 53, 0.4);
+            background: linear-gradient(135deg, rgba(13, 17, 23, 0.5), rgba(22, 27, 34, 0.6));
+            box-shadow: inset 0 0 12px rgba(255, 107, 53, 0.08), 0 0 16px rgba(255, 107, 53, 0.12);
         }
         /* Thermometer variant: 50% size of default tile icons */
         .tile-icon.thermometer {
@@ -2758,8 +2789,13 @@
                 const ambTempCls = tempClassRealtime(ambTempVal);
                 const invTempCls = tempClassRealtime(invTempVal);
 
+                // Check if curtailment is active
+                const curtailmentActive = window.curtailmentState && window.curtailmentState.active;
+                const solarTileClass = curtailmentActive ? 'stat-item curtailed' : 'stat-item';
+                const curtailmentLabel = curtailmentActive ? ' (Curtailed)' : '';
+
                 const html = `<div class="stat-row">
-                    <div class="stat-item"><div class="tile-icon">☀️</div><div class="value">${solarDisplay}</div><div class="label">Solar Production</div></div>
+                    <div class="${solarTileClass}" id="solar-tile"><div class="tile-icon">☀️</div><div class="value">${solarDisplay}</div><div class="label">Solar Production${curtailmentLabel}</div></div>
                     <div class="stat-item"><div class="tile-icon">🏠</div><div class="value">${loadDisplay}</div><div class="label">House Load</div></div>
                     <div class="stat-item"><div class="tile-icon">🔌</div><div class="value ${gridClass}">${gridDisplay}</div><div class="label">Grid Import/Export</div></div>
                     <div class="stat-item battery-tile"><div class="tile-icon battery ${batteryIsCharging ? 'charging' : ''}">
@@ -4277,6 +4313,9 @@
                 
                 container.innerHTML = html;
                 
+                // Update solar tile curtailment indicator after rendering
+                updateSolarTileCurtailmentIndicator();
+                
                 // Also show in result panel
                 document.getElementById('result').className = 'success';
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
@@ -5136,6 +5175,27 @@
             return html;
         }
 
+        // Update solar tile curtailment indicator
+        function updateSolarTileCurtailmentIndicator() {
+            const solarTile = document.getElementById('solar-tile');
+            if (!solarTile) return;
+            
+            const isCurtailed = window.curtailmentState && window.curtailmentState.active;
+            const label = solarTile.querySelector('.label');
+            
+            if (isCurtailed) {
+                solarTile.classList.add('curtailed');
+                if (label) {
+                    label.textContent = 'Solar Production (Curtailed)';
+                }
+            } else {
+                solarTile.classList.remove('curtailed');
+                if (label) {
+                    label.textContent = 'Solar Production';
+                }
+            }
+        }
+
         // Parse FoxESS cloud time strings like "2025-11-29 19:01:57 AEDT+1100" into epoch ms.
         function parseFoxESSCloudTime(s) {
             if (!s || typeof s !== 'string') return null;
@@ -5877,6 +5937,9 @@
             
             container.innerHTML = html;
             
+            // Update solar tile curtailment indicator with current state
+            updateSolarTileCurtailmentIndicator();
+            
             // Store lastCheck, enabled state, and blackout info for countdown timer
             // Normalize lastCheck: Firestore may return a Timestamp object or seconds-only value.
             (function(){
@@ -6002,6 +6065,8 @@
                             currentPrice: curtailment.currentPrice,
                             priceThreshold: curtailment.priceThreshold
                         };
+                        // Update solar tile curtailment indicator
+                        updateSolarTileCurtailmentIndicator();
                         if (curtailment.error) {
                             showMessage('warning', `☀️ Curtailment error: ${curtailment.error}`, 5000);
                         } else if (curtailment.stateChanged) {
