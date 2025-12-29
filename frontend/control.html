@@ -288,6 +288,12 @@
                 <input type="number" name="minSocOnGrid" class="input" min="10" max="100" placeholder="e.g., 10" required>
               </div>
             </div>
+            <div class="input-row">
+              <div class="input-group">
+                <label>Max SoC (%)</label>
+                <input type="number" name="maxSoc" class="input" min="10" max="100" placeholder="e.g., 90" required>
+              </div>
+            </div>
             <div id="status-batterySoc"></div>
             <div class="form-actions">
               <button type="submit" class="btn btn-primary" style="flex:1">💾 Save Settings</button>
@@ -584,7 +590,7 @@
       pageName: 'controls',
       autoMetrics: true,
       onReady: () => {
-        try { getWorkMode(); } catch (error) { console.warn('Failed to load work mode', error); }
+        // Work mode loading disabled - user can fetch manually via "Check Current" button
       }
     });
 
@@ -695,29 +701,52 @@
     async function setBatterySoc(e) {
       e.preventDefault();
       const form = e.target;
-      const data = {
-        minSoc: parseInt(form.minSoc.value),
-        minSocOnGrid: parseInt(form.minSocOnGrid.value)
-      };
+      const minSoc = parseInt(form.minSoc.value);
+      const minSocOnGrid = parseInt(form.minSocOnGrid.value);
+      const maxSoc = parseInt(form.maxSoc.value);
       
+      console.log('[BatterySoC] Saving settings: minSoc:', minSoc, 'minSocOnGrid:', minSocOnGrid, 'maxSoc:', maxSoc);
       showStatus('batterySoc', '⏳ Saving battery SoC settings...', 'info');
       
       try {
-        const res = await authenticatedFetch('/api/device/battery/soc/set', {
+        // Step 1: Set minSoc and minSocOnGrid via battery/soc/set API
+        console.log('[BatterySoC] Step 1: Setting minSoc and minSocOnGrid via /api/device/battery/soc/set');
+        const res1 = await authenticatedFetch('/api/device/battery/soc/set', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
+          body: JSON.stringify({ minSoc, minSocOnGrid })
         });
-        const result = await res.json();
+        const result1 = await res1.json();
+        console.log('[BatterySoC] Battery SoC API response:', result1);
         
-        if (result.errno === 0) {
-          showStatus('batterySoc', '✅ Battery SoC settings saved successfully!', 'success');
-          displayFormattedResponse('Battery SoC Settings', result);
-        } else {
-          showStatus('batterySoc', `❌ Error: ${result.msg || 'Failed to save settings'}`, 'error');
-          displayFormattedResponse('Battery SoC Settings', result);
+        if (result1.errno !== 0) {
+          throw new Error(`Failed to set min SoC: ${result1.msg || 'Unknown error'}`);
         }
+        
+        // Step 2: Set maxSoc via device/setting/set API (MaxSoc is a device setting, not a battery/soc parameter)
+        console.log('[BatterySoC] Step 2: Setting maxSoc via /api/device/setting/set with key="MaxSoc"');
+        const res2 = await authenticatedFetch('/api/device/setting/set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'MaxSoc', value: maxSoc })
+        });
+        const result2 = await res2.json();
+        console.log('[BatterySoC] Device setting API response:', result2);
+        
+        if (result2.errno !== 0) {
+          throw new Error(`Min SoC saved, but MaxSoc failed: ${result2.msg || 'Unknown error'}`);
+        }
+        
+        console.log('[BatterySoC] ✅ All settings saved successfully');
+        showStatus('batterySoc', '✅ Battery SoC settings saved successfully!', 'success');
+        displayFormattedResponse('Battery SoC Settings (Combined)', {
+          errno: 0,
+          msg: 'All settings saved',
+          batterySocResult: result1,
+          maxSocResult: result2
+        });
       } catch (error) {
+        console.error('[BatterySoC] Error:', error);
         showStatus('batterySoc', `❌ Error: ${error.message}`, 'error');
       }
     }
@@ -725,32 +754,55 @@
     async function getBatterySoc() {
       showStatus('batterySoc', '⏳ Loading current settings...', 'info');
       try {
-        const res = await authenticatedFetch('/api/device/battery/soc/get');
-        const contentType = res.headers.get('content-type');
+        // Step 1: Get minSoc and minSocOnGrid from battery/soc/get
+        console.log('[BatterySoC] Loading: Step 1 - Fetching battery/soc/get');
+        const res1 = await authenticatedFetch('/api/device/battery/soc/get');
+        const contentType = res1.headers.get('content-type');
         
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        if (!res1.ok) {
+          throw new Error(`HTTP ${res1.status}: ${res1.statusText}`);
         }
         
-        let result;
+        let result1;
         if (contentType && contentType.includes('application/json')) {
-          result = await res.json();
+          result1 = await res1.json();
         } else {
-          const text = await res.text();
+          const text = await res1.text();
           showStatus('batterySoc', `❌ Error: Server returned invalid response (${text.substring(0, 100)})`, 'error');
           return;
         }
         
-        if (result.errno === 0 && result.result) {
+        console.log('[BatterySoC] Battery SoC GET response:', result1);
+        
+        // Step 2: Get maxSoc from device setting (MaxSoc is a device setting)
+        console.log('[BatterySoC] Loading: Step 2 - Fetching device/setting/get for MaxSoc');
+        const res2 = await authenticatedFetch('/api/device/setting/get', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'MaxSoc' })
+        });
+        const result2 = await res2.json();
+        console.log('[BatterySoC] MaxSoc device setting response:', result2);
+        
+        if (result1.errno === 0 && result1.result) {
           const form = document.getElementById('form-batterySoc');
-          form.minSoc.value = result.result.minSoc || 10;
-          form.minSocOnGrid.value = result.result.minSocOnGrid || 10;
+          form.minSoc.value = result1.result.minSoc || 10;
+          form.minSocOnGrid.value = result1.result.minSocOnGrid || 10;
+          form.maxSoc.value = (result2.errno === 0 && result2.result?.value) ? result2.result.value : 90;
+          
+          console.log('[BatterySoC] ✅ Loaded all settings successfully');
           showStatus('batterySoc', '✅ Loaded current settings', 'success');
-          displayFormattedResponse('Battery SoC Settings', result);
+          displayFormattedResponse('Battery SoC Settings (Combined)', {
+            errno: 0,
+            msg: 'Settings loaded',
+            batterySoc: result1.result,
+            maxSoc: result2.result
+          });
         } else {
-          showStatus('batterySoc', `❌ ${result.msg || 'Failed to load settings'}`, 'error');
+          showStatus('batterySoc', `❌ ${result1.msg || 'Failed to load settings'}`, 'error');
         }
       } catch (error) {
+        console.error('[BatterySoC] Load error:', error);
         showStatus('batterySoc', `❌ Error: ${error.message}`, 'error');
       }
     }

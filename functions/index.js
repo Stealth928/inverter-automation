@@ -3807,12 +3807,32 @@ app.post('/api/device/battery/soc/set', async (req, res) => {
   try {
     const userConfig = await getUserConfig(req.user.uid);
     const sn = req.body.sn || userConfig?.deviceSn;
-    const { minSoc, minSocOnGrid } = req.body;
-    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/battery/soc/set', 'POST', { sn, minSoc, minSocOnGrid }, userConfig, req.user.uid);
+    const { minSoc, minSocOnGrid, maxSoc } = req.body;
+    
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[BatterySoC] SET REQUEST`);
+    console.log(`  User: ${req.user.uid}`);
+    console.log(`  Device SN: ${sn}`);
+    console.log(`  Request body:`, JSON.stringify(req.body, null, 2));
+    console.log(`  Extracted: minSoc=${minSoc}, minSocOnGrid=${minSocOnGrid}, maxSoc=${maxSoc}`);
+    
+    if (!sn) {
+      console.log(`[BatterySoC] ❌ No device SN configured`);
+      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+    }
+    
+    const foxessPayload = { sn, minSoc, minSocOnGrid, maxSoc };
+    console.log(`[BatterySoC] Calling FoxESS API with payload:`, JSON.stringify(foxessPayload, null, 2));
+    
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/battery/soc/set', 'POST', foxessPayload, userConfig, req.user.uid);
+    
+    console.log(`[BatterySoC] FoxESS Response:`, JSON.stringify(result, null, 2));
+    console.log(`${'='.repeat(80)}\n`);
+    
     res.json(result);
   } catch (error) {
-    console.error('[API] /api/device/battery/soc/set error:', error);
+    console.error('[BatterySoC] Error:', error);
+    console.log(`${'='.repeat(80)}\n`);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
