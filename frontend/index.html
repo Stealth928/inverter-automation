@@ -5083,9 +5083,9 @@
         }
 
         /**
-         * Format a forecast day (YYYY-MM-DD) with a human-readable label like "Today", "Tomorrow", "In 2 days"
+         * Format a forecast day (YYYY-MM-DD) with day of week and date (e.g., "Wednesday - 7/1/2026")
          * @param {string} dateStr - YYYY-MM-DD date string
-         * @returns {string} e.g. "Today • 07/12/2025" or "Tomorrow • 08/12/2025"
+         * @returns {string} e.g. "Wednesday - 07/12/2025" or "Thursday - 08/12/2025"
          */
         function formatForecastDay(dateStr) {
             if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -5094,28 +5094,11 @@
             
             const [yyyy, mm, dd] = dateStr.split('-').map(Number);
             const forecastDate = new Date(yyyy, mm - 1, dd);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const diffDays = Math.floor((forecastDate - today) / (1000 * 60 * 60 * 24));
             
-            let label = '';
-            if (diffDays === 0) {
-                label = 'Today';
-            } else if (diffDays === 1) {
-                label = 'Tomorrow';
-            } else if (diffDays === 2) {
-                label = 'In 2 days';
-            } else if (diffDays === 3) {
-                label = 'In 3 days';
-            } else if (diffDays > 0) {
-                label = `In ${diffDays} days`;
-            } else if (diffDays === -1) {
-                label = 'Yesterday';
-            } else {
-                label = `${Math.abs(diffDays)} days ago`;
-            }
+            const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const dayOfWeek = daysOfWeek[forecastDate.getDay()];
             
-            return `${label} • ${dd}/${mm}/${yyyy}`;
+            return `${dayOfWeek} - ${dd}/${mm}/${yyyy}`;
         }
         
         // Format automation cycle result for debug display
