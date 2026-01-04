@@ -349,9 +349,9 @@ When a rule triggers, it creates a **scheduler segment** on the inverter.
 |-----------|------|-------------|
 | `workMode` | string | One of the work modes above |
 | `durationMinutes` | number | How long the segment runs (5-1440) |
-| `fdPwr` | number | Discharge power in watts (0-10000) |
-| `fdSoc` | number | Min SoC for force discharge (0-100) |
-| `minSocOnGrid` | number | Min SoC when on grid (0-100) |
+| `fdPwr` | number | Power in watts (0-10000) - applies to all modes |
+| `fdSoc` | number | Stop SoC threshold (0-100) - min for discharge, max for charge |
+| `minSocOnGrid` | number | Min SoC when in grid mode (0-100) |
 | `maxSoc` | number | Max SoC limit (0-100) |
 
 ---
@@ -649,7 +649,7 @@ Discharge before predicted high prices.
   - Price values: 0-100¢ range
   - SoC values: 0-100% range
   - Temperature: -20 to +80°C range
-  - FD Power: 0-10500W range (realistic inverter limits)
+  - Power: 0-10500W range (realistic inverter limits)
   - Time window: Start time must be before end time
   - Range conditions: First value must be less than second value
 - **User Feedback**: Clear error messages with emoji indicators, auto-focus on invalid fields

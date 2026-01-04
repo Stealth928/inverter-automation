@@ -1786,11 +1786,11 @@
                                 <div style="font-weight:700;color:#58a6ff;font-size:0.95rem">${a.durationMinutes} minutes</div>
                             </div>
                             <div>
-                                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px">FD POWER</div>
+                                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px">POWER</div>
                                 <div style="font-weight:700;color:#58a6ff;font-size:0.95rem">${a.fdPwr}W</div>
                             </div>
                             <div>
-                                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px">MIN SOC GRID</div>
+                                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px">MIN SOC (GRID)</div>
                                 <div style="font-weight:700;color:#58a6ff;font-size:0.95rem">${a.minSocOnGrid}%</div>
                             </div>
                         </div>
@@ -1923,9 +1923,9 @@
                     </div>
                     <div style="margin-top:8px;font-size:0.75rem;color:var(--text-secondary);display:grid;grid-template-columns:1fr 1fr;gap:4px">
                         <div>From rule: <strong>${seg.ruleName}</strong></div>
-                        <div>FD Power: <strong style="color:var(--accent)">${seg.fdPwr}W</strong></div>
+                        <div>Power: <strong style="color:var(--accent)">${seg.fdPwr}W</strong></div>
                         <div>Min SoC (Grid): <strong style="color:var(--accent)">${seg.minSocOnGrid}%</strong></div>
-                        <div>FD SoC: <strong style="color:var(--accent)">${seg.fdSoc}%</strong></div>
+                        <div>Stop SoC: <strong style="color:var(--accent)">${seg.fdSoc}%</strong></div>
                         <div>Max SoC: <strong style="color:var(--accent)">${seg.maxSoc}%</strong></div>
                     </div>
                 </div>`;
@@ -2208,15 +2208,15 @@
                             
                             <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
                                 <div>
-                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">FD Power (W)</label>
+                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Power (W)</label>
                                     <input type="number" id="actionFdPwr" value="${editData?.action?.fdPwr || 7000}" min="0" max="10500" step="100" style="width:100%">
                                 </div>
                                 <div>
-                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">FD SoC (%)</label>
+                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Stop SoC (%)</label>
                                     <input type="number" id="actionFdSoc" value="${editData?.action?.fdSoc || 35}" min="10" max="100" style="width:100%">
                                 </div>
                                 <div>
-                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Min SoC Grid</label>
+                                    <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Min SoC (Grid)</label>
                                     <input type="number" id="actionMinSoc" value="${editData?.action?.minSocOnGrid || 20}" min="10" max="100" style="width:100%">
                                 </div>
                                 <div>

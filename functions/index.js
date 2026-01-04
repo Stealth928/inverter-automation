@@ -1857,6 +1857,9 @@ app.get('/api/config', async (req, res) => {
       configAutomation: config.automation
     });
     
+    // Set cache headers: revalidate on every request but allow 304 Not Modified responses
+    // This means browser will check with server each time, but gets instant 304 if unchanged
+    res.set('Cache-Control', 'no-cache, must-revalidate');
     res.json({ errno: 0, result: { ...userConfig, config } });
   } catch (error) {
     console.error('[Config] Error getting user config:', error.message);
@@ -1878,6 +1881,16 @@ app.post('/api/config', async (req, res) => {
 
     // Get existing config to check if location changed
     const existingConfig = await getUserConfig(userId);
+    
+    // Normalize location fields: ensure location and preferences.weatherPlace stay in sync
+    // Priority: use whichever field was provided, and sync to both
+    const locationValue = newConfig.location || newConfig.preferences?.weatherPlace || existingConfig?.location || existingConfig?.preferences?.weatherPlace;
+    if (locationValue) {
+      newConfig.location = locationValue;
+      if (!newConfig.preferences) newConfig.preferences = {};
+      newConfig.preferences.weatherPlace = locationValue;
+    }
+    
     const locationChanged = newConfig.location && newConfig.location !== existingConfig?.location;
     
     // PRIORITY 1: If browser sent timezone, ALWAYS use it (most reliable - from user's OS)

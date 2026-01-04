@@ -767,14 +767,14 @@
                     <div class="setting-label">Default Weather Location</div>
                     <div class="setting-hint">City and country for local weather forecasts (e.g., "Sydney, Australia")</div>
                     <div class="setting-input">
-                        <input type="text" id="preferences_weatherPlace" data-section="preferences" data-key="weatherPlace" placeholder="e.g., Sydney, Australia" value="Sydney, Australia">
+                        <input type="text" id="preferences_weatherPlace" data-section="preferences" data-key="weatherPlace" placeholder="e.g., Sydney, Australia" disabled>
                     </div>
                 </div>
                 <div class="setting-item">
                     <div class="setting-label">Default Forecast Days</div>
                     <div class="setting-hint">Number of days to display in weather forecast (1-16)</div>
                     <div class="setting-input">
-                        <input type="number" id="preferences_forecastDays" data-section="preferences" data-key="forecastDays" min="1" max="16" step="1" value="6">
+                        <input type="number" id="preferences_forecastDays" data-section="preferences" data-key="forecastDays" min="1" max="16" step="1" disabled>
                         <span class="unit">days</span>
                     </div>
                 </div>
@@ -940,8 +940,8 @@
                     </div>
                 </div>
                 <div class="setting-item">
-                    <div class="setting-label">Default Force Discharge Power</div>
-                    <div class="setting-hint">Battery discharge power setting</div>
+                    <div class="setting-label">Default Power</div>
+                    <div class="setting-hint">Battery charge/discharge power setting</div>
                     <div class="setting-input">
                         <input type="number" id="defaults_fdPwr" data-section="defaults" data-key="fdPwr" min="1000" max="10000" step="500" value="5000">
                         <span class="unit">watts</span>
@@ -969,10 +969,10 @@
                         </div>
                     </div>
                     <div class="faq-item">
-                        <div class="faq-question">What force discharge power should I use?</div>
+                        <div class="faq-question">What power setting should I use?</div>
                         <div class="faq-answer">
-                            This controls how fast your battery discharges during ForceDischarge mode. <code>5000W</code> is typical for most home setups.
-                            Lower values (3000W) are gentler on the battery; higher values (7000-10000W) maximize export during high price windows but increase wear.
+                            This controls how fast your battery charges/discharges. <code>5000W</code> is typical for most home setups.
+                            Lower values (3000W) are gentler on the battery; higher values (7000-10000W) maximize throughput but increase wear.
                         </div>
                     </div>
                 </div>
@@ -1190,6 +1190,15 @@
                 // Set current config
                 currentConfig = data.result;
                 
+                // Debug: Log what we received to understand location field structure
+                console.log('[Settings] Loaded config:', {
+                    location: currentConfig.location,
+                    weatherPlace: currentConfig.weatherPlace,
+                    preferencesWeatherPlace: currentConfig.preferences?.weatherPlace,
+                    hasConfig: !!currentConfig.config,
+                    timezone: currentConfig.timezone
+                });
+                
                 // Helper to safely set input value
                 const setInput = (id, value) => {
                     const input = document.getElementById(id);
@@ -1226,16 +1235,18 @@
                 }
 
                 // Preferences
+                // PRIORITY: 'location' field (most recently saved) takes precedence over potentially stale preferences.weatherPlace
+                // This ensures UI displays what the user just saved, not old data from mismatched fields
                 if (currentConfig.location) {
-                    // Location is set from setup flow - use it
+                    // Location field - highest priority (this is what save writes to)
                     setInput('preferences_weatherPlace', currentConfig.location);
                     setInput('preferences_forecastDays', currentConfig.preferences?.forecastDays || 6);
-                } else if (currentConfig.preferences) {
-                    // Fallback: old format with preferences object
-                    setInput('preferences_weatherPlace', currentConfig.preferences.weatherPlace || 'Sydney, Australia');
+                } else if (currentConfig.preferences?.weatherPlace) {
+                    // Fallback: preferences.weatherPlace if location is empty
+                    setInput('preferences_weatherPlace', currentConfig.preferences.weatherPlace);
                     setInput('preferences_forecastDays', currentConfig.preferences.forecastDays || 6);
                 } else if (currentConfig.weatherPlace) {
-                    // Fallback: weatherPlace at root level
+                    // Fallback: weatherPlace at root level (legacy)
                     setInput('preferences_weatherPlace', currentConfig.weatherPlace);
                     setInput('preferences_forecastDays', 6);
                 } else {
@@ -1254,9 +1265,13 @@
                     // For credentials, store masked dots in originalCredentials to match the display
                     // The actual values are stored in the dataset for Show/Hide functionality
                     
-                    // Store actual credentials in a data attribute for Show/Hide functionality
+                    // Clear credential input fields before reloading to ensure fresh state
                     const foxessInput = document.getElementById('credentials_foxessToken');
                     const amberInput = document.getElementById('credentials_amberKey');
+                    if (foxessInput) foxessInput.value = '';
+                    if (amberInput) amberInput.value = '';
+                    
+                    // Store actual credentials in a data attribute for Show/Hide functionality
                     if (foxessInput && currentConfig.foxessToken) {
                         foxessInput.dataset.actualValue = currentConfig.foxessToken;
                     }
@@ -1276,7 +1291,7 @@
                         
                         // Show masked placeholder in input fields to indicate credentials are saved
                         if (hasFoxess) {
-                            if (foxessInput && !foxessInput.value) {
+                            if (foxessInput) {
                                 foxessInput.value = '••••••••';
                                 originalCredentials.foxessToken = '••••••••';  // Match the display
                             }
@@ -1285,7 +1300,7 @@
                         }
                         
                         if (hasAmber) {
-                            if (amberInput && !amberInput.value) {
+                            if (amberInput) {
                                 amberInput.value = '••••••••';
                                 originalCredentials.amberKey = '••••••••';  // Match the display
                             }
@@ -1359,10 +1374,73 @@
                 // NOW set originalConfig to match what we just loaded (so no unsaved changes)
                 originalConfig = JSON.parse(JSON.stringify(data.result));
                 
-                // Ensure curtailment config is properly initialized in originalConfig
-                if (!originalConfig.curtailment) {
-                    originalConfig.curtailment = { enabled: false, priceThreshold: 0 };
+                // Ensure all sections exist in originalConfig to prevent undefined errors
+                if (!originalConfig.automation) originalConfig.automation = {};
+                if (!originalConfig.cache) originalConfig.cache = {};
+                if (!originalConfig.defaults) originalConfig.defaults = {};
+                if (!originalConfig.api) originalConfig.api = {};
+                if (!originalConfig.preferences) originalConfig.preferences = {};
+                if (!originalConfig.curtailment) originalConfig.curtailment = { enabled: false, priceThreshold: 0 };
+                
+                // Fill in missing values from displayed inputs if not in server response
+                // This ensures originalConfig matches what was actually displayed to the user
+                if (originalConfig.automation.intervalMs === undefined || originalConfig.automation.intervalMs === null) {
+                    originalConfig.automation.intervalMs = getInputValue('automation_intervalMs') || 60000;
                 }
+                if (originalConfig.automation.startDelayMs === undefined || originalConfig.automation.startDelayMs === null) {
+                    originalConfig.automation.startDelayMs = getInputValue('automation_startDelayMs') || 5000;
+                }
+                if (originalConfig.automation.gatherDataTimeoutMs === undefined || originalConfig.automation.gatherDataTimeoutMs === null) {
+                    originalConfig.automation.gatherDataTimeoutMs = getInputValue('automation_gatherDataTimeoutMs') || 8000;
+                }
+                
+                if (originalConfig.cache.amber === undefined || originalConfig.cache.amber === null) {
+                    originalConfig.cache.amber = getInputValue('cache_amber') || 60000;
+                }
+                if (originalConfig.cache.inverter === undefined || originalConfig.cache.inverter === null) {
+                    originalConfig.cache.inverter = getInputValue('cache_inverter') || 300000;
+                }
+                if (originalConfig.cache.weather === undefined || originalConfig.cache.weather === null) {
+                    originalConfig.cache.weather = getInputValue('cache_weather') || 1800000;
+                }
+                
+                if (originalConfig.defaults.cooldownMinutes === undefined || originalConfig.defaults.cooldownMinutes === null) {
+                    originalConfig.defaults.cooldownMinutes = getInputValue('defaults_cooldownMinutes') || 5;
+                }
+                if (originalConfig.defaults.durationMinutes === undefined || originalConfig.defaults.durationMinutes === null) {
+                    originalConfig.defaults.durationMinutes = getInputValue('defaults_durationMinutes') || 30;
+                }
+                if (originalConfig.defaults.fdPwr === undefined || originalConfig.defaults.fdPwr === null) {
+                    originalConfig.defaults.fdPwr = getInputValue('defaults_fdPwr') || 5000;
+                }
+                
+                if (originalConfig.api.retryCount === undefined || originalConfig.api.retryCount === null) {
+                    originalConfig.api.retryCount = getInputValue('api_retryCount') || 3;
+                }
+                if (originalConfig.api.retryDelayMs === undefined || originalConfig.api.retryDelayMs === null) {
+                    originalConfig.api.retryDelayMs = getInputValue('api_retryDelayMs') || 1000;
+                }
+                
+                if (originalConfig.preferences.forecastDays === undefined || originalConfig.preferences.forecastDays === null) {
+                    originalConfig.preferences.forecastDays = getInputValue('preferences_forecastDays') || 6;
+                }
+                
+                // Save weatherPlace to preferences (primary storage location)
+                const weatherPlaceInput = document.getElementById('preferences_weatherPlace')?.value || 'Sydney, Australia';
+                originalConfig.preferences.weatherPlace = weatherPlaceInput;
+                // Also keep location field in sync for backward compatibility
+                originalConfig.location = weatherPlaceInput;
+                
+                // Sync curtailment only if not already set
+                if (originalConfig.curtailment.priceThreshold === undefined) {
+                    const thresholdInput = document.getElementById('curtailment_priceThreshold');
+                    originalConfig.curtailment.priceThreshold = thresholdInput?.value !== '' && thresholdInput?.value !== null ? parseFloat(thresholdInput.value) : 0;
+                }
+                
+                // Enable all inputs now that data is loaded from server
+                document.querySelectorAll('input, select').forEach(input => {
+                    input.disabled = false;
+                });
                 
                 updateAllTimeDisplays();
                 updateStatus();
@@ -1405,8 +1483,9 @@
                 const badge = document.getElementById(`${section}Badge`);
                 let sectionChanged = false;
                 
-                if (currentConfig[section] && originalConfig[section]) {
-                    Object.keys(currentConfig[section]).forEach(key => {
+                // Check originalConfig section (which always exists after loading)
+                if (originalConfig[section]) {
+                    Object.keys(originalConfig[section]).forEach(key => {
                         // Skip blackoutWindows - handled separately
                         if (key === 'blackoutWindows') return;
                         
@@ -1498,6 +1577,26 @@
                 }
             }
             
+            // Check location (backend keeps both location and preferences.weatherPlace in sync)
+            const currentLocation = document.getElementById('preferences_weatherPlace')?.value || 'Sydney, Australia';
+            const originalLocation = originalConfig.location || (originalConfig.preferences?.weatherPlace) || 'Sydney, Australia';
+            const locationChanged = currentLocation !== originalLocation;
+            
+            if (locationChanged) {
+                hasChanges = true;
+                const badge = document.getElementById('preferencesBadge');
+                if (badge) {
+                    badge.textContent = 'Modified';
+                    badge.className = 'badge badge-modified';
+                }
+            } else {
+                const badge = document.getElementById('preferencesBadge');
+                if (badge && !hasChanges) {  // Only update if no other changes in preferences
+                    badge.textContent = 'Synced';
+                    badge.className = 'badge badge-sync';
+                }
+            }
+            
             hasUnsavedChanges = hasChanges;
             return hasChanges;
         }
@@ -1539,7 +1638,8 @@
                         retryDelayMs: getInputValue('api_retryDelayMs')
                     },
                     preferences: {
-                        forecastDays: getInputValue('preferences_forecastDays') || 6
+                        forecastDays: getInputValue('preferences_forecastDays') || 6,
+                        weatherPlace: document.getElementById('preferences_weatherPlace')?.value || 'Sydney, Australia'
                     },
                     // Solar curtailment (price threshold range: -999 to +999 cents/kWh)
                     curtailment: {
@@ -1549,7 +1649,7 @@
                             return val !== '' && val !== null ? parseFloat(val) : 0;
                         })()
                     },
-                    // Save location at root level (matches backend location field)
+                    // Also save location at root level for backward compatibility
                     location: document.getElementById('preferences_weatherPlace')?.value || 'Sydney, Australia'
                 };
 
@@ -1586,7 +1686,7 @@
                     validationErrors.push('Default duration: must be 5-120 minutes');
                 }
                 if (newConfig.defaults.fdPwr < 1000 || newConfig.defaults.fdPwr > 10000) {
-                    validationErrors.push('Force discharge power: must be 1000-10000 watts');
+                    validationErrors.push('Power setting: must be 1000-10000 watts');
                 }
                 
                 // API retry validation
@@ -1648,7 +1748,19 @@
                     originalConfig.curtailment = { enabled: false, priceThreshold: 0 };
                 }
                 
+                // Ensure preferences object exists
+                if (!originalConfig.preferences) {
+                    originalConfig.preferences = {};
+                }
+                
                 currentConfig = data.result;
+
+                // Refresh UI with saved values to prevent revert (backend keeps both fields in sync)
+                const savedLocation = data.result.location || (data.result.preferences?.weatherPlace);
+                if (savedLocation) {
+                    const weatherInput = document.getElementById('preferences_weatherPlace');
+                    if (weatherInput) weatherInput.value = savedLocation;
+                }
 
                 updateStatus();
                 document.getElementById('lastSaved').textContent = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -1805,7 +1917,7 @@
             },
             'defaults_fdPwr': {
                 min: 1000, max: 10000,
-                errorMsg: 'Force discharge power must be 1000-10000 watts'
+                errorMsg: 'Power must be 1000-10000 watts'
             },
             'api_retryCount': {
                 min: 0, max: 10,
@@ -1824,6 +1936,14 @@
         // Validate a numeric input against its rules
         function validateInput(input) {
             const id = input.id;
+            
+            // Skip validation for disabled inputs (they haven't loaded from server yet)
+            if (input.disabled) {
+                input.style.borderColor = '';
+                input.title = '';
+                return true;
+            }
+            
             const rules = validationRules[id];
             
             if (!rules) return true; // No validation rules defined
@@ -1861,8 +1981,7 @@
                 input.addEventListener('blur', () => {
                     validateInput(input);
                 });
-                // Validate on page load
-                validateInput(input);
+                // Skip validation on page load - all inputs start disabled
             });
             
             // Add change listener for select

@@ -1361,6 +1361,55 @@
             border-left: 2px solid #7ee787;
             font-size: 10px;
         }
+        
+        /* Tooltip styles for action field info */
+        .field-label-with-tooltip {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .tooltip-icon {
+            position: relative;
+            width: 14px;
+            height: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: help;
+            color: #58a6ff;
+            font-size: 11px;
+            font-weight: bold;
+            border-radius: 50%;
+            border: 1px solid #58a6ff;
+            margin-left: 2px;
+        }
+        .tooltip-icon:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 8px 10px;
+            border-radius: 4px;
+            border: 1px solid #30363d;
+            white-space: nowrap;
+            font-size: 11px;
+            font-weight: normal;
+            z-index: 10000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .tooltip-icon:hover::before {
+            content: '';
+            position: absolute;
+            bottom: 118%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 4px solid transparent;
+            border-top-color: #0d1117;
+            z-index: 10000;
+        }
     </style>
     <style>
         /* Small inline weather map */
@@ -1513,7 +1562,7 @@
                     </div>
                     <div class="card-body">
                         <div class="input-row" style="align-items:center">
-                            <input type="text" id="weatherPlace" class="input" placeholder="Location" value="Sydney, Australia" style="flex:1;min-width:220px;max-width:520px">
+                            <input type="text" id="weatherPlace" class="input" placeholder="Location" style="flex:1;min-width:220px;max-width:520px">
                             <input type="number" id="weatherDays" class="input" min="1" max="16" value="6" style="width:70px" title="Days">
                             <div id="weatherRequestedLabel" style="min-width:110px;color:#8b949e;font-size:12px;display:flex;align-items:center;justify-content:center;margin-left:8px">Requested: 6</div>
                         </div>
@@ -1586,15 +1635,15 @@
                                 <input type="time" name="endTime" class="input" value="00:00" style="padding:5px">
                             </div>
                             <div class="input-group">
-                                <label style="font-size:11px">Min SoC Grid %</label>
+                                <label style="font-size:11px">Min SoC (Grid) %</label>
                                 <input type="number" name="minSocOnGrid" class="input" min="10" max="100" value="20" style="padding:6px">
                             </div>
                             <div class="input-group">
-                                <label style="font-size:11px">FD SoC %</label>
+                                <label style="font-size:11px">Stop SoC %</label>
                                 <input type="number" name="fdSoc" class="input" min="10" max="100" value="35" style="padding:6px">
                             </div>
                             <div class="input-group">
-                                <label style="font-size:11px">FD Power (W)</label>
+                                <label style="font-size:11px">Power (W)</label>
                                 <input type="number" name="fdPwr" class="input" min="0" max="10500" value="5000" style="padding:6px">
                             </div>
                             <div class="input-group">
@@ -1894,7 +1943,7 @@
                                     </select>
                                 </div>
                                 <div class="action-item">
-                                    <label>Min SoC (%)</label>
+                                    <label>Min SoC (Grid) (%)</label>
                                     <input type="number" id="actionMinSoC" min="10" max="100" placeholder="Optional">
                                 </div>
                                 <div class="action-item">
@@ -1902,7 +1951,7 @@
                                     <input type="number" id="actionMaxSoC" min="10" max="100" placeholder="Optional">
                                 </div>
                                 <div class="action-item">
-                                    <label>Discharge Power (W)</label>
+                                    <label>Power (W)</label>
                                     <input type="number" id="actionFdPwr" min="0" max="10500" placeholder="Optional">
                                 </div>
                             </div>
@@ -4300,8 +4349,8 @@
                         <div style="font-size:13px;color:${color};margin-bottom:8px">${seg.workMode}</div>
                         <div style="font-size:11px;color:#8b949e;display:grid;grid-template-columns:1fr 1fr;gap:4px">
                             <span>MinSoC: ${seg.minSocOnGrid ?? seg.extraParam?.minSocOnGrid ?? '-'}%</span>
-                            <span>FD SoC: ${seg.fdSoc ?? seg.extraParam?.fdSoc ?? '-'}%</span>
-                            <span>FD Power: ${seg.fdPwr ?? seg.extraParam?.fdPwr ?? 0}W</span>
+                            <span>Stop SoC: ${seg.fdSoc ?? seg.extraParam?.fdSoc ?? '-'}%</span>
+                            <span>Power: ${seg.fdPwr ?? seg.extraParam?.fdPwr ?? 0}W</span>
                             <span>Max SoC: ${seg.maxSoc ?? seg.extraParam?.maxSoc ?? '-'}%</span>
                         </div>
                         <div style="display:flex;gap:6px;margin-top:8px">
@@ -4478,7 +4527,7 @@
                 form.fdSoc.value = fdSoc;
                 statusDiv.style.background = '#f0883e';
                 statusDiv.style.color = '#0d1117';
-                statusDiv.textContent = `⚠️ FD SoC must be >= Min SoC Grid (${minSocOnGrid}%). Auto-corrected to ${fdSoc}%.`;
+                statusDiv.textContent = `⚠️ Stop SoC must be >= Min SoC (Grid) (${minSocOnGrid}%). Auto-corrected to ${fdSoc}%.`;
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 statusDiv.style.background = '#21262d';
                 statusDiv.style.color = '#58a6ff';
@@ -5523,15 +5572,15 @@
                         USER_TZ = cfg.result.timezone || (cfg.result.config && cfg.result.config.automation && cfg.result.config.automation.timeZone) || USER_TZ;
                     } catch (e) { /* ignore and use default */ }
                     const wInput = document.getElementById('weatherPlace');
-                    // Prefer explicit preferences.weatherPlace (user preference), then top-level weatherPlace
-                    const preferredWeather = (cfg.result.preferences && cfg.result.preferences.weatherPlace) || cfg.result.weatherPlace;
-                    // Only set if input is empty or still holds the placeholder/default value
-                    if (wInput && (wInput.value === '' || wInput.value === 'Sydney, Australia')) {
-                        if (preferredWeather && String(preferredWeather).trim() !== '' && preferredWeather !== 'undefined') {
+                    // Backend now keeps location and preferences.weatherPlace in sync - check location first (primary source)
+                    const preferredWeather = cfg.result.location || (cfg.result.preferences && cfg.result.preferences.weatherPlace) || cfg.result.weatherPlace;
+                    // On page load, ALWAYS update from server config (it's the source of truth)
+                    // Only exception: if user manually typed during this active session
+                    if (wInput && preferredWeather && String(preferredWeather).trim() !== '' && preferredWeather !== 'undefined') {
+                        const userActivelyTyping = window.sessionStorage.getItem('weatherInputActive') === 'true';
+                        
+                        if (!userActivelyTyping) {
                             wInput.value = preferredWeather;
-                        } else {
-                            // Use sensible default if not configured
-                            wInput.value = 'Sydney NSW';
                         }
                     }
                     const snInput = document.getElementById('deviceSn');
@@ -6364,8 +6413,11 @@
                             
                             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
                                 <div>
-                                    <label style="display:block;font-size:11px;color:#8b949e;margin-bottom:4px">Work Mode</label>
-                                    <select id="newRuleWorkMode" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px">
+                                    <div class="field-label-with-tooltip">
+                                        <label style="display:block;font-size:11px;color:#8b949e">Work Mode</label>
+                                        <span class="tooltip-icon" data-tooltip="Action type: Discharge, Charge, SelfUse, etc.">?</span>
+                                    </div>
+                                    <select id="newRuleWorkMode" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px;margin-top:4px">
                                         <option value="ForceDischarge">Force Discharge</option>
                                         <option value="ForceCharge">Force Charge</option>
                                         <option value="SelfUse">Self Use</option>
@@ -6374,31 +6426,49 @@
                                     </select>
                                 </div>
                                 <div>
-                                    <label style="display:block;font-size:11px;color:#8b949e;margin-bottom:4px">Duration (min)</label>
-                                    <input type="number" id="newRuleDuration" value="30" min="5" max="120" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px">
+                                    <div class="field-label-with-tooltip">
+                                        <label style="display:block;font-size:11px;color:#8b949e">Duration (min)</label>
+                                        <span class="tooltip-icon" data-tooltip="How long the segment runs">?</span>
+                                    </div>
+                                    <input type="number" id="newRuleDuration" value="30" min="5" max="120" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px;margin-top:4px">
                                 </div>
                                 <div>
-                                    <label style="display:block;font-size:11px;color:#8b949e;margin-bottom:4px">Cooldown (min)</label>
-                                    <input type="number" id="newRuleCooldown" value="5" min="1" max="60" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px">
+                                    <div class="field-label-with-tooltip">
+                                        <label style="display:block;font-size:11px;color:#8b949e">Cooldown (min)</label>
+                                        <span class="tooltip-icon" data-tooltip="Min wait before rule can trigger again">?</span>
+                                    </div>
+                                    <input type="number" id="newRuleCooldown" value="5" min="1" max="60" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px;margin-top:4px">
                                 </div>
                             </div>
                             
                             <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
                                 <div>
-                                    <label style="display:block;font-size:11px;color:#8b949e;margin-bottom:4px">FD Power (W)</label>
-                                    <input type="number" id="newRuleFdPwr" value="5000" min="0" max="10500" step="100" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px">
+                                    <div class="field-label-with-tooltip">
+                                        <label style="display:block;font-size:11px;color:#8b949e">Power (W)</label>
+                                        <span class="tooltip-icon" data-tooltip="Charge/discharge rate in watts">?</span>
+                                    </div>
+                                    <input type="number" id="newRuleFdPwr" value="5000" min="0" max="10500" step="100" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px;margin-top:4px">
                                 </div>
                                 <div>
-                                    <label style="display:block;font-size:11px;color:#8b949e;margin-bottom:4px">FD SoC (%)</label>
-                                    <input type="number" id="newRuleFdSoc" value="35" min="10" max="100" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px">
+                                    <div class="field-label-with-tooltip">
+                                        <label style="display:block;font-size:11px;color:#8b949e">Stop SoC (%)</label>
+                                        <span class="tooltip-icon" data-tooltip="SoC where this action stops">?</span>
+                                    </div>
+                                    <input type="number" id="newRuleFdSoc" value="35" min="10" max="100" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px;margin-top:4px">
                                 </div>
                                 <div>
-                                    <label style="display:block;font-size:11px;color:#8b949e;margin-bottom:4px">Min SoC Grid</label>
-                                    <input type="number" id="newRuleMinSoc" value="20" min="10" max="100" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px">
+                                    <div class="field-label-with-tooltip">
+                                        <label style="display:block;font-size:11px;color:#8b949e">Min SoC (Grid)</label>
+                                        <span class="tooltip-icon" data-tooltip="Don't draw from grid below this SoC">?</span>
+                                    </div>
+                                    <input type="number" id="newRuleMinSoc" value="20" min="10" max="100" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px;margin-top:4px">
                                 </div>
                                 <div>
-                                    <label style="display:block;font-size:11px;color:#8b949e;margin-bottom:4px">Max SoC (%)</label>
-                                    <input type="number" id="newRuleMaxSoc" value="90" min="10" max="100" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px">
+                                    <div class="field-label-with-tooltip">
+                                        <label style="display:block;font-size:11px;color:#8b949e">Max SoC (%)</label>
+                                        <span class="tooltip-icon" data-tooltip="Hard cap - never exceed during segment">?</span>
+                                    </div>
+                                    <input type="number" id="newRuleMaxSoc" value="90" min="10" max="100" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px;margin-top:4px">
                                 </div>
                             </div>
                         </div>
@@ -6653,17 +6723,17 @@
             
             const fdPwr = parseInt(document.getElementById('newRuleFdPwr')?.value);
             if (isNaN(fdPwr) || fdPwr < 0 || fdPwr > 10500) {
-                setFieldError('newRuleFdPwr', '⚡ FD Power must be 0-10500W (inverter max output)');
+                setFieldError('newRuleFdPwr', '⚡ Power must be 0-10500W (inverter max output)');
             }
             
             const fdSoc = parseInt(document.getElementById('newRuleFdSoc')?.value);
             if (isNaN(fdSoc) || fdSoc < 5 || fdSoc > 100) {
-                setFieldError('newRuleFdSoc', '🔋 FD SoC must be 5-100% (min discharge threshold)');
+                setFieldError('newRuleFdSoc', '🔋 Stop SoC must be 5-100% (cutoff threshold)');
             }
             
             const minSoc = parseInt(document.getElementById('newRuleMinSoc')?.value);
             if (isNaN(minSoc) || minSoc < 5 || minSoc > 100) {
-                setFieldError('newRuleMinSoc', '🔋 Min SoC Grid must be 5-100%');
+                setFieldError('newRuleMinSoc', '🔋 Min SoC (Grid) must be 5-100%');
             }
             
             const maxSoc = parseInt(document.getElementById('newRuleMaxSoc')?.value);
@@ -6673,12 +6743,12 @@
             
             // Cross-field validations for SoC
             if (!isNaN(minSoc) && !isNaN(maxSoc) && minSoc >= maxSoc) {
-                setFieldError('newRuleMinSoc', '🔋 Min SoC Grid must be less than Max SoC');
-                setFieldError('newRuleMaxSoc', '🔋 Max SoC must be greater than Min SoC Grid');
+                setFieldError('newRuleMinSoc', '🔋 Min SoC (Grid) must be less than Max SoC');
+                setFieldError('newRuleMaxSoc', '🔋 Max SoC must be greater than Min SoC (Grid)');
             }
             
             if (!isNaN(fdSoc) && !isNaN(minSoc) && fdSoc > minSoc + 50) {
-                // Warning but not error - FD SoC much higher than Min might be intentional
+                // Warning but not error - Stop SoC much higher than Min might be intentional
             }
             
             return { valid: errors.length === 0, errors };
@@ -7428,6 +7498,10 @@
             try {
                 const wInput = document.getElementById('weatherPlace');
                 if (wInput) {
+                    // Mark as actively typing when user types (preserves their input during session)
+                    wInput.addEventListener('input', () => {
+                        window.sessionStorage.setItem('weatherInputActive', 'true');
+                    });
                     wInput.addEventListener('keydown', (ev) => {
                         if (ev.key === 'Enter') {
                             ev.preventDefault();
@@ -7594,7 +7668,7 @@
             if (actionFdPwr) {
                 const fdPwr = parseInt(actionFdPwr);
                 if (isNaN(fdPwr) || fdPwr < 0 || fdPwr > 10500) {
-                    alert('❌ FD Power must be between 0W and 10500W');
+                    alert('❌ Power must be between 0W and 10500W');
                     document.getElementById('actionFdPwr').focus();
                     return;
                 }
