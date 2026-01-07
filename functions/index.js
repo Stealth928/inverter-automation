@@ -1887,12 +1887,6 @@ app.get('/api/config', async (req, res) => {
       }
     };
     
-    console.log('[Config] GET /api/config returning with TTLs:', {
-      userId: req.user.uid,
-      configCache: config.cache,
-      configAutomation: config.automation
-    });
-    
     // Set cache headers: revalidate on every request but allow 304 Not Modified responses
     // This means browser will check with server each time, but gets instant 304 if unchanged
     res.set('Cache-Control', 'no-cache, must-revalidate');
@@ -1997,10 +1991,7 @@ app.get('/api/automation/status', async (req, res) => {
     let userConfig = await getUserConfig(req.user.uid);
     const serverConfig = getConfig();
     
-    console.log(`[Status] === TIMEZONE DEBUG ===`);
-    console.log(`[Status] User ID: ${req.user.uid}`);
     // Aggressive timezone sync: fetch weather to ensure timezone matches location.
-    // Keep only warnings/errors; avoid verbose debug output.
     if (userConfig?.location) {
       try {
         const weatherData = await getCachedWeatherData(req.user.uid, userConfig.location, 1);
@@ -2015,7 +2006,7 @@ app.get('/api/automation/status', async (req, res) => {
           }
         }
       } catch (err) {
-        console.warn('[Status] Failed to sync timezone from weather:', err && err.message ? err.message : String(err));
+        // Silently handle timezone sync failures; use existing timezone
       }
     }
     
@@ -2096,8 +2087,6 @@ app.post('/api/user/init-profile', authenticateUser, async (req, res) => {
   try {
     const userId = req.user.uid;
     
-    console.log(`[API] Initializing user profile for: ${userId}`);
-    
     // Create user profile document if it doesn't exist
     await db.collection('users').doc(userId).set({
       uid: userId,
@@ -2119,9 +2108,6 @@ app.post('/api/user/init-profile', authenticateUser, async (req, res) => {
         activeRule: null,
         updatedAt: serverTimestamp()
       });
-      console.log(`[API] ✅ Created new automation state for ${userId} with enabled=false`);
-    } else {
-      console.log(`[API] User already initialized, current state: enabled=${stateDoc.data().enabled}`);
     }
     
     res.json({
