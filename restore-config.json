@@ -1,0 +1,25 @@
+{
+  "automation": {
+    "blackoutWindows": [
+      {
+        "enabled": true,
+        "start": "00:30",
+        "end": "07:30",
+        "days": {
+          "enabled": true,
+          "Mon": true,
+          "Tue": true,
+          "Wed": true,
+          "Thu": true,
+          "Fri": true,
+          "Sat": true,
+          "Sun": true
+        }
+      }
+    ]
+  },
+  "curtailment": {
+    "enabled": true,
+    "priceThreshold": 0.3
+  }
+}

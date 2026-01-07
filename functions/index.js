@@ -41,6 +41,42 @@ const deleteField = () => {
   }
 };
 
+/**
+ * Deep merge two objects, preserving nested fields from target that aren't in source
+ * This is critical for config updates to prevent accidentally clearing nested settings
+ * @param {Object} target - Existing config (from Firestore)
+ * @param {Object} source - New config (from user update)
+ * @returns {Object} Merged config with all fields preserved
+ */
+function deepMerge(target, source) {
+  // Handle null/undefined
+  if (!target) return source;
+  if (!source) return target;
+  
+  const output = { ...target };
+  
+  for (const key in source) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      // If both are objects (and not arrays), recurse
+      if (
+        source[key] && 
+        typeof source[key] === 'object' && 
+        !Array.isArray(source[key]) &&
+        target[key] && 
+        typeof target[key] === 'object' && 
+        !Array.isArray(target[key])
+      ) {
+        output[key] = deepMerge(target[key], source[key]);
+      } else {
+        // Otherwise, use the source value (arrays and primitives overwrite)
+        output[key] = source[key];
+      }
+    }
+  }
+  
+  return output;
+}
+
 // Initialize API modules with dependencies
 const amberAPI = amberModule.init({
   db,
@@ -1918,9 +1954,14 @@ app.post('/api/config', async (req, res) => {
     // Remove browserTimezone from stored config (it's transient, only for detection)
     delete newConfig.browserTimezone;
 
+    // CRITICAL FIX: Deep merge to preserve nested fields that weren't sent
+    // Firestore's merge: true only works at top level, not for nested objects
+    // This prevents accidentally clearing blackoutWindows or curtailment settings
+    const mergedConfig = existingConfig ? deepMerge(existingConfig, newConfig) : newConfig;
+
     // Persist to Firestore under user's config/main
-    await db.collection('users').doc(userId).collection('config').doc('main').set(newConfig, { merge: true });
-    res.json({ errno: 0, msg: 'Config saved', result: newConfig });
+    await db.collection('users').doc(userId).collection('config').doc('main').set(mergedConfig, { merge: true });
+    res.json({ errno: 0, msg: 'Config saved', result: mergedConfig });
   } catch (error) {
     console.error('[API] /api/config save error:', error && error.stack ? error.stack : String(error));
     res.status(500).json({ errno: 500, error: error.message || String(error) });
