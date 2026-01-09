@@ -2129,7 +2129,43 @@ app.post('/api/user/init-profile', authenticateUser, async (req, res) => {
 app.post('/api/automation/toggle', async (req, res) => {
   try {
     const { enabled } = req.body;
-    await saveUserAutomationState(req.user.uid, { enabled: !!enabled });
+    const userId = req.user.uid;
+    
+    // When disabling automation, check if curtailment is active and restore export power
+    if (enabled === false) {
+      try {
+        const userConfig = await getUserConfig(userId);
+        const stateDoc = await db.collection('users').doc(userId).collection('curtailment').doc('state').get();
+        const curtailmentState = stateDoc.exists ? stateDoc.data() : { active: false };
+        
+        if (curtailmentState.active && userConfig?.deviceSn) {
+          console.log(`[Automation Toggle] Restoring export power (curtailment was active, automation disabled)`);
+          
+          const setResult = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', {
+            sn: userConfig.deviceSn,
+            key: 'ExportLimit',
+            value: 12000
+          }, userConfig, userId);
+          
+          if (setResult?.errno === 0) {
+            await db.collection('users').doc(userId).collection('curtailment').doc('state').set({
+              active: false,
+              lastPrice: null,
+              lastDeactivated: Date.now(),
+              disabledByAutomationToggle: true
+            });
+            console.log(`[Automation Toggle] ✓ Export power restored successfully`);
+          } else {
+            console.warn(`[Automation Toggle] ⚠️ Failed to restore export power: ${setResult?.msg || 'Unknown error'}`);
+          }
+        }
+      } catch (curtErr) {
+        console.error('[Automation Toggle] Error checking/restoring curtailment:', curtErr);
+        // Don't fail the toggle operation if curtailment restoration fails
+      }
+    }
+    
+    await saveUserAutomationState(userId, { enabled: !!enabled });
     res.json({ errno: 0, result: { enabled: !!enabled } });
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -2140,6 +2176,7 @@ app.post('/api/automation/toggle', async (req, res) => {
 app.post('/api/automation/enable', async (req, res) => {
   try {
     const { enabled } = req.body;
+    const userId = req.user.uid;
     const stateUpdate = { enabled: !!enabled };
     
     // When re-enabling automation, clear the segmentsCleared flag so segments will be re-cleared on next disable
@@ -2147,7 +2184,41 @@ app.post('/api/automation/enable', async (req, res) => {
       stateUpdate.segmentsCleared = false;
     }
     
-    await saveUserAutomationState(req.user.uid, stateUpdate);
+    // When disabling automation, check if curtailment is active and restore export power
+    if (enabled === false) {
+      try {
+        const userConfig = await getUserConfig(userId);
+        const stateDoc = await db.collection('users').doc(userId).collection('curtailment').doc('state').get();
+        const curtailmentState = stateDoc.exists ? stateDoc.data() : { active: false };
+        
+        if (curtailmentState.active && userConfig?.deviceSn) {
+          console.log(`[Automation Enable] Restoring export power (curtailment was active, automation disabled)`);
+          
+          const setResult = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', {
+            sn: userConfig.deviceSn,
+            key: 'ExportLimit',
+            value: 12000
+          }, userConfig, userId);
+          
+          if (setResult?.errno === 0) {
+            await db.collection('users').doc(userId).collection('curtailment').doc('state').set({
+              active: false,
+              lastPrice: null,
+              lastDeactivated: Date.now(),
+              disabledByAutomationToggle: true
+            });
+            console.log(`[Automation Enable] ✓ Export power restored successfully`);
+          } else {
+            console.warn(`[Automation Enable] ⚠️ Failed to restore export power: ${setResult?.msg || 'Unknown error'}`);
+          }
+        }
+      } catch (curtErr) {
+        console.error('[Automation Enable] Error checking/restoring curtailment:', curtErr);
+        // Don't fail the toggle operation if curtailment restoration fails
+      }
+    }
+    
+    await saveUserAutomationState(userId, stateUpdate);
     res.json({ errno: 0, result: { enabled: !!enabled } });
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
