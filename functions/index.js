@@ -3510,7 +3510,7 @@ app.post('/api/automation/cancel', async (req, res) => {
 /**
  * Start a quick manual control (charge or discharge)
  * POST /api/quickcontrol/start
- * Body: { type: 'charge'|'discharge', power: 0-10000, durationMinutes: 1-360 }
+ * Body: { type: 'charge'|'discharge', power: 0-10000, durationMinutes: 2-360 }
  */
 app.post('/api/quickcontrol/start', authenticateUser, async (req, res) => {
   try {
@@ -3528,9 +3528,9 @@ app.post('/api/quickcontrol/start', authenticateUser, async (req, res) => {
       console.log('[QuickControl] Validation failed: invalid power', { power, type: typeof power });
       return res.status(400).json({ errno: 400, error: 'power must be between 0 and 10000 watts' });
     }
-    if (typeof durationMinutes !== 'number' || durationMinutes < 1 || durationMinutes > 360) {
+    if (typeof durationMinutes !== 'number' || durationMinutes < 2 || durationMinutes > 360) {
       console.log('[QuickControl] Validation failed: invalid duration', { durationMinutes, type: typeof durationMinutes });
-      return res.status(400).json({ errno: 400, error: 'durationMinutes must be between 1 and 360' });
+      return res.status(400).json({ errno: 400, error: 'durationMinutes must be between 2 and 360' });
     }
     
     logger.debug('QuickControl', `Start requested: type=${type}, power=${power}W, duration=${durationMinutes}min, userId=${userId}`);
@@ -3564,12 +3564,16 @@ app.post('/api/quickcontrol/start', authenticateUser, async (req, res) => {
       endMinute = 59;
     }
     
+    logger.debug('QuickControl', `Segment time: ${String(startHour).padStart(2,'0')}:${String(startMinute).padStart(2,'0')} -> ${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')}`);
+    
     // Determine work mode based on type (must be STRING to match manual scheduler)
     const workMode = type === 'charge' ? 'ForceCharge' : 'ForceDischarge';
     
     // Set SoC parameters based on charge vs discharge
     const minSocOnGrid = 20; // Min SoC on Grid for both charge and discharge
     const fdSoc = type === 'charge' ? 90 : 30; // Stop SoC: 90% for charge, 30% for discharge
+    
+    logger.debug('QuickControl', `Parameters: workMode=${workMode}, power=${power}W, minSocOnGrid=${minSocOnGrid}%, fdSoc=${fdSoc}%, maxSoc=100%`);
     
     // Create scheduler segment (Group 1 enabled, Groups 2-8 disabled)
     const groups = [];
@@ -3595,7 +3599,7 @@ app.post('/api/quickcontrol/start', authenticateUser, async (req, res) => {
           startMinute: 0,
           endHour: 0,
           endMinute: 0,
-          minSocOnGrid: 20,
+          minSocOnGrid: 10,
           fdSoc: 10,
           fdPwr: 0,
           maxSoc: 100
@@ -3611,10 +3615,13 @@ app.post('/api/quickcontrol/start', authenticateUser, async (req, res) => {
     while (attempts < maxAttempts) {
       try {
         attempts++;
+        logger.debug('QuickControl', `Attempt ${attempts}/${maxAttempts}: Calling FoxESS API...`);
         result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', {
           deviceSN,
           groups
         }, userConfig, userId);
+        
+        logger.debug('QuickControl', `Attempt ${attempts} result: errno=${result?.errno}, msg=${result?.msg}`);
         
         if (result && result.errno === 0) {
           logger.debug('QuickControl', `Segment set success on attempt ${attempts}`);
@@ -3633,9 +3640,16 @@ app.post('/api/quickcontrol/start', authenticateUser, async (req, res) => {
     }
     
     if (!result || result.errno !== 0) {
-      return res.status(500).json({
+      const errorDetails = {
         errno: result?.errno || 500,
-        error: result?.msg || 'Failed to set quick control segment'
+        msg: result?.msg || 'Failed to set quick control segment',
+        result: result?.result || null
+      };
+      console.error('[QuickControl] FoxESS API failed after retries:', JSON.stringify(errorDetails));
+      return res.status(500).json({
+        errno: errorDetails.errno,
+        error: errorDetails.msg,
+        details: errorDetails.result
       });
     }
     

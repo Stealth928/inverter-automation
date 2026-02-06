@@ -1622,6 +1622,104 @@
                 </div>
             </div>
 
+            <!-- Quick Controls -->
+            <div class="card" style="margin-bottom: 20px;">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">⚡</span> Quick Controls</div>
+                    <button class="btn" onclick="refreshQuickControlStatus()" style="font-size:11px;padding:4px 10px;width:auto;margin:0">🔄 Refresh</button>
+                </div>
+                <div class="card-body">
+                    <!-- Message Status Banner -->
+                    <div id="quickControlMessage" style="padding:8px;margin-bottom:10px;border-radius:6px;font-size:12px;display:none;"></div>
+                    
+                    <!-- Status Display -->
+                    <div id="quickControlStatus" style="display:none;padding:12px;margin-bottom:16px;border-radius:6px;font-size:13px;">
+                        <!-- Active status will be displayed here -->
+                    </div>
+
+                    <!-- Automation Warning -->
+                    <div id="quickControlAutomationWarning" style="display:none;padding:12px;margin-bottom:16px;background:rgba(210,153,34,0.15);border:1px solid rgba(210,153,34,0.4);border-radius:6px;font-size:13px;color:#d29922;">
+                        <div style="font-weight:600;margin-bottom:6px">ℹ️ Automation Mode</div>
+                        <div style="font-size:12px;line-height:1.5;color:#8b949e;">
+                            Automation is currently <strong style="color:#f0883e">enabled</strong>. While quick control is active, automation will be paused automatically and resume after the quick control expires.
+                        </div>
+                    </div>
+
+                    <!-- Control Form -->
+                    <div id="quickControlForm">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                            <!-- Type Selection -->
+                            <div class="input-group">
+                                <label style="font-weight:600;color:#58a6ff;font-size:13px">Control Type</label>
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+                                    <button id="btnChargeType" class="btn" onclick="selectQuickControlType('charge')" style="background:#1f6feb;border-color:#388bfd;padding:10px;font-size:13px;font-weight:600;">
+                                        🔋 Charge
+                                    </button>
+                                    <button id="btnDischargeType" class="btn" onclick="selectQuickControlType('discharge')" style="padding:10px;font-size:13px;">
+                                        ⚡ Discharge
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Duration Selection -->
+                            <div class="input-group">
+                                <label style="font-weight:600;color:#58a6ff;font-size:13px">
+                                    Duration: <span id="quickControlDurationDisplay" style="color:#fff;font-weight:700;">20</span> min
+                                </label>
+                                <div style="display:flex;gap:12px;align-items:center;margin-top:8px;">
+                                    <span style="font-size:12px;color:#8b949e;min-width:30px;">2 min</span>
+                                    <input type="range" id="quickControlDuration" min="2" max="300" step="1" value="20" 
+                                           oninput="updateQuickControlDurationDisplay(this.value)" 
+                                           style="flex:1;height:8px;background:#30363d;border-radius:4px;outline:none;-webkit-appearance:none;">
+                                    <span style="font-size:12px;color:#8b949e;min-width:50px;text-align:right;">300 min</span>
+                                </div>
+                                <div style="margin-top:8px;display:flex;gap:6px;">
+                                    <button class="btn" onclick="setQuickControlDuration(5)" style="font-size:11px;padding:4px 8px;flex:1;">5 min</button>
+                                    <button class="btn" onclick="setQuickControlDuration(15)" style="font-size:11px;padding:4px 8px;flex:1;">15 min</button>
+                                    <button class="btn" onclick="setQuickControlDuration(30)" style="font-size:11px;padding:4px 8px;flex:1;">30 min</button>
+                                    <button class="btn" onclick="setQuickControlDuration(60)" style="font-size:11px;padding:4px 8px;flex:1;">60 min</button>
+                                    <button class="btn" onclick="toggleQuickControlCustomDuration()" style="font-size:11px;padding:4px 8px;flex:1;">Custom</button>
+                                </div>
+                                <input type="number" id="quickControlDurationCustom" class="input" min="2" max="360" value="20" placeholder="Minutes (2-360)" 
+                                       onchange="setQuickControlDuration(this.value)" 
+                                       style="display:none;margin-top:8px;padding:8px;">
+                            </div>
+                        </div>
+
+                        <!-- Power Selection -->
+                        <div class="input-group" style="margin-bottom:16px;">
+                            <label style="font-weight:600;color:#58a6ff;font-size:13px">
+                                Power: <span id="quickControlPowerDisplay" style="color:#fff;font-weight:700;">5.0</span> kW
+                            </label>
+                            <div style="display:flex;gap:12px;align-items:center;margin-top:8px;">
+                                <span style="font-size:12px;color:#8b949e;min-width:30px;">0 kW</span>
+                                <input type="range" id="quickControlPower" min="0" max="10000" step="100" value="5000" 
+                                       oninput="updateQuickControlPowerDisplay(this.value)" 
+                                       style="flex:1;height:8px;background:#30363d;border-radius:4px;outline:none;-webkit-appearance:none;">
+                                <span style="font-size:12px;color:#8b949e;min-width:40px;text-align:right;">10 kW</span>
+                            </div>
+                            <div style="margin-top:8px;display:flex;gap:6px;">
+                                <button class="btn" onclick="setQuickControlPower(2000)" style="font-size:11px;padding:4px 8px;flex:1;">2 kW</button>
+                                <button class="btn" onclick="setQuickControlPower(3000)" style="font-size:11px;padding:4px 8px;flex:1;">3 kW</button>
+                                <button class="btn" onclick="setQuickControlPower(5000)" style="font-size:11px;padding:4px 8px;flex:1;">5 kW</button>
+                                <button class="btn" onclick="setQuickControlPower(7000)" style="font-size:11px;padding:4px 8px;flex:1;">7 kW</button>
+                                <button class="btn" onclick="setQuickControlPower(10000)" style="font-size:11px;padding:4px 8px;flex:1;">10 kW</button>
+                            </div>
+                        </div>
+
+                        <!-- Start Button -->
+                        <button id="btnStartQuickControl" class="btn btn-primary" onclick="startQuickControl()" style="width:100%;padding:12px;font-size:14px;font-weight:600;">
+                            ▶️ Start Quick Control
+                        </button>
+                    </div>
+
+                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #30363d;font-size:12px;color:#8b949e;line-height:1.6;">
+                        <strong style="color:#58a6ff;">💡 Quick Controls</strong> let you immediately charge or discharge your battery for a set duration without creating automation rules. 
+                        Perfect for ad-hoc adjustments based on weather, price changes, or upcoming events.
+                    </div>
+                </div>
+            </div>
+
             <!-- Manual Scheduler (Time Segments) - moved up for prominence -->
             <div class="card" style="margin-bottom: 20px;">
                 <div class="card-header">
@@ -1710,95 +1808,6 @@
                                 <button class="btn btn-primary" type="submit" style="flex:1">💾 Save Segment</button>
                             </div>
                         </form>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Quick Manual Controls -->
-            <div class="card" style="margin-bottom: 20px;">
-                <div class="card-header">
-                    <div class="card-title"><span class="icon">⚡</span> Quick Manual Controls</div>
-                    <button class="btn" onclick="refreshQuickControlStatus()" style="font-size:11px;padding:4px 10px;width:auto;margin:0">🔄 Refresh</button>
-                </div>
-                <div class="card-body">
-                    <!-- Message Status Banner -->
-                    <div id="quickControlMessage" style="padding:8px;margin-bottom:10px;border-radius:6px;font-size:12px;display:none;"></div>
-                    
-                    <!-- Status Display -->
-                    <div id="quickControlStatus" style="display:none;padding:12px;margin-bottom:16px;border-radius:6px;font-size:13px;">
-                        <!-- Active status will be displayed here -->
-                    </div>
-
-                    <!-- Automation Warning -->
-                    <div id="quickControlAutomationWarning" style="display:none;padding:12px;margin-bottom:16px;background:rgba(210,153,34,0.15);border:1px solid rgba(210,153,34,0.4);border-radius:6px;font-size:13px;color:#d29922;">
-                        <div style="font-weight:600;margin-bottom:6px">ℹ️ Automation Mode</div>
-                        <div style="font-size:12px;line-height:1.5;color:#8b949e;">
-                            Automation is currently <strong style="color:#f0883e">enabled</strong>. While quick control is active, automation will be paused automatically and resume after the quick control expires.
-                        </div>
-                    </div>
-
-                    <!-- Control Form -->
-                    <div id="quickControlForm">
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
-                            <!-- Type Selection -->
-                            <div class="input-group">
-                                <label style="font-weight:600;color:#58a6ff;font-size:13px">Control Type</label>
-                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
-                                    <button id="btnChargeType" class="btn" onclick="selectQuickControlType('charge')" style="background:#238636;border-color:#2ea043;padding:10px;font-size:13px;font-weight:600;">
-                                        🔋 Charge
-                                    </button>
-                                    <button id="btnDischargeType" class="btn" onclick="selectQuickControlType('discharge')" style="padding:10px;font-size:13px;">
-                                        ⚡ Discharge
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Duration Selection -->
-                            <div class="input-group">
-                                <label style="font-weight:600;color:#58a6ff;font-size:13px">Duration</label>
-                                <select id="quickControlDuration" class="input" style="padding:8px;margin-top:6px;">
-                                    <option value="5">5 minutes</option>
-                                    <option value="10">10 minutes</option>
-                                    <option value="20" selected> 20 minutes</option>
-                                    <option value="30">30 minutes</option>
-                                    <option value="60">60 minutes</option>
-                                    <option value="120">2 hours</option>
-                                    <option value="custom">Custom...</option>
-                                </select>
-                                <input type="number" id="quickControlDurationCustom" class="input" min="1" max="360" value="1" placeholder="Minutes (1-360)" style="display:none;margin-top:8px;padding:8px;">
-                            </div>
-                        </div>
-
-                        <!-- Power Selection -->
-                        <div class="input-group" style="margin-bottom:16px;">
-                            <label style="font-weight:600;color:#58a6ff;font-size:13px">
-                                Power: <span id="quickControlPowerDisplay" style="color:#fff;font-weight:700;">5.0</span> kW
-                            </label>
-                            <div style="display:flex;gap:12px;align-items:center;margin-top:8px;">
-                                <span style="font-size:12px;color:#8b949e;min-width:30px;">0 kW</span>
-                                <input type="range" id="quickControlPower" min="0" max="10000" step="100" value="5000" 
-                                       oninput="updateQuickControlPowerDisplay(this.value)" 
-                                       style="flex:1;height:8px;background:#30363d;border-radius:4px;outline:none;-webkit-appearance:none;">
-                                <span style="font-size:12px;color:#8b949e;min-width:40px;text-align:right;">10 kW</span>
-                            </div>
-                            <div style="margin-top:8px;display:flex;gap:6px;">
-                                <button class="btn" onclick="setQuickControlPower(2000)" style="font-size:11px;padding:4px 8px;flex:1;">2 kW</button>
-                                <button class="btn" onclick="setQuickControlPower(3000)" style="font-size:11px;padding:4px 8px;flex:1;">3 kW</button>
-                                <button class="btn" onclick="setQuickControlPower(5000)" style="font-size:11px;padding:4px 8px;flex:1;">5 kW</button>
-                                <button class="btn" onclick="setQuickControlPower(7000)" style="font-size:11px;padding:4px 8px;flex:1;">7 kW</button>
-                                <button class="btn" onclick="setQuickControlPower(10000)" style="font-size:11px;padding:4px 8px;flex:1;">10 kW</button>
-                            </div>
-                        </div>
-
-                        <!-- Start Button -->
-                        <button id="btnStartQuickControl" class="btn btn-primary" onclick="startQuickControl()" style="width:100%;padding:12px;font-size:14px;font-weight:600;">
-                            ▶️ Start Quick Control
-                        </button>
-                    </div>
-
-                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #30363d;font-size:12px;color:#8b949e;line-height:1.6;">
-                        <strong style="color:#58a6ff;">💡 Quick Controls</strong> let you immediately charge or discharge your battery for a set duration without creating automation rules. 
-                        Perfect for ad-hoc adjustments based on weather, price changes, or upcoming events.
                     </div>
                 </div>
             </div>
@@ -4541,7 +4550,7 @@
         }
         
         // ============================================================
-        // Quick Manual Controls
+        // Quick Controls
         // ============================================================
         
         let quickControlState = {
@@ -4557,13 +4566,13 @@
             const dischargeBtn = document.getElementById('btnDischargeType');
             
             if (type === 'charge') {
-                chargeBtn.style.background = '#238636';
-                chargeBtn.style.borderColor = '#2ea043';
+                chargeBtn.style.background = '#1f6feb';
+                chargeBtn.style.borderColor = '#388bfd';
                 dischargeBtn.style.background = '';
                 dischargeBtn.style.borderColor = '';
             } else {
-                dischargeBtn.style.background = '#238636';
-                dischargeBtn.style.borderColor = '#2ea043';
+                dischargeBtn.style.background = '#d73a49';
+                dischargeBtn.style.borderColor = '#cb2431';
                 chargeBtn.style.background = '';
                 chargeBtn.style.borderColor = '';
             }
@@ -4579,22 +4588,39 @@
             updateQuickControlPowerDisplay(watts);
         }
         
-        // Handle duration select change to show/hide custom input
-        document.addEventListener('DOMContentLoaded', () => {
-            const durationSelect = document.getElementById('quickControlDuration');
-            const customInput = document.getElementById('quickControlDurationCustom');
-            
-            if (durationSelect && customInput) {
-                durationSelect.addEventListener('change', (e) => {
-                    if (e.target.value === 'custom') {
-                        customInput.style.display = 'block';
-                        customInput.focus();
-                    } else {
-                        customInput.style.display = 'none';
-                    }
-                });
+        function updateQuickControlDurationDisplay(value) {
+            quickControlState.duration = parseInt(value);
+            document.getElementById('quickControlDurationDisplay').textContent = quickControlState.duration;
+        }
+        
+        function setQuickControlDuration(minutes) {
+            const duration = parseInt(minutes);
+            if (duration >= 2 && duration <= 360) {
+                document.getElementById('quickControlDuration').value = Math.min(300, duration);
+                quickControlState.duration = duration;
+                document.getElementById('quickControlDurationDisplay').textContent = duration;
+                const customInput = document.getElementById('quickControlDurationCustom');
+                if (duration > 300) {
+                    customInput.value = duration;
+                    customInput.style.display = 'block';
+                } else {
+                    customInput.style.display = 'none';
+                }
             }
-            
+        }
+        
+        function toggleQuickControlCustomDuration() {
+            const customInput = document.getElementById('quickControlDurationCustom');
+            if (customInput.style.display === 'none') {
+                customInput.style.display = 'block';
+                customInput.focus();
+            } else {
+                customInput.style.display = 'none';
+            }
+        }
+        
+        // Initialize Quick Control status on page load
+        document.addEventListener('DOMContentLoaded', () => {
             // Load initial status
             refreshQuickControlStatus();
         });
@@ -4745,19 +4771,19 @@
         
         async function startQuickControl() {
             const startBtn = document.getElementById('btnStartQuickControl');
-            const durationSelect = document.getElementById('quickControlDuration');
+            const durationSlider = document.getElementById('quickControlDuration');
             const customInput = document.getElementById('quickControlDurationCustom');
             
-            // Get duration
+            // Get duration from custom input if visible, otherwise from slider
             let durationMinutes;
-            if (durationSelect.value === 'custom') {
+            if (customInput.style.display !== 'none' && customInput.value) {
                 durationMinutes = parseInt(customInput.value);
-                if (isNaN(durationMinutes) || durationMinutes < 1 || durationMinutes > 360) {
-                    alert('❌ Please enter a valid duration (1-360 minutes)');
+                if (isNaN(durationMinutes) || durationMinutes < 2 || durationMinutes > 360) {
+                    alert('❌ Please enter a valid duration (2-360 minutes)');
                     return;
                 }
             } else {
-                durationMinutes = parseInt(durationSelect.value);
+                durationMinutes = parseInt(durationSlider.value);
             }
             
             // Validate power
