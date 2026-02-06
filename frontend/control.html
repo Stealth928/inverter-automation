@@ -315,9 +315,7 @@
               <select name="workMode" class="input" required>
                 <option value="">-- Select Mode --</option>
                 <option value="SelfUse">Self Use</option>
-                <option value="ForceCharge">Force Charge</option>
-                <option value="ForceDischarge">Force Discharge</option>
-                <option value="Feedin">Feed In</option>
+                <option value="Feedin">Feed In First</option>
                 <option value="Backup">Backup</option>
               </select>
             </div>
@@ -821,7 +819,7 @@
       showStatus('workMode', `⏳ Setting work mode to ${workMode}...`, 'info');
       
       try {
-        const res = await authenticatedFetch('/api/inverter/mode/set', {
+        const res = await authenticatedFetch('/api/device/workmode/set', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ workMode })
@@ -847,11 +845,28 @@
         const result = await res.json();
         
         if (result.errno === 0 && result.result) {
-          const currentMode = result.result.value;
-          document.getElementById('currentWorkMode').innerHTML = `Current mode: <span style="color:#7ee787">${currentMode}</span>`;
+          // Map numeric values to string names
+          const workModeMap = {
+            0: 'SelfUse',
+            1: 'Feedin',
+            2: 'Backup',
+            3: 'PeakShaving'
+          };
+          const workModeNames = {
+            0: 'Self Use',
+            1: 'Feed In First',
+            2: 'Backup',
+            3: 'Peak Shaving'
+          };
+          
+          const numericMode = result.result.value;
+          const modeKey = workModeMap[numericMode] || numericMode;
+          const modeName = workModeNames[numericMode] || numericMode;
+          
+          document.getElementById('currentWorkMode').innerHTML = `Current mode: <span style="color:#7ee787">${modeName}</span>`;
           
           const select = document.querySelector('#form-workMode select[name="workMode"]');
-          select.value = currentMode;
+          select.value = modeKey;
           
           showStatus('workMode', '✅ Loaded current work mode', 'success');
           displayFormattedResponse('Work Mode Setting', result);

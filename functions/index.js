@@ -1621,6 +1621,40 @@ async function saveUserAutomationState(userId, state) {
 }
 
 /**
+ * Get quick control state from Firestore
+ */
+async function getQuickControlState(userId) {
+  try {
+    const stateDoc = await db.collection('users').doc(userId).collection('quickControl').doc('state').get();
+    if (stateDoc.exists) {
+      return stateDoc.data();
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting quick control state:', error);
+    return null;
+  }
+}
+
+/**
+ * Save quick control state to Firestore
+ */
+async function saveQuickControlState(userId, state) {
+  try {
+    if (state === null) {
+      // Delete the state document
+      await db.collection('users').doc(userId).collection('quickControl').doc('state').delete();
+    } else {
+      await db.collection('users').doc(userId).collection('quickControl').doc('state').set(state);
+    }
+    return true;
+  } catch (error) {
+    console.error('Error saving quick control state:', error);
+    return false;
+  }
+}
+
+/**
  * Check and apply solar curtailment if conditions are met
  * This runs AFTER automation rules to avoid conflicts
  * 
@@ -2393,6 +2427,93 @@ app.post('/api/automation/cycle', async (req, res) => {
       }
       
       return res.json({ errno: 0, result: { skipped: true, reason: 'Automation disabled', segmentsCleared: state.segmentsCleared === true } });
+    }
+    
+    // ============================================================
+    // Check for active quick control (mutual exclusion)
+    // ============================================================
+    const quickState = await getQuickControlState(userId);
+    if (quickState && quickState.active) {
+      const now = Date.now();
+      
+      // If quick control has expired, clean it up and continue with normal automation
+      if (quickState.expiresAt <= now) {
+        logger.info('QuickControl', `Auto-cleanup expired quick control: type=${quickState.type}, expiresAt=${new Date(quickState.expiresAt).toISOString()}`);
+        
+        // Clear all scheduler segments
+        try {
+          const userConfig = await getUserConfig(userId);
+          const deviceSN = userConfig?.deviceSn;
+          if (deviceSN) {
+            const clearedGroups = [];
+            for (let i = 0; i < 8; i++) {
+              clearedGroups.push({
+                enable: 0,
+                workMode: 'SelfUse',
+                startHour: 0, startMinute: 0,
+                endHour: 0, endMinute: 0,
+                minSocOnGrid: 10,
+                fdSoc: 10,
+                fdPwr: 0,
+                maxSoc: 100
+              });
+            }
+            const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+            if (clearResult?.errno === 0) {
+              logger.debug('QuickControl', `Auto-cleanup cleared segments successfully`);
+            } else {
+              console.warn(`[QuickControl] Auto-cleanup segment clear returned errno=${clearResult?.errno}`);
+            }
+            
+            // Disable scheduler flag
+            try {
+              await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
+            } catch (flagErr) {
+              console.warn('[QuickControl] Auto-cleanup flag disable failed:', flagErr?.message || flagErr);
+            }
+          }
+        } catch (err) {
+          console.error(`[QuickControl] Auto-cleanup error:`, err.message);
+        }
+        
+        // Delete quick control state
+        await saveQuickControlState(userId, null);
+        
+        // Log to history
+        try {
+          await addHistoryEntry(userId, {
+            type: 'quickcontrol_auto_cleanup',
+            controlType: quickState.type,
+            power: quickState.power,
+            durationMinutes: quickState.durationMinutes,
+            timestamp: serverTimestamp()
+          });
+        } catch (e) { /* ignore */ }
+        
+        // Continue with normal automation
+      } else {
+        // Quick control still active - skip automation cycle
+        const remainingMs = quickState.expiresAt - now;
+        const remainingMinutes = Math.ceil(remainingMs / 60000);
+        
+        logger.debug('Automation', `Cycle skipped: Quick control active (type=${quickState.type}, ${remainingMinutes}min remaining)`);
+        
+        // Update lastCheck to prevent scheduler from calling cycle repeatedly
+        await saveUserAutomationState(userId, { lastCheck: Date.now() });
+        
+        return res.json({
+          errno: 0,
+          result: {
+            skipped: true,
+            reason: 'Quick control active',
+            quickControl: {
+              type: quickState.type,
+              power: quickState.power,
+              remainingMinutes: remainingMinutes
+            }
+          }
+        });
+      }
     }
     
     // Check for blackout windows
@@ -3382,6 +3503,389 @@ app.post('/api/automation/cancel', async (req, res) => {
   }
 });
 
+// ============================================================
+// Quick Manual Controls - Immediate charge/discharge
+// ============================================================
+
+/**
+ * Start a quick manual control (charge or discharge)
+ * POST /api/quickcontrol/start
+ * Body: { type: 'charge'|'discharge', power: 0-10000, durationMinutes: 1-360 }
+ */
+app.post('/api/quickcontrol/start', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { type, power, durationMinutes } = req.body;
+    
+    console.log('[QuickControl] Start request:', { userId, type, power, durationMinutes, bodyType: typeof req.body });
+    
+    // Validation
+    if (!type || (type !== 'charge' && type !== 'discharge')) {
+      console.log('[QuickControl] Validation failed: invalid type');
+      return res.status(400).json({ errno: 400, error: 'type must be "charge" or "discharge"' });
+    }
+    if (typeof power !== 'number' || power < 0 || power > 10000) {
+      console.log('[QuickControl] Validation failed: invalid power', { power, type: typeof power });
+      return res.status(400).json({ errno: 400, error: 'power must be between 0 and 10000 watts' });
+    }
+    if (typeof durationMinutes !== 'number' || durationMinutes < 1 || durationMinutes > 360) {
+      console.log('[QuickControl] Validation failed: invalid duration', { durationMinutes, type: typeof durationMinutes });
+      return res.status(400).json({ errno: 400, error: 'durationMinutes must be between 1 and 360' });
+    }
+    
+    logger.debug('QuickControl', `Start requested: type=${type}, power=${power}W, duration=${durationMinutes}min, userId=${userId}`);
+    
+    // Get user configuration
+    const userConfig = await getUserConfig(userId);
+    if (!userConfig || !userConfig.deviceSn) {
+      return res.status(400).json({ errno: 400, error: 'Device serial number not configured' });
+    }
+    const deviceSN = userConfig.deviceSn;
+    
+    // Get user's timezone and current time in their timezone (same as automation)
+    const userTimezone = getAutomationTimezone(userConfig);
+    const userTime = getUserTime(userTimezone);
+    const startHour = userTime.hour;
+    const startMinute = userTime.minute;
+    
+    logger.debug('QuickControl', `Using timezone: ${userTimezone}, local time: ${String(startHour).padStart(2,'0')}:${String(startMinute).padStart(2,'0')}`);
+    
+    // Calculate end time using timezone-aware addMinutes helper
+    const endTimeObj = addMinutes(startHour, startMinute, durationMinutes);
+    let endHour = endTimeObj.hour;
+    let endMinute = endTimeObj.minute;
+    
+    // Handle midnight crossing (FoxESS doesn't support segments crossing 00:00)
+    const startTotalMins = startHour * 60 + startMinute;
+    const endTotalMins = endHour * 60 + endMinute;
+    if (endTotalMins <= startTotalMins) {
+      logger.warn('QuickControl', `Midnight crossing detected, capping at 23:59`);
+      endHour = 23;
+      endMinute = 59;
+    }
+    
+    // Determine work mode based on type (must be STRING to match manual scheduler)
+    const workMode = type === 'charge' ? 'ForceCharge' : 'ForceDischarge';
+    
+    // Set SoC parameters based on charge vs discharge
+    const minSocOnGrid = 20; // Min SoC on Grid for both charge and discharge
+    const fdSoc = type === 'charge' ? 90 : 30; // Stop SoC: 90% for charge, 30% for discharge
+    
+    // Create scheduler segment (Group 1 enabled, Groups 2-8 disabled)
+    const groups = [];
+    for (let i = 0; i < 8; i++) {
+      if (i === 0) { // Group 1: Quick control segment
+        groups.push({
+          enable: 1,
+          workMode: workMode,
+          startHour: startHour,
+          startMinute: startMinute,
+          endHour: endHour,
+          endMinute: endMinute,
+          minSocOnGrid: minSocOnGrid,
+          fdSoc: fdSoc,
+          fdPwr: power,
+          maxSoc: 100
+        });
+      } else {
+        groups.push({
+          enable: 0,
+          workMode: 'SelfUse',
+          startHour: 0,
+          startMinute: 0,
+          endHour: 0,
+          endMinute: 0,
+          minSocOnGrid: 20,
+          fdSoc: 10,
+          fdPwr: 0,
+          maxSoc: 100
+        });
+      }
+    }
+    
+    // Send to FoxESS API with retries
+    let result = null;
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
+      try {
+        attempts++;
+        result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', {
+          deviceSN,
+          groups
+        }, userConfig, userId);
+        
+        if (result && result.errno === 0) {
+          logger.debug('QuickControl', `Segment set success on attempt ${attempts}`);
+          break;
+        } else {
+          logger.debug('QuickControl', `Attempt ${attempts} returned errno=${result?.errno}`);
+          if (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      } catch (apiErr) {
+        logger.debug('QuickControl', `API error on attempt ${attempts}: ${apiErr.message}`);
+        if (attempts === maxAttempts) throw apiErr;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    if (!result || result.errno !== 0) {
+      return res.status(500).json({
+        errno: result?.errno || 500,
+        error: result?.msg || 'Failed to set quick control segment'
+      });
+    }
+    
+    // Enable scheduler flag
+    let flagResult = null;
+    try {
+      flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', {
+        deviceSN,
+        enable: 1
+      }, userConfig, userId);
+      logger.debug('QuickControl', `Flag enable result: errno=${flagResult?.errno}`);
+    } catch (flagErr) {
+      console.warn('[QuickControl] Flag enable failed:', flagErr?.message || flagErr);
+    }
+    
+    // 3-second wait before verification
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Verification read
+    let verify = null;
+    try {
+      verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+    } catch (e) {
+      console.warn('[QuickControl] Verify read failed:', e?.message || e);
+    }
+    
+    // Save state to Firestore
+    const startedAt = Date.now();
+    const expiresAt = startedAt + (durationMinutes * 60 * 1000);
+    
+    await saveQuickControlState(userId, {
+      active: true,
+      type: type,
+      power: power,
+      durationMinutes: durationMinutes,
+      startedAt: startedAt,
+      expiresAt: expiresAt,
+      createdAt: serverTimestamp()
+    });
+    
+    // Log to history
+    try {
+      await addHistoryEntry(userId, {
+        type: 'quickcontrol_start',
+        controlType: type,
+        power: power,
+        durationMinutes: durationMinutes,
+        timestamp: serverTimestamp()
+      });
+    } catch (e) { /* ignore */ }
+    
+    logger.info('QuickControl', `Started: type=${type}, power=${power}W, duration=${durationMinutes}min, expiresAt=${new Date(expiresAt).toISOString()}`);
+    
+    res.json({
+      errno: 0,
+      msg: 'Quick control started',
+      state: {
+        active: true,
+        type: type,
+        power: power,
+        durationMinutes: durationMinutes,
+        startedAt: startedAt,
+        expiresAt: expiresAt
+      },
+      flagResult,
+      verify: verify?.result || null
+    });
+  } catch (error) {
+    console.error('[QuickControl] Start error:', error);
+    console.error('[QuickControl] Error stack:', error.stack);
+    console.error('[QuickControl] Error details:', JSON.stringify({
+      message: error.message,
+      name: error.name,
+      code: error.code
+    }));
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+/**
+ * Stop/end quick manual control
+ * POST /api/quickcontrol/end
+ */
+app.post('/api/quickcontrol/end', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    
+    logger.debug('QuickControl', `End requested: userId=${userId}`);
+    
+    // Get current quick control state
+    const quickState = await getQuickControlState(userId);
+    if (!quickState || !quickState.active) {
+      return res.json({
+        errno: 0,
+        msg: 'No active quick control to stop'
+      });
+    }
+    
+    // Get user configuration
+    const userConfig = await getUserConfig(userId);
+    if (!userConfig || !userConfig.deviceSn) {
+      return res.status(400).json({ errno: 400, error: 'Device serial number not configured' });
+    }
+    const deviceSN = userConfig.deviceSn;
+    
+    // Clear all scheduler segments (same as cancel)
+    const groups = [];
+    for (let i = 0; i < 8; i++) {
+      groups.push({
+        enable: 0,
+        workMode: 'SelfUse',
+        startHour: 0,
+        startMinute: 0,
+        endHour: 0,
+        endMinute: 0,
+        minSocOnGrid: 10,
+        fdSoc: 10,
+        fdPwr: 0,
+        maxSoc: 100
+      });
+    }
+    
+    // Send to FoxESS API with retries
+    let result = null;
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
+      try {
+        attempts++;
+        result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', {
+          deviceSN,
+          groups
+        }, userConfig, userId);
+        
+        if (result && result.errno === 0) {
+          logger.debug('QuickControl', `Segments cleared on attempt ${attempts}`);
+          break;
+        } else {
+          logger.debug('QuickControl', `Clear attempt ${attempts} returned errno=${result?.errno}`);
+          if (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      } catch (apiErr) {
+        logger.debug('QuickControl', `API error on attempt ${attempts}: ${apiErr.message}`);
+        if (attempts === maxAttempts) throw apiErr;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    if (!result || result.errno !== 0) {
+      return res.status(500).json({
+        errno: result?.errno || 500,
+        error: result?.msg || 'Failed to clear quick control segment'
+      });
+    }
+    
+    // Disable scheduler flag
+    let flagResult = null;
+    try {
+      flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', {
+        deviceSN,
+        enable: 0
+      }, userConfig, userId);
+      logger.debug('QuickControl', `Flag disable result: errno=${flagResult?.errno}`);
+    } catch (flagErr) {
+      console.warn('[QuickControl] Flag disable failed:', flagErr?.message || flagErr);
+    }
+    
+    // Verification read
+    let verify = null;
+    try {
+      verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+    } catch (e) {
+      console.warn('[QuickControl] Verify read failed:', e?.message || e);
+    }
+    
+    // Delete state from Firestore
+    await saveQuickControlState(userId, null);
+    
+    // Log to history
+    try {
+      await addHistoryEntry(userId, {
+        type: 'quickcontrol_end',
+        controlType: quickState.type,
+        power: quickState.power,
+        durationMinutes: quickState.durationMinutes,
+        completedEarly: quickState.expiresAt > Date.now(),
+        timestamp: serverTimestamp()
+      });
+    } catch (e) { /* ignore */ }
+    
+    logger.info('QuickControl', `Ended: type=${quickState.type}, power=${quickState.power}W`);
+    
+    res.json({
+      errno: 0,
+      msg: 'Quick control stopped',
+      flagResult,
+      verify: verify?.result || null
+    });
+  } catch (error) {
+    console.error('[QuickControl] End error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+/**
+ * Get quick control status
+ * GET /api/quickcontrol/status
+ */
+app.get('/api/quickcontrol/status', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const quickState = await getQuickControlState(userId);
+    
+    if (!quickState || !quickState.active) {
+      return res.json({
+        errno: 0,
+        result: {
+          active: false
+        }
+      });
+    }
+    
+    // Calculate remaining time
+    const now = Date.now();
+    const remainingMs = Math.max(0, quickState.expiresAt - now);
+    const remainingMinutes = Math.ceil(remainingMs / 60000);
+    const expired = now >= quickState.expiresAt;
+    
+    res.json({
+      errno: 0,
+      result: {
+        active: true,
+        type: quickState.type,
+        power: quickState.power,
+        durationMinutes: quickState.durationMinutes,
+        startedAt: quickState.startedAt,
+        expiresAt: quickState.expiresAt,
+        remainingMinutes: remainingMinutes,
+        expired: expired
+      }
+    });
+  } catch (error) {
+    console.error('[QuickControl] Status error:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
 // Manually end an orphan ongoing rule (create a "complete" audit entry with endTime)
 // This fixes rules that get stuck in "ongoing" state without a proper termination event
 app.post('/api/automation/rule/end', async (req, res) => {
@@ -3554,16 +4058,78 @@ app.post('/api/automation/rule/update', async (req, res) => {
       update.lastTriggered = null;
       console.log(`[Rule Update] Rule ${ruleId} disabled - clearing lastTriggered to reset cooldown`);
       
-      // Also check if this was the active rule and flag for immediate clearing
+      // Also check if this was the active rule and clear segments IMMEDIATELY + create audit entry
       const state = await getUserAutomationState(req.user.uid);
       if (state && state.activeRule === ruleId) {
-        console.log(`[Rule Update] Disabled rule was active - setting clearSegmentsOnNextCycle flag`);
+        console.log(`[Rule Update] Disabled rule was active - clearing segments immediately`);
+        
+        // Get user config for device SN
+        const userConfig = await getUserConfig(req.user.uid);
+        const deviceSN = userConfig?.deviceSn;
+        
+        // Clear scheduler segments immediately
+        if (deviceSN) {
+          try {
+            const clearedGroups = [];
+            for (let i = 0; i < 8; i++) {
+              clearedGroups.push({
+                enable: 0,
+                workMode: 'SelfUse',
+                startHour: 0, startMinute: 0,
+                endHour: 0, endMinute: 0,
+                minSocOnGrid: 10,
+                fdSoc: 10,
+                fdPwr: 0,
+                maxSoc: 100
+              });
+            }
+            const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, req.user.uid);
+            if (clearResult?.errno === 0) {
+              console.log(`[Rule Update] ✓ Segments cleared successfully`);
+            } else {
+              console.warn(`[Rule Update] ⚠️ Failed to clear segments: errno=${clearResult?.errno}`);
+            }
+          } catch (err) {
+            console.error(`[Rule Update] ❌ Error clearing segments:`, err.message);
+          }
+        }
+        
+        // Create audit entry to mark rule as ended (critical for ROI display)
+        const activationTime = state.lastTriggered || Date.now();
+        const deactivationTime = Date.now();
+        const durationMs = deactivationTime - activationTime;
+        
+        await addAutomationAuditEntry(req.user.uid, {
+          cycleId: `cycle_rule_disabled_${Date.now()}`,
+          triggered: false,
+          ruleName: state.activeRuleName || state.activeRule,
+          ruleId: state.activeRule,
+          evaluationResults: [],
+          allRuleEvaluations: [{
+            name: state.activeRuleName || state.activeRule,
+            ruleId: state.activeRule,
+            triggered: false,
+            conditions: [],
+            feedInPrice: null,
+            buyPrice: null
+          }],
+          actionTaken: null,
+          activeRuleBefore: state.activeRule,
+          activeRuleAfter: null,  // This marks the rule as ended
+          rulesEvaluated: 0,
+          cycleDurationMs: durationMs,
+          manualEnd: true,
+          reason: 'Rule disabled by user'
+        });
+        
+        console.log(`[Rule Update] ✓ Audit entry created - rule marked as ended`);
+        
+        // Clear active rule state
         await saveUserAutomationState(req.user.uid, {
           activeRule: null,
           activeRuleName: null,
           activeSegment: null,
-          activeSegmentEnabled: false,
-          clearSegmentsOnNextCycle: true  // Flag for cycle to clear segments immediately
+          activeSegmentEnabled: false
         });
       }
     }
@@ -3592,13 +4158,75 @@ app.post('/api/automation/rule/delete', async (req, res) => {
     // Check if this is the active rule, if so, set flag to clear segments
     const state = await getUserAutomationState(req.user.uid);
     if (state && state.activeRule === ruleId) {
-      console.log(`[Rule Delete] Deleted rule was active - setting clearSegmentsOnNextCycle flag`);
+      console.log(`[Rule Delete] Deleted rule was active - clearing segments immediately`);
+      
+      // Get user config for device SN
+      const userConfig = await getUserConfig(req.user.uid);
+      const deviceSN = userConfig?.deviceSn;
+      
+      // Clear scheduler segments immediately
+      if (deviceSN) {
+        try {
+          const clearedGroups = [];
+          for (let i = 0; i < 8; i++) {
+            clearedGroups.push({
+              enable: 0,
+              workMode: 'SelfUse',
+              startHour: 0, startMinute: 0,
+              endHour: 0, endMinute: 0,
+              minSocOnGrid: 10,
+              fdSoc: 10,
+              fdPwr: 0,
+              maxSoc: 100
+            });
+          }
+          const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, req.user.uid);
+          if (clearResult?.errno === 0) {
+            console.log(`[Rule Delete] ✓ Segments cleared successfully`);
+          } else {
+            console.warn(`[Rule Delete] ⚠️ Failed to clear segments: errno=${clearResult?.errno}`);
+          }
+        } catch (err) {
+          console.error(`[Rule Delete] ❌ Error clearing segments:`, err.message);
+        }
+      }
+      
+      // Create audit entry to mark rule as ended (critical for ROI display)
+      const activationTime = state.lastTriggered || Date.now();
+      const deactivationTime = Date.now();
+      const durationMs = deactivationTime - activationTime;
+      
+      await addAutomationAuditEntry(req.user.uid, {
+        cycleId: `cycle_rule_deleted_${Date.now()}`,
+        triggered: false,
+        ruleName: state.activeRuleName || state.activeRule,
+        ruleId: state.activeRule,
+        evaluationResults: [],
+        allRuleEvaluations: [{
+          name: state.activeRuleName || state.activeRule,
+          ruleId: state.activeRule,
+          triggered: false,
+          conditions: [],
+          feedInPrice: null,
+          buyPrice: null
+        }],
+        actionTaken: null,
+        activeRuleBefore: state.activeRule,
+        activeRuleAfter: null,  // This marks the rule as ended
+        rulesEvaluated: 0,
+        cycleDurationMs: durationMs,
+        manualEnd: true,
+        reason: 'Rule deleted by user'
+      });
+      
+      console.log(`[Rule Delete] ✓ Audit entry created - rule marked as ended`);
+      
+      // Clear active rule state
       await saveUserAutomationState(req.user.uid, {
         activeRule: null,
         activeRuleName: null,
         activeSegment: null,
-        activeSegmentEnabled: false,
-        clearSegmentsOnNextCycle: true  // Flag for cycle to clear segments immediately
+        activeSegmentEnabled: false
       });
     }
     
@@ -4463,9 +5091,26 @@ app.post('/api/device/workmode/set', async (req, res) => {
     const sn = req.body.sn || userConfig?.deviceSn;
     const { workMode } = req.body;
     if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    if (!workMode) return res.status(400).json({ errno: 400, error: 'workMode is required (SelfUse, Feedin, Backup, PeakShaving)' });
+    if (!workMode) return res.status(400).json({ errno: 400, error: 'workMode is required (SelfUse, Feedin, Backup)' });
 
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', { sn, key: 'WorkMode', value: workMode }, userConfig, req.user.uid);
+    // Map string work mode values to FoxESS numeric values
+    const workModeMap = {
+      'SelfUse': 0,
+      'Feedin': 1,
+      'FeedinFirst': 1,
+      'Backup': 2,
+      'PeakShaving': 3
+    };
+
+    const numericWorkMode = workModeMap[workMode];
+    if (numericWorkMode === undefined) {
+      return res.status(400).json({ 
+        errno: 400, 
+        error: `Invalid work mode: ${workMode}. Valid modes: SelfUse, Feedin, Backup, PeakShaving` 
+      });
+    }
+
+    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', { sn, key: 'WorkMode', value: numericWorkMode }, userConfig, req.user.uid);
     res.json(result);
   } catch (error) {
     console.error('[API] /api/device/workmode/set error:', error);

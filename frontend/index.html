@@ -268,6 +268,54 @@
             border-color: #58a6ff;
             box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
         }
+        
+        /* Range Slider Styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: linear-gradient(to right, #238636 0%, #58a6ff 50%, #f0883e 100%);
+            border-radius: 4px;
+            outline: none;
+            cursor: pointer;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #58a6ff;
+            border: 2px solid #0d1117;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(88, 166, 255, 0.5);
+            transition: all 0.2s ease;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: #79c0ff;
+            box-shadow: 0 0 12px rgba(88, 166, 255, 0.8);
+            transform: scale(1.1);
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #58a6ff;
+            border: 2px solid #0d1117;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(88, 166, 255, 0.5);
+            transition: all 0.2s ease;
+        }
+        
+        input[type="range"]::-moz-range-thumb:hover {
+            background: #79c0ff;
+            box-shadow: 0 0 12px rgba(88, 166, 255, 0.8);
+            transform: scale(1.1);
+        }
         .input::placeholder {
             color: #484f58;
         }
@@ -1584,6 +1632,14 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    <!-- Automation Conflict Warning -->
+                    <div id="schedulerAutomationWarning" style="display:none;padding:12px;margin-bottom:16px;background:rgba(210,153,34,0.15);border:1px solid rgba(210,153,34,0.4);border-radius:6px;font-size:13px;color:#d29922;">
+                        <div style="font-weight:600;margin-bottom:6px">⚠️ Warning: Automation is Currently Enabled</div>
+                        <div style="font-size:12px;line-height:1.5;color:#8b949e;">
+                            Manual scheduler segments will be <strong style="color:#f0883e">overwritten and cleared</strong> when automation triggers a rule. 
+                            If you want to use manual segments, please disable automation first to avoid conflicts.
+                        </div>
+                    </div>
                     <div id="schedulerStatus" style="padding:8px;margin-bottom:10px;border-radius:6px;font-size:12px;display:none;"></div>
                     <div id="schedulerSegments" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:10px;">
                         <!-- Segments will be loaded here -->
@@ -1654,6 +1710,95 @@
                                 <button class="btn btn-primary" type="submit" style="flex:1">💾 Save Segment</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Manual Controls -->
+            <div class="card" style="margin-bottom: 20px;">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">⚡</span> Quick Manual Controls</div>
+                    <button class="btn" onclick="refreshQuickControlStatus()" style="font-size:11px;padding:4px 10px;width:auto;margin:0">🔄 Refresh</button>
+                </div>
+                <div class="card-body">
+                    <!-- Message Status Banner -->
+                    <div id="quickControlMessage" style="padding:8px;margin-bottom:10px;border-radius:6px;font-size:12px;display:none;"></div>
+                    
+                    <!-- Status Display -->
+                    <div id="quickControlStatus" style="display:none;padding:12px;margin-bottom:16px;border-radius:6px;font-size:13px;">
+                        <!-- Active status will be displayed here -->
+                    </div>
+
+                    <!-- Automation Warning -->
+                    <div id="quickControlAutomationWarning" style="display:none;padding:12px;margin-bottom:16px;background:rgba(210,153,34,0.15);border:1px solid rgba(210,153,34,0.4);border-radius:6px;font-size:13px;color:#d29922;">
+                        <div style="font-weight:600;margin-bottom:6px">ℹ️ Automation Mode</div>
+                        <div style="font-size:12px;line-height:1.5;color:#8b949e;">
+                            Automation is currently <strong style="color:#f0883e">enabled</strong>. While quick control is active, automation will be paused automatically and resume after the quick control expires.
+                        </div>
+                    </div>
+
+                    <!-- Control Form -->
+                    <div id="quickControlForm">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                            <!-- Type Selection -->
+                            <div class="input-group">
+                                <label style="font-weight:600;color:#58a6ff;font-size:13px">Control Type</label>
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+                                    <button id="btnChargeType" class="btn" onclick="selectQuickControlType('charge')" style="background:#238636;border-color:#2ea043;padding:10px;font-size:13px;font-weight:600;">
+                                        🔋 Charge
+                                    </button>
+                                    <button id="btnDischargeType" class="btn" onclick="selectQuickControlType('discharge')" style="padding:10px;font-size:13px;">
+                                        ⚡ Discharge
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Duration Selection -->
+                            <div class="input-group">
+                                <label style="font-weight:600;color:#58a6ff;font-size:13px">Duration</label>
+                                <select id="quickControlDuration" class="input" style="padding:8px;margin-top:6px;">
+                                    <option value="5">5 minutes</option>
+                                    <option value="10">10 minutes</option>
+                                    <option value="20" selected> 20 minutes</option>
+                                    <option value="30">30 minutes</option>
+                                    <option value="60">60 minutes</option>
+                                    <option value="120">2 hours</option>
+                                    <option value="custom">Custom...</option>
+                                </select>
+                                <input type="number" id="quickControlDurationCustom" class="input" min="1" max="360" value="1" placeholder="Minutes (1-360)" style="display:none;margin-top:8px;padding:8px;">
+                            </div>
+                        </div>
+
+                        <!-- Power Selection -->
+                        <div class="input-group" style="margin-bottom:16px;">
+                            <label style="font-weight:600;color:#58a6ff;font-size:13px">
+                                Power: <span id="quickControlPowerDisplay" style="color:#fff;font-weight:700;">5.0</span> kW
+                            </label>
+                            <div style="display:flex;gap:12px;align-items:center;margin-top:8px;">
+                                <span style="font-size:12px;color:#8b949e;min-width:30px;">0 kW</span>
+                                <input type="range" id="quickControlPower" min="0" max="10000" step="100" value="5000" 
+                                       oninput="updateQuickControlPowerDisplay(this.value)" 
+                                       style="flex:1;height:8px;background:#30363d;border-radius:4px;outline:none;-webkit-appearance:none;">
+                                <span style="font-size:12px;color:#8b949e;min-width:40px;text-align:right;">10 kW</span>
+                            </div>
+                            <div style="margin-top:8px;display:flex;gap:6px;">
+                                <button class="btn" onclick="setQuickControlPower(2000)" style="font-size:11px;padding:4px 8px;flex:1;">2 kW</button>
+                                <button class="btn" onclick="setQuickControlPower(3000)" style="font-size:11px;padding:4px 8px;flex:1;">3 kW</button>
+                                <button class="btn" onclick="setQuickControlPower(5000)" style="font-size:11px;padding:4px 8px;flex:1;">5 kW</button>
+                                <button class="btn" onclick="setQuickControlPower(7000)" style="font-size:11px;padding:4px 8px;flex:1;">7 kW</button>
+                                <button class="btn" onclick="setQuickControlPower(10000)" style="font-size:11px;padding:4px 8px;flex:1;">10 kW</button>
+                            </div>
+                        </div>
+
+                        <!-- Start Button -->
+                        <button id="btnStartQuickControl" class="btn btn-primary" onclick="startQuickControl()" style="width:100%;padding:12px;font-size:14px;font-weight:600;">
+                            ▶️ Start Quick Control
+                        </button>
+                    </div>
+
+                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #30363d;font-size:12px;color:#8b949e;line-height:1.6;">
+                        <strong style="color:#58a6ff;">💡 Quick Controls</strong> let you immediately charge or discharge your battery for a set duration without creating automation rules. 
+                        Perfect for ad-hoc adjustments based on weather, price changes, or upcoming events.
                     </div>
                 </div>
             </div>
@@ -4362,6 +4507,9 @@
                 
                 container.innerHTML = html;
                 
+                // Check automation status and show warning if enabled
+                checkAutomationStatusForScheduler();
+                
                 // Update solar tile curtailment indicator after rendering
                 updateSolarTileCurtailmentIndicator();
                 
@@ -4371,6 +4519,365 @@
             } catch (error) {
                 container.innerHTML = `<div style="color:#f85149;font-size:12px;padding:20px">Error: ${error.message}</div>`;
             }
+        }
+        
+        async function checkAutomationStatusForScheduler() {
+            const warningDiv = document.getElementById('schedulerAutomationWarning');
+            if (!warningDiv) return;
+            
+            try {
+                const resp = await authenticatedFetch('/api/automation/status');
+                const data = await resp.json();
+                
+                if (data.errno === 0 && data.result?.enabled === true) {
+                    warningDiv.style.display = 'block';
+                } else {
+                    warningDiv.style.display = 'none';
+                }
+            } catch (error) {
+                console.warn('[Scheduler] Failed to check automation status:', error);
+                warningDiv.style.display = 'none';
+            }
+        }
+        
+        // ============================================================
+        // Quick Manual Controls
+        // ============================================================
+        
+        let quickControlState = {
+            type: 'charge', // 'charge' or 'discharge'
+            power: 5000,
+            duration: 30,
+            countdownInterval: null
+        };
+        
+        function selectQuickControlType(type) {
+            quickControlState.type = type;
+            const chargeBtn = document.getElementById('btnChargeType');
+            const dischargeBtn = document.getElementById('btnDischargeType');
+            
+            if (type === 'charge') {
+                chargeBtn.style.background = '#238636';
+                chargeBtn.style.borderColor = '#2ea043';
+                dischargeBtn.style.background = '';
+                dischargeBtn.style.borderColor = '';
+            } else {
+                dischargeBtn.style.background = '#238636';
+                dischargeBtn.style.borderColor = '#2ea043';
+                chargeBtn.style.background = '';
+                chargeBtn.style.borderColor = '';
+            }
+        }
+        
+        function updateQuickControlPowerDisplay(value) {
+            quickControlState.power = parseInt(value);
+            document.getElementById('quickControlPowerDisplay').textContent = (quickControlState.power / 1000).toFixed(1);
+        }
+        
+        function setQuickControlPower(watts) {
+            document.getElementById('quickControlPower').value = watts;
+            updateQuickControlPowerDisplay(watts);
+        }
+        
+        // Handle duration select change to show/hide custom input
+        document.addEventListener('DOMContentLoaded', () => {
+            const durationSelect = document.getElementById('quickControlDuration');
+            const customInput = document.getElementById('quickControlDurationCustom');
+            
+            if (durationSelect && customInput) {
+                durationSelect.addEventListener('change', (e) => {
+                    if (e.target.value === 'custom') {
+                        customInput.style.display = 'block';
+                        customInput.focus();
+                    } else {
+                        customInput.style.display = 'none';
+                    }
+                });
+            }
+            
+            // Load initial status
+            refreshQuickControlStatus();
+        });
+        
+        async function refreshQuickControlStatus() {
+            try {
+                const resp = await authenticatedFetch('/api/quickcontrol/status');
+                const data = await resp.json();
+                
+                if (data.errno === 0 && data.result) {
+                    updateQuickControlUI(data.result);
+                    
+                    // Check automation status for warning
+                    checkQuickControlAutomationWarning();
+                }
+            } catch (error) {
+                console.warn('[QuickControl] Failed to fetch status:', error);
+            }
+        }
+        
+        async function checkQuickControlAutomationWarning() {
+            const warningDiv = document.getElementById('quickControlAutomationWarning');
+            if (!warningDiv) return;
+            
+            try {
+                const resp = await authenticatedFetch('/api/automation/status');
+                const data = await resp.json();
+                
+                if (data.errno === 0 && data.result?.enabled === true) {
+                    warningDiv.style.display = 'block';
+                } else {
+                    warningDiv.style.display = 'none';
+                }
+            } catch (error) {
+                console.warn('[QuickControl] Failed to check automation status:', error);
+                warningDiv.style.display = 'none';
+            }
+        }
+        
+        function updateQuickControlUI(status) {
+            const statusDiv = document.getElementById('quickControlStatus');
+            const formDiv = document.getElementById('quickControlForm');
+            const startBtn = document.getElementById('btnStartQuickControl');
+            
+            if (!status || !status.active) {
+                // No active quick control
+                statusDiv.style.display = 'none';
+                formDiv.style.display = 'block';
+                
+                // Clear any countdown
+                if (quickControlState.countdownInterval) {
+                    clearInterval(quickControlState.countdownInterval);
+                    quickControlState.countdownInterval = null;
+                }
+                return;
+            }
+            
+            // Active quick control
+            statusDiv.style.display = 'block';
+            formDiv.style.display = 'none';
+            
+            const typeIcon = status.type === 'charge' ? '🔋' : '⚡';
+            const typeText = status.type === 'charge' ? 'Charging' : 'Discharging';
+            const powerKW = (status.power / 1000).toFixed(1);
+            
+            // Calculate remaining time
+            const now = Date.now();
+            const remainingMs = Math.max(0, status.expiresAt - now);
+            const remainingMinutes = Math.ceil(remainingMs / 60000);
+            
+            if (remainingMinutes <= 0 || status.expired) {
+                statusDiv.style.background = 'rgba(139,148,158,0.15)';
+                statusDiv.style.borderColor = 'rgba(139,148,158,0.4)';
+                statusDiv.style.color = '#8b949e';
+                statusDiv.innerHTML = `
+                    <div style="font-weight:600;margin-bottom:8px">${typeIcon} Quick Control Completed</div>
+                    <div style="font-size:12px;margin-bottom:12px">
+                        ${typeText} at ${powerKW} kW for ${status.durationMinutes} minutes has finished.
+                    </div>
+                    <button class="btn" onclick="acknowledgeQuickControlComplete()" style="font-size:12px;padding:6px 12px">
+                        ✓ Acknowledge
+                    </button>
+                `;
+            } else {
+                statusDiv.style.background = 'rgba(46,160,67,0.15)';
+                statusDiv.style.borderColor = 'rgba(46,160,67,0.4)';
+                statusDiv.style.color = '#3fb950';
+                statusDiv.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="font-weight:600;">${typeIcon} ${typeText} at ${powerKW} kW</div>
+                        <div id="quickControlCountdown" style="font-family:monospace;font-size:16px;font-weight:700;">${formatCountdown(remainingMs)}</div>
+                    </div>
+                    <div style="font-size:12px;color:#8b949e;margin-bottom:12px">
+                        Started: ${new Date(status.startedAt).toLocaleTimeString()} • 
+                        Ends: ${new Date(status.expiresAt).toLocaleTimeString()}
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn" onclick="stopQuickControl()" style="background:#da3633;border-color:#f85149;flex:1;font-size:12px;padding:8px;font-weight:600;">
+                            ⏹️ Stop Now
+                        </button>
+                        <button class="btn" onclick="refreshQuickControlStatus()" style="font-size:12px;padding:8px;">
+                            🔄 Refresh
+                        </button>
+                    </div>
+                `;
+                
+                // Start countdown timer
+                startCountdownTimer(status.expiresAt);
+            }
+        }
+        
+        function formatCountdown(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            
+            if (hours > 0) {
+                return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            } else {
+                return `${minutes}:${String(seconds).padStart(2, '0')}`;
+            }
+        }
+        
+        function startCountdownTimer(expiresAt) {
+            // Clear existing timer
+            if (quickControlState.countdownInterval) {
+                clearInterval(quickControlState.countdownInterval);
+            }
+            
+            quickControlState.countdownInterval = setInterval(() => {
+                const now = Date.now();
+                const remainingMs = Math.max(0, expiresAt - now);
+                const countdownEl = document.getElementById('quickControlCountdown');
+                
+                if (countdownEl) {
+                    countdownEl.textContent = formatCountdown(remainingMs);
+                }
+                
+                if (remainingMs <= 0) {
+                    clearInterval(quickControlState.countdownInterval);
+                    quickControlState.countdownInterval = null;
+                    // Refresh to show completion
+                    setTimeout(() => refreshQuickControlStatus(), 1000);
+                }
+            }, 1000);
+        }
+        
+        async function startQuickControl() {
+            const startBtn = document.getElementById('btnStartQuickControl');
+            const durationSelect = document.getElementById('quickControlDuration');
+            const customInput = document.getElementById('quickControlDurationCustom');
+            
+            // Get duration
+            let durationMinutes;
+            if (durationSelect.value === 'custom') {
+                durationMinutes = parseInt(customInput.value);
+                if (isNaN(durationMinutes) || durationMinutes < 1 || durationMinutes > 360) {
+                    alert('❌ Please enter a valid duration (1-360 minutes)');
+                    return;
+                }
+            } else {
+                durationMinutes = parseInt(durationSelect.value);
+            }
+            
+            // Validate power
+            if (quickControlState.power < 0 || quickControlState.power > 10000) {
+                alert('❌ Power must be between 0 and 10,000 watts');
+                return;
+            }
+            
+            // Disable button and show loading
+            startBtn.disabled = true;
+            startBtn.innerHTML = '<span style="opacity:0.6">⏳ Starting...</span>';
+            
+            const messageEl = document.getElementById('quickControlMessage');
+            messageEl.style.display = 'block';
+            messageEl.style.background = '#1f6feb';
+            messageEl.textContent = '🔄 Starting quick control...';
+            
+            try {
+                console.log('[QuickControl] Starting:', { type: quickControlState.type, power: quickControlState.power, durationMinutes });
+                
+                // Add timeout to prevent hanging
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+                
+                const resp = await authenticatedFetch('/api/quickcontrol/start', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        type: quickControlState.type,
+                        power: quickControlState.power,
+                        durationMinutes: durationMinutes
+                    }),
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                console.log('[QuickControl] Response status:', resp.status);
+                const data = await resp.json();
+                console.log('[QuickControl] Response data:', data);
+                
+                if (data.errno === 0) {
+                    messageEl.style.background = '#238636';
+                    messageEl.textContent = `✅ Quick ${quickControlState.type} started successfully!`;
+                    setTimeout(() => { messageEl.style.display = 'none'; }, 3000);
+                    
+                    // Reset button first (in case updateQuickControlUI doesn't hide form immediately)
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = '▶️ Start Quick Control';
+                    
+                    // Update UI to show active status (this will hide the form)
+                    updateQuickControlUI(data.state);
+                } else {
+                    console.error('[QuickControl] API returned error:', data);
+                    messageEl.style.background = '#da3633';
+                    messageEl.textContent = `❌ Failed: ${data.error || data.msg || 'Unknown error'}`;
+                    setTimeout(() => { messageEl.style.display = 'none'; }, 5000);
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = '▶️ Start Quick Control';
+                }
+            } catch (error) {
+                console.error('[QuickControl] Start error:', error);
+                messageEl.style.background = '#da3633';
+                
+                if (error.name === 'AbortError') {
+                    messageEl.textContent = '❌ Request timed out. Please try again.';
+                } else {
+                    messageEl.textContent = `❌ Error: ${error.message}`;
+                }
+                
+                setTimeout(() => { messageEl.style.display = 'none'; }, 5000);
+                startBtn.disabled = false;
+                startBtn.innerHTML = '▶️ Start Quick Control';
+            }
+        }
+        
+        async function stopQuickControl() {
+            if (!confirm('Stop quick control now? The scheduler segment will be cleared.')) {
+                return;
+            }
+            
+            const messageEl = document.getElementById('quickControlMessage');
+            messageEl.style.display = 'block';
+            messageEl.style.background = '#1f6feb';
+            messageEl.textContent = '🔄 Stopping quick control...';
+            
+            try {
+                const resp = await authenticatedFetch('/api/quickcontrol/end', {
+                    method: 'POST'
+                });
+                
+                const data = await resp.json();
+                
+                if (data.errno === 0) {
+                    messageEl.style.background = '#238636';
+                    messageEl.textContent = '✅ Quick control stopped successfully';
+                    setTimeout(() => { messageEl.style.display = 'none'; }, 3000);
+                    refreshQuickControlStatus();
+                } else {
+                    messageEl.style.background = '#da3633';
+                    messageEl.textContent = `❌ Failed: ${data.error || data.msg || 'Unknown error'}`;
+                    setTimeout(() => { messageEl.style.display = 'none'; }, 5000);
+                }
+            } catch (error) {
+                console.error('[QuickControl] Stop error:', error);
+                messageEl.style.background = '#da3633';
+                messageEl.textContent = `❌ Error: ${error.message}`;
+                setTimeout(() => { messageEl.style.display = 'none'; }, 5000);
+            }
+        }
+        
+        async function acknowledgeQuickControlComplete() {
+            // Clear the expired state by calling end endpoint
+            try {
+                await authenticatedFetch('/api/quickcontrol/end', {
+                    method: 'POST'
+                });
+            } catch (error) {
+                console.warn('[QuickControl] Failed to clear completed state:', error);
+            }
+            // Refresh UI regardless
+            refreshQuickControlStatus();
         }
         
         function editSegment(index) {
@@ -7059,6 +7566,12 @@
                             console.log('[Automation] Cycle result:', cycleData.result);
                             // Refresh status to show updated state
                             await loadBackendAutomationStatus();
+                            
+                            // Update scheduler warning if present
+                            if (typeof checkAutomationStatusForScheduler === 'function') {
+                                checkAutomationStatusForScheduler();
+                            }
+                            
                             if (data.result.enabled) {
                                 showMessage('success', '✅ Automation enabled', 2000);
                             } else {
@@ -7741,7 +8254,23 @@
             pageName: 'overview',
             autoMetrics: false,
             onReady: () => {
-                try { initializePageData(); } catch (err) { console.error('Failed to initialize dashboard', err); }
+                try { 
+                    initializePageData(); 
+                    checkAutomationStatusForScheduler(); // Check automation status for scheduler warning
+                    refreshQuickControlStatus(); // Check quick control status
+                } catch (err) { console.error('Failed to initialize dashboard', err); }
+            }
+        });
+
+        // Re-check automation status when page becomes visible (handles toggle from another tab/page)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                if (typeof checkAutomationStatusForScheduler === 'function') {
+                    checkAutomationStatusForScheduler();
+                }
+                if (typeof refreshQuickControlStatus === 'function') {
+                    refreshQuickControlStatus();
+                }
             }
         });
 

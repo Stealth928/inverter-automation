@@ -156,10 +156,10 @@ describe('Tesla OAuth Flow', () => {
       const mockGet = jest.fn().mockResolvedValue({
         exists: true,
         data: () => ({
-          access_token: 'test-access-token',
-          refresh_token: 'test-refresh-token',
-          created_at: new Date().toISOString(),
-          expires_at: new Date(Date.now() + 3600000).toISOString()
+          accessToken: 'test-access-token',
+          refreshToken: 'test-refresh-token',
+          updatedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 3600000).toISOString()
         })
       });
       
@@ -280,6 +280,16 @@ describe('Tesla OAuth Flow', () => {
     it('should exchange code for tokens and save them', async () => {
       const mockTokenResponse = {
         ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: {
+          get: jest.fn(() => 'application/json')
+        },
+        text: jest.fn().mockResolvedValue(JSON.stringify({
+          access_token: 'test-access-token',
+          refresh_token: 'test-refresh-token',
+          expires_in: 3600
+        })),
         json: jest.fn().mockResolvedValue({
           access_token: 'test-access-token',
           refresh_token: 'test-refresh-token',
@@ -367,6 +377,14 @@ describe('Tesla OAuth Flow', () => {
       const mockTokenResponse = {
         ok: false,
         status: 400,
+        statusText: 'Bad Request',
+        headers: {
+          get: jest.fn(() => 'application/json')
+        },
+        text: jest.fn().mockResolvedValue(JSON.stringify({
+          error: 'invalid_grant',
+          error_description: 'Authorization code expired'
+        })),
         json: jest.fn().mockResolvedValue({
           error: 'invalid_grant',
           error_description: 'Authorization code expired'

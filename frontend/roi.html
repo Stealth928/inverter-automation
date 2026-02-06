@@ -887,8 +887,6 @@
                 const daysDiff = Math.ceil((endDateObj - startDateObj) / (1000 * 60 * 60 * 24));
                 const daysToFetch = Math.max(2, daysDiff + 1); // Always fetch at least 2 days to handle timezone offsets
                 
-                console.log(`[ROI] Starting calculation for date range ${startDate} to ${endDate} (${daysToFetch} days to fetch, max 7)`);
-                
                 // Pass date range to backend so it can filter properly
                 const auditResp = await authenticatedFetch(`/api/automation/audit?days=${Math.min(daysToFetch, 7)}&startDate=${startDate}&endDate=${endDate}`);
                 const auditData = await auditResp.json();
@@ -899,12 +897,6 @@
                 
                 // Filter events within date range
                 const allEvents = auditData.result?.ruleEvents || [];
-                console.log(`[ROI] Total audit events received: ${allEvents.length}`);
-                
-                if (allEvents.length > 0) {
-                    console.log(`[ROI] First event:`, allEvents[0]);
-                    console.log(`[ROI] Last event:`, allEvents[allEvents.length - 1]);
-                }
                 
                 // Backend now filters by date range, but we do a final check for safety
                 const events = allEvents.filter(event => {
@@ -915,11 +907,7 @@
                     return true;
                 });
                 
-                console.log(`[ROI] Final event count: ${events.length}`);
-                
                 if (events.length === 0) {
-                    console.warn(`[ROI] No events found in date range ${startDate} to ${endDate}`);
-                    console.log(`[ROI] Total audit events returned: ${(auditData.result?.ruleEvents || []).length}`);
                     content.innerHTML = `
                         <div class="empty-state">
                             <div class="icon">📭</div>
@@ -1060,16 +1048,12 @@
                         // Extract UTC date (YYYY-MM-DD) and add one day buffer at end for safety
                         fetchStartDate = minDate.toISOString().split('T')[0];
                         fetchEndDate = new Date(maxDate.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-                        
-                        console.log(`[ROI Actual] Fetching prices for actual event range: ${fetchStartDate} to ${fetchEndDate} (${events.length} events)`);
                     } else {
                         // Fallback: use user-selected date range
                         // User selects dates in their local timezone (AEDT), pass them directly to API
                         // Amber API interprets YYYY-MM-DD as local Australian dates
                         fetchStartDate = startDate;
                         fetchEndDate = endDate;
-                        
-                        console.log(`[ROI Actual] Fetching prices for user-selected range: ${fetchStartDate} to ${fetchEndDate} (no events found)`);
                     }
                     
                     // Fetch all prices for the date range with 5-minute resolution (not actualOnly to get recent data)
@@ -1088,14 +1072,9 @@
                             const priceEpochMs = startMs - 1000;
                             const channelType = pricePoint.channelType;
                             
-                            // Normalize price to ¢/kWh: detect if already normalized or needs 10x multiplier
-                            // Prices in normal range (-200 to 200 ¢/kWh) are already correct; outside that range need 10x
-                            let perKwh = pricePoint.perKwh;
-                            if (Math.abs(perKwh) > 200 || (Math.abs(perKwh) < 0.01 && perKwh !== 0)) {
-                                // Price is outside typical range — likely needs 10x multiplier (old format)
-                                perKwh = perKwh * 10;
-                            }
-                            // else: price is already in ¢/kWh, use as-is
+                            // Amber API returns prices in cents/kWh already (e.g., 105.87 = 105.87¢/kWh)
+                            // No conversion or normalization needed
+                            const perKwh = pricePoint.perKwh;
                             
                             if (!actualPriceMap.has(priceEpochMs)) {
                                 actualPriceMap.set(priceEpochMs, {});
@@ -1123,7 +1102,6 @@
              */
             function getActualPrice(event) {
                 if (!event || !event.startTime || actualPriceMap.size === 0) {
-                    console.log('[ROI Actual] No price lookup - event:', !!event, 'startTime:', !!event?.startTime, 'mapSize:', actualPriceMap.size);
                     return { feedInPrice: null, buyPrice: null };
                 }
                 
@@ -1136,7 +1114,6 @@
                 
                 // Only use actual prices for events older than 5 minutes
                 if (ageMinutes < 5) {
-                    console.log(`[ROI Actual] Event too recent (${ageMinutes.toFixed(1)} min), skipping actual prices`);
                     return { feedInPrice: null, buyPrice: null };
                 }
                 
@@ -1150,18 +1127,12 @@
                 // Round start time down to nearest 5-minute interval (using epoch ms)
                 const startWindowMs = Math.floor(eventTime.getTime() / (5 * 60 * 1000)) * (5 * 60 * 1000);
                 
-                console.log(`[ROI Actual] Looking up prices for event ${eventTime.toISOString()}, window start: ${new Date(startWindowMs).toISOString()}`);
-                
                 // Iterate through all 5-minute windows in the event duration
-                let windowsChecked = 0;
-                let windowsFound = 0;
                 for (let windowMs = startWindowMs; windowMs <= eventEndTime.getTime(); windowMs += 5 * 60 * 1000) {
-                    windowsChecked++;
                     // Use epoch ms directly as key (no timezone conversion needed)
                     const priceData = actualPriceMap.get(windowMs);
                     
                     if (priceData) {
-                        windowsFound++;
                         if (priceData.buyPrice !== null && priceData.buyPrice !== undefined) {
                             buyPrices.push(priceData.buyPrice);
                         }
@@ -1171,17 +1142,9 @@
                     }
                 }
                 
-                console.log(`[ROI Actual] Checked ${windowsChecked} windows, found prices in ${windowsFound}, buyPrices: ${buyPrices.length}, feedInPrices: ${feedInPrices.length}`);
-                
                 // Return average prices across all windows, or null if no data found
                 const avgBuyPrice = buyPrices.length > 0 ? buyPrices.reduce((a, b) => a + b) / buyPrices.length : null;
                 const avgFeedinPrice = feedInPrices.length > 0 ? feedInPrices.reduce((a, b) => a + b) / feedInPrices.length : null;
-                
-                if (avgBuyPrice !== null || avgFeedinPrice !== null) {
-                    console.log(`[ROI Actual] ✓ Found actual prices - buy: ${avgBuyPrice?.toFixed(2)}, feedIn: ${avgFeedinPrice?.toFixed(2)}`);
-                } else {
-                    console.log('[ROI Actual] ✗ No actual prices found in map');
-                }
                 
                 return { 
                     buyPrice: avgBuyPrice, 
@@ -1209,18 +1172,22 @@
                         totalChargeRules++;
                         isChargeRule = true;
                         ruleType = 'Charge';
-                        actualPrice = (event.roiSnapshot.buyPrice !== null && event.roiSnapshot.buyPrice !== undefined) ? event.roiSnapshot.buyPrice : null; // Use buy price for charging (forecast)
+                        actualPrice = (event.roiSnapshot.buyPrice !== null && event.roiSnapshot.buyPrice !== undefined) ? event.roiSnapshot.buyPrice : null; // Use buy price for charging (from trigger time as fallback)
                     } else if (workMode === 'ForceDischarge' || workMode === 'Feedin') {
                         totalFeedinRules++;
                         isFeedinRule = true;
                         ruleType = 'Discharge';
-                        actualPrice = (event.roiSnapshot.feedInPrice !== null && event.roiSnapshot.feedInPrice !== undefined) ? event.roiSnapshot.feedInPrice : null; // Use feed-in price for discharge (forecast)
+                        actualPrice = (event.roiSnapshot.feedInPrice !== null && event.roiSnapshot.feedInPrice !== undefined) ? event.roiSnapshot.feedInPrice : null; // Use feed-in price for discharge (from trigger time as fallback)
                     }
                     
-                    // ⭐ Look up ACTUAL settled prices from pre-fetched cache (NO API CALL)
+                    // ⭐ Look up ACTUAL settled prices averaged across the event's execution window
+                    // This handles price fluctuations during rule execution (e.g., 30-min rule with changing prices)
+                    // Only applies to events older than 5 minutes (skips very recent/ongoing events)
                     const actualPrices = getActualPrice(event);
-                    if (isChargeRule && actualPrices.buyPrice !== null) {                        actualPrice = actualPrices.buyPrice;
-                    } else if (isFeedinRule && actualPrices.feedInPrice !== null) {                        actualPrice = actualPrices.feedInPrice;
+                    if (isChargeRule && actualPrices.buyPrice !== null) {
+                        actualPrice = actualPrices.buyPrice; // Override with actual average buy price during execution
+                    } else if (isFeedinRule && actualPrices.feedInPrice !== null) {
+                        actualPrice = actualPrices.feedInPrice; // Override with actual average feed-in price during execution
                     }
                 }
                 
@@ -1499,11 +1466,13 @@
                 // Show profit with appropriate precision - show cents for values < $0.01
                 let profitLabel = '—';
                 if (priceInfo.profit !== null && priceInfo.profit !== undefined && !isNaN(priceInfo.profit)) {
-                    if (Math.abs(priceInfo.profit) < 0.01) {
-                        // For very small values, show in cents (e.g., "0.23¢")
-                        profitLabel = `${(priceInfo.profit * 100).toFixed(2)}¢`;
+                    const absProfit = Math.abs(priceInfo.profit);
+                    if (absProfit < 0.01 && absProfit > 0) {
+                        // For very small values, show in cents with sign (e.g., "-0.60¢" or "0.23¢")
+                        const sign = priceInfo.profit < 0 ? '-' : '';
+                        profitLabel = `${sign}${(absProfit * 100).toFixed(2)}¢`;
                     } else {
-                        // For larger values, show in dollars (e.g., "$1.23")
+                        // For larger values, show in dollars (e.g., "$1.23" or "-$0.12")
                         profitLabel = `$${priceInfo.profit.toFixed(2)}`;
                     }
                 }
