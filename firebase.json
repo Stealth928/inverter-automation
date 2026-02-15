@@ -35,7 +35,33 @@
         "headers": [
           {
             "key": "Cache-Control",
-            "value": "max-age=31536000, immutable"
+            "value": "public, max-age=3600, stale-while-revalidate=86400"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(png|jpg|jpeg|svg|ico|woff|woff2)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=604800"
+          }
+        ]
+      },
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "X-Frame-Options",
+            "value": "DENY"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "strict-origin-when-cross-origin"
           }
         ]
       }
@@ -47,8 +73,12 @@
   },
   "functions": {
     "source": "functions",
-    "runtime": "nodejs20",
-    "codebase": "default"
+    "runtime": "nodejs22",
+    "codebase": "default",
+    "predeploy": [
+      "npm --prefix \"$RESOURCE_DIR\" run lint",
+      "npm --prefix \"$RESOURCE_DIR\" test"
+    ]
   }
   ,
   "emulators": {

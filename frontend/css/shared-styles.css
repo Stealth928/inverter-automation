@@ -124,21 +124,12 @@
     box-sizing: border-box;
 }
 
-html {
-    overflow-x: hidden;
-    width: 100%;
-    -webkit-text-size-adjust: 100%;
-}
-
 body {
     font-family: var(--font-family);
     background: var(--gradient-primary);
     min-height: 100vh;
     color: var(--text-primary);
     line-height: 1.6;
-    overflow-x: hidden;
-    width: 100%;
-    position: relative;
 }
 
 body.has-fixed-nav {
@@ -898,8 +889,6 @@ textarea.input {
     z-index: var(--z-fixed);
     backdrop-filter: blur(10px);
     box-shadow: var(--shadow-md);
-    max-width: calc(100vw - 24px);
-    overflow: hidden;
 }
 
 /* Hide refresh button inside API footer (mobile and desktop) */
@@ -1106,18 +1095,16 @@ textarea.input {
     
     .api-metrics-footer {
         top: auto;
-        bottom: calc(12px + env(safe-area-inset-bottom, 12px));
+        bottom: calc(12px + env(safe-area-inset-bottom));
         right: 12px;
         left: auto;
         justify-content: flex-start;
-        max-width: calc(100vw - 24px);
+        max-width: 200px;
         flex-wrap: wrap;
         font-size: 0.62rem;
         padding: 3px 6px;
         opacity: 0.82;
-        pointer-events: none;
-        transform: translateZ(0);
-        -webkit-transform: translateZ(0);
+        pointer-events: none; /* allow taps to pass through; purely informational on mobile */
     }
     
     .grid-cols-2,

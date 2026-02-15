@@ -427,7 +427,7 @@ describe('Quick Manual Controls', () => {
       expect(response.body.result.active).toBe(false);
     });
 
-    test('should mark as expired when time has passed', async () => {
+    test('should auto-cleanup expired quick control and return justExpired', async () => {
       const now = Date.now();
       
       mockQuickState = {
@@ -444,9 +444,11 @@ describe('Quick Manual Controls', () => {
         .set('Authorization', `Bearer ${validToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.result.active).toBe(true); // Still flagged as active in state
-      expect(response.body.result.expired).toBe(true); // But marked as expired
-      expect(response.body.result.remainingMinutes).toBe(0);
+      expect(response.body.result.active).toBe(false); // Server auto-cleaned
+      expect(response.body.result.justExpired).toBe(true); // Indicates it just expired
+      expect(response.body.result.completedControl.type).toBe('charge');
+      expect(response.body.result.completedControl.power).toBe(5000);
+      expect(response.body.result.completedControl.durationMinutes).toBe(60);
     });
   });
 

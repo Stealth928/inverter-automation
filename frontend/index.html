@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FoxESS Automation</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -1626,7 +1626,7 @@
             <div class="card" style="margin-bottom: 20px;">
                 <div class="card-header">
                     <div class="card-title"><span class="icon">🕹️</span> Quick Controls</div>
-                    <button class="btn" onclick="refreshQuickControlStatus()" style="font-size:11px;padding:4px 10px;width:auto;margin:0">🔄 Refresh</button>
+                    <button class="btn" onclick="refreshQuickControlStatus(true)" style="font-size:11px;padding:4px 10px;width:auto;margin:0">🔄 Refresh</button>
                 </div>
                 <div class="card-body">
                     <!-- Message Status Banner -->
@@ -4625,7 +4625,16 @@
             refreshQuickControlStatus();
         });
         
-        async function refreshQuickControlStatus() {
+        async function refreshQuickControlStatus(showFeedback = false) {
+            if (showFeedback) {
+                const messageEl = document.getElementById('quickControlMessage');
+                if (messageEl) {
+                    messageEl.style.display = 'block';
+                    messageEl.style.background = '#1f6feb';
+                    messageEl.textContent = '🔄 Refreshing...';
+                }
+            }
+            
             try {
                 const resp = await authenticatedFetch('/api/quickcontrol/status');
                 const data = await resp.json();
@@ -4636,8 +4645,24 @@
                     // Check automation status for warning
                     checkQuickControlAutomationWarning();
                 }
+                
+                if (showFeedback) {
+                    const messageEl = document.getElementById('quickControlMessage');
+                    if (messageEl) {
+                        messageEl.style.display = 'none';
+                    }
+                }
             } catch (error) {
                 console.warn('[QuickControl] Failed to fetch status:', error);
+                
+                if (showFeedback) {
+                    const messageEl = document.getElementById('quickControlMessage');
+                    if (messageEl) {
+                        messageEl.style.background = '#da3633';
+                        messageEl.textContent = '❌ Refresh failed';
+                        setTimeout(() => { messageEl.style.display = 'none'; }, 3000);
+                    }
+                }
             }
         }
         
@@ -4666,9 +4691,34 @@
             const startBtn = document.getElementById('btnStartQuickControl');
             
             if (!status || !status.active) {
-                // No active quick control
-                statusDiv.style.display = 'none';
-                formDiv.style.display = 'block';
+                // No active quick control - check if just expired (server auto-cleaned)
+                if (status && status.justExpired && status.completedControl) {
+                    const cc = status.completedControl;
+                    const typeIcon = cc.type === 'charge' ? '🔋' : '⚡';
+                    const typeText = cc.type === 'charge' ? 'Charging' : 'Discharging';
+                    const powerKW = (cc.power / 1000).toFixed(1);
+                    
+                    statusDiv.style.display = 'block';
+                    formDiv.style.display = 'none';
+                    statusDiv.style.background = 'rgba(46,160,67,0.15)';
+                    statusDiv.style.borderColor = 'rgba(46,160,67,0.4)';
+                    statusDiv.style.color = '#3fb950';
+                    statusDiv.innerHTML = `
+                        <div style="font-weight:600;margin-bottom:8px">✅ Quick Control Completed</div>
+                        <div style="font-size:12px;">
+                            ${typeIcon} ${typeText} at ${powerKW} kW for ${cc.durationMinutes} minutes has finished. Segments cleared automatically.
+                        </div>
+                    `;
+                    
+                    // Auto-dismiss after 5 seconds and show the form again
+                    setTimeout(() => {
+                        statusDiv.style.display = 'none';
+                        formDiv.style.display = 'block';
+                    }, 5000);
+                } else {
+                    statusDiv.style.display = 'none';
+                    formDiv.style.display = 'block';
+                }
                 
                 // Clear any countdown
                 if (quickControlState.countdownInterval) {
@@ -4691,19 +4741,19 @@
             const remainingMs = Math.max(0, status.expiresAt - now);
             const remainingMinutes = Math.ceil(remainingMs / 60000);
             
-            if (remainingMinutes <= 0 || status.expired) {
+            if (remainingMinutes <= 0) {
+                // Timer expired - trigger a status refresh which will auto-clean on server
                 statusDiv.style.background = 'rgba(139,148,158,0.15)';
                 statusDiv.style.borderColor = 'rgba(139,148,158,0.4)';
                 statusDiv.style.color = '#8b949e';
                 statusDiv.innerHTML = `
-                    <div style="font-weight:600;margin-bottom:8px">${typeIcon} Quick Control Completed</div>
-                    <div style="font-size:12px;margin-bottom:12px">
-                        ${typeText} at ${powerKW} kW for ${status.durationMinutes} minutes has finished.
+                    <div style="display:flex;align-items:center;gap:12px;justify-content:center;padding:10px;">
+                        <div class="spinner"></div>
+                        <span>Quick control finished. Clearing segments...</span>
                     </div>
-                    <button class="btn" onclick="acknowledgeQuickControlComplete()" style="font-size:12px;padding:6px 12px">
-                        ✓ Acknowledge
-                    </button>
                 `;
+                // Server-side auto-cleanup will happen when we refresh status
+                setTimeout(() => refreshQuickControlStatus(), 2000);
             } else {
                 statusDiv.style.background = 'rgba(46,160,67,0.15)';
                 statusDiv.style.borderColor = 'rgba(46,160,67,0.4)';
@@ -4721,7 +4771,7 @@
                         <button class="btn" onclick="stopQuickControl()" style="background:#da3633;border-color:#f85149;flex:1;font-size:12px;padding:8px;font-weight:600;">
                             ⏹️ Stop Now
                         </button>
-                        <button class="btn" onclick="refreshQuickControlStatus()" style="font-size:12px;padding:8px;">
+                        <button class="btn" onclick="refreshQuickControlStatus(true)" style="font-size:12px;padding:8px;">
                             🔄 Refresh
                         </button>
                     </div>
@@ -4879,7 +4929,7 @@
                     messageEl.style.background = '#238636';
                     messageEl.textContent = '✅ Quick control stopped successfully';
                     setTimeout(() => { messageEl.style.display = 'none'; }, 3000);
-                    refreshQuickControlStatus();
+                    await refreshQuickControlStatus();
                 } else {
                     messageEl.style.background = '#da3633';
                     messageEl.textContent = `❌ Failed: ${data.error || data.msg || 'Unknown error'}`;
@@ -4894,6 +4944,16 @@
         }
         
         async function acknowledgeQuickControlComplete() {
+            const statusDiv = document.getElementById('quickControlStatus');
+            
+            // Show loading state
+            statusDiv.innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;justify-content:center;padding:20px;">
+                    <div class="spinner"></div>
+                    <span style="color:#58a6ff;font-weight:500;">Clearing quick control...</span>
+                </div>
+            `;
+            
             // Clear the expired state by calling end endpoint
             try {
                 await authenticatedFetch('/api/quickcontrol/end', {
@@ -4903,7 +4963,7 @@
                 console.warn('[QuickControl] Failed to clear completed state:', error);
             }
             // Refresh UI regardless
-            refreshQuickControlStatus();
+            await refreshQuickControlStatus();
         }
         
         function editSegment(index) {

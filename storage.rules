@@ -2,7 +2,8 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     match /{allPaths=**} {
-      allow read, write: if true;
+      // Storage is not used by this application - deny all access
+      allow read, write: if false;
     }
   }
 }

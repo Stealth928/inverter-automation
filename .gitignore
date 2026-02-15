@@ -22,6 +22,15 @@ tmp_docker_check/
 
 # Firebase cache and deployment artifacts
 .firebase/
+.firebase_logs.txt
+
+# Runtime artifacts and log dumps
+*.pid
+recent_logs_full.txt
+functions/test-output.txt
+functions/quick-control-test-output.txt
+deployed-index.html
+restore-config.json
 
 # Test artifacts and reports
 playwright-report/

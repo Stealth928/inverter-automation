@@ -1609,10 +1609,19 @@ async function getUserAutomationState(userId) {
 
 /**
  * Save user automation state to Firestore
+ * Also syncs automationEnabled flag on parent user doc for efficient scheduler queries
  */
 async function saveUserAutomationState(userId, state) {
   try {
     await db.collection('users').doc(userId).collection('automation').doc('state').set(state, { merge: true });
+    
+    // Sync enabled flag to parent user doc for efficient scheduler pre-filtering
+    if ('enabled' in state) {
+      await db.collection('users').doc(userId).set(
+        { automationEnabled: !!state.enabled },
+        { merge: true }
+      );
+    }
     return true;
   } catch (error) {
     console.error('Error saving automation state:', error);
@@ -1652,6 +1661,71 @@ async function saveQuickControlState(userId, state) {
     console.error('Error saving quick control state:', error);
     return false;
   }
+}
+
+/**
+ * Clean up expired quick control: clear scheduler segments, disable flag, delete state
+ * Called from both automation cycle (server-side) and status endpoint (on user poll)
+ * Returns true if cleanup was performed, false if nothing to clean up
+ */
+async function cleanupExpiredQuickControl(userId, quickState) {
+  if (!quickState || !quickState.active || quickState.expiresAt > Date.now()) {
+    return false;
+  }
+  
+  logger.info('QuickControl', `Auto-cleanup expired quick control: type=${quickState.type}, expiresAt=${new Date(quickState.expiresAt).toISOString()}, userId=${userId}`);
+  
+  // Clear all scheduler segments
+  try {
+    const userConfig = await getUserConfig(userId);
+    const deviceSN = userConfig?.deviceSn;
+    if (deviceSN) {
+      const clearedGroups = [];
+      for (let i = 0; i < 8; i++) {
+        clearedGroups.push({
+          enable: 0,
+          workMode: 'SelfUse',
+          startHour: 0, startMinute: 0,
+          endHour: 0, endMinute: 0,
+          minSocOnGrid: 10,
+          fdSoc: 10,
+          fdPwr: 0,
+          maxSoc: 100
+        });
+      }
+      const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+      if (clearResult?.errno === 0) {
+        logger.debug('QuickControl', `Auto-cleanup cleared segments successfully`);
+      } else {
+        console.warn(`[QuickControl] Auto-cleanup segment clear returned errno=${clearResult?.errno}`);
+      }
+      
+      // Disable scheduler flag
+      try {
+        await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
+      } catch (flagErr) {
+        console.warn('[QuickControl] Auto-cleanup flag disable failed:', flagErr?.message || flagErr);
+      }
+    }
+  } catch (err) {
+    console.error(`[QuickControl] Auto-cleanup error:`, err.message);
+  }
+  
+  // Delete quick control state
+  await saveQuickControlState(userId, null);
+  
+  // Log to history
+  try {
+    await addHistoryEntry(userId, {
+      type: 'quickcontrol_auto_cleanup',
+      controlType: quickState.type,
+      power: quickState.power,
+      durationMinutes: quickState.durationMinutes,
+      timestamp: serverTimestamp()
+    });
+  } catch (e) { /* ignore */ }
+  
+  return true;
 }
 
 /**
@@ -2020,19 +2094,39 @@ app.post('/api/config/clear-credentials', authenticateUser, async (req, res) => 
 // Get automation state
 app.get('/api/automation/status', async (req, res) => {
   try {
-    const state = await getUserAutomationState(req.user.uid);
-    const rules = await getUserRules(req.user.uid);
-    let userConfig = await getUserConfig(req.user.uid);
+    const userId = req.user.uid;
+    const state = await getUserAutomationState(userId);
+    const rules = await getUserRules(userId);
+    let userConfig = await getUserConfig(userId);
     const serverConfig = getConfig();
+    
+    // Migration: sync automationEnabled flag to parent user doc for scheduler pre-filtering
+    // This ensures existing users who enabled automation before the flag was introduced
+    // get picked up by the optimized scheduler query
+    if (state && typeof state.enabled === 'boolean') {
+      try {
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (userDoc.exists && userDoc.data()?.automationEnabled !== state.enabled) {
+          await db.collection('users').doc(userId).set(
+            { automationEnabled: state.enabled },
+            { merge: true }
+          );
+          logger.debug('Migration', `Synced automationEnabled=${state.enabled} for user ${userId}`);
+        }
+      } catch (migErr) {
+        // Non-critical - don't fail the status request
+        console.warn('[Migration] Failed to sync automationEnabled flag:', migErr.message);
+      }
+    }
     
     // Aggressive timezone sync: fetch weather to ensure timezone matches location.
     if (userConfig?.location) {
       try {
-        const weatherData = await getCachedWeatherData(req.user.uid, userConfig.location, 1);
+        const weatherData = await getCachedWeatherData(userId, userConfig.location, 1);
         if (weatherData?.result?.place?.timezone) {
           const weatherTimezone = weatherData.result.place.timezone;
           if (userConfig.timezone !== weatherTimezone) {
-            await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(
+            await db.collection('users').doc(userId).collection('config').doc('main').set(
               { timezone: weatherTimezone },
               { merge: true }
             );
@@ -2125,6 +2219,7 @@ app.post('/api/user/init-profile', authenticateUser, async (req, res) => {
     await db.collection('users').doc(userId).set({
       uid: userId,
       email: req.user.email || '',
+      automationEnabled: false,
       createdAt: serverTimestamp(),
       lastUpdated: serverTimestamp()
     }, { merge: true });
@@ -2438,58 +2533,7 @@ app.post('/api/automation/cycle', async (req, res) => {
       
       // If quick control has expired, clean it up and continue with normal automation
       if (quickState.expiresAt <= now) {
-        logger.info('QuickControl', `Auto-cleanup expired quick control: type=${quickState.type}, expiresAt=${new Date(quickState.expiresAt).toISOString()}`);
-        
-        // Clear all scheduler segments
-        try {
-          const userConfig = await getUserConfig(userId);
-          const deviceSN = userConfig?.deviceSn;
-          if (deviceSN) {
-            const clearedGroups = [];
-            for (let i = 0; i < 8; i++) {
-              clearedGroups.push({
-                enable: 0,
-                workMode: 'SelfUse',
-                startHour: 0, startMinute: 0,
-                endHour: 0, endMinute: 0,
-                minSocOnGrid: 10,
-                fdSoc: 10,
-                fdPwr: 0,
-                maxSoc: 100
-              });
-            }
-            const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
-            if (clearResult?.errno === 0) {
-              logger.debug('QuickControl', `Auto-cleanup cleared segments successfully`);
-            } else {
-              console.warn(`[QuickControl] Auto-cleanup segment clear returned errno=${clearResult?.errno}`);
-            }
-            
-            // Disable scheduler flag
-            try {
-              await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
-            } catch (flagErr) {
-              console.warn('[QuickControl] Auto-cleanup flag disable failed:', flagErr?.message || flagErr);
-            }
-          }
-        } catch (err) {
-          console.error(`[QuickControl] Auto-cleanup error:`, err.message);
-        }
-        
-        // Delete quick control state
-        await saveQuickControlState(userId, null);
-        
-        // Log to history
-        try {
-          await addHistoryEntry(userId, {
-            type: 'quickcontrol_auto_cleanup',
-            controlType: quickState.type,
-            power: quickState.power,
-            durationMinutes: quickState.durationMinutes,
-            timestamp: serverTimestamp()
-          });
-        } catch (e) { /* ignore */ }
-        
+        await cleanupExpiredQuickControl(userId, quickState);
         // Continue with normal automation
       } else {
         // Quick control still active - skip automation cycle
@@ -3875,11 +3919,30 @@ app.get('/api/quickcontrol/status', authenticateUser, async (req, res) => {
       });
     }
     
-    // Calculate remaining time
+    // If expired, auto-cleanup immediately (don't wait for user acknowledge)
     const now = Date.now();
+    if (now >= quickState.expiresAt) {
+      // Clean up in the background - clear segments and delete state
+      const cleaned = await cleanupExpiredQuickControl(userId, quickState);
+      logger.info('QuickControl', `Status check triggered auto-cleanup: cleaned=${cleaned}`);
+      
+      return res.json({
+        errno: 0,
+        result: {
+          active: false,
+          justExpired: true,
+          completedControl: {
+            type: quickState.type,
+            power: quickState.power,
+            durationMinutes: quickState.durationMinutes
+          }
+        }
+      });
+    }
+    
+    // Calculate remaining time
     const remainingMs = Math.max(0, quickState.expiresAt - now);
     const remainingMinutes = Math.ceil(remainingMs / 60000);
-    const expired = now >= quickState.expiresAt;
     
     res.json({
       errno: 0,
@@ -3891,7 +3954,7 @@ app.get('/api/quickcontrol/status', authenticateUser, async (req, res) => {
         startedAt: quickState.startedAt,
         expiresAt: quickState.expiresAt,
         remainingMinutes: remainingMinutes,
-        expired: expired
+        expired: false
       }
     });
   } catch (error) {
@@ -7095,16 +7158,49 @@ async function runAutomationHandler(_context) {
     const serverConfig = getConfig();
     const defaultIntervalMs = serverConfig.automation.intervalMs; // Respects backend config!
     
-    // Get all users
-    const usersSnapshot = await db.collection('users').get();
-    const totalUsers = usersSnapshot.size;
+    // OPTIMIZATION: Query only users with automation enabled (pre-filtered via automationEnabled flag)
+    // This avoids loading state+config for every registered user on each scheduler tick
+    let usersSnapshot = await db.collection('users').where('automationEnabled', '==', true).get();
     
-    if (totalUsers === 0) {
-      return null;
+    if (usersSnapshot.size === 0) {
+      // SELF-HEALING MIGRATION: Scan all users for automation state that hasn't been synced
+      // This handles existing users who had automation enabled before the pre-filtering flag was added
+      console.log(`[Scheduler] No pre-filtered users found — running migration scan...`);
+      const allUsersSnapshot = await db.collection('users').get();
+      let migratedCount = 0;
+      
+      const migrationChecks = allUsersSnapshot.docs.map(async (userDoc) => {
+        try {
+          const stateDoc = await db.collection('users').doc(userDoc.id)
+            .collection('automation').doc('state').get();
+          if (stateDoc.exists && stateDoc.data()?.enabled === true) {
+            // Found a user with automation enabled but missing the parent flag — migrate them
+            await db.collection('users').doc(userDoc.id).set(
+              { automationEnabled: true },
+              { merge: true }
+            );
+            console.log(`[Scheduler] Migrated user ${userDoc.id}: set automationEnabled=true`);
+            migratedCount++;
+          }
+        } catch (err) {
+          console.error(`[Scheduler] Migration check failed for ${userDoc.id}:`, err.message);
+        }
+      });
+      await Promise.all(migrationChecks);
+      
+      if (migratedCount === 0) {
+        console.log(`[Scheduler] Migration scan complete — no enabled users found, skipping`);
+        return null;
+      }
+      
+      console.log(`[Scheduler] Migration complete — ${migratedCount} user(s) migrated, re-querying...`);
+      // Re-query to get the now-migrated users
+      usersSnapshot = await db.collection('users').where('automationEnabled', '==', true).get();
     }
     
-    // OPTIMIZATION: Pre-filter and prepare all cycle candidates in parallel
-    // First pass: load state and config for all users at once
+    const totalEnabled = usersSnapshot.size;
+    
+    // Load state and config for enabled users in parallel
     const userPromises = usersSnapshot.docs.map(async (userDoc) => {
       const userId = userDoc.id;
       try {
@@ -7124,7 +7220,7 @@ async function runAutomationHandler(_context) {
 
     const userDataAll = await Promise.all(userPromises);
     
-    // Filter candidates that need cycles (enabled, have device, interval elapsed)
+    // Filter candidates that need cycles (have device, interval elapsed)
     const cycleCandidates = [];
     let skippedDisabled = 0;
     let skippedTooSoon = 0;
@@ -7234,7 +7330,7 @@ async function runAutomationHandler(_context) {
 
     const duration = Date.now() - schedulerStartTime;
     console.log(`[Scheduler] ========== Background check ${schedId} COMPLETE ==========`);
-    console.log(`[Scheduler] ${totalUsers} users: ${cyclesRun} cycles, ${skippedTooSoon} too soon, ${skippedDisabled} disabled, ${errors} errors (${duration}ms)`);
+    console.log(`[Scheduler] ${totalEnabled} enabled users: ${cyclesRun} cycles, ${skippedTooSoon} too soon, ${skippedDisabled} skipped, ${errors} errors (${duration}ms)`);
 
     return null;
 
@@ -7259,9 +7355,3 @@ exports.runAutomation = onSchedule(
 );
 
 
-
-
-
-
-
-// Force rebuild - 12/25/2025 22:24:27
