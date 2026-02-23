@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FoxESS Automation</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <meta name="theme-color" content="#0d1117">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="FoxESS Automation">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -73,7 +80,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: 100vh;
+            min-height: 100dvh;
             flex-direction: column;
             gap: 16px;
         }
@@ -92,7 +99,7 @@
         /* Main Layout */
         .main-layout {
             display: flex;
-            height: calc(100vh - 65px);
+            height: calc(100dvh - 65px);
         }
         .left-panel {
             flex: 1;
@@ -575,7 +582,7 @@
             position: sticky;
             top: 80px;
             /* Increase the available vertical space by 55% (was 44%, now +11% more) */
-            height: calc((100vh - 100px) * 1.55);
+            height: calc((100dvh - 100px) * 1.55);
             overflow: hidden; /* panel itself doesn't scroll */
             padding-bottom: 12px;
         }
@@ -653,6 +660,63 @@
         }
         @media (max-height: 700px) {
             .automation-toggle-btn { margin-top: 100px; }
+        }
+        @media (max-width: 900px) {
+            .main-layout {
+                display: block;
+                height: auto;
+            }
+            .left-panel {
+                display: block;
+                padding: 12px;
+            }
+            .main-content {
+                min-width: 0;
+            }
+            .automation-panel {
+                width: min(92vw, 460px);
+                min-width: 0;
+                max-width: 92vw;
+                position: fixed;
+                top: 118px;
+                right: 0;
+                height: calc(100dvh - 130px);
+                max-height: calc(100dvh - 130px);
+                background: rgba(22, 27, 34, 0.98);
+                border-left: 1px solid rgba(48, 54, 61, 0.8);
+                box-shadow: -16px 0 36px rgba(0, 0, 0, 0.45);
+                z-index: 10001;
+                overflow: hidden;
+                transform: translateX(0);
+                transition: transform 0.2s ease;
+            }
+            .right-panel {
+                width: 100vw;
+                min-width: 0;
+                max-width: 100vw;
+            }
+            .panel-resizer {
+                display: none !important;
+            }
+            .automation-toggle-btn {
+                display: flex !important;
+                position: fixed;
+                right: 0;
+                top: 52%;
+                transform: translateY(-50%);
+                margin: 0;
+                width: 52px;
+                height: 88px;
+                border-radius: 14px 0 0 14px;
+                z-index: 10002;
+            }
+            .automation-panel.collapsed {
+                transform: translateX(100%);
+            }
+            .automation-toggle-btn:hover,
+            .automation-toggle-btn {
+                transform: translateY(-50%);
+            }
         }
         .automation-toggle-btn:hover { transform: translateY(-8px); box-shadow: 0 16px 52px rgba(102,126,234,0.35), inset 0 1px 0 rgba(255,255,255,0.2); }
         .automation-toggle-btn:active { transform: translateY(-2px); }
@@ -2189,6 +2253,39 @@
                 if (tbtn) tbtn.style.pointerEvents = 'auto';
             } catch (e) { /* ignore */ }
         }
+
+        function syncAutomationToggleVisibility() {
+            try {
+                const toggle = document.getElementById('automationToggleBtn');
+                if (!toggle) return;
+
+                const addRuleModalOpen = !!document.getElementById('addRuleModal');
+                const ruleModal = document.getElementById('ruleModal');
+                const ruleModalOpen = !!(ruleModal && ruleModal.classList.contains('show'));
+
+                if (addRuleModalOpen || ruleModalOpen) {
+                    toggle.style.display = 'none';
+                } else {
+                    toggle.style.display = '';
+                    toggle.style.pointerEvents = 'auto';
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        window.addEventListener('pageshow', () => {
+            setTimeout(syncAutomationToggleVisibility, 0);
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                setTimeout(syncAutomationToggleVisibility, 0);
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(syncAutomationToggleVisibility, 0);
+        });
+
         // Dynamically load Leaflet CSS+JS once and return a Promise when ready
         function ensureLeafletLoaded() {
             if (window.__leafletLoading) return window.__leafletLoading;
@@ -6285,6 +6382,9 @@
             // Init resizer for automation panel
             try { initAutomationResizer(); } catch(e) { console.error('initAutomationResizer failed:', e); }
 
+            // Reconcile floating toggle visibility after all init paths complete.
+            try { syncAutomationToggleVisibility(); } catch (e) {}
+
             // Allow automated API calls to open the panel
             setTimeout(() => { try { window.suppressPanelAutoOpen = false; } catch(e) {} }, 1200);
         }
@@ -7058,11 +7158,7 @@
                 </div>
             `;
             document.body.insertAdjacentHTML('beforeend', modalHtml);
-            // Hide the floating automation toggle while modal is open so it doesn't overlay the dialog
-            try {
-                const t = document.getElementById('automationToggleBtn');
-                if (t) t.style.display = 'none';
-            } catch (e) {}
+            syncAutomationToggleVisibility();
             
             // Add event listeners for "between" operator toggle
             ['FeedIn', 'Buy', 'Soc'].forEach(type => {
@@ -7079,10 +7175,7 @@
         function closeAddRuleModal() {
             const modal = document.getElementById('addRuleModal');
             if (modal) modal.remove();
-            try {
-                const t = document.getElementById('automationToggleBtn');
-                if (t) t.style.display = '';
-            } catch (e) {}
+            syncAutomationToggleVisibility();
         }
         
         // Update forecast lookAhead range based on unit
@@ -7971,19 +8064,12 @@
             }
             
             modal.classList.add('show');
-            // Hide floating toggle to avoid it overlapping the modal
-            try {
-                const t = document.getElementById('automationToggleBtn');
-                if (t) t.style.display = 'none';
-            } catch (e) {}
+            syncAutomationToggleVisibility();
         }
 
         function closeRuleModal() {
             document.getElementById('ruleModal').classList.remove('show');
-            try {
-                const t = document.getElementById('automationToggleBtn');
-                if (t) t.style.display = '';
-            } catch (e) {}
+            syncAutomationToggleVisibility();
         }
 
         function populateRuleForm(rule) {

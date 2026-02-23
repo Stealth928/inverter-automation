@@ -376,6 +376,188 @@
         }
     }
 
+    function ensurePwaHeadTags() {
+        const head = document.head;
+        if (!head) return;
+
+        const ensureMeta = (name, content, attribute = 'name') => {
+            let meta = head.querySelector(`meta[${attribute}="${name}"]`);
+            if (!meta) {
+                meta = document.createElement('meta');
+                meta.setAttribute(attribute, name);
+                head.appendChild(meta);
+            }
+            meta.setAttribute('content', content);
+        };
+
+        const ensureLink = (rel, href) => {
+            let link = head.querySelector(`link[rel="${rel}"]`);
+            if (!link) {
+                link = document.createElement('link');
+                link.setAttribute('rel', rel);
+                head.appendChild(link);
+            }
+            link.setAttribute('href', href);
+        };
+
+        ensureLink('manifest', '/manifest.webmanifest');
+        ensureLink('apple-touch-icon', '/icons/apple-touch-icon.png');
+        ensureMeta('theme-color', '#0d1117');
+        ensureMeta('mobile-web-app-capable', 'yes');
+        ensureMeta('apple-mobile-web-app-capable', 'yes');
+        ensureMeta('apple-mobile-web-app-title', 'FoxESS Automation');
+        ensureMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
+    }
+
+    function registerServiceWorker() {
+        if (!('serviceWorker' in navigator)) return;
+        const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+        if (window.location.protocol !== 'https:' && !isLocalhost) {
+            return;
+        }
+
+        const register = () => {
+            navigator.serviceWorker.register('/sw.js').catch((error) => {
+                console.warn('[AppShell] Service worker registration failed', error);
+            });
+        };
+
+        if (document.readyState === 'complete') {
+            register();
+            return;
+        }
+
+        window.addEventListener('load', register, { once: true });
+    }
+
+    function initInstallPrompt() {
+        let deferredInstallPrompt = null;
+        let fallbackTimer = null;
+
+        const isStandalone = () =>
+            window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+        const isIOS = () => /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
+        const isAndroid = () => /android/i.test(window.navigator.userAgent || '');
+
+        const ensureInstallButton = () => {
+            let styleTag = document.getElementById('pwa-install-style');
+            if (!styleTag) {
+                styleTag = document.createElement('style');
+                styleTag.id = 'pwa-install-style';
+                styleTag.textContent = `
+                    .pwa-install-btn {
+                        position: fixed;
+                        right: 16px;
+                        bottom: 16px;
+                        z-index: 10000;
+                        padding: 10px 14px;
+                        border-radius: 10px;
+                        border: 1px solid rgba(88, 166, 255, 0.4);
+                        background: linear-gradient(135deg, #238636, #1a7f37);
+                        color: #ffffff;
+                        font-size: 13px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+                    }
+                    .pwa-install-btn:hover {
+                        filter: brightness(1.05);
+                    }
+                `;
+                document.head.appendChild(styleTag);
+            }
+
+            let button = document.getElementById('pwaInstallBtn');
+            if (!button) {
+                button = document.createElement('button');
+                button.id = 'pwaInstallBtn';
+                button.className = 'pwa-install-btn';
+                button.type = 'button';
+                button.style.display = 'none';
+                document.body.appendChild(button);
+            }
+            return button;
+        };
+
+        const showButton = (label, onClick) => {
+            if (isStandalone()) return;
+            const button = ensureInstallButton();
+            button.textContent = label;
+            button.onclick = onClick;
+            button.style.display = 'inline-flex';
+        };
+
+        const hideButton = () => {
+            const button = document.getElementById('pwaInstallBtn');
+            if (button) button.style.display = 'none';
+        };
+
+        const showManualInstallHelp = () => {
+            if (isIOS()) {
+                window.alert('On iPhone/iPad: open this site in Safari, tap Share, then choose "Add to Home Screen".');
+                return;
+            }
+
+            if (isAndroid()) {
+                window.alert('On Android: open the browser menu (⋮) and choose "Install app" or "Add to Home screen".');
+                return;
+            }
+
+            window.alert('Use your browser menu and choose "Install" or "Add to Home screen".');
+        };
+
+        const scheduleFallbackPrompt = () => {
+            if (isStandalone()) return;
+            if (!isIOS() && !isAndroid()) return;
+            if (fallbackTimer) clearTimeout(fallbackTimer);
+
+            fallbackTimer = setTimeout(() => {
+                if (deferredInstallPrompt) return;
+                showButton('Install App', showManualInstallHelp);
+            }, 3500);
+        };
+
+        window.addEventListener('beforeinstallprompt', (event) => {
+            event.preventDefault();
+            deferredInstallPrompt = event;
+            if (fallbackTimer) {
+                clearTimeout(fallbackTimer);
+                fallbackTimer = null;
+            }
+            showButton('Install App', async () => {
+                if (!deferredInstallPrompt) return;
+                deferredInstallPrompt.prompt();
+                try {
+                    await deferredInstallPrompt.userChoice;
+                } catch (err) {
+                    console.warn('[AppShell] Install prompt interaction failed', err);
+                }
+                deferredInstallPrompt = null;
+                hideButton();
+            });
+        });
+
+        scheduleFallbackPrompt();
+
+        window.addEventListener('appinstalled', () => {
+            deferredInstallPrompt = null;
+            if (fallbackTimer) {
+                clearTimeout(fallbackTimer);
+                fallbackTimer = null;
+            }
+            hideButton();
+        });
+    }
+
+    function initPwaSupport() {
+        ensurePwaHeadTags();
+        registerServiceWorker();
+        initInstallPrompt();
+    }
+
+    initPwaSupport();
+
     document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.add('has-fixed-nav');
         setupNavHighlight();
