@@ -9,43 +9,37 @@ const { test, expect } = require('@playwright/test');
 test.describe('Dashboard Page', () => {
   
   test.beforeEach(async ({ page }) => {
-    // Provide a full mock of window.firebaseAuth so app initializes as authenticated
+    // Force firebase auth module into local mock mode with a signed-in mock user.
+    await page.route('**/js/firebase-config.js', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/javascript',
+        body: 'window.firebaseConfig = { apiKey: "YOUR_TEST_KEY" };'
+      });
+    });
+
     await page.addInitScript(() => {
-      // Minimal mock implementing the methods used by the app
-      window.firebaseAuth = {
-        mockUser: {
+      try {
+        localStorage.setItem('mockAuthUser', JSON.stringify({
           uid: 'test-user-123',
           email: 'test@example.com',
-          displayName: 'Test User',
-          getIdToken: async () => 'mock-token'
-        },
-        initialized: false,
-        init: async function (config, options) {
-          this.initialized = true;
-          // simulate attaching current user
-          this.user = this.mockUser;
-          return;
-        },
-        onAuthStateChanged: function (cb) {
-          // call callback synchronously with the mock user to avoid redirect race
-          try { cb(this.user); } catch (e) { setTimeout(() => { try { cb(this.user); } catch (_) {} }, 0); }
-        },
-        // Provide an `auth` marker for code that checks for firebaseAuth.auth
-        auth: true,
-        getIdToken: async function (force) { return this.user ? this.user.getIdToken() : null; },
-        signOut: async function () { this.user = null; }
-      };
-        // Prevent AppShell from redirecting during tests
-        window.safeRedirect = function (target) { console.log('[Test] suppressed redirect to', target); };
-        // Also neutralize location.assign to avoid accidental navigations
-        window.location.assign = function (url) { console.log('[Test] suppressed location.assign to', url); };
+          displayName: 'Test User'
+        }));
+        localStorage.setItem('mockAuthToken', 'mock-token');
+      } catch (e) {
+        // ignore
+      }
+
+      // Prevent redirects during tests.
+      window.safeRedirect = function (target) { console.log('[Test] suppressed redirect to', target); };
+      window.location.assign = function (url) { console.log('[Test] suppressed location.assign to', url); };
     });
 
     await page.goto('/index.html');
   });
 
   test('should load dashboard page', async ({ page }) => {
-    await expect(page).toHaveTitle(/Dashboard|Inverter|Home/i);
+    await expect(page).toHaveTitle(/FoxESS Automation|Dashboard|Inverter|Home/i);
   });
 
   test('should display main navigation elements', async ({ page }) => {
@@ -165,5 +159,51 @@ test.describe('Dashboard Page', () => {
     
     // Profile may not show without real auth - just check page loads
     expect(typeof (hasEmail || hasProfile)).toBe('boolean');
+  });
+
+  test('should render dashboard visibility toggles and keep cards visible by default', async ({ page }) => {
+    const toggleKeys = ['inverter', 'prices', 'weather', 'quickControls', 'scheduler'];
+    for (const key of toggleKeys) {
+      const toggle = page.locator(`[data-dashboard-toggle="${key}"]`);
+      const card = page.locator(`[data-dashboard-card="${key}"]`);
+      await expect(toggle).toBeVisible();
+      await expect(toggle).toBeChecked();
+      await expect(card).toBeVisible();
+    }
+  });
+
+  test('should hide selected cards and keep remaining priority cards visible', async ({ page }) => {
+    const inverterToggle = page.locator('[data-dashboard-toggle="inverter"]');
+    const pricesToggle = page.locator('[data-dashboard-toggle="prices"]');
+    const weatherToggle = page.locator('[data-dashboard-toggle="weather"]');
+
+    await inverterToggle.uncheck();
+    await pricesToggle.uncheck();
+
+    await expect(page.locator('[data-dashboard-card="inverter"]')).toBeHidden();
+    await expect(page.locator('[data-dashboard-card="prices"]')).toBeHidden();
+    await expect(page.locator('[data-dashboard-card="weather"]')).toBeVisible();
+
+    const visiblePriorityCards = page.locator('#priorityRow [data-dashboard-card]:not(.is-hidden-preference)');
+    await expect(visiblePriorityCards).toHaveCount(1);
+
+    await weatherToggle.uncheck();
+    await expect(page.locator('#priorityRow')).toBeHidden();
+  });
+
+  test('should persist card visibility preferences across reload', async ({ page }) => {
+    const inverterToggle = page.locator('[data-dashboard-toggle="inverter"]');
+    const schedulerToggle = page.locator('[data-dashboard-toggle="scheduler"]');
+
+    await inverterToggle.uncheck();
+    await schedulerToggle.uncheck();
+
+    await page.reload();
+
+    await expect(page.locator('[data-dashboard-toggle="inverter"]')).not.toBeChecked();
+    await expect(page.locator('[data-dashboard-toggle="scheduler"]')).not.toBeChecked();
+    await expect(page.locator('[data-dashboard-card="inverter"]')).toBeHidden();
+    await expect(page.locator('[data-dashboard-card="scheduler"]')).toBeHidden();
+    await expect(page.locator('[data-dashboard-card="weather"]')).toBeVisible();
   });
 });

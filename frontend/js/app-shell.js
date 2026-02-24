@@ -231,6 +231,85 @@
         }
     }
 
+    function setupMobileNavMenu() {
+        const nav = document.querySelector('.nav-main');
+        if (!nav) return;
+
+        const navLinks = nav.querySelector('.nav-links');
+        const navRight = nav.querySelector('.nav-right');
+        if (!navLinks) return;
+
+        let toggleBtn = nav.querySelector('[data-nav-toggle]');
+        if (!toggleBtn) {
+            toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.className = 'nav-toggle';
+            toggleBtn.setAttribute('data-nav-toggle', '1');
+            toggleBtn.setAttribute('aria-label', 'Toggle navigation menu');
+            toggleBtn.setAttribute('aria-expanded', 'false');
+            toggleBtn.textContent = '☰';
+            nav.insertBefore(toggleBtn, nav.firstChild);
+        }
+        if (toggleBtn.dataset.bound === '1') return;
+        toggleBtn.dataset.bound = '1';
+
+        const closeMenu = () => {
+            nav.classList.remove('nav-open');
+            toggleBtn.setAttribute('aria-expanded', 'false');
+            toggleBtn.textContent = '☰';
+        };
+
+        const openMenu = () => {
+            nav.classList.add('nav-open');
+            toggleBtn.setAttribute('aria-expanded', 'true');
+            toggleBtn.textContent = '✕';
+        };
+
+        const toggleMenu = () => {
+            if (nav.classList.contains('nav-open')) {
+                closeMenu();
+            } else {
+                openMenu();
+            }
+        };
+
+        toggleBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            toggleMenu();
+        });
+
+        if (navLinks) {
+            navLinks.addEventListener('click', (event) => {
+                const link = event.target.closest('a');
+                if (link && window.matchMedia('(max-width: 900px)').matches) {
+                    closeMenu();
+                }
+            });
+        }
+
+        if (navRight) {
+            navRight.addEventListener('click', (event) => {
+                const link = event.target.closest('a');
+                if (link && window.matchMedia('(max-width: 900px)').matches) {
+                    closeMenu();
+                }
+            });
+        }
+
+        document.addEventListener('click', (event) => {
+            if (!window.matchMedia('(max-width: 900px)').matches) return;
+            if (!nav.contains(event.target)) {
+                closeMenu();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (!window.matchMedia('(max-width: 900px)').matches) {
+                closeMenu();
+            }
+        });
+    }
+
     function relocateMetricsWidget() {
         const widgets = document.querySelectorAll('.api-metrics-footer');
         if (!widgets.length) return;
@@ -446,11 +525,12 @@
                 styleTag = document.createElement('style');
                 styleTag.id = 'pwa-install-style';
                 styleTag.textContent = `
+                    .pwa-install-wrapper {
+                        display: flex;
+                        justify-content: flex-end;
+                        padding: 16px 0 8px;
+                    }
                     .pwa-install-btn {
-                        position: fixed;
-                        right: 16px;
-                        bottom: 16px;
-                        z-index: 10000;
                         padding: 10px 14px;
                         border-radius: 10px;
                         border: 1px solid rgba(88, 166, 255, 0.4);
@@ -464,6 +544,26 @@
                     .pwa-install-btn:hover {
                         filter: brightness(1.05);
                     }
+                    @media (max-width: 900px) {
+                        .pwa-install-wrapper {
+                            position: fixed !important;
+                            left: max(8px, env(safe-area-inset-left)) !important;
+                            right: auto !important;
+                            top: auto !important;
+                            bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+                            width: auto !important;
+                            justify-content: flex-start !important;
+                            padding: 0;
+                            z-index: 10000;
+                        }
+                        .pwa-install-btn {
+                            margin-left: 0 !important;
+                        }
+                        .pwa-install-btn {
+                            font-size: 12px;
+                            padding: 9px 12px;
+                        }
+                    }
                 `;
                 document.head.appendChild(styleTag);
             }
@@ -475,7 +575,14 @@
                 button.className = 'pwa-install-btn';
                 button.type = 'button';
                 button.style.display = 'none';
-                document.body.appendChild(button);
+
+                // Place in document flow at end of main-content (below scheduler),
+                // falling back to body if main-content is not present on this page.
+                const wrapper = document.createElement('div');
+                wrapper.className = 'pwa-install-wrapper';
+                wrapper.appendChild(button);
+                const mainContent = document.querySelector('.main-content') || document.querySelector('.left-panel') || document.body;
+                mainContent.appendChild(wrapper);
             }
             return button;
         };
@@ -560,6 +667,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.add('has-fixed-nav');
+        setupMobileNavMenu();
         setupNavHighlight();
         setupUserMenu();
         relocateMetricsWidget();

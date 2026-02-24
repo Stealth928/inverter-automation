@@ -67,7 +67,7 @@ module.exports = defineConfig({
 
   // Run local dev server before starting the tests
   webServer: {
-    command: 'cd frontend && python -m http.server 8000',
+    command: 'cd frontend && python3 -m http.server 8000',
     url: 'http://localhost:8000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,

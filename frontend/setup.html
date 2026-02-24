@@ -15,7 +15,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="css/shared-styles.css" />
+    <link rel="stylesheet" href="css/shared-styles.css?v=3" />
     <style>
         /* Page-specific styles */
         body.setup-page {
@@ -465,6 +465,7 @@
     </head>
     <body class="setup-page">
         <nav class="nav-main">
+            <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
             <div class="nav-links">
                 <a href="/" class="nav-link">🏠 Overview</a>
                 <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
@@ -658,9 +659,8 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js"></script>
+    <script src="js/app-shell.js?v=4"></script>
     <script>
-        /**
          * Helper function to make authenticated API calls.
          * Uses apiClient.fetch to include the Authorization header and normalize responses.
          */

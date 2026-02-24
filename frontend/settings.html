@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="FoxESS Automation">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="stylesheet" href="css/shared-styles.css" />
+    <link rel="stylesheet" href="css/shared-styles.css?v=3" />
     <!-- Firebase SDK (compat) - must load before firebase-auth.js -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -20,7 +20,7 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js"></script>
+    <script src="js/app-shell.js?v=4"></script>
     <style>
         /* Page-specific styles */
         .container {
@@ -471,6 +471,7 @@
 </head>
 <body>
     <nav class="nav-main">
+        <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
         <div class="nav-links">
             <a href="/" class="nav-link">🏠 Overview</a>
             <a href="/roi.html" class="nav-link">💲 Automation ROI</a>

@@ -21,8 +21,8 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js"></script>
-    <link rel="stylesheet" href="css/shared-styles.css" />
+    <script src="js/app-shell.js?v=4"></script>
+    <link rel="stylesheet" href="css/shared-styles.css?v=3" />
     <style>
         
         /* Header */
@@ -30,24 +30,22 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 16px 24px;
+            padding: 8px 14px;
             background: rgba(13, 17, 23, 0.8);
             border-bottom: 1px solid rgba(48, 54, 61, 0.6);
-            backdrop-filter: blur(10px);
-            position: sticky;
-            top: 0;
-            z-index: 100;
+            backdrop-filter: blur(8px);
+            margin: 6px 0 10px 0;
         }
         .header h1 {
-            font-size: 1.4rem;
+            font-size: 1.15rem;
             font-weight: 600;
             color: #58a6ff;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
         .header h1 .logo {
-            font-size: 1.6rem;
+            font-size: 1.25rem;
         }
         .device-input {
             display: flex;
@@ -103,7 +101,7 @@
         }
         .left-panel {
             flex: 1;
-            padding: 20px;
+            padding: 14px;
             /* Allow child panels to manage their own scrolling. This prevents the
                left-panel's scrollbar from capturing scroll events intended for the
                automation panel's internal scroller (FAQ worked because it set its
@@ -118,19 +116,125 @@
         /* Priority Row - Weather, Prices, Inverter */
         .priority-row {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
             gap: 16px;
             margin-bottom: 20px;
-        }
-        @media (max-width: 1400px) {
-            .priority-row {
-                grid-template-columns: repeat(2, 1fr);
-            }
         }
         @media (max-width: 900px) {
             .priority-row {
                 grid-template-columns: 1fr;
             }
+        }
+
+        .dashboard-visibility-card {
+            margin-bottom: 10px;
+        }
+        .dashboard-visibility-card .card-header {
+            padding: 10px 14px;
+            gap: 10px;
+            flex-wrap: nowrap;
+            justify-content: flex-start;
+        }
+        .dashboard-visibility-inline {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-left: 8px;
+            flex: 1;
+            justify-content: space-evenly;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            scrollbar-width: thin;
+        }
+        .card-visibility-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 12px;
+            color: #c9d1d9;
+            user-select: none;
+            white-space: nowrap;
+        }
+        .card-visibility-toggle input {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 40px;
+            height: 22px;
+            border-radius: 999px;
+            border: 1px solid rgba(48, 54, 61, 0.9);
+            background: #30363d;
+            position: relative;
+            transition: background 0.2s ease, border-color 0.2s ease;
+            cursor: pointer;
+        }
+        .card-visibility-toggle input::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #e6edf3;
+            transition: transform 0.2s ease;
+        }
+        .dashboard-visibility-collapse-btn {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(48, 54, 61, 0.9);
+            background: rgba(13, 17, 23, 0.8);
+            color: #c9d1d9;
+            font-size: 11px;
+            cursor: pointer;
+            margin-left: auto;
+        }
+        .card-visibility-toggle input:checked {
+            background: #238636;
+            border-color: #2ea043;
+        }
+        .card-visibility-toggle input:checked::after {
+            transform: translateX(18px);
+        }
+        @media (max-width: 900px) {
+            .dashboard-visibility-card .card-header {
+                padding: 8px 10px;
+                gap: 8px;
+                flex-direction: row;
+                align-items: center;
+                flex-wrap: nowrap;
+            }
+            .dashboard-visibility-collapse-btn {
+                display: inline-flex;
+            }
+            .dashboard-visibility-inline {
+                margin-left: 0;
+                width: 100%;
+                flex: 1 1 100%;
+                flex-wrap: wrap;
+                overflow: hidden;
+                gap: 8px 10px;
+                justify-content: space-between;
+                display: none;
+                padding-top: 8px;
+            }
+            .card-visibility-toggle {
+                font-size: 11px;
+                flex: 1 1 calc(50% - 8px);
+            }
+            .dashboard-visibility-card.mobile-expanded .card-header {
+                flex-wrap: wrap;
+                align-items: flex-start;
+            }
+            .dashboard-visibility-card.mobile-expanded .dashboard-visibility-inline {
+                display: flex;
+            }
+        }
+        .is-hidden-preference {
+            display: none !important;
         }
 
         /* Priority Badge for Automation Rules */
@@ -359,6 +463,10 @@
         }
         .data-card.info {
             border-left: 3px solid #58a6ff;
+        }
+
+        #inverterCard {
+            border-left: none !important;
         }
 
         /* Live Data Display */
@@ -672,6 +780,7 @@
             }
             .main-content {
                 min-width: 0;
+                padding-bottom: calc(132px + env(safe-area-inset-bottom));
             }
             .automation-panel {
                 width: min(92vw, 460px);
@@ -1582,6 +1691,7 @@
 </head>
 <body>
     <nav class="nav-main">
+        <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
         <div class="nav-links">
             <a href="/" class="nav-link">🏠 Overview</a>
             <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
@@ -1614,19 +1724,37 @@
         </div>
     </nav>
     
-    <header class="header" style="margin-top:50px">
-        <h1><span class="logo">⚡</span> FoxESS Automation</h1>
-    </header>
-    
     <div class="main-layout">
         <div class="left-panel panel-open">
             <div class="main-content">
+
+            <div class="card dashboard-visibility-card">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">🧩</span> Customize Dashboard</div>
+                    <button
+                        id="dashboardVisibilityToggleBtn"
+                        class="dashboard-visibility-collapse-btn"
+                        type="button"
+                        aria-expanded="false"
+                        aria-controls="dashboardVisibilityInline"
+                    >
+                        Show
+                    </button>
+                    <div id="dashboardVisibilityInline" class="dashboard-visibility-inline">
+                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="inverter" onchange="toggleDashboardCardVisibility('inverter', this)"> Inverter</label>
+                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="prices" onchange="toggleDashboardCardVisibility('prices', this)"> Prices</label>
+                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="weather" onchange="toggleDashboardCardVisibility('weather', this)"> Weather</label>
+                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="quickControls" onchange="toggleDashboardCardVisibility('quickControls', this)"> Controls</label>
+                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="scheduler" onchange="toggleDashboardCardVisibility('scheduler', this)"> Scheduler</label>
+                    </div>
+                </div>
+            </div>
             
             <!-- Priority Row: Inverter, Prices, Weather -->
-            <div class="priority-row">
+            <div class="priority-row" id="priorityRow">
                 
                 <!-- Inverter Status -->
-                <div class="card priority">
+                <div class="card priority" data-dashboard-card="inverter">
                     <div class="card-header">
                         <div class="card-title"><span class="icon">⚡</span> Inverter Status</div>
                             <div style="display:flex;align-items:center;gap:8px;flex-direction:column;align-items:flex-end">
@@ -1654,14 +1782,14 @@
                         </div>
                     </div>
                     <div class="card-body">
-                        <div class="data-card info" id="inverterCard">
+                        <div class="data-card" id="inverterCard">
                             <div style="color:#8b949e;font-size:12px">Loading inverter data...</div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Amber Prices -->
-                <div class="card priority">
+                <div class="card priority" data-dashboard-card="prices">
                     <div class="card-header">
                         <div class="card-title"><span class="icon">💰</span> Electricity Prices</div>
                         <div style="display:flex;align-items:center;gap:8px">
@@ -1686,7 +1814,7 @@
                 </div>
 
                 <!-- Weather -->
-                <div class="card priority">
+                <div class="card priority" data-dashboard-card="weather">
                     <div class="card-header">
                         <div class="card-title"><span class="icon">🌤️</span> Weather Forecast</div>
                         <div style="display:flex;align-items:center;gap:8px">
@@ -1710,7 +1838,7 @@
             </div>
 
             <!-- Quick Controls -->
-            <div class="card" style="margin-bottom: 20px;">
+            <div class="card" style="margin-bottom: 20px;" data-dashboard-card="quickControls">
                 <div class="card-header">
                     <div class="card-title"><span class="icon">🕹️</span> Quick Controls</div>
                     <button class="btn" onclick="refreshQuickControlStatus(true)" style="font-size:11px;padding:4px 10px;width:auto;margin:0">🔄 Refresh</button>
@@ -1808,7 +1936,7 @@
             </div>
 
             <!-- Manual Scheduler (Time Segments) - moved up for prominence -->
-            <div class="card" style="margin-bottom: 20px;">
+            <div class="card" style="margin-bottom: 20px;" data-dashboard-card="scheduler">
                 <div class="card-header">
                     <div class="card-title"><span class="icon">📅</span> Manual Scheduler (Time Segments)</div>
                     <div style="display:flex;gap:8px;">
@@ -2808,8 +2936,26 @@
                 }
                 // Prefer aggregated pvPower from the device when available (more accurate for total PV)
                 const pvTotal = findValue(items, ['pvPower','pvpower','pv_total','pv_total_power']);
+                const meterPower2 = findValue(items, ['meterPower2', 'meter_power_2', 'meter2power']);
+
+                function normalizeTopologyPower(v) {
+                    if (v === null || v === undefined || v === '-') return null;
+                    const n = Number(v);
+                    if (isNaN(n)) return null;
+                    // FoxESS payloads are usually kW here; if a large value appears, treat as W.
+                    return Math.abs(n) > 100 ? (n / 1000) : n;
+                }
+
+                const pvTotalKW = normalizeTopologyPower(pvTotal);
+                const meterPower2KW = normalizeTopologyPower(meterPower2);
+                const isLikelyACCoupled =
+                    (pvTotalKW === null || Math.abs(pvTotalKW) < 0.05) &&
+                    (meterPower2KW !== null && meterPower2KW > 0.05);
+
                 let finalSolar = null;
-                if (pvTotal !== null && pvTotal !== undefined && !isNaN(Number(pvTotal))) {
+                if (isLikelyACCoupled) {
+                    finalSolar = meterPower2KW;
+                } else if (pvTotal !== null && pvTotal !== undefined && !isNaN(Number(pvTotal))) {
                     finalSolar = pvTotal;
                 } else {
                     // If computedSolar set use it, otherwise fall back to raw solar field
@@ -5507,6 +5653,147 @@
         // Legacy alias for backwards compatibility
         const REFRESH = CONFIG.refresh;
 
+        const DASHBOARD_CARD_VISIBILITY_DEFAULTS = {
+            inverter: true,
+            prices: true,
+            weather: true,
+            quickControls: true,
+            scheduler: true
+        };
+        let dashboardCardVisibilityState = { ...DASHBOARD_CARD_VISIBILITY_DEFAULTS };
+
+        function getDashboardCardVisibilityStorageKey() {
+            try {
+                const uid = window.AppShell && typeof window.AppShell.getUser === 'function'
+                    ? window.AppShell.getUser()?.uid
+                    : null;
+                return `dashboardCardVisibility:${uid || 'guest'}`;
+            } catch (e) {
+                return 'dashboardCardVisibility:guest';
+            }
+        }
+
+        function loadDashboardCardVisibilityPreferences() {
+            dashboardCardVisibilityState = { ...DASHBOARD_CARD_VISIBILITY_DEFAULTS };
+            try {
+                const storageKey = getDashboardCardVisibilityStorageKey();
+                let raw = localStorage.getItem(storageKey);
+                if (!raw && storageKey !== 'dashboardCardVisibility:guest') {
+                    const guestRaw = localStorage.getItem('dashboardCardVisibility:guest');
+                    if (guestRaw) {
+                        raw = guestRaw;
+                        try { localStorage.setItem(storageKey, guestRaw); } catch (copyErr) {}
+                    }
+                }
+                if (!raw) return;
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== 'object') return;
+                Object.keys(DASHBOARD_CARD_VISIBILITY_DEFAULTS).forEach((key) => {
+                    if (typeof parsed[key] === 'boolean') {
+                        dashboardCardVisibilityState[key] = parsed[key];
+                    }
+                });
+            } catch (e) {
+                console.warn('[Dashboard] Failed to load card visibility preferences', e);
+            }
+        }
+
+        function saveDashboardCardVisibilityPreferences() {
+            try {
+                const payload = JSON.stringify(dashboardCardVisibilityState);
+                const storageKey = getDashboardCardVisibilityStorageKey();
+                localStorage.setItem(
+                    storageKey,
+                    payload
+                );
+                if (storageKey !== 'dashboardCardVisibility:guest') {
+                    localStorage.setItem('dashboardCardVisibility:guest', payload);
+                }
+            } catch (e) {
+                console.warn('[Dashboard] Failed to save card visibility preferences', e);
+            }
+        }
+
+        function syncDashboardCardVisibilityToggles() {
+            const toggles = document.querySelectorAll('[data-dashboard-toggle]');
+            toggles.forEach((toggle) => {
+                const key = toggle.getAttribute('data-dashboard-toggle');
+                if (!key || !(key in DASHBOARD_CARD_VISIBILITY_DEFAULTS)) return;
+                toggle.checked = dashboardCardVisibilityState[key] !== false;
+            });
+        }
+
+        function applyDashboardCardVisibility() {
+            const cards = document.querySelectorAll('[data-dashboard-card]');
+            cards.forEach((card) => {
+                const key = card.getAttribute('data-dashboard-card');
+                if (!key || !(key in DASHBOARD_CARD_VISIBILITY_DEFAULTS)) return;
+                const isVisible = dashboardCardVisibilityState[key] !== false;
+                card.classList.toggle('is-hidden-preference', !isVisible);
+            });
+
+            const priorityRow = document.getElementById('priorityRow');
+            if (priorityRow) {
+                const hasVisibleCards = !!priorityRow.querySelector('[data-dashboard-card]:not(.is-hidden-preference)');
+                priorityRow.classList.toggle('is-hidden-preference', !hasVisibleCards);
+            }
+
+            syncDashboardCardVisibilityToggles();
+        }
+
+        function initDashboardCardVisibilityPreferences() {
+            loadDashboardCardVisibilityPreferences();
+            applyDashboardCardVisibility();
+        }
+
+        function initDashboardVisibilityCollapse() {
+            const card = document.querySelector('.dashboard-visibility-card');
+            const button = document.getElementById('dashboardVisibilityToggleBtn');
+            if (!card || !button) return;
+
+            const mobileQuery = window.matchMedia('(max-width: 900px)');
+
+            const syncState = () => {
+                if (mobileQuery.matches) {
+                    const expanded = card.classList.contains('mobile-expanded');
+                    button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                    button.textContent = expanded ? 'Hide' : 'Show';
+                } else {
+                    card.classList.remove('mobile-expanded');
+                    button.setAttribute('aria-expanded', 'true');
+                    button.textContent = 'Hide';
+                }
+            };
+
+            card.classList.remove('mobile-expanded');
+            syncState();
+
+            button.addEventListener('click', () => {
+                if (!mobileQuery.matches) return;
+                card.classList.toggle('mobile-expanded');
+                syncState();
+            });
+
+            if (typeof mobileQuery.addEventListener === 'function') {
+                mobileQuery.addEventListener('change', syncState);
+            } else if (typeof mobileQuery.addListener === 'function') {
+                mobileQuery.addListener(syncState);
+            }
+        }
+
+        function refreshDashboardCardVisibilityPreferencesForCurrentUser() {
+            initDashboardCardVisibilityPreferences();
+        }
+
+        function toggleDashboardCardVisibility(cardKey, toggleEl) {
+            if (!(cardKey in DASHBOARD_CARD_VISIBILITY_DEFAULTS)) return;
+            dashboardCardVisibilityState[cardKey] = !!(toggleEl && toggleEl.checked);
+            saveDashboardCardVisibilityPreferences();
+            applyDashboardCardVisibility();
+        }
+
+        window.toggleDashboardCardVisibility = toggleDashboardCardVisibility;
+
         // Timer handles for auto-refresh (kept so we can cancel/replace during dev)
         let amberRefreshTimer = null;
         let inverterRefreshTimer = null;
@@ -6189,6 +6476,9 @@
         document.addEventListener('DOMContentLoaded', () => {
             // Suppress auto-opening of the right-panel while the page initializes
             window.suppressPanelAutoOpen = true;
+
+            initDashboardCardVisibilityPreferences();
+            initDashboardVisibilityCollapse();
 
             // Ensure right-panel collapsed by default unless user explicitly expanded it before
             try {
@@ -8472,6 +8762,7 @@
             autoMetrics: false,
             onReady: () => {
                 try { 
+                    refreshDashboardCardVisibilityPreferencesForCurrentUser();
                     initializePageData(); 
                     checkAutomationStatusForScheduler(); // Check automation status for scheduler warning
                     refreshQuickControlStatus(); // Check quick control status
