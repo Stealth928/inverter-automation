@@ -33,7 +33,8 @@
             width: 100%;
             max-width: 520px;
             animation: slideUp 0.4s ease-out;
-                    min-height: 100dvh;
+            min-height: 100dvh;
+        }
 
         @keyframes slideUp {
             from {
@@ -475,6 +476,7 @@
                 <a href="/settings.html" class="nav-link">⚙️ Settings</a>
                 <a href="/curtailment-discovery.html" class="nav-link" id="topologyNavLink" style="display: none;">🔬 WIP - Topology Discovery</a>
                 <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
+                <a href="/admin.html" class="nav-link" id="adminNavLink" style="display: none;">🛡️ Admin</a>
             </div>
             <div class="nav-right">
                 <span class="nav-subtitle">Setup assistant</span>
@@ -659,8 +661,9 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=4"></script>
+    <script src="js/app-shell.js?v=7"></script>
     <script>
+        /**
          * Helper function to make authenticated API calls.
          * Uses apiClient.fetch to include the Authorization header and normalize responses.
          */

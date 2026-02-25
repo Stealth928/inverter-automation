@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - FoxESS Automation</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <meta name="theme-color" content="#0d1117">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="FoxESS Automation">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="stylesheet" href="css/shared-styles.css?v=3" />
+    <!-- Firebase SDK (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
+    <script src="js/firebase-auth.js"></script>
+    <script src="js/api-client.js"></script>
+    <script src="js/shared-utils.js"></script>
+    <script src="js/app-shell.js?v=7"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .page-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .page-header h1 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #e6edf3;
+        }
+        .admin-badge {
+            background: linear-gradient(135deg, #da3633, #b62324);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Access denied overlay */
+        .access-denied {
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--text-secondary);
+        }
+        .access-denied .icon { font-size: 3rem; margin-bottom: 16px; }
+        .access-denied h2 { color: var(--color-danger); margin-bottom: 8px; }
+
+        /* Users table */
+        .users-table-wrapper {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .users-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .users-table th,
+        .users-table td {
+            padding: 10px 14px;
+            text-align: left;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+            white-space: nowrap;
+        }
+        .users-table th {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: rgba(0, 0, 0, 0.2);
+            position: sticky;
+            top: 0;
+        }
+        .users-table th.sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+        .users-table th.sortable:hover {
+            color: var(--accent-blue);
+            background: rgba(31, 111, 235, 0.12);
+        }
+        .sort-indicator {
+            margin-left: 6px;
+            font-size: 10px;
+            opacity: 0.7;
+        }
+        .users-table tr:hover td {
+            background: rgba(88, 166, 255, 0.04);
+        }
+        .users-table .email-cell {
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Role badge */
+        .role-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .role-badge.admin {
+            background: rgba(218, 54, 51, 0.15);
+            color: #f85149;
+            border: 1px solid rgba(218, 54, 51, 0.3);
+        }
+        .role-badge.user {
+            background: rgba(88, 166, 255, 0.1);
+            color: var(--accent-blue);
+            border: 1px solid rgba(88, 166, 255, 0.2);
+        }
+
+        /* Action buttons */
+        .action-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            color: var(--accent-blue);
+            padding: 5px 10px;
+            border-radius: var(--radius-md);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            white-space: nowrap;
+        }
+        .action-btn:hover {
+            background: var(--border-primary);
+            border-color: var(--border-accent);
+        }
+        .action-btn.danger {
+            color: var(--color-danger);
+        }
+        .action-btn.danger:hover {
+            background: rgba(248, 81, 73, 0.1);
+            border-color: rgba(248, 81, 73, 0.4);
+        }
+        .action-btn.success {
+            color: var(--color-success);
+        }
+        .action-btn.success:hover {
+            background: rgba(126, 231, 135, 0.1);
+            border-color: rgba(126, 231, 135, 0.4);
+        }
+        .actions-cell {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        /* Automation status indicator */
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .status-dot.active { background: var(--color-success); box-shadow: 0 0 6px rgba(126, 231, 135, 0.4); }
+        .status-dot.inactive { background: var(--text-muted); }
+
+        /* Stats modal / drawer */
+        .stats-drawer {
+            display: none;
+            position: fixed;
+            top: 0; right: 0; bottom: 0;
+            width: min(480px, 100vw);
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border-primary);
+            z-index: var(--z-modal);
+            overflow-y: auto;
+            box-shadow: -8px 0 32px rgba(0,0,0,0.5);
+            animation: slideIn 0.25s ease;
+        }
+        .stats-drawer.open { display: block; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .stats-drawer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-primary);
+            background: rgba(0,0,0,0.2);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .stats-drawer-header h3 {
+            font-size: 15px;
+            color: var(--text-primary);
+        }
+        .stats-drawer-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 20px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
+        }
+        .stats-drawer-close:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .stats-drawer-body {
+            padding: 20px;
+        }
+        .stats-backdrop {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: calc(var(--z-modal) - 1);
+        }
+        .stats-backdrop.open { display: block; }
+
+        /* Stats content */
+        .stat-section { margin-bottom: 20px; }
+        .stat-section-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+        }
+        .platform-top {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .platform-kpis-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .platform-kpis {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            min-width: 760px;
+        }
+        .kpi-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-lg);
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .kpi-item .label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .kpi-item .value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.1;
+        }
+        .stat-item .value.small { font-size: 13px; font-weight: 500; }
+
+        .platform-chart-card .card-body {
+            padding: 12px 16px 16px;
+        }
+        .chart-subtitle {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        .chart-wrap {
+            position: relative;
+            height: 230px;
+        }
+
+        /* Metrics mini-chart */
+        .metrics-day {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0;
+            font-size: 12px;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.2);
+        }
+        .metrics-day .date {
+            width: 80px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+        .metrics-bar-group {
+            display: flex;
+            gap: 3px;
+            flex: 1;
+            align-items: center;
+        }
+        .metrics-bar {
+            height: 14px;
+            border-radius: 3px;
+            min-width: 2px;
+            transition: width 0.3s ease;
+        }
+        .metrics-bar.foxess { background: #58a6ff; }
+        .metrics-bar.amber { background: #f0883e; }
+        .metrics-bar.weather { background: #7ee787; }
+        .metrics-day .total {
+            width: 40px;
+            text-align: right;
+            color: var(--text-secondary);
+            font-size: 11px;
+        }
+        .metrics-legend {
+            display: flex;
+            gap: 14px;
+            margin-bottom: 8px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .metrics-legend span::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+        .metrics-legend .foxess::before { background: #58a6ff; }
+        .metrics-legend .amber::before { background: #f0883e; }
+        .metrics-legend .weather::before { background: #7ee787; }
+
+        /* Impersonation banner */
+        .impersonate-banner {
+            display: none;
+            background: linear-gradient(135deg, rgba(218, 54, 51, 0.15), rgba(218, 54, 51, 0.05));
+            border: 1px solid rgba(218, 54, 51, 0.3);
+            border-radius: var(--radius-lg);
+            padding: 10px 16px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: #f85149;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .impersonate-banner.active { display: flex; }
+
+        /* Loading state */
+        .loading-spinner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .container { padding: 12px; }
+            .users-table th,
+            .users-table td { padding: 8px 10px; font-size: 12px; }
+            .actions-cell { flex-direction: column; }
+            .chart-wrap { height: 200px; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="nav-main">
+        <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
+        <div class="nav-links">
+            <a href="/" class="nav-link">🏠 Overview</a>
+            <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
+            <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
+            <a href="/history.html" class="nav-link">📊 Reports</a>
+            <a href="/control.html" class="nav-link">🎮 Controls</a>
+            <a href="/settings.html" class="nav-link">⚙️ Settings</a>
+            <a href="/curtailment-discovery.html" class="nav-link" id="topologyNavLink" style="display: none;">🔬 WIP - Topology Discovery</a>
+            <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
+            <a href="/admin.html" class="nav-link" id="adminNavLink" style="display: none;">🛡️ Admin</a>
+        </div>
+        <div class="nav-right">
+            <div class="nav-subtitle">Admin Panel</div>
+            <div class="user-menu" data-user-menu>
+                <button class="user-avatar" type="button" data-user-avatar>
+                    <span data-user-initials>?</span>
+                </button>
+                <div class="user-dropdown" data-user-dropdown>
+                    <div class="user-dropdown-header">
+                        <div class="user-name" data-user-name>Guest</div>
+                        <div class="user-email" data-user-email>Not signed in</div>
+                    </div>
+                    <button class="user-dropdown-item" type="button" data-go-settings>⚙️ Settings</button>
+                    <button class="user-dropdown-item" type="button" data-contact-us>💬 Contact Us</button>
+                    <button class="user-dropdown-item danger" type="button" data-signout>🚪 Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Access denied state (shown for non-admins) -->
+    <div id="accessDenied" class="access-denied" style="display: none;">
+        <div class="icon">🔒</div>
+        <h2>Access Denied</h2>
+        <p>You do not have admin privileges to view this page.</p>
+        <p style="margin-top: 12px;"><a href="/" style="color: var(--accent-blue);">Return to Dashboard</a></p>
+    </div>
+
+    <!-- Admin content (shown for admins) -->
+    <div id="adminContent" class="container" style="display: none;">
+        <div class="page-header">
+            <h1><span style="font-size:1.8rem">🛡️</span> Admin Panel</h1>
+            <span class="admin-badge">Admin</span>
+        </div>
+
+        <div id="messageArea"></div>
+
+        <!-- Platform Overview (compact top row + trends) -->
+        <div class="platform-top">
+            <div class="platform-kpis-wrap">
+                <div class="platform-kpis" id="platformStats">
+                    <div class="kpi-item">
+                        <div class="label">Total Users</div>
+                        <div class="value" id="statTotalUsers">-</div>
+                    </div>
+                    <div class="kpi-item">
+                        <div class="label">Configured Users</div>
+                        <div class="value" id="statConfigured">-</div>
+                    </div>
+                    <div class="kpi-item">
+                        <div class="label">Admins</div>
+                        <div class="value" id="statAdmins">-</div>
+                    </div>
+                    <div class="kpi-item">
+                        <div class="label">Automation Active</div>
+                        <div class="value" id="statAutomationActive">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card platform-chart-card">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">📈</span> 90-Day User Growth & Configuration Trend</div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-subtitle">Bars = total users, line = configured users</div>
+                    <div class="chart-wrap">
+                        <canvas id="platformTrendChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Management Card -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">👥</span> User Management</div>
+                <button class="action-btn" onclick="refreshAdminData()" id="refreshBtn">🔄 Refresh</button>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <div id="usersLoading" class="loading-spinner">Loading users...</div>
+                <div id="usersTableWrapper" class="users-table-wrapper" style="display: none;">
+                    <table class="users-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Role</th>
+                                <th>Automation</th>
+                                <th>Joined</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Drawer -->
+    <div class="stats-backdrop" id="statsBackdrop"></div>
+    <div class="stats-drawer" id="statsDrawer">
+        <div class="stats-drawer-header">
+            <h3 id="statsDrawerTitle">User Stats</h3>
+            <button class="stats-drawer-close" onclick="closeStatsDrawer()">&times;</button>
+        </div>
+        <div class="stats-drawer-body" id="statsDrawerBody">
+            <div class="loading-spinner">Loading stats...</div>
+        </div>
+    </div>
+
+    <script>
+    // ==================== Admin Panel Logic ====================
+    let currentUsers = [];
+    let adminApiClient = null;
+    let currentSort = { key: 'email', direction: 'asc' };
+    let platformTrendChart = null;
+
+    function showMessage(type, msg, duration = 5000) {
+        const area = document.getElementById('messageArea');
+        if (!area) return;
+        const colors = {
+            error: 'var(--color-danger)',
+            success: 'var(--color-success)',
+            warning: 'var(--color-warning)',
+            info: 'var(--accent-blue)'
+        };
+        area.innerHTML = `<div style="padding: 10px 16px; border-radius: var(--radius-lg); background: ${colors[type] || colors.info}15; border: 1px solid ${colors[type] || colors.info}40; color: ${colors[type] || colors.info}; font-size: 13px; margin-bottom: 12px;">${msg}</div>`;
+        if (duration > 0) {
+            setTimeout(() => { area.innerHTML = ''; }, duration);
+        }
+    }
+
+    function formatDate(ts) {
+        if (!ts) return '-';
+        try {
+            const d = ts.toDate ? ts.toDate() : new Date(ts._seconds ? ts._seconds * 1000 : ts);
+            if (isNaN(d.getTime())) return '-';
+            return d.toLocaleDateString('en-AU', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } catch { return '-'; }
+    }
+
+    function toComparableTimestamp(value) {
+        if (!value) return 0;
+        if (typeof value === 'string') {
+            const t = Date.parse(value);
+            return Number.isNaN(t) ? 0 : t;
+        }
+        if (value.toDate && typeof value.toDate === 'function') {
+            const d = value.toDate();
+            return d && d.getTime ? d.getTime() : 0;
+        }
+        if (value._seconds) return value._seconds * 1000;
+        if (value.seconds) return value.seconds * 1000;
+        if (typeof value === 'number') return value;
+        const fallback = new Date(value).getTime();
+        return Number.isNaN(fallback) ? 0 : fallback;
+    }
+
+    function getSortValue(user, key) {
+        switch (key) {
+            case 'email': return (user.email || '').toLowerCase();
+            case 'role': return (user.role || 'user').toLowerCase();
+            case 'automationEnabled': return user.automationEnabled ? 1 : 0;
+            case 'joinedAt': return toComparableTimestamp(user.joinedAt || user.createdAt);
+            case 'lastSignedInAt': return toComparableTimestamp(user.lastSignedInAt);
+            case 'rulesCount': return Number(user.rulesCount || 0);
+            case 'actions': return (user.email || user.uid || '').toLowerCase();
+            default: return (user.email || '').toLowerCase();
+        }
+    }
+
+    function sortUsers(users) {
+        const sorted = [...users].sort((a, b) => {
+            const av = getSortValue(a, currentSort.key);
+            const bv = getSortValue(b, currentSort.key);
+            let cmp = 0;
+            if (typeof av === 'string' || typeof bv === 'string') {
+                cmp = String(av).localeCompare(String(bv));
+            } else {
+                cmp = av - bv;
+            }
+            if (cmp === 0) {
+                // Stable tie-breaker by email
+                cmp = String(a.email || '').localeCompare(String(b.email || ''));
+            }
+            return currentSort.direction === 'asc' ? cmp : -cmp;
+        });
+        return sorted;
+    }
+
+    function sortBy(key) {
+        if (currentSort.key === key) {
+            currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSort.key = key;
+            currentSort.direction = 'asc';
+        }
+        renderUsersTable(currentUsers);
+    }
+
+    function sortIcon(key) {
+        if (currentSort.key !== key) return '↕';
+        return currentSort.direction === 'asc' ? '↑' : '↓';
+    }
+
+    // ==================== Admin Check ====================
+    async function checkAdminAccess() {
+        try {
+            const resp = await adminApiClient.fetch('/api/admin/check');
+            const data = await resp.json();
+            if (data.errno === 0 && data.result?.isAdmin) {
+                document.getElementById('adminContent').style.display = '';
+                document.getElementById('accessDenied').style.display = 'none';
+                loadPlatformStats();
+                loadUsers();
+            } else {
+                document.getElementById('adminContent').style.display = 'none';
+                document.getElementById('accessDenied').style.display = '';
+            }
+        } catch (e) {
+            console.error('[Admin] Access check failed:', e);
+            document.getElementById('adminContent').style.display = 'none';
+            document.getElementById('accessDenied').style.display = '';
+        }
+    }
+
+    // ==================== Load Users ====================
+    async function loadUsers() {
+        const loading = document.getElementById('usersLoading');
+        const tableWrapper = document.getElementById('usersTableWrapper');
+        loading.style.display = '';
+        tableWrapper.style.display = 'none';
+
+        try {
+            const resp = await adminApiClient.fetch('/api/admin/users');
+            const data = await resp.json();
+            if (data.errno !== 0) throw new Error(data.error || 'Failed to load users');
+
+            currentUsers = data.result.users || [];
+            renderUsersTable(currentUsers);
+            updatePlatformStats(currentUsers);
+
+            loading.style.display = 'none';
+            tableWrapper.style.display = '';
+        } catch (e) {
+            console.error('[Admin] Failed to load users:', e);
+            loading.innerHTML = `<span style="color: var(--color-danger);">Failed to load users: ${e.message}</span>`;
+        }
+    }
+
+    function refreshAdminData() {
+        loadPlatformStats();
+        loadUsers();
+    }
+
+    async function loadPlatformStats() {
+        try {
+            const resp = await adminApiClient.fetch('/api/admin/platform-stats?days=90');
+            const data = await resp.json();
+            if (data.errno !== 0) throw new Error(data.error || 'Failed to load platform stats');
+
+            const summary = data.result?.summary || {};
+            const trend = Array.isArray(data.result?.trend) ? data.result.trend : [];
+
+            document.getElementById('statTotalUsers').textContent = Number(summary.totalUsers || 0);
+            document.getElementById('statConfigured').textContent = Number(summary.configuredUsers || 0);
+            document.getElementById('statAdmins').textContent = Number(summary.admins || 0);
+            document.getElementById('statAutomationActive').textContent = Number(summary.automationActive || 0);
+
+            renderPlatformTrendChart(trend);
+        } catch (e) {
+            console.error('[Admin] Failed to load platform stats:', e);
+            showMessage('warning', `⚠️ Failed to load trend stats: ${e.message}`);
+        }
+    }
+
+    function renderPlatformTrendChart(trend) {
+        const canvas = document.getElementById('platformTrendChart');
+        if (!canvas || typeof Chart === 'undefined') return;
+
+        const labels = trend.map(point => {
+            const d = new Date(point.date + 'T00:00:00Z');
+            return d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+        });
+        const totalUsers = trend.map(point => Number(point.totalUsers || 0));
+        const configuredUsers = trend.map(point => Number(point.configuredUsers || 0));
+
+        if (platformTrendChart) {
+            platformTrendChart.destroy();
+            platformTrendChart = null;
+        }
+
+        platformTrendChart = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        type: 'bar',
+                        label: 'Total Users',
+                        data: totalUsers,
+                        backgroundColor: 'rgba(88, 166, 255, 0.28)',
+                        borderColor: 'rgba(88, 166, 255, 0.7)',
+                        borderWidth: 1,
+                        borderRadius: 4,
+                        barPercentage: 0.9,
+                        categoryPercentage: 0.95,
+                        order: 1
+                    },
+                    {
+                        type: 'line',
+                        label: 'Configured Users',
+                        data: configuredUsers,
+                        borderColor: 'rgba(126, 231, 135, 0.95)',
+                        backgroundColor: 'rgba(126, 231, 135, 0.15)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 3,
+                        tension: 0.25,
+                        fill: false,
+                        order: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#8b949e',
+                            boxWidth: 12,
+                            usePointStyle: true,
+                            pointStyle: 'rectRounded'
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(22, 27, 34, 0.95)',
+                        borderColor: 'rgba(48,54,61,0.8)',
+                        borderWidth: 1,
+                        titleColor: '#e6edf3',
+                        bodyColor: '#c9d1d9'
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#8b949e', maxTicksLimit: 12 },
+                        grid: { color: 'rgba(48,54,61,0.2)' }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            color: '#8b949e',
+                            precision: 0
+                        },
+                        grid: { color: 'rgba(48,54,61,0.25)' }
+                    }
+                }
+            }
+        });
+    }
+
+    // ==================== Render Users Table ====================
+    function renderUsersTable(users) {
+        const tableWrapper = document.getElementById('usersTableWrapper');
+        const table = tableWrapper.querySelector('table.users-table');
+        const thead = table.querySelector('thead');
+        const tbody = document.getElementById('usersTableBody');
+
+        thead.innerHTML = `
+            <tr>
+                <th class="sortable" onclick="sortBy('email')">User <span class="sort-indicator">${sortIcon('email')}</span></th>
+                <th class="sortable" onclick="sortBy('role')">Role <span class="sort-indicator">${sortIcon('role')}</span></th>
+                <th class="sortable" onclick="sortBy('automationEnabled')">Automation <span class="sort-indicator">${sortIcon('automationEnabled')}</span></th>
+                <th class="sortable" onclick="sortBy('joinedAt')">Joined <span class="sort-indicator">${sortIcon('joinedAt')}</span></th>
+                <th class="sortable" onclick="sortBy('lastSignedInAt')">Last Signed In <span class="sort-indicator">${sortIcon('lastSignedInAt')}</span></th>
+                <th class="sortable" onclick="sortBy('rulesCount')">Rules <span class="sort-indicator">${sortIcon('rulesCount')}</span></th>
+                <th class="sortable" onclick="sortBy('actions')">Actions <span class="sort-indicator">${sortIcon('actions')}</span></th>
+            </tr>
+        `;
+
+        if (!users.length) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--text-secondary); padding: 30px;">No users found</td></tr>';
+            return;
+        }
+
+        const sorted = sortUsers(users);
+
+        tbody.innerHTML = sorted.map(u => {
+            const roleBadge = u.role === 'admin'
+                ? '<span class="role-badge admin">🛡️ Admin</span>'
+                : '<span class="role-badge user">👤 User</span>';
+
+            const automationStatus = u.automationEnabled
+                ? '<span class="status-dot active"></span>Active'
+                : '<span class="status-dot inactive"></span>Inactive';
+
+            const roleAction = u.role === 'admin'
+                ? `<button class="action-btn danger" onclick="setRole('${u.uid}', 'user')" title="Demote to user">Demote</button>`
+                : `<button class="action-btn success" onclick="setRole('${u.uid}', 'admin')" title="Promote to admin">Promote</button>`;
+
+            return `<tr>
+                <td class="email-cell" title="${u.email}">${u.email || '<em>No email</em>'}</td>
+                <td>${roleBadge}</td>
+                <td>${automationStatus}</td>
+                <td>${formatDate(u.joinedAt || u.createdAt)}</td>
+                <td>${formatDate(u.lastSignedInAt)}</td>
+                <td>${Number(u.rulesCount || 0)}</td>
+                <td>
+                    <div class="actions-cell">
+                        <button class="action-btn" onclick="viewStats('${u.uid}', '${(u.email || '').replace(/'/g, '')}')">📊 Stats</button>
+                        <button class="action-btn" onclick="impersonateUser('${u.uid}', '${(u.email || '').replace(/'/g, '')}')">👁️ View As</button>
+                        ${roleAction}
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    // ==================== Platform Stats ====================
+    function updatePlatformStats(users) {
+        // Keep KPIs responsive even if trend endpoint temporarily fails.
+        document.getElementById('statTotalUsers').textContent = users.length;
+        document.getElementById('statAdmins').textContent = users.filter(u => u.role === 'admin').length;
+        document.getElementById('statAutomationActive').textContent = users.filter(u => u.automationEnabled).length;
+        document.getElementById('statConfigured').textContent = users.filter(u => (u.profileInitialized || u.rulesCount > 0)).length;
+    }
+
+    // ==================== Role Management ====================
+    async function setRole(uid, role) {
+        const action = role === 'admin' ? 'promote' : 'demote';
+        const user = currentUsers.find(u => u.uid === uid);
+        const label = user?.email || uid;
+        if (!confirm(`Are you sure you want to ${action} "${label}" to ${role}?`)) return;
+
+        try {
+            const resp = await adminApiClient.fetch(`/api/admin/users/${uid}/role`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ role })
+            });
+            const data = await resp.json();
+            if (data.errno !== 0) throw new Error(data.error || 'Failed to update role');
+            showMessage('success', `✅ ${label} is now ${role}`);
+            loadUsers();
+        } catch (e) {
+            showMessage('error', `❌ Failed to update role: ${e.message}`);
+        }
+    }
+
+    // ==================== Impersonation ====================
+    function startHeaderImpersonation(uid, email) {
+        try {
+            localStorage.setItem('adminImpersonationUid', uid);
+            localStorage.setItem('adminImpersonationEmail', email || '');
+        } catch (e) {
+            console.warn('[Admin] Failed to store impersonation state:', e);
+        }
+        window.location.href = '/?impersonating=' + encodeURIComponent(email || uid);
+    }
+
+    async function impersonateUser(uid, email) {
+        if (!confirm(`You are about to sign in as "${email}". You will be redirected to the dashboard as that user.\n\nTo return to admin, sign out and sign back in with your admin credentials.\n\nContinue?`)) return;
+
+        try {
+            const resp = await adminApiClient.fetch('/api/admin/impersonate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid })
+            });
+            const data = await resp.json();
+            if (data.errno !== 0) throw new Error(data.error || 'Impersonation failed');
+
+            const mode = data.result?.mode || 'customToken';
+            const targetEmail = data.result?.targetEmail || email || uid;
+
+            if (mode === 'customToken' && data.result?.customToken) {
+                // Preferred mode: full Firebase Auth impersonation context
+                showMessage('info', `🔄 Signing in as ${targetEmail}...`, 0);
+                await firebase.auth().signInWithCustomToken(data.result.customToken);
+                window.location.href = '/?impersonating=' + encodeURIComponent(targetEmail);
+                return;
+            }
+
+            // Fallback mode when IAM signBlob permission is unavailable.
+            // API calls will run as the selected user via admin-enforced header impersonation.
+            showMessage('warning', `⚠️ IAM token-signing is unavailable. Using secure header impersonation for ${targetEmail}.`, 4000);
+            startHeaderImpersonation(uid, targetEmail);
+        } catch (e) {
+            showMessage('error', `❌ Impersonation failed: ${e.message}`);
+        }
+    }
+
+    // ==================== User Stats Drawer ====================
+    function openStatsDrawer() {
+        document.getElementById('statsDrawer').classList.add('open');
+        document.getElementById('statsBackdrop').classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeStatsDrawer() {
+        document.getElementById('statsDrawer').classList.remove('open');
+        document.getElementById('statsBackdrop').classList.remove('open');
+        document.body.style.overflow = '';
+    }
+
+    document.getElementById('statsBackdrop').addEventListener('click', closeStatsDrawer);
+
+    async function viewStats(uid, email) {
+        document.getElementById('statsDrawerTitle').textContent = `Stats: ${email || uid}`;
+        document.getElementById('statsDrawerBody').innerHTML = '<div class="loading-spinner">Loading stats...</div>';
+        openStatsDrawer();
+
+        try {
+            const resp = await adminApiClient.fetch(`/api/admin/users/${uid}/stats`);
+            const data = await resp.json();
+            if (data.errno !== 0) throw new Error(data.error || 'Failed to load stats');
+
+            renderStats(data.result);
+        } catch (e) {
+            document.getElementById('statsDrawerBody').innerHTML = `<p style="color: var(--color-danger); padding: 20px;">Failed to load stats: ${e.message}</p>`;
+        }
+    }
+
+    function renderStats(stats) {
+        const body = document.getElementById('statsDrawerBody');
+        const cfg = stats.configSummary || {};
+        const autoState = stats.automationState || {};
+
+        const topologyCouplingRaw = (cfg.systemTopology && cfg.systemTopology.coupling)
+            ? String(cfg.systemTopology.coupling).toLowerCase()
+            : 'unknown';
+        const topologyCouplingLabel = topologyCouplingRaw === 'ac'
+            ? 'AC-Coupled'
+            : (topologyCouplingRaw === 'dc' ? 'DC-Coupled' : 'Not set');
+
+        // Config summary section
+        let configHtml = `
+            <div class="stat-section">
+                <div class="stat-section-title">Configuration</div>
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <div class="label">Device SN</div>
+                        <div class="value small">${cfg.hasDeviceSn ? '✅ Configured' : '❌ Missing'}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="label">FoxESS Token</div>
+                        <div class="value small">${cfg.hasFoxessToken ? '✅ Set' : '❌ Missing'}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="label">Amber API Key</div>
+                        <div class="value small">${cfg.hasAmberApiKey ? '✅ Set' : '❌ Missing'}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="label">Timezone</div>
+                        <div class="value small">${cfg.timezone || 'Not set'}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="label">System Topology</div>
+                        <div class="value small">${topologyCouplingLabel}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="label">Rules</div>
+                        <div class="value">${stats.ruleCount}</div>
+                    </div>
+                </div>
+            </div>`;
+
+        // Automation state section
+        let automationHtml = `
+            <div class="stat-section">
+                <div class="stat-section-title">Automation</div>
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <div class="label">Status</div>
+                        <div class="value small">${autoState.enabled ? '<span class="status-dot active"></span>Enabled' : '<span class="status-dot inactive"></span>Disabled'}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="label">Active Rule</div>
+                        <div class="value small">${autoState.activeRule || 'None'}</div>
+                    </div>
+                </div>
+            </div>`;
+
+        // API usage metrics section
+        const metrics = stats.metrics || {};
+        const days = Object.keys(metrics).sort().reverse().slice(0, 14); // Last 14 days
+        let maxTotal = 1;
+        days.forEach(day => {
+            const m = metrics[day];
+            const total = (m.foxess || 0) + (m.amber || 0) + (m.weather || 0);
+            if (total > maxTotal) maxTotal = total;
+        });
+
+        let metricsHtml = '<div class="stat-section"><div class="stat-section-title">API Usage (Last 14 Days)</div>';
+        if (days.length === 0) {
+            metricsHtml += '<p style="color: var(--text-secondary); font-size: 13px;">No metrics data available</p>';
+        } else {
+            metricsHtml += `<div class="metrics-legend">
+                <span class="foxess">FoxESS</span>
+                <span class="amber">Amber</span>
+                <span class="weather">Weather</span>
+            </div>`;
+            days.forEach(day => {
+                const m = metrics[day];
+                const foxess = m.foxess || 0;
+                const amber = m.amber || 0;
+                const weather = m.weather || 0;
+                const total = foxess + amber + weather;
+                const barScale = 200; // max bar width in px
+                metricsHtml += `<div class="metrics-day">
+                    <span class="date">${day.slice(5)}</span>
+                    <div class="metrics-bar-group">
+                        <div class="metrics-bar foxess" style="width: ${Math.max(2, foxess / maxTotal * barScale)}px;" title="FoxESS: ${foxess}"></div>
+                        <div class="metrics-bar amber" style="width: ${Math.max(2, amber / maxTotal * barScale)}px;" title="Amber: ${amber}"></div>
+                        <div class="metrics-bar weather" style="width: ${Math.max(2, weather / maxTotal * barScale)}px;" title="Weather: ${weather}"></div>
+                    </div>
+                    <span class="total">${total}</span>
+                </div>`;
+            });
+        }
+        metricsHtml += '</div>';
+
+        body.innerHTML = configHtml + automationHtml + metricsHtml;
+    }
+
+    // ==================== Init ====================
+    AppShell.init({ pageName: 'admin', requireAuth: true, checkSetup: false });
+    AppShell.onReady(async (ctx) => {
+        adminApiClient = ctx.apiClient;
+        if (!adminApiClient) {
+            document.getElementById('accessDenied').style.display = '';
+            return;
+        }
+        await checkAdminAccess();
+    });
+    </script>
+</body>
+</html>

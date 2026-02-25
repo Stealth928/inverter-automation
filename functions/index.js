@@ -382,6 +382,45 @@ app.use((err, req, res, next) => {
 const authenticateUser = (req, res, next) => authAPI.authenticateUser(req, res, next);
 const tryAttachUser = (req) => authAPI.tryAttachUser(req);
 
+// ==================== ADMIN ROLE SYSTEM ====================
+// Seed admin: sardanapalos928@hotmail.com is always treated as admin.
+// Additional admins can be promoted via the admin panel (stored in Firestore).
+const SEED_ADMIN_EMAIL = 'sardanapalos928@hotmail.com';
+
+/**
+ * Check whether the authenticated user is an admin.
+ * Admin status is determined by:
+ *   1. Matching the seed admin email, OR
+ *   2. Having role: 'admin' in users/{uid} Firestore doc
+ * Results are cached on req._isAdmin for the duration of the request.
+ */
+async function isAdmin(req) {
+  if (req._isAdmin !== undefined) return req._isAdmin;
+  if (!req.user) { req._isAdmin = false; return false; }
+  const email = (req.user.email || '').toLowerCase();
+  if (email === SEED_ADMIN_EMAIL) { req._isAdmin = true; return true; }
+  try {
+    const userDoc = await db.collection('users').doc(req.user.uid).get();
+    const data = userDoc.exists ? userDoc.data() : {};
+    req._isAdmin = data.role === 'admin';
+  } catch (e) {
+    console.warn('[Admin] Error checking admin role:', e.message);
+    req._isAdmin = false;
+  }
+  return req._isAdmin;
+}
+
+/**
+ * Middleware: require admin role. Must be used AFTER authenticateUser.
+ */
+const requireAdmin = async (req, res, next) => {
+  const admin = await isAdmin(req);
+  if (!admin) {
+    return res.status(403).json({ errno: 403, error: 'Admin access required' });
+  }
+  next();
+};
+
 // Health check (no auth required)
 app.get('/api/health', async (req, res) => {
   try {
@@ -1291,8 +1330,459 @@ app.get('/api/tesla/oauth-callback', async (req, res) => {
   }
 });
 
+// ==================== ADMIN API ENDPOINTS ====================
+// All admin routes use authenticateUser + requireAdmin explicitly so they
+// are registered before the catch-all app.use('/api', authenticateUser).
+
+/**
+ * GET /api/admin/users - List all registered users with basic info
+ */
+app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const usersSnap = await db.collection('users').get();
+    const profileByUid = new Map();
+    usersSnap.docs.forEach((doc) => {
+      profileByUid.set(doc.id, doc.data() || {});
+    });
+
+    // Include users that authenticated but never completed onboarding/profile init.
+    // Those users exist in Firebase Auth but may be missing users/{uid} docs.
+    const authByUid = new Map();
+    try {
+      let pageToken;
+      do {
+        const page = await admin.auth().listUsers(1000, pageToken);
+        (page.users || []).forEach((userRecord) => {
+          authByUid.set(userRecord.uid, userRecord);
+        });
+        pageToken = page.pageToken;
+      } while (pageToken);
+    } catch (authListErr) {
+      console.warn('[Admin] listUsers failed; falling back to Firestore-only users:', authListErr.message || authListErr);
+    }
+
+    const allUids = new Set([...profileByUid.keys(), ...authByUid.keys()]);
+
+    const users = await Promise.all(Array.from(allUids).map(async (uid) => {
+      const data = profileByUid.get(uid) || {};
+      const authUser = authByUid.get(uid) || null;
+      const authMetadata = authUser && authUser.metadata ? authUser.metadata : null;
+
+      let rulesCount = 0;
+      if (profileByUid.has(uid)) {
+        try {
+          const rulesSnap = await db.collection('users').doc(uid).collection('rules').get();
+          rulesCount = rulesSnap.size;
+        } catch (e) {
+          // Ignore errors per user and keep endpoint resilient
+        }
+      }
+
+      // Joined date: prefer Firebase Auth creation time (source of truth),
+      // then fall back to Firestore createdAt for backward compatibility.
+      const joinedAt = (authMetadata && authMetadata.creationTime) ? authMetadata.creationTime : (data.createdAt || null);
+      const email = data.email || (authUser && authUser.email ? authUser.email : '');
+      const emailLc = String(email || '').toLowerCase();
+      const isSeedAdmin = emailLc === SEED_ADMIN_EMAIL;
+
+      return {
+        uid,
+        email,
+        role: data.role || (isSeedAdmin ? 'admin' : 'user'),
+        automationEnabled: !!data.automationEnabled,
+        createdAt: data.createdAt || null,
+        joinedAt,
+        lastSignedInAt: (authMetadata && authMetadata.lastSignInTime) ? authMetadata.lastSignInTime : null,
+        rulesCount,
+        profileInitialized: profileByUid.has(uid),
+        lastUpdated: data.lastUpdated || null
+      };
+    }));
+
+    res.json({ errno: 0, result: { users } });
+  } catch (error) {
+    console.error('[Admin] Error listing users:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+/**
+ * GET /api/admin/platform-stats - Compact platform KPIs + trend data
+ * Query: ?days=90 (default 90, min 7, max 365)
+ */
+app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const daysRaw = Number(req.query?.days);
+    const days = Number.isFinite(daysRaw) ? Math.max(7, Math.min(365, Math.floor(daysRaw))) : 90;
+
+    const toMs = (value) => {
+      if (!value) return null;
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') {
+        const parsed = Date.parse(value);
+        return Number.isNaN(parsed) ? null : parsed;
+      }
+      if (typeof value.toDate === 'function') {
+        const d = value.toDate();
+        return d && d.getTime ? d.getTime() : null;
+      }
+      if (Number.isFinite(value._seconds)) return value._seconds * 1000;
+      if (Number.isFinite(value.seconds)) return value.seconds * 1000;
+      return null;
+    };
+
+    // Build date window in UTC date keys (YYYY-MM-DD)
+    const now = new Date();
+    const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const startUtc = todayUtc - (days - 1) * 24 * 60 * 60 * 1000;
+
+    const dateBuckets = [];
+    for (let i = 0; i < days; i++) {
+      const dayMs = startUtc + i * 24 * 60 * 60 * 1000;
+      const date = new Date(dayMs);
+      const key = date.toISOString().slice(0, 10);
+      dateBuckets.push({ key, dayStartMs: dayMs, dayEndMs: dayMs + (24 * 60 * 60 * 1000) - 1 });
+    }
+
+    // Load Firestore user profiles
+    const usersSnap = await db.collection('users').get();
+    const profileByUid = new Map();
+    usersSnap.docs.forEach((doc) => {
+      profileByUid.set(doc.id, doc.data() || {});
+    });
+
+    // Load Firebase Auth users (captures onboarding-only users)
+    const authByUid = new Map();
+    try {
+      let pageToken;
+      do {
+        const page = await admin.auth().listUsers(1000, pageToken);
+        (page.users || []).forEach((userRecord) => authByUid.set(userRecord.uid, userRecord));
+        pageToken = page.pageToken;
+      } while (pageToken);
+    } catch (authErr) {
+      console.warn('[Admin] platform-stats listUsers failed:', authErr.message || authErr);
+    }
+
+    const allUids = new Set([...profileByUid.keys(), ...authByUid.keys()]);
+
+    const users = await Promise.all(Array.from(allUids).map(async (uid) => {
+      const profile = profileByUid.get(uid) || {};
+      const authUser = authByUid.get(uid) || null;
+      const authMetadata = authUser && authUser.metadata ? authUser.metadata : null;
+
+      const email = profile.email || (authUser?.email || '');
+      const emailLc = String(email || '').toLowerCase();
+      const role = profile.role || (emailLc === SEED_ADMIN_EMAIL ? 'admin' : 'user');
+
+      const joinedAtMs = toMs(authMetadata?.creationTime) || toMs(profile.createdAt);
+
+      let configured = false;
+      let configuredAtMs = null;
+      if (profileByUid.has(uid)) {
+        try {
+          const cfgDoc = await db.collection('users').doc(uid).collection('config').doc('main').get();
+          if (cfgDoc.exists) {
+            const cfg = cfgDoc.data() || {};
+            configured = !!(cfg.setupComplete || cfg.deviceSn || cfg.foxessToken || cfg.amberApiKey);
+            if (configured) {
+              configuredAtMs =
+                toMs(cfg.setupCompletedAt) ||
+                toMs(cfg.firstConfiguredAt) ||
+                toMs(cfg.updatedAt) ||
+                toMs(cfg.createdAt) ||
+                toMs(profile.lastUpdated) ||
+                joinedAtMs;
+            }
+          }
+        } catch (cfgErr) {
+          // Keep endpoint resilient for per-user errors
+        }
+      }
+
+      return {
+        uid,
+        role,
+        automationEnabled: !!profile.automationEnabled,
+        joinedAtMs,
+        configured,
+        configuredAtMs
+      };
+    }));
+
+    const joinedSeries = users
+      .map((u) => u.joinedAtMs)
+      .filter((ms) => Number.isFinite(ms))
+      .sort((a, b) => a - b);
+
+    const configuredSeries = users
+      .map((u) => u.configuredAtMs)
+      .filter((ms) => Number.isFinite(ms))
+      .sort((a, b) => a - b);
+
+    let joinedIdx = 0;
+    let configuredIdx = 0;
+    let totalUsers = 0;
+    let configuredUsers = 0;
+
+    const trend = dateBuckets.map((bucket) => {
+      while (joinedIdx < joinedSeries.length && joinedSeries[joinedIdx] <= bucket.dayEndMs) {
+        totalUsers += 1;
+        joinedIdx += 1;
+      }
+      while (configuredIdx < configuredSeries.length && configuredSeries[configuredIdx] <= bucket.dayEndMs) {
+        configuredUsers += 1;
+        configuredIdx += 1;
+      }
+      return {
+        date: bucket.key,
+        totalUsers,
+        configuredUsers
+      };
+    });
+
+    const summary = {
+      totalUsers: users.length,
+      configuredUsers: users.filter((u) => u.configured).length,
+      admins: users.filter((u) => u.role === 'admin').length,
+      automationActive: users.filter((u) => u.automationEnabled).length
+    };
+
+    res.json({ errno: 0, result: { summary, trend, days } });
+  } catch (error) {
+    console.error('[Admin] Error loading platform stats:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+/**
+ * POST /api/admin/users/:uid/role - Update a user's role
+ * Body: { role: 'admin' | 'user' }
+ */
+app.post('/api/admin/users/:uid/role', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { role } = req.body;
+    if (!['admin', 'user'].includes(role)) {
+      return res.status(400).json({ errno: 400, error: 'Role must be "admin" or "user"' });
+    }
+    // Prevent removing your own admin role
+    if (uid === req.user.uid && role !== 'admin') {
+      return res.status(400).json({ errno: 400, error: 'Cannot remove your own admin role' });
+    }
+    await db.collection('users').doc(uid).set({ role, lastUpdated: serverTimestamp() }, { merge: true });
+    res.json({ errno: 0, result: { uid, role } });
+  } catch (error) {
+    console.error('[Admin] Error setting role:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+/**
+ * GET /api/admin/users/:uid/stats - Get utilization stats for a specific user
+ * Returns last 30 days of per-user API metrics, automation state, rule count, and config summary
+ */
+app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    
+    // 1. Gather last 30 days of per-user API metrics
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const metricsSnap = await db.collection('users').doc(uid)
+      .collection('metrics').orderBy('updatedAt', 'desc').limit(30).get();
+    const metrics = {};
+    metricsSnap.forEach(doc => {
+      metrics[doc.id] = { foxess: doc.data().foxess || 0, amber: doc.data().amber || 0, weather: doc.data().weather || 0 };
+    });
+
+    // 2. Automation state
+    let automationState = null;
+    try {
+      const stateDoc = await db.collection('users').doc(uid).collection('automation').doc('state').get();
+      automationState = stateDoc.exists ? stateDoc.data() : null;
+    } catch (e) { /* ignore */ }
+
+    // 3. Rule count
+    let ruleCount = 0;
+    try {
+      const rulesSnap = await db.collection('users').doc(uid).collection('rules').get();
+      ruleCount = rulesSnap.size;
+    } catch (e) { /* ignore */ }
+
+    // 4. Config summary (no secrets)
+    let configSummary = {};
+    try {
+      const configDoc = await db.collection('users').doc(uid).collection('config').doc('main').get();
+      if (configDoc.exists) {
+        const c = configDoc.data();
+
+        const rawSystemTopology = c.systemTopology || c.topology || null;
+        let resolvedCoupling = normalizeCouplingValue(
+          rawSystemTopology?.coupling ||
+          c.coupling ||
+          c.systemCoupling ||
+          c.topologyCoupling
+        );
+
+        // Legacy compatibility: older payloads may only have boolean hints.
+        const legacyAcHint =
+          (typeof rawSystemTopology?.isLikelyAcCoupled === 'boolean')
+            ? rawSystemTopology.isLikelyAcCoupled
+            : ((typeof c.isLikelyAcCoupled === 'boolean') ? c.isLikelyAcCoupled : null);
+
+        if (resolvedCoupling === 'unknown' && legacyAcHint !== null) {
+          resolvedCoupling = legacyAcHint ? 'ac' : 'dc';
+        }
+
+        const normalizedSystemTopology = {
+          ...(rawSystemTopology || {}),
+          coupling: resolvedCoupling,
+          source: rawSystemTopology?.source || (legacyAcHint !== null ? 'legacy' : 'unknown')
+        };
+
+        configSummary = {
+          hasDeviceSn: !!c.deviceSn,
+          hasFoxessToken: !!c.foxessToken,
+          hasAmberApiKey: !!c.amberApiKey,
+          location: c.location || null,
+          timezone: c.timezone || null,
+          systemTopology: normalizedSystemTopology
+        };
+      }
+    } catch (e) { /* ignore */ }
+
+    res.json({ errno: 0, result: { uid, metrics, automationState, ruleCount, configSummary } });
+  } catch (error) {
+    console.error('[Admin] Error getting user stats:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+/**
+ * POST /api/admin/impersonate - Generate a custom token for the target user
+ * Body: { uid: 'target-user-uid' }
+ * Returns a custom Firebase Auth token the admin can use to sign in as that user.
+ */
+app.post('/api/admin/impersonate', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const { uid } = req.body;
+    if (!uid) {
+      return res.status(400).json({ errno: 400, error: 'uid is required' });
+    }
+    // Verify the target user exists
+    let targetUser;
+    try {
+      targetUser = await admin.auth().getUser(uid);
+    } catch (e) {
+      return res.status(404).json({ errno: 404, error: 'User not found' });
+    }
+    // Try to create a custom token for full auth-context impersonation.
+    // If IAM signBlob permissions are missing, gracefully fall back to
+    // header-based impersonation mode (enforced server-side for admins only).
+    let customToken = null;
+    let mode = 'customToken';
+    try {
+      customToken = await admin.auth().createCustomToken(uid, { impersonatedBy: req.user.uid });
+    } catch (tokenErr) {
+      const msg = tokenErr && tokenErr.message ? tokenErr.message : String(tokenErr);
+      const isSignBlobDenied = msg.includes('iam.serviceAccounts.signBlob') || msg.includes('Permission iam.serviceAccounts.signBlob denied');
+      if (isSignBlobDenied) {
+        mode = 'header';
+        console.warn('[Admin] createCustomToken signBlob permission missing; using header impersonation fallback');
+      } else {
+        throw tokenErr;
+      }
+    }
+    
+    // Audit log
+    await db.collection('admin_audit').add({
+      action: 'impersonate',
+      mode,
+      adminUid: req.user.uid,
+      adminEmail: req.user.email,
+      targetUid: uid,
+      targetEmail: targetUser.email || '',
+      timestamp: serverTimestamp()
+    });
+
+    res.json({
+      errno: 0,
+      result: {
+        mode,
+        customToken,
+        targetUid: uid,
+        targetEmail: targetUser.email || ''
+      }
+    });
+  } catch (error) {
+    console.error('[Admin] Error impersonating user:', error);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+/**
+ * GET /api/admin/check - Check if the current user is an admin
+ * Used by the frontend to decide whether to show the admin nav link
+ */
+app.get('/api/admin/check', authenticateUser, async (req, res) => {
+  const adminStatus = await isAdmin(req);
+  res.json({ errno: 0, result: { isAdmin: adminStatus } });
+});
+
 // Apply auth middleware to remaining API routes
 app.use('/api', authenticateUser);
+
+// Optional admin impersonation middleware (header-based fallback mode)
+// When X-Impersonate-Uid is present and requester is admin, all non-admin
+// API routes execute against the impersonated user context.
+app.use('/api', async (req, res, next) => {
+  try {
+    // Never impersonate admin management routes themselves.
+    if (req.path && req.path.startsWith('/admin')) {
+      return next();
+    }
+
+    const impersonateUid = req.headers['x-impersonate-uid'];
+    if (!impersonateUid || typeof impersonateUid !== 'string') {
+      return next();
+    }
+
+    const targetUid = impersonateUid.trim();
+    if (!targetUid) return next();
+
+    const requesterUid = req.user && req.user.uid ? req.user.uid : null;
+    const requesterEmail = req.user && req.user.email ? req.user.email : '';
+    if (!requesterUid) {
+      return res.status(401).json({ errno: 401, error: 'Unauthorized' });
+    }
+
+    const adminStatus = await isAdmin(req);
+    if (!adminStatus) {
+      return res.status(403).json({ errno: 403, error: 'Impersonation requires admin access' });
+    }
+
+    // Validate target exists in users collection.
+    const targetUserDoc = await db.collection('users').doc(targetUid).get();
+    if (!targetUserDoc.exists) {
+      return res.status(404).json({ errno: 404, error: 'Impersonated user not found' });
+    }
+
+    req.actorUser = { uid: requesterUid, email: requesterEmail };
+    req.user = {
+      ...req.user,
+      uid: targetUid,
+      impersonatedBy: requesterUid,
+      impersonatedByEmail: requesterEmail,
+      isImpersonating: true
+    };
+
+    next();
+  } catch (error) {
+    console.error('[Admin] impersonation middleware error:', error);
+    res.status(500).json({ errno: 500, error: error.message || 'Impersonation middleware failed' });
+  }
+});
 
 // ==================== PROTECTED ENDPOINTS (After Auth Middleware) ====================
 
@@ -1977,6 +2467,39 @@ async function addHistoryEntry(userId, entry) {
   }
 }
 
+async function deleteCollectionDocs(query, batchSize = 200) {
+  let snapshot = await query.limit(batchSize).get();
+  while (!snapshot.empty) {
+    const batch = db.batch();
+    snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    snapshot = await query.limit(batchSize).get();
+  }
+}
+
+async function deleteDocumentTreeFallback(docRef) {
+  const subcollections = await docRef.listCollections();
+  for (const subcollection of subcollections) {
+    let snapshot = await subcollection.limit(100).get();
+    while (!snapshot.empty) {
+      for (const doc of snapshot.docs) {
+        await deleteDocumentTreeFallback(doc.ref);
+      }
+      snapshot = await subcollection.limit(100).get();
+    }
+  }
+  await docRef.delete().catch(() => {});
+}
+
+async function deleteUserDataTree(userId) {
+  const userRef = db.collection('users').doc(userId);
+  if (typeof db.recursiveDelete === 'function') {
+    await db.recursiveDelete(userRef);
+    return;
+  }
+  await deleteDocumentTreeFallback(userRef);
+}
+
 // ==================== API ENDPOINTS ====================
 
 // Get user config
@@ -2294,15 +2817,29 @@ app.get('/api/automation/status', async (req, res) => {
 app.post('/api/user/init-profile', authenticateUser, async (req, res) => {
   try {
     const userId = req.user.uid;
-    
-    // Create user profile document if it doesn't exist
-    await db.collection('users').doc(userId).set({
+
+    const userRef = db.collection('users').doc(userId);
+    const userDoc = await userRef.get();
+    const existing = userDoc.exists ? (userDoc.data() || {}) : {};
+
+    // IMPORTANT: createdAt must be immutable once set.
+    // Previous logic used merge+serverTimestamp on every init call, which
+    // could shift "joined" date repeatedly. We now set createdAt only when missing.
+    const profileUpdate = {
       uid: userId,
       email: req.user.email || '',
-      automationEnabled: false,
-      createdAt: serverTimestamp(),
       lastUpdated: serverTimestamp()
-    }, { merge: true });
+    };
+
+    if (!userDoc.exists || typeof existing.automationEnabled !== 'boolean') {
+      profileUpdate.automationEnabled = false;
+    }
+
+    if (!existing.createdAt) {
+      profileUpdate.createdAt = serverTimestamp();
+    }
+
+    await userRef.set(profileUpdate, { merge: true });
     
     // Ensure automation state exists and is enabled
     const stateRef = db.collection('users').doc(userId).collection('automation').doc('state');
@@ -2330,6 +2867,54 @@ app.post('/api/user/init-profile', authenticateUser, async (req, res) => {
   } catch (error) {
     console.error('[API] Error initializing user:', error);
     res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Delete own account + user data (irreversible)
+app.post('/api/user/delete-account', authenticateUser, async (req, res) => {
+  try {
+    // Safety: disallow deleting through admin header-impersonation context.
+    if (req.actorUser) {
+      return res.status(403).json({ errno: 403, error: 'Stop impersonation before deleting an account.' });
+    }
+
+    const userId = req.user.uid;
+    const userEmail = String(req.user.email || '').trim().toLowerCase();
+    const confirmText = String(req.body?.confirmText || '').trim();
+    const confirmEmail = String(req.body?.confirmEmail || '').trim().toLowerCase();
+
+    if (confirmText !== 'DELETE') {
+      return res.status(400).json({ errno: 400, error: 'Confirmation text must be DELETE' });
+    }
+
+    if (userEmail && confirmEmail !== userEmail) {
+      return res.status(400).json({ errno: 400, error: 'Confirmation email does not match signed-in user' });
+    }
+
+    // Remove user-scoped Firestore data first.
+    await deleteUserDataTree(userId);
+
+    // Best-effort cleanup for audit records referencing this user.
+    try {
+      await deleteCollectionDocs(db.collection('admin_audit').where('adminUid', '==', userId));
+      await deleteCollectionDocs(db.collection('admin_audit').where('targetUid', '==', userId));
+    } catch (auditError) {
+      console.warn('[AccountDelete] Failed to clean admin_audit references:', auditError.message || auditError);
+    }
+
+    // Delete Firebase Auth identity.
+    try {
+      await admin.auth().deleteUser(userId);
+    } catch (authErr) {
+      if (!authErr || authErr.code !== 'auth/user-not-found') {
+        throw authErr;
+      }
+    }
+
+    res.json({ errno: 0, result: { deleted: true } });
+  } catch (error) {
+    console.error('[API] /api/user/delete-account error:', error && error.stack ? error.stack : String(error));
+    res.status(500).json({ errno: 500, error: error.message || String(error) });
   }
 });
 

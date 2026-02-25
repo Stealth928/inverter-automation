@@ -37,6 +37,27 @@ async function normalizeFetchResponse(response) {
   };
 }
 
+const IMPERSONATION_UID_KEY = 'adminImpersonationUid';
+
+function getImpersonationUid() {
+  try {
+    return localStorage.getItem(IMPERSONATION_UID_KEY) || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function shouldSkipImpersonationHeader(endpoint) {
+  try {
+    const path = endpoint.startsWith('http')
+      ? new URL(endpoint, window.location.origin).pathname
+      : new URL(endpoint, window.location.origin).pathname;
+    return path.startsWith('/api/admin');
+  } catch (e) {
+    return false;
+  }
+}
+
 class APIClient {
   constructor(firebaseAuth) {
     this.auth = firebaseAuth;
@@ -86,6 +107,11 @@ class APIClient {
     // Add auth header if signed in
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const impersonationUid = getImpersonationUid();
+    if (impersonationUid && !shouldSkipImpersonationHeader(endpoint)) {
+      headers['X-Impersonate-Uid'] = impersonationUid;
     }
 
     const url = `${this.baseUrl}${endpoint}`;
@@ -144,6 +170,11 @@ class APIClient {
     
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const impersonationUid = getImpersonationUid();
+    if (impersonationUid && !shouldSkipImpersonationHeader(endpoint)) {
+      headers['X-Impersonate-Uid'] = impersonationUid;
     }
 
     const url = endpoint.startsWith('http') ? endpoint : `${this.baseUrl}${endpoint}`;

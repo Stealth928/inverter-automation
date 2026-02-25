@@ -16,6 +16,7 @@
         initResolved: false,
         ready: false,
         user: null,
+        isAdmin: null,
         readyCallbacks: [],
         signOutCallbacks: [],
         metricsTimer: null,
@@ -123,7 +124,55 @@
         return true;
     }
 
+    function setAdminNavVisibility(isAdmin) {
+        try {
+            const teslaLink = document.getElementById('teslaNavLink');
+            const topologyLink = document.getElementById('topologyNavLink');
+            const adminLink = document.getElementById('adminNavLink');
+            if (teslaLink) teslaLink.style.display = isAdmin ? '' : 'none';
+            if (topologyLink) topologyLink.style.display = isAdmin ? '' : 'none';
+            if (adminLink) adminLink.style.display = isAdmin ? '' : 'none';
+        } catch (e) {
+            console.warn('[AppShell] Failed to set admin nav visibility', e);
+        }
+    }
+
+    async function refreshAdminNavVisibility(user) {
+        if (!user) {
+            state.isAdmin = false;
+            setAdminNavVisibility(false);
+            return;
+        }
+
+        const seedAdminEmail = 'sardanapalos928@hotmail.com';
+        const byEmail = !!(user.email && String(user.email).toLowerCase() === seedAdminEmail);
+
+        // Apply a fast local decision first to avoid visual delay/flicker.
+        setAdminNavVisibility(byEmail);
+
+        // Then confirm via backend role check (supports promoted admins too).
+        try {
+            const client = window.apiClient || await waitForAPIClient(2000);
+            const response = await client.fetch('/api/admin/check');
+            if (!response || !response.ok) {
+                state.isAdmin = byEmail;
+                setAdminNavVisibility(byEmail);
+                return;
+            }
+            const data = await response.json().catch(() => null);
+            const backendIsAdmin = !!(data && data.errno === 0 && data.result && data.result.isAdmin === true);
+            state.isAdmin = backendIsAdmin || byEmail;
+            setAdminNavVisibility(state.isAdmin);
+        } catch (e) {
+            state.isAdmin = byEmail;
+            setAdminNavVisibility(byEmail);
+        }
+    }
+
     function updateUserIdentity(user) {
+        // Keep admin nav visibility in sync even if user-menu is not rendered yet.
+        refreshAdminNavVisibility(user);
+
         const menu = document.querySelector('[data-user-menu]');
         if (!menu) return;
         const avatar = menu.querySelector('[data-user-avatar]');
@@ -157,35 +206,46 @@
             }
         }
 
-        // Reveal WIP admin-only nav links for the authorized user.
-        try {
-            const adminEmail = 'sardanapalos928@hotmail.com';
-            const isAdmin = !!(user && user.email && String(user.email).toLowerCase() === adminEmail);
-            const teslaLink = document.getElementById('teslaNavLink');
-            const topologyLink = document.getElementById('topologyNavLink');
-            if (teslaLink) teslaLink.style.display = isAdmin ? '' : 'none';
-            if (topologyLink) topologyLink.style.display = isAdmin ? '' : 'none';
-        } catch (e) {
-            console.warn('[AppShell] Failed to update admin nav links', e);
-        }
     }
 
     function setupNavHighlight() {
         const links = document.querySelectorAll('.nav-link');
         if (!links.length) return;
-        const currentPath = window.location.pathname === '/' ? '/index.html' : window.location.pathname.replace(/\/$/, '');
+        const normalizePath = (path) => {
+            const cleaned = (path || '').replace(/\/$/, '');
+            if (cleaned === '' || cleaned === '/' || cleaned === '/index') return '/index.html';
+            return cleaned;
+        };
+
+        const currentPath = normalizePath(window.location.pathname);
+        const homeAliases = new Set(['/index.html']);
+        let matched = false;
+
         links.forEach(link => {
             try {
-                const linkPath = new URL(link.getAttribute('href'), window.location.origin).pathname.replace(/\/$/, '');
-                if (linkPath === currentPath) {
+                const linkPath = normalizePath(new URL(link.getAttribute('href'), window.location.origin).pathname);
+                const isHomeMatch = homeAliases.has(currentPath) && homeAliases.has(linkPath);
+                if (linkPath === currentPath || isHomeMatch) {
                     link.classList.add('active');
+                    link.setAttribute('aria-current', 'page');
+                    matched = true;
                 } else {
                     link.classList.remove('active');
+                    link.removeAttribute('aria-current');
                 }
             } catch (err) {
                 // Ignore invalid URLs
             }
         });
+
+        // Fallback: ensure Overview is active on home route even if URL parsing differs.
+        if (!matched && homeAliases.has(currentPath)) {
+            const overviewLink = document.querySelector('.nav-link[href="/"]') || document.querySelector('.nav-link[href="/index.html"]');
+            if (overviewLink) {
+                overviewLink.classList.add('active');
+                overviewLink.setAttribute('aria-current', 'page');
+            }
+        }
     }
 
     function setupUserMenu() {
@@ -196,6 +256,27 @@
         const settingsBtn = menu.querySelector('[data-go-settings]');
         const contactUsBtn = menu.querySelector('[data-contact-us]');
         const signOutBtn = menu.querySelector('[data-signout]');
+
+        const getImpersonationUid = () => {
+            try { return localStorage.getItem('adminImpersonationUid') || ''; } catch (e) { return ''; }
+        };
+
+        const clearImpersonation = () => {
+            try {
+                localStorage.removeItem('adminImpersonationUid');
+                localStorage.removeItem('adminImpersonationEmail');
+            } catch (e) {
+                // ignore
+            }
+        };
+
+        const notify = (type, message) => {
+            if (typeof window.showMessage === 'function') {
+                window.showMessage(type, message);
+            } else {
+                window.alert(message);
+            }
+        };
 
         if (avatarBtn && dropdown) {
             avatarBtn.addEventListener('click', () => {
@@ -224,8 +305,111 @@
             });
         }
 
+        // Add stop-impersonation action once per page load
+        if (dropdown && !dropdown.querySelector('[data-stop-impersonation]')) {
+            const stopBtn = document.createElement('button');
+            stopBtn.className = 'user-dropdown-item danger';
+            stopBtn.type = 'button';
+            stopBtn.setAttribute('data-stop-impersonation', '1');
+            stopBtn.textContent = '🛑 Stop Impersonation';
+            stopBtn.style.display = getImpersonationUid() ? '' : 'none';
+            stopBtn.addEventListener('click', () => {
+                clearImpersonation();
+                if (typeof safeRedirect === 'function') {
+                    safeRedirect('/admin.html');
+                } else {
+                    window.location.href = '/admin.html';
+                }
+            });
+            dropdown.appendChild(stopBtn);
+        }
+
+        // Add delete-account action once per page load (before Sign Out)
+        if (dropdown && !dropdown.querySelector('[data-delete-account]')) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'user-dropdown-item danger';
+            deleteBtn.type = 'button';
+            deleteBtn.setAttribute('data-delete-account', '1');
+            deleteBtn.textContent = '🗑️ Delete Account';
+
+            deleteBtn.addEventListener('click', async () => {
+                const currentUser = state.user;
+                if (!currentUser) {
+                    notify('error', 'You must be signed in to delete your account.');
+                    return;
+                }
+
+                if (getImpersonationUid()) {
+                    notify('warning', 'Stop impersonation before deleting an account.');
+                    return;
+                }
+
+                const email = String(currentUser.email || '').trim();
+
+                const firstConfirm = window.confirm(
+                    'Delete account permanently? This action cannot be undone and will remove your data, rules, history, and settings.'
+                );
+                if (!firstConfirm) return;
+
+                const confirmText = window.prompt('Type DELETE to confirm account deletion:');
+                if (confirmText !== 'DELETE') {
+                    notify('warning', 'Account deletion cancelled (confirmation text did not match).');
+                    return;
+                }
+
+                const confirmEmail = email
+                    ? window.prompt(`Type your email (${email}) to confirm:`)
+                    : '';
+
+                if (email && String(confirmEmail || '').trim().toLowerCase() !== email.toLowerCase()) {
+                    notify('warning', 'Account deletion cancelled (email confirmation did not match).');
+                    return;
+                }
+
+                const originalLabel = deleteBtn.textContent;
+                deleteBtn.disabled = true;
+                deleteBtn.textContent = 'Deleting...';
+
+                try {
+                    const response = await authFetch('/api/user/delete-account', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ confirmText: 'DELETE', confirmEmail: confirmEmail || '' })
+                    });
+
+                    const data = await response.json().catch(() => null);
+                    if (!response.ok || !data || data.errno !== 0) {
+                        throw new Error(data && data.error ? data.error : `Delete failed (${response.status})`);
+                    }
+
+                    clearImpersonation();
+                    try {
+                        if (typeof window.firebaseAuth !== 'undefined') {
+                            await window.firebaseAuth.signOut();
+                        }
+                    } catch (e) {
+                        // Best effort
+                    }
+
+                    window.location.href = '/login.html?accountDeleted=1';
+                } catch (error) {
+                    notify('error', `Failed to delete account: ${error.message || error}`);
+                } finally {
+                    deleteBtn.disabled = false;
+                    deleteBtn.textContent = originalLabel;
+                }
+            });
+
+            if (signOutBtn) {
+                dropdown.insertBefore(deleteBtn, signOutBtn);
+            } else {
+                dropdown.appendChild(deleteBtn);
+            }
+        }
+
         if (signOutBtn) {
             signOutBtn.addEventListener('click', async () => {
+                clearImpersonation();
                 await signOut();
             });
         }
@@ -438,8 +622,24 @@
 
     async function signOut() {
         try {
+            let signedOut = false;
             if (typeof window.firebaseAuth !== 'undefined') {
-                await window.firebaseAuth.signOut();
+                const result = await window.firebaseAuth.signOut();
+                signedOut = !(result && result.success === false);
+            }
+
+            // Fallback: if wrapper sign-out did not succeed (e.g. wrapper not initialized),
+            // use Firebase Auth SDK directly when available.
+            if (!signedOut && typeof firebase !== 'undefined' && firebase.auth) {
+                const authInstance = firebase.auth();
+                if (authInstance && authInstance.currentUser) {
+                    await authInstance.signOut();
+                    signedOut = true;
+                }
+            }
+
+            if (!signedOut) {
+                throw new Error('No active authenticated session found');
             }
         } catch (error) {
             console.warn('[AppShell] Sign out failed', error);
@@ -671,6 +871,9 @@
         setupNavHighlight();
         setupUserMenu();
         relocateMetricsWidget();
+        // Re-apply identity and admin link visibility in case auth state arrived
+        // before DOM was ready on navigation.
+        updateUserIdentity(state.user);
     });
 
     window.AppShell = {

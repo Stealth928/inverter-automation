@@ -254,6 +254,11 @@ body.has-fixed-nav {
 
 /* Ensure Tesla Integration link appears at the very end of the nav */
 .nav-link[href="/tesla-integration.html"] {
+    order: 9998 !important;
+}
+
+/* Admin panel link - always last */
+.nav-link[href="/admin.html"] {
     order: 9999 !important;
 }
 
