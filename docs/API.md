@@ -125,6 +125,49 @@ Content-Type: application/json
 { "errno": 0, "msg": "Config saved" }
 ```
 
+### Get System Topology
+```
+GET /api/config/system-topology
+Authorization: Bearer <token>
+```
+Returns persisted coupling hint used by reports/history pages to avoid repeated real-time topology probes.
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": {
+    "coupling": "ac",
+    "isLikelyAcCoupled": true,
+    "source": "auto",
+    "confidence": 0.9,
+    "lastDetectedAt": 1766900000000,
+    "refreshAfterMs": 14400000
+  }
+}
+```
+
+### Save System Topology
+```
+POST /api/config/system-topology
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "coupling": "ac",
+  "source": "auto",
+  "confidence": 0.9,
+  "lastDetectedAt": 1766900000000,
+  "refreshAfterMs": 14400000
+}
+```
+Persists coupling hint in `users/{uid}/config/main.systemTopology`.
+
+**Response:**
+```json
+{ "errno": 0, "msg": "System topology saved" }
+```
+
 ### Validate API Keys
 ```
 POST /api/config/validate-keys

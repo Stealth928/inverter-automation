@@ -423,6 +423,7 @@
                 Raw inverter data used to detect system topology. Look for:
                 <br />• <strong>pvPower = 0 in daytime?</strong> Might be AC-coupled
                 <br />• <strong>feedinPower high but pvPower low?</strong> External solar inverter likely
+                <br />• <strong>meterPower2 positive while pvPower is low?</strong> External solar likely measured on meter channel
             </p>
 
             <table class="telemetry-table" id="telemetryTable">
@@ -615,20 +616,27 @@
             const datas = result?.datas || [];
             const getVar = (name) => datas.find(d => d.variable === name)?.value ?? 0;
 
-            const pvPower = getVar('pvPower');
-            const feedinPower = getVar('feedinPower');
-            const loadsPower = getVar('loadsPower');
-            const generationPower = getVar('generationPower');
+            const toKW = (raw) => {
+                const n = Number(raw);
+                if (isNaN(n)) return 0;
+                return Math.abs(n) > 100 ? (n / 1000) : n;
+            };
+
+            const pvPower = toKW(getVar('pvPower'));
+            const meterPower2 = toKW(getVar('meterPower2'));
+            const feedinPower = toKW(getVar('feedinPower'));
+            const generationPower = toKW(getVar('generationPower'));
 
             // Daytime detection (simplified)
             const isDaylight = new Date().getHours() >= 6 && new Date().getHours() <= 18;
 
             // AC-coupled indicators
-            const hasFeedinButNoPV = feedinPower > 500 && pvPower < 100;
-            const isLikelyACCoupled = isDaylight && hasFeedinButNoPV;
+            const hasFeedinButNoPV = feedinPower > 0.5 && pvPower < 0.1;
+            const meter2SuggestsExternalPV = meterPower2 > 0.5 && pvPower < 0.1;
+            const isLikelyACCoupled = isDaylight && (hasFeedinButNoPV || meter2SuggestsExternalPV);
 
             // DC-coupled indicators
-            const isLikelyDCCoupled = pvPower > 1000 || (pvPower > 0 && generationPower > 0);
+            const isLikelyDCCoupled = pvPower > 0.5 || (pvPower > 0.1 && generationPower > 0.1);
 
             if (isLikelyACCoupled && !isLikelyDCCoupled) {
                 return 'ac-coupled';
@@ -658,18 +666,25 @@
                 const result = telemetry[0];
                 const datas = result?.datas || [];
                 const getVar = (name) => datas.find(d => d.variable === name)?.value ?? 0;
+                const toKW = (raw) => {
+                    const n = Number(raw);
+                    if (isNaN(n)) return 0;
+                    return Math.abs(n) > 100 ? (n / 1000) : n;
+                };
 
-                const pvPower = getVar('pvPower');
-                const feedinPower = getVar('feedinPower');
-                const loadsPower = getVar('loadsPower');
+                const pvPower = toKW(getVar('pvPower'));
+                const meterPower2 = toKW(getVar('meterPower2'));
+                const effectiveSolar = (topology === 'ac-coupled' && meterPower2 > 0.05) ? meterPower2 : pvPower;
+                const feedinPower = toKW(getVar('feedinPower'));
+                const loadsPower = toKW(getVar('loadsPower'));
 
                 // Update display
                 const topoEl = document.getElementById('topologyResult');
                 topoEl.innerHTML = `${topology.toUpperCase()}<div class="topology-indicator ${topology.toLowerCase()}">${topology}</div>`;
 
-                document.getElementById('solarGenResult').textContent = `${pvPower.toFixed(0)}W`;
-                document.getElementById('currentExportResult').textContent = `${feedinPower.toFixed(0)}W`;
-                document.getElementById('houseLoadResult').textContent = `${loadsPower.toFixed(0)}W`;
+                document.getElementById('solarGenResult').textContent = `${effectiveSolar.toFixed(2)}kW`;
+                document.getElementById('currentExportResult').textContent = `${feedinPower.toFixed(2)}kW`;
+                document.getElementById('houseLoadResult').textContent = `${loadsPower.toFixed(2)}kW`;
 
                 addLog(`✓ Topology detected: ${topology}`, 'success');
 

@@ -116,9 +116,8 @@ test.describe('Test Lab Page', () => {
   });
 
   test('should show action that would be taken', async ({ page }) => {
-    const hasAction = await page.getByText(/action|work mode|charge|discharge|feedin|standby/i).count() > 0;
-    
-    expect(hasAction).toBeTruthy();
+    const hasActionIntentUi = await page.getByText(/exactly what would happen|run automation test|mock inverter scheduler|api payload preview/i).count() > 0;
+    expect(hasActionIntentUi).toBeTruthy();
   });
 
   test('should have clear/reset button', async ({ page }) => {

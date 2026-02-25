@@ -1952,6 +1952,15 @@ function isTimeInRange(currentTime, startTime, endTime) {
   }
 }
 
+function normalizeCouplingValue(value) {
+  const raw = String(value || '').toLowerCase().trim();
+  if (raw === 'ac' || raw === 'ac-coupled' || raw === 'ac_coupled') return 'ac';
+  if (raw === 'dc' || raw === 'dc-coupled' || raw === 'dc_coupled') return 'dc';
+  return 'unknown';
+}
+
+const DEFAULT_TOPOLOGY_REFRESH_MS = 4 * 60 * 60 * 1000;
+
 /**
  * Add entry to user history
  */
@@ -2003,6 +2012,77 @@ app.get('/api/config', async (req, res) => {
     console.error('[Config] Error getting user config:', error.message);
     // Return safe empty config instead of 500 error
     res.json({ errno: 0, result: {} });
+  }
+});
+
+// Get persisted system topology/coupling hint for low-cost frontend detection
+app.get('/api/config/system-topology', async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const userConfig = await getUserConfig(userId);
+    const topology = userConfig?.systemTopology || {};
+    const coupling = normalizeCouplingValue(topology.coupling);
+
+    res.json({
+      errno: 0,
+      result: {
+        coupling,
+        isLikelyAcCoupled: coupling === 'ac' ? true : (coupling === 'dc' ? false : null),
+        source: topology.source || 'unknown',
+        confidence: Number.isFinite(topology.confidence) ? Number(topology.confidence) : null,
+        lastDetectedAt: topology.lastDetectedAt || null,
+        updatedAt: topology.updatedAt || null,
+        evidence: topology.evidence || null,
+        refreshAfterMs: Number.isFinite(topology.refreshAfterMs) ? Number(topology.refreshAfterMs) : DEFAULT_TOPOLOGY_REFRESH_MS
+      }
+    });
+  } catch (error) {
+    console.error('[Config] Error getting system topology:', error.message);
+    res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+// Persist system topology/coupling hint (manual or auto)
+app.post('/api/config/system-topology', async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const coupling = normalizeCouplingValue(req.body?.coupling);
+    const sourceRaw = String(req.body?.source || 'auto').toLowerCase().trim();
+    const source = (sourceRaw === 'manual' || sourceRaw === 'auto') ? sourceRaw : 'auto';
+    const confidenceRaw = Number(req.body?.confidence);
+    const confidence = Number.isFinite(confidenceRaw)
+      ? Math.max(0, Math.min(1, confidenceRaw))
+      : null;
+    const refreshAfterMsRaw = Number(req.body?.refreshAfterMs);
+    const refreshAfterMs = Number.isFinite(refreshAfterMsRaw) && refreshAfterMsRaw > 0
+      ? Math.floor(refreshAfterMsRaw)
+      : DEFAULT_TOPOLOGY_REFRESH_MS;
+    const lastDetectedAtRaw = Number(req.body?.lastDetectedAt);
+    const lastDetectedAt = Number.isFinite(lastDetectedAtRaw) && lastDetectedAtRaw > 0
+      ? Math.floor(lastDetectedAtRaw)
+      : Date.now();
+
+    const systemTopology = {
+      coupling,
+      source,
+      updatedAt: serverTimestamp(),
+      lastDetectedAt
+    };
+
+    if (confidence !== null) systemTopology.confidence = confidence;
+    systemTopology.refreshAfterMs = refreshAfterMs;
+    if (req.body?.evidence && typeof req.body.evidence === 'object') {
+      systemTopology.evidence = req.body.evidence;
+    }
+
+    await db.collection('users').doc(userId).collection('config').doc('main').set({
+      systemTopology
+    }, { merge: true });
+
+    res.json({ errno: 0, msg: 'System topology saved', result: systemTopology });
+  } catch (error) {
+    console.error('[Config] Error saving system topology:', error.message);
+    res.status(500).json({ errno: 500, error: error.message });
   }
 });
 
@@ -6981,7 +7061,7 @@ app.get('/api/inverter/history', authenticateUser, async (req, res) => {
             sn,
             begin,
             end,
-            variables: ['generationPower', 'pvPower', 'feedinPower', 'gridConsumptionPower', 'loadsPower']
+            variables: ['generationPower', 'pvPower', 'meterPower', 'meterPower2', 'feedinPower', 'gridConsumptionPower', 'loadsPower']
           }, userConfig, userId),
           timeoutPromise
         ]);
@@ -7015,7 +7095,7 @@ app.get('/api/inverter/history', authenticateUser, async (req, res) => {
             sn,
             begin: ch.cbeg,
             end: ch.cend,
-            variables: ['generationPower', 'pvPower', 'feedinPower', 'gridConsumptionPower', 'loadsPower']
+            variables: ['generationPower', 'pvPower', 'meterPower', 'meterPower2', 'feedinPower', 'gridConsumptionPower', 'loadsPower']
           }, userConfig, userId);
           
           // Cache successful chunk response

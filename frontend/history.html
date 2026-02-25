@@ -812,6 +812,11 @@
         let lastRawData = null;
         let historyVariables = null;
         let deviceSn = null;
+        let cachedTopologyContext = null;
+        let cachedTopologyFetchedAt = 0;
+
+        const TOPOLOGY_CACHE_MS = 10 * 60 * 1000;
+        const DEFAULT_TOPOLOGY_REFRESH_MS = 4 * 60 * 60 * 1000;
 
         // apiClient is declared in api-client.js and initialized after Firebase auth is ready
 
@@ -917,6 +922,255 @@
             return d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
         }
 
+        function normalizePowerToKW(rawValue) {
+            const n = Number(rawValue);
+            if (isNaN(n)) return 0;
+            return Math.abs(n) > 100 ? (n / 1000) : n;
+        }
+
+        function parseHistoryTimeMs(rawTime) {
+            if (rawTime === null || rawTime === undefined) return NaN;
+            if (typeof rawTime === 'number') {
+                return rawTime < 1e12 ? rawTime * 1000 : rawTime;
+            }
+            if (typeof rawTime === 'string') {
+                const parsed = Date.parse(rawTime);
+                if (!isNaN(parsed)) return parsed;
+                const parts = rawTime.split(' ');
+                if (parts.length >= 2) {
+                    const fallback = Date.parse(`${parts[0]}T${parts[1]}`);
+                    if (!isNaN(fallback)) return fallback;
+                }
+            }
+            const n = Number(rawTime);
+            if (!isNaN(n)) return n < 1e12 ? n * 1000 : n;
+            return NaN;
+        }
+
+        function extractRealtimeDatas(realtimePayload) {
+            const result = realtimePayload?.result;
+            if (Array.isArray(result) && result.length > 0) {
+                if (Array.isArray(result[0]?.datas)) return result[0].datas;
+                return result;
+            }
+            if (result && Array.isArray(result.datas)) return result.datas;
+            return [];
+        }
+
+        function findRealtimeVar(datas, key) {
+            const item = datas.find(d => d.variable === key || d.key === key);
+            return item ? item.value : null;
+        }
+
+        function normalizeCouplingValue(value) {
+            const raw = String(value || '').toLowerCase().trim();
+            if (raw === 'ac' || raw === 'ac-coupled' || raw === 'ac_coupled') return 'ac';
+            if (raw === 'dc' || raw === 'dc-coupled' || raw === 'dc_coupled') return 'dc';
+            return 'unknown';
+        }
+
+        async function getStoredTopologyContext(forceRefresh = false) {
+            if (!forceRefresh && cachedTopologyContext && (Date.now() - cachedTopologyFetchedAt) < TOPOLOGY_CACHE_MS) {
+                return cachedTopologyContext;
+            }
+
+            try {
+                const resp = await authenticatedFetch('/api/config/system-topology');
+                const data = await resp.json();
+                if (data?.errno !== 0) {
+                    cachedTopologyContext = null;
+                    cachedTopologyFetchedAt = Date.now();
+                    return null;
+                }
+
+                const result = data?.result || {};
+                const coupling = normalizeCouplingValue(result.coupling);
+                const isLikelyAcCoupled = coupling === 'ac' ? true : (coupling === 'dc' ? false : false);
+                const hasStoredCoupling = coupling === 'ac' || coupling === 'dc';
+                const source = String(result.source || 'unknown').toLowerCase();
+                const lastDetectedAt = Number(result.lastDetectedAt) || 0;
+                const refreshAfterMs = Number(result.refreshAfterMs) > 0
+                    ? Number(result.refreshAfterMs)
+                    : DEFAULT_TOPOLOGY_REFRESH_MS;
+                const isStale = !lastDetectedAt || (Date.now() - lastDetectedAt) > refreshAfterMs;
+
+                cachedTopologyContext = {
+                    coupling,
+                    source,
+                    isLikelyAcCoupled,
+                    hasStoredCoupling,
+                    lastDetectedAt,
+                    refreshAfterMs,
+                    isStale
+                };
+                cachedTopologyFetchedAt = Date.now();
+                return cachedTopologyContext;
+            } catch (error) {
+                console.warn('[History] Failed to load stored topology:', error);
+                cachedTopologyContext = null;
+                cachedTopologyFetchedAt = Date.now();
+                return null;
+            }
+        }
+
+        async function persistTopologyDetection(isLikelyAcCoupled, pvPower, meterPower2, confidence = 0.7) {
+            try {
+                const coupling = isLikelyAcCoupled ? 'ac' : 'dc';
+                const resp = await authenticatedFetch('/api/config/system-topology', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        coupling,
+                        source: 'auto',
+                        confidence,
+                        refreshAfterMs: DEFAULT_TOPOLOGY_REFRESH_MS,
+                        lastDetectedAt: Date.now(),
+                        evidence: {
+                            pvPower,
+                            meterPower2,
+                            heuristic: 'pvPower~0 && meterPower2>0'
+                        }
+                    })
+                });
+                const data = await resp.json();
+                if (data?.errno === 0) {
+                    cachedTopologyContext = {
+                        coupling,
+                        source: 'auto',
+                        isLikelyAcCoupled,
+                        hasStoredCoupling: true,
+                        lastDetectedAt: Date.now(),
+                        refreshAfterMs: DEFAULT_TOPOLOGY_REFRESH_MS,
+                        isStale: false
+                    };
+                    cachedTopologyFetchedAt = Date.now();
+                }
+            } catch (error) {
+                console.warn('[History] Failed to persist topology detection:', error);
+            }
+        }
+
+        async function detectAcCoupledContext() {
+            const stored = await getStoredTopologyContext(false);
+            if (stored?.hasStoredCoupling && stored.source === 'manual') {
+                return {
+                    isLikelyAcCoupled: stored.isLikelyAcCoupled,
+                    source: 'stored-manual'
+                };
+            }
+            if (stored?.hasStoredCoupling && !stored.isStale) {
+                return {
+                    isLikelyAcCoupled: stored.isLikelyAcCoupled,
+                    source: 'stored-auto'
+                };
+            }
+
+            try {
+                const resp = await authenticatedFetch('/api/inverter/real-time');
+                const data = await resp.json();
+                if (data?.errno !== 0) {
+                    if (stored?.hasStoredCoupling) {
+                        return {
+                            isLikelyAcCoupled: stored.isLikelyAcCoupled,
+                            source: 'stored-fallback'
+                        };
+                    }
+                    return { isLikelyAcCoupled: false, source: 'default' };
+                }
+
+                const datas = extractRealtimeDatas(data);
+                const pvPower = normalizePowerToKW(findRealtimeVar(datas, 'pvPower'));
+                const meterPower2 = normalizePowerToKW(findRealtimeVar(datas, 'meterPower2'));
+                const isLikelyAcCoupled = Math.abs(pvPower) < 0.05 && meterPower2 > 0.05;
+
+                const shouldPersist =
+                    !stored?.hasStoredCoupling ||
+                    stored.isStale ||
+                    stored.isLikelyAcCoupled !== isLikelyAcCoupled;
+
+                if (shouldPersist) {
+                    const confidence = isLikelyAcCoupled
+                        ? (meterPower2 > 0.3 ? 0.9 : 0.75)
+                        : (Math.abs(pvPower) > 0.2 ? 0.8 : 0.65);
+                    await persistTopologyDetection(isLikelyAcCoupled, pvPower, meterPower2, confidence);
+                }
+
+                return { isLikelyAcCoupled, pvPower, meterPower2, source: 'realtime' };
+            } catch (error) {
+                console.warn('[History] AC detection failed:', error);
+                if (stored?.hasStoredCoupling) {
+                    return {
+                        isLikelyAcCoupled: stored.isLikelyAcCoupled,
+                        source: 'stored-fallback'
+                    };
+                }
+                return { isLikelyAcCoupled: false, source: 'default' };
+            }
+        }
+
+        async function fetchHistoryVariableSeries(beginSec, endSec, variableCandidates = ['meterPower2']) {
+            const resp = await authenticatedFetch(`/api/inverter/history?begin=${beginSec}&end=${endSec}`);
+            const data = await resp.json();
+            if (data?.errno && data.errno !== 0) {
+                throw new Error(data.msg || data.error || 'History API error');
+            }
+
+            const datas = data?.result?.[0]?.datas || [];
+            let selected = null;
+            for (const variable of variableCandidates) {
+                selected = datas.find(d => d.variable === variable);
+                if (selected?.data?.length) break;
+            }
+            return selected?.data || [];
+        }
+
+        function integratePowerSeriesToBuckets(series, bucketCount, bucketIndexFromMs) {
+            const buckets = Array.from({ length: bucketCount }, () => 0);
+            if (!Array.isArray(series) || series.length < 2) return buckets;
+
+            const sorted = series
+                .map(point => ({
+                    t: parseHistoryTimeMs(point.time),
+                    v: normalizePowerToKW(point.value)
+                }))
+                .filter(point => Number.isFinite(point.t))
+                .sort((a, b) => a.t - b.t);
+
+            for (let i = 1; i < sorted.length; i++) {
+                const prev = sorted[i - 1];
+                const cur = sorted[i];
+                const dtHours = (cur.t - prev.t) / 3600000;
+                if (!Number.isFinite(dtHours) || dtHours <= 0 || dtHours > 6) continue;
+
+                const bucketIndex = bucketIndexFromMs(prev.t);
+                if (bucketIndex < 0 || bucketIndex >= bucketCount) continue;
+
+                const kw = Math.max(0, prev.v);
+                buckets[bucketIndex] += kw * dtHours;
+            }
+
+            return buckets.map(value => Number(value.toFixed(3)));
+        }
+
+        function getMonthRangeSeconds(year, month) {
+            const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
+            const end = new Date(year, month, 0, 23, 59, 59, 999);
+            return {
+                beginSec: Math.floor(start.getTime() / 1000),
+                endSec: Math.floor(end.getTime() / 1000),
+                daysInMonth: new Date(year, month, 0).getDate()
+            };
+        }
+
+        function getTodayRangeSeconds() {
+            const now = new Date();
+            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+            return {
+                beginSec: Math.floor(start.getTime() / 1000),
+                endSec: Math.floor(Date.now() / 1000)
+            };
+        }
+
         // ==================== HISTORY ====================
         // fetchHistoryMock() removed — mock endpoint disabled and Test Data UI removed.
         
@@ -1009,13 +1263,35 @@
             });
             console.log('[History] Variables detail:', debugInfo);
             
-            // Try to get solar data - try pvPower first, fallback to generationPower
-            let genData = variables.pvPower?.data || variables.generationPower?.data || [];
+            // Choose solar source with AC-coupled awareness:
+            // prefer pvPower for DC systems, but if pvPower is missing/near-zero
+            // and meterPower2 has meaningful values, use meterPower2.
+            const pvData = variables.pvPower?.data || [];
+            const meter2Data = variables.meterPower2?.data || [];
+            const generationData = variables.generationPower?.data || [];
+
+            const maxAbs = (arr) => arr.length ? Math.max(...arr.map(d => Math.abs(Number(d?.value) || 0))) : 0;
+            const pvPeak = maxAbs(pvData);
+            const meter2Peak = maxAbs(meter2Data);
+
+            let genData = [];
+            let solarSource = 'generationPower';
+            if (pvData.length > 0 && pvPeak >= 0.05) {
+                genData = pvData;
+                solarSource = 'pvPower';
+            } else if (meter2Data.length > 0 && meter2Peak >= 0.05) {
+                genData = meter2Data;
+                solarSource = 'meterPower2';
+            } else {
+                genData = generationData;
+                solarSource = 'generationPower';
+            }
+
             const feedData = variables.feedinPower?.data || [];
             const gridData = variables.gridConsumptionPower?.data || [];
             const loadsData = variables.loadsPower?.data || [];
             
-            console.log('[History] Selected: pvPower?', !!variables.pvPower?.data, 'generationPower?', !!variables.generationPower?.data);
+            console.log('[History] Solar source selected:', solarSource, 'pvPeak:', pvPeak, 'meter2Peak:', meter2Peak);
             console.log('[History] genData length:', genData.length, 'feedData length:', feedData.length, 'gridData length:', gridData.length, 'loadsData length:', loadsData.length);
             
             if (genData.length === 0) {
@@ -1224,6 +1500,7 @@
                 const dimension = document.getElementById('reportDimension').value;
                 const year = document.getElementById('reportYear').value;
                 const month = document.getElementById('reportMonth').value;
+                const acContext = await detectAcCoupledContext();
                 
                 let url = `/api/inverter/report?dimension=${dimension}&year=${year}&month=${month}`;
                 
@@ -1233,14 +1510,39 @@
                 if (data.errno && data.errno !== 0) {
                     throw new Error(data.msg || 'API error');
                 }
+
+                const reportOptions = {};
+                if (acContext.isLikelyAcCoupled) {
+                    if (dimension === 'month') {
+                        try {
+                            const { beginSec, endSec, daysInMonth } = getMonthRangeSeconds(Number(year), Number(month));
+                            const meterSeries = await fetchHistoryVariableSeries(beginSec, endSec, ['meterPower2', 'meterPower']);
+                            const bucketed = integratePowerSeriesToBuckets(
+                                meterSeries,
+                                daysInMonth,
+                                (ms) => new Date(ms).getDate() - 1
+                            );
+                            if (bucketed.some(v => v > 0)) {
+                                reportOptions.generationValues = bucketed;
+                                reportOptions.generationSourceLabel = 'meterPower2 estimate (AC-coupled)';
+                            }
+                        } catch (fallbackErr) {
+                            console.warn('[Report] AC fallback generation from meterPower2 failed:', fallbackErr);
+                        }
+                    } else if (dimension === 'year') {
+                        reportOptions.note = 'AC-coupled detected: yearly generation remains from FoxESS report API (meterPower2 remap currently applied to daily/monthly view).';
+                    }
+                }
                 
                 lastRawData = { type: 'report', data };
                 updateRawDataViewer();
                 
-                await renderReportData(data, dimension);
+                await renderReportData(data, dimension, reportOptions);
                 
                 status.className = 'status success';
-                status.textContent = `✓ Report loaded successfully`;
+                status.textContent = reportOptions.generationSourceLabel
+                    ? `✓ Report loaded successfully (${reportOptions.generationSourceLabel})`
+                    : `✓ Report loaded successfully`;
                 timestamp.textContent = `Updated: ${new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
                 
                 setTimeout(() => { status.style.display = 'none'; }, 3000);
@@ -1254,7 +1556,7 @@
             }
         }
 
-        async function renderReportData(data, dimension) {
+        async function renderReportData(data, dimension, options = {}) {
             const content = document.getElementById('reportContent');
             
             const result = data.result || data;
@@ -1281,7 +1583,13 @@
             console.log('[Report] Parsed variables:', Object.keys(variables));
             console.log('[Report] Generation data count:', variables.generation?.data.length, 'values:', variables.generation?.values.slice(0, 5));
             
-            const genData = variables.generation?.data || [];
+            let genData = variables.generation?.data || [];
+            if (Array.isArray(options.generationValues) && options.generationValues.length > 0) {
+                genData = options.generationValues.map((value, index) => ({
+                    value: value || 0,
+                    index: index + 1
+                }));
+            }
             const feedData = variables.feedin?.data || [];
             const gridData = variables.gridConsumption?.data || [];
             const chargeData = variables.chargeEnergyToTal?.data || [];
@@ -1300,7 +1608,7 @@
             let html = `
                 <div class="stats-grid">
                     <div class="stat-box generation">
-                        <div class="label">Total Generation</div>
+                        <div class="label">Total Generation${options.generationSourceLabel ? ' (AC est.)' : ''}</div>
                         <div class="value">${totalGen.toFixed(1)}<span class="unit">kWh</span></div>
                     </div>
                     <div class="stat-box feedin">
@@ -1324,6 +1632,15 @@
                     <canvas id="reportChartCanvas"></canvas>
                 </div>
             `;
+
+            if (options.generationSourceLabel || options.note) {
+                html += `
+                    <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(88,166,255,0.08);border:1px solid rgba(88,166,255,0.22);color:#8ecbff;font-size:12px;">
+                        ${options.generationSourceLabel ? `Source: <strong>${options.generationSourceLabel}</strong>. ` : ''}
+                        ${options.note ? options.note : ''}
+                    </div>
+                `;
+            }
             
             content.innerHTML = html;
             
@@ -1364,7 +1681,7 @@
                     labels,
                     datasets: [
                         {
-                            label: 'Generation (kWh)',
+                            label: options.generationSourceLabel ? 'Generation (kWh, AC estimate)' : 'Generation (kWh)',
                             data: genData.map(d => d.value || 0),
                             borderColor: '#ffd43b',
                             backgroundColor: 'rgba(255, 212, 59, 0.1)',
@@ -1442,20 +1759,48 @@
             status.textContent = 'Fetching generation data from FoxESS...';
             
             try {
+                const acContext = await detectAcCoupledContext();
                 const resp = await authenticatedFetch('/api/inverter/generation');
                 const data = await resp.json();
                 
                 if (data.errno && data.errno !== 0) {
                     throw new Error(data.msg || 'API error');
                 }
+
+                const generationOptions = {};
+                if (acContext.isLikelyAcCoupled) {
+                    try {
+                        const now = new Date();
+                        const { beginSec: todayBeginSec, endSec: todayEndSec } = getTodayRangeSeconds();
+                        const { beginSec: monthBeginSec, endSec: monthEndSec } = getMonthRangeSeconds(now.getFullYear(), now.getMonth() + 1);
+
+                        const [todaySeries, monthSeries] = await Promise.all([
+                            fetchHistoryVariableSeries(todayBeginSec, todayEndSec, ['meterPower2', 'meterPower']),
+                            fetchHistoryVariableSeries(monthBeginSec, monthEndSec, ['meterPower2', 'meterPower'])
+                        ]);
+
+                        const todayKwh = integratePowerSeriesToBuckets(todaySeries, 1, () => 0)[0] || 0;
+                        const monthKwh = integratePowerSeriesToBuckets(monthSeries, 1, () => 0)[0] || 0;
+
+                        if (todayKwh > 0 || monthKwh > 0) {
+                            generationOptions.today = todayKwh;
+                            generationOptions.month = monthKwh;
+                            generationOptions.sourceLabel = 'meterPower2 estimate (AC-coupled)';
+                        }
+                    } catch (fallbackErr) {
+                        console.warn('[Generation] AC fallback from meterPower2 failed:', fallbackErr);
+                    }
+                }
                 
                 lastRawData = { type: 'generation', data };
                 updateRawDataViewer();
                 
-                renderGenerationData(data);
+                renderGenerationData(data, generationOptions);
                 
                 status.className = 'status success';
-                status.textContent = `✓ Generation data loaded successfully`;
+                status.textContent = generationOptions.sourceLabel
+                    ? `✓ Generation data loaded (${generationOptions.sourceLabel})`
+                    : `✓ Generation data loaded successfully`;
                 timestamp.textContent = `Updated: ${new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
                 
                 setTimeout(() => { status.style.display = 'none'; }, 3000);
@@ -1470,7 +1815,7 @@
         }
 
         // ==================== RENDER GENERATION DATA ====================
-        function renderGenerationData(data) {
+        function renderGenerationData(data, options = {}) {
             const content = document.getElementById('generationContent');
             
             const result = data.result || data;
@@ -1480,8 +1825,8 @@
             }
             
             // FoxESS generation response includes cumulative values
-            const today = result.today || result.todayGeneration || 0;
-            const month = result.month || result.monthGeneration || 0;
+            const today = options.today ?? result.today ?? result.todayGeneration ?? 0;
+            const month = options.month ?? result.month ?? result.monthGeneration ?? 0;
             const year = result.year || result.yearGeneration || 0;
             const total = result.cumulative || result.cumulativeGeneration || result.total || 0;
             
@@ -1505,6 +1850,14 @@
                     </div>
                 </div>
             `;
+
+            if (options.sourceLabel) {
+                html += `
+                    <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(88,166,255,0.08);border:1px solid rgba(88,166,255,0.22);color:#8ecbff;font-size:12px;">
+                        Source: <strong>${options.sourceLabel}</strong>. Year and lifetime values remain from FoxESS generation API.
+                    </div>
+                `;
+            }
             
             // Add any additional fields from the response
             const knownKeys = ['today', 'month', 'year', 'cumulative', 'todayGeneration', 'monthGeneration', 'yearGeneration', 'cumulativeGeneration', 'total'];

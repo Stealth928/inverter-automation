@@ -1864,8 +1864,10 @@
                         return item ? parseFloat(item.value) : 0;
                     };
                     
-                    // FoxESS variables: pvPower, loadsPower, feedinPower, gridConsumptionPower, SoC
-                    const pv = getVal('pvPower');
+                    // FoxESS variables: pvPower (DC), meterPower2 (often AC-coupled solar), loadsPower, feedinPower, gridConsumptionPower, SoC
+                    const pvRaw = getVal('pvPower');
+                    const meter2Raw = getVal('meterPower2');
+                    const pv = (Math.abs(pvRaw) < 0.05 && Math.abs(meter2Raw) > 0.05) ? meter2Raw : pvRaw;
                     const grid = getVal('feedinPower') - getVal('gridConsumptionPower');
                     const soc = getVal('SoC');
                     
