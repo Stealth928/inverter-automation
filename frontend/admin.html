@@ -24,7 +24,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         .container {
-            max-width: 1200px;
+            width: min(98vw, 1760px);
+            max-width: 1760px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -260,7 +261,7 @@
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 10px;
-            min-width: 760px;
+            min-width: 0;
         }
         .kpi-item {
             background: var(--bg-tertiary);
@@ -295,7 +296,63 @@
         }
         .chart-wrap {
             position: relative;
-            height: 230px;
+            height: 280px;
+        }
+
+        .firestore-metrics-card {
+            margin-bottom: 20px;
+        }
+        .firestore-metrics-header-note {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .firestore-kpis {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .firestore-kpi {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            padding: 8px 10px;
+        }
+        .firestore-kpi .label {
+            font-size: 10px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 4px;
+        }
+        .firestore-kpi .value {
+            font-size: 22px;
+            font-weight: 700;
+            line-height: 1;
+            color: var(--text-primary);
+        }
+        .firestore-kpi .value.small {
+            font-size: 18px;
+        }
+        .firestore-kpi .sub {
+            margin-top: 2px;
+            font-size: 10px;
+            color: var(--text-secondary);
+        }
+        .firestore-chart-wrap {
+            position: relative;
+            height: 240px;
+            margin-top: 6px;
+        }
+        .firestore-updated {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        .firestore-warning {
+            font-size: 11px;
+            color: var(--color-warning);
+            margin-top: 6px;
         }
 
         /* Metrics mini-chart */
@@ -387,6 +444,9 @@
             .users-table td { padding: 8px 10px; font-size: 12px; }
             .actions-cell { flex-direction: column; }
             .chart-wrap { height: 200px; }
+            .firestore-kpis {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
         }
     </style>
 </head>
@@ -465,14 +525,51 @@
 
             <div class="card platform-chart-card">
                 <div class="card-header">
-                    <div class="card-title"><span class="icon">📈</span> 90-Day User Growth & Configuration Trend</div>
+                    <div class="card-title"><span class="icon">📈</span> 90-Day User Growth, Configuration & Rules Trend</div>
                 </div>
                 <div class="card-body">
-                    <div class="chart-subtitle">Bars = total users, line = configured users</div>
+                    <div class="chart-subtitle">Bars = total users, lines = configured users + users with rules</div>
                     <div class="chart-wrap">
                         <canvas id="platformTrendChart"></canvas>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <div class="card firestore-metrics-card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">☁️</span> Firestore Cost & Metrics (MTD)</div>
+                <button class="action-btn" onclick="loadFirestoreCostMetrics()" id="refreshFirestoreBtn">🔄 Refresh</button>
+            </div>
+            <div class="card-body">
+                <div class="firestore-updated" id="firestoreMetricsUpdated">Loading usage from GCP Monitoring...</div>
+                <div class="firestore-kpis">
+                    <div class="firestore-kpi">
+                        <div class="label">Reads (MTD)</div>
+                        <div class="value" id="firestoreReadsMtd">-</div>
+                    </div>
+                    <div class="firestore-kpi">
+                        <div class="label">Writes (MTD)</div>
+                        <div class="value" id="firestoreWritesMtd">-</div>
+                    </div>
+                    <div class="firestore-kpi">
+                        <div class="label">Deletes (MTD)</div>
+                        <div class="value" id="firestoreDeletesMtd">-</div>
+                    </div>
+                    <div class="firestore-kpi">
+                        <div class="label">Storage (GB)</div>
+                        <div class="value" id="firestoreStorageGb">-</div>
+                    </div>
+                    <div class="firestore-kpi">
+                        <div class="label">Est. MTD Cost</div>
+                        <div class="value small" id="firestoreMtdCost">-</div>
+                        <div class="sub" id="firestoreServiceBreakdown"></div>
+                    </div>
+                </div>
+                <div class="firestore-chart-wrap">
+                    <canvas id="firestoreMetricsChart"></canvas>
+                </div>
+                <div class="firestore-warning" id="firestoreMetricsWarning" style="display: none;"></div>
             </div>
         </div>
 
@@ -520,6 +617,7 @@
     let adminApiClient = null;
     let currentSort = { key: 'email', direction: 'asc' };
     let platformTrendChart = null;
+    let firestoreMetricsChart = null;
 
     function showMessage(type, msg, duration = 5000) {
         const area = document.getElementById('messageArea');
@@ -625,6 +723,7 @@
                 document.getElementById('accessDenied').style.display = 'none';
                 loadPlatformStats();
                 loadUsers();
+                loadFirestoreCostMetrics();
             } else {
                 document.getElementById('adminContent').style.display = 'none';
                 document.getElementById('accessDenied').style.display = '';
@@ -663,6 +762,7 @@
     function refreshAdminData() {
         loadPlatformStats();
         loadUsers();
+        loadFirestoreCostMetrics();
     }
 
     async function loadPlatformStats() {
@@ -696,6 +796,7 @@
         });
         const totalUsers = trend.map(point => Number(point.totalUsers || 0));
         const configuredUsers = trend.map(point => Number(point.configuredUsers || 0));
+        const usersWithRules = trend.map(point => Number(point.usersWithRules || 0));
 
         if (platformTrendChart) {
             platformTrendChart.destroy();
@@ -725,6 +826,19 @@
                         data: configuredUsers,
                         borderColor: 'rgba(126, 231, 135, 0.95)',
                         backgroundColor: 'rgba(126, 231, 135, 0.15)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 3,
+                        tension: 0.25,
+                        fill: false,
+                        order: 0
+                    },
+                    {
+                        type: 'line',
+                        label: 'Users with Rules',
+                        data: usersWithRules,
+                        borderColor: 'rgba(240, 136, 62, 0.95)',
+                        backgroundColor: 'rgba(240, 136, 62, 0.18)',
                         borderWidth: 2,
                         pointRadius: 0,
                         pointHoverRadius: 3,
@@ -827,10 +941,229 @@
                         <button class="action-btn" onclick="viewStats('${u.uid}', '${(u.email || '').replace(/'/g, '')}')">📊 Stats</button>
                         <button class="action-btn" onclick="impersonateUser('${u.uid}', '${(u.email || '').replace(/'/g, '')}')">👁️ View As</button>
                         ${roleAction}
+                        <button class="action-btn danger" onclick="deleteUserByAdmin('${u.uid}', '${(u.email || '').replace(/'/g, '')}')">Delete</button>
                     </div>
                 </td>
             </tr>`;
         }).join('');
+    }
+
+    async function deleteUserByAdmin(uid, email) {
+        const label = email || uid;
+        const first = confirm(`Delete user "${label}" and all Firestore/Auth data permanently?`);
+        if (!first) return;
+        const confirmText = window.prompt('Type DELETE to confirm user deletion:');
+        if (confirmText !== 'DELETE') {
+            showMessage('warning', 'Deletion cancelled (confirmation text did not match)');
+            return;
+        }
+
+        try {
+            const resp = await adminApiClient.fetch(`/api/admin/users/${uid}/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ confirmText: 'DELETE' })
+            });
+            const data = await resp.json().catch(() => null);
+            if (!resp.ok || !data || data.errno !== 0) {
+                throw new Error(data && data.error ? data.error : `Delete failed (${resp.status})`);
+            }
+            showMessage('success', `✅ Deleted user ${label}`);
+            refreshAdminData();
+        } catch (e) {
+            showMessage('error', `❌ Failed to delete user: ${e.message || e}`);
+        }
+    }
+
+    function formatCompactNumber(n) {
+        const num = Number(n || 0);
+        if (Math.abs(num) >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
+        if (Math.abs(num) >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
+        return String(Math.round(num));
+    }
+
+    function formatMetricWarning(text) {
+        const raw = String(text || '').trim();
+        if (!raw) return '';
+        const short = raw.replace(/\s*If a metric was created recently[\s\S]*$/i, '').trim();
+        return short.length > 160 ? `${short.slice(0, 157)}...` : short;
+    }
+
+    function renderFirestoreMetricsChart(trend) {
+        const canvas = document.getElementById('firestoreMetricsChart');
+        if (!canvas || typeof Chart === 'undefined') return;
+
+        const sorted = Array.isArray(trend) ? trend.slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)) : [];
+        const labels = sorted.map((point) => {
+            const d = new Date(point.timestamp);
+            return d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+        });
+
+        const reads = sorted.map((point) => Number(point.reads || 0));
+        const writes = sorted.map((point) => Number(point.writes || 0));
+        const deletes = sorted.map((point) => Number(point.deletes || 0));
+
+        if (firestoreMetricsChart) {
+            firestoreMetricsChart.destroy();
+            firestoreMetricsChart = null;
+        }
+
+        firestoreMetricsChart = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Reads',
+                        data: reads,
+                        borderColor: 'rgba(88, 166, 255, 0.95)',
+                        backgroundColor: 'rgba(88, 166, 255, 0.12)',
+                        borderWidth: 1.8,
+                        pointRadius: 0,
+                        tension: 0.2
+                    },
+                    {
+                        label: 'Writes',
+                        data: writes,
+                        borderColor: 'rgba(126, 231, 135, 0.95)',
+                        backgroundColor: 'rgba(126, 231, 135, 0.12)',
+                        borderWidth: 1.8,
+                        pointRadius: 0,
+                        tension: 0.2
+                    },
+                    {
+                        label: 'Deletes',
+                        data: deletes,
+                        borderColor: 'rgba(240, 136, 62, 0.95)',
+                        backgroundColor: 'rgba(240, 136, 62, 0.12)',
+                        borderWidth: 1.8,
+                        pointRadius: 0,
+                        tension: 0.2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#8b949e',
+                            boxWidth: 12,
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#8b949e', maxTicksLimit: 10 },
+                        grid: { color: 'rgba(48,54,61,0.2)' }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#8b949e', precision: 0 },
+                        grid: { color: 'rgba(48,54,61,0.2)' }
+                    }
+                }
+            }
+        });
+    }
+
+    async function loadFirestoreCostMetrics() {
+        const updatedEl = document.getElementById('firestoreMetricsUpdated');
+        const warningEl = document.getElementById('firestoreMetricsWarning');
+        const refreshBtn = document.getElementById('refreshFirestoreBtn');
+        if (!adminApiClient || !updatedEl || !warningEl) return;
+
+        if (refreshBtn) refreshBtn.disabled = true;
+        updatedEl.textContent = 'Loading usage from GCP Monitoring...';
+        warningEl.style.display = 'none';
+        warningEl.textContent = '';
+
+        try {
+            const resp = await adminApiClient.fetch('/api/admin/firestore-metrics?hours=36');
+            const data = await resp.json();
+            if (data.errno !== 0) throw new Error(data.error || 'Failed to load Firestore metrics');
+
+            const firestore = data.result?.firestore || {};
+            const billing = data.result?.billing || {};
+            const trend = Array.isArray(data.result?.trend) ? data.result.trend : [];
+            const warnings = Array.isArray(data.result?.warnings) ? data.result.warnings : [];
+
+            const hasStorage = firestore.storageGb !== null && firestore.storageGb !== undefined && Number.isFinite(Number(firestore.storageGb));
+            const hasEstimatedCost = billing.estimatedMtdCostUsd !== null && billing.estimatedMtdCostUsd !== undefined && Number.isFinite(Number(billing.estimatedMtdCostUsd));
+            const isCostEstimate = billing.isEstimate === true;
+
+            document.getElementById('firestoreReadsMtd').textContent = formatCompactNumber(firestore.readsMtd || 0);
+            document.getElementById('firestoreWritesMtd').textContent = formatCompactNumber(firestore.writesMtd || 0);
+            document.getElementById('firestoreDeletesMtd').textContent = formatCompactNumber(firestore.deletesMtd || 0);
+            document.getElementById('firestoreStorageGb').textContent = hasStorage
+                ? Number(firestore.storageGb).toFixed(3)
+                : 'N/A';
+            const costEl = document.getElementById('firestoreMtdCost');
+            if (hasEstimatedCost) {
+                const prefix = isCostEstimate ? '~' : '';
+                costEl.textContent = `${prefix}$${Number(billing.estimatedMtdCostUsd).toFixed(2)}`;
+                costEl.title = isCostEstimate
+                    ? 'Estimated from Firestore read/write/delete counts × GCP pricing. Excludes Functions, Auth, storage, egress.'
+                    : 'Actual MTD cost from Cloud Billing API';
+            } else {
+                costEl.textContent = 'N/A';
+                costEl.title = '';
+            }
+
+            // Per-service cost breakdown
+            const breakdownEl = document.getElementById('firestoreServiceBreakdown');
+            if (breakdownEl) {
+                if (hasEstimatedCost && Array.isArray(billing.services) && billing.services.length > 0) {
+                    const parts = billing.services
+                        .sort((a, b) => b.costUsd - a.costUsd)
+                        .map(s => {
+                            const label = s.service
+                                .replace('Cloud Firestore', 'Firestore')
+                                .replace('Cloud Functions', 'Functions')
+                                .replace(/^Cloud /, '');
+                            return `${label}: $${Number(s.costUsd).toFixed(2)}`;
+                        });
+                    breakdownEl.textContent = parts.join(' · ');
+                    breakdownEl.style.display = '';
+                } else if (!hasEstimatedCost) {
+                    breakdownEl.textContent = '';
+                    breakdownEl.style.display = 'none';
+                }
+            }
+
+            const updatedAt = data.result?.updatedAt ? new Date(data.result.updatedAt) : new Date();
+            const expectedUnavailablePattern = /unavailable for this project\/region|not available for this project\/billing setup/i;
+            const billingIamPattern = /BILLING_IAM:/i;
+            const formattedWarnings = warnings.map(formatMetricWarning).filter(Boolean);
+            const iamWarnings = formattedWarnings.filter((w) => billingIamPattern.test(w));
+            const actionableWarnings = formattedWarnings.filter((w) => !expectedUnavailablePattern.test(w) && !billingIamPattern.test(w));
+            const suppressedCount = formattedWarnings.length - actionableWarnings.length - iamWarnings.length;
+
+            const partialSuffix = suppressedCount > 0 ? ' · partial data' : '';
+            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} · data source: ${data.result?.source || 'gcp-monitoring'}${partialSuffix}`;
+
+            const allShownWarnings = [
+                ...iamWarnings.map(w => '⚠️ IAM setup needed: ' + w.replace('BILLING_IAM: ', '')),
+                ...actionableWarnings
+            ];
+            if (allShownWarnings.length) {
+                warningEl.style.display = '';
+                warningEl.textContent = allShownWarnings.join(' · ');
+            }
+
+            renderFirestoreMetricsChart(trend);
+        } catch (e) {
+            updatedEl.textContent = 'Unable to load Firestore usage from GCP Monitoring';
+            warningEl.style.display = '';
+            warningEl.textContent = e.message || String(e);
+            showMessage('warning', `⚠️ Firestore metrics unavailable: ${e.message || e}`);
+        } finally {
+            if (refreshBtn) refreshBtn.disabled = false;
+        }
     }
 
     // ==================== Platform Stats ====================
@@ -865,14 +1198,15 @@
     }
 
     // ==================== Impersonation ====================
-    function startHeaderImpersonation(uid, email) {
+    function setImpersonationState(uid, email, mode) {
         try {
             localStorage.setItem('adminImpersonationUid', uid);
             localStorage.setItem('adminImpersonationEmail', email || '');
+            localStorage.setItem('adminImpersonationMode', mode || 'customToken');
+            localStorage.setItem('adminImpersonationStartedAt', String(Date.now()));
         } catch (e) {
             console.warn('[Admin] Failed to store impersonation state:', e);
         }
-        window.location.href = '/?impersonating=' + encodeURIComponent(email || uid);
     }
 
     async function impersonateUser(uid, email) {
@@ -890,19 +1224,23 @@
             const mode = data.result?.mode || 'customToken';
             const targetEmail = data.result?.targetEmail || email || uid;
 
-            if (mode === 'customToken' && data.result?.customToken) {
-                // Preferred mode: full Firebase Auth impersonation context
-                showMessage('info', `🔄 Signing in as ${targetEmail}...`, 0);
-                await firebase.auth().signInWithCustomToken(data.result.customToken);
-                window.location.href = '/?impersonating=' + encodeURIComponent(targetEmail);
-                return;
+            if (mode !== 'customToken' || !data.result?.customToken) {
+                throw new Error('Impersonation requires IAM token-signing (custom token mode only).');
             }
 
-            // Fallback mode when IAM signBlob permission is unavailable.
-            // API calls will run as the selected user via admin-enforced header impersonation.
-            showMessage('warning', `⚠️ IAM token-signing is unavailable. Using secure header impersonation for ${targetEmail}.`, 4000);
-            startHeaderImpersonation(uid, targetEmail);
+            showMessage('info', `🔄 Signing in as ${targetEmail}...`, 0);
+            setImpersonationState(uid, targetEmail, 'customToken');
+            await firebase.auth().signInWithCustomToken(data.result.customToken);
+            window.location.href = '/';
         } catch (e) {
+            try {
+                localStorage.removeItem('adminImpersonationUid');
+                localStorage.removeItem('adminImpersonationEmail');
+                localStorage.removeItem('adminImpersonationMode');
+                localStorage.removeItem('adminImpersonationStartedAt');
+            } catch (storageErr) {
+                console.warn('[Admin] Failed to clear impersonation state after error:', storageErr);
+            }
             showMessage('error', `❌ Impersonation failed: ${e.message}`);
         }
     }

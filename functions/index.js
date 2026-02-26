@@ -17,6 +17,12 @@ const cors = require('cors');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
 const amberModule = require('./api/amber');
+let googleApis = null;
+try {
+  ({ google: googleApis } = require('googleapis'));
+} catch (e) {
+  console.warn('[Init] googleapis package not available; admin cost metrics endpoint will be disabled');
+}
 
 // Initialize Firebase Admin SDK (guarded to avoid double-initialize in tests)
 if (!admin.apps || admin.apps.length === 0) {
@@ -1334,6 +1340,632 @@ app.get('/api/tesla/oauth-callback', async (req, res) => {
 // All admin routes use authenticateUser + requireAdmin explicitly so they
 // are registered before the catch-all app.use('/api', authenticateUser).
 
+function getRuntimeProjectId() {
+  try {
+    return process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || admin.app().options.projectId || null;
+  } catch (e) {
+    return process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || null;
+  }
+}
+
+function getPointNumericValue(point) {
+  if (!point || !point.value) return 0;
+  const value = point.value;
+  if (typeof value.doubleValue === 'number') return value.doubleValue;
+  if (typeof value.int64Value === 'string') return Number(value.int64Value) || 0;
+  if (typeof value.int64Value === 'number') return value.int64Value;
+  if (typeof value.distributionValue?.count === 'number') return value.distributionValue.count;
+  return 0;
+}
+
+async function listMonitoringTimeSeries({
+  monitoring,
+  projectId,
+  filter,
+  startTime,
+  endTime,
+  aligner = 'ALIGN_SUM',
+  alignmentPeriod = '3600s'
+}) {
+  const name = `projects/${projectId}`;
+  let pageToken = undefined;
+  const pointByTimestamp = new Map();
+
+  do {
+    const response = await monitoring.projects.timeSeries.list({
+      name,
+      filter,
+      'interval.startTime': startTime.toISOString(),
+      'interval.endTime': endTime.toISOString(),
+      'aggregation.alignmentPeriod': alignmentPeriod,
+      'aggregation.perSeriesAligner': aligner,
+      'aggregation.crossSeriesReducer': 'REDUCE_SUM',
+      'aggregation.groupByFields': [],
+      view: 'FULL',
+      pageSize: 1000,
+      pageToken
+    });
+
+    const timeSeries = response?.data?.timeSeries || [];
+    for (const series of timeSeries) {
+      const points = series?.points || [];
+      for (const point of points) {
+        const ts = point?.interval?.endTime || point?.interval?.startTime;
+        if (!ts) continue;
+        const current = pointByTimestamp.get(ts) || 0;
+        pointByTimestamp.set(ts, current + getPointNumericValue(point));
+      }
+    }
+
+    pageToken = response?.data?.nextPageToken || undefined;
+  } while (pageToken);
+
+  return Array.from(pointByTimestamp.entries())
+    .map(([timestamp, value]) => ({ timestamp, value }))
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+}
+
+function sumSeriesValues(series) {
+  return series.reduce((sum, point) => sum + (Number(point.value) || 0), 0);
+}
+
+function normalizeMetricErrorMessage(error) {
+  const raw = String(error?.message || error || 'metric unavailable');
+  const stripped = raw.split('If a metric was created recently')[0].trim();
+  return stripped.replace(/\s+/g, ' ');
+}
+
+async function getRuntimeServiceAccountEmail(projectId) {
+  const fallback = `${projectId || 'PROJECT_NUMBER'}-compute@developer.gserviceaccount.com`;
+  try {
+    const metadataResp = await fetch(
+      'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email',
+      {
+        headers: { 'Metadata-Flavor': 'Google' },
+        timeout: 1500
+      }
+    );
+    if (metadataResp.ok) {
+      const email = String(await metadataResp.text()).trim();
+      if (email) return email;
+    }
+  } catch (e) {
+    // local emulator / tests will not have metadata server
+  }
+
+  return fallback;
+}
+
+/**
+ * Estimate Firestore MTD cost from usage counts using GCP published pricing.
+ * Reads:   $0.06 / 100K  (50K/day free tier)
+ * Writes:  $0.18 / 100K  (20K/day free tier)
+ * Deletes: $0.02 / 100K  (20K/day free tier)
+ * Does NOT include storage, Auth, Functions, egress, etc.
+ * Returns { totalUsd, services: [{service, costUsd}], isEstimate: true }
+ */
+function estimateFirestoreCostFromUsage(readsMtd, writesMtd, deletesMtd, nowDate) {
+  const dayOfMonth = Math.max(1, nowDate.getUTCDate());
+  const freeReads   = 50000 * dayOfMonth;
+  const freeWrites  = 20000 * dayOfMonth;
+  const freeDeletes = 20000 * dayOfMonth;
+
+  const billableReads   = Math.max(0, readsMtd   - freeReads);
+  const billableWrites  = Math.max(0, writesMtd  - freeWrites);
+  const billableDeletes = Math.max(0, deletesMtd - freeDeletes);
+
+  const readCost   = (billableReads   / 100000) * 0.06;
+  const writeCost  = (billableWrites  / 100000) * 0.18;
+  const deleteCost = (billableDeletes / 100000) * 0.02;
+
+  return {
+    totalUsd: readCost + writeCost + deleteCost,
+    isEstimate: true,
+    services: [
+      { service: 'Cloud Firestore reads',   costUsd: readCost },
+      { service: 'Cloud Firestore writes',  costUsd: writeCost },
+      { service: 'Cloud Firestore deletes', costUsd: deleteCost }
+    ]
+  };
+}
+
+/**
+ * Fetch MTD cost per service from the Cloud Billing API.
+ * Requires roles/billing.viewer on the billing account for the service account.
+ * Throws with err.isBillingIamError = true on 403.
+ * Returns { services: [{service, costUsd}], totalUsd, accountId }
+ */
+async function fetchCloudBillingCost(projectId) {
+  if (!googleApis) throw new Error('googleapis not available');
+  const runtimeServiceAccount = await getRuntimeServiceAccountEmail(projectId);
+
+  const auth = new googleApis.auth.GoogleAuth({
+    scopes: ['https://www.googleapis.com/auth/cloud-billing.readonly']
+  });
+  const client = await auth.getClient();
+  const tokenResp = await client.getAccessToken();
+  const token = tokenResp.token;
+
+  // Step 1: resolve billing account for this project
+  const billingInfoResp = await fetch(
+    `https://cloudbilling.googleapis.com/v1/projects/${projectId}/billingInfo`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (billingInfoResp.status === 403) {
+    const bodyText = await billingInfoResp.text().catch(() => '');
+    const disabledApi = /SERVICE_DISABLED|Cloud Billing API has not been used|cloudbilling\.googleapis\.com/i.test(bodyText);
+    if (disabledApi) {
+      const err = new Error(
+        'BILLING_API_DISABLED: Enable cloudbilling.googleapis.com for this project, then retry.'
+      );
+      err.isBillingApiDisabled = true;
+      throw err;
+    }
+    const err = new Error(
+      'BILLING_IAM: Grant roles/billing.viewer on the billing account to the Functions service account ' +
+      `(${runtimeServiceAccount}). ` +
+      'See GCP IAM → Billing Account → Add Principal.'
+    );
+    err.isBillingIamError = true;
+    throw err;
+  }
+  if (!billingInfoResp.ok) {
+    throw new Error(`billingInfo: ${billingInfoResp.status} ${billingInfoResp.statusText}`);
+  }
+  const billingInfo = await billingInfoResp.json();
+  if (!billingInfo.billingEnabled || !billingInfo.billingAccountName) {
+    throw new Error('No billing account is linked to this project');
+  }
+
+  const accountName = billingInfo.billingAccountName; // "billingAccounts/XXXXXX-XXXXXX-XXXXXX"
+  const accountId = accountName.replace('billingAccounts/', '');
+
+  // Step 2: get MTD cost per service from the Billing Reports API
+  const now = new Date();
+  const params = new URLSearchParams({
+    'dateRange.startDate.year': now.getUTCFullYear(),
+    'dateRange.startDate.month': now.getUTCMonth() + 1,
+    'dateRange.startDate.day': 1,
+    'dateRange.endDate.year': now.getUTCFullYear(),
+    'dateRange.endDate.month': now.getUTCMonth() + 1,
+    'dateRange.endDate.day': now.getUTCDate()
+  });
+
+  const reportsResp = await fetch(
+    `https://cloudbilling.googleapis.com/v1beta/${accountName}/reports?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (reportsResp.status === 403) {
+    const bodyText = await reportsResp.text().catch(() => '');
+    const disabledApi = /SERVICE_DISABLED|Cloud Billing API has not been used|cloudbilling\.googleapis\.com/i.test(bodyText);
+    if (disabledApi) {
+      const err = new Error(
+        'BILLING_API_DISABLED: Enable cloudbilling.googleapis.com for this project, then retry.'
+      );
+      err.isBillingApiDisabled = true;
+      throw err;
+    }
+    const err = new Error(
+      'BILLING_IAM: Grant roles/billing.viewer on the billing account to the Functions service account ' +
+      `(${runtimeServiceAccount}) to read cost reports.`
+    );
+    err.isBillingIamError = true;
+    throw err;
+  }
+  if (reportsResp.status === 404) {
+    const err = new Error('BILLING_REPORTS_UNAVAILABLE: Cloud Billing reports endpoint is not available for this billing account/project.');
+    err.isBillingReportsUnavailable = true;
+    throw err;
+  }
+  if (!reportsResp.ok) {
+    const body = await reportsResp.text().catch(() => '');
+    throw new Error(`billing reports: ${reportsResp.status} - ${body.substring(0, 300)}`);
+  }
+
+  const reportsJson = await reportsResp.json();
+  console.log('[Admin] Cloud Billing reports response keys:', Object.keys(reportsJson));
+
+  const toUsd = (value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    if (typeof value === 'object') {
+      if (value.amount !== undefined) return toUsd(value.amount);
+      if (value.value !== undefined) return toUsd(value.value);
+      if (value.doubleValue !== undefined) return toUsd(value.doubleValue);
+      if (value.units !== undefined || value.nanos !== undefined) {
+        const units = Number(value.units || 0);
+        const nanos = Number(value.nanos || 0);
+        const total = units + (nanos / 1e9);
+        return Number.isFinite(total) ? total : null;
+      }
+      if (value.currencyAmount !== undefined) return toUsd(value.currencyAmount);
+    }
+    return null;
+  };
+
+  const getServiceName = (obj) => {
+    if (!obj || typeof obj !== 'object') return '';
+    const explicit =
+      obj.serviceDisplayName ||
+      obj.serviceName ||
+      obj.service ||
+      obj.displayName ||
+      obj.cloudServiceId ||
+      '';
+    if (explicit && typeof explicit === 'string') return explicit;
+
+    if (Array.isArray(obj.dimensionValues)) {
+      const namedService = obj.dimensionValues.find((d) => {
+        const key = String(d?.dimension || d?.name || d?.key || '').toLowerCase();
+        return key.includes('service');
+      });
+      if (namedService) {
+        const v = namedService.value || namedService.stringValue || namedService.displayName;
+        if (typeof v === 'string' && v.trim()) return v.trim();
+      }
+      const firstString = obj.dimensionValues
+        .map((d) => d?.value || d?.stringValue || d?.displayName)
+        .find((v) => typeof v === 'string' && v.trim());
+      if (firstString) return firstString.trim();
+    }
+
+    if (Array.isArray(obj.cells) && obj.cells.length) {
+      const firstStringCell = obj.cells
+        .map((c) => c?.value || c?.stringValue || c?.displayName || c?.text)
+        .find((v) => typeof v === 'string' && v.trim());
+      if (firstStringCell) return firstStringCell.trim();
+    }
+
+    return '';
+  };
+
+  const getCostValue = (obj) => {
+    if (!obj || typeof obj !== 'object') return null;
+    const candidates = [
+      obj.cost,
+      obj.totalCost,
+      obj.aggregatedCost,
+      obj.totalCostAmount,
+      obj.costAmount,
+      obj.amount,
+      obj.metricValue,
+      obj.value
+    ];
+    for (const candidate of candidates) {
+      const parsed = toUsd(candidate);
+      if (parsed !== null) return parsed;
+    }
+
+    if (Array.isArray(obj.metricValues)) {
+      for (const metricValue of obj.metricValues) {
+        const parsed = toUsd(metricValue);
+        if (parsed !== null) return parsed;
+      }
+    }
+
+    if (Array.isArray(obj.cells)) {
+      for (const cell of obj.cells) {
+        const parsed = toUsd(cell);
+        if (parsed !== null) return parsed;
+      }
+    }
+
+    return null;
+  };
+
+  const serviceTotals = new Map();
+  const totalFallbacks = [];
+
+  const addServiceCost = (serviceName, amount) => {
+    if (!serviceName || !Number.isFinite(amount) || amount <= 0) return;
+    const current = serviceTotals.get(serviceName) || 0;
+    serviceTotals.set(serviceName, current + amount);
+  };
+
+  const walk = (node) => {
+    if (node === null || node === undefined) return;
+    if (Array.isArray(node)) {
+      for (const entry of node) walk(entry);
+      return;
+    }
+    if (typeof node !== 'object') return;
+
+    const serviceName = getServiceName(node);
+    const costValue = getCostValue(node);
+    if (serviceName && costValue !== null) {
+      addServiceCost(serviceName, costValue);
+    } else if (!serviceName && costValue !== null) {
+      totalFallbacks.push(costValue);
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      if (value && typeof value === 'object') {
+        walk(value);
+      } else if (typeof value !== 'object') {
+        const keyLower = key.toLowerCase();
+        if ((keyLower.includes('total') || keyLower.includes('cost')) && value !== null && value !== undefined) {
+          const parsed = toUsd(value);
+          if (parsed !== null) totalFallbacks.push(parsed);
+        }
+      }
+    }
+  };
+
+  walk(reportsJson);
+
+  const services = Array.from(serviceTotals.entries())
+    .map(([service, costUsd]) => ({ service, costUsd }))
+    .sort((a, b) => b.costUsd - a.costUsd);
+
+  let totalUsd = services.reduce((sum, entry) => sum + entry.costUsd, 0);
+  if ((!Number.isFinite(totalUsd) || totalUsd <= 0) && totalFallbacks.length) {
+    const bestTotal = Math.max(...totalFallbacks.filter((v) => Number.isFinite(v) && v > 0));
+    if (Number.isFinite(bestTotal) && bestTotal > 0) {
+      totalUsd = bestTotal;
+    }
+  }
+
+  if (!services.length && !totalUsd) {
+    console.log('[Admin] Cloud Billing reports raw JSON (unparsed):', JSON.stringify(reportsJson).substring(0, 1500));
+  }
+
+  return { services, totalUsd: Number.isFinite(totalUsd) && totalUsd > 0 ? totalUsd : null, accountId, raw: reportsJson };
+}
+
+/**
+ * GET /api/admin/firestore-metrics - Pull Firestore usage + billing signals from GCP Monitoring
+ * Query: ?hours=36 (default 36, min 6, max 168)
+ */
+app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (req, res) => {
+  const warnings = [];
+  try {
+    if (!googleApis) {
+      return res.status(503).json({ errno: 503, error: 'googleapis dependency not available on server' });
+    }
+
+    const projectId = getRuntimeProjectId();
+    if (!projectId) {
+      return res.status(500).json({ errno: 500, error: 'Unable to resolve GCP project id' });
+    }
+
+    const hoursRaw = Number(req.query?.hours);
+    const hours = Number.isFinite(hoursRaw) ? Math.max(6, Math.min(168, Math.floor(hoursRaw))) : 36;
+
+    const now = new Date();
+    const start = new Date(now.getTime() - (hours * 60 * 60 * 1000));
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
+
+    const auth = new googleApis.auth.GoogleAuth({
+      scopes: ['https://www.googleapis.com/auth/monitoring.read']
+    });
+    const monitoring = googleApis.monitoring({ version: 'v3', auth });
+
+    const metricFilters = {
+      reads: 'metric.type="firestore.googleapis.com/document/read_count"',
+      writes: 'metric.type="firestore.googleapis.com/document/write_count"',
+      deletes: 'metric.type="firestore.googleapis.com/document/delete_count"',
+      storageCandidates: [
+        'metric.type="firestore.googleapis.com/storage/bytes_used"',
+        'metric.type="firestore.googleapis.com/database/storage/total_bytes"',
+        'metric.type="firestore.googleapis.com/storage/total_bytes"'
+      ],
+      billingCostCandidates: [
+        'metric.type="billing.googleapis.com/billing/account/total_cost"',
+        'metric.type="billing.googleapis.com/billing_account/cost"',
+        'metric.type="billing.googleapis.com/billing/account/cost"'
+      ]
+    };
+
+    const loadMetricSeriesSafe = async ({
+      label,
+      filters,
+      startTime,
+      endTime,
+      aligner,
+      alignmentPeriod
+    }) => {
+      const filterList = Array.isArray(filters) ? filters : [filters];
+      for (const filter of filterList) {
+        try {
+          const series = await listMonitoringTimeSeries({
+            monitoring,
+            projectId,
+            filter,
+            startTime,
+            endTime,
+            aligner,
+            alignmentPeriod
+          });
+          return series;
+        } catch (error) {
+          const msg = String(error?.message || error || 'unknown error');
+          const unavailable = msg.includes('Cannot find metric(s) that match type') || msg.includes('not found');
+          if (!unavailable) {
+            warnings.push(`${label} metric query failed: ${normalizeMetricErrorMessage(error)}`);
+            return [];
+          }
+        }
+      }
+      warnings.push(`${label} metric unavailable for this project/region`);
+      return [];
+    };
+
+    const [readsSeries, writesSeries, deletesSeries, readsMtdSeries, writesMtdSeries, deletesMtdSeries, storageSeries] = await Promise.all([
+      loadMetricSeriesSafe({
+        label: 'Firestore reads',
+        filters: metricFilters.reads,
+        startTime: start,
+        endTime: now,
+        aligner: 'ALIGN_DELTA',
+        alignmentPeriod: '3600s'
+      }),
+      loadMetricSeriesSafe({
+        label: 'Firestore writes',
+        filters: metricFilters.writes,
+        startTime: start,
+        endTime: now,
+        aligner: 'ALIGN_DELTA',
+        alignmentPeriod: '3600s'
+      }),
+      loadMetricSeriesSafe({
+        label: 'Firestore deletes',
+        filters: metricFilters.deletes,
+        startTime: start,
+        endTime: now,
+        aligner: 'ALIGN_DELTA',
+        alignmentPeriod: '3600s'
+      }),
+      loadMetricSeriesSafe({
+        label: 'Firestore reads (MTD)',
+        filters: metricFilters.reads,
+        startTime: monthStart,
+        endTime: now,
+        aligner: 'ALIGN_DELTA',
+        alignmentPeriod: '86400s'
+      }),
+      loadMetricSeriesSafe({
+        label: 'Firestore writes (MTD)',
+        filters: metricFilters.writes,
+        startTime: monthStart,
+        endTime: now,
+        aligner: 'ALIGN_DELTA',
+        alignmentPeriod: '86400s'
+      }),
+      loadMetricSeriesSafe({
+        label: 'Firestore deletes (MTD)',
+        filters: metricFilters.deletes,
+        startTime: monthStart,
+        endTime: now,
+        aligner: 'ALIGN_DELTA',
+        alignmentPeriod: '86400s'
+      }),
+      loadMetricSeriesSafe({
+        label: 'Firestore storage',
+        filters: metricFilters.storageCandidates,
+        startTime: start,
+        endTime: now,
+        aligner: 'ALIGN_MEAN',
+        alignmentPeriod: '3600s'
+      })
+    ]);
+
+    // Fetch real billing cost per service from Cloud Billing API
+    let billingData = null;
+    let usedMonitoringBillingFallback = false;
+    try {
+      billingData = await fetchCloudBillingCost(projectId);
+      console.log(`[Admin] Cloud Billing cost fetched: $${billingData.totalUsd.toFixed(2)} across ${billingData.services.length} services`);
+    } catch (billingErr) {
+      if (billingErr.isBillingIamError) {
+        warnings.push(billingErr.message);
+      } else if (billingErr.isBillingReportsUnavailable) {
+        // Fallback 1: Cloud Monitoring billing metrics
+        const billingMtdSeries = await loadMetricSeriesSafe({
+          label: 'Billing cost (Monitoring fallback)',
+          filters: metricFilters.billingCostCandidates,
+          startTime: monthStart,
+          endTime: now,
+          aligner: 'ALIGN_SUM',
+          alignmentPeriod: '86400s'
+        });
+
+        const fallbackTotal = billingMtdSeries.length ? sumSeriesValues(billingMtdSeries) : null;
+        if (Number.isFinite(fallbackTotal) && fallbackTotal > 0) {
+          billingData = {
+            services: null,
+            totalUsd: fallbackTotal,
+            accountId: null,
+            raw: null
+          };
+          usedMonitoringBillingFallback = true;
+          warnings.push('Billing service breakdown unavailable; using Monitoring total-cost fallback.');
+        } else {
+          // Fallback 2: estimate from Firestore read/write/delete usage counts we already fetched
+          const readsMtdVal   = Math.round(sumSeriesValues(readsMtdSeries));
+          const writesMtdVal  = Math.round(sumSeriesValues(writesMtdSeries));
+          const deletesMtdVal = Math.round(sumSeriesValues(deletesMtdSeries));
+          const estimate = estimateFirestoreCostFromUsage(readsMtdVal, writesMtdVal, deletesMtdVal, now);
+          billingData = {
+            services: estimate.services,
+            totalUsd: estimate.totalUsd,
+            accountId: null,
+            raw: null,
+            isEstimate: true
+          };
+          warnings.push(
+            'Est. MTD cost calculated from Firestore read/write/delete counts × GCP pricing ' +
+            '($0.06/100K reads, $0.18/100K writes, $0.02/100K deletes, minus daily free tier). ' +
+            'Does not include Cloud Functions, Auth, storage, or egress costs.'
+          );
+        }
+      } else {
+        warnings.push(`Billing cost unavailable: ${normalizeMetricErrorMessage(billingErr)}`);
+        console.warn('[Admin] fetchCloudBillingCost error:', billingErr.message);
+      }
+    }
+
+    const trendMap = new Map();
+    for (const point of readsSeries) {
+      const existing = trendMap.get(point.timestamp) || { timestamp: point.timestamp, reads: 0, writes: 0, deletes: 0 };
+      existing.reads = Number(point.value || 0);
+      trendMap.set(point.timestamp, existing);
+    }
+    for (const point of writesSeries) {
+      const existing = trendMap.get(point.timestamp) || { timestamp: point.timestamp, reads: 0, writes: 0, deletes: 0 };
+      existing.writes = Number(point.value || 0);
+      trendMap.set(point.timestamp, existing);
+    }
+    for (const point of deletesSeries) {
+      const existing = trendMap.get(point.timestamp) || { timestamp: point.timestamp, reads: 0, writes: 0, deletes: 0 };
+      existing.deletes = Number(point.value || 0);
+      trendMap.set(point.timestamp, existing);
+    }
+
+    const trend = Array.from(trendMap.values())
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    const latestStorageBytes = storageSeries.length
+      ? Number(storageSeries[storageSeries.length - 1].value || 0)
+      : null;
+
+    res.json({
+      errno: 0,
+      result: {
+        source: (() => {
+          if (!billingData) return 'gcp-monitoring';
+          if (usedMonitoringBillingFallback) return 'gcp-monitoring+monitoring-billing-fallback';
+          if (billingData.isEstimate) return 'gcp-monitoring+usage-estimate';
+          return 'gcp-monitoring+cloud-billing';
+        })(),
+        projectId,
+        updatedAt: now.toISOString(),
+        windowHours: hours,
+        firestore: {
+          readsMtd: Math.round(sumSeriesValues(readsMtdSeries)),
+          writesMtd: Math.round(sumSeriesValues(writesMtdSeries)),
+          deletesMtd: Math.round(sumSeriesValues(deletesMtdSeries)),
+          storageGb: Number.isFinite(latestStorageBytes) ? (latestStorageBytes / (1024 * 1024 * 1024)) : null
+        },
+        billing: {
+          estimatedMtdCostUsd: billingData ? billingData.totalUsd : null,
+          services: billingData ? billingData.services : null,
+          billingAccountId: billingData ? billingData.accountId : null,
+          isEstimate: billingData ? (billingData.isEstimate === true) : false
+        },
+        trend,
+        warnings
+      }
+    });
+  } catch (error) {
+    console.error('[Admin] Error loading Firestore metrics:', error);
+    res.status(500).json({ errno: 500, error: error.message || String(error), result: { warnings } });
+  }
+});
+
 /**
  * GET /api/admin/users - List all registered users with basic info
  */
@@ -1479,6 +2111,8 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
 
       let configured = false;
       let configuredAtMs = null;
+      let firstRuleAtMs = null;
+      let hasRules = false;
       if (profileByUid.has(uid)) {
         try {
           const cfgDoc = await db.collection('users').doc(uid).collection('config').doc('main').get();
@@ -1498,6 +2132,35 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
         } catch (cfgErr) {
           // Keep endpoint resilient for per-user errors
         }
+
+        try {
+          let firstRuleSnap = await db.collection('users').doc(uid)
+            .collection('rules')
+            .orderBy('createdAt', 'asc')
+            .limit(1)
+            .get();
+
+          // Fallback for legacy rules missing createdAt
+          if (firstRuleSnap.empty) {
+            firstRuleSnap = await db.collection('users').doc(uid)
+              .collection('rules')
+              .limit(1)
+              .get();
+          }
+
+          if (!firstRuleSnap.empty) {
+            hasRules = true;
+            const firstRule = firstRuleSnap.docs[0].data() || {};
+            firstRuleAtMs =
+              toMs(firstRule.createdAt) ||
+              toMs(firstRule.updatedAt) ||
+              configuredAtMs ||
+              toMs(profile.lastUpdated) ||
+              joinedAtMs;
+          }
+        } catch (ruleErr) {
+          // Keep endpoint resilient for per-user errors
+        }
       }
 
       return {
@@ -1506,7 +2169,9 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
         automationEnabled: !!profile.automationEnabled,
         joinedAtMs,
         configured,
-        configuredAtMs
+        configuredAtMs,
+        hasRules,
+        firstRuleAtMs
       };
     }));
 
@@ -1520,10 +2185,17 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
       .filter((ms) => Number.isFinite(ms))
       .sort((a, b) => a - b);
 
+    const rulesSeries = users
+      .map((u) => u.firstRuleAtMs)
+      .filter((ms) => Number.isFinite(ms))
+      .sort((a, b) => a - b);
+
     let joinedIdx = 0;
     let configuredIdx = 0;
+    let rulesIdx = 0;
     let totalUsers = 0;
     let configuredUsers = 0;
+    let usersWithRules = 0;
 
     const trend = dateBuckets.map((bucket) => {
       while (joinedIdx < joinedSeries.length && joinedSeries[joinedIdx] <= bucket.dayEndMs) {
@@ -1534,16 +2206,22 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
         configuredUsers += 1;
         configuredIdx += 1;
       }
+      while (rulesIdx < rulesSeries.length && rulesSeries[rulesIdx] <= bucket.dayEndMs) {
+        usersWithRules += 1;
+        rulesIdx += 1;
+      }
       return {
         date: bucket.key,
         totalUsers,
-        configuredUsers
+        configuredUsers,
+        usersWithRules
       };
     });
 
     const summary = {
       totalUsers: users.length,
       configuredUsers: users.filter((u) => u.configured).length,
+      usersWithRules: users.filter((u) => u.hasRules).length,
       admins: users.filter((u) => u.role === 'admin').length,
       automationActive: users.filter((u) => u.automationEnabled).length
     };
@@ -1575,6 +2253,65 @@ app.post('/api/admin/users/:uid/role', authenticateUser, requireAdmin, async (re
   } catch (error) {
     console.error('[Admin] Error setting role:', error);
     res.status(500).json({ errno: 500, error: error.message });
+  }
+});
+
+/**
+ * POST /api/admin/users/:uid/delete - Delete user account and all Firestore data
+ * Body: { confirmText: 'DELETE' }
+ */
+app.post('/api/admin/users/:uid/delete', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const confirmText = String(req.body?.confirmText || '').trim();
+
+    if (!uid) {
+      return res.status(400).json({ errno: 400, error: 'uid is required' });
+    }
+    if (confirmText !== 'DELETE') {
+      return res.status(400).json({ errno: 400, error: 'Confirmation text must be DELETE' });
+    }
+    if (uid === req.user.uid) {
+      return res.status(400).json({ errno: 400, error: 'Cannot delete your own admin account from this endpoint' });
+    }
+
+    let targetUser;
+    try {
+      targetUser = await admin.auth().getUser(uid);
+    } catch (e) {
+      return res.status(404).json({ errno: 404, error: 'User not found' });
+    }
+
+    await deleteUserDataTree(uid);
+
+    try {
+      await deleteCollectionDocs(db.collection('admin_audit').where('adminUid', '==', uid));
+      await deleteCollectionDocs(db.collection('admin_audit').where('targetUid', '==', uid));
+    } catch (auditError) {
+      console.warn('[AdminDelete] Failed to clean admin_audit references:', auditError.message || auditError);
+    }
+
+    try {
+      await admin.auth().deleteUser(uid);
+    } catch (authErr) {
+      if (!authErr || authErr.code !== 'auth/user-not-found') {
+        throw authErr;
+      }
+    }
+
+    await db.collection('admin_audit').add({
+      action: 'delete_user',
+      adminUid: req.user.uid,
+      adminEmail: req.user.email,
+      targetUid: uid,
+      targetEmail: targetUser.email || '',
+      timestamp: serverTimestamp()
+    });
+
+    res.json({ errno: 0, result: { deleted: true, uid, email: targetUser.email || '' } });
+  } catch (error) {
+    console.error('[Admin] Error deleting user:', error);
+    res.status(500).json({ errno: 500, error: error.message || String(error) });
   }
 });
 
@@ -1677,22 +2414,22 @@ app.post('/api/admin/impersonate', authenticateUser, requireAdmin, async (req, r
     } catch (e) {
       return res.status(404).json({ errno: 404, error: 'User not found' });
     }
-    // Try to create a custom token for full auth-context impersonation.
-    // If IAM signBlob permissions are missing, gracefully fall back to
-    // header-based impersonation mode (enforced server-side for admins only).
+    // Strict mode: only custom-token impersonation is allowed to ensure
+    // the UI/API experience matches the target user exactly.
     let customToken = null;
-    let mode = 'customToken';
+    const mode = 'customToken';
     try {
       customToken = await admin.auth().createCustomToken(uid, { impersonatedBy: req.user.uid });
     } catch (tokenErr) {
       const msg = tokenErr && tokenErr.message ? tokenErr.message : String(tokenErr);
       const isSignBlobDenied = msg.includes('iam.serviceAccounts.signBlob') || msg.includes('Permission iam.serviceAccounts.signBlob denied');
       if (isSignBlobDenied) {
-        mode = 'header';
-        console.warn('[Admin] createCustomToken signBlob permission missing; using header impersonation fallback');
-      } else {
-        throw tokenErr;
+        return res.status(503).json({
+          errno: 503,
+          error: 'Impersonation is unavailable until IAM token signing is enabled. Grant roles/iam.serviceAccountTokenCreator to the Cloud Functions service account on the runtime service account.'
+        });
       }
+      throw tokenErr;
     }
     
     // Audit log
@@ -1706,7 +2443,7 @@ app.post('/api/admin/impersonate', authenticateUser, requireAdmin, async (req, r
       timestamp: serverTimestamp()
     });
 
-    res.json({
+    return res.json({
       errno: 0,
       result: {
         mode,
@@ -1733,55 +2470,11 @@ app.get('/api/admin/check', authenticateUser, async (req, res) => {
 // Apply auth middleware to remaining API routes
 app.use('/api', authenticateUser);
 
-// Optional admin impersonation middleware (header-based fallback mode)
-// When X-Impersonate-Uid is present and requester is admin, all non-admin
-// API routes execute against the impersonated user context.
+// Header-based impersonation is intentionally disabled.
+// Strict impersonation mode uses Firebase custom tokens only so the session
+// is identical to the target user and cannot leak admin context.
 app.use('/api', async (req, res, next) => {
-  try {
-    // Never impersonate admin management routes themselves.
-    if (req.path && req.path.startsWith('/admin')) {
-      return next();
-    }
-
-    const impersonateUid = req.headers['x-impersonate-uid'];
-    if (!impersonateUid || typeof impersonateUid !== 'string') {
-      return next();
-    }
-
-    const targetUid = impersonateUid.trim();
-    if (!targetUid) return next();
-
-    const requesterUid = req.user && req.user.uid ? req.user.uid : null;
-    const requesterEmail = req.user && req.user.email ? req.user.email : '';
-    if (!requesterUid) {
-      return res.status(401).json({ errno: 401, error: 'Unauthorized' });
-    }
-
-    const adminStatus = await isAdmin(req);
-    if (!adminStatus) {
-      return res.status(403).json({ errno: 403, error: 'Impersonation requires admin access' });
-    }
-
-    // Validate target exists in users collection.
-    const targetUserDoc = await db.collection('users').doc(targetUid).get();
-    if (!targetUserDoc.exists) {
-      return res.status(404).json({ errno: 404, error: 'Impersonated user not found' });
-    }
-
-    req.actorUser = { uid: requesterUid, email: requesterEmail };
-    req.user = {
-      ...req.user,
-      uid: targetUid,
-      impersonatedBy: requesterUid,
-      impersonatedByEmail: requesterEmail,
-      isImpersonating: true
-    };
-
-    next();
-  } catch (error) {
-    console.error('[Admin] impersonation middleware error:', error);
-    res.status(500).json({ errno: 500, error: error.message || 'Impersonation middleware failed' });
-  }
+  next();
 });
 
 // ==================== PROTECTED ENDPOINTS (After Auth Middleware) ====================
@@ -2478,6 +3171,10 @@ async function deleteCollectionDocs(query, batchSize = 200) {
 }
 
 async function deleteDocumentTreeFallback(docRef) {
+  if (!docRef || typeof docRef.listCollections !== 'function') {
+    await docRef?.delete?.().catch(() => {});
+    return;
+  }
   const subcollections = await docRef.listCollections();
   for (const subcollection of subcollections) {
     let snapshot = await subcollection.limit(100).get();

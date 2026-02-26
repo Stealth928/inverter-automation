@@ -1159,16 +1159,6 @@ textarea.input {
         font-size: var(--font-size-sm);
     }
 
-    .device-input {
-        width: 100%;
-        min-width: 0;
-    }
-
-    .device-input input {
-        width: 100%;
-        min-width: 0;
-    }
-
     .user-menu {
         align-self: flex-end;
     }

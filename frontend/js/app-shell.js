@@ -137,6 +137,93 @@
         }
     }
 
+    function getImpersonationState() {
+        try {
+            return {
+                uid: localStorage.getItem('adminImpersonationUid') || '',
+                email: localStorage.getItem('adminImpersonationEmail') || '',
+                mode: localStorage.getItem('adminImpersonationMode') || '',
+                startedAt: Number(localStorage.getItem('adminImpersonationStartedAt') || 0) || 0
+            };
+        } catch (e) {
+            return { uid: '', email: '', mode: '', startedAt: 0 };
+        }
+    }
+
+    function clearImpersonationState() {
+        try {
+            localStorage.removeItem('adminImpersonationUid');
+            localStorage.removeItem('adminImpersonationEmail');
+            localStorage.removeItem('adminImpersonationMode');
+            localStorage.removeItem('adminImpersonationStartedAt');
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    function renderImpersonationBanner(user) {
+        const stateData = getImpersonationState();
+        if (stateData.mode === 'header') {
+            clearImpersonationState();
+            return;
+        }
+        const isImpersonating = !!(user && stateData.uid && String(user.uid || '') === String(stateData.uid));
+
+        let banner = document.getElementById('globalImpersonationBanner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'globalImpersonationBanner';
+            banner.style.cssText = [
+                'display:none',
+                'position:sticky',
+                'top:64px',
+                'z-index:9999',
+                'width:100%',
+                'padding:10px 14px',
+                'background:linear-gradient(90deg, #7f1d1d, #b91c1c)',
+                'border-top:1px solid rgba(255,255,255,0.15)',
+                'border-bottom:1px solid rgba(255,255,255,0.15)',
+                'color:#fff',
+                'font-weight:700',
+                'letter-spacing:0.2px'
+            ].join(';');
+            const message = document.createElement('span');
+            message.id = 'globalImpersonationBannerText';
+            const stopBtn = document.createElement('button');
+            stopBtn.type = 'button';
+            stopBtn.textContent = 'Stop';
+            stopBtn.style.cssText = 'float:right;margin-left:10px;padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.5);background:rgba(0,0,0,0.2);color:#fff;cursor:pointer;font-weight:700;';
+            stopBtn.addEventListener('click', async () => {
+                clearImpersonationState();
+                await signOut();
+                if (typeof safeRedirect === 'function') {
+                    safeRedirect('/login.html?impersonationStopped=1');
+                } else {
+                    window.location.href = '/login.html?impersonationStopped=1';
+                }
+            });
+            banner.appendChild(message);
+            banner.appendChild(stopBtn);
+
+            const nav = document.querySelector('.nav-main');
+            if (nav && nav.parentNode) {
+                nav.parentNode.insertBefore(banner, nav.nextSibling);
+            } else {
+                document.body.insertBefore(banner, document.body.firstChild);
+            }
+        }
+
+        const message = document.getElementById('globalImpersonationBannerText');
+        if (!isImpersonating) {
+            banner.style.display = 'none';
+            return;
+        }
+
+        const target = stateData.email || user.email || user.uid || 'unknown user';
+        message.textContent = `⚠️ IMPERSONATION ACTIVE — You are viewing as: ${target}`;
+        banner.style.display = 'block';
+    }
+
     async function refreshAdminNavVisibility(user) {
         if (!user) {
             state.isAdmin = false;
@@ -172,6 +259,7 @@
     function updateUserIdentity(user) {
         // Keep admin nav visibility in sync even if user-menu is not rendered yet.
         refreshAdminNavVisibility(user);
+        renderImpersonationBanner(user);
 
         const menu = document.querySelector('[data-user-menu]');
         if (!menu) return;
@@ -257,18 +345,8 @@
         const contactUsBtn = menu.querySelector('[data-contact-us]');
         const signOutBtn = menu.querySelector('[data-signout]');
 
-        const getImpersonationUid = () => {
-            try { return localStorage.getItem('adminImpersonationUid') || ''; } catch (e) { return ''; }
-        };
-
-        const clearImpersonation = () => {
-            try {
-                localStorage.removeItem('adminImpersonationUid');
-                localStorage.removeItem('adminImpersonationEmail');
-            } catch (e) {
-                // ignore
-            }
-        };
+        const getImpersonationUid = () => getImpersonationState().uid;
+        const clearImpersonation = () => clearImpersonationState();
 
         const notify = (type, message) => {
             if (typeof window.showMessage === 'function') {
@@ -313,12 +391,13 @@
             stopBtn.setAttribute('data-stop-impersonation', '1');
             stopBtn.textContent = '🛑 Stop Impersonation';
             stopBtn.style.display = getImpersonationUid() ? '' : 'none';
-            stopBtn.addEventListener('click', () => {
+            stopBtn.addEventListener('click', async () => {
                 clearImpersonation();
+                await signOut();
                 if (typeof safeRedirect === 'function') {
-                    safeRedirect('/admin.html');
+                    safeRedirect('/login.html?impersonationStopped=1');
                 } else {
-                    window.location.href = '/admin.html';
+                    window.location.href = '/login.html?impersonationStopped=1';
                 }
             });
             dropdown.appendChild(stopBtn);
@@ -522,6 +601,7 @@
     }
 
     function handleSignedOut() {
+        clearImpersonationState();
         state.user = null;
         state.ready = false;
         stopMetricsTimer();

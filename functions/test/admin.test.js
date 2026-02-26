@@ -13,7 +13,8 @@ const mockAuth = {
   verifyIdToken: jest.fn(),
   getUser: jest.fn(),
   listUsers: jest.fn(),
-  createCustomToken: jest.fn()
+  createCustomToken: jest.fn(),
+  deleteUser: jest.fn()
 };
 
 jest.mock('firebase-admin', () => {
@@ -203,8 +204,10 @@ describe('Admin API', () => {
       expect(res.body.result.days).toBe(90);
       expect(res.body.result.summary).toHaveProperty('totalUsers');
       expect(res.body.result.summary).toHaveProperty('configuredUsers');
+      expect(res.body.result.summary).toHaveProperty('usersWithRules');
       expect(res.body.result.summary).toHaveProperty('admins');
       expect(res.body.result.summary).toHaveProperty('automationActive');
+      expect(res.body.result.trend[0]).toHaveProperty('usersWithRules');
     });
 
     it('should return 403 for non-admin', async () => {
@@ -324,6 +327,53 @@ describe('Admin API', () => {
         .send({ uid: 'admin-uid-1' });
 
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe('POST /api/admin/users/:uid/delete', () => {
+    it('should delete a user for admin', async () => {
+      mockAuth.getUser.mockResolvedValue({ uid: 'user-uid-2', email: 'regular@example.com' });
+      mockAuth.deleteUser.mockResolvedValue(undefined);
+
+      const res = await request(app)
+        .post('/api/admin/users/user-uid-2/delete')
+        .set(authHeaders('mock-admin-token'))
+        .send({ confirmText: 'DELETE' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.errno).toBe(0);
+      expect(res.body.result.deleted).toBe(true);
+      expect(res.body.result.uid).toBe('user-uid-2');
+    });
+
+    it('should prevent deleting own admin account', async () => {
+      const res = await request(app)
+        .post('/api/admin/users/admin-uid-1/delete')
+        .set(authHeaders('mock-admin-token'))
+        .send({ confirmText: 'DELETE' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errno).toBe(400);
+    });
+
+    it('should reject missing confirmation text', async () => {
+      const res = await request(app)
+        .post('/api/admin/users/user-uid-2/delete')
+        .set(authHeaders('mock-admin-token'))
+        .send({ confirmText: 'NOPE' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errno).toBe(400);
+    });
+
+    it('should return 403 for non-admin', async () => {
+      const res = await request(app)
+        .post('/api/admin/users/user-uid-2/delete')
+        .set(authHeaders('mock-user-token'))
+        .send({ confirmText: 'DELETE' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.errno).toBe(403);
     });
   });
 });

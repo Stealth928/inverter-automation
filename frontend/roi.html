@@ -677,7 +677,6 @@
             <a href="/admin.html" class="nav-link" id="adminNavLink" style="display: none;">🛡️ Admin</a>
         </div>
         <div class="nav-right">
-            <span class="nav-info" id="deviceSnDisplay">Device: —</span>
             <div class="user-menu" data-user-menu>
                 <button class="user-avatar" type="button" data-user-avatar>
                     <span data-user-initials>?</span>
@@ -1797,7 +1796,6 @@
                 const data = await resp.json();
                 if (data.errno === 0 && data.result?.deviceSn) {
                     deviceSn = data.result.deviceSn;
-                    document.getElementById('deviceSnDisplay').textContent = `Device: ${deviceSn}`;
                 }
             } catch (e) {
                 console.warn('Failed to load device SN:', e);

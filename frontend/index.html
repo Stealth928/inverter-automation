@@ -47,32 +47,6 @@
         .header h1 .logo {
             font-size: 1.25rem;
         }
-        .device-input {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            background: rgba(33, 38, 45, 0.8);
-            padding: 8px 16px;
-            border-radius: 8px;
-            border: 1px solid rgba(48, 54, 61, 0.8);
-        }
-        .device-input label {
-            font-size: 12px;
-            color: #8b949e;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .device-input input {
-            background: transparent;
-            border: none;
-            color: #e6edf3;
-            font-size: 13px;
-            width: 200px;
-            outline: none;
-        }
-        .device-input input::placeholder {
-            color: #484f58;
-        }
 
         .auth-loading {
             display: flex;
@@ -1704,10 +1678,7 @@
             <a href="/admin.html" class="nav-link" id="adminNavLink" style="display: none;">🛡️ Admin</a>
         </div>
         <div class="nav-right">
-            <div class="device-input">
-                <label>Device SN</label>
-                <input type="text" id="deviceSn" placeholder="Auto-detect from .env">
-            </div>
+            <input type="hidden" id="deviceSn" value="">
             <div class="user-menu" data-user-menu>
                 <button class="user-avatar" type="button" data-user-avatar>
                     <span data-user-initials>?</span>

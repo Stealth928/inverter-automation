@@ -38,10 +38,27 @@ async function normalizeFetchResponse(response) {
 }
 
 const IMPERSONATION_UID_KEY = 'adminImpersonationUid';
+const IMPERSONATION_MODE_KEY = 'adminImpersonationMode';
 
 function getImpersonationUid() {
   try {
     return localStorage.getItem(IMPERSONATION_UID_KEY) || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function getImpersonationMode() {
+  try {
+    const mode = localStorage.getItem(IMPERSONATION_MODE_KEY) || '';
+    if (mode === 'header') {
+      localStorage.removeItem(IMPERSONATION_UID_KEY);
+      localStorage.removeItem('adminImpersonationEmail');
+      localStorage.removeItem(IMPERSONATION_MODE_KEY);
+      localStorage.removeItem('adminImpersonationStartedAt');
+      return '';
+    }
+    return mode;
   } catch (e) {
     return '';
   }
@@ -110,7 +127,8 @@ class APIClient {
     }
 
     const impersonationUid = getImpersonationUid();
-    if (impersonationUid && !shouldSkipImpersonationHeader(endpoint)) {
+    const impersonationMode = getImpersonationMode();
+    if (impersonationMode === 'header' && impersonationUid && !shouldSkipImpersonationHeader(endpoint)) {
       headers['X-Impersonate-Uid'] = impersonationUid;
     }
 
@@ -173,7 +191,8 @@ class APIClient {
     }
 
     const impersonationUid = getImpersonationUid();
-    if (impersonationUid && !shouldSkipImpersonationHeader(endpoint)) {
+    const impersonationMode = getImpersonationMode();
+    if (impersonationMode === 'header' && impersonationUid && !shouldSkipImpersonationHeader(endpoint)) {
       headers['X-Impersonate-Uid'] = impersonationUid;
     }
 
