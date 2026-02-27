@@ -11,7 +11,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="FoxESS Automation">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="stylesheet" href="css/shared-styles.css?v=3" />
+    <link rel="stylesheet" href="css/shared-styles.css?v=7" />
+    <link rel="stylesheet" href="css/tour.css" />
     <!-- Firebase SDK (compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -20,29 +21,47 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=7"></script>
+    <script src="js/app-shell.js?v=9"></script>
+    <script src="js/tour.js?v=6"></script>
     <style>
         /* Page-specific styles */
         body {
-            padding: 20px;
+            /* top padding handled by body.has-fixed-nav in shared-styles (64px) */
+            padding: 0;
         }
-        .container { max-width: 1600px; margin: 0 auto; }
-        
-        h2 {
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px 20px 40px;
+        }
+
+        /* ---- Card header pattern: matches shared-styles ---- */
+        .card > h2 {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            gap: 12px;
+            gap: 10px;
             margin: 0;
-            font-size: 1.3rem;
+            padding: 14px 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+            font-size: 1rem;
             font-weight: 600;
+            color: var(--text-primary);
+            justify-content: flex-start;
         }
-        
+        /* Give all direct card children (except h2) a consistent side + top gutter */
+        .card > *:not(h2) {
+            padding-left: 20px;
+            padding-right: 20px;
+        }
+        .card > h2 + * { padding-top: 18px; }
+        .card > *:last-child { padding-bottom: 20px; }
+
         h2 .icon {
-            font-size: 1.5rem;
+            font-size: 1.2rem;
             flex-shrink: 0;
         }
-        
+
         header {
             display: flex;
             justify-content: space-between;
@@ -86,8 +105,70 @@
         @media (max-width: 1200px) {
             .grid { grid-template-columns: 1fr 1fr; }
         }
+
+        /* ---- Mobile tab bar (hidden on desktop) ---- */
+        .mobile-tabs {
+            display: none;
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            padding: 4px;
+            border: 1px solid var(--border-primary);
+        }
+        .mobile-tab {
+            flex: 1;
+            padding: 10px 6px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            border-radius: 7px;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+            white-space: nowrap;
+        }
+        .mobile-tab.active {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+        }
+
         @media (max-width: 800px) {
             .grid { grid-template-columns: 1fr; }
+            /* Fix span/full-width spans on single-column grid */
+            .span-2, .full-width { grid-column: 1 / -1; }
+            /* Reveal mobile tab bar */
+            .mobile-tabs { display: flex; }
+            /* Tab-driven sections: hidden by default, shown when tab is active */
+            [data-section] { display: none; }
+            [data-section].tab-active { display: block; }
+        }
+        @media (max-width: 640px) {
+            .container { padding: 12px 12px 32px; }
+            header { flex-wrap: wrap; gap: 8px; }
+            header h1 { font-size: 1.1rem; }
+            .sim-grid { grid-template-columns: 1fr 1fr !important; }
+            .sim-grid > div[style*="grid-column"] { grid-column: 1 / -1 !important; }
+            /* Presets: allow horizontal scroll so they stay on one row */
+            .presets {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 6px;
+                scrollbar-width: none;
+            }
+            .presets::-webkit-scrollbar { display: none; }
+            .rule-params { gap: 4px; }
+            .rule-param { font-size: 0.75rem; padding: 4px 7px; }
+            /* inline-actions: stack vertically and make run btn full-width */
+            .inline-actions {
+                flex-direction: column;
+                gap: 10px !important;
+            }
+            .inline-actions > button {
+                width: 100% !important;
+                justify-content: center;
+            }
         }
 
         /* Form inputs */
@@ -139,19 +220,20 @@
             font-style: italic;
         }
 
-        /* Presets */
+        /* Presets — horizontal scroll on mobile so they don't stack */
         .presets {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
             margin-top: 18px;
             margin-bottom: 18px;
             align-items: center;
         }
         .presets button {
-            padding: 8px 14px;
+            padding: 7px 13px;
             font-size: 0.8rem;
             font-weight: 500;
+            flex-shrink: 0;
         }
 
         /* Rules Display */
@@ -342,6 +424,7 @@
         .rule-not-met-card {
             background: rgba(248, 81, 73, 0.1);
             border: 2px solid #f85149;
+        }
 
         /* Log Output */
         .log-area {
@@ -375,7 +458,9 @@
         }
 
         .full-width { grid-column: 1 / -1; }
-        .span-2 { grid-column: span 2; }
+        @media (min-width: 801px) {
+            .span-2 { grid-column: span 2; }
+        }
         
         .info-banner {
             background: rgba(88, 166, 255, 0.1);
@@ -405,6 +490,13 @@
             overflow-y: auto;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
             padding: 24px;
+        }
+        @media (max-width: 640px) {
+            .modal-content {
+                width: calc(100vw - 20px) !important;
+                padding: 16px;
+                border-radius: 12px;
+            }
         }
 
         /* Prevent body scroll while modal open */
@@ -603,8 +695,15 @@
         </div>
 
         <div class="grid">
+            <!-- Mobile-only tab navigation (hidden on desktop via CSS) -->
+            <div class="mobile-tabs full-width" id="mobileTabs">
+                <button class="mobile-tab active" data-tab="conditions" onclick="switchTab('conditions')">⚙️ Conditions</button>
+                <button class="mobile-tab" data-tab="rules" onclick="switchTab('rules')">📋 Rules</button>
+                <button class="mobile-tab" data-tab="results" onclick="switchTab('results')">🔬 Results</button>
+            </div>
+
             <!-- Column 1: Mock Data Input -->
-            <div class="card">
+            <div class="card" data-section="conditions">
                 <h2><span class="icon">⚙️</span> <span>Simulated Conditions</span></h2>
                 <div class="sim-grid">
                     <div class="sim-field">
@@ -701,7 +800,7 @@
             </div>
 
             <!-- Column 2: Rules -->
-            <div class="card">
+            <div class="card" data-section="rules">
                 <h2>
                     <span class="icon">⚙️</span>
                     <span>Automation Rules</span>
@@ -722,7 +821,7 @@
             </div>
 
             <!-- Column 3: Mock Scheduler -->
-            <div class="card">
+            <div class="card" data-section="results">
                 <h2><span class="icon">📅</span> <span>Mock Inverter Scheduler</span></h2>
                 <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;line-height:1.4">
                     Preview of scheduler segments that would be created by your test
@@ -738,7 +837,7 @@
             </div>
 
             <!-- Test Results -->
-            <div class="card span-2">
+            <div class="card span-2" data-section="results">
                 <h2><span class="icon">�</span> <span>Test Results</span></h2>
                 <div id="testResults">
                     <div class="empty-state">
@@ -749,7 +848,7 @@
             </div>
 
             <!-- API Payload Preview -->
-            <div class="card">
+            <div class="card" data-section="results">
                 <h2><span class="icon">📡</span> <span>API Payload Preview</span></h2>
                 <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;line-height:1.4">
                     Request body that would be sent to the FoxESS API
@@ -809,6 +908,7 @@
             pageName: 'automation-lab',
             autoMetrics: true,
             onReady: () => {
+                try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch(e) {}
                 try {
                     // Load cached data into UI on page load
                     loadCachedDataIntoUI();
@@ -819,6 +919,20 @@
                     console.warn('[Automation Lab] Failed to initialize', error);
                 }
             }
+        });
+
+        /* ===== Mobile tab switching ===== */
+        function switchTab(name) {
+            document.querySelectorAll('[data-section]').forEach(function(el) {
+                el.classList.toggle('tab-active', el.dataset.section === name);
+            });
+            document.querySelectorAll('.mobile-tab').forEach(function(btn) {
+                btn.classList.toggle('active', btn.dataset.tab === name);
+            });
+        }
+        /* On load: activate Conditions tab (only effective on mobile — desktop shows all) */
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.innerWidth <= 800) switchTab('conditions');
         });
 
         // FAQ toggle
@@ -1664,6 +1778,9 @@
         }
 
         function showResult(type, data) {
+            /* On mobile, jump to the Results tab automatically so the user sees the outcome */
+            if (window.innerWidth <= 800) switchTab('results');
+
             const container = document.getElementById('testResults');
             const icons = { 'triggered': '✅', 'not-triggered': '⚠️', 'error': '❌' };
             const titles = { 'triggered': 'Rule Would Trigger!', 'not-triggered': 'No Rules Matched', 'error': 'Test Error' };

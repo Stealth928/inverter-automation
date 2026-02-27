@@ -12,7 +12,8 @@
   <meta name="apple-mobile-web-app-title" content="FoxESS Automation">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon" href="data:," />
-  <link rel="stylesheet" href="css/shared-styles.css?v=3" />
+  <link rel="stylesheet" href="css/shared-styles.css?v=7" />
+  <link rel="stylesheet" href="css/tour.css" />
   <!-- Firebase SDK (compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -21,7 +22,8 @@
   <script src="js/firebase-auth.js"></script>
   <script src="js/api-client.js"></script>
   <script src="js/shared-utils.js"></script>
-  <script src="js/app-shell.js?v=7"></script>
+  <script src="js/app-shell.js?v=9"></script>
+  <script src="js/tour.js?v=6"></script>
   <style>
     /* Page-specific styles */
     .container {
@@ -235,6 +237,23 @@
       border: 1px solid rgba(88, 166, 255, 0.3);
       color: #79c0ff;
     }
+    @media (max-width: 640px) {
+      .container { padding: 10px; }
+      .grid {
+        grid-template-columns: 1fr !important;
+      }
+      .btn-grid {
+        grid-template-columns: 1fr;
+      }
+      .input-row {
+        grid-template-columns: 1fr;
+      }
+      .form-actions {
+        flex-wrap: wrap;
+      }
+      header { flex-wrap: wrap; gap: 8px; }
+      header h1 { font-size: 1.1rem; }
+    }
   </style>
 </head>
 <body>
@@ -275,7 +294,7 @@
     </header>
 
     <div class="hint">
-      ℹ️ These advanced controls were moved here to keep the main dashboard clean and focused. Configure device settings, work modes, and access detailed system information.
+      ℹ️ These advanced controls were moved here to keep the main dashboard clean and focused. Configure battery limits, work mode, and force charge schedules.
     </div>
 
     <div class="grid">
@@ -388,94 +407,6 @@
         </div>
       </div>
 
-      <!-- Scheduler Info -->
-      <div class="card">
-        <div class="card-header">
-          <h2>📅 Scheduler Info</h2>
-        </div>
-        <div class="card-body">
-          <div class="btn-grid">
-            <button class="btn" onclick="callAPI('/api/scheduler/v1/get', 'Scheduler Data')">📊 Get Scheduler</button>
-            <button class="btn" onclick="callAPI('/api/device/battery/forceChargeTime/get', 'Charge Times')">⏰ Charge Times</button>
-            <button class="btn" onclick="callAPI('/api/device/workmode/get', 'Work Mode')">⚙️ Work Mode</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Platform & Logger -->
-      <div class="card">
-        <div class="card-header">
-          <h2>🛠️ Platform & Logger</h2>
-        </div>
-        <div class="card-body">
-          <div class="btn-grid">
-            <button class="btn" onclick="callAPI('/api/platform/access-count', 'Access Count')">📊 Access Count</button>
-            <button class="btn" onclick="callAPI('/api/module/signal', 'Module Signal')">📡 Signal</button>
-            <button class="btn" onclick="callAPI('/api/plant/list', 'Plant List')">🏭 Plants</button>
-            <button class="btn" onclick="callAPI('/api/module/list', 'Module List')">📋 Modules</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- EMS & Meter -->
-      <div class="card">
-        <div class="card-header">
-          <h2>🌡️ EMS & Meter</h2>
-        </div>
-        <div class="card-body">
-          <div class="btn-grid">
-            <button class="btn" onclick="callAPI('/api/ems/list', 'EMS List')">📋 EMS List</button>
-            <button class="btn" onclick="callAPI('/api/meter/list', 'Meter List')">⚡ Meter List</button>
-              <button class="btn" onclick="callAPIPost('/api/device/getMeterReader', 'Get Meter Reader', {}, true)">🔎 Get Meter Reader</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Inverter Data -->
-      <div class="card">
-        <div class="card-header">
-          <h2>⚡ Inverter Data</h2>
-        </div>
-        <div class="card-body">
-          <div class="btn-grid">
-            <button class="btn" onclick="callAPI('/api/inverter/real-time', 'Real-time Data')">📊 Real-time</button>
-            <button class="btn" onclick="callAPI('/api/inverter/battery-soc', 'Battery SoC')">🔋 Battery</button>
-            <button class="btn" onclick="callAPI('/api/inverter/generation', 'Generation')">☀️ Generation</button>
-            <button class="btn" onclick="callAPI('/api/inverter/temps', 'Temperatures')">🌡️ Temps</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- View Settings Info (Read-Only) -->
-      <div class="card">
-        <div class="card-header">
-          <h2>🔍 View Device Settings</h2>
-        </div>
-        <div class="card-body">
-          <div style="padding:10px;background:rgba(88,166,255,0.05);border-radius:6px;margin-bottom:12px;font-size:12px;color:#79c0ff;border:1px solid rgba(88,166,255,0.2)">
-            ℹ️ <strong>Read-only viewer</strong> - Query device settings without making changes. Use the forms above to modify settings.
-          </div>
-          <div class="input-group">
-            <label>Select Setting to View</label>
-            <select id="settingKey" class="input">
-              <option value="MinSoc">MinSoc - Minimum State of Charge</option>
-              <option value="MinSocOnGrid">MinSocOnGrid - Min SoC when on grid</option>
-              <option value="MaxSoc">MaxSoc - Maximum State of Charge</option>
-              <option value="workMode">workMode - Current work mode</option>
-              <option value="pvPower">pvPower - PV Power setting</option>
-              <option value="gridCharge">gridCharge - Grid charge enabled</option>
-              <option value="forceChargeSOC">forceChargeSOC - Force charge SoC target</option>
-              <option value="peakAndValley">peakAndValley - Peak/Valley mode</option>
-              <option value="loadFirst">loadFirst - Load first priority</option>
-              <option value="batteryFirst">batteryFirst - Battery first priority</option>
-            </select>
-          </div>
-          <div class="form-actions">
-            <button type="button" class="btn" onclick="getDeviceSetting()" style="flex:1">👁️ View Setting</button>
-          </div>
-        </div>
-      </div>
-
     </div>
 
     <!-- Output Panel -->
@@ -485,7 +416,7 @@
         <button class="btn" onclick="clearOutput()" style="padding:6px 10px;font-size:12px">🗑️ Clear</button>
       </div>
       <div class="output-body">
-        <div id="output" class="output-content">Click any button above to see API responses here...</div>
+        <div id="output" class="output-content">Results from actions and diagnostics will appear here...</div>
       </div>
     </div>
 
@@ -534,7 +465,7 @@
             <div style="font-size: 12px; color: var(--text-secondary); padding: 12px; background: rgba(0, 0, 0, 0.2); border-radius: 6px; margin-top: 8px; line-height: 1.6;">
               <p><strong>Step 1:</strong> Click "Discover Available Variables" to see what data your device exposes.</p>
               <p><strong>Step 2:</strong> During solar production hours (midday), click "Get All Real-Time Data".</p>
-              <p><strong>Step 3:</strong> Check the "API Response" panel below for:</p>
+              <p><strong>Step 3:</strong> Check the "API Response" panel above for:</p>
               <ul style="margin-left: 20px;">
                 <li><code>pvPower</code> - DC-coupled solar (normal setup)</li>
                 <li><code>meterPower</code> and <code>meterPower2</code> - Meter channels (may be AC-coupled solar)</li>
@@ -597,6 +528,7 @@
       pageName: 'controls',
       autoMetrics: true,
       onReady: () => {
+        try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch(e) {}
         // Work mode loading disabled - user can fetch manually via "Check Current" button
       }
     });
@@ -610,7 +542,7 @@
     }
 
     function clearOutput() {
-      output.innerHTML = '<div style="text-align:center;padding:40px;color:#8b949e;font-size:13px">📋 Output cleared. Click any button to see API responses...</div>';
+      output.innerHTML = '<div style="text-align:center;padding:40px;color:#8b949e;font-size:13px">📋 Output cleared. Run an action or diagnostic to see results...</div>';
     }
 
     function displayFormattedResponse(title, data) {
@@ -651,57 +583,6 @@
       html += `</details>`;
       
       output.innerHTML = html;
-    }
-
-    async function callAPI(url, title = 'API Response') {
-      output.innerHTML = `<div style="text-align:center;padding:20px;color:#79c0ff">⏳ Loading ${title}...</div>`;
-      try {
-        const res = await authenticatedFetch(url);
-        const text = await res.text();
-        let parsed;
-        try {
-          parsed = JSON.parse(text);
-          displayFormattedResponse(title, parsed);
-        } catch {
-          output.innerHTML = `<div style="color:#ffd43b;padding:10px;background:rgba(255,212,59,0.1);border-radius:6px;border:1px solid rgba(255,212,59,0.3)">`;
-          output.innerHTML += `<div style="font-weight:600;margin-bottom:8px">⚠️ Non-JSON Response</div>`;
-          output.innerHTML += `<pre style="font-size:11px;white-space:pre-wrap;margin:0">${text}</pre>`;
-          output.innerHTML += `</div>`;
-        }
-      } catch (e) {
-        output.innerHTML = `<div style="color:#ff7b72;padding:10px;background:rgba(248,81,73,0.1);border-radius:6px;border:1px solid rgba(248,81,73,0.3)">`;
-        output.innerHTML += `<div style="font-weight:600;margin-bottom:8px">❌ Error fetching ${title}</div>`;
-        output.innerHTML += `<div style="font-size:12px">${e.message}</div>`;
-        output.innerHTML += `</div>`;
-      }
-    }
-
-    // POST helper for APIs that require a JSON body
-    async function callAPIPost(endpoint, title = 'API Response', bodyTemplate = {}, autoOpen = false) {
-      // optionally auto-open the right panel (not necessary in this page)
-      output.innerHTML = `<div style="text-align:center;padding:20px;color:#79c0ff">⏳ Sending ${title}...</div>`;
-      try {
-        const res = await authenticatedFetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(bodyTemplate)
-        });
-        const text = await res.text();
-        try {
-          const parsed = JSON.parse(text);
-          displayFormattedResponse(title, parsed);
-        } catch (e) {
-          output.innerHTML = `<div style="color:#ffd43b;padding:10px;background:rgba(255,212,59,0.1);border-radius:6px;border:1px solid rgba(255,212,59,0.3)">`;
-          output.innerHTML += `<div style="font-weight:600;margin-bottom:8px">⚠️ Non-JSON Response</div>`;
-          output.innerHTML += `<pre style="font-size:11px;white-space:pre-wrap;margin:0">${text}</pre>`;
-          output.innerHTML += `</div>`;
-        }
-      } catch (e) {
-        output.innerHTML = `<div style="color:#ff7b72;padding:10px;background:rgba(248,81,73,0.1);border-radius:6px;border:1px solid rgba(248,81,73,0.3)">`;
-        output.innerHTML += `<div style="font-weight:600;margin-bottom:8px">❌ Error sending ${title}</div>`;
-        output.innerHTML += `<div style="font-size:12px">${e.message}</div>`;
-        output.innerHTML += `</div>`;
-      }
     }
 
     // Battery SoC Functions
@@ -961,17 +842,6 @@
       } catch (error) {
         showStatus('forceCharge', `❌ Error: ${error.message}`, 'error');
       }
-    }
-
-    // Device Setting Query
-    async function getDeviceSetting() {
-      const key = document.getElementById('settingKey').value.trim();
-      if (!key) {
-        output.textContent = '⚠️ Please enter a setting key';
-        output.style.color = '#ffd43b';
-        return;
-      }
-      callAPI(`/api/inverter/settings?key=${encodeURIComponent(key)}`, `Setting: ${key}`);
     }
 
     // Load API metrics

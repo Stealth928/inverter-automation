@@ -19,8 +19,10 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=7"></script>
-    <link rel="stylesheet" href="css/shared-styles.css?v=3">
+    <script src="js/app-shell.js?v=9"></script>
+    <script src="js/tour.js?v=6"></script>
+    <link rel="stylesheet" href="css/shared-styles.css?v=7">
+    <link rel="stylesheet" href="css/tour.css">
     <style>
         /* Page-specific styles */
         /* Main content */
@@ -1839,10 +1841,6 @@
                         <div class="value">${Number(month).toFixed(1)}<span class="unit">kWh</span></div>
                     </div>
                     <div class="stat-box generation">
-                        <div class="label">This Year</div>
-                        <div class="value">${Number(year).toFixed(1)}<span class="unit">kWh</span></div>
-                    </div>
-                    <div class="stat-box generation">
                         <div class="label">Lifetime Total</div>
                         <div class="value">${Number(total).toFixed(0)}<span class="unit">kWh</span></div>
                     </div>
@@ -1893,6 +1891,7 @@
             pageName: 'history',
             autoMetrics: true,
             onReady: () => {
+                try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch(e) {}
                 try { loadDeviceSn(); } catch (error) { console.warn('Failed to load device SN', error); }
             }
         });

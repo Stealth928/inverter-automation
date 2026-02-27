@@ -19,8 +19,10 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=7"></script>
-    <link rel="stylesheet" href="css/shared-styles.css?v=3">
+    <script src="js/app-shell.js?v=9"></script>
+    <script src="js/tour.js?v=6"></script>
+    <link rel="stylesheet" href="css/shared-styles.css?v=7">
+    <link rel="stylesheet" href="css/tour.css">
     <style>
         /* Page-specific styles */
         /* Main content */
@@ -1846,6 +1848,7 @@
             pageName: 'roi',
             autoMetrics: true,
             onReady: () => {
+                try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch(e) {}
                 // User is authorized, load page content
                 try {
                     loadDeviceSn();

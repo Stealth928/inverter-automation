@@ -538,6 +538,8 @@ app.post('/api/config/validate-keys', async (req, res) => {
         foxessToken: foxess_token,
         amberApiKey: amber_api_key || '',
         location: weather_place || 'Sydney',  // Save location for timezone detection
+        inverterCapacityW: (typeof req.body.inverter_capacity_w === 'number' && req.body.inverter_capacity_w > 0) ? Math.round(req.body.inverter_capacity_w) : 10000,
+        batteryCapacityKWh: (typeof req.body.battery_capacity_kwh === 'number' && req.body.battery_capacity_kwh > 0) ? req.body.battery_capacity_kwh : 41.93,
         setupComplete: true,
         updatedAt: serverTimestamp()
       };
@@ -3391,6 +3393,46 @@ app.post('/api/config/clear-credentials', authenticateUser, async (req, res) => 
   }
 });
 
+// ---------- Onboarding tour state ----------
+
+// GET /api/config/tour-status — return tourComplete flag for the current user
+app.get('/api/config/tour-status', authenticateUser, async (req, res) => {
+  try {
+    const config = await getUserConfig(req.user.uid);
+    res.json({
+      errno: 0,
+      result: {
+        tourComplete:    !!(config && config.tourComplete),
+        tourCompletedAt: (config && config.tourCompletedAt) || null
+      }
+    });
+  } catch (error) {
+    console.error('[API] /api/config/tour-status GET error:', error && error.stack ? error.stack : String(error));
+    res.status(500).json({ errno: 500, error: error.message || String(error) });
+  }
+});
+
+// POST /api/config/tour-status — persist tour completion / reset flag
+app.post('/api/config/tour-status', authenticateUser, async (req, res) => {
+  try {
+    const { tourComplete, tourCompletedAt, tourDismissedAt } = req.body || {};
+    const updates = {};
+    if (typeof tourComplete === 'boolean') updates.tourComplete = tourComplete;
+    if (tourCompletedAt)  updates.tourCompletedAt  = tourCompletedAt;
+    if (tourDismissedAt)  updates.tourDismissedAt  = tourDismissedAt;
+
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ errno: 400, error: 'No valid fields to update' });
+    }
+
+    await db.collection('users').doc(req.user.uid).collection('config').doc('main').update(updates);
+    res.json({ errno: 0, msg: 'Tour status updated' });
+  } catch (error) {
+    console.error('[API] /api/config/tour-status POST error:', error && error.stack ? error.stack : String(error));
+    res.status(500).json({ errno: 500, error: error.message || String(error) });
+  }
+});
+
 // Get automation state
 app.get('/api/automation/status', async (req, res) => {
   try {
@@ -4916,7 +4958,7 @@ app.post('/api/automation/cancel', async (req, res) => {
 /**
  * Start a quick manual control (charge or discharge)
  * POST /api/quickcontrol/start
- * Body: { type: 'charge'|'discharge', power: 0-10000, durationMinutes: 2-360 }
+ * Body: { type: 'charge'|'discharge', power: 0-30000, durationMinutes: 2-360 }
  */
 app.post('/api/quickcontrol/start', authenticateUser, async (req, res) => {
   try {
@@ -4930,9 +4972,9 @@ app.post('/api/quickcontrol/start', authenticateUser, async (req, res) => {
       console.log('[QuickControl] Validation failed: invalid type');
       return res.status(400).json({ errno: 400, error: 'type must be "charge" or "discharge"' });
     }
-    if (typeof power !== 'number' || power < 0 || power > 10000) {
+    if (typeof power !== 'number' || power < 0 || power > 30000) {
       console.log('[QuickControl] Validation failed: invalid power', { power, type: typeof power });
-      return res.status(400).json({ errno: 400, error: 'power must be between 0 and 10000 watts' });
+      return res.status(400).json({ errno: 400, error: 'power must be between 0 and 30000 watts' });
     }
     if (typeof durationMinutes !== 'number' || durationMinutes < 2 || durationMinutes > 360) {
       console.log('[QuickControl] Validation failed: invalid duration', { durationMinutes, type: typeof durationMinutes });
@@ -6302,25 +6344,30 @@ app.get('/api/inverter/generation', authenticateUser, async (req, res) => {
     // Enhance with yearly data from report endpoint
     try {
       const year = new Date().getFullYear();
+      // Try multiple variable names — AC-coupled systems may not report under 'generation'.
+      // Priority: generation > generationPower > pvPower (pick first with non-zero sum)
+      const reportVarCandidates = ['generation', 'generationPower', 'pvPower'];
       const reportBody = {
         sn,
         dimension: 'year',
         year,
-        variables: ['generation']
+        variables: reportVarCandidates
       };
       const reportResult = await foxessAPI.callFoxESSAPI('/op/v0/device/report/query', 'POST', reportBody, userConfig, req.user.uid);
       
-      // Extract yearly generation from report (array of monthly values for the year)
+      // Extract yearly generation from report — prefer first candidate with a non-zero sum
       if (reportResult.result && Array.isArray(reportResult.result) && reportResult.result.length > 0) {
-        const genVar = reportResult.result.find(v => v.variable === 'generation');
-        if (genVar && Array.isArray(genVar.values)) {
-          // Sum all monthly values to get year-to-date generation
-          const yearGeneration = genVar.values.reduce((sum, val) => sum + (val || 0), 0);
-          // Add to the generation data if it's a valid number
-          if (genResult.result && typeof genResult.result === 'object') {
-            genResult.result.year = yearGeneration;
-            genResult.result.yearGeneration = yearGeneration;
+        let yearGeneration = 0;
+        for (const candidate of reportVarCandidates) {
+          const varEntry = reportResult.result.find(v => v.variable === candidate);
+          if (varEntry && Array.isArray(varEntry.values)) {
+            const sum = varEntry.values.reduce((acc, val) => acc + (val || 0), 0);
+            if (sum > 0) { yearGeneration = sum; break; }
           }
+        }
+        if (genResult.result && typeof genResult.result === 'object') {
+          genResult.result.year = yearGeneration;
+          genResult.result.yearGeneration = yearGeneration;
         }
       }
     } catch (reportError) {

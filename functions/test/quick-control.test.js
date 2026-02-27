@@ -205,13 +205,13 @@ describe('Quick Manual Controls', () => {
       expect(response.body.error).toContain('type must be');
     });
 
-    test('should reject power above 10kW', async () => {
+    test('should reject power above 30kW (absolute maximum)', async () => {
       const response = await request(app)
         .post('/api/quickcontrol/start')
         .set('Authorization', `Bearer ${validToken}`)
         .send({
           type: 'charge',
-          power: 11000, // Over 10kW limit
+          power: 31000, // Over 30kW absolute limit
           durationMinutes: 60
         });
 

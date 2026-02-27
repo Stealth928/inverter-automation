@@ -197,9 +197,9 @@
                 clearImpersonationState();
                 await signOut();
                 if (typeof safeRedirect === 'function') {
-                    safeRedirect('/login.html?impersonationStopped=1');
+                    safeRedirect('/login.html?returnTo=%2Fadmin.html');
                 } else {
-                    window.location.href = '/login.html?impersonationStopped=1';
+                    window.location.href = '/login.html?returnTo=%2Fadmin.html';
                 }
             });
             banner.appendChild(message);
@@ -383,6 +383,45 @@
             });
         }
 
+        // Add "Take a Tour" action once per page load
+        if (dropdown && !dropdown.querySelector('[data-take-tour]')) {
+            const tourBtn = document.createElement('button');
+            tourBtn.className = 'user-dropdown-item';
+            tourBtn.type = 'button';
+            tourBtn.setAttribute('data-take-tour', '1');
+            tourBtn.textContent = '❓ Take a Tour';
+            tourBtn.addEventListener('click', () => {
+                dropdown.classList.remove('show');
+                // Don't offer the tour on the setup page — user must finish setup first
+                if (window.location.pathname.includes('setup')) {
+                    if (typeof showMessage === 'function') {
+                        showMessage('info', '✨ Finish setting up your account first — the tour will launch automatically when you\'re done!');
+                    } else {
+                        alert('Please complete setup first. The tour will launch automatically once you\'re finished.');
+                    }
+                    return;
+                }
+                if (window.TourEngine && typeof window.TourEngine.start === 'function') {
+                    window.TourEngine.start(0);
+                } else {
+                    // TourEngine not loaded on this page — navigate to dashboard and start there
+                    try { sessionStorage.setItem('tourStep', '0'); } catch (e) {}
+                    if (typeof safeRedirect === 'function') {
+                        safeRedirect('/index.html');
+                    } else {
+                        window.location.href = '/index.html';
+                    }
+                }
+            });
+            // Insert before settingsBtn (first item) if it exists, else append
+            const settingsBtn = menu.querySelector('[data-go-settings]');
+            if (settingsBtn && settingsBtn.parentNode === dropdown) {
+                dropdown.insertBefore(tourBtn, settingsBtn);
+            } else {
+                dropdown.insertBefore(tourBtn, dropdown.firstChild);
+            }
+        }
+
         // Add stop-impersonation action once per page load
         if (dropdown && !dropdown.querySelector('[data-stop-impersonation]')) {
             const stopBtn = document.createElement('button');
@@ -395,9 +434,9 @@
                 clearImpersonation();
                 await signOut();
                 if (typeof safeRedirect === 'function') {
-                    safeRedirect('/login.html?impersonationStopped=1');
+                    safeRedirect('/login.html?returnTo=%2Fadmin.html');
                 } else {
-                    window.location.href = '/login.html?impersonationStopped=1';
+                    window.location.href = '/login.html?returnTo=%2Fadmin.html';
                 }
             });
             dropdown.appendChild(stopBtn);
@@ -481,6 +520,17 @@
 
             if (signOutBtn) {
                 dropdown.insertBefore(deleteBtn, signOutBtn);
+
+                // Add visual separator above Sign Out to prevent accidental misclick
+                if (!dropdown.querySelector('.user-dropdown-separator')) {
+                    const sep = document.createElement('hr');
+                    sep.className = 'user-dropdown-separator';
+                    dropdown.insertBefore(sep, signOutBtn);
+                }
+
+                // Differentiate Sign Out from Delete Account — make it neutral, not danger
+                signOutBtn.classList.remove('danger');
+                signOutBtn.classList.add('sign-out');
             } else {
                 dropdown.appendChild(deleteBtn);
             }

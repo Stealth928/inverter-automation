@@ -15,9 +15,17 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="css/shared-styles.css?v=3" />
+    <link rel="stylesheet" href="css/shared-styles.css?v=7" />
     <style>
         /* Page-specific styles */
+
+        /* Nav items disabled on setup page */
+        .user-dropdown-item--locked {
+            opacity: 0.45;
+            cursor: not-allowed;
+            pointer-events: auto; /* keep so we can show the message */
+            position: relative;
+        }
         body.setup-page {
             display: flex;
             align-items: center;
@@ -86,6 +94,14 @@
             font-size: 14px;
             color: var(--text-secondary);
             line-height: 1.5;
+        }
+
+        .setup-tagline {
+            font-size: 15px !important;
+            color: var(--text-primary) !important;
+            opacity: 0.82;
+            font-weight: 400;
+            letter-spacing: 0.01em;
         }
 
         .setup-body {
@@ -467,7 +483,7 @@
     <body class="setup-page">
         <nav class="nav-main">
             <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
-            <div class="nav-links">
+            <div class="nav-links" style="display:none;">
                 <a href="/" class="nav-link">🏠 Overview</a>
                 <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
                 <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
@@ -489,7 +505,7 @@
                             <div class="user-name" data-user-name>Guest</div>
                             <div class="user-email" data-user-email>Not signed in</div>
                         </div>
-                        <button class="user-dropdown-item" type="button" data-go-settings>⚙️ Settings</button>
+                        <button class="user-dropdown-item user-dropdown-item--locked" type="button" data-setup-nav-locked="settings" aria-disabled="true">⚙️ Settings</button>
                         <button class="user-dropdown-item" type="button" data-contact-us>💬 Contact Us</button>
                         <button class="user-dropdown-item danger" type="button" data-signout>🚪 Sign Out</button>
                     </div>
@@ -502,7 +518,7 @@
             <div class="setup-header">
                 <div class="logo">⚡</div>
                 <h1>Welcome! Let's get started</h1>
-                <p>Connect your FoxESS inverter and configure your dashboard</p>
+                <p class="setup-tagline">One page, five fields &mdash; you&rsquo;ll be ready in 1 minute!</p>
             </div>
 
             <div class="setup-body">
@@ -519,11 +535,26 @@
                     <div class="progress-line" id="line2"></div>
                     <div class="progress-step" id="step3">
                         <div class="step-dot">3</div>
+                        <span class="step-label">Location</span>
+                    </div>
+                    <div class="progress-line" id="line3"></div>
+                    <div class="progress-step" id="step4">
+                        <div class="step-dot">4</div>
                         <span class="step-label">Amber</span>
+                    </div>
+                    <div class="progress-line" id="line4"></div>
+                    <div class="progress-step" id="step5">
+                        <div class="step-dot">5</div>
+                        <span class="step-label">Hardware</span>
                     </div>
                 </div>
 
                 <form id="setupForm">
+                    <div class="info-box" style="margin-bottom: 20px;">
+                        <span class="info-icon">💡</span>
+                        <div>Everything&rsquo;s on this single page &mdash; no multi-page wizard. Fill in each section as you scroll and hit <strong>Validate &amp; Continue</strong> when done.</div>
+                    </div>
+
                     <!-- Device Serial Number -->
                     <div class="form-group" id="deviceSnGroup">
                         <label for="deviceSn">
@@ -559,7 +590,7 @@
                             <span>FoxESS API Token</span>
                             <span class="required-indicator">*</span>
                         </label>
-                        <div class="hint">Generate from FoxESS Cloud → User Settings → API Management</div>
+                        <div class="hint">Generate from FoxESS Cloud (v1) → User Settings → API Management</div>
                         <div class="input-wrapper">
                             <input 
                                 type="password" 
@@ -572,6 +603,35 @@
                             >
                             <span class="input-icon">🔑</span>
                             <button type="button" class="password-toggle" data-target="foxessToken" aria-label="Toggle visibility">👁️</button>
+                        </div>
+                        <div class="field-message error-message">
+                            <span>⚠️</span>
+                            <span class="message-text"></span>
+                        </div>
+                        <div class="field-message success-message">
+                            <span>✓</span>
+                            <span class="message-text">Valid</span>
+                        </div>
+                    </div>
+
+                    <!-- Weather Location (Required) -->
+                    <div class="form-group" id="weatherPlaceGroup">
+                        <label for="weatherPlace">
+                            <span>Location</span>
+                            <span class="required-indicator">*</span>
+                        </label>
+                        <div class="hint">Your city and country (e.g., "Sydney, Australia") &mdash; used for weather forecasts and to auto-detect your timezone for accurate scheduling.</div>
+                        <div class="input-wrapper">
+                            <input 
+                                type="text" 
+                                id="weatherPlace" 
+                                name="weatherPlace" 
+                                placeholder="e.g., Sydney, Australia"
+                                required
+                                autocomplete="off"
+                                spellcheck="false"
+                            >
+                            <span class="input-icon">🌤️</span>
                         </div>
                         <div class="field-message error-message">
                             <span>⚠️</span>
@@ -616,31 +676,55 @@
                         </div>
                     </div>
 
-                    <!-- Weather Location (Required - Sets Timezone) -->
-                    <div class="form-group" id="weatherPlaceGroup">
-                        <label for="weatherPlace">
-                            <span>Weather Location</span>
+                    <div class="divider">
+                        <span class="divider-text">System Hardware</span>
+                    </div>
+
+                    <!-- Inverter Capacity -->
+                    <div class="form-group" id="inverterCapacityGroup">
+                        <label for="inverterCapacityKw">
+                            <span>Inverter Capacity</span>
                             <span class="required-badge" style="color: #ff6b6b;">Required</span>
                         </label>
-                        <div class="hint">Enter your city and country (e.g., "Sydney, Australia"). This is used to display local weather forecasts AND automatically detect your timezone for accurate scheduling.</div>
+                        <div class="hint">Your inverter's rated output power in kilowatts (e.g., 10 for a 10 kW inverter).</div>
                         <div class="input-wrapper">
-                            <input 
-                                type="text" 
-                                id="weatherPlace" 
-                                name="weatherPlace" 
-                                placeholder="(e.g. Sydney, Australia)"
-                                autocomplete="off"
-                                spellcheck="false"
+                            <input
+                                type="number"
+                                id="inverterCapacityKw"
+                                name="inverterCapacityKw"
+                                min="1" max="30" step="0.5"
+                                placeholder="e.g., 10"
+                                required
                             >
-                            <span class="input-icon">🌤️</span>
+                            <span class="input-icon">⚡</span>
                         </div>
                         <div class="field-message error-message">
                             <span>⚠️</span>
                             <span class="message-text"></span>
                         </div>
-                        <div class="field-message success-message">
-                            <span>✓</span>
-                            <span class="message-text">Valid</span>
+                    </div>
+
+                    <!-- Battery Capacity -->
+                    <div class="form-group" id="batteryCapacityGroup">
+                        <label for="batteryCapacityKwh">
+                            <span>Battery Capacity</span>
+                            <span class="required-badge" style="color: #ff6b6b;">Required</span>
+                        </label>
+                        <div class="hint">Your battery pack's usable energy capacity in kilowatt-hours (e.g., 41.93 for a 41.93 kWh pack).</div>
+                        <div class="input-wrapper">
+                            <input
+                                type="number"
+                                id="batteryCapacityKwh"
+                                name="batteryCapacityKwh"
+                                min="1" max="500" step="0.01"
+                                placeholder="e.g., 41.93"
+                                required
+                            >
+                            <span class="input-icon">🔋</span>
+                        </div>
+                        <div class="field-message error-message">
+                            <span>⚠️</span>
+                            <span class="message-text"></span>
                         </div>
                     </div>
 
@@ -661,7 +745,7 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=7"></script>
+    <script src="js/app-shell.js?v=9"></script>
     <script>
         /**
          * Helper function to make authenticated API calls.
@@ -763,6 +847,8 @@
             const foxessToken = sanitizeInput(document.getElementById('foxessToken').value);
             const amberApiKey = sanitizeInput(document.getElementById('amberApiKey').value);
             const weatherPlace = sanitizeInput(document.getElementById('weatherPlace').value);
+            const inverterCapacityKw = parseFloat(document.getElementById('inverterCapacityKw').value);
+            const batteryCapacityKwh = parseFloat(document.getElementById('batteryCapacityKwh').value);
 
             // Clear previous errors
             clearAllFieldStates();
@@ -779,7 +865,17 @@
             }
 
             if (!weatherPlace) {
-                setFieldError('weatherPlace', 'Weather location is required to set your timezone');
+                setFieldError('weatherPlace', 'Your location is required to set your timezone');
+                return;
+            }
+
+            if (!inverterCapacityKw || inverterCapacityKw <= 0) {
+                setFieldError('inverterCapacityKw', 'Please enter your inverter capacity in kW (e.g., 10)');
+                return;
+            }
+
+            if (!batteryCapacityKwh || batteryCapacityKwh <= 0) {
+                setFieldError('batteryCapacityKwh', 'Please enter your battery capacity in kWh (e.g., 41.93)');
                 return;
             }
 
@@ -795,7 +891,9 @@
                         device_sn: deviceSn,
                         foxess_token: foxessToken,
                         amber_api_key: amberApiKey || null,
-                        weather_place: weatherPlace || 'Sydney NSW'
+                        weather_place: weatherPlace || 'Sydney NSW',
+                        inverter_capacity_w: Math.round(inverterCapacityKw * 1000),
+                        battery_capacity_kwh: batteryCapacityKwh
                     })
                 });
                 
@@ -838,6 +936,9 @@
                 if (amberApiKey) {
                     localStorage.setItem('foxess_setup_amber_api_key', amberApiKey);
                 }
+
+                // Flag tour auto-launch for first-time users
+                try { sessionStorage.setItem('tourAutoLaunch', '1'); } catch (e) {}
 
                 // Redirect to dashboard after brief delay
                 setTimeout(() => {
@@ -889,26 +990,33 @@
         function updateProgress() {
             const deviceSn = document.getElementById('deviceSn');
             const foxessToken = document.getElementById('foxessToken');
+            const weatherPlace = document.getElementById('weatherPlace');
             const amberApiKey = document.getElementById('amberApiKey');
 
             const deviceSnValid = deviceSn.value.trim() && !deviceSn.closest('.form-group').classList.contains('error');
             const foxessValid = foxessToken.value.trim() && !foxessToken.closest('.form-group').classList.contains('error');
-            const amberValid = !amberApiKey.closest('.form-group').classList.contains('error');
+            const weatherValid = weatherPlace.value.trim() && !weatherPlace.closest('.form-group').classList.contains('error');
+            // Amber is optional: complete if a value is entered without error, or if the user has moved on to hardware
+            const amberEntered = amberApiKey.value.trim() !== '' && !amberApiKey.closest('.form-group').classList.contains('error');
+            const inverterAhead = parseFloat((document.getElementById('inverterCapacityKw') || {}).value) > 0;
+            const batteryAhead  = parseFloat((document.getElementById('batteryCapacityKwh') || {}).value) > 0;
+            const amberValid = amberEntered || (inverterAhead && batteryAhead);
 
             const step1 = document.getElementById('step1');
             const step2 = document.getElementById('step2');
             const step3 = document.getElementById('step3');
+            const step4 = document.getElementById('step4');
+            const step5 = document.getElementById('step5');
             const line1 = document.getElementById('line1');
             const line2 = document.getElementById('line2');
+            const line3 = document.getElementById('line3');
+            const line4 = document.getElementById('line4');
 
             // Step 1: Device SN
             step1.classList.remove('current', 'complete');
             if (deviceSnValid) {
                 step1.classList.add('complete');
                 step1.querySelector('.step-dot').textContent = '✓';
-            } else if (deviceSn.value.trim()) {
-                step1.classList.add('current');
-                step1.querySelector('.step-dot').textContent = '1';
             } else {
                 step1.classList.add('current');
                 step1.querySelector('.step-dot').textContent = '1';
@@ -922,7 +1030,7 @@
             if (foxessValid) {
                 step2.classList.add('complete');
                 step2.querySelector('.step-dot').textContent = '✓';
-            } else if (foxessToken.value.trim() && deviceSnValid) {
+            } else if (deviceSnValid) {
                 step2.classList.add('current');
                 step2.querySelector('.step-dot').textContent = '2';
             } else {
@@ -932,9 +1040,9 @@
             // Line 2
             line2.classList.toggle('complete', foxessValid);
 
-            // Step 3: Amber (optional, shows complete if no error)
+            // Step 3: Location (required)
             step3.classList.remove('current', 'complete');
-            if (amberValid && foxessValid) {
+            if (weatherValid && foxessValid) {
                 step3.classList.add('complete');
                 step3.querySelector('.step-dot').textContent = '✓';
             } else if (foxessValid) {
@@ -942,6 +1050,42 @@
                 step3.querySelector('.step-dot').textContent = '3';
             } else {
                 step3.querySelector('.step-dot').textContent = '3';
+            }
+
+            // Line 3
+            line3.classList.toggle('complete', weatherValid && foxessValid);
+
+            // Step 4: Amber (optional — completes when a key is entered or hardware values filled)
+            step4.classList.remove('current', 'complete');
+            if (amberValid && weatherValid && foxessValid) {
+                step4.classList.add('complete');
+                step4.querySelector('.step-dot').textContent = '✓';
+            } else if (weatherValid && foxessValid) {
+                step4.classList.add('current');
+                step4.querySelector('.step-dot').textContent = '4';
+            } else {
+                step4.querySelector('.step-dot').textContent = '4';
+            }
+
+            // Line 4
+            line4.classList.toggle('complete', amberValid && weatherValid && foxessValid);
+
+            // Step 5: Hardware (capacity values must be positive numbers)
+            const inverterInput = document.getElementById('inverterCapacityKw');
+            const batteryInput = document.getElementById('batteryCapacityKwh');
+            const inverterCapValid = inverterInput && parseFloat(inverterInput.value) > 0;
+            const batteryCapValid = batteryInput && parseFloat(batteryInput.value) > 0;
+            const hardwareValid = inverterCapValid && batteryCapValid;
+
+            step5.classList.remove('current', 'complete');
+            if (hardwareValid && weatherValid && foxessValid) {
+                step5.classList.add('complete');
+                step5.querySelector('.step-dot').textContent = '✓';
+            } else if (weatherValid && foxessValid) {
+                step5.classList.add('current');
+                step5.querySelector('.step-dot').textContent = '5';
+            } else {
+                step5.querySelector('.step-dot').textContent = '5';
             }
         }
 
@@ -954,10 +1098,16 @@
             clearFieldState('foxessToken');
             updateProgress();
         });
+        document.getElementById('weatherPlace').addEventListener('input', () => {
+            clearFieldState('weatherPlace');
+            updateProgress();
+        });
         document.getElementById('amberApiKey').addEventListener('input', () => {
             clearFieldState('amberApiKey');
             updateProgress();
         });
+        document.getElementById('inverterCapacityKw').addEventListener('input', updateProgress);
+        document.getElementById('batteryCapacityKwh').addEventListener('input', updateProgress);
 
         function clearFieldState(fieldId) {
             const group = document.getElementById(fieldId).closest('.form-group');
@@ -975,6 +1125,37 @@
                 }
             });
         }
+
+        // Block navigation away from setup: intercept locked dropdown items
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('[data-setup-nav-locked]');
+            if (!btn) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            // close the dropdown
+            const dd = btn.closest('[data-user-dropdown]');
+            if (dd) dd.classList.remove('show');
+            // show a brief inline toast
+            let toast = document.getElementById('_setupNavToast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = '_setupNavToast';
+                toast.style.cssText = [
+                    'position:fixed', 'bottom:24px', 'left:50%',
+                    'transform:translateX(-50%)', 'background:rgba(33,38,45,0.97)',
+                    'border:1px solid rgba(88,166,255,0.35)', 'color:#e6edf3',
+                    'padding:10px 20px', 'border-radius:10px', 'font-size:13px',
+                    'z-index:99999', 'pointer-events:none',
+                    'box-shadow:0 4px 20px rgba(0,0,0,0.4)',
+                    'white-space:nowrap'
+                ].join(';');
+                document.body.appendChild(toast);
+            }
+            toast.textContent = '⚙️ Complete setup first to access Settings';
+            toast.style.opacity = '1';
+            clearTimeout(toast._t);
+            toast._t = setTimeout(function () { toast.style.opacity = '0'; }, 2400);
+        });
     </script>
 </body>
 </html>

@@ -1,0 +1,241 @@
+/* =====================================================================
+   Guided Tour Overlay — tour.css
+   Matches the app's dark GitHub-inspired palette.
+   ===================================================================== */
+
+/* Overlay */
+.tour-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(0, 0, 0, 0.70);
+  z-index: 9000;
+  /* allow clicks through to the highlighted element via pointer-events trick */
+  pointer-events: all;
+  transition: opacity 0.25s ease;
+}
+
+/* ---------- Highlight ring on target element ---------- */
+.tour-highlight {
+  position: relative !important;
+  z-index: 9100 !important;
+  box-shadow: 0 0 0 4px #58a6ff, 0 0 0 8px rgba(88, 166, 255, 0.25) !important;
+  border-radius: 8px;
+  transition: box-shadow 0.2s ease;
+  pointer-events: none; /* prevent accidental clicks during tour */
+}
+
+/* ---------- Tooltip card ---------- */
+.tour-tooltip {
+  position: fixed;
+  /* Must be above the mobile automation panel (z-index 10001) and its toggle (10002) */
+  z-index: 10300;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 20px 22px 16px;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.3);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  animation: tour-fadein 0.2s ease;
+  /* iOS Safari: ensure fixed sits above everything */
+  -webkit-overflow-scrolling: touch;
+  touch-action: none;
+}
+
+@keyframes tour-fadein {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Arrow pointer — shown by position variant classes */
+.tour-tooltip::before {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  transform: rotate(45deg);
+}
+
+.tour-tooltip--bottom::before {
+  top: -7px;
+  left: 50%;
+  margin-left: -6px;
+  border-bottom: none;
+  border-right: none;
+}
+
+.tour-tooltip--top::before {
+  bottom: -7px;
+  left: 50%;
+  margin-left: -6px;
+  border-top: none;
+  border-left: none;
+}
+
+.tour-tooltip--right::before {
+  left: -7px;
+  top: 50%;
+  margin-top: -6px;
+  border-top: none;
+  border-right: none;
+}
+
+.tour-tooltip--left::before {
+  right: -7px;
+  top: 50%;
+  margin-top: -6px;
+  border-bottom: none;
+  border-left: none;
+}
+
+.tour-tooltip--center::before {
+  display: none;
+}
+
+/* ---------- Step badge ---------- */
+.tour-step-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #58a6ff;
+  background: rgba(88, 166, 255, 0.12);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 20px;
+  padding: 2px 10px;
+  margin-bottom: 10px;
+  letter-spacing: 0.3px;
+}
+
+/* ---------- Title ---------- */
+.tour-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e6edf3;
+  margin: 0 0 8px;
+  line-height: 1.3;
+}
+
+/* ---------- Body text ---------- */
+.tour-body {
+  font-size: 13px;
+  color: #8b949e;
+  margin: 0 0 16px;
+  line-height: 1.55;
+}
+
+/* ---------- Action row ---------- */
+.tour-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---------- Buttons ---------- */
+.tour-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  border: 1px solid transparent;
+  padding: 6px 14px;
+  white-space: nowrap;
+  outline: none;
+}
+
+.tour-btn-primary {
+  background: #1f6feb;
+  color: #fff;
+  border-color: #388bfd;
+  margin-left: auto;
+}
+.tour-btn-primary:hover { background: #388bfd; }
+
+.tour-btn-secondary {
+  background: transparent;
+  color: #58a6ff;
+  border-color: #30363d;
+}
+.tour-btn-secondary:hover { background: rgba(88,166,255,0.08); }
+
+.tour-btn-ghost {
+  background: transparent;
+  color: #6e7681;
+  border-color: transparent;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.tour-btn-ghost:hover { color: #8b949e; }
+
+/* ---------- Progress dots ---------- */
+.tour-progress {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.tour-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #30363d;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.tour-dot.active {
+  background: #58a6ff;
+  width: 20px;
+  border-radius: 4px;
+}
+
+.tour-dot.done {
+  background: #238636;
+}
+
+/* ---------- Centered (splash) variant ---------- */
+.tour-tooltip--center {
+  top: 50% !important;
+  left: 50% !important;
+  -webkit-transform: translate(-50%, -50%) !important;
+  transform: translate(-50%, -50%) !important;
+  width: 380px;
+  text-align: center;
+}
+
+.tour-tooltip--center .tour-step-badge {
+  display: block;
+  width: fit-content;
+  margin: 0 auto 12px;
+}
+
+.tour-tooltip--center .tour-actions {
+  justify-content: center;
+}
+
+.tour-tooltip--center .tour-btn-primary {
+  margin-left: 0;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 480px) {
+  .tour-tooltip {
+    width: calc(100vw - 24px);
+    padding: 16px;
+  }
+  .tour-tooltip--center {
+    width: calc(100vw - 24px);
+  }
+}

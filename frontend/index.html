@@ -21,8 +21,10 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=7"></script>
-    <link rel="stylesheet" href="css/shared-styles.css?v=3" />
+    <script src="js/app-shell.js?v=9"></script>
+    <script src="js/tour.js?v=6"></script>
+    <link rel="stylesheet" href="css/shared-styles.css?v=7" />
+    <link rel="stylesheet" href="css/tour.css" />
     <style>
         
         /* Header */
@@ -1883,14 +1885,14 @@
                                 <input type="range" id="quickControlPower" min="0" max="10000" step="100" value="5000" 
                                        oninput="updateQuickControlPowerDisplay(this.value)" 
                                        style="flex:1;height:8px;background:#30363d;border-radius:4px;outline:none;-webkit-appearance:none;">
-                                <span style="font-size:12px;color:#8b949e;min-width:40px;text-align:right;">10 kW</span>
+                                <span id="quickControlMaxLabel" style="font-size:12px;color:#8b949e;min-width:40px;text-align:right;">10 kW</span>
                             </div>
                             <div style="margin-top:8px;display:flex;gap:6px;">
                                 <button class="btn" onclick="setQuickControlPower(2000)" style="font-size:11px;padding:4px 8px;flex:1;">2 kW</button>
                                 <button class="btn" onclick="setQuickControlPower(3000)" style="font-size:11px;padding:4px 8px;flex:1;">3 kW</button>
                                 <button class="btn" onclick="setQuickControlPower(5000)" style="font-size:11px;padding:4px 8px;flex:1;">5 kW</button>
                                 <button class="btn" onclick="setQuickControlPower(7000)" style="font-size:11px;padding:4px 8px;flex:1;">7 kW</button>
-                                <button class="btn" onclick="setQuickControlPower(10000)" style="font-size:11px;padding:4px 8px;flex:1;">10 kW</button>
+                                <button id="quickControlMaxBtn" class="btn" onclick="setQuickControlPower(10000)" style="font-size:11px;padding:4px 8px;flex:1;">10 kW</button>
                             </div>
                         </div>
 
@@ -2331,6 +2333,11 @@
         // User timezone (populated from backend `/api/config` during initialization)
         // Used throughout render functions and time formatting to respect user's local timezone
         let USER_TZ = 'Australia/Sydney';
+
+        // Hardware config — per-user inverter and battery specs loaded from /api/config.
+        // Defaults match legacy hard-coded values so existing users see no change.
+        let _batteryCapacityKwh = 41.93; // kWh; overridden from user config on load
+        let _inverterCapacityW  = 10000; // Watts; overridden from user config on load
 
         // apiClient is declared in api-client.js and initialized after Firebase auth is ready
 
@@ -3118,8 +3125,8 @@
                 } catch (e) { /* ignore fallback parse errors */ }
                 // end try
 
-                // Battery capacity used for estimates (kWh). Change here if you have a different pack size.
-                const BATTERY_CAP_KWH = 41.93;
+                // Battery capacity from user config (kWh). Defaulting to legacy value until config loads.
+                const BATTERY_CAP_KWH = _batteryCapacityKwh;
 
                 // Try to find SoC in the real-time feed
                 const socVal = findValue(items, ['soc','socvalue','SoC','batSoc','bms_soc','stateofcharge','batterySoc','socpercent']);
@@ -3405,8 +3412,10 @@
             const today = new Date().toISOString().substring(0, 10);  // YYYY-MM-DD
             const age = Date.now() - (cacheState.weatherTime || 0);
             
-            // Force refresh if requested (either explicit parameter or page reload bypass)
-            const shouldBypassCache = force || isPageReload;
+            // Force refresh if requested, page reloaded, or currently impersonating another user
+            // (impersonation: admin's localStorage cache has their location, not the target user's)
+            const isImpersonating = typeof getImpersonationUid === 'function' && !!getImpersonationUid();
+            const shouldBypassCache = force || isPageReload || isImpersonating;
             
             if (!shouldBypassCache && cacheState.weatherTime && age < CONFIG.cache.weather && cachedDays === days && cachedDate === today) {
                 // Load cached full weather object and render it
@@ -4826,6 +4835,26 @@
             document.getElementById('quickControlPower').value = watts;
             updateQuickControlPowerDisplay(watts);
         }
+
+        // Applies the user's inverter capacity to the quick-control slider and preset button.
+        // Called after user config loads from /api/config.
+        function applyInverterCapacityToUI(capacityW) {
+            const slider = document.getElementById('quickControlPower');
+            if (slider) {
+                slider.max = capacityW;
+                if (parseInt(slider.value) > capacityW) {
+                    slider.value = capacityW;
+                    updateQuickControlPowerDisplay(capacityW);
+                }
+            }
+            const maxLabel = document.getElementById('quickControlMaxLabel');
+            if (maxLabel) maxLabel.textContent = `${(capacityW / 1000).toFixed(1)} kW`;
+            const maxBtn = document.getElementById('quickControlMaxBtn');
+            if (maxBtn) {
+                maxBtn.onclick = () => setQuickControlPower(capacityW);
+                maxBtn.textContent = `${(capacityW / 1000).toFixed(1)} kW`;
+            }
+        }
         
         function updateQuickControlDurationDisplay(value) {
             quickControlState.duration = parseInt(value);
@@ -5076,8 +5105,8 @@
             }
             
             // Validate power
-            if (quickControlState.power < 0 || quickControlState.power > 10000) {
-                alert('❌ Power must be between 0 and 10,000 watts');
+            if (quickControlState.power < 0 || quickControlState.power > _inverterCapacityW) {
+                alert(`❌ Power must be between 0 and ${(_inverterCapacityW / 1000).toFixed(1)} kW (your inverter capacity)`);
                 return;
             }
             
@@ -6593,6 +6622,14 @@
                     } catch (e) {
                         console.warn('Failed to apply backend refresh config', e);
                     }
+                    // Hardware config: read per-user inverter and battery capacity
+                    if (typeof cfg.result.inverterCapacityW === 'number' && cfg.result.inverterCapacityW > 0) {
+                        _inverterCapacityW = cfg.result.inverterCapacityW;
+                    }
+                    if (typeof cfg.result.batteryCapacityKWh === 'number' && cfg.result.batteryCapacityKWh > 0) {
+                        _batteryCapacityKwh = cfg.result.batteryCapacityKWh;
+                    }
+                    applyInverterCapacityToUI(_inverterCapacityW);
                 }
             } catch (e) { console.warn('Failed to load backend config', e); }
             
@@ -8733,6 +8770,7 @@
             pageName: 'overview',
             autoMetrics: false,
             onReady: () => {
+                try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch(e) {}
                 try { 
                     refreshDashboardCardVisibilityPreferencesForCurrentUser();
                     initializePageData(); 

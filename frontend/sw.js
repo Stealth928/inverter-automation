@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'foxess-automation-v7';
+const CACHE_VERSION = 'foxess-automation-v18';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const STATIC_ASSETS = [
@@ -11,12 +11,14 @@ const STATIC_ASSETS = [
   '/history.html',
   '/roi.html',
   '/curtailment-discovery.html',
-  '/css/shared-styles.css?v=3',
+  '/css/shared-styles.css?v=7',
+  '/css/tour.css',
+  '/js/tour.js?v=6',
   '/js/firebase-config.js',
   '/js/firebase-auth.js',
   '/js/api-client.js',
   '/js/shared-utils.js',
-  '/js/app-shell.js?v=7',
+  '/js/app-shell.js?v=9',
   '/favicon.ico',
   '/manifest.webmanifest',
   '/icons/icon-192-v2.png',

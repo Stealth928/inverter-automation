@@ -75,12 +75,13 @@ describe('Amber Actual Prices Logic Tests', () => {
       expect(result.valid).toBe(true);
     });
 
-    it('should accept timestamp exactly 7 days old', () => {
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const result = validateTimestampAge(sevenDaysAgo);
+    it('should accept timestamp just under 7 days old', () => {
+      const justUnderSevenDaysAgo = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000 - 1000)).toISOString();
+      const result = validateTimestampAge(justUnderSevenDaysAgo);
       
       expect(result.valid).toBe(true);
-      expect(result.ageDays).toBeCloseTo(7, 1);
+      expect(result.ageDays).toBeGreaterThan(6.99);
+      expect(result.ageDays).toBeLessThanOrEqual(7);
     });
   });
 

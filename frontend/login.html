@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="FoxESS Automation">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="stylesheet" href="css/shared-styles.css?v=3" />
+    <link rel="stylesheet" href="css/shared-styles.css?v=7" />
     <style>
         /* Page-specific styles */
 
@@ -550,7 +550,7 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=7"></script>
+    <script src="js/app-shell.js?v=9"></script>
     <script>
         async function authenticatedFetch(url, options = {}) {
             if (window.AppShell && typeof AppShell.authFetch === 'function') {
@@ -607,8 +607,16 @@
                     }
                 } catch (e) { /* ignore */ }
 
+                // Honor ?returnTo= (e.g. after stopping impersonation sends admin back to /admin.html)
+                let returnTo = '';
+                try {
+                    const params = new URLSearchParams(window.location.search);
+                    const rt = params.get('returnTo');
+                    if (rt && rt.startsWith('/') && !rt.startsWith('//')) returnTo = rt;
+                } catch (e) {}
+
                 if (data && data.errno === 0 && data.result?.setupComplete) {
-                    safeRedirect('/index.html');
+                    safeRedirect(returnTo || '/index.html');
                 } else {
                     safeRedirect('/setup.html');
                 }

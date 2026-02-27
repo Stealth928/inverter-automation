@@ -284,6 +284,33 @@
             color: var(--text-primary);
             line-height: 1.1;
         }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .stat-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-lg);
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .stat-item .label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .stat-item .value {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.2;
+        }
         .stat-item .value.small { font-size: 13px; font-weight: 500; }
 
         .platform-chart-card .card-body {
@@ -615,7 +642,7 @@
     // ==================== Admin Panel Logic ====================
     let currentUsers = [];
     let adminApiClient = null;
-    let currentSort = { key: 'email', direction: 'asc' };
+    let currentSort = { key: 'lastSignedInAt', direction: 'desc' };
     let platformTrendChart = null;
     let firestoreMetricsChart = null;
 
