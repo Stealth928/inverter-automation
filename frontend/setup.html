@@ -982,8 +982,8 @@
             if (msg.includes('timeout') || msg.includes('took too long')) {
                 return 'Request timed out — check your internet connection and try again.';
             }
-            if (msg.includes('unexpected response') || msg.includes('invalid json')) {
-                return 'The service returned an unexpected response. This is usually temporary — please try again.';
+            if (msg.includes('unreadable response') || msg.includes('unexpected response') || msg.includes('invalid json')) {
+                return 'Got an unreadable response — double-check your credentials and try again, or retry if the problem persists.';
             }
 
             // FoxESS token issues

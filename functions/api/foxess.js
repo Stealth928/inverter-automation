@@ -131,7 +131,7 @@ async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, u
       return { ...result, raw: text };
     } catch (jsonError) {
       logger.error(`[FoxESSAPI] Invalid JSON response: ${text.substring(0, 200)}`);
-      return { errno: 500, error: 'FoxESS returned an unexpected response. This is usually temporary — please try again in a moment.', raw: text };
+      return { errno: 500, error: 'FoxESS returned an unreadable response — please double-check your credentials and try again.', raw: text };
     }
   } catch (error) {
     if (error.name === 'AbortError') {

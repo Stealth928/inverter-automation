@@ -114,7 +114,7 @@ function init(dependencies) {
         return json;
       } catch (e) {
         console.warn(`[Amber] Failed to parse JSON from ${path}:`, e.message, 'Response preview:', text.substring(0, 500));
-        return { errno: 500, error: 'Amber returned an unexpected response. This is usually temporary — please try again in a moment.', details: text.substring(0, 200) };
+        return { errno: 500, error: 'Amber returned an unreadable response — please double-check your API key and try again.', details: text.substring(0, 200) };
       }
     } catch (error) {
       if (error.name === 'AbortError') {
