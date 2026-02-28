@@ -1704,7 +1704,7 @@
 
             <div class="card dashboard-visibility-card">
                 <div class="card-header">
-                    <div class="card-title"><span class="icon">🧩</span> Customize Dashboard</div>
+                    <div class="card-title"><span class="icon">🧩</span> Customise Dashboard</div>
                     <button
                         id="dashboardVisibilityToggleBtn"
                         class="dashboard-visibility-collapse-btn"
@@ -1718,7 +1718,7 @@
                         <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="inverter" onchange="toggleDashboardCardVisibility('inverter', this)"> Inverter</label>
                         <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="prices" onchange="toggleDashboardCardVisibility('prices', this)"> Prices</label>
                         <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="weather" onchange="toggleDashboardCardVisibility('weather', this)"> Weather</label>
-                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="quickControls" onchange="toggleDashboardCardVisibility('quickControls', this)"> Controls</label>
+                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="quickControls" onchange="toggleDashboardCardVisibility('quickControls', this)"> Quick Controls</label>
                         <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="scheduler" onchange="toggleDashboardCardVisibility('scheduler', this)"> Scheduler</label>
                     </div>
                 </div>
@@ -1798,12 +1798,28 @@
                         </div>
                     </div>
                     <div class="card-body">
-                        <div class="input-row" style="align-items:center">
-                            <input type="text" id="weatherPlace" class="input" placeholder="Location" style="flex:1;min-width:220px;max-width:520px">
-                            <input type="number" id="weatherDays" class="input" min="1" max="16" value="6" style="width:70px" title="Days">
-                            <div id="weatherRequestedLabel" style="min-width:110px;color:#8b949e;font-size:12px;display:flex;align-items:center;justify-content:center;margin-left:8px">Requested: 6</div>
+                        <!-- Hidden input preserved so getWeather() JS reads .value as before -->
+                        <input type="text" id="weatherPlace" style="display:none" aria-hidden="true">
+                        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
+                            <!-- Location display (read-only — change in Settings) -->
+                            <div style="flex:1;min-width:160px;display:flex;align-items:center;gap:8px;background:rgba(13,17,23,0.6);border:1px solid #30363d;border-radius:6px;padding:7px 12px;">
+                                <span style="color:#8b949e;font-size:12px;white-space:nowrap;">📍</span>
+                                <span id="weatherPlaceDisplay"
+                                      style="flex:1;color:#e6edf3;font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                      title="Weather location — also sets the timezone used by automation rules. Change in Settings → Preferences.">—</span>
+                                <a href="settings.html#preferences" style="font-size:11px;color:#58a6ff;white-space:nowrap;text-decoration:none;opacity:0.85;" title="Open Settings to change location">Edit ›</a>
+                            </div>
+                            <!-- Days slider -->
+                            <div style="display:flex;align-items:center;gap:6px;background:rgba(13,17,23,0.6);border:1px solid #30363d;border-radius:6px;padding:7px 12px;min-width:180px;">
+                                <span style="font-size:11px;color:#8b949e;white-space:nowrap;">1d</span>
+                                <input type="range" id="weatherDays" min="1" max="16" step="1" value="6"
+                                       oninput="updateWeatherRequestedLabel()"
+                                       style="flex:1;min-width:0;height:6px;background:#30363d;border-radius:3px;outline:none;-webkit-appearance:none;cursor:pointer;">
+                                <span style="font-size:11px;color:#8b949e;white-space:nowrap;">16d</span>
+                                <span id="weatherRequestedLabel" style="font-size:12px;color:#e6edf3;font-weight:600;white-space:nowrap;min-width:28px;text-align:right;">6d</span>
+                            </div>
+                            <button id="getWeatherBtn" class="btn btn-primary" onclick="getWeather(true)" style="white-space:nowrap;padding:7px 14px;font-size:13px;width:auto;flex-shrink:0;" title="Fetch fresh forecast (bypasses cache)">Get Forecast</button>
                         </div>
-                        <button id="getWeatherBtn" class="btn btn-primary btn-sm" onclick="getWeather()" style="width:auto;align-self:flex-start;padding:8px 16px">Get Forecast</button>
                         <div class="data-card" id="weatherCard">
                             <div style="color:#8b949e;font-size:12px">Enter a location and click Get Forecast</div>
                         </div>
@@ -1836,7 +1852,7 @@
 
                     <!-- Control Form -->
                     <div id="quickControlForm">
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;margin-bottom:16px;">
                             <!-- Type Selection -->
                             <div class="input-group">
                                 <label style="font-weight:600;color:#58a6ff;font-size:13px">Control Type</label>
@@ -1855,19 +1871,19 @@
                                 <label style="font-weight:600;color:#58a6ff;font-size:13px">
                                     Duration: <span id="quickControlDurationDisplay" style="color:#fff;font-weight:700;">20</span> min
                                 </label>
-                                <div style="display:flex;gap:12px;align-items:center;margin-top:8px;">
-                                    <span style="font-size:12px;color:#8b949e;min-width:30px;">2 min</span>
+                                <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                                    <span style="font-size:11px;color:#8b949e;white-space:nowrap;">2m</span>
                                     <input type="range" id="quickControlDuration" min="2" max="300" step="1" value="20" 
                                            oninput="updateQuickControlDurationDisplay(this.value)" 
-                                           style="flex:1;height:8px;background:#30363d;border-radius:4px;outline:none;-webkit-appearance:none;">
-                                    <span style="font-size:12px;color:#8b949e;min-width:50px;text-align:right;">300 min</span>
+                                           style="flex:1;min-width:0;height:8px;background:#30363d;border-radius:4px;outline:none;-webkit-appearance:none;">
+                                    <span style="font-size:11px;color:#8b949e;white-space:nowrap;">300m</span>
                                 </div>
-                                <div style="margin-top:8px;display:flex;gap:6px;">
-                                    <button class="btn" onclick="setQuickControlDuration(5)" style="font-size:11px;padding:4px 8px;flex:1;">5 min</button>
-                                    <button class="btn" onclick="setQuickControlDuration(15)" style="font-size:11px;padding:4px 8px;flex:1;">15 min</button>
-                                    <button class="btn" onclick="setQuickControlDuration(30)" style="font-size:11px;padding:4px 8px;flex:1;">30 min</button>
-                                    <button class="btn" onclick="setQuickControlDuration(60)" style="font-size:11px;padding:4px 8px;flex:1;">60 min</button>
-                                    <button class="btn" onclick="toggleQuickControlCustomDuration()" style="font-size:11px;padding:4px 8px;flex:1;">Custom</button>
+                                <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+                                    <button class="btn" onclick="setQuickControlDuration(5)" style="font-size:11px;padding:4px 6px;flex:1;min-width:44px;">5m</button>
+                                    <button class="btn" onclick="setQuickControlDuration(15)" style="font-size:11px;padding:4px 6px;flex:1;min-width:44px;">15m</button>
+                                    <button class="btn" onclick="setQuickControlDuration(30)" style="font-size:11px;padding:4px 6px;flex:1;min-width:44px;">30m</button>
+                                    <button class="btn" onclick="setQuickControlDuration(60)" style="font-size:11px;padding:4px 6px;flex:1;min-width:44px;">60m</button>
+                                    <button class="btn" onclick="toggleQuickControlCustomDuration()" style="font-size:11px;padding:4px 6px;flex:1;min-width:44px;">Custom</button>
                                 </div>
                                 <input type="number" id="quickControlDurationCustom" class="input" min="2" max="360" value="20" placeholder="Minutes (2-360)" 
                                        onchange="setQuickControlDuration(this.value)" 
@@ -3484,6 +3500,15 @@
                 // mark last updated for weather
                 setLastUpdated('weather');
 
+                // Update visible location display with API-resolved name when available
+                try {
+                    const resolvedDisplay = (weatherData?.place?.resolvedName && !weatherData?.place?.fallback)
+                        ? weatherData.place.resolvedName
+                        : place;
+                    const wDisp = document.getElementById('weatherPlaceDisplay');
+                    if (wDisp && resolvedDisplay) wDisp.textContent = resolvedDisplay;
+                } catch (e) {}
+
                 // Show full payload in the result panel
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
                 // If API returned a resolved place name, prefer that in the status bar
@@ -3594,7 +3619,7 @@
                 const prefVal = prefEl && prefEl.value ? String(prefEl.value).trim() : null;
                 const controlVal = el && el.value ? String(el.value).trim() : null;
                 const v = prefVal || controlVal || String(CONFIG?.preferences?.forecastDays || 6);
-                lbl.textContent = `Requested: ${v}`;
+                lbl.textContent = `${v}d`;
             } catch (e) { /* ignore */ }
         }
 
@@ -3651,9 +3676,12 @@
                 let dismissedBanner = false;
                 try { dismissedBanner = !!localStorage.getItem('weatherFallbackDismissed:' + locKeyBanner); } catch (e) { dismissedBanner = false; }
                 if (!dismissedBanner) {
-                    html += `<div id="weather-fallback-banner-${locKeyBanner}" style="margin-top:8px;padding:10px;border-radius:8px;background:linear-gradient(90deg,#3b2f00,#5a4300);color:#fff;font-size:13px;display:flex;align-items:center;gap:10px;justify-content:space-between">
-                        <div style="flex:1"><strong>⚠️ Location not resolved</strong><span style="opacity:0.9;margin-left:8px">Using fallback coordinates (${reason.replace(/_/g,' ')})</span></div>
-                        <div style="flex:0 0 auto;margin-left:12px"><button onclick="dismissWeatherFallback('${locKeyBanner}')" style="background:transparent;border:1px solid rgba(255,255,255,0.12);color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer">Dismiss</button></div>
+                    html += `<div id="weather-fallback-banner-${locKeyBanner}" style="margin-top:8px;padding:10px 14px;border-radius:8px;background:linear-gradient(90deg,#3b2f00,#5a4300);color:#fff;font-size:13px;display:flex;align-items:flex-start;gap:10px;justify-content:space-between">
+                        <div style="flex:1;line-height:1.6;">
+                            <div><strong>⚠️ Location not resolved</strong> — showing weather for approximate fallback coordinates.</div>
+                            <div style="font-size:12px;margin-top:4px;opacity:0.9;">To fix: go to <a href="settings.html" style="color:#f5c542;text-decoration:underline;">Settings → Preferences</a> and set your location as <strong>City, Country</strong> — for example <em>Sydney, Australia</em> or <em>London, UK</em>.</div>
+                        </div>
+                        <div style="flex:0 0 auto;margin-left:12px;margin-top:2px;"><button onclick="dismissWeatherFallback('${locKeyBanner}')" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;">Dismiss</button></div>
                     </div>`;
                 }
             }
@@ -6571,6 +6599,26 @@
                             wInput.value = preferredWeather;
                         }
                     }
+                    // Keep the visible location display in sync
+                    const wDisplay = document.getElementById('weatherPlaceDisplay');
+                    if (wDisplay && preferredWeather && preferredWeather !== 'undefined') {
+                        wDisplay.textContent = preferredWeather;
+                        wDisplay.title = `Fetching weather for: ${preferredWeather}\nThis also sets the timezone for automation rules.\nChange in Settings → Preferences.`;
+                    }
+                    // Bust weather cache if the configured location changed since the last fetch
+                    // (handles navigating back from settings without a full page reload)
+                    try {
+                        const cachedFull = JSON.parse(localStorage.getItem('cachedWeatherFull') || '{}');
+                        const cachedLoc = (cachedFull?.place?.query || cachedFull?.place?.resolvedName || '').trim().toLowerCase();
+                        const newLoc = (preferredWeather || '').trim().toLowerCase();
+                        if (cachedLoc && newLoc && cachedLoc !== newLoc) {
+                            const cs = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                            cs.weatherTime = 0;
+                            localStorage.setItem('cacheState', JSON.stringify(cs));
+                            localStorage.removeItem('cachedWeatherFull');
+                            console.log('[Weather] Location changed from', cachedLoc, 'to', newLoc, '— cache cleared');
+                        }
+                    } catch (e) { /* non-fatal */ }
                     const snInput = document.getElementById('deviceSn');
                     if (snInput && !snInput.value && cfg.result.deviceSn) {
                         snInput.value = cfg.result.deviceSn;

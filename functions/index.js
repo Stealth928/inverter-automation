@@ -2110,6 +2110,7 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
       const role = profile.role || (emailLc === SEED_ADMIN_EMAIL ? 'admin' : 'user');
 
       const joinedAtMs = toMs(authMetadata?.creationTime) || toMs(profile.createdAt);
+      const lastSignInMs = toMs(authMetadata?.lastSignInTime) || null;
 
       let configured = false;
       let configuredAtMs = null;
@@ -2170,6 +2171,7 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
         role,
         automationEnabled: !!profile.automationEnabled,
         joinedAtMs,
+        lastSignInMs,
         configured,
         configuredAtMs,
         hasRules,
@@ -2220,11 +2222,14 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
       };
     });
 
+    // MAU = users who signed in at least once in the current calendar month (UTC)
+    const monthStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
     const summary = {
       totalUsers: users.length,
       configuredUsers: users.filter((u) => u.configured).length,
       usersWithRules: users.filter((u) => u.hasRules).length,
       admins: users.filter((u) => u.role === 'admin').length,
+      mau: users.filter((u) => u.lastSignInMs !== null && u.lastSignInMs >= monthStartMs).length,
       automationActive: users.filter((u) => u.automationEnabled).length
     };
 

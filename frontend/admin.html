@@ -540,8 +540,8 @@
                         <div class="value" id="statConfigured">-</div>
                     </div>
                     <div class="kpi-item">
-                        <div class="label">Admins</div>
-                        <div class="value" id="statAdmins">-</div>
+                        <div class="label" title="Users who signed in at least once this calendar month">MAU <span style="font-size:10px;opacity:0.6">(this month)</span></div>
+                        <div class="value" id="statMAU">-</div>
                     </div>
                     <div class="kpi-item">
                         <div class="label">Automation Active</div>
@@ -803,7 +803,7 @@
 
             document.getElementById('statTotalUsers').textContent = Number(summary.totalUsers || 0);
             document.getElementById('statConfigured').textContent = Number(summary.configuredUsers || 0);
-            document.getElementById('statAdmins').textContent = Number(summary.admins || 0);
+            document.getElementById('statMAU').textContent = Number(summary.mau ?? summary.admins ?? 0);
             document.getElementById('statAutomationActive').textContent = Number(summary.automationActive || 0);
 
             renderPlatformTrendChart(trend);
@@ -1197,7 +1197,19 @@
     function updatePlatformStats(users) {
         // Keep KPIs responsive even if trend endpoint temporarily fails.
         document.getElementById('statTotalUsers').textContent = users.length;
-        document.getElementById('statAdmins').textContent = users.filter(u => u.role === 'admin').length;
+        // MAU: users with lastSignedInAt in the current calendar month
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+        const mau = users.filter(u => {
+            const ts = u.lastSignedInAt;
+            if (!ts) return false;
+            const ms = typeof ts === 'number' ? ts
+                : ts._seconds ? ts._seconds * 1000
+                : ts.seconds ? ts.seconds * 1000
+                : Date.parse(ts);
+            return Number.isFinite(ms) && ms >= monthStart;
+        }).length;
+        document.getElementById('statMAU').textContent = mau;
         document.getElementById('statAutomationActive').textContent = users.filter(u => u.automationEnabled).length;
         document.getElementById('statConfigured').textContent = users.filter(u => (u.profileInitialized || u.rulesCount > 0)).length;
     }

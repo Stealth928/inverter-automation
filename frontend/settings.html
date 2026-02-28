@@ -828,7 +828,7 @@
         </div>
 
         <!-- Preferences (Weather, etc.) -->
-        <div class="section">
+        <div class="section" id="preferences">
             <div class="section-header">
                 <div>
                     <div class="section-title">
@@ -1828,6 +1828,9 @@
                 const data = await resp.json();
                 if (data.errno !== 0) throw new Error(data.msg || 'Failed to save config');
 
+                // Capture previous location BEFORE overwriting originalConfig
+                const prevSavedLoc = (originalConfig.location || originalConfig.preferences?.weatherPlace || '').trim().toLowerCase();
+
                 // Update original config from server response
                 originalConfig = JSON.parse(JSON.stringify(data.result));
                 
@@ -1849,6 +1852,18 @@
                     const weatherInput = document.getElementById('preferences_weatherPlace');
                     if (weatherInput) weatherInput.value = savedLocation;
                 }
+
+                // Clear weather cache in localStorage if location changed so the dashboard
+                // will fetch fresh data and show the correct timezone on next visit
+                try {
+                    const newSavedLoc = (savedLocation || '').trim().toLowerCase();
+                    if (newSavedLoc && prevSavedLoc && newSavedLoc !== prevSavedLoc) {
+                        const cs = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                        cs.weatherTime = 0;
+                        localStorage.setItem('cacheState', JSON.stringify(cs));
+                        localStorage.removeItem('cachedWeatherFull');
+                    }
+                } catch (e) { /* non-fatal */ }
 
                 updateStatus();
                 document.getElementById('lastSaved').textContent = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
