@@ -1012,64 +1012,6 @@
             const line3 = document.getElementById('line3');
             const line4 = document.getElementById('line4');
 
-            // Step 1: Device SN
-            step1.classList.remove('current', 'complete');
-            if (deviceSnValid) {
-                step1.classList.add('complete');
-                step1.querySelector('.step-dot').textContent = '✓';
-            } else {
-                step1.classList.add('current');
-                step1.querySelector('.step-dot').textContent = '1';
-            }
-
-            // Line 1
-            line1.classList.toggle('complete', deviceSnValid);
-
-            // Step 2: FoxESS Token
-            step2.classList.remove('current', 'complete');
-            if (foxessValid) {
-                step2.classList.add('complete');
-                step2.querySelector('.step-dot').textContent = '✓';
-            } else if (deviceSnValid) {
-                step2.classList.add('current');
-                step2.querySelector('.step-dot').textContent = '2';
-            } else {
-                step2.querySelector('.step-dot').textContent = '2';
-            }
-
-            // Line 2
-            line2.classList.toggle('complete', foxessValid);
-
-            // Step 3: Location (required)
-            step3.classList.remove('current', 'complete');
-            if (weatherValid && foxessValid) {
-                step3.classList.add('complete');
-                step3.querySelector('.step-dot').textContent = '✓';
-            } else if (foxessValid) {
-                step3.classList.add('current');
-                step3.querySelector('.step-dot').textContent = '3';
-            } else {
-                step3.querySelector('.step-dot').textContent = '3';
-            }
-
-            // Line 3
-            line3.classList.toggle('complete', weatherValid && foxessValid);
-
-            // Step 4: Amber (optional — completes when a key is entered or hardware values filled)
-            step4.classList.remove('current', 'complete');
-            if (amberValid && weatherValid && foxessValid) {
-                step4.classList.add('complete');
-                step4.querySelector('.step-dot').textContent = '✓';
-            } else if (weatherValid && foxessValid) {
-                step4.classList.add('current');
-                step4.querySelector('.step-dot').textContent = '4';
-            } else {
-                step4.querySelector('.step-dot').textContent = '4';
-            }
-
-            // Line 4
-            line4.classList.toggle('complete', amberValid && weatherValid && foxessValid);
-
             // Step 5: Hardware (capacity values must be positive numbers)
             const inverterInput = document.getElementById('inverterCapacityKw');
             const batteryInput = document.getElementById('batteryCapacityKwh');
@@ -1077,16 +1019,30 @@
             const batteryCapValid = batteryInput && parseFloat(batteryInput.value) > 0;
             const hardwareValid = inverterCapValid && batteryCapValid;
 
-            step5.classList.remove('current', 'complete');
-            if (hardwareValid && weatherValid && foxessValid) {
-                step5.classList.add('complete');
-                step5.querySelector('.step-dot').textContent = '✓';
-            } else if (weatherValid && foxessValid) {
-                step5.classList.add('current');
-                step5.querySelector('.step-dot').textContent = '5';
-            } else {
-                step5.querySelector('.step-dot').textContent = '5';
-            }
+            // Each step goes green based solely on its own field — sequence-agnostic.
+            // Lines go green when the step on their left is complete.
+            const stepStates = [deviceSnValid, foxessValid, weatherValid, amberValid, hardwareValid];
+            const stepEls    = [step1, step2, step3, step4, step5];
+            const lineEls    = [line1, line2, line3, line4];
+            const stepNums   = ['1', '2', '3', '4', '5'];
+
+            // First incomplete step gets 'current' highlight
+            const firstIncomplete = stepStates.findIndex(v => !v);
+
+            stepEls.forEach((el, i) => {
+                el.classList.remove('current', 'complete');
+                if (stepStates[i]) {
+                    el.classList.add('complete');
+                    el.querySelector('.step-dot').textContent = '✓';
+                } else {
+                    if (i === firstIncomplete) el.classList.add('current');
+                    el.querySelector('.step-dot').textContent = stepNums[i];
+                }
+            });
+
+            lineEls.forEach((el, i) => {
+                el.classList.toggle('complete', stepStates[i]);
+            });
         }
 
         // Real-time progress updates as user types
