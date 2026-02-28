@@ -206,7 +206,7 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
     // Fetch fresh data from FoxESS
     const data = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', {
       sn: deviceSN,
-      variables: ['SoC', 'batTemperature', 'ambientTemperation', 'pvPower', 'loadsPower', 'gridConsumptionPower', 'feedinPower']
+      variables: ['SoC', 'SoC1', 'batTemperature', 'ambientTemperation', 'pvPower', 'loadsPower', 'gridConsumptionPower', 'feedinPower']
     }, userConfig, userId);
     
     // Store in cache if successful
@@ -255,7 +255,7 @@ async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, force
     // Fetch fresh data from FoxESS with all required variables
     const data = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', {
       sn: deviceSN,
-      variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'meterPower', 'meterPower2', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
+      variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'meterPower', 'meterPower2', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'SoC1', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
     }, userConfig, userId);
     
     // Store in cache if successful
@@ -7364,7 +7364,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   let ambientTemp = null;
   if (inverterData?.result?.[0]?.datas) {
     const datas = inverterData.result[0].datas;
-    const socData = datas.find(d => d.variable === 'SoC');
+    const socData = datas.find(d => d.variable === 'SoC') || datas.find(d => d.variable === 'SoC1');
     const batTempData = datas.find(d => d.variable === 'batTemperature');
     const ambientTempData = datas.find(d => d.variable === 'ambientTemperation');
     soc = socData?.value ?? null;
