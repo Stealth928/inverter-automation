@@ -4100,6 +4100,20 @@ app.post('/api/automation/cycle', async (req, res) => {
     if (deviceSN) {
       try {
         inverterData = await getCachedInverterData(userId, deviceSN, userConfig, false);
+        // If automation cache doesn't have valid datas structure (e.g. stale failed response),
+        // fall back to the realtime cache which the dashboard may have just refreshed.
+        if (!inverterData?.result?.[0]?.datas) {
+          console.warn('[Automation] Automation inverter cache missing datas structure (errno=%s), falling back to realtime cache', inverterData?.errno);
+          try {
+            const realtimeData = await getCachedInverterRealtimeData(userId, deviceSN, userConfig, false);
+            if (realtimeData?.result?.[0]?.datas) {
+              inverterData = realtimeData;
+              console.log('[Automation] Realtime cache fallback succeeded - SoC data now available');
+            }
+          } catch (fe) {
+            console.warn('[Automation] Realtime cache fallback also failed:', fe.message);
+          }
+        }
       } catch (e) {
         console.warn('[Automation] Failed to get inverter data:', e.message);
       }

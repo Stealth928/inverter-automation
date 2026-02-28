@@ -6178,7 +6178,7 @@
                             const condColor = cond.met ? '#7ee787' : '#f85149';
                             let short = '';
                             if (cond.condition === 'soc') {
-                                short = `SoC: ${cond.actual}%`;
+                                short = `SoC: ${cond.actual != null ? cond.actual + '%' : '—'}${cond.reason ? ' (N/A)' : ''}`;
                             } else if (cond.condition === 'feedInPrice') {
                                 short = `FI: ${cond.actual?.toFixed(1)}¢`;
                             } else if (cond.condition === 'buyPrice') {
