@@ -114,13 +114,14 @@ function init(dependencies) {
         return json;
       } catch (e) {
         console.warn(`[Amber] Failed to parse JSON from ${path}:`, e.message, 'Response preview:', text.substring(0, 500));
-        return { errno: 500, error: 'Invalid JSON response from Amber API', details: text.substring(0, 200) };
+        return { errno: 500, error: 'Amber returned an unexpected response. This is usually temporary — please try again in a moment.', details: text.substring(0, 200) };
       }
     } catch (error) {
       if (error.name === 'AbortError') {
-        return { errno: 408, error: 'Request timeout' };
+        return { errno: 408, error: 'Amber took too long to respond. Check your internet connection and try again.' };
       }
-      return { errno: 500, error: error.message };
+      const isNetworkErr = error.name === 'TypeError' || (error.message || '').toLowerCase().includes('fetch');
+      return { errno: 500, error: isNetworkErr ? 'Could not reach Amber — check your internet connection and try again.' : error.message };
     }
   }
 

@@ -947,7 +947,7 @@
 
             } catch (error) {
                 console.error('Validation error:', error);
-                setFieldError('deviceSn', 'Connection error: ' + (error.message || 'Please check your network and try again.'));
+                setFieldError('deviceSn', error.message || 'Unknown error');
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<span class="btn-text">Validate & Continue</span><span>→</span>';
             }
@@ -971,7 +971,51 @@
             });
         }
 
-        function setFieldError(fieldId, message) {
+        // Map technical/raw error strings to user-friendly language before display
+        function friendlyError(fieldId, raw) {
+            const msg = (raw || '').toLowerCase();
+
+            // Network / connectivity
+            if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('load failed') || msg.includes('could not reach')) {
+                return 'Connection failed — check your internet connection and try again.';
+            }
+            if (msg.includes('timeout') || msg.includes('took too long')) {
+                return 'Request timed out — check your internet connection and try again.';
+            }
+            if (msg.includes('unexpected response') || msg.includes('invalid json')) {
+                return 'The service returned an unexpected response. This is usually temporary — please try again.';
+            }
+
+            // FoxESS token issues
+            if (fieldId === 'foxessToken') {
+                if (msg.includes('error token') || (msg.includes('invalid') && msg.includes('token'))) {
+                    return 'Invalid or expired API token. Re-copy it from FoxESS Cloud → User Settings → API Management.';
+                }
+                if (msg.includes('illegal parameter') || msg.includes('not bound')) {
+                    return 'API token not authorised for third-party access. In FoxESS Cloud, go to User Settings → API Management and generate a new token.';
+                }
+                if (msg.includes('rate limit') || msg.includes('frequency')) {
+                    return 'FoxESS rate limit reached. Wait 60 seconds and try again.';
+                }
+            }
+
+            // Amber key issues
+            if (fieldId === 'amberApiKey') {
+                if (msg.includes('401') || msg.includes('unauthori') || (msg.includes('invalid') && msg.includes('key'))) {
+                    return 'Invalid Amber API key. Get yours at app.amber.com.au → Account → API.';
+                }
+            }
+
+            // Generic validation fallback
+            if (msg === 'validation failed') {
+                return 'Couldn\'t verify this field — please check your entry and try again.';
+            }
+
+            return raw; // Already a good message
+        }
+
+        function setFieldError(fieldId, rawMessage) {
+            const message = friendlyError(fieldId, rawMessage);
             const group = document.getElementById(fieldId).closest('.form-group');
             group.classList.remove('success');
             group.classList.add('error');

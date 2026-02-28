@@ -503,18 +503,33 @@ app.post('/api/config/validate-keys', async (req, res) => {
       
       if (!foxResult || foxResult.errno !== 0) {
         failed_keys.push('foxess_token');
-        errors.foxess_token = foxResult?.msg || foxResult?.error || 'Invalid FoxESS token or API error';
+        // Map known FoxESS Cloud errno codes and cryptic messages to friendly text
+        const rawMsg = foxResult?.msg || foxResult?.error || '';
+        const rawLower = rawMsg.toLowerCase();
+        let tokenErr;
+        if (rawLower.includes('error token') || rawLower.includes('invalid') || foxResult?.errno === 40401) {
+          tokenErr = 'Invalid or expired API token. Re-copy it from FoxESS Cloud → User Settings → API Management.';
+        } else if (rawLower.includes('illegal parameter') || rawLower.includes('not bound')) {
+          tokenErr = 'API token not authorised for third-party access. In FoxESS Cloud, go to User Settings → API Management and generate a new token.';
+        } else if (rawLower.includes('frequency') || foxResult?.errno === 40402) {
+          tokenErr = 'FoxESS rate limit reached. Wait 60 seconds and try again.';
+        } else if (rawMsg) {
+          tokenErr = rawMsg;
+        } else {
+          tokenErr = 'Could not verify your FoxESS token. Check it matches exactly what FoxESS Cloud shows.';
+        }
+        errors.foxess_token = tokenErr;
       } else {
         // Check if device SN exists in the response
         const devices = foxResult.result?.data || [];
         const deviceFound = devices.some(d => d.deviceSN === device_sn);
         if (!deviceFound && devices.length > 0) {
           failed_keys.push('device_sn');
-          errors.device_sn = `Device SN not found. Available: ${devices.map(d => d.deviceSN).join(', ')}`;
+          errors.device_sn = `Serial number not found in your account. Your registered device(s): ${devices.map(d => d.deviceSN).join(', ')} — check the spelling carefully.`;
         } else if (!deviceFound && devices.length === 0) {
           // No devices returned - might be a token issue
           failed_keys.push('foxess_token');
-          errors.foxess_token = 'No devices found. Please check your FoxESS token.';
+          errors.foxess_token = 'No inverters found on this account. Make sure this token is from the FoxESS account where your inverter is registered.';
         }
       }
     } else {
