@@ -6931,9 +6931,21 @@
                     
                     // Build conditions badges
                     let condBadges = '';
-                    if (conditions.feedInPrice?.enabled) condBadges += `<span style="background:#238636;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">Feed-in ${conditions.feedInPrice.operator} ${conditions.feedInPrice.value}¢</span>`;
-                    if (conditions.buyPrice?.enabled) condBadges += `<span style="background:#1f6feb;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">Buy ${conditions.buyPrice.operator} ${conditions.buyPrice.value}¢</span>`;
-                    if (conditions.soc?.enabled) condBadges += `<span style="background:#8957e5;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">SoC ${conditions.soc.operator} ${conditions.soc.value}%</span>`;
+                    if (conditions.feedInPrice?.enabled) {
+                        const fiOp = conditions.feedInPrice.op || conditions.feedInPrice.operator || '>';
+                        const fiStr = fiOp === 'between' ? `${conditions.feedInPrice.value}¢ – ${conditions.feedInPrice.value2}¢` : `${fiOp} ${conditions.feedInPrice.value}¢`;
+                        condBadges += `<span style="background:#238636;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">Feed-in ${fiStr}</span>`;
+                    }
+                    if (conditions.buyPrice?.enabled) {
+                        const bpOp = conditions.buyPrice.op || conditions.buyPrice.operator || '<';
+                        const bpStr = bpOp === 'between' ? `${conditions.buyPrice.value}¢ – ${conditions.buyPrice.value2}¢` : `${bpOp} ${conditions.buyPrice.value}¢`;
+                        condBadges += `<span style="background:#1f6feb;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">Buy ${bpStr}</span>`;
+                    }
+                    if (conditions.soc?.enabled) {
+                        const socOp = conditions.soc.op || conditions.soc.operator || '<';
+                        const socStr = socOp === 'between' ? `${conditions.soc.value}% – ${conditions.soc.value2}%` : `${socOp} ${conditions.soc.value}%`;
+                        condBadges += `<span style="background:#8957e5;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">SoC ${socStr}</span>`;
+                    }
                     const tempCond = conditions.temperature || conditions.temp;
                     if (tempCond?.enabled) condBadges += `<span style="background:#f0883e;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">${tempCond.type || 'Bat'} Temp ${tempCond.operator} ${tempCond.value}°C</span>`;
                     // Solar Radiation condition
@@ -7904,19 +7916,19 @@
                     enabled: modal?.querySelector('#condFeedInEnabled')?.checked || false,
                     operator: modal?.querySelector('#condFeedInOp')?.value || '>',
                     value: parseFloat(modal?.querySelector('#condFeedInVal')?.value) || 0,
-                    value2: parseFloat(modal?.querySelector('#condFeedInVal2')?.value) || 0
+                    ...(modal?.querySelector('#condFeedInOp')?.value === 'between' && { value2: parseFloat(modal?.querySelector('#condFeedInVal2')?.value) || 0 })
                 },
                 buyPrice: {
                     enabled: modal?.querySelector('#condBuyEnabled')?.checked || false,
                     operator: modal?.querySelector('#condBuyOp')?.value || '>',
                     value: parseFloat(modal?.querySelector('#condBuyVal')?.value) || 0,
-                    value2: parseFloat(modal?.querySelector('#condBuyVal2')?.value) || 0
+                    ...(modal?.querySelector('#condBuyOp')?.value === 'between' && { value2: parseFloat(modal?.querySelector('#condBuyVal2')?.value) || 0 })
                 },
                 soc: {
                     enabled: modal?.querySelector('#condSocEnabled')?.checked || false,
                     operator: modal?.querySelector('#condSocOp')?.value || '<',
                     value: parseFloat(modal?.querySelector('#condSocVal')?.value) || 50,
-                    value2: parseFloat(modal?.querySelector('#condSocVal2')?.value) || 100
+                    ...(modal?.querySelector('#condSocOp')?.value === 'between' && { value2: parseFloat(modal?.querySelector('#condSocVal2')?.value) || 80 })
                 },
                 temperature: {
                     enabled: modal?.querySelector('#condTempEnabled')?.checked || false,
@@ -8030,18 +8042,33 @@
                 const conditions = rule.conditions || {};
                 if (conditions.feedInPrice) {
                     const el = modal?.querySelector('#condFeedInEnabled'); if (el) el.checked = conditions.feedInPrice.enabled || false;
-                    const op = modal?.querySelector('#condFeedInOp'); if (op) op.value = conditions.feedInPrice.operator || '>';
+                    const feedInOper = conditions.feedInPrice.operator || conditions.feedInPrice.op || '>';
+                    const op = modal?.querySelector('#condFeedInOp'); if (op) op.value = feedInOper;
                     const val = modal?.querySelector('#condFeedInVal'); if (val) val.value = conditions.feedInPrice.value || 0;
+                    if (feedInOper === 'between') {
+                        const v2wrap = modal?.querySelector('#condFeedInVal2Wrap'); if (v2wrap) v2wrap.style.display = 'inline';
+                        const v2 = modal?.querySelector('#condFeedInVal2'); if (v2) v2.value = conditions.feedInPrice.value2 ?? 0;
+                    }
                 }
                 if (conditions.buyPrice) {
                     const el = modal?.querySelector('#condBuyEnabled'); if (el) el.checked = conditions.buyPrice.enabled || false;
-                    const op = modal?.querySelector('#condBuyOp'); if (op) op.value = conditions.buyPrice.operator || '<';
+                    const buyOper = conditions.buyPrice.operator || conditions.buyPrice.op || '<';
+                    const op = modal?.querySelector('#condBuyOp'); if (op) op.value = buyOper;
                     const val = modal?.querySelector('#condBuyVal'); if (val) val.value = conditions.buyPrice.value || 0;
+                    if (buyOper === 'between') {
+                        const v2wrap = modal?.querySelector('#condBuyVal2Wrap'); if (v2wrap) v2wrap.style.display = 'inline';
+                        const v2 = modal?.querySelector('#condBuyVal2'); if (v2) v2.value = conditions.buyPrice.value2 ?? 0;
+                    }
                 }
                 if (conditions.soc) {
                     const el = modal?.querySelector('#condSocEnabled'); if (el) el.checked = conditions.soc.enabled || false;
-                    const op = modal?.querySelector('#condSocOp'); if (op) op.value = conditions.soc.operator || '>';
+                    const socOper = conditions.soc.operator || conditions.soc.op || '>';
+                    const op = modal?.querySelector('#condSocOp'); if (op) op.value = socOper;
                     const val = modal?.querySelector('#condSocVal'); if (val) val.value = conditions.soc.value || 50;
+                    if (socOper === 'between') {
+                        const v2wrap = modal?.querySelector('#condSocVal2Wrap'); if (v2wrap) v2wrap.style.display = 'inline';
+                        const v2 = modal?.querySelector('#condSocVal2'); if (v2) v2.value = conditions.soc.value2 ?? 80;
+                    }
                 }
                 if (conditions.temperature) {
                     const el = modal?.querySelector('#condTempEnabled'); if (el) el.checked = conditions.temperature.enabled || false;
@@ -8385,17 +8412,20 @@
                 if (rule.conditions.price && rule.conditions.price.enabled) {
                     const p = rule.conditions.price;
                     const typeLabel = p.type === 'feedin' ? 'Feed-in' : 'Buy';
-                    let valueStr = p.op === 'between' ? `${p.value}¢ - ${p.value2}¢` : `${p.op} ${p.value}¢`;
+                    const pOper = p.op || p.operator || '<';
+                    let valueStr = pOper === 'between' ? `${p.value}¢ – ${p.value2}¢` : `${pOper} ${p.value}¢`;
                     conditionsHtml += `<span class="condition-tag price">💰 ${typeLabel} ${valueStr}</span>`;
                 }
                 if (rule.conditions.soc && rule.conditions.soc.enabled) {
                     const s = rule.conditions.soc;
-                    let valueStr = s.op === 'between' ? `${s.value}% - ${s.value2}%` : `${s.op} ${s.value}%`;
+                    const sOper = s.op || s.operator || '<';
+                    let valueStr = sOper === 'between' ? `${s.value}% – ${s.value2}%` : `${sOper} ${s.value}%`;
                     conditionsHtml += `<span class="condition-tag soc">🔋 SoC ${valueStr}</span>`;
                 }
                 if (rule.conditions.temp && rule.conditions.temp.enabled) {
                     const t = rule.conditions.temp;
-                    let valueStr = t.op === 'between' ? `${t.value}°C - ${t.value2}°C` : `${t.op} ${t.value}°C`;
+                    const tOper = t.op || t.operator || '<';
+                    let valueStr = tOper === 'between' ? `${t.value}°C – ${t.value2}°C` : `${tOper} ${t.value}°C`;
                     conditionsHtml += `<span class="condition-tag temp">🌡️ Temp ${valueStr}</span>`;
                 }
                 if (rule.conditions.weather && rule.conditions.weather.enabled) {
@@ -8512,33 +8542,36 @@
                     document.getElementById('condPriceEnabled').checked = p.enabled;
                     if (p.enabled) document.getElementById('conditionPrice').classList.add('active');
                     document.getElementById('condPriceType').value = p.type || 'buy';
-                    document.getElementById('condPriceOp').value = p.op || '<';
+                    const priceOper = p.op || p.operator || '<';
+                    document.getElementById('condPriceOp').value = priceOper;
                     document.getElementById('condPriceValue').value = p.value || '';
-                    if (p.op === 'between') {
+                    if (priceOper === 'between') {
                         document.getElementById('condPriceValue2Row').style.display = 'flex';
-                        document.getElementById('condPriceValue2').value = p.value2 || '';
+                        document.getElementById('condPriceValue2').value = p.value2 ?? '';
                     }
                 }
                 if (rule.conditions.soc) {
                     const s = rule.conditions.soc;
                     document.getElementById('condSoCEnabled').checked = s.enabled;
                     if (s.enabled) document.getElementById('conditionSoC').classList.add('active');
-                    document.getElementById('condSoCOp').value = s.op || '<';
+                    const socOper = s.op || s.operator || '<';
+                    document.getElementById('condSoCOp').value = socOper;
                     document.getElementById('condSoCValue').value = s.value || '';
-                    if (s.op === 'between') {
+                    if (socOper === 'between') {
                         document.getElementById('condSoCValue2Row').style.display = 'flex';
-                        document.getElementById('condSoCValue2').value = s.value2 || '';
+                        document.getElementById('condSoCValue2').value = s.value2 ?? '';
                     }
                 }
                 if (rule.conditions.temp) {
                     const t = rule.conditions.temp;
                     document.getElementById('condTempEnabled').checked = t.enabled;
                     if (t.enabled) document.getElementById('conditionTemp').classList.add('active');
-                    document.getElementById('condTempOp').value = t.op || '<';
+                    const tempOper = t.op || t.operator || '<';
+                    document.getElementById('condTempOp').value = tempOper;
                     document.getElementById('condTempValue').value = t.value || '';
-                    if (t.op === 'between') {
+                    if (tempOper === 'between') {
                         document.getElementById('condTempValue2Row').style.display = 'flex';
-                        document.getElementById('condTempValue2').value = t.value2 || '';
+                        document.getElementById('condTempValue2').value = t.value2 ?? '';
                     }
                 }
                 if (rule.conditions.weather) {

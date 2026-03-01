@@ -1641,21 +1641,24 @@
                 
                 // Price conditions with between support and colors
                 if (conditions.feedInPrice?.enabled) {
-                    const label = conditions.feedInPrice.operator === 'between' 
-                        ? `Feed > ${conditions.feedInPrice.value}¢-${conditions.feedInPrice.value2}¢` 
-                        : `Feed > ${conditions.feedInPrice.value}¢`;
+                    const feedInOper = conditions.feedInPrice.operator || conditions.feedInPrice.op;
+                    const label = feedInOper === 'between' 
+                        ? `Feed ${conditions.feedInPrice.value}¢–${conditions.feedInPrice.value2}¢` 
+                        : `Feed ${feedInOper} ${conditions.feedInPrice.value}¢`;
                     condHtml += condBadge(label, '#7ee787', 'rgba(126, 231, 135, 0.15)');
                 }
                 if (conditions.buyPrice?.enabled) {
-                    const label = conditions.buyPrice.operator === 'between'
-                        ? `Buy < ${conditions.buyPrice.value}¢-${conditions.buyPrice.value2}¢`
-                        : `Buy < ${conditions.buyPrice.value}¢`;
+                    const buyOper = conditions.buyPrice.operator || conditions.buyPrice.op;
+                    const label = buyOper === 'between'
+                        ? `Buy ${conditions.buyPrice.value}¢–${conditions.buyPrice.value2}¢`
+                        : `Buy ${buyOper} ${conditions.buyPrice.value}¢`;
                     condHtml += condBadge(label, '#a371f7', 'rgba(163, 113, 247, 0.15)');
                 }
                 if (conditions.soc?.enabled) {
-                    const label = conditions.soc.operator === 'between'
-                        ? `SoC ${conditions.soc.value}%-${conditions.soc.value2}%`
-                        : `SoC ${conditions.soc.operator} ${conditions.soc.value}%`;
+                    const socOper = conditions.soc.operator || conditions.soc.op;
+                    const label = socOper === 'between'
+                        ? `SoC ${conditions.soc.value}%–${conditions.soc.value2}%`
+                        : `SoC ${socOper} ${conditions.soc.value}%`;
                     condHtml += condBadge(label, '#ffd43b', 'rgba(255, 212, 59, 0.15)');
                 }
                 if (conditions.temperature?.enabled) {
@@ -2183,14 +2186,14 @@
                                     <input type="checkbox" id="condFeedIn" ${editData?.conditions?.feedInPrice?.enabled ? 'checked' : ''}>
                                     <label style="min-width:120px;font-size:0.85rem">💰 Feed-in Price</label>
                                     <select id="condFeedInOp" style="width:80px" onchange="toggleBetween('FeedIn')">
-                                        <option value=">" ${editData?.conditions?.feedInPrice?.operator === '>' ? 'selected' : ''}>&gt;</option>
-                                        <option value=">=" ${editData?.conditions?.feedInPrice?.operator === '>=' ? 'selected' : ''}>&gt;=</option>
-                                        <option value="<" ${editData?.conditions?.feedInPrice?.operator === '<' ? 'selected' : ''}>&lt;</option>
-                                        <option value="<=" ${editData?.conditions?.feedInPrice?.operator === '<=' ? 'selected' : ''}>&lt;=</option>
-                                        <option value="between" ${editData?.conditions?.feedInPrice?.operator === 'between' ? 'selected' : ''}>between</option>
+                                        <option value=">" ${(editData?.conditions?.feedInPrice?.operator || editData?.conditions?.feedInPrice?.op) === '>' ? 'selected' : ''}>&gt;</option>
+                                        <option value=">=" ${(editData?.conditions?.feedInPrice?.operator || editData?.conditions?.feedInPrice?.op) === '>=' ? 'selected' : ''}>&gt;=</option>
+                                        <option value="<" ${(editData?.conditions?.feedInPrice?.operator || editData?.conditions?.feedInPrice?.op) === '<' ? 'selected' : ''}>&lt;</option>
+                                        <option value="<=" ${(editData?.conditions?.feedInPrice?.operator || editData?.conditions?.feedInPrice?.op) === '<=' ? 'selected' : ''}>&lt;=</option>
+                                        <option value="between" ${(editData?.conditions?.feedInPrice?.operator || editData?.conditions?.feedInPrice?.op) === 'between' ? 'selected' : ''}>between</option>
                                     </select>
                                     <input type="number" id="condFeedInVal" value="${editData?.conditions?.feedInPrice?.value || 25}" min="-100" max="500" style="width:70px">
-                                    <span id="condFeedInVal2Wrap" style="display:${editData?.conditions?.feedInPrice?.operator === 'between' ? 'inline' : 'none'}">and <input type="number" id="condFeedInVal2" value="${editData?.conditions?.feedInPrice?.value2 || 50}" min="-100" max="500" style="width:60px"></span>
+                                    <span id="condFeedInVal2Wrap" style="display:${(editData?.conditions?.feedInPrice?.operator || editData?.conditions?.feedInPrice?.op) === 'between' ? 'inline' : 'none'}">and <input type="number" id="condFeedInVal2" value="${editData?.conditions?.feedInPrice?.value2 ?? 50}" min="-100" max="500" style="width:60px"></span>
                                     <span>¢</span>
                                 </div>
                                 
@@ -2199,14 +2202,14 @@
                                     <input type="checkbox" id="condBuy" ${editData?.conditions?.buyPrice?.enabled ? 'checked' : ''}>
                                     <label style="min-width:120px;font-size:0.85rem">🛒 Buy Price</label>
                                     <select id="condBuyOp" style="width:80px" onchange="toggleBetween('Buy')">
-                                        <option value="<" ${editData?.conditions?.buyPrice?.operator === '<' ? 'selected' : ''}>&lt;</option>
-                                        <option value="<=" ${editData?.conditions?.buyPrice?.operator === '<=' ? 'selected' : ''}>&lt;=</option>
-                                        <option value=">" ${editData?.conditions?.buyPrice?.operator === '>' ? 'selected' : ''}>&gt;</option>
-                                        <option value=">=" ${editData?.conditions?.buyPrice?.operator === '>=' ? 'selected' : ''}>&gt;=</option>
-                                        <option value="between" ${editData?.conditions?.buyPrice?.operator === 'between' ? 'selected' : ''}>between</option>
+                                        <option value="<" ${(editData?.conditions?.buyPrice?.operator || editData?.conditions?.buyPrice?.op) === '<' ? 'selected' : ''}>&lt;</option>
+                                        <option value="<=" ${(editData?.conditions?.buyPrice?.operator || editData?.conditions?.buyPrice?.op) === '<=' ? 'selected' : ''}>&lt;=</option>
+                                        <option value=">" ${(editData?.conditions?.buyPrice?.operator || editData?.conditions?.buyPrice?.op) === '>' ? 'selected' : ''}>&gt;</option>
+                                        <option value=">=" ${(editData?.conditions?.buyPrice?.operator || editData?.conditions?.buyPrice?.op) === '>=' ? 'selected' : ''}>&gt;=</option>
+                                        <option value="between" ${(editData?.conditions?.buyPrice?.operator || editData?.conditions?.buyPrice?.op) === 'between' ? 'selected' : ''}>between</option>
                                     </select>
                                     <input type="number" id="condBuyVal" value="${editData?.conditions?.buyPrice?.value || 10}" min="-100" max="500" style="width:70px">
-                                    <span id="condBuyVal2Wrap" style="display:${editData?.conditions?.buyPrice?.operator === 'between' ? 'inline' : 'none'}">and <input type="number" id="condBuyVal2" value="${editData?.conditions?.buyPrice?.value2 || 20}" min="-100" max="500" style="width:60px"></span>
+                                    <span id="condBuyVal2Wrap" style="display:${(editData?.conditions?.buyPrice?.operator || editData?.conditions?.buyPrice?.op) === 'between' ? 'inline' : 'none'}">and <input type="number" id="condBuyVal2" value="${editData?.conditions?.buyPrice?.value2 ?? 20}" min="-100" max="500" style="width:60px"></span>
                                     <span>¢</span>
                                 </div>
                                 
@@ -2215,14 +2218,14 @@
                                     <input type="checkbox" id="condSoc" ${editData?.conditions?.soc?.enabled ? 'checked' : ''}>
                                     <label style="min-width:120px;font-size:0.85rem">🔋 Battery SoC</label>
                                     <select id="condSocOp" style="width:80px" onchange="toggleBetween('Soc')">
-                                        <option value=">" ${editData?.conditions?.soc?.operator === '>' ? 'selected' : ''}>&gt;</option>
-                                        <option value=">=" ${editData?.conditions?.soc?.operator === '>=' ? 'selected' : ''}>&gt;=</option>
-                                        <option value="<" ${editData?.conditions?.soc?.operator === '<' ? 'selected' : ''}>&lt;</option>
-                                        <option value="<=" ${editData?.conditions?.soc?.operator === '<=' ? 'selected' : ''}>&lt;=</option>
-                                        <option value="between" ${editData?.conditions?.soc?.operator === 'between' ? 'selected' : ''}>between</option>
+                                        <option value=">" ${(editData?.conditions?.soc?.operator || editData?.conditions?.soc?.op) === '>' ? 'selected' : ''}>&gt;</option>
+                                        <option value=">=" ${(editData?.conditions?.soc?.operator || editData?.conditions?.soc?.op) === '>=' ? 'selected' : ''}>&gt;=</option>
+                                        <option value="<" ${(editData?.conditions?.soc?.operator || editData?.conditions?.soc?.op) === '<' ? 'selected' : ''}>&lt;</option>
+                                        <option value="<=" ${(editData?.conditions?.soc?.operator || editData?.conditions?.soc?.op) === '<=' ? 'selected' : ''}>&lt;=</option>
+                                        <option value="between" ${(editData?.conditions?.soc?.operator || editData?.conditions?.soc?.op) === 'between' ? 'selected' : ''}>between</option>
                                     </select>
                                     <input type="number" id="condSocVal" value="${editData?.conditions?.soc?.value || 50}" min="0" max="100" style="width:70px">
-                                    <span id="condSocVal2Wrap" style="display:${editData?.conditions?.soc?.operator === 'between' ? 'inline' : 'none'}">and <input type="number" id="condSocVal2" value="${editData?.conditions?.soc?.value2 || 80}" min="0" max="100" style="width:60px"></span>
+                                    <span id="condSocVal2Wrap" style="display:${(editData?.conditions?.soc?.operator || editData?.conditions?.soc?.op) === 'between' ? 'inline' : 'none'}">and <input type="number" id="condSocVal2" value="${editData?.conditions?.soc?.value2 ?? 80}" min="0" max="100" style="width:60px"></span>
                                     <span>%</span>
                                 </div>
                                 

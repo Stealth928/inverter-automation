@@ -7394,7 +7394,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const value = conditions.soc.value;
       const value2 = conditions.soc.value2;
       let met = false;
-      if (operator === 'between' && value2 !== undefined) {
+      if (operator === 'between' && value2 != null) {
         met = soc >= value && soc <= value2;
       } else {
         met = compareValue(soc, operator, value);
@@ -7421,7 +7421,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const value = priceCondition.value;
       const value2 = priceCondition.value2;
       let met = false;
-      if (operator === 'between' && value2 !== undefined) {
+      if (operator === 'between' && value2 != null) {
         met = actualPrice >= value && actualPrice <= value2;
       } else {
         met = compareValue(actualPrice, operator, value);
@@ -7446,7 +7446,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const value = conditions.feedInPrice.value;
       const value2 = conditions.feedInPrice.value2;
       let met = false;
-      if (operator === 'between' && value2 !== undefined) {
+      if (operator === 'between' && value2 != null) {
         met = feedInPrice >= value && feedInPrice <= value2;
       } else {
         met = compareValue(feedInPrice, operator, value);
@@ -7471,7 +7471,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const value = conditions.buyPrice.value;
       const value2 = conditions.buyPrice.value2;
       let met = false;
-      if (operator === 'between' && value2 !== undefined) {
+      if (operator === 'between' && value2 != null) {
         met = buyPrice >= value && buyPrice <= value2;
       } else {
         met = compareValue(buyPrice, operator, value);
