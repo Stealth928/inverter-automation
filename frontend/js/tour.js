@@ -228,7 +228,7 @@
       selector: null,
       position: 'center',
       title: '🎨 Light & Dark Themes',
-      body: 'The app defaults to a dark theme — easy on the eyes at night. Want a brighter look? Click your avatar in the top-right corner and choose ☀️ Light Theme. Your preference is saved and persists across sessions. Switch back to 🌙 Dark Theme the same way at any time.'
+      body: 'The app defaults to a dark theme — easy on the eyes at night. Want a brighter look? Click your avatar in the top-right corner and choose ☀️ Light Theme.'
     },
 
     /* 20 — Outro splash */

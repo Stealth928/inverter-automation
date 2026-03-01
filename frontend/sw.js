@@ -13,7 +13,7 @@ const STATIC_ASSETS = [
   '/curtailment-discovery.html',
   '/css/shared-styles.css?v=7',
   '/css/tour.css',
-  '/js/tour.js?v=7',
+  '/js/tour.js?v=8',
   '/js/firebase-config.js',
   '/js/firebase-auth.js',
   '/js/api-client.js',
