@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -17,6 +17,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics-compat.js"></script>
     <link rel="stylesheet" href="css/shared-styles.css?v=7">
+    <script src="js/theme-init.js"></script>
     <style>
         .discovery-container {
             max-width: 1200px;
@@ -25,8 +26,8 @@
         }
 
         .discovery-section {
-            background: rgba(30, 30, 30, 0.8);
-            border: 1px solid rgba(88, 166, 255, 0.3);
+            background: var(--bg-card);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent);
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
@@ -36,8 +37,8 @@
             font-size: 18px;
             font-weight: 600;
             margin-bottom: 15px;
-            color: #58a6ff;
-            border-bottom: 2px solid rgba(88, 166, 255, 0.2);
+            color: var(--accent-blue);
+            border-bottom: 2px solid color-mix(in srgb, var(--accent-blue) 20%, transparent);
             padding-bottom: 10px;
         }
 
@@ -49,15 +50,15 @@
         }
 
         .info-card {
-            background: rgba(13, 17, 23, 0.5);
-            border: 1px solid rgba(88, 166, 255, 0.2);
+            background: var(--bg-input);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 20%, transparent);
             border-radius: 6px;
             padding: 15px;
         }
 
         .info-card-title {
             font-size: 12px;
-            color: #8b949e;
+            color: var(--text-secondary);
             text-transform: uppercase;
             margin-bottom: 8px;
             letter-spacing: 0.5px;
@@ -66,17 +67,17 @@
         .info-card-value {
             font-size: 20px;
             font-weight: 600;
-            color: #7ee787;
+            color: var(--color-terminal-text);
             font-family: 'Courier New', monospace;
             word-break: break-all;
         }
 
         .info-card-value.warning {
-            color: #d29922;
+            color: var(--color-warning);
         }
 
         .info-card-value.error {
-            color: #f85149;
+            color: var(--color-danger);
         }
 
         .topology-indicator {
@@ -89,21 +90,21 @@
         }
 
         .topology-indicator.dc-coupled {
-            background: rgba(126, 231, 135, 0.2);
-            color: #7ee787;
-            border: 1px solid rgba(126, 231, 135, 0.3);
+            background: var(--color-success-bg);
+            color: var(--color-success);
+            border: 1px solid color-mix(in srgb, var(--color-success-dark) 30%, transparent);
         }
 
         .topology-indicator.ac-coupled {
-            background: rgba(210, 153, 34, 0.2);
-            color: #d29922;
-            border: 1px solid rgba(210, 153, 34, 0.3);
+            background: color-mix(in srgb, var(--color-warning) 20%, transparent);
+            color: var(--color-warning);
+            border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
         }
 
         .topology-indicator.unknown {
-            background: rgba(139, 148, 158, 0.2);
-            color: #8b949e;
-            border: 1px solid rgba(139, 148, 158, 0.3);
+            background: color-mix(in srgb, var(--text-secondary) 20%, transparent);
+            color: var(--text-secondary);
+            border: 1px solid color-mix(in srgb, var(--text-secondary) 30%, transparent);
         }
 
         .button-group {
@@ -114,7 +115,7 @@
         }
 
         .btn {
-            background: #238636;
+            background: var(--gradient-success);
             color: white;
             border: none;
             padding: 8px 16px;
@@ -122,44 +123,42 @@
             cursor: pointer;
             font-size: 14px;
             font-weight: 500;
-            transition: background 0.3s;
+            transition: all 0.3s;
         }
 
         .btn:hover {
-            background: #2ea043;
+            filter: brightness(1.1);
         }
 
         .btn.secondary {
-            background: #424f5e;
-            color: #c9d1d9;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-primary);
         }
 
         .btn.secondary:hover {
-            background: #4a5569;
+            background: var(--border-primary);
         }
 
         .btn:disabled {
-            background: #424f5e;
-            color: #6e7681;
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
             cursor: not-allowed;
+            filter: none;
         }
 
         .btn.danger {
-            background: #f85149;
-        }
-
-        .btn.danger:hover {
-            background: #fa5a5f;
+            background: var(--color-danger);
         }
 
         .status-log {
-            background: rgba(13, 17, 23, 0.7);
-            border: 1px solid rgba(139, 148, 158, 0.2);
+            background: var(--bg-terminal);
+            border: 1px solid color-mix(in srgb, var(--text-secondary) 20%, transparent);
             border-radius: 6px;
             padding: 15px;
             font-family: 'Courier New', monospace;
             font-size: 12px;
-            color: #8b949e;
+            color: var(--text-secondary);
             max-height: 400px;
             overflow-y: auto;
             margin-bottom: 15px;
@@ -168,24 +167,13 @@
         .log-entry {
             margin-bottom: 8px;
             padding-bottom: 8px;
-            border-bottom: 1px solid rgba(139, 148, 158, 0.1);
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 20%, transparent);
         }
 
-        .log-entry.success {
-            color: #7ee787;
-        }
-
-        .log-entry.error {
-            color: #f85149;
-        }
-
-        .log-entry.warning {
-            color: #d29922;
-        }
-
-        .log-entry.info {
-            color: #58a6ff;
-        }
+        .log-entry.success { color: var(--color-success); }
+        .log-entry.error { color: var(--color-danger); }
+        .log-entry.warning { color: var(--color-warning); }
+        .log-entry.info { color: var(--accent-blue); }
 
         .form-group {
             margin-bottom: 15px;
@@ -193,7 +181,7 @@
 
         .form-group label {
             display: block;
-            color: #c9d1d9;
+            color: var(--text-primary);
             font-size: 13px;
             font-weight: 500;
             margin-bottom: 6px;
@@ -203,18 +191,18 @@
         .form-group select {
             width: 100%;
             padding: 8px;
-            background: rgba(13, 17, 23, 0.8);
-            border: 1px solid rgba(88, 166, 255, 0.3);
+            background: var(--bg-input);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent);
             border-radius: 4px;
-            color: #c9d1d9;
+            color: var(--text-primary);
             font-size: 13px;
         }
 
         .form-group input:focus,
         .form-group select:focus {
             outline: none;
-            border-color: #58a6ff;
-            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--accent-blue-bg);
         }
 
         .alert {
@@ -225,21 +213,21 @@
         }
 
         .alert.warning {
-            background: rgba(210, 153, 34, 0.1);
-            border: 1px solid rgba(210, 153, 34, 0.3);
-            color: #d29922;
+            background: var(--color-warning-bg);
+            border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
+            color: var(--color-warning);
         }
 
         .alert.info {
-            background: rgba(88, 166, 255, 0.1);
-            border: 1px solid rgba(88, 166, 255, 0.3);
-            color: #58a6ff;
+            background: var(--color-info-bg);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent);
+            color: var(--accent-blue);
         }
 
         .alert.success {
-            background: rgba(126, 231, 135, 0.1);
-            border: 1px solid rgba(126, 231, 135, 0.3);
-            color: #7ee787;
+            background: var(--color-success-bg);
+            border: 1px solid color-mix(in srgb, var(--color-success-dark) 30%, transparent);
+            color: var(--color-success);
         }
 
         .telemetry-table {
@@ -252,54 +240,54 @@
         .telemetry-table td {
             padding: 10px;
             text-align: left;
-            border-bottom: 1px solid rgba(88, 166, 255, 0.1);
+            border-bottom: 1px solid color-mix(in srgb, var(--accent-blue) 10%, transparent);
         }
 
         .telemetry-table th {
-            background: rgba(88, 166, 255, 0.1);
-            color: #58a6ff;
+            background: var(--accent-blue-bg);
+            color: var(--accent-blue);
             font-weight: 600;
         }
 
         .telemetry-table td {
-            color: #8b949e;
+            color: var(--text-secondary);
         }
 
         .telemetry-table td.value {
-            color: #7ee787;
+            color: var(--color-terminal-text);
             font-family: 'Courier New', monospace;
             font-weight: 500;
         }
 
         .loading {
-            color: #8b949e;
+            color: var(--text-secondary);
             font-style: italic;
         }
 
         .test-result {
-            background: rgba(13, 17, 23, 0.5);
-            border-left: 3px solid #7ee787;
+            background: var(--bg-input);
+            border-left: 3px solid var(--color-success);
             padding: 12px;
             margin-bottom: 10px;
             border-radius: 4px;
         }
 
         .test-result.failure {
-            border-left-color: #f85149;
+            border-left-color: var(--color-danger);
         }
 
         .test-result.warning {
-            border-left-color: #d29922;
+            border-left-color: var(--color-warning);
         }
 
         .code-block {
-            background: rgba(13, 17, 23, 0.7);
-            border: 1px solid rgba(139, 148, 158, 0.2);
+            background: var(--bg-terminal);
+            border: 1px solid color-mix(in srgb, var(--text-secondary) 20%, transparent);
             border-radius: 4px;
             padding: 10px;
             font-family: 'Courier New', monospace;
             font-size: 11px;
-            color: #7ee787;
+            color: var(--color-terminal-text);
             overflow-x: auto;
             margin: 10px 0;
         }
@@ -336,7 +324,7 @@
     <div class="discovery-container">
         <div class="discovery-section">
             <div class="section-title">🔬 Solar Curtailment Discovery & Testing</div>
-            <p style="color: #8b949e; margin-bottom: 15px;">
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">
                 This page helps you understand your system topology, probe FoxESS API capabilities, and test curtailment control.
                 All operations are logged for review.
             </p>
@@ -345,7 +333,7 @@
         <!-- Section 1: System Detection -->
         <div class="discovery-section">
             <div class="section-title">1️⃣ System Topology Detection</div>
-            <p style="color: #8b949e; margin-bottom: 15px;">
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">
                 Analyzes real-time inverter data to detect if your system is DC-coupled (solar into battery) or AC-coupled (separate solar inverter).
             </p>
             
@@ -379,7 +367,7 @@
         <!-- Section 2: Export Limit Key Discovery -->
         <div class="discovery-section">
             <div class="section-title">2️⃣ FoxESS API Capability Probing</div>
-            <p style="color: #8b949e; margin-bottom: 15px;">
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">
                 Tests which export limit setting keys are available on your FoxESS device. Different models may use different key names.
             </p>
 
@@ -406,7 +394,7 @@
         <!-- Section 3: Current Export Limit Settings -->
         <div class="discovery-section">
             <div class="section-title">3️⃣ Current Export Limit Settings</div>
-            <p style="color: #8b949e; margin-bottom: 15px;">
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">
                 Reads the current export limit configuration from your FoxESS device.
             </p>
 
@@ -420,7 +408,7 @@
         <!-- Section 4: Real-Time Telemetry for Topology -->
         <div class="discovery-section">
             <div class="section-title">4️⃣ Real-Time Telemetry (Topology Analysis)</div>
-            <p style="color: #8b949e; margin-bottom: 15px;">
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">
                 Raw inverter data used to detect system topology. Look for:
                 <br />• <strong>pvPower = 0 in daytime?</strong> Might be AC-coupled
                 <br />• <strong>feedinPower high but pvPower low?</strong> External solar inverter likely
@@ -439,7 +427,7 @@
                 </tbody>
             </table>
 
-            <p style="color: #8b949e; font-size: 11px; margin-top: 10px;">
+            <p style="color: var(--text-secondary); font-size: 11px; margin-top: 10px;">
                 Last updated: <span id="telemetryTimestamp">—</span>
             </p>
         </div>
@@ -447,7 +435,7 @@
         <!-- Section 5: Test Export Limit Control -->
         <div class="discovery-section">
             <div class="section-title">5️⃣ Test Export Limit Control (⚠️ Caution)</div>
-            <p style="color: #8b949e; margin-bottom: 15px;">
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">
                 <strong>WARNING:</strong> These commands will modify your inverter settings. Only proceed if you understand the impact.
             </p>
 
@@ -460,7 +448,7 @@
                 <div class="form-group">
                     <label>Target Export Limit (Watts)</label>
                     <input type="number" id="exportLimitInput" value="0" min="0" max="20000" step="100">
-                    <small style="color: #8b949e; margin-top: 4px; display: block;">
+                    <small style="color: var(--text-secondary); margin-top: 4px; display: block;">
                         0 = No export (curtail), or set a specific limit
                     </small>
                 </div>
@@ -479,7 +467,7 @@
         <!-- Section 6: System Capability Summary -->
         <div class="discovery-section">
             <div class="section-title">📋 System Capability Summary</div>
-            <p style="color: #8b949e; margin-bottom: 15px;">
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">
                 Based on discovery results, here's what curtailment features are available for your system.
             </p>
 
@@ -764,7 +752,7 @@
                             console.log(`%c⚠️ ${key} - Key exists but not available on device (empty result)`, 'color: #d29922; font-weight: bold;');
                             row.innerHTML = `
                                 <td><strong>${key}</strong></td>
-                                <td><span style="color: #d29922;">⚠ Not Available</span></td>
+                                <td><span style="color: var(--color-warning);">⚠ Not Available</span></td>
                                 <td>—</td>
                                 <td>Device doesn't support this setting</td>
                             `;
@@ -776,7 +764,7 @@
                             console.log(`%c✓ Extracted value for ${key}: ${numValue}`, 'color: #7ee787; font-weight: bold;');
                             row.innerHTML = `
                                 <td><strong>${key}</strong></td>
-                                <td><span style="color: #7ee787;">✓ Available</span></td>
+                                <td><span style="color: var(--color-success);">✓ Available</span></td>
                                 <td class="value">${numValue}</td>
                                 <td>Key exists on device</td>
                             `;
@@ -786,7 +774,7 @@
                     } else {
                         row.innerHTML = `
                             <td><strong>${key}</strong></td>
-                            <td><span style="color: #8b949e;">✗ Not Available</span></td>
+                            <td><span style="color: var(--text-secondary);">✗ Not Available</span></td>
                             <td>—</td>
                             <td>${data.msg || data.error || 'Key not found'}</td>
                         `;
@@ -797,7 +785,7 @@
                     const row = tbody.insertRow();
                     row.innerHTML = `
                         <td><strong>${key}</strong></td>
-                        <td><span style="color: #f85149;">⚠ Error</span></td>
+                        <td><span style="color: var(--color-danger);">⚠ Error</span></td>
                         <td>—</td>
                         <td>${err.message}</td>
                     `;
@@ -901,26 +889,26 @@
                     <div class="info-card">
                         <div class="info-card-title">Export Limit Power (Watts)</div>
                         <div class="info-card-value">${settings.ExportLimit ?? '?'}</div>
-                        <small style="color: #8b949e; margin-top: 5px; display: block;">Current maximum export to grid</small>
+                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">Current maximum export to grid</small>
                     </div>
                     ${settings.ExportLimitPower === null ? `
-                    <div class="info-card" style="margin-top: 15px; background: rgba(210, 153, 34, 0.1); border-left: 3px solid #d29922;">
+                    <div class="info-card" style="margin-top: 15px; background: rgba(210, 153, 34, 0.1); border-left: 3px solid var(--color-warning);">
                         <div class="info-card-title">⚠️ ExportLimitPower Not Available</div>
-                        <div style="color: #d29922; font-size: 13px; margin-top: 5px;">
+                        <div style="color: var(--color-warning); font-size: 13px; margin-top: 5px;">
                             <p style="margin: 0 0 10px 0;">This device does not report the ExportLimitPower setting. This can happen if:</p>
                             <ul style="margin: 5px 0; padding-left: 20px;">
                                 <li>The FoxESS API is temporarily unavailable</li>
                                 <li>Your device firmware doesn't support this setting</li>
                                 <li>The setting was recently disabled in the device configuration</li>
                             </ul>
-                            <button onclick="readCurrentSettings()" style="margin-top: 10px; padding: 6px 12px; background: rgba(210, 153, 34, 0.2); border: 1px solid #d29922; color: #d29922; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">🔄 Retry Reading</button>
+                            <button onclick="readCurrentSettings()" style="margin-top: 10px; padding: 6px 12px; background: rgba(210, 153, 34, 0.2); border: 1px solid var(--color-warning); color: var(--color-warning); border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">🔄 Retry Reading</button>
                         </div>
                     </div>
                     ` : `
                     <div class="info-card" style="margin-top: 15px;">
                         <div class="info-card-title">Export Limit Power (Watts)</div>
                         <div class="info-card-value">${settings.ExportLimitPower}</div>
-                        <small style="color: #8b949e; margin-top: 5px; display: block;">Alternative power control</small>
+                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">Alternative power control</small>
                     </div>
                     `}
                 `;
@@ -977,7 +965,7 @@
                         Target: ${limitValue}W<br />
                         Status: Applied to inverter<br />
                         <br />
-                        <small style="color: #8b949e;">
+                        <small style="color: var(--text-secondary);">
                             Check your FoxESS Cloud app or inverter display to verify the change.
                             The limit should be applied within a few seconds.
                         </small>
@@ -1094,7 +1082,7 @@
                 <div class="alert info" style="margin-top: 10px;">
                     <strong>Next Steps:</strong><br />
                     Based on discovery results, you can proceed with:
-                    <ul style="margin: 8px 0 0 20px; color: #58a6ff;">
+                    <ul style="margin: 8px 0 0 20px; color: var(--accent-blue);">
                         <li>Creating automation rules that trigger curtailment on negative FiT</li>
                         <li>Setting up load-following curtailment during negative pricing windows</li>
                         <li>Integrating curtailment events into ROI tracking</li>

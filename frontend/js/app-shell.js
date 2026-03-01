@@ -422,6 +422,42 @@
             }
         }
 
+        // Add theme toggle action once per page load
+        if (dropdown && !dropdown.querySelector('[data-toggle-theme]')) {
+            const themeBtn = document.createElement('button');
+            themeBtn.className = 'user-dropdown-item';
+            themeBtn.type = 'button';
+            themeBtn.setAttribute('data-toggle-theme', '1');
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+            themeBtn.textContent = currentTheme === 'light' ? '🌙 Dark Theme' : '☀️ Light Theme';
+            themeBtn.addEventListener('click', () => {
+                const html = document.documentElement;
+                const next = (html.getAttribute('data-theme') || 'dark') === 'dark' ? 'light' : 'dark';
+                if (next === 'light') {
+                    html.setAttribute('data-theme', 'light');
+                } else {
+                    html.removeAttribute('data-theme');  // dark = no attribute (default)
+                }
+                try { localStorage.setItem('uiTheme', next); } catch (e) {}
+                const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+                if (themeColorMeta) {
+                    themeColorMeta.setAttribute('content', next === 'light' ? '#ffffff' : '#0d1117');
+                }
+                // Update this button label and any other theme toggle buttons on the page
+                document.querySelectorAll('[data-toggle-theme]').forEach(function (btn) {
+                    btn.textContent = next === 'light' ? '🌙 Dark Theme' : '☀️ Light Theme';
+                });
+                dropdown.classList.remove('show');
+            });
+            // Insert before stop-impersonation / delete-account (i.e. after tour btn)
+            const contactBtn = menu.querySelector('[data-contact-us]');
+            if (contactBtn && contactBtn.parentNode === dropdown) {
+                dropdown.insertBefore(themeBtn, contactBtn.nextSibling);
+            } else {
+                dropdown.appendChild(themeBtn);
+            }
+        }
+
         // Add stop-impersonation action once per page load
         if (dropdown && !dropdown.querySelector('[data-stop-impersonation]')) {
             const stopBtn = document.createElement('button');
@@ -811,7 +847,8 @@
 
         ensureLink('manifest', '/manifest.webmanifest');
         ensureLink('apple-touch-icon', '/icons/apple-touch-icon.png');
-        ensureMeta('theme-color', '#0d1117');
+        const isLightTheme = document.documentElement.getAttribute('data-theme') === 'light';
+        ensureMeta('theme-color', isLightTheme ? '#ffffff' : '#0d1117');
         ensureMeta('mobile-web-app-capable', 'yes');
         ensureMeta('apple-mobile-web-app-capable', 'yes');
         ensureMeta('apple-mobile-web-app-title', 'FoxESS Automation');
@@ -863,13 +900,13 @@
                     .pwa-install-btn {
                         padding: 10px 14px;
                         border-radius: 10px;
-                        border: 1px solid rgba(88, 166, 255, 0.4);
-                        background: linear-gradient(135deg, #238636, #1a7f37);
+                        border: 1px solid var(--border-accent);
+                        background: var(--gradient-success);
                         color: #ffffff;
                         font-size: 13px;
                         font-weight: 600;
                         cursor: pointer;
-                        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+                        box-shadow: var(--shadow-lg);
                     }
                     .pwa-install-btn:hover {
                         filter: brightness(1.05);

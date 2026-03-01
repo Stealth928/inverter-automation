@@ -13,6 +13,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="stylesheet" href="css/shared-styles.css?v=7" />
     <link rel="stylesheet" href="css/tour.css" />
+    <script src="js/theme-init.js"></script>
     <!-- Firebase SDK (compat) - must load before firebase-auth.js -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -45,7 +46,7 @@
             gap: 10px;
         }
         .status-bar {
-            background: linear-gradient(135deg, #1f6feb 0%, #238636 100%);
+            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--color-success-dark) 100%);
             padding: 10px 16px;
             border-radius: 8px;
             margin-bottom: 20px;
@@ -115,19 +116,19 @@
             gap: 20px;
         }
         .setting-item {
-            background: #0d1117;
-            border: 1px solid #30363d;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-primary);
             border-radius: 6px;
             padding: 16px;
             transition: border-color 0.2s;
         }
         .setting-item:hover {
-            border-color: #58a6ff;
+            border-color: var(--accent-blue);
         }
         .setting-label {
             font-size: 14px;
             font-weight: 600;
-            color: #e6edf3;
+            color: var(--text-primary);
             margin-bottom: 6px;
             display: flex;
             align-items: center;
@@ -135,7 +136,7 @@
         }
         .setting-hint {
             font-size: 12px;
-            color: #8b949e;
+            color: var(--text-secondary);
             margin-bottom: 10px;
         }
         .setting-input {
@@ -145,9 +146,9 @@
         }
         .setting-input input {
             flex: 1;
-            background: #0d1117;
-            border: 1px solid #30363d;
-            color: #e6edf3;
+            background: var(--bg-input);
+            border: 1px solid var(--border-primary);
+            color: var(--text-primary);
             padding: 8px 12px;
             border-radius: 6px;
             font-size: 14px;
@@ -156,27 +157,27 @@
         }
         .setting-input input:focus {
             outline: none;
-            border-color: #58a6ff;
-            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--accent-blue-bg);
         }
         .setting-input input[style*="border-color: #f85149"] {
-            background-color: rgba(248, 81, 73, 0.1);
-            border-color: #f85149 !important;
+            background-color: var(--color-danger-bg);
+            border-color: var(--color-danger) !important;
         }
         .setting-input input[style*="border-color: #f85149"]:focus {
-            box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.2);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 20%, transparent);
         }
         }
         .setting-input .unit {
-            color: #8b949e;
+            color: var(--text-secondary);
             font-size: 13px;
             min-width: 60px;
         }
         .setting-input .time-display {
-            color: #7ee787;
+            color: var(--color-success);
             font-size: 12px;
             font-weight: 500;
-            background: rgba(126, 231, 135, 0.1);
+            background: var(--color-success-bg);
             padding: 4px 8px;
             border-radius: 4px;
             min-width: 60px;
@@ -192,19 +193,19 @@
             font-size: 14px;
         }
         .alert-info {
-            background: rgba(88, 166, 255, 0.1);
-            border: 1px solid rgba(88, 166, 255, 0.3);
-            color: #58a6ff;
+            background: var(--color-info-bg);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent);
+            color: var(--accent-blue);
         }
         .alert-warning {
-            background: rgba(210, 153, 34, 0.1);
-            border: 1px solid rgba(210, 153, 34, 0.3);
-            color: #d29922;
+            background: var(--color-warning-bg);
+            border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
+            color: var(--color-warning);
         }
         .alert-success {
-            background: rgba(35, 134, 54, 0.1);
-            border: 1px solid rgba(35, 134, 54, 0.3);
-            color: #7ee787;
+            background: var(--color-success-bg);
+            border: 1px solid color-mix(in srgb, var(--color-success-dark) 30%, transparent);
+            color: var(--color-success);
         }
         .badge {
             padding: 3px 8px;
@@ -214,12 +215,12 @@
             text-transform: uppercase;
         }
         .badge-sync {
-            background: rgba(88, 166, 255, 0.2);
-            color: #58a6ff;
+            background: color-mix(in srgb, var(--accent-blue) 20%, transparent);
+            color: var(--accent-blue);
         }
         .badge-modified {
-            background: rgba(210, 153, 34, 0.2);
-            color: #d29922;
+            background: color-mix(in srgb, var(--color-warning) 20%, transparent);
+            color: var(--color-warning);
         }
         .actions {
             display: flex;
@@ -227,11 +228,11 @@
             justify-content: flex-end;
             margin-top: 24px;
             padding-top: 20px;
-            border-top: 1px solid #30363d;
+            border-top: 1px solid var(--border-primary);
         }
         .spinner {
-            border: 2px solid rgba(88, 166, 255, 0.2);
-            border-top: 2px solid #58a6ff;
+            border: 2px solid color-mix(in srgb, var(--accent-blue) 20%, transparent);
+            border-top: 2px solid var(--accent-blue);
             border-radius: 50%;
             width: 16px;
             height: 16px;
@@ -256,7 +257,7 @@
             align-items: center;
             gap: 8px;
             cursor: pointer;
-            color: #58a6ff;
+            color: var(--accent-blue);
             font-size: 13px;
             font-weight: 500;
             padding: 8px 0;
@@ -264,7 +265,7 @@
             transition: color 0.2s ease;
         }
         .faq-toggle:hover {
-            color: #79c0ff;
+            color: var(--accent-blue-hover);
         }
         .faq-toggle .arrow {
             transition: transform 0.2s ease;
@@ -284,8 +285,8 @@
             display: block !important;
         }
         .faq-item {
-            background: rgba(13, 17, 23, 0.6);
-            border: 1px solid #21262d;
+            background: var(--bg-input);
+            border: 1px solid var(--bg-secondary);
             border-radius: 8px;
             padding: 14px 16px;
             margin-bottom: 10px;
@@ -293,13 +294,13 @@
             display: block !important;
         }
         .faq-item:hover {
-            background: rgba(13, 17, 23, 0.8);
-            border-color: #30363d;
+            background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
+            border-color: var(--border-primary);
         }
         .faq-question {
             font-size: 13px;
             font-weight: 600;
-            color: #e6edf3;
+            color: var(--text-primary);
             margin-bottom: 8px;
             display: block;
             overflow: visible !important;
@@ -314,7 +315,7 @@
         }
         .faq-answer {
             font-size: 12px;
-            color: #8b949e;
+            color: var(--text-secondary);
             line-height: 1.6;
             margin-left: 0;
             word-wrap: break-word;
@@ -323,21 +324,21 @@
             padding-top: 10px;
         }
         .faq-answer code {
-            background: #161b22;
+            background: var(--bg-secondary);
             padding: 2px 6px;
             border-radius: 4px;
             font-family: 'Courier New', monospace;
             font-size: 11px;
-            color: #7ee787;
+            color: var(--color-terminal-text);
         }
         .faq-tip {
-            background: rgba(35, 134, 54, 0.1);
-            border-left: 3px solid #238636;
+            background: var(--color-success-bg);
+            border-left: 3px solid var(--color-success-dark);
             padding: 10px 12px;
             margin-top: 8px;
             border-radius: 0 6px 6px 0;
             font-size: 12px;
-            color: #7ee787;
+            color: var(--color-success);
         }
         .faq-tip::before {
             content: '💡 ';
@@ -385,9 +386,9 @@
             box-shadow: 0 4px 12px rgba(35, 134, 54, 0.25);
         }
         .curtailment-toggle.active:hover {
-            background: linear-gradient(135deg, #2ea043, #238636);
-            border-color: #2ea043;
-            box-shadow: 0 8px 24px rgba(35, 134, 54, 0.35);
+            filter: brightness(1.1);
+            border-color: var(--color-success-dark);
+            box-shadow: 0 8px 24px color-mix(in srgb, var(--color-success-dark) 35%, transparent);
         }
         .curtailment-icon {
             font-size: 16px;
@@ -618,7 +619,7 @@
             </div>
             <div id="blackoutWindowsList" style="margin-top:16px">
                 <!-- Blackout windows will be rendered here -->
-                <div style="color:#8b949e;font-size:13px;text-align:center;padding:20px">No blackout windows configured</div>
+                <div style="color:var(--text-secondary);font-size:13px;text-align:center;padding:20px">No blackout windows configured</div>
             </div>
             <div class="faq-section">
                 <div class="faq-toggle" onclick="toggleFaq(this)">
@@ -694,7 +695,7 @@
                 </div>
                 <div class="faq-content">
                     <div style="padding: 12px; background: rgba(255, 212, 59, 0.08); border: 1px solid rgba(255, 212, 59, 0.3); border-radius: 8px; margin-bottom: 16px;">
-                        <div style="font-size: 13px; color: #ffd43b; font-weight: 600; margin-bottom: 6px;">⚠️ Last Resort Tool</div>
+                        <div style="font-size: 13px; color: var(--color-warning); font-weight: 600; margin-bottom: 6px;">⚠️ Last Resort Tool</div>
                         <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5;">
                             Use these controls only if curtailment automation fails or your inverter gets stuck at 0W export. 
                             These directly query and modify inverter settings, bypassing normal automation.
@@ -726,7 +727,7 @@
                     </div>
                     
                     <div style="padding: 10px; background: rgba(88, 166, 255, 0.08); border-radius: 6px; font-size: 12px; color: var(--text-secondary); line-height: 1.5;">
-                        <strong style="color: #79c0ff;">💡 Quick Actions:</strong><br>
+                        <strong style="color: var(--accent-blue-hover);">💡 Quick Actions:</strong><br>
                         • Set to <strong>12000W</strong> to restore normal solar export<br>
                         • Set to <strong>0W</strong> to manually curtail export<br>
                         • Always read current value first to verify state
@@ -842,7 +843,7 @@
             </div>
             <div class="settings-grid">
                 <div class="setting-item">
-                    <div class="setting-label">Default Weather Location <span style="font-size:11px;color:#f0883e;font-weight:400">· sets timezone</span></div>
+                    <div class="setting-label">Default Weather Location <span style="font-size:11px;color:var(--color-orange);font-weight:400">· sets timezone</span></div>
                     <div class="setting-hint">City and country for local weather forecasts (e.g., "Sydney, Australia") — also determines the timezone used by all automation rules</div>
                     <div class="setting-input">
                         <input type="text" id="preferences_weatherPlace" data-section="preferences" data-key="weatherPlace" placeholder="e.g., Sydney, Australia" disabled>
@@ -1690,9 +1691,9 @@
         function updateStatus() {
             const status = document.getElementById('configStatus');
             if (checkForChanges()) {
-                status.innerHTML = '<span style="color:#d29922">⚠️ Unsaved</span>';
+                status.innerHTML = '<span style="color:var(--color-warning)">⚠️ Unsaved</span>';
             } else {
-                status.innerHTML = '<span style="color:#7ee787">✓ No Changes</span>';
+                status.innerHTML = '<span style="color:var(--color-success)">✓ No Changes</span>';
             }
         }
 
@@ -1894,7 +1895,7 @@
         function renderBlackoutWindows(windows) {
             const container = document.getElementById('blackoutWindowsList');
             if (!windows || windows.length === 0) {
-                container.innerHTML = '<div style="color:#8b949e;font-size:13px;text-align:center;padding:20px">No blackout windows configured</div>';
+                container.innerHTML = '<div style="color:var(--text-secondary);font-size:13px;text-align:center;padding:20px">No blackout windows configured</div>';
                 return;
             }
             
@@ -1909,12 +1910,12 @@
                 html += `
                     <div class="setting-item" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px" data-window-idx="${idx}" data-window-original="${windowData.replace(/"/g, '&quot;')}">
                         <div style="display:flex;align-items:center;gap:12px">
-                            <input type="time" class="blackout-start" value="${w.start || '00:00'}" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:6px;border-radius:4px">
-                            <span style="color:#8b949e">to</span>
-                            <input type="time" class="blackout-end" value="${w.end || '23:59'}" style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:6px;border-radius:4px">
-                            <span style="color:#8b949e;font-size:12px">(${daysStr})</span>
+                            <input type="time" class="blackout-start" value="${w.start || '00:00'}" style="background:var(--bg-input);border:1px solid var(--border-primary);color:var(--text-primary);padding:6px;border-radius:4px">
+                            <span style="color:var(--text-secondary)">to</span>
+                            <input type="time" class="blackout-end" value="${w.end || '23:59'}" style="background:var(--bg-input);border:1px solid var(--border-primary);color:var(--text-primary);padding:6px;border-radius:4px">
+                            <span style="color:var(--text-secondary);font-size:12px">(${daysStr})</span>
                         </div>
-                        <button onclick="removeBlackoutWindow(${idx})" style="background:#f8514926;border:1px solid #f85149;color:#f85149;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:12px">🗑️ Remove</button>
+                        <button onclick="removeBlackoutWindow(${idx})" style="background:var(--color-danger-bg);border:1px solid var(--color-danger);color:var(--color-danger);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:12px">🗑️ Remove</button>
                     </div>
                 `;
             });
@@ -2053,13 +2054,13 @@
             
             const value = parseFloat(input.value);
             if (isNaN(value)) {
-                input.style.borderColor = '#f85149';
+                input.style.borderColor = 'var(--color-danger)';
                 input.title = 'Invalid number';
                 return false;
             }
             
             if (value < rules.min || value > rules.max) {
-                input.style.borderColor = '#f85149';
+                input.style.borderColor = 'var(--color-danger)';
                 input.title = rules.errorMsg;
                 return false;
             }
@@ -2334,7 +2335,7 @@
             const statusEl = document.getElementById('currentExportLimit');
             try {
                 statusEl.textContent = '⏳ Reading...';
-                statusEl.style.color = '#ffd43b';
+                statusEl.style.color = 'var(--color-yellow)';
                 
                 const resp = await authenticatedFetch('/api/inverter/settings?key=ExportLimit');
                 const data = await resp.json();
@@ -2342,7 +2343,7 @@
                 if (data.errno === 0 && data.result && data.result.value !== undefined) {
                     const value = data.result.value;
                     statusEl.textContent = `${value}W`;
-                    statusEl.style.color = value === 0 ? '#f85149' : '#7ee787';
+                    statusEl.style.color = value === 0 ? 'var(--color-danger)' : 'var(--color-success)';
                     
                     // Show user-friendly message
                     if (value === 0) {
@@ -2352,12 +2353,12 @@
                     }
                 } else {
                     statusEl.textContent = '❌ Failed';
-                    statusEl.style.color = '#f85149';
+                    statusEl.style.color = 'var(--color-danger)';
                     showMessage('warning', `Failed to read ExportLimit: ${data.error || data.msg || 'Unknown error'}`);
                 }
             } catch (error) {
                 statusEl.textContent = '❌ Error';
-                statusEl.style.color = '#f85149';
+                statusEl.style.color = 'var(--color-danger)';
                 showMessage('warning', `Error reading ExportLimit: ${error.message}`);
             }
         }
@@ -2396,7 +2397,7 @@
                     // Update the read display
                     const statusEl = document.getElementById('currentExportLimit');
                     statusEl.textContent = `${value}W`;
-                    statusEl.style.color = value === 0 ? '#f85149' : '#7ee787';
+                    statusEl.style.color = value === 0 ? 'var(--color-danger)' : 'var(--color-success)';
                     
                     // Show appropriate follow-up message
                     if (value === 12000) {

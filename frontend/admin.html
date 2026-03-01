@@ -11,7 +11,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="FoxESS Automation">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="stylesheet" href="css/shared-styles.css?v=3" />
+    <link rel="stylesheet" href="css/shared-styles.css?v=7" />
+    <script src="js/theme-init.js"></script>
     <!-- Firebase SDK (compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -38,10 +39,10 @@
         .page-header h1 {
             font-size: 1.6rem;
             font-weight: 700;
-            color: #e6edf3;
+            color: var(--text-primary);
         }
         .admin-badge {
-            background: linear-gradient(135deg, #da3633, #b62324);
+            background: var(--color-danger);
             color: #fff;
             font-size: 11px;
             font-weight: 700;
@@ -74,7 +75,7 @@
         .users-table td {
             padding: 10px 14px;
             text-align: left;
-            border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
             white-space: nowrap;
         }
         .users-table th {
@@ -83,7 +84,7 @@
             color: var(--text-secondary);
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--bg-overlay);
             position: sticky;
             top: 0;
         }
@@ -93,7 +94,7 @@
         }
         .users-table th.sortable:hover {
             color: var(--accent-blue);
-            background: rgba(31, 111, 235, 0.12);
+            background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
         }
         .sort-indicator {
             margin-left: 6px;
@@ -101,7 +102,7 @@
             opacity: 0.7;
         }
         .users-table tr:hover td {
-            background: rgba(88, 166, 255, 0.04);
+            background: color-mix(in srgb, var(--accent-blue) 4%, transparent);
         }
         .users-table .email-cell {
             max-width: 220px;
@@ -122,14 +123,14 @@
             letter-spacing: 0.3px;
         }
         .role-badge.admin {
-            background: rgba(218, 54, 51, 0.15);
-            color: #f85149;
-            border: 1px solid rgba(218, 54, 51, 0.3);
+            background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+            color: var(--color-danger);
+            border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
         }
         .role-badge.user {
-            background: rgba(88, 166, 255, 0.1);
+            background: var(--accent-blue-bg);
             color: var(--accent-blue);
-            border: 1px solid rgba(88, 166, 255, 0.2);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 20%, transparent);
         }
 
         /* Action buttons */
@@ -153,15 +154,15 @@
             color: var(--color-danger);
         }
         .action-btn.danger:hover {
-            background: rgba(248, 81, 73, 0.1);
-            border-color: rgba(248, 81, 73, 0.4);
+            background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+            border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
         }
         .action-btn.success {
             color: var(--color-success);
         }
         .action-btn.success:hover {
-            background: rgba(126, 231, 135, 0.1);
-            border-color: rgba(126, 231, 135, 0.4);
+            background: color-mix(in srgb, var(--color-success) 10%, transparent);
+            border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
         }
         .actions-cell {
             display: flex;
@@ -177,7 +178,7 @@
             border-radius: 50%;
             margin-right: 6px;
         }
-        .status-dot.active { background: var(--color-success); box-shadow: 0 0 6px rgba(126, 231, 135, 0.4); }
+        .status-dot.active { background: var(--color-success); box-shadow: 0 0 6px color-mix(in srgb, var(--color-success) 40%, transparent); }
         .status-dot.inactive { background: var(--text-muted); }
 
         /* Stats modal / drawer */
@@ -190,7 +191,7 @@
             border-left: 1px solid var(--border-primary);
             z-index: var(--z-modal);
             overflow-y: auto;
-            box-shadow: -8px 0 32px rgba(0,0,0,0.5);
+            box-shadow: var(--shadow-xl);
             animation: slideIn 0.25s ease;
         }
         .stats-drawer.open { display: block; }
@@ -204,7 +205,7 @@
             justify-content: space-between;
             padding: 16px 20px;
             border-bottom: 1px solid var(--border-primary);
-            background: rgba(0,0,0,0.2);
+            background: var(--bg-overlay);
             position: sticky;
             top: 0;
             z-index: 1;
@@ -245,7 +246,7 @@
             letter-spacing: 0.5px;
             margin-bottom: 10px;
             padding-bottom: 6px;
-            border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
         }
         .platform-top {
             display: flex;
@@ -389,7 +390,7 @@
             gap: 8px;
             padding: 6px 0;
             font-size: 12px;
-            border-bottom: 1px solid rgba(48, 54, 61, 0.2);
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 20%, transparent);
         }
         .metrics-day .date {
             width: 80px;
@@ -408,9 +409,9 @@
             min-width: 2px;
             transition: width 0.3s ease;
         }
-        .metrics-bar.foxess { background: #58a6ff; }
-        .metrics-bar.amber { background: #f0883e; }
-        .metrics-bar.weather { background: #7ee787; }
+        .metrics-bar.foxess { background: var(--accent-blue); }
+        .metrics-bar.amber { background: var(--color-orange); }
+        .metrics-bar.weather { background: var(--color-success); }
         .metrics-day .total {
             width: 40px;
             text-align: right;
@@ -433,20 +434,20 @@
             margin-right: 4px;
             vertical-align: middle;
         }
-        .metrics-legend .foxess::before { background: #58a6ff; }
-        .metrics-legend .amber::before { background: #f0883e; }
-        .metrics-legend .weather::before { background: #7ee787; }
+        .metrics-legend .foxess::before { background: var(--accent-blue); }
+        .metrics-legend .amber::before { background: var(--color-orange); }
+        .metrics-legend .weather::before { background: var(--color-success); }
 
         /* Impersonation banner */
         .impersonate-banner {
             display: none;
-            background: linear-gradient(135deg, rgba(218, 54, 51, 0.15), rgba(218, 54, 51, 0.05));
-            border: 1px solid rgba(218, 54, 51, 0.3);
+            background: linear-gradient(135deg, color-mix(in srgb, var(--color-danger) 15%, transparent), color-mix(in srgb, var(--color-danger) 5%, transparent));
+            border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
             border-radius: var(--radius-lg);
             padding: 10px 16px;
             margin-bottom: 16px;
             font-size: 13px;
-            color: #f85149;
+            color: var(--color-danger);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -640,6 +641,10 @@
 
     <script>
     // ==================== Admin Panel Logic ====================
+    function cssVar(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
     let currentUsers = [];
     let adminApiClient = null;
     let currentSort = { key: 'lastSignedInAt', direction: 'desc' };
@@ -885,32 +890,32 @@
                 plugins: {
                     legend: {
                         labels: {
-                            color: '#8b949e',
+                            color: cssVar('--text-secondary'),
                             boxWidth: 12,
                             usePointStyle: true,
                             pointStyle: 'rectRounded'
                         }
                     },
                     tooltip: {
-                        backgroundColor: 'rgba(22, 27, 34, 0.95)',
-                        borderColor: 'rgba(48,54,61,0.8)',
+                        backgroundColor: cssVar('--bg-secondary'),
+                        borderColor: cssVar('--border-primary'),
                         borderWidth: 1,
-                        titleColor: '#e6edf3',
-                        bodyColor: '#c9d1d9'
+                        titleColor: cssVar('--text-primary'),
+                        bodyColor: cssVar('--text-secondary')
                     }
                 },
                 scales: {
                     x: {
-                        ticks: { color: '#8b949e', maxTicksLimit: 12 },
-                        grid: { color: 'rgba(48,54,61,0.2)' }
+                        ticks: { color: cssVar('--text-secondary'), maxTicksLimit: 12 },
+                        grid: { color: cssVar('--border-secondary') }
                     },
                     y: {
                         beginAtZero: true,
                         ticks: {
-                            color: '#8b949e',
+                            color: cssVar('--text-secondary'),
                             precision: 0
                         },
-                        grid: { color: 'rgba(48,54,61,0.25)' }
+                        grid: { color: cssVar('--border-secondary') }
                     }
                 }
             }
@@ -1076,7 +1081,7 @@
                 plugins: {
                     legend: {
                         labels: {
-                            color: '#8b949e',
+                            color: cssVar('--text-secondary'),
                             boxWidth: 12,
                             usePointStyle: true,
                             pointStyle: 'circle'
@@ -1085,13 +1090,13 @@
                 },
                 scales: {
                     x: {
-                        ticks: { color: '#8b949e', maxTicksLimit: 10 },
-                        grid: { color: 'rgba(48,54,61,0.2)' }
+                        ticks: { color: cssVar('--text-secondary'), maxTicksLimit: 10 },
+                        grid: { color: cssVar('--border-secondary') }
                     },
                     y: {
                         beginAtZero: true,
-                        ticks: { color: '#8b949e', precision: 0 },
-                        grid: { color: 'rgba(48,54,61,0.2)' }
+                        ticks: { color: cssVar('--text-secondary'), precision: 0 },
+                        grid: { color: cssVar('--border-secondary') }
                     }
                 }
             }

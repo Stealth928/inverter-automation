@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -13,6 +13,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="stylesheet" href="css/shared-styles.css?v=7" />
     <link rel="stylesheet" href="css/tour.css" />
+    <script src="js/theme-init.js"></script>
     <!-- Firebase SDK (compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -243,14 +244,14 @@
             padding: 16px;
             margin-bottom: 14px;
             border: 1px solid rgba(48, 54, 61, 0.6);
-            border-left: 4px solid #58a6ff;
+            border-left: 4px solid var(--accent-blue);
         }
         .rule-card.disabled { 
             opacity: 0.6; 
-            border-left-color: #6e7681;
+            border-left-color: var(--text-muted);
         }
         .rule-card.triggered {
-            border-left-color: #7ee787;
+            border-left-color: var(--color-success);
             background: rgba(126, 231, 135, 0.1);
         }
         .rule-header {
@@ -269,8 +270,8 @@
             font-weight: 600;
             text-transform: uppercase;
         }
-        .rule-status.enabled { background: #1f6feb; color: #fff; }
-        .rule-status.disabled { background: #6e7681; color: #fff; }
+        .rule-status.enabled { background: var(--accent-blue); color: #fff; }
+        .rule-status.disabled { background: var(--text-muted); color: #fff; }
         .rule-params {
             display: flex;
             flex-wrap: wrap;
@@ -284,13 +285,13 @@
             background: rgba(88, 166, 255, 0.12);
             padding: 6px 10px;
             border-radius: 4px;
-            border: 1px solid #58a6ff;
+            border: 1px solid var(--accent-blue);
             display: flex;
             align-items: center;
             gap: 4px;
         }
-        .rule-param .label { color: #58a6ff; font-weight: 600; font-size: 0.75rem; }
-        .rule-param .value { font-weight: 600; color: #79c0ff; font-size: 0.85rem; }
+        .rule-param .label { color: var(--accent-blue); font-weight: 600; font-size: 0.75rem; }
+        .rule-param .value { font-weight: 600; color: var(--accent-blue-hover); font-size: 0.85rem; }
         
         .cond-badge {
             display: inline-block;
@@ -401,34 +402,34 @@
         /* Condition Highlight Styles */
         .condition-met {
             background: rgba(126, 231, 135, 0.15);
-            border-left: 3px solid #7ee787;
+            border-left: 3px solid var(--color-success);
         }
         .condition-not-met {
             background: rgba(248, 81, 73, 0.15);
-            border-left: 3px solid #f85149;
+            border-left: 3px solid var(--color-danger);
         }
         .condition-blocked {
             background: rgba(240, 136, 62, 0.15);
-            border-left: 3px solid #f0883e;
+            border-left: 3px solid var(--color-orange);
         }
 
         /* Rule Card Highlighting */
         .rule-triggered-card {
             background: rgba(126, 231, 135, 0.1);
-            border: 2px solid #7ee787;
+            border: 2px solid var(--color-success);
         }
         .rule-blocked-card {
             background: rgba(240, 136, 62, 0.1);
-            border: 2px solid #f0883e;
+            border: 2px solid var(--color-orange);
         }
         .rule-not-met-card {
             background: rgba(248, 81, 73, 0.1);
-            border: 2px solid #f85149;
+            border: 2px solid var(--color-danger);
         }
 
         /* Log Output */
         .log-area {
-            background: #010409;
+            background: var(--bg-terminal);
             border-radius: 6px;
             padding: 10px;
             font-family: 'Consolas', 'Monaco', monospace;
@@ -438,10 +439,10 @@
         }
         .log-entry {
             padding: 3px 0;
-            border-bottom: 1px solid #21262d;
+            border-bottom: 1px solid var(--border-primary);
         }
         .log-entry:last-child { border-bottom: none; }
-        .log-time { color: #6e7681; }
+        .log-time { color: var(--text-muted); }
         .log-info { color: var(--accent-blue); }
         .log-warn { color: var(--accent-yellow); }
         .log-success { color: var(--accent); }
@@ -481,8 +482,8 @@
             display: none;
         }
         .modal-content {
-            background: linear-gradient(145deg, #21262d, #161b22);
-            border: 1px solid rgba(48, 54, 61, 0.8);
+            background: var(--bg-card);
+            border: 1px solid var(--border-primary);
             border-radius: 16px;
             width: calc(100vw - 80px) !important;
             max-width: 1200px !important;
@@ -521,7 +522,7 @@
 
         /* API Payload Display */
         .api-payload {
-            background: #010409;
+            background: var(--bg-terminal);
             border-radius: 6px;
             padding: 12px;
             font-family: 'Consolas', monospace;
@@ -616,19 +617,43 @@
             font-size: 0.7rem;
             border-radius: 4px;
             background: rgba(88, 166, 255, 0.15);
-            border: 1px solid #58a6ff;
-            color: #79c0ff;
+            border: 1px solid var(--accent-blue);
+            color: var(--accent-blue-hover);
             cursor: pointer;
             transition: all 0.2s;
         }
         .rule-actions button:hover {
             background: rgba(88, 166, 255, 0.25);
-            border-color: #79c0ff;
+            border-color: var(--accent-blue-hover);
         }
 
         @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
+        }
+
+        /* ── Light-theme overrides ── */
+        [data-theme="light"] .card > h2 {
+            background: #f6f8fa;
+            border-bottom-color: #e2e6ea;
+        }
+        [data-theme="light"] .rule-card {
+            border-color: #d0d7de;
+        }
+        [data-theme="light"] .rule-header {
+            border-bottom-color: #e2e6ea;
+        }
+        [data-theme="light"] .rule-params {
+            border-bottom-color: #e2e6ea;
+        }
+        [data-theme="light"] .result-title {
+            border-bottom-color: #e2e6ea;
+        }
+        [data-theme="light"] .mobile-tab.active {
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+        }
+        [data-theme="light"] .modal-content {
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
         }
     </style>
 </head>
@@ -805,10 +830,10 @@
                     <span class="icon">⚙️</span>
                     <span>Automation Rules</span>
                 </h2>
-                <div style="margin-bottom:16px;padding:12px;background:rgba(79,195,247,0.08);border-radius:6px;border-left:3px solid #4fc3f7;font-size:0.85rem;color:#8b949e">
-                    <strong style="color:#4fc3f7">💡 Tip:</strong> Manage rules on the <strong>main dashboard</strong> — this page is for testing only.
+                <div style="margin-bottom:16px;padding:12px;background:rgba(79,195,247,0.08);border-radius:6px;border-left:3px solid var(--accent-blue);font-size:0.85rem;color:var(--text-secondary)">
+                    <strong style="color:var(--accent-blue)">💡 Tip:</strong> Manage rules on the <strong>main dashboard</strong> — this page is for testing only.
                 </div>
-                <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:16px;padding:10px;background:rgba(88,166,255,0.08);border-radius:4px;border-left:3px solid #58a6ff">
+                <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:16px;padding:10px;background:rgba(88,166,255,0.08);border-radius:4px;border-left:3px solid var(--accent-blue)">
                     📋 Sorted by priority • Lower number = Higher priority • First match wins
                 </div>
                 <div id="rulesDisplay">
@@ -1827,8 +1852,8 @@
                 return `<div style="display:flex;flex-direction:column;gap:8px">` + sortedConds.map(c => {
                     const isMet = c.met;
                     const bgColor = isMet ? 'rgba(126, 231, 135, 0.15)' : 'rgba(248, 81, 73, 0.15)';
-                    const borderColor = isMet ? '#7ee787' : '#f85149';
-                    const textColor = isMet ? '#7ee787' : '#f85149';
+                    const borderColor = isMet ? 'var(--color-success)' : 'var(--color-danger)';
+                    const textColor = isMet ? 'var(--color-success)' : 'var(--color-danger)';
                     const icon = isMet ? '✓' : '✗';
                     const target = (c.target !== undefined && c.target !== null) ? c.target : '';
                     
@@ -1839,7 +1864,7 @@
                             </div>
                             <div style="flex:1;padding:10px;background:${bgColor};display:flex;align-items:center;justify-content:space-between">
                                 <div style="flex:1">
-                                    <div style="font-weight:600;color:#e6edf3;font-size:0.9rem;margin-bottom:3px">${c.name}</div>
+                                    <div style="font-weight:600;color:var(--text-primary);font-size:0.9rem;margin-bottom:3px">${c.name}</div>
                                     <div style="font-size:0.8rem;color:var(--text-secondary);display:flex;gap:12px;flex-wrap:wrap">
                                         <span>Actual: <strong style="color:${textColor}">${c.value}</strong></span>
                                         ${target ? `<span>Target: <strong>${target}</strong></span>` : ''}
@@ -1856,9 +1881,9 @@
                 
                 const cardBg = isTrigRule ? 'rgba(126, 231, 135, 0.1)' : 'rgba(248, 81, 73, 0.1)';
                 const headerBg = isTrigRule ? 'rgba(126, 231, 135, 0.25)' : 'rgba(248, 81, 73, 0.15)';
-                const borderColor = isTrigRule ? '#7ee787' : allCondsMet ? '#f0883e' : '#f85149';
+                const borderColor = isTrigRule ? 'var(--color-success)' : allCondsMet ? 'var(--color-orange)' : 'var(--color-danger)';
                 const statusIcon = isTrigRule ? '✅ TRIGGERED' : allCondsMet ? '⏳ BLOCKED' : '❌ NOT MET';
-                const statusColor = isTrigRule ? '#7ee787' : allCondsMet ? '#f0883e' : '#f85149';
+                const statusColor = isTrigRule ? 'var(--color-success)' : allCondsMet ? 'var(--color-orange)' : 'var(--color-danger)';
                 
                 return `
                     <div style="background:${cardBg};border:2px solid ${borderColor};border-radius:8px;padding:12px;margin-bottom:12px;overflow:hidden">
@@ -1866,7 +1891,7 @@
                             <div style="display:flex;align-items:center;gap:12px;flex:1">
                                 <div style="font-size:1.2rem;font-weight:700">${isTrigRule ? '🎯' : '📋'}</div>
                                 <div>
-                                    <div style="font-weight:700;color:#e6edf3;font-size:0.95rem">${ruleInfo.ruleName}</div>
+                                    <div style="font-weight:700;color:var(--text-primary);font-size:0.95rem">${ruleInfo.ruleName}</div>
                                     <div style="font-size:0.75rem;color:var(--text-secondary)">Priority P${ruleInfo.priority}</div>
                                 </div>
                             </div>
@@ -1879,8 +1904,8 @@
                             ${renderConditionList(ruleInfo.conditions || [], isTrigRule)}
                         </div>
                         ${isTrigRule ? `
-                            <div style="background:rgba(126, 231, 135, 0.2);border-left:3px solid #7ee787;padding:10px;border-radius:4px;font-size:0.85rem">
-                                <strong style="color:#7ee787">⚡ Action:</strong> ${ruleInfo.action ? ruleInfo.action.workMode + ' for ' + ruleInfo.action.durationMinutes + ' min' : 'N/A'}
+                            <div style="background:rgba(126, 231, 135, 0.2);border-left:3px solid var(--color-success);padding:10px;border-radius:4px;font-size:0.85rem">
+                                <strong style="color:var(--color-success)">⚡ Action:</strong> ${ruleInfo.action ? ruleInfo.action.workMode + ' for ' + ruleInfo.action.durationMinutes + ' min' : 'N/A'}
                             </div>
                         ` : ''}
                     </div>
@@ -1894,36 +1919,36 @@
                 const triggeredRuleName = r.ruleName || r.ruleId;
                 
                 detailsHtml = `
-                    <div style="background:rgba(126, 231, 135, 0.2);border:2px solid #7ee787;border-radius:8px;padding:14px;margin-bottom:16px">
+                    <div style="background:rgba(126, 231, 135, 0.2);border:2px solid var(--color-success);border-radius:8px;padding:14px;margin-bottom:16px">
                         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
                             <span style="font-size:1.5rem">🎯</span>
                             <div>
-                                <div style="font-weight:700;color:#7ee787;font-size:1rem">RULE TRIGGERED!</div>
+                                <div style="font-weight:700;color:var(--color-success);font-size:1rem">RULE TRIGGERED!</div>
                                 <div style="font-size:0.85rem;color:var(--text-secondary)">${r.ruleName} (P${r.priority})</div>
                             </div>
                         </div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                             <div>
                                 <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px">WORK MODE</div>
-                                <div style="font-weight:700;color:#58a6ff;font-size:0.95rem">${a.workMode}</div>
+                                <div style="font-weight:700;color:var(--accent-blue);font-size:0.95rem">${a.workMode}</div>
                             </div>
                             <div>
                                 <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px">DURATION</div>
-                                <div style="font-weight:700;color:#58a6ff;font-size:0.95rem">${a.durationMinutes} minutes</div>
+                                <div style="font-weight:700;color:var(--accent-blue);font-size:0.95rem">${a.durationMinutes} minutes</div>
                             </div>
                             <div>
                                 <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px">POWER</div>
-                                <div style="font-weight:700;color:#58a6ff;font-size:0.95rem">${a.fdPwr}W</div>
+                                <div style="font-weight:700;color:var(--accent-blue);font-size:0.95rem">${a.fdPwr}W</div>
                             </div>
                             <div>
                                 <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px">MIN SOC (GRID)</div>
-                                <div style="font-weight:700;color:#58a6ff;font-size:0.95rem">${a.minSocOnGrid}%</div>
+                                <div style="font-weight:700;color:var(--accent-blue);font-size:0.95rem">${a.minSocOnGrid}%</div>
                             </div>
                         </div>
                     </div>
                     
                     <div style="margin-bottom:16px">
-                        <h4 style="font-size:0.9rem;color:#e6edf3;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+                        <h4 style="font-size:0.9rem;color:var(--text-primary);margin-bottom:12px;display:flex;align-items:center;gap:8px">
                             <span>✓</span> Triggered Rule Details
                         </h4>
                         ${renderRuleCard(allResults.find(x => x.ruleName === triggeredRuleName) || {ruleName: r.ruleName, priority: r.priority, action: a}, true, triggeredRuleName)}
@@ -1931,7 +1956,7 @@
                     
                     ${allResults.length > 1 ? `
                         <div>
-                            <h4 style="font-size:0.9rem;color:#e6edf3;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+                            <h4 style="font-size:0.9rem;color:var(--text-primary);margin-bottom:12px;display:flex;align-items:center;gap:8px">
                                 <span>❌</span> Other Rules (Not Evaluated)
                             </h4>
                             ${allResults.filter(x => x.ruleName !== triggeredRuleName).map(r => renderRuleCard(r, false, triggeredRuleName)).join('')}
@@ -1949,7 +1974,7 @@
                     if (blocked.length > 0) {
                         ruleDetails += `
                             <div style="margin-bottom:16px">
-                                <h4 style="font-size:0.9rem;color:#f0883e;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+                                <h4 style="font-size:0.9rem;color:var(--color-orange);margin-bottom:12px;display:flex;align-items:center;gap:8px">
                                     <span>⏳</span> All Conditions Met (Cooldown/Other Blocking)
                                 </h4>
                                 ${blocked.map(r => renderRuleCard(r, false)).join('')}
@@ -1960,7 +1985,7 @@
                     if (notMet.length > 0) {
                         ruleDetails += `
                             <div>
-                                <h4 style="font-size:0.9rem;color:#f85149;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+                                <h4 style="font-size:0.9rem;color:var(--color-danger);margin-bottom:12px;display:flex;align-items:center;gap:8px">
                                     <span>❌</span> Conditions Not Met
                                 </h4>
                                 ${notMet.map(r => renderRuleCard(r, false)).join('')}
@@ -1969,10 +1994,10 @@
                     }
                 }
                 detailsHtml = `
-                    <div style="background:rgba(248, 81, 73, 0.15);border:2px solid #f85149;border-radius:8px;padding:14px;margin-bottom:16px">
+                    <div style="background:rgba(248, 81, 73, 0.15);border:2px solid var(--color-danger);border-radius:8px;padding:14px;margin-bottom:16px">
                         <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
                             <span style="font-size:1.5rem">⚠️</span>
-                            <div style="font-weight:700;color:#f85149;font-size:1rem">No Rules Triggered</div>
+                            <div style="font-weight:700;color:var(--color-danger);font-size:1rem">No Rules Triggered</div>
                         </div>
                         <div style="font-size:0.9rem;color:var(--text-secondary)">The simulated conditions did not match any enabled rule. See rule details below.</div>
                     </div>

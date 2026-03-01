@@ -12,6 +12,7 @@
     <meta name="apple-mobile-web-app-title" content="FoxESS Automation">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="stylesheet" href="css/shared-styles.css?v=7" />
+    <script src="js/theme-init.js"></script>
     <style>
         /* Page-specific styles */
 
@@ -33,17 +34,17 @@
             max-width: 720px;
             width: 100%;
             margin: 24px;
-            background: rgba(6, 10, 14, 0.7);
+            background: color-mix(in srgb, var(--bg-primary) 70%, transparent);
             border-radius: 16px;
             overflow: hidden;
-            border: 1px solid rgba(48, 54, 61, 0.35);
-            box-shadow: 0 8px 32px rgba(2, 8, 23, 0.6);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 35%, transparent);
+            box-shadow: var(--shadow-xl);
         }
 
         .login-header {
             text-align: center;
-            background: linear-gradient(180deg, rgba(88, 166, 255, 0.08) 0%, transparent 100%);
-            border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+            background: linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 8%, transparent) 0%, transparent 100%);
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
             padding: 32px;
         }
 
@@ -81,7 +82,7 @@
             display: flex;
             gap: 8px;
             margin-bottom: 24px;
-            background: rgba(13, 17, 23, 0.4);
+            background: color-mix(in srgb, var(--bg-primary) 40%, transparent);
             padding: 4px;
             border-radius: 10px;
         }
@@ -92,7 +93,7 @@
             background: transparent;
             border: none;
             border-radius: 8px;
-            color: #8b949e;
+            color: var(--text-secondary);
             font-size: 14px;
             font-weight: 500;
             cursor: pointer;
@@ -100,14 +101,14 @@
         }
 
         .tab-btn:hover:not(.active) {
-            color: #e6edf3;
-            background: rgba(48, 54, 61, 0.3);
+            color: var(--text-primary);
+            background: color-mix(in srgb, var(--border-primary) 30%, transparent);
         }
 
         .tab-btn.active {
-            background: rgba(88, 166, 255, 0.15);
-            color: #58a6ff;
-            box-shadow: 0 2px 8px rgba(88, 166, 255, 0.1);
+            background: color-mix(in srgb, var(--accent-blue) 15%, transparent);
+            color: var(--accent-blue);
+            box-shadow: 0 2px 8px var(--accent-blue-bg);
         }
 
         .form-group {
@@ -117,7 +118,7 @@
         .form-group label {
             display: block;
             font-size: 12px;
-            color: #8b949e;
+            color: var(--text-secondary);
             margin-bottom: 8px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -133,7 +134,7 @@
             left: 14px;
             top: 50%;
             transform: translateY(-50%);
-            color: #484f58;
+            color: var(--text-placeholder);
             font-size: 16px;
             pointer-events: none;
             transition: color 0.2s ease;
@@ -142,28 +143,28 @@
         .form-group input {
             width: 100%;
             padding: 14px 14px 14px 42px;
-            background: rgba(13, 17, 23, 0.6);
-            border: 1px solid rgba(48, 54, 61, 0.8);
+            background: var(--bg-input);
+            border: 1px solid var(--border-primary);
             border-radius: 10px;
-            color: #e6edf3;
+            color: var(--text-primary);
             font-size: 15px;
             transition: all 0.2s ease;
         }
 
         .form-group input:focus {
             outline: none;
-            border-color: #58a6ff;
-            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
-            background: rgba(13, 17, 23, 0.8);
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--accent-blue-bg);
+            background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
         }
 
         .form-group input:focus + .input-icon,
         .form-group input:not(:placeholder-shown) + .input-icon {
-            color: #58a6ff;
+            color: var(--accent-blue);
         }
 
         .form-group input::placeholder {
-            color: #484f58;
+            color: var(--text-placeholder);
         }
 
         .password-toggle {
@@ -173,7 +174,7 @@
             transform: translateY(-50%);
             background: none;
             border: none;
-            color: #484f58;
+            color: var(--text-placeholder);
             cursor: pointer;
             padding: 4px;
             font-size: 16px;
@@ -181,13 +182,13 @@
         }
 
         .password-toggle:hover {
-            color: #8b949e;
+            color: var(--text-secondary);
         }
 
         .btn {
             width: 100%;
             padding: 14px 20px;
-            background: linear-gradient(135deg, #238636, #1a7f37);
+            background: var(--gradient-success);
             border: none;
             border-radius: 10px;
             color: #fff;
@@ -199,13 +200,13 @@
             align-items: center;
             justify-content: center;
             gap: 8px;
-            box-shadow: 0 4px 12px rgba(35, 134, 54, 0.2);
+            box-shadow: 0 4px 12px color-mix(in srgb, var(--color-success-dark) 20%, transparent);
         }
 
         .btn:hover:not(:disabled) {
-            background: linear-gradient(135deg, #2ea043, #238636);
+            filter: brightness(1.1);
             transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(35, 134, 54, 0.3);
+            box-shadow: var(--shadow-md);
         }
 
         .btn:active:not(:disabled) {
@@ -219,23 +220,23 @@
         }
 
         .btn-google {
-            background: rgba(33, 38, 45, 0.8);
-            border: 1px solid rgba(48, 54, 61, 0.8);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
             margin-top: 16px;
             box-shadow: none;
         }
 
         .btn-google:hover:not(:disabled) {
-            background: rgba(48, 54, 61, 0.8);
-            border-color: rgba(88, 166, 255, 0.4);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            background: var(--bg-card);
+            border-color: var(--border-accent);
+            box-shadow: var(--shadow-sm);
         }
 
         .divider {
             display: flex;
             align-items: center;
             margin: 24px 0;
-            color: #6e7681;
+            color: var(--text-muted);
             font-size: 12px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -246,7 +247,7 @@
             content: '';
             flex: 1;
             height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(48, 54, 61, 0.8), transparent);
+            background: linear-gradient(90deg, transparent, var(--border-primary), transparent);
         }
 
         .divider span {
@@ -279,15 +280,15 @@
         }
 
         .error-message {
-            background: rgba(248, 81, 73, 0.1);
-            border: 1px solid rgba(248, 81, 73, 0.3);
-            color: #f85149;
+            background: var(--color-danger-bg);
+            border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+            color: var(--color-danger);
         }
 
         .success-message {
-            background: rgba(35, 134, 54, 0.1);
-            border: 1px solid rgba(35, 134, 54, 0.3);
-            color: #7ee787;
+            background: var(--color-success-bg);
+            border: 1px solid color-mix(in srgb, var(--color-success-dark) 30%, transparent);
+            color: var(--color-success);
         }
 
         .forgot-password {
@@ -296,14 +297,14 @@
         }
 
         .forgot-password a {
-            color: #58a6ff;
+            color: var(--accent-blue);
             text-decoration: none;
             font-size: 13px;
             transition: color 0.2s ease;
         }
 
         .forgot-password a:hover {
-            color: #79b8ff;
+            color: var(--accent-blue-hover);
             text-decoration: underline;
         }
 
@@ -337,13 +338,13 @@
         .login-footer {
             text-align: center;
             padding: 16px 32px 24px;
-            border-top: 1px solid rgba(48, 54, 61, 0.3);
+            border-top: 1px solid color-mix(in srgb, var(--border-primary) 30%, transparent);
             font-size: 12px;
-            color: #6e7681;
+            color: var(--text-muted);
         }
 
         .login-footer a {
-            color: #58a6ff;
+            color: var(--accent-blue);
             text-decoration: none;
         }
 
@@ -506,7 +507,7 @@
                 <!-- Reset Password Form -->
                 <div id="resetForm" class="form-section">
                     <form id="resetFormElement">
-                        <p style="color: #8b949e; margin-bottom: 20px; font-size: 14px; line-height: 1.5;">
+                        <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px; line-height: 1.5;">
                             Enter your email address and we'll send you a link to reset your password.
                         </p>
                         <div class="form-group">

@@ -16,6 +16,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <link rel="stylesheet" href="css/shared-styles.css?v=7" />
+    <script src="js/theme-init.js"></script>
     <style>
         /* Page-specific styles */
 
@@ -56,17 +57,17 @@
         }
 
         .setup-card {
-            background: linear-gradient(145deg, rgba(33, 38, 45, 0.95), rgba(22, 27, 34, 0.98));
-            border: 1px solid rgba(48, 54, 61, 0.6);
+            background: var(--gradient-card);
+            border: 1px solid var(--border-secondary);
             border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            box-shadow: var(--shadow-xl);
             overflow: hidden;
         }
 
         .setup-header {
-            background: linear-gradient(180deg, rgba(88, 166, 255, 0.08) 0%, transparent 100%);
+            background: linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 8%, transparent) 0%, transparent 100%);
             padding: 36px 32px 28px;
-            border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
             text-align: center;
         }
 
@@ -113,7 +114,7 @@
             gap: 8px;
             margin-bottom: 24px;
             padding: 16px;
-            background: rgba(13, 17, 23, 0.4);
+            background: color-mix(in srgb, var(--bg-primary) 40%, transparent);
             border-radius: 12px;
         }
 
@@ -129,8 +130,8 @@
             width: 32px;
             height: 32px;
             border-radius: 50%;
-            background: rgba(48, 54, 61, 0.6);
-            border: 2px solid rgba(48, 54, 61, 0.8);
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-primary);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -139,20 +140,20 @@
         }
 
         .progress-step.current .step-dot {
-            background: rgba(88, 166, 255, 0.2);
-            border-color: #58a6ff;
-            color: #58a6ff;
+            background: color-mix(in srgb, var(--accent-blue) 20%, transparent);
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
         }
 
         .progress-step.complete .step-dot {
-            background: rgba(126, 231, 135, 0.2);
-            border-color: #7ee787;
-            color: #7ee787;
+            background: var(--color-success-bg);
+            border-color: var(--color-success);
+            color: var(--color-success);
         }
 
         .progress-step .step-label {
             font-size: 11px;
-            color: #6e7681;
+            color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.3px;
             transition: color 0.3s ease;
@@ -160,30 +161,30 @@
 
         .progress-step.current .step-label,
         .progress-step.complete .step-label {
-            color: #8b949e;
+            color: var(--text-secondary);
         }
 
         .progress-line {
             flex: 0.5;
             height: 2px;
-            background: rgba(48, 54, 61, 0.6);
+            background: var(--border-secondary);
             margin-top: 16px;
             border-radius: 1px;
             transition: background 0.3s ease;
         }
 
         .progress-line.complete {
-            background: #7ee787;
+            background: var(--color-success);
         }
 
         .info-box {
             padding: 14px 16px;
-            background: rgba(88, 166, 255, 0.06);
-            border: 1px solid rgba(88, 166, 255, 0.15);
+            background: color-mix(in srgb, var(--accent-blue) 6%, transparent);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 15%, transparent);
             border-radius: 10px;
             margin-bottom: 24px;
             font-size: 13px;
-            color: #8b949e;
+            color: var(--text-secondary);
             line-height: 1.5;
             display: flex;
             align-items: flex-start;
@@ -196,7 +197,7 @@
         }
 
         .info-box a {
-            color: #58a6ff;
+            color: var(--accent-blue);
             text-decoration: none;
         }
 
@@ -214,22 +215,22 @@
             gap: 6px;
             font-size: 12px;
             font-weight: 600;
-            color: #e6edf3;
+            color: var(--text-primary);
             margin-bottom: 8px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
         .required-indicator {
-            color: #f85149;
+            color: var(--color-danger);
             font-weight: normal;
         }
 
         .optional-badge {
             font-size: 10px;
             font-weight: 400;
-            color: #6e7681;
-            background: rgba(48, 54, 61, 0.5);
+            color: var(--text-muted);
+            background: color-mix(in srgb, var(--border-primary) 50%, transparent);
             padding: 2px 6px;
             border-radius: 4px;
             text-transform: none;
@@ -238,13 +239,13 @@
 
         .form-group .hint {
             font-size: 12px;
-            color: #6e7681;
+            color: var(--text-muted);
             margin-bottom: 8px;
             line-height: 1.4;
         }
 
         .form-group .hint a {
-            color: #58a6ff;
+            color: var(--accent-blue);
             text-decoration: none;
         }
 
@@ -262,7 +263,7 @@
             top: 50%;
             transform: translateY(-50%);
             font-size: 16px;
-            color: #484f58;
+            color: var(--text-placeholder);
             pointer-events: none;
             transition: color 0.2s ease;
         }
@@ -270,27 +271,27 @@
         .form-group input {
             width: 100%;
             padding: 14px 14px 14px 44px;
-            background: rgba(13, 17, 23, 0.6);
-            border: 1px solid rgba(48, 54, 61, 0.8);
+            background: var(--bg-input);
+            border: 1px solid var(--border-primary);
             border-radius: 10px;
-            color: #e6edf3;
+            color: var(--text-primary);
             font-size: 14px;
             transition: all 0.2s ease;
         }
 
         .form-group input:focus {
             outline: none;
-            border-color: #58a6ff;
-            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
-            background: rgba(13, 17, 23, 0.8);
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--accent-blue-bg);
+            background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
         }
 
         .form-group input:focus ~ .input-icon {
-            color: #58a6ff;
+            color: var(--accent-blue);
         }
 
         .form-group input::placeholder {
-            color: #484f58;
+            color: var(--text-placeholder);
         }
 
         .password-toggle {
@@ -300,7 +301,7 @@
             transform: translateY(-50%);
             background: none;
             border: none;
-            color: #484f58;
+            color: var(--text-placeholder);
             cursor: pointer;
             padding: 4px;
             font-size: 16px;
@@ -308,25 +309,25 @@
         }
 
         .password-toggle:hover {
-            color: #8b949e;
+            color: var(--text-secondary);
         }
 
         .form-group.error input {
-            border-color: #f85149;
-            box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.1);
+            border-color: var(--color-danger);
+            box-shadow: 0 0 0 3px var(--color-danger-bg);
         }
 
         .form-group.error .input-icon {
-            color: #f85149;
+            color: var(--color-danger);
         }
 
         .form-group.success input {
-            border-color: #7ee787;
-            box-shadow: 0 0 0 3px rgba(126, 231, 135, 0.1);
+            border-color: var(--color-success);
+            box-shadow: 0 0 0 3px var(--color-success-bg);
         }
 
         .form-group.success .input-icon {
-            color: #7ee787;
+            color: var(--color-success);
         }
 
         .field-message {
@@ -346,15 +347,15 @@
         }
 
         .error-message {
-            background: rgba(248, 81, 73, 0.08);
-            border-left: 3px solid #f85149;
-            color: #f85149;
+            background: var(--color-danger-bg);
+            border-left: 3px solid var(--color-danger);
+            color: var(--color-danger);
         }
 
         .success-message {
-            background: rgba(126, 231, 135, 0.08);
-            border-left: 3px solid #7ee787;
-            color: #7ee787;
+            background: var(--color-success-bg);
+            border-left: 3px solid var(--color-success);
+            color: var(--color-success);
         }
 
         .form-group.error .error-message,
@@ -365,10 +366,10 @@
         .btn-primary {
             width: 100%;
             padding: 16px 20px;
-            background: linear-gradient(135deg, #238636, #1a7f37);
+            background: var(--gradient-success);
             border: none;
             border-radius: 10px;
-            color: #e6edf3;
+            color: var(--text-primary);
             font-size: 15px;
             font-weight: 600;
             cursor: pointer;
@@ -377,13 +378,13 @@
             align-items: center;
             justify-content: center;
             gap: 10px;
-            box-shadow: 0 4px 12px rgba(35, 134, 54, 0.2);
+            box-shadow: var(--shadow-sm);
             margin-top: 8px;
         }
 
         .btn-primary:hover:not(:disabled) {
-            background: linear-gradient(135deg, #2ea043, #238636);
-            box-shadow: 0 8px 24px rgba(35, 134, 54, 0.3);
+            filter: brightness(1.1);
+            box-shadow: var(--shadow-md);
             transform: translateY(-2px);
         }
 
@@ -400,7 +401,7 @@
             width: 18px;
             height: 18px;
             border: 2px solid rgba(230, 237, 243, 0.3);
-            border-top-color: #e6edf3;
+            border-top-color: var(--text-primary);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
         }
@@ -411,15 +412,15 @@
 
         .setup-footer {
             padding: 16px 32px 24px;
-            background: rgba(0, 0, 0, 0.15);
-            border-top: 1px solid rgba(48, 54, 61, 0.3);
+            background: var(--bg-overlay);
+            border-top: 1px solid color-mix(in srgb, var(--border-primary) 30%, transparent);
             font-size: 13px;
-            color: #6e7681;
+            color: var(--text-muted);
             text-align: center;
         }
 
         .setup-footer a {
-            color: #58a6ff;
+            color: var(--accent-blue);
             text-decoration: none;
             font-weight: 500;
         }
@@ -430,7 +431,7 @@
 
         .divider {
             margin: 28px 0;
-            border-top: 1px solid rgba(48, 54, 61, 0.4);
+            border-top: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
             position: relative;
         }
 
@@ -439,10 +440,10 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: #21262d;
+            background: var(--bg-tertiary);
             padding: 0 16px;
             font-size: 11px;
-            color: #6e7681;
+            color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
@@ -929,7 +930,7 @@
 
                 // Update button to show success
                 submitBtn.innerHTML = '<span>✓</span><span>Success! Redirecting...</span>';
-                submitBtn.style.background = 'linear-gradient(135deg, #238636, #1a7f37)';
+                submitBtn.style.background = 'var(--gradient-success)';
 
                 // Store config in localStorage for UX
                 localStorage.setItem('foxess_setup_device_sn', deviceSn);
@@ -1142,11 +1143,11 @@
                 toast.id = '_setupNavToast';
                 toast.style.cssText = [
                     'position:fixed', 'bottom:24px', 'left:50%',
-                    'transform:translateX(-50%)', 'background:rgba(33,38,45,0.97)',
-                    'border:1px solid rgba(88,166,255,0.35)', 'color:#e6edf3',
+                    'transform:translateX(-50%)', 'background:var(--bg-card)',
+                    'border:1px solid color-mix(in srgb,var(--accent-blue) 35%,transparent)', 'color:var(--text-primary)',
                     'padding:10px 20px', 'border-radius:10px', 'font-size:13px',
                     'z-index:99999', 'pointer-events:none',
-                    'box-shadow:0 4px 20px rgba(0,0,0,0.4)',
+                    'box-shadow:var(--shadow-lg)',
                     'white-space:nowrap'
                 ].join(';');
                 document.body.appendChild(toast);

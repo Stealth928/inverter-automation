@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -12,6 +12,7 @@
     <meta name="apple-mobile-web-app-title" content="FoxESS Automation">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="stylesheet" href="/css/shared-styles.css?v=7">
+    <script src="/js/theme-init.js"></script>
     <!-- Firebase compat SDKs (provide global `firebase` used by firebase-auth.js) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
@@ -62,7 +63,7 @@
         }
         
         .tesla-section {
-            background: rgba(13, 17, 23, 0.5);
+            background: color-mix(in srgb, var(--bg-primary) 50%, transparent);
             border: 1px solid rgba(48, 54, 61, 0.6);
             border-radius: 12px;
             padding: 20px;
@@ -93,7 +94,7 @@
             margin-bottom: 12px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            color: #8b949e;
+            color: var(--text-secondary);
         }
         
         .info-grid {
@@ -104,7 +105,7 @@
         }
         
         .info-box {
-            background: rgba(13, 17, 23, 0.6);
+            background: var(--bg-input);
             padding: 14px;
             border-radius: 8px;
             border-left: 3px solid var(--accent-blue);
@@ -112,8 +113,8 @@
         }
         
         .info-box:hover {
-            background: rgba(13, 17, 23, 0.8);
-            border-left-color: #58a6ff;
+            background: var(--bg-overlay);
+            border-left-color: var(--accent-blue);
         }
         
         .info-box label {
@@ -152,7 +153,7 @@
         .control-group input[type="password"] {
             width: 80px;
             padding: 8px 12px;
-            background: rgba(13, 17, 23, 0.6);
+            background: var(--bg-input);
             border: 1px solid rgba(48, 54, 61, 0.8);
             border-radius: 6px;
             color: var(--text-primary);
@@ -164,13 +165,13 @@
         .control-group input[type="text"]:focus,
         .control-group input[type="password"]:focus {
             outline: none;
-            border-color: #58a6ff;
-            background: rgba(13, 17, 23, 0.8);
+            border-color: var(--accent-blue);
+            background: var(--bg-overlay);
             box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
         }
         
         .log-container {
-            background: rgba(13, 17, 23, 0.6);
+            background: var(--bg-input);
             border: 1px solid rgba(48, 54, 61, 0.6);
             border-radius: 8px;
             padding: 12px;
@@ -193,20 +194,20 @@
         }
         
         .log-timestamp {
-            color: #6e7681;
+            color: var(--text-muted);
             font-weight: 500;
             white-space: nowrap;
             flex-shrink: 0;
         }
         
-        .log-info { color: #58a6ff; }
-        .log-success { color: #3fb950; }
-        .log-warning { color: #d29922; }
-        .log-error { color: #f85149; }
+        .log-info { color: var(--accent-blue); }
+        .log-success { color: var(--color-success); }
+        .log-warning { color: var(--color-warning); }
+        .log-error { color: var(--color-danger); }
         
         .research-notes {
             background: rgba(255, 193, 7, 0.08);
-            border-left: 3px solid #d29922;
+            border-left: 3px solid var(--color-warning);
             padding: 14px;
             margin-top: 12px;
             margin-bottom: 16px;
@@ -217,7 +218,7 @@
         
         .research-notes h4 {
             margin: 0 0 10px 0;
-            color: #d29922;
+            color: var(--color-warning);
             font-size: 13px;
             font-weight: 600;
         }
@@ -237,7 +238,7 @@
             padding: 2px 6px;
             border-radius: 3px;
             font-family: 'SF Mono', 'Consolas', monospace;
-            color: #58a6ff;
+            color: var(--accent-blue);
             font-size: 12px;
         }
         
@@ -261,10 +262,10 @@
             letter-spacing: 0.5px;
         }
         
-        .status-online { background: rgba(63, 185, 80, 0.2); color: #3fb950; border: 1px solid rgba(63, 185, 80, 0.3); }
-        .status-asleep { background: rgba(210, 153, 34, 0.2); color: #d29922; border: 1px solid rgba(210, 153, 34, 0.3); }
-        .status-offline { background: rgba(110, 118, 129, 0.2); color: #8b949e; border: 1px solid rgba(110, 118, 129, 0.3); }
-        .status-charging { background: rgba(88, 166, 255, 0.2); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.3); }
+        .status-online { background: rgba(63, 185, 80, 0.2); color: var(--color-success); border: 1px solid rgba(63, 185, 80, 0.3); }
+        .status-asleep { background: rgba(210, 153, 34, 0.2); color: var(--color-warning); border: 1px solid rgba(210, 153, 34, 0.3); }
+        .status-offline { background: rgba(110, 118, 129, 0.2); color: var(--text-secondary); border: 1px solid rgba(110, 118, 129, 0.3); }
+        .status-charging { background: rgba(88, 166, 255, 0.2); color: var(--accent-blue); border: 1px solid rgba(88, 166, 255, 0.3); }
         
         /* Container padding for fixed nav */
         .container {
@@ -296,6 +297,33 @@
             .control-group input[type="password"] {
                 width: 100%;
             }
+        }
+
+        /* ── Light-theme overrides ── */
+        [data-theme="light"] header {
+            border-bottom-color: #e2e6ea;
+        }
+        [data-theme="light"] .tesla-section {
+            border-color: #d0d7de;
+        }
+        [data-theme="light"] .control-group input[type="number"],
+        [data-theme="light"] .control-group input[type="text"],
+        [data-theme="light"] .control-group input[type="password"] {
+            border-color: #d0d7de;
+        }
+        [data-theme="light"] .control-group input[type="number"]:focus,
+        [data-theme="light"] .control-group input[type="text"]:focus,
+        [data-theme="light"] .control-group input[type="password"]:focus {
+            border-color: #0969da;
+        }
+        [data-theme="light"] .log-container {
+            border-color: #d0d7de;
+        }
+        [data-theme="light"] .log-entry {
+            border-bottom-color: #e2e6ea;
+        }
+        [data-theme="light"] .research-notes code {
+            background: rgba(0, 0, 0, 0.06);
         }
     </style>
 </head>
@@ -346,35 +374,35 @@
         <div id="configSection">
             <div class="tesla-section" style="background: linear-gradient(135deg, rgba(88, 166, 255, 0.1), rgba(79, 195, 247, 0.1)); border: 2px solid rgba(88, 166, 255, 0.5);">
                 <h2>⚙️ Tesla Fleet API Setup</h2>
-                <p style="color: #8b949e; margin-bottom: 15px;">Configure your Tesla Fleet API credentials. You only need to do this once - these credentials will be used for all user OAuth flows.</p>
+                <p style="color: var(--text-secondary); margin-bottom: 15px;">Configure your Tesla Fleet API credentials. You only need to do this once - these credentials will be used for all user OAuth flows.</p>
                 
-                <form id="teslaConfigForm" style="background: rgba(13, 17, 23, 0.8); padding: 20px; border-radius: 8px;">
+                <form id="teslaConfigForm" style="background: var(--bg-overlay); padding: 20px; border-radius: 8px;">
                     <div style="margin-bottom: 15px;">
-                        <label for="clientIdInput" style="display: block; color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Client ID</label>
+                        <label for="clientIdInput" style="display: block; color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Client ID</label>
                         <input 
                             type="password" 
                             id="clientIdInput" 
                             placeholder="Enter your Tesla Client ID" 
-                            style="width: 100%; padding: 10px; border: 1px solid rgba(48, 54, 61, 0.8); background: rgba(13, 17, 23, 0.6); color: #e6edf3; border-radius: 6px; font-family: 'SF Mono', monospace; font-size: 13px;"
+                            style="width: 100%; padding: 10px; border: 1px solid var(--border-primary); background: var(--bg-input); color: var(--text-primary); border-radius: 6px; font-family: 'SF Mono', monospace; font-size: 13px;"
                             autocomplete="off"
                         >
-                        <small style="color: #6e7681; display: block; margin-top: 5px;">Get this from <a href="https://developer.tesla.com" style="color: #58a6ff; text-decoration: none;" target="_blank">Tesla Developer Portal</a></small>
+                        <small style="color: var(--text-muted); display: block; margin-top: 5px;">Get this from <a href="https://developer.tesla.com" style="color: var(--accent-blue); text-decoration: none;" target="_blank">Tesla Developer Portal</a></small>
                     </div>
                     
                     <div style="margin-bottom: 15px;">
-                        <label for="clientSecretInput" style="display: block; color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Client Secret</label>
+                        <label for="clientSecretInput" style="display: block; color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Client Secret</label>
                         <input 
                             type="password" 
                             id="clientSecretInput" 
                             placeholder="Enter your Tesla Client Secret" 
-                            style="width: 100%; padding: 10px; border: 1px solid rgba(48, 54, 61, 0.8); background: rgba(13, 17, 23, 0.6); color: #e6edf3; border-radius: 6px; font-family: 'SF Mono', monospace; font-size: 13px;"
+                            style="width: 100%; padding: 10px; border: 1px solid var(--border-primary); background: var(--bg-input); color: var(--text-primary); border-radius: 6px; font-family: 'SF Mono', monospace; font-size: 13px;"
                             autocomplete="off"
                         >
-                        <small style="color: #6e7681; display: block; margin-top: 5px;">Keep this secret! Only share with trusted applications.</small>
+                        <small style="color: var(--text-muted); display: block; margin-top: 5px;">Keep this secret! Only share with trusted applications.</small>
                     </div>
                     
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button type="button" id="saveTeslaConfigBtn" class="btn" style="background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 100%);">
+                        <button type="button" id="saveTeslaConfigBtn" class="btn" style="background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-blue-hover) 100%);">
                             <span id="saveBtnText">Save Credentials</span>
                         </button>
                         <button type="button" id="showHideTokensBtn" class="btn secondary">👁️ Show</button>
@@ -412,23 +440,23 @@
 
             <div id="connectionOptions" style="margin-top: 15px;">
                 <div style="margin-bottom: 20px; padding: 15px; background: rgba(88, 166, 255, 0.1); border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 8px;">
-                    <h4 style="margin: 0 0 10px 0; color: #58a6ff;">🔗 Recommended: OAuth 2.0 Connection</h4>
-                    <p style="margin: 0 0 10px 0; color: #8b949e; font-size: 13px;">Securely connect your Tesla account. No need to enter tokens manually.</p>
-                    <button class="btn" id="connectTeslaBtn" style="background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 100%);" disabled>
+                    <h4 style="margin: 0 0 10px 0; color: var(--accent-blue);">🔗 Recommended: OAuth 2.0 Connection</h4>
+                    <p style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 13px;">Securely connect your Tesla account. No need to enter tokens manually.</p>
+                    <button class="btn" id="connectTeslaBtn" style="background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-blue-hover) 100%);" disabled>
                         <span id="connectBtnText">Connect with Tesla</span>
                     </button>
-                    <div id="connectBtnStatus" style="margin-top: 8px; font-size: 12px; color: #8b949e;"></div>
+                    <div id="connectBtnStatus" style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);"></div>
                 </div>
 
                 <div style="margin-bottom: 20px; padding: 15px; background: rgba(88, 166, 255, 0.05); border: 1px solid rgba(88, 166, 255, 0.2); border-radius: 8px;">
-                    <h4 style="margin: 0 0 10px 0; color: #8b949e; font-size: 12px;">OR: Manual Token Entry (Advanced)</h4>
-                    <p style="margin: 0 0 10px 0; color: #8b949e; font-size: 13px;">If you have tokens from another source, you can paste them here.</p>
+                    <h4 style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 12px;">OR: Manual Token Entry (Advanced)</h4>
+                    <p style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 13px;">If you have tokens from another source, you can paste them here.</p>
                     
                     <label>Tesla Access Token</label>
-                    <input type="password" id="tesla_accessToken" placeholder="eyJ0eXAiOiJKV1QiLCJhbGc..." style="width: 100%; margin-bottom: 10px; padding: 8px; border: 1px solid rgba(48, 54, 61, 0.8); background: rgba(13, 17, 23, 0.6); color: #e6edf3; border-radius: 6px;" autocomplete="off">
+                    <input type="password" id="tesla_accessToken" placeholder="eyJ0eXAiOiJKV1QiLCJhbGc..." style="width: 100%; margin-bottom: 10px; padding: 8px; border: 1px solid var(--border-primary); background: var(--bg-input); color: var(--text-primary); border-radius: 6px;" autocomplete="off">
                     
                     <label>Refresh Token (Optional)</label>
-                    <input type="password" id="tesla_refreshToken" placeholder="Enter refresh token" style="width: 100%; margin-bottom: 10px; padding: 8px; border: 1px solid rgba(48, 54, 61, 0.8); background: rgba(13, 17, 23, 0.6); color: #e6edf3; border-radius: 6px;" autocomplete="off">
+                    <input type="password" id="tesla_refreshToken" placeholder="Enter refresh token" style="width: 100%; margin-bottom: 10px; padding: 8px; border: 1px solid var(--border-primary); background: var(--bg-input); color: var(--text-primary); border-radius: 6px;" autocomplete="off">
                     
                     <button class="btn" id="saveTokensBtn">Save Tokens</button>
                     <button class="btn secondary" id="testAuthBtn">Test Authentication</button>
@@ -439,7 +467,7 @@
         <!-- Command Signing Key Section -->
         <div class="tesla-section" style="background: linear-gradient(135deg, rgba(163, 94, 255, 0.1), rgba(255, 94, 239, 0.1)); border: 2px solid rgba(163, 94, 255, 0.5);">
             <h2>🔐 Vehicle Command Signing</h2>
-            <p style="color: #8b949e; margin-bottom: 15px;">Required for vehicle commands (charge start/stop, etc). Generate and save your ECDSA P-256 key pair.</p>
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">Required for vehicle commands (charge start/stop, etc). Generate and save your ECDSA P-256 key pair.</p>
             
             <div class="research-notes" style="background: rgba(163, 94, 255, 0.1); border-color: rgba(163, 94, 255, 0.3);">
                 <h4>⚠️ Tesla Vehicle Command Protocol</h4>
@@ -453,33 +481,33 @@
             </div>
 
             <!-- One-Click Setup (Simplified) -->
-            <div style="margin: 20px 0; padding: 15px; background: rgba(13, 17, 23, 0.8); border: 1px solid rgba(48, 54, 61, 0.8); border-radius: 8px;">
-                <h4 style="margin: 0 0 10px 0; color: #a371f7;">Tesla Setup (Two Steps)</h4>
-                <p style="color: #8b949e; font-size: 13px; margin-bottom: 15px;">Simple setup process:</p>
-                <ol style="color: #8b949e; font-size: 13px; margin: 0 0 15px 20px; line-height: 1.8;">
+            <div style="margin: 20px 0; padding: 15px; background: var(--bg-overlay); border: 1px solid var(--border-primary); border-radius: 8px;">
+                <h4 style="margin: 0 0 10px 0; color: var(--color-purple);">Tesla Setup (Two Steps)</h4>
+                <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 15px;">Simple setup process:</p>
+                <ol style="color: var(--text-secondary); font-size: 13px; margin: 0 0 15px 20px; line-height: 1.8;">
                     <li><strong>OAuth:</strong> Click "Authorize with Tesla" above to grant access to your vehicles</li>
                     <li><strong>Pair Virtual Key:</strong> Complete one-time pairing with your vehicle (see below)</li>
                 </ol>
-                <p style="color: #58a6ff; font-size: 13px; margin: 0; padding: 10px; background: rgba(88, 166, 255, 0.1); border-radius: 6px;">
+                <p style="color: var(--accent-blue); font-size: 13px; margin: 0; padding: 10px; background: rgba(88, 166, 255, 0.1); border-radius: 6px;">
                     ℹ️ <strong>No key generation needed!</strong> Command signing is handled automatically by the server.
                 </p>
             </div>
 
             <!-- Virtual Key Pairing (Required) -->
             <div id="virtualKeySection" style="margin: 20px 0; padding: 15px; background: rgba(255, 94, 94, 0.1); border: 2px solid rgba(255, 94, 94, 0.5); border-radius: 8px;">
-                <h4 style="margin: 0 0 10px 0; color: #ff5e5e;">⚠️ Step 2: Virtual Key Pairing Required</h4>
-                <p style="color: #8b949e; font-size: 13px; margin-bottom: 15px;">After completing OAuth, pair your virtual key with your vehicle. Click the button below to open Tesla's pairing page:</p>
+                <h4 style="margin: 0 0 10px 0; color: var(--color-danger);">⚠️ Step 2: Virtual Key Pairing Required</h4>
+                <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 15px;">After completing OAuth, pair your virtual key with your vehicle. Click the button below to open Tesla's pairing page:</p>
                 
                 <button class="btn" id="pairVirtualKeyBtn" style="background: linear-gradient(135deg, #ff5e5e 0%, #ff9e5e 100%); font-size: 15px; padding: 12px 24px;">
                     🔑 Pair Virtual Key
                 </button>
                 
-                <p style="color: #8b949e; font-size: 13px; margin: 15px 0 0 0; line-height: 1.6;">
+                <p style="color: var(--text-secondary); font-size: 13px; margin: 15px 0 0 0; line-height: 1.6;">
                     This will open the Tesla app and guide you through the pairing process. If you have multiple vehicles, you can specify which one to pair.
                 </p>
                 
                 <div style="margin-top: 15px; padding: 10px; background: rgba(255, 94, 94, 0.1); border-radius: 6px;">
-                    <p style="margin: 0; font-size: 13px; color: #ff5e5e;">
+                    <p style="margin: 0; font-size: 13px; color: var(--color-danger);">
                         <strong>Without virtual key pairing, commands will fail.</strong> This is a one-time setup per vehicle.
                     </p>
                 </div>
@@ -549,7 +577,7 @@
             <div class="control-group" style="margin-top: 15px;">
                 <label>Charging Amps:</label>
                 <input type="number" id="targetAmps" min="5" max="32" value="16" disabled>
-                <span style="color: #8b949e; font-size: 13px; margin: 0 5px;">≈</span>
+                <span style="color: var(--text-secondary); font-size: 13px; margin: 0 5px;">≈</span>
                 <input type="number" id="targetKw" min="1.1" max="7.4" step="0.1" value="3.7" style="width: 70px;" disabled>
                 <label style="margin-left: 5px;">kW</label>
                 <button class="btn" id="setAmpsBtn" style="margin-left: 10px;" disabled>Set Amps</button>
@@ -631,8 +659,8 @@
 
     <script>
         // ========== COMPREHENSIVE CONSOLE LOGGING & DEBUGGING ==========
-        console.log('%c🚗 Tesla Integration Page - Debug Mode', 'color: #58a6ff; font-size: 14px; font-weight: bold;');
-        console.log('%cPage initialized at:', 'color: #8b949e;', new Date().toLocaleString());
+        console.log('%c🚗 Tesla Integration Page - Debug Mode', 'color: var(--accent-blue); font-size: 14px; font-weight: bold;');
+        console.log('%cPage initialized at:', 'color: var(--text-secondary);', new Date().toLocaleString());
         
         // Log available window objects
         console.group('📦 Available Global Objects');
@@ -644,7 +672,7 @@
         console.log('window.firebaseConfig:', window.firebaseConfig ? '✓ Available' : '✗ Missing');
         console.groupEnd();
 
-        console.log('%c📥 Module References', 'color: #7ee787; font-weight: bold;');
+        console.log('%c📥 Module References', 'color: var(--color-success); font-weight: bold;');
         console.log('window.initializeAuth type:', typeof window.initializeAuth);
         console.log('window.authenticatedFetch type:', typeof window.authenticatedFetch);
         console.log('window.AppShell.init type:', typeof (window.AppShell?.init));
@@ -667,11 +695,11 @@
             
             // Also log to console
             const consoleStyle = {
-                'info': 'color: #58a6ff;',
-                'success': 'color: #3fb950;',
-                'warning': 'color: #d29922;',
-                'error': 'color: #f85149;'
-            }[type] || 'color: #8b949e;';
+                'info': 'color: var(--accent-blue);',
+                'success': 'color: var(--color-success);',
+                'warning': 'color: var(--color-warning);',
+                'error': 'color: var(--color-danger);'
+            }[type] || 'color: var(--text-secondary);';
             console.log(`%c[${timestamp}] ${message}`, consoleStyle);
         }
 
@@ -726,19 +754,19 @@
                                 return;
                             }
 
-                            console.log('%c✓ Access granted for:', 'color: #3fb950;', user.email);
+                            console.log('%c✓ Access granted for:', 'color: var(--color-success);', user.email);
                             addLog(`Access granted for ${user.email}`, 'success');
                             resolve(true);
                         });
                     }).catch((error) => {
-                        console.error('%c❌ Auth Error:', 'color: #f85149;', error);
+                        console.error('%c❌ Auth Error:', 'color: var(--color-danger);', error);
                         console.error('Error message:', error.message);
                         console.error('Error stack:', error.stack);
                         addLog(`Auth error: ${error.message}`, 'error');
                         resolve(false);
                     });
                 } catch (error) {
-                    console.error('%c❌ Auth Error:', 'color: #f85149;', error);
+                    console.error('%c❌ Auth Error:', 'color: var(--color-danger);', error);
                     console.error('Error message:', error.message);
                     console.error('Error stack:', error.stack);
                     addLog(`Auth error: ${error.message}`, 'error');
@@ -748,7 +776,7 @@
         }
 
         // ========== PAGE INITIALIZATION ==========
-        console.log('%c⚙️ Starting Page Initialization', 'color: #d29922; font-weight: bold;');
+        console.log('%c⚙️ Starting Page Initialization', 'color: var(--color-warning); font-weight: bold;');
         
         (async () => {
             try {
@@ -799,10 +827,10 @@
                     console.warn('Failed to load initial energy snapshot:', e);
                 }
                 
-                console.log('%c✅ INITIALIZATION COMPLETE', 'color: #3fb950; font-weight: bold; font-size: 12px;');
+                console.log('%c✅ INITIALIZATION COMPLETE', 'color: var(--color-success); font-weight: bold; font-size: 12px;');
                 addLog('Tesla Integration page loaded. Configure credentials if needed.', 'info');
             } catch (error) {
-                console.error('%c❌ INITIALIZATION FAILED:', 'color: #f85149; font-weight: bold;', error);
+                console.error('%c❌ INITIALIZATION FAILED:', 'color: var(--color-danger); font-weight: bold;', error);
                 addLog(`Initialization error: ${error.message}`, 'error');
             }
         })();
@@ -824,7 +852,7 @@
                     if (connectBtn) {
                         connectBtn.disabled = false;
                         document.getElementById('connectBtnStatus').textContent = '✓ Ready to connect';
-                        document.getElementById('connectBtnStatus').style.color = '#3fb950';
+                        document.getElementById('connectBtnStatus').style.color = 'var(--color-success)';
                     }
                     // Note: We don't populate the input fields with saved credentials for security
                     // User can re-enter them or they'll be used from storage during OAuth flow
@@ -833,14 +861,14 @@
                     configDiv.style.display = 'block';
                     configDiv.innerHTML = `
                         <div style="padding: 15px; background: rgba(217, 153, 34, 0.1); border: 1px solid rgba(217, 153, 34, 0.3); border-radius: 8px;">
-                            <h4 style="margin: 0 0 10px 0; color: #d29922;">⚠️ Tesla Credentials Required</h4>
-                            <p style="margin: 0 0 10px 0; color: #8b949e; font-size: 13px;">
+                            <h4 style="margin: 0 0 10px 0; color: var(--color-warning);">⚠️ Tesla Credentials Required</h4>
+                            <p style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 13px;">
                                 You need to configure your personal Tesla OAuth app credentials below before connecting your account.
                             </p>
                             <details style="margin-top: 10px;">
-                                <summary style="cursor: pointer; color: #58a6ff; font-size: 13px;">How to get Tesla OAuth credentials</summary>
-                                <ol style="background: rgba(13, 17, 23, 0.6); padding: 15px; border-radius: 6px; margin-top: 8px; font-size: 12px; color: #8b949e;">
-                                  <li>Go to <a href="https://developer.tesla.com" target="_blank" style="color: #58a6ff;">Tesla Developer Portal</a></li>
+                                <summary style="cursor: pointer; color: var(--accent-blue); font-size: 13px;">How to get Tesla OAuth credentials</summary>
+                                <ol style="background: var(--bg-input); padding: 15px; border-radius: 6px; margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+                                  <li>Go to <a href="https://developer.tesla.com" target="_blank" style="color: var(--accent-blue);">Tesla Developer Portal</a></li>
                                   <li>Create or select your OAuth app</li>
                                   <li>Copy your app's <strong>Client ID</strong> and <strong>Client Secret</strong></li>
                                   <li>Paste them below and click "Save Credentials"</li>
@@ -852,7 +880,7 @@
                     if (connectBtn) {
                         connectBtn.disabled = true;
                         document.getElementById('connectBtnStatus').textContent = '⚠️ Server configuration required';
-                        document.getElementById('connectBtnStatus').style.color = '#d29922';
+                        document.getElementById('connectBtnStatus').style.color = 'var(--color-warning)';
                     }
                 }
             } catch (error) {
@@ -862,8 +890,8 @@
                 configDiv.style.display = 'block';
                 configDiv.innerHTML = `
                     <div style="padding: 15px; background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.3); border-radius: 8px;">
-                        <h4 style="margin: 0 0 10px 0; color: #f85149;">⚠️ Configuration Check Failed</h4>
-                        <p style="margin: 0; color: #8b949e; font-size: 12px;">
+                        <h4 style="margin: 0 0 10px 0; color: var(--color-danger);">⚠️ Configuration Check Failed</h4>
+                        <p style="margin: 0; color: var(--text-secondary); font-size: 12px;">
                             Could not verify server configuration. Error: ${error.message}
                         </p>
                     </div>
@@ -894,33 +922,33 @@
                             <div style="display: flex; align-items: center; gap: 12px;">
                                 <div style="width: 40px; height: 40px; background: rgba(63, 185, 80, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px;">✅</div>
                                 <div>
-                                    <h4 style="margin: 0; color: #3fb950; font-size: 16px;">Tesla Account Connected</h4>
-                                    <p style="margin: 2px 0 0 0; color: #8b949e; font-size: 13px;">Your account is linked and ready for automation.</p>
+                                    <h4 style="margin: 0; color: var(--color-success); font-size: 16px;">Tesla Account Connected</h4>
+                                    <p style="margin: 2px 0 0 0; color: var(--text-secondary); font-size: 13px;">Your account is linked and ready for automation.</p>
                                 </div>
                             </div>
                             
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; background: rgba(13, 17, 23, 0.4); border-radius: 8px; border: 1px solid rgba(48, 54, 61, 0.4);">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; background: var(--bg-input); border-radius: 8px; border: 1px solid var(--border-secondary);">
                                 <div>
-                                    <div style="font-size: 10px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.5px;">Connected Since</div>
-                                    <div style="font-size: 13px; color: #e6edf3; margin-top: 2px;">${connectedAt}</div>
+                                    <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Connected Since</div>
+                                    <div style="font-size: 13px; color: var(--text-primary); margin-top: 2px;">${connectedAt}</div>
                                 </div>
                                 <div>
-                                    <div style="font-size: 10px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.5px;">Token Expiry</div>
-                                    <div style="font-size: 13px; color: #e6edf3; margin-top: 2px;">${expiresAt}</div>
+                                    <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Token Expiry</div>
+                                    <div style="font-size: 13px; color: var(--text-primary); margin-top: 2px;">${expiresAt}</div>
                                 </div>
                             </div>
 
                             <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                                 ${!partnerRegistered ? `
-                                    <button class="btn" id="registerPartnerBtn" style="background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 100%); border: none; box-shadow: 0 4px 12px rgba(88, 166, 255, 0.2);">
+                                    <button class="btn" id="registerPartnerBtn" style="background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-blue-hover) 100%); border: none; box-shadow: 0 4px 12px rgba(88, 166, 255, 0.2);">
                                         Register Partner Account
                                     </button>
                                 ` : `
-                                    <div style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(88, 166, 255, 0.1); border: 1px solid rgba(88, 166, 255, 0.2); border-radius: 20px; font-size: 12px; color: #58a6ff;">
+                                    <div style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(88, 166, 255, 0.1); border: 1px solid rgba(88, 166, 255, 0.2); border-radius: 20px; font-size: 12px; color: var(--accent-blue);">
                                         <span>✓ Partner Registered</span>
                                     </div>
                                 `}
-                                <button class="btn secondary" id="disconnectBtn" style="border-color: rgba(248, 81, 73, 0.3); color: #f85149;">
+                                <button class="btn secondary" id="disconnectBtn" style="border-color: rgba(248, 81, 73, 0.3); color: var(--color-danger);">
                                     Disconnect Account
                                 </button>
                             </div>
@@ -1006,7 +1034,7 @@
             const oauthError = params.get('oauth_error');
             
             if (oauthSuccess === 'true') {
-                console.log('%c✓ OAuth successful!', 'color: #3fb950; font-weight: bold;');
+                console.log('%c✓ OAuth successful!', 'color: var(--color-success); font-weight: bold;');
                 addLog('✓ Tesla account successfully connected! Tokens are now saved.', 'success');
                 // Refresh connection status
                 setTimeout(() => {
@@ -1015,7 +1043,7 @@
                 // Clean up URL
                 window.history.replaceState({}, document.title, '/tesla-integration.html');
             } else if (oauthError) {
-                console.error('%c❌ OAuth error:', 'color: #f85149;', oauthError);
+                console.error('%c❌ OAuth error:', 'color: var(--color-danger);', oauthError);
                 addLog(`✗ Connection failed: ${oauthError}`, 'error');
                 // Clean up URL
                 window.history.replaceState({}, document.title, '/tesla-integration.html');
@@ -1054,7 +1082,7 @@
             statusDiv.style.display = 'block';
             statusDiv.style.background = type === 'success' ? 'rgba(88, 166, 255, 0.1)' : 'rgba(217, 153, 34, 0.1)';
             statusDiv.style.border = `1px solid ${type === 'success' ? 'rgba(88, 166, 255, 0.3)' : 'rgba(217, 153, 34, 0.3)'}`;
-            statusDiv.style.color = type === 'success' ? '#58a6ff' : '#d29922';
+            statusDiv.style.color = type === 'success' ? 'var(--accent-blue)' : 'var(--color-warning)';
             statusDiv.textContent = message;
         }
 
@@ -1063,12 +1091,12 @@
             statusDiv.style.display = 'block';
             statusDiv.style.background = type === 'success' ? 'rgba(163, 94, 255, 0.1)' : 'rgba(217, 153, 34, 0.1)';
             statusDiv.style.border = `1px solid ${type === 'success' ? 'rgba(163, 94, 255, 0.3)' : 'rgba(217, 153, 34, 0.3)'}`;
-            statusDiv.style.color = type === 'success' ? '#a371f7' : '#d29922';
+            statusDiv.style.color = type === 'success' ? 'var(--color-purple)' : 'var(--color-warning)';
             statusDiv.textContent = message;
         }
 
         function setupEventListeners() {
-            console.log('%c🔧 Setting up Event Listeners', 'color: #58a6ff; font-weight: bold;');
+            console.log('%c🔧 Setting up Event Listeners', 'color: var(--accent-blue); font-weight: bold;');
             
             // Handle OAuth redirect
             handleOAuthRedirect();
@@ -1133,7 +1161,7 @@
             const connectBtn = document.getElementById('connectTeslaBtn');
             if (connectBtn) {
                 connectBtn.addEventListener('click', async () => {
-                    console.log('%c🔐 Connect with Tesla Clicked', 'color: #58a6ff;');
+                    console.log('%c🔐 Connect with Tesla Clicked', 'color: var(--accent-blue);');
                     
                     // Check if button is disabled
                     if (connectBtn.disabled) {
@@ -1201,7 +1229,7 @@
                         // Redirect with token and clientId as query params
                         window.location.href = `/api/tesla/oauth-authorize?idToken=${encodeURIComponent(token)}&clientId=${encodeURIComponent(clientId)}`;
                     } catch (err) {
-                        console.error('%c❌ Error initiating OAuth:', 'color: #f85149;', err);
+                        console.error('%c❌ Error initiating OAuth:', 'color: var(--color-danger);', err);
                         addLog(`Error initiating OAuth: ${err.message}`, 'error');
                         // Reset button state
                         document.getElementById('connectBtnText').textContent = 'Connect with Tesla';
@@ -1220,7 +1248,7 @@
             }
             
             saveBtn.addEventListener('click', async () => {
-                console.log('%c💾 Save Tokens Clicked', 'color: #58a6ff;');
+                console.log('%c💾 Save Tokens Clicked', 'color: var(--accent-blue);');
                 const accessToken = document.getElementById('tesla_accessToken').value.trim();
                 const refreshToken = document.getElementById('tesla_refreshToken').value.trim();
 
@@ -1248,14 +1276,14 @@
                     console.log('Response data:', data);
                     
                     if (data.errno === 0) {
-                        console.log('%c✓ Tokens saved successfully', 'color: #3fb950;');
+                        console.log('%c✓ Tokens saved successfully', 'color: var(--color-success);');
                         addLog('✓ Tokens saved successfully', 'success');
                     } else {
                         console.error('API error:', data.error);
                         addLog(`✗ Failed to save tokens: ${data.error}`, 'error');
                     }
                 } catch (err) {
-                    console.error('%c❌ Error saving tokens:', 'color: #f85149;', err);
+                    console.error('%c❌ Error saving tokens:', 'color: var(--color-danger);', err);
                     addLog(`Error saving tokens: ${err.message}`, 'error');
                 }
             });
@@ -1264,7 +1292,7 @@
             const testBtn = document.getElementById('testAuthBtn');
             if (testBtn) {
                 testBtn.addEventListener('click', async () => {
-                    console.log('%c🧪 Test Auth Clicked', 'color: #58a6ff;');
+                    console.log('%c🧪 Test Auth Clicked', 'color: var(--accent-blue);');
                     try {
                         console.log('Calling window.authenticatedFetch to /api/tesla/test-auth...');
                         addLog('Testing Tesla API authentication...', 'info');
@@ -1278,14 +1306,14 @@
                         console.log('Response data:', data);
                         
                         if (data.errno === 0) {
-                            console.log('%c✓ Auth test passed:', 'color: #3fb950;', data.result.message);
+                            console.log('%c✓ Auth test passed:', 'color: var(--color-success);', data.result.message);
                             addLog(`✓ Authentication successful: ${data.result.message}`, 'success');
                         } else {
                             console.error('Auth test failed:', data.error);
                             addLog(`✗ Authentication failed: ${data.error}`, 'error');
                         }
                     } catch (err) {
-                        console.error('%c❌ Error testing auth:', 'color: #f85149;', err);
+                        console.error('%c❌ Error testing auth:', 'color: var(--color-danger);', err);
                         addLog(`Error testing auth: ${err.message}`, 'error');
                     }
                 });
@@ -1436,7 +1464,7 @@
             const listBtn = document.getElementById('listVehiclesBtn');
             if (listBtn) {
                 listBtn.addEventListener('click', async () => {
-                    console.log('%c🚗 List Vehicles Clicked', 'color: #58a6ff;');
+                    console.log('%c🚗 List Vehicles Clicked', 'color: var(--accent-blue);');
                     try {
                         console.log('Fetching vehicles from /api/tesla/vehicles...');
                         addLog('Fetching vehicle list...', 'info');
@@ -1447,7 +1475,7 @@
 
                         if (data.errno === 0 && data.result?.vehicles) {
                             const vehicles = data.result.vehicles;
-                            console.log('%c✓ Found vehicles:', 'color: #3fb950;', vehicles.length);
+                            console.log('%c✓ Found vehicles:', 'color: var(--color-success);', vehicles.length);
                             addLog(`✓ Found ${vehicles.length} vehicle(s)`, 'success');
 
                             const container = document.getElementById('vehiclesList');
@@ -1471,7 +1499,7 @@
                             addLog(`✗ Failed to list vehicles: ${data.error || 'Unknown error'}`, 'error');
                         }
                     } catch (err) {
-                        console.error('%c❌ Error listing vehicles:', 'color: #f85149;', err);
+                        console.error('%c❌ Error listing vehicles:', 'color: var(--color-danger);', err);
                         addLog(`Error listing vehicles: ${err.message}`, 'error');
                     }
                 });
@@ -1481,7 +1509,7 @@
             const fleetStatusBtn = document.getElementById('checkFleetStatusBtn');
             if (fleetStatusBtn) {
                 fleetStatusBtn.addEventListener('click', async () => {
-                    console.log('%c📋 Check Fleet Status Clicked', 'color: #58a6ff;');
+                    console.log('%c📋 Check Fleet Status Clicked', 'color: var(--accent-blue);');
                     try {
                         addLog('Checking Tesla Fleet API status...', 'info');
                         const resp = await window.authenticatedFetch('/api/tesla/fleet-status', { method: 'POST' });
@@ -1503,7 +1531,7 @@
             if (getDataBtn) {
                 getDataBtn.addEventListener('click', async () => {
                     if (!selectedVehicleTag) return;
-                    console.log('%c📊 Get Vehicle Data Clicked', 'color: #58a6ff;');
+                    console.log('%c📊 Get Vehicle Data Clicked', 'color: var(--accent-blue);');
                     try {
                         addLog(`Fetching data for vehicle ${selectedVehicleTag}...`, 'info');
                         const resp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleTag}/data`);
@@ -1543,7 +1571,7 @@
             if (wakeBtn) {
                 wakeBtn.addEventListener('click', async () => {
                     if (!selectedVehicleTag) return;
-                    console.log('%c⏰ Wake Vehicle Clicked', 'color: #58a6ff;');
+                    console.log('%c⏰ Wake Vehicle Clicked', 'color: var(--accent-blue);');
                     try {
                         addLog(`Sending wake command to ${selectedVehicleTag}...`, 'info');
                         const resp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleTag}/wake`, { method: 'POST' });
@@ -1564,7 +1592,7 @@
             if (startBtn) {
                 startBtn.addEventListener('click', async () => {
                     if (!selectedVehicleTag) return;
-                    console.log('%c🔋 Start Charging Clicked', 'color: #58a6ff;');
+                    console.log('%c🔋 Start Charging Clicked', 'color: var(--accent-blue);');
                     try {
                         addLog('Sending charge start command...', 'info');
                         const resp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleTag}/charge/start`, { method: 'POST' });
@@ -1585,7 +1613,7 @@
             if (stopBtn) {
                 stopBtn.addEventListener('click', async () => {
                     if (!selectedVehicleTag) return;
-                    console.log('%c🛑 Stop Charging Clicked', 'color: #58a6ff;');
+                    console.log('%c🛑 Stop Charging Clicked', 'color: var(--accent-blue);');
                     try {
                         addLog('Sending charge stop command...', 'info');
                         const resp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleTag}/charge/stop`, { method: 'POST' });
@@ -1622,7 +1650,7 @@
                 setAmpsBtn.addEventListener('click', async () => {
                     if (!selectedVehicleTag) return;
                     const amps = parseInt(document.getElementById('targetAmps').value);
-                    console.log('%c⚡ Set Amps Clicked:', 'color: #58a6ff;', amps);
+                    console.log('%c⚡ Set Amps Clicked:', 'color: var(--accent-blue);', amps);
                     try {
                         addLog(`Setting charging current to ${amps}A...`, 'info');
                         const resp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleTag}/charge/set-amps`, {
@@ -1648,7 +1676,7 @@
                 setLimitBtn.addEventListener('click', async () => {
                     if (!selectedVehicleTag) return;
                     const percent = parseInt(document.getElementById('chargeLimit').value);
-                    console.log('%c🎯 Set Limit Clicked:', 'color: #58a6ff;', percent);
+                    console.log('%c🎯 Set Limit Clicked:', 'color: var(--accent-blue);', percent);
                     try {
                         addLog(`Setting charge limit to ${percent}%...`, 'info');
                         const resp = await window.authenticatedFetch(`/api/tesla/vehicles/${selectedVehicleTag}/charge/set-limit`, {
@@ -1673,13 +1701,13 @@
             if (runDecisionBtn) {
                 runDecisionBtn.addEventListener('click', async () => {
                     if (!selectedVehicleTag) return;
-                    console.log('%c🧠 Run Decision Engine Clicked', 'color: #58a6ff;');
+                    console.log('%c🧠 Run Decision Engine Clicked', 'color: var(--accent-blue);');
                     try {
                         addLog('Running automation decision engine (simulation)...', 'info');
                         
                         // Simulate a decision process
                         const output = document.getElementById('decisionOutput');
-                        output.innerHTML = '<div style="padding: 15px; background: rgba(88, 166, 255, 0.1); border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 8px; color: #8b949e;">Analyzing PV power, battery SoC, and Amber prices...</div>';
+                        output.innerHTML = '<div style="padding: 15px; background: rgba(88, 166, 255, 0.1); border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 8px; color: var(--text-secondary);">Analyzing PV power, battery SoC, and Amber prices...</div>';
                         
                         // Fetch current snapshot first
                         await refreshEnergySnapshot();
@@ -1691,27 +1719,27 @@
                             
                             let decision = "IDLE";
                             let reason = "No clear trigger for charging.";
-                            let color = "#8b949e";
+                            let color = 'var(--text-secondary)';
                             
                             if (price < 0) {
                                 decision = "CHARGE (MAX)";
                                 reason = "Negative prices detected! Charging at maximum rate.";
-                                color = "#3fb950";
+                                color = 'var(--color-success)';
                             } else if (pv > 3.0 && soc > 90) {
                                 decision = "CHARGE (EXCESS)";
                                 reason = "Excess solar detected and house battery is full.";
-                                color = "#58a6ff";
+                                color = 'var(--accent-blue)';
                             } else if (price > 50) {
                                 decision = "STOP CHARGING";
                                 reason = "High price spike detected. Avoiding grid import.";
-                                color = "#f85149";
+                                color = 'var(--color-danger)';
                             }
                             
                             output.innerHTML = `
-                                <div style="padding: 15px; background: rgba(13, 17, 23, 0.8); border: 1px solid rgba(48, 54, 61, 0.6); border-radius: 8px;">
+                                <div style="padding: 15px; background: var(--bg-overlay); border: 1px solid var(--border-secondary); border-radius: 8px;">
                                     <h4 style="margin: 0 0 10px 0; color: ${color};">Decision: ${decision}</h4>
-                                    <p style="margin: 0; font-size: 13px; color: #8b949e;">${reason}</p>
-                                    <div style="margin-top: 10px; font-size: 11px; color: #6e7681;">
+                                    <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">${reason}</p>
+                                    <div style="margin-top: 10px; font-size: 11px; color: var(--text-muted);">
                                         Inputs: PV=${pv}kW, SoC=${soc}%, Price=${price}¢
                                     </div>
                                 </div>
@@ -1746,7 +1774,7 @@
 
         // Select vehicle (enables buttons)
         window.selectVehicle = (vehicleId, displayName) => {
-            console.log('%c🚗 Vehicle Selected:', 'color: #58a6ff;', { vehicleId, displayName });
+            console.log('%c🚗 Vehicle Selected:', 'color: var(--accent-blue);', { vehicleId, displayName });
             selectedVehicleTag = vehicleId;
             addLog(`Selected vehicle: ${displayName} (${vehicleId})`, 'success');
             
@@ -1839,7 +1867,7 @@
 
         // Refresh energy snapshot
         async function refreshEnergySnapshot() {
-            console.log('%c🔄 Refreshing Energy Snapshot', 'color: #58a6ff;');
+            console.log('%c🔄 Refreshing Energy Snapshot', 'color: var(--accent-blue);');
             try {
                 addLog('Fetching energy snapshot (inverter, prices, weather)...', 'info');
                 
@@ -1881,15 +1909,15 @@
                     document.getElementById('snap_price').textContent = price !== null ? `${price.toFixed(2)} ¢/kWh` : '—';
                 }
 
-                console.log('%c✓ Energy snapshot refreshed', 'color: #3fb950;');
+                console.log('%c✓ Energy snapshot refreshed', 'color: var(--color-success);');
                 addLog('✓ Energy snapshot refreshed', 'success');
             } catch (err) {
-                console.error('%c❌ Error refreshing snapshot:', 'color: #f85149;', err);
+                console.error('%c❌ Error refreshing snapshot:', 'color: var(--color-danger);', err);
                 addLog(`Error refreshing snapshot: ${err.message}`, 'error');
             }
         }
         
-        console.log('%c========== DEBUG LOGGING SETUP COMPLETE ==========', 'color: #7ee787; font-weight: bold;');
+        console.log('%c========== DEBUG LOGGING SETUP COMPLETE ==========', 'color: var(--color-success); font-weight: bold;');
     </script>
 </body>
 </html>

@@ -100,6 +100,12 @@
     --z-popover: 1060;
     --z-tooltip: 1070;
     --z-nav: 10000;
+
+    /* Semantic overlay / surface helpers */
+    --bg-overlay: rgba(0, 0, 0, 0.2);       /* dark header/panel tint */
+    --bg-input: rgba(13, 17, 23, 0.6);      /* input field background */
+    --bg-terminal: #010409;                  /* code / output console bg */
+    --color-terminal-text: #7ee787;          /* text inside terminal panels */
 }
 
 /* Legacy variable aliases for backward compatibility */
@@ -113,6 +119,303 @@
     --accent: var(--accent-blue);
     --success: var(--color-success-dark);
     --danger: var(--color-danger);
+}
+
+/* ============================================
+   LIGHT THEME OVERRIDES
+   Applied when <html data-theme="light"> is set
+   by the user via the profile dropdown toggle.
+   Dark (default) requires no attribute.
+   ============================================ */
+[data-theme="light"] {
+    /* Backgrounds */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f6f8fa;
+    --bg-tertiary: #eaeef2;
+    --bg-card: #ffffff;
+
+    /* Borders */
+    --border-primary: #d0d7de;
+    --border-secondary: rgba(208, 215, 222, 0.6);
+    --border-accent: rgba(9, 105, 218, 0.4);
+
+    /* Text */
+    --text-primary: #1f2328;
+    --text-secondary: #57606a;
+    --text-muted: #6e7781;
+    --text-placeholder: #9ba1a8;
+
+    /* Accent */
+    --accent-blue: #0969da;
+    --accent-blue-hover: #0550ae;
+    --accent-blue-bg: rgba(9, 105, 218, 0.1);
+
+    /* Status */
+    --color-success: #1a7f37;
+    --color-success-dark: #1a7f37;
+    --color-success-bg: rgba(26, 127, 55, 0.1);
+    --color-warning: #9a6700;
+    --color-warning-bg: rgba(154, 103, 0, 0.1);
+    --color-danger: #d1242f;
+    --color-danger-bg: rgba(209, 36, 47, 0.1);
+    --color-info: #0969da;
+    --color-info-bg: rgba(9, 105, 218, 0.1);
+
+    /* Additional */
+    --color-purple: #8250df;
+    --color-orange: #bc4c00;
+    --color-yellow: #9a6700;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, #ffffff 0%, #f6f8fa 50%, #ffffff 100%);
+    --gradient-success: linear-gradient(135deg, #1a7f37, #2da44e);
+    --gradient-accent: linear-gradient(135deg, #0969da, #218bff);
+    --gradient-card: linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(246, 248, 250, 0.95));
+
+    /* Shadows */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.10);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+    --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.18);
+
+    /* Semantic helpers */
+    --bg-overlay: rgba(0, 0, 0, 0.04);
+    --bg-input: #f6f8fa;
+    --bg-terminal: #f0f3f6;
+    --color-terminal-text: #1f2328;
+
+    /* Improved gradients for light */
+    --gradient-card: linear-gradient(145deg, #ffffff, #f9fafb);
+}
+
+/* ──────────────────────────────────────────────
+   LIGHT-ONLY component overrides
+   These fix elements that use hardcoded dark-mode
+   rgba() backgrounds which can't be tokenised in
+   :root vars alone.
+   ────────────────────────────────────────────── */
+[data-theme="light"] .nav-main {
+    background: rgba(255, 255, 255, 0.92);
+    border-bottom-color: #d0d7de;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .nav-link {
+    background: #f0f3f6;
+    border-color: #d0d7de;
+    color: #424a53;
+}
+[data-theme="light"] .nav-link:hover {
+    background: #e2e6ea;
+    border-color: #0969da;
+    color: #0969da;
+}
+[data-theme="light"] .nav-link.active {
+    background: #0969da;
+    color: #fff;
+    border-color: #0969da;
+    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.12);
+}
+
+[data-theme="light"] .user-dropdown {
+    background: #ffffff;
+    border: 1px solid #d0d7de;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"] .user-dropdown-header {
+    border-bottom-color: #d8dee4;
+}
+[data-theme="light"] .user-dropdown-item:hover {
+    background: #f3f4f6;
+}
+[data-theme="light"] .user-dropdown-item.danger:hover {
+    background: rgba(209, 36, 47, 0.08);
+}
+[data-theme="light"] .user-dropdown-item.sign-out:hover {
+    background: #f3f4f6;
+}
+[data-theme="light"] .user-dropdown-separator {
+    border-top-color: #d8dee4;
+}
+
+[data-theme="light"] .card {
+    background: #ffffff;
+    border-color: #d0d7de;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+[data-theme="light"] .card:hover {
+    border-color: #0969da;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+[data-theme="light"] .card-header {
+    background: #f6f8fa;
+    border-bottom: 1px solid #e2e6ea;
+}
+[data-theme="light"] .card-footer {
+    background: #f6f8fa;
+    border-top: 1px solid #e2e6ea;
+}
+
+[data-theme="light"] .section-card {
+    background: #ffffff;
+    border-color: #d0d7de;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .input,
+[data-theme="light"] textarea.input,
+[data-theme="light"] select.input {
+    background: #f6f8fa;
+    border-color: #d0d7de;
+}
+[data-theme="light"] .input:focus,
+[data-theme="light"] textarea.input:focus,
+[data-theme="light"] select.input:focus {
+    background: #ffffff;
+    border-color: #0969da;
+    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.12);
+}
+
+[data-theme="light"] .btn {
+    background: #ffffff;
+    border-color: #b6c0cc;
+    color: #1f2328;
+    box-shadow: 0 1px 3px rgba(31, 35, 40, 0.10), 0 1px 2px rgba(31, 35, 40, 0.06);
+}
+[data-theme="light"] .btn:hover:not(:disabled) {
+    background: rgba(9, 105, 218, 0.06);
+    border-color: #0969da;
+    color: #0550ae;
+    box-shadow: 0 3px 8px rgba(9, 105, 218, 0.14);
+}
+[data-theme="light"] .btn:active:not(:disabled) {
+    background: rgba(9, 105, 218, 0.10);
+    box-shadow: none;
+    transform: translateY(0);
+}
+[data-theme="light"] .btn-secondary {
+    background: #ffffff;
+    border-color: #b6c0cc;
+    color: #1f2328;
+    box-shadow: 0 1px 3px rgba(31, 35, 40, 0.10), 0 1px 2px rgba(31, 35, 40, 0.06);
+}
+[data-theme="light"] .btn-secondary:hover:not(:disabled) {
+    background: rgba(9, 105, 218, 0.06);
+    border-color: #0969da;
+    color: #0550ae;
+    box-shadow: 0 3px 8px rgba(9, 105, 218, 0.14);
+}
+/* Danger variant keeps its own colours but gets the same shadow treatment */
+[data-theme="light"] .btn-danger {
+    box-shadow: 0 1px 3px rgba(31, 35, 40, 0.10);
+}
+[data-theme="light"] .btn-danger:hover:not(:disabled) {
+    box-shadow: 0 3px 8px rgba(209, 36, 47, 0.16);
+}
+
+[data-theme="light"] .stats-grid .stat-item,
+[data-theme="light"] .stat-card {
+    background: #ffffff;
+    border: 1px solid #e2e6ea;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* Info / status banners */
+[data-theme="light"] .info-banner,
+[data-theme="light"] .status-banner {
+    background: #f6f8fa;
+    border-color: #d0d7de;
+    color: var(--text-secondary);
+}
+
+/* FAQ items */
+[data-theme="light"] .faq-item {
+    background: #f6f8fa;
+    border-color: #e2e6ea;
+}
+[data-theme="light"] .faq-question:hover {
+    background: #eaeef2;
+}
+
+/* API metrics footer */
+[data-theme="light"] .api-metrics-footer {
+    background: rgba(255, 255, 255, 0.92);
+    border-color: #d0d7de;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Scrollbar */
+[data-theme="light"] ::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.04);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+    background: rgba(9, 105, 218, 0.25);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+    background: rgba(9, 105, 218, 0.4);
+}
+
+/* Spinner */
+[data-theme="light"] .spinner {
+    border-color: rgba(0, 0, 0, 0.15);
+    border-top-color: #0969da;
+}
+
+/* Nav toggle (hamburger) */
+[data-theme="light"] .nav-toggle {
+    background: #f0f3f6;
+    border-color: #d0d7de;
+}
+[data-theme="light"] .nav-toggle:hover {
+    background: #e2e6ea;
+    border-color: #0969da;
+}
+
+/* User avatar border */
+[data-theme="light"] .user-avatar {
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Badge overrides for better contrast */
+[data-theme="light"] .badge-sync {
+    background: rgba(9, 105, 218, 0.12);
+}
+[data-theme="light"] .badge-modified {
+    background: rgba(154, 103, 0, 0.12);
+}
+
+/* Dropdown item hover */
+[data-theme="light"] .user-dropdown-item:hover {
+    background: #f0f3f6;
+}
+[data-theme="light"] .user-dropdown-item.sign-out:hover {
+    background: #f0f3f6;
+}
+
+/* Tabs / toggle buttons common pattern */
+[data-theme="light"] .btn-group .btn,
+[data-theme="light"] .toggle-btn,
+[data-theme="light"] .tab-btn {
+    background: #ffffff;
+    border-color: #b6c0cc;
+    color: #424a53;
+    box-shadow: 0 1px 3px rgba(31, 35, 40, 0.09);
+}
+[data-theme="light"] .btn-group .btn:hover,
+[data-theme="light"] .toggle-btn:hover,
+[data-theme="light"] .tab-btn:hover {
+    background: rgba(9, 105, 218, 0.06);
+    border-color: #0969da;
+    color: #0550ae;
+    box-shadow: 0 3px 8px rgba(9, 105, 218, 0.12);
+}
+[data-theme="light"] .btn-group .btn.active,
+[data-theme="light"] .toggle-btn.active,
+[data-theme="light"] .tab-btn.active {
+    background: #0969da;
+    color: #fff;
+    border-color: #0969da;
+    box-shadow: 0 2px 6px rgba(9, 105, 218, 0.30);
 }
 
 /* ============================================

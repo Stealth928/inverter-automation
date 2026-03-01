@@ -23,6 +23,7 @@
     <script src="js/tour.js?v=6"></script>
     <link rel="stylesheet" href="css/shared-styles.css?v=7">
     <link rel="stylesheet" href="css/tour.css">
+    <script src="js/theme-init.js"></script>
     <style>
         /* Page-specific styles */
         /* Main content */
@@ -63,7 +64,7 @@
             justify-content: space-between;
             padding: 12px 16px;
             border-bottom: 1px solid var(--border);
-            background: rgba(0,0,0,0.2);
+            background: var(--bg-overlay);
         }
         .card-title {
             font-size: 15px;
@@ -99,7 +100,7 @@
         
         /* Inputs */
         .input, select {
-            background: rgba(0,0,0,0.3);
+            background: var(--bg-input);
             border: 1px solid var(--border);
             color: var(--text);
             padding: 6px 10px;
@@ -117,7 +118,7 @@
         
         /* Buttons */
         .btn {
-            background: #21262d;
+            background: var(--bg-tertiary);
             border: 1px solid var(--border);
             color: var(--text);
             padding: 10px 18px;
@@ -130,17 +131,17 @@
             align-items: center;
             gap: 6px;
         }
-        .btn:hover { background: #30363d; }
+        .btn:hover { background: var(--border-primary); }
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
         .btn-primary {
-            background: #238636;
-            border-color: #238636;
+            background: var(--gradient-success);
+            border-color: var(--color-success-dark);
             color: #fff;
         }
-        .btn-primary:hover { background: #2ea043; }
+        .btn-primary:hover { filter: brightness(1.1); }
         
         /* Status messages */
         .status {
@@ -152,20 +153,20 @@
         }
         .status.loading {
             display: block;
-            background: rgba(88, 166, 255, 0.1);
-            border: 1px solid rgba(88, 166, 255, 0.3);
+            background: var(--color-info-bg);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent);
             color: var(--accent);
         }
         .status.error {
             display: block;
-            background: rgba(248, 81, 73, 0.1);
-            border: 1px solid rgba(248, 81, 73, 0.3);
+            background: var(--color-danger-bg);
+            border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
             color: var(--danger);
         }
         .status.success {
             display: block;
-            background: rgba(126, 231, 135, 0.1);
-            border: 1px solid rgba(126, 231, 135, 0.3);
+            background: var(--color-success-bg);
+            border: 1px solid color-mix(in srgb, var(--color-success-dark) 30%, transparent);
             color: var(--success);
         }
         
@@ -193,7 +194,7 @@
         }
         
         .roi-card {
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--bg-overlay);
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 12px;
@@ -250,9 +251,9 @@
             margin-bottom: 6px;
         }
         
-        .roi-value.positive { color: #7ee787; }
-        .roi-value.negative { color: #f85149; }
-        .roi-value.neutral { color: #8b949e; }
+        .roi-value.positive { color: var(--color-success); }
+        .roi-value.negative { color: var(--color-danger); }
+        .roi-value.neutral { color: var(--text-secondary); }
         
         .roi-value-label {
             font-size: 11px;
@@ -275,7 +276,7 @@
         }
         
         .roi-summary-table th {
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--bg-overlay);
             color: var(--text-muted);
             font-weight: 600;
             font-size: 11px;
@@ -287,7 +288,7 @@
         }
         
         .roi-summary-table th:hover {
-            background: rgba(0, 0, 0, 0.3);
+            background: color-mix(in srgb, #000 30%, transparent);
         }
         
         .roi-summary-table th::after {
@@ -300,17 +301,17 @@
         .roi-summary-table th.sort-asc::after {
             content: '▲';
             opacity: 1;
-            color: #58a6ff;
+            color: var(--accent-blue);
         }
         
         .roi-summary-table th.sort-desc::after {
             content: '▼';
             opacity: 1;
-            color: #58a6ff;
+            color: var(--accent-blue);
         }
         
         .roi-summary-table tr:hover {
-            background: rgba(88, 166, 255, 0.05);
+            background: color-mix(in srgb, var(--accent-blue) 5%, transparent);
         }
         
         .roi-summary-table .rule-name {
@@ -319,12 +320,12 @@
         }
         
         .roi-summary-table .roi-gain {
-            color: #7ee787;
+            color: var(--color-success);
             font-weight: 600;
         }
         
         .roi-summary-table .roi-loss {
-            color: #f85149;
+            color: var(--color-danger);
             font-weight: 600;
         }
 
@@ -427,7 +428,7 @@
         .timeline-event {
             position: relative;
             margin-bottom: 24px;
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--bg-overlay);
             border-left: 3px solid var(--accent-blue);
             border-radius: 8px;
             padding: 16px;
@@ -435,13 +436,13 @@
         }
         
         .timeline-event:hover {
-            background: rgba(0, 0, 0, 0.3);
+            background: color-mix(in srgb, #000 30%, transparent);
             transform: translateX(2px);
         }
         
         .timeline-event.ongoing {
             border-left-color: var(--accent);
-            background: rgba(126, 231, 135, 0.08);
+            background: var(--color-success-bg);
         }
         
         .timeline-event.complete {
@@ -497,7 +498,7 @@
             font-size: 12px;
             margin-bottom: 12px;
             padding: 8px;
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--bg-overlay);
             border-radius: 4px;
         }
         
@@ -551,8 +552,8 @@
         }
         
         .condition-chip {
-            background: rgba(88, 166, 255, 0.12);
-            border: 1px solid rgba(88, 166, 255, 0.3);
+            background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent);
             padding: 4px 8px;
             border-radius: 4px;
             font-size: 11px;
@@ -563,21 +564,21 @@
         }
         
         .condition-chip.met {
-            background: rgba(126, 231, 135, 0.12);
-            border-color: rgba(126, 231, 135, 0.3);
+            background: var(--color-success-bg);
+            border-color: color-mix(in srgb, var(--color-success-dark) 30%, transparent);
             color: var(--accent);
         }
         
         .condition-chip.not-met {
-            background: rgba(248, 81, 73, 0.12);
-            border-color: rgba(248, 81, 73, 0.3);
+            background: var(--color-danger-bg);
+            border-color: color-mix(in srgb, var(--color-danger) 30%, transparent);
             color: var(--accent-red);
         }
         
         .event-action {
             margin-top: 12px;
             padding: 8px 12px;
-            background: rgba(88, 166, 255, 0.08);
+            background: var(--accent-blue-bg);
             border-left: 3px solid var(--accent-blue);
             border-radius: 4px;
             font-size: 12px;
@@ -614,8 +615,8 @@
         
         /* Info banner */
         .info-banner {
-            background: rgba(88, 166, 255, 0.08);
-            border: 1px solid rgba(88, 166, 255, 0.2);
+            background: var(--accent-blue-bg);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 20%, transparent);
             border-radius: 8px;
             padding: 12px 16px;
             margin-bottom: 20px;
@@ -630,14 +631,14 @@
 
         /* WIP banner (more prominent) */
         .info-banner#wipBanner {
-            background: linear-gradient(90deg, rgba(10,32,56,0.9), rgba(16,40,70,0.85));
-            border: 1px solid rgba(88,166,255,0.35);
-            box-shadow: 0 8px 20px rgba(6,22,45,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
-            border-left: 6px solid #58a6ff;
+            background: linear-gradient(90deg, color-mix(in srgb, var(--accent-blue) 12%, var(--bg-primary)), color-mix(in srgb, var(--accent-blue) 8%, var(--bg-secondary)));
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 35%, transparent);
+            box-shadow: var(--shadow-lg);
+            border-left: 6px solid var(--accent-blue);
             padding: 14px 18px;
             margin-bottom: 20px;
             font-size: 14px;
-            color: #dbeeff;
+            color: var(--text-primary);
             align-items: center;
             gap: 14px;
             transform-origin: center;
@@ -650,12 +651,12 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(180deg, rgba(88,166,255,0.12), rgba(88,166,255,0.06));
+            background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
             border-radius: 8px;
-            color: #bfe6ff;
+            color: var(--accent-blue-hover);
         }
-        .info-banner#wipBanner .text { color: #cfe9ff; font-weight:600; }
-        .info-banner#wipBanner strong { color: #ffffff; }
+        .info-banner#wipBanner .text { color: var(--text-secondary); font-weight:600; }
+        .info-banner#wipBanner strong { color: var(--text-primary); }
 
         @keyframes wipPulse {
             0% { box-shadow: 0 6px 18px rgba(8,30,56,0.35); transform: translateY(0); }
@@ -1361,9 +1362,9 @@
             const avgProfitPerRule = numRulesWithProfit > 0 ? (totalProfit / numRulesWithProfit).toFixed(2) : '—';
             
             // Determine profit color
-            const profitColor = totalProfit >= 0 ? 'rgba(126, 231, 135, 0.15)' : 'rgba(239, 68, 68, 0.15)';
-            const profitBorderColor = totalProfit >= 0 ? 'rgba(126, 231, 135, 0.3)' : 'rgba(239, 68, 68, 0.3)';
-            const profitTextColor = totalProfit >= 0 ? '#7ee787' : '#ef4444';
+            const profitColor = totalProfit >= 0 ? 'var(--color-success-bg)' : 'var(--color-danger-bg)';
+            const profitBorderColor = totalProfit >= 0 ? 'color-mix(in srgb,var(--color-success-dark) 30%,transparent)' : 'color-mix(in srgb,var(--color-danger) 30%,transparent)';
+            const profitTextColor = totalProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)';
             const profitIcon = totalProfit >= 0 ? '💰' : '📉';
             
             // Build HTML with summary cards and detailed table
@@ -1490,9 +1491,9 @@
                 // Determine profit color based on ECONOMIC value, not rule type
                 // - Positive profit (you earned money) = GREEN (even for charge with negative prices!)
                 // - Negative profit (you spent money) = RED
-                let profitColor = '#8b949e'; // Default gray for missing data
+                let profitColor = 'var(--text-secondary)'; // Default gray for missing data
                 if (priceInfo.profit !== null && priceInfo.profit !== undefined && !isNaN(priceInfo.profit)) {
-                    profitColor = priceInfo.profit >= 0 ? '#7ee787' : '#ef4444';
+                    profitColor = priceInfo.profit >= 0 ? 'var(--color-success)' : 'var(--color-danger)';
                 }
                 
                 const ruleTypeDisplay = priceInfo.ruleType || '—';

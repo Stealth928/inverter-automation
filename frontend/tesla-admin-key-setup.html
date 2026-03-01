@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tesla Private Key Setup - Admin</title>
+    <script src="js/theme-init.js"></script>
+    <link rel="stylesheet" href="css/shared-styles.css?v=7" />
     <script src="js/pwa-init.js"></script>
     <style>
         body {
@@ -11,24 +13,24 @@
             max-width: 900px;
             margin: 50px auto;
             padding: 20px;
-            background: #0d1117;
-            color: #e6edf3;
+            background: var(--bg-primary);
+            color: var(--text-primary);
         }
-        h1 { color: #58a6ff; }
+        h1 { color: var(--accent-blue); }
         textarea {
             width: 100%;
             min-height: 200px;
             padding: 15px;
-            border: 1px solid #30363d;
-            background: #161b22;
-            color: #e6edf3;
+            border: 1px solid var(--border-primary);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
             border-radius: 6px;
             font-family: 'SF Mono', monospace;
             font-size: 12px;
             margin: 15px 0;
         }
         button {
-            background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 100%);
+            background: var(--accent-blue);
             color: #fff;
             border: none;
             padding: 12px 24px;
@@ -39,10 +41,10 @@
         }
         button:hover { opacity: 0.9; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
-        .success { color: #3fb950; padding: 15px; background: rgba(63, 185, 80, 0.1); border-radius: 6px; margin: 15px 0; }
-        .error { color: #f85149; padding: 15px; background: rgba(248, 81, 73, 0.1); border-radius: 6px; margin: 15px 0; }
-        .info { color: #8b949e; font-size: 13px; line-height: 1.6; background: rgba(48, 54, 61, 0.3); padding: 15px; border-radius: 6px; margin: 15px 0; }
-        code { background: rgba(48, 54, 61, 0.5); padding: 3px 6px; border-radius: 3px; }
+        .success { color: var(--color-success); padding: 15px; background: rgba(63, 185, 80, 0.1); border-radius: 6px; margin: 15px 0; }
+        .error { color: var(--color-danger); padding: 15px; background: rgba(248, 81, 73, 0.1); border-radius: 6px; margin: 15px 0; }
+        .info { color: var(--text-secondary); font-size: 13px; line-height: 1.6; background: var(--bg-secondary); padding: 15px; border-radius: 6px; margin: 15px 0; }
+        code { background: var(--bg-tertiary); padding: 3px 6px; border-radius: 3px; }
     </style>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -74,7 +76,7 @@
     </div>
 
     <h3>Option 2: Paste Existing Private Key</h3>
-    <p style="color: #8b949e; font-size: 13px;">If you already generated a key pair and have the private key:</p>
+    <p style="color: var(--text-secondary); font-size: 13px;">If you already generated a key pair and have the private key:</p>
     <textarea id="privateKeyInput" placeholder="-----BEGIN PRIVATE KEY-----
 ...
 -----END PRIVATE KEY-----"></textarea>
