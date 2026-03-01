@@ -16,7 +16,7 @@
 const crypto = require('crypto');
 
 // Module state - initialized via init()
-let db = null;
+let _db = null;
 let logger = null;
 let getConfig = null;
 let incrementApiCount = null;
@@ -30,7 +30,7 @@ let incrementApiCount = null;
  * @param {Function} deps.incrementApiCount - Function to increment API counter
  */
 function init(deps) {
-  db = deps.db;
+  _db = deps.db;
   logger = deps.logger || console;
   getConfig = deps.getConfig;
   incrementApiCount = deps.incrementApiCount;

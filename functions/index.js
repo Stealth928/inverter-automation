@@ -1161,7 +1161,6 @@ app.get('/api/tesla/oauth-authorize', async (req, res) => {
     }
     
     // Generate state token for CSRF protection
-    const stateToken = crypto.randomBytes(32).toString('hex');
     const state = Buffer.from(JSON.stringify({ 
       userId: user.uid, 
       clientId: clientId.trim(),  // Store clientId in state for use in callback
@@ -4187,22 +4186,15 @@ app.post('/api/automation/cycle', async (req, res) => {
           }
           
           if (amberData) {
-            const forecastCount = amberData.filter(p => p.type === 'ForecastInterval').length;
-            const currentCount = amberData.filter(p => p.type === 'CurrentInterval').length;
             const generalForecasts = amberData.filter(p => p.type === 'ForecastInterval' && p.channelType === 'general');
             const feedInForecasts = amberData.filter(p => p.type === 'ForecastInterval' && p.channelType === 'feedIn');
-            // Show time range and price extremes for BOTH channels
             if (generalForecasts.length > 0) {
               const generalPrices = generalForecasts.map(f => f.perKwh);
-              const maxGeneral = Math.max(...generalPrices);
-              const firstTime = new Date(generalForecasts[0].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
-              const lastTime = new Date(generalForecasts[generalForecasts.length - 1].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+              console.log(`[Automation] General forecast: ${generalForecasts.length} intervals, max ${Math.max(...generalPrices).toFixed(2)}¢/kWh`);
             }
             if (feedInForecasts.length > 0) {
-              const feedInPrices = feedInForecasts.map(f => -f.perKwh); // Negate for display (you earn positive)
-              const maxFeedIn = Math.max(...feedInPrices);
-              const firstTime = new Date(feedInForecasts[0].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
-              const lastTime = new Date(feedInForecasts[feedInForecasts.length - 1].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
+              const feedInPrices = feedInForecasts.map(f => -f.perKwh);
+              console.log(`[Automation] Feed-in forecast: ${feedInForecasts.length} intervals, max ${Math.max(...feedInPrices).toFixed(2)}¢/kWh`);
             }
           }
         }
@@ -4387,7 +4379,7 @@ app.post('/api/automation/cycle', async (req, res) => {
             try {
               const applyStart = Date.now();
               actionResult = await applyRuleAction(userId, rule, userConfig);
-              const applyDuration = Date.now() - applyStart;
+              const _applyDuration = Date.now() - applyStart;
               if (actionResult?.retrysFailed) {
                 console.warn(`[Automation] ⚠️ Some retries failed during atomic segment update`);
               }
@@ -4626,8 +4618,7 @@ app.post('/api/automation/cycle', async (req, res) => {
               // We need to convert to watts for consistency with variable name (houseLoadW)
               // If value < 100, it's definitely in kW (house load rarely exceeds 100kW residential)
               if (Math.abs(houseLoadW) < 100) {
-                const originalValue = houseLoadW;
-                houseLoadW = houseLoadW * 1000; // Convert kW to W
+                  houseLoadW = houseLoadW * 1000; // Convert kW to W (was < 100, so treating as kW input)
               }
             }
           }
@@ -4673,8 +4664,6 @@ app.post('/api/automation/cycle', async (req, res) => {
             // When buyPrice is positive (e.g., +30¢), pricePerKwh is +0.30
             // revenue = -(gridDrawW * 0.30 * hours) = negative (you pay money)
             estimatedRevenue = -(gridDrawW * pricePerKwh * durationHours);
-            
-            const profitOrCost = estimatedRevenue >= 0 ? 'PROFIT' : 'COST';
           } else if (isDischargeRule) {
             // DISCHARGE RULE: Exporting power TO the grid
             // - Positive feedInPrice: You get PAID for export = POSITIVE profit (revenue)  
@@ -4683,8 +4672,6 @@ app.post('/api/automation/cycle', async (req, res) => {
             estimatedGridExportW = houseLoadW !== null ? Math.max(0, fdPwr - houseLoadW) : fdPwr;
             const pricePerKwh = feedInPrice / 100; // Convert cents to dollars
             estimatedRevenue = estimatedGridExportW * pricePerKwh * durationHours;
-            
-            const profitOrCost = estimatedRevenue >= 0 ? 'REVENUE' : 'COST';
           } else {
             // Other modes (SelfUse, Backup, etc) - no grid transaction
           }

@@ -222,7 +222,16 @@
       body: 'Track the financial value of your automation. The ROI calculator estimates grid import savings, feed-in revenue gains and avoided peak costs over a date range you choose.'
     },
 
-    /* 19 — Outro splash */
+    /* 19 — Light / Dark theme */
+    {
+      page: '/index.html',
+      selector: null,
+      position: 'center',
+      title: '🎨 Light & Dark Themes',
+      body: 'The app defaults to a dark theme — easy on the eyes at night. Want a brighter look? Click your avatar in the top-right corner and choose ☀️ Light Theme. Your preference is saved and persists across sessions. Switch back to 🌙 Dark Theme the same way at any time.'
+    },
+
+    /* 20 — Outro splash */
     {
       page: '/index.html',
       selector: null,

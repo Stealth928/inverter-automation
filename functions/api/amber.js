@@ -233,7 +233,7 @@ function init(dependencies) {
    * @param {Object} userConfig - User configuration (for TTL logging)
    * @returns {Promise<void>}
    */
-  async function cacheAmberPricesCurrent(siteId, prices, userId, userConfig) {
+  async function cacheAmberPricesCurrent(siteId, prices, userId, _userConfig) {
     try {
       if (!userId || !siteId || !prices) return;
       
@@ -302,8 +302,6 @@ function init(dependencies) {
    */
   function findGaps(startDate, endDate, existingPrices) {
     const gaps = [];
-    const startMs = new Date(startDate + 'T00:00:00Z').getTime();
-    const endMs = new Date(endDate + 'T23:59:59Z').getTime();
     
     if (existingPrices.length === 0) {
       gaps.push({ start: startDate, end: endDate });
@@ -314,10 +312,6 @@ function init(dependencies) {
     const sorted = [...existingPrices].sort((a, b) => 
       new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
     );
-    
-    // Get the actual date range of cached prices
-    const firstPriceMs = new Date(sorted[0].startTime).getTime();
-    const lastPriceMs = new Date(sorted[sorted.length - 1].startTime).getTime();
     
     // Get dates (YYYY-MM-DD) from cached price range
     const firstCachedDate = sorted[0].startTime.split('T')[0];
