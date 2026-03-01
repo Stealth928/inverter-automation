@@ -277,40 +277,42 @@
 }
 
 [data-theme="light"] .btn {
-    background: #ffffff;
-    border-color: #b6c0cc;
+    background: linear-gradient(180deg, #f0f4f8 0%, #e4eaf0 100%);
+    border-color: #8c9aab;
     color: #1f2328;
-    box-shadow: 0 1px 3px rgba(31, 35, 40, 0.10), 0 1px 2px rgba(31, 35, 40, 0.06);
+    box-shadow: 0 1px 3px rgba(31, 35, 40, 0.14), inset 0 1px 0 rgba(255,255,255,0.7);
 }
 [data-theme="light"] .btn:hover:not(:disabled) {
-    background: rgba(9, 105, 218, 0.06);
+    background: linear-gradient(180deg, #e4ecf5 0%, #d5e2ef 100%);
     border-color: #0969da;
     color: #0550ae;
-    box-shadow: 0 3px 8px rgba(9, 105, 218, 0.14);
+    box-shadow: 0 3px 10px rgba(9, 105, 218, 0.18), inset 0 1px 0 rgba(255,255,255,0.6);
+    transform: translateY(-1px);
 }
 [data-theme="light"] .btn:active:not(:disabled) {
-    background: rgba(9, 105, 218, 0.10);
-    box-shadow: none;
+    background: linear-gradient(180deg, #d5e2ef 0%, #cad8e8 100%);
+    border-color: #0969da;
+    box-shadow: inset 0 2px 4px rgba(9, 105, 218, 0.12);
     transform: translateY(0);
 }
 [data-theme="light"] .btn-secondary {
-    background: #ffffff;
-    border-color: #b6c0cc;
+    background: linear-gradient(180deg, #f0f4f8 0%, #e4eaf0 100%);
+    border-color: #8c9aab;
     color: #1f2328;
-    box-shadow: 0 1px 3px rgba(31, 35, 40, 0.10), 0 1px 2px rgba(31, 35, 40, 0.06);
+    box-shadow: 0 1px 3px rgba(31, 35, 40, 0.14), inset 0 1px 0 rgba(255,255,255,0.7);
 }
 [data-theme="light"] .btn-secondary:hover:not(:disabled) {
-    background: rgba(9, 105, 218, 0.06);
+    background: linear-gradient(180deg, #e4ecf5 0%, #d5e2ef 100%);
     border-color: #0969da;
     color: #0550ae;
-    box-shadow: 0 3px 8px rgba(9, 105, 218, 0.14);
+    box-shadow: 0 3px 10px rgba(9, 105, 218, 0.18), inset 0 1px 0 rgba(255,255,255,0.6);
 }
-/* Danger variant keeps its own colours but gets the same shadow treatment */
+/* Danger variant shadow treatment */
 [data-theme="light"] .btn-danger {
-    box-shadow: 0 1px 3px rgba(31, 35, 40, 0.10);
+    box-shadow: 0 1px 3px rgba(31, 35, 40, 0.14);
 }
 [data-theme="light"] .btn-danger:hover:not(:disabled) {
-    box-shadow: 0 3px 8px rgba(209, 36, 47, 0.16);
+    box-shadow: 0 3px 10px rgba(209, 36, 47, 0.20);
 }
 
 [data-theme="light"] .stats-grid .stat-item,
@@ -396,18 +398,18 @@
 [data-theme="light"] .btn-group .btn,
 [data-theme="light"] .toggle-btn,
 [data-theme="light"] .tab-btn {
-    background: #ffffff;
-    border-color: #b6c0cc;
+    background: linear-gradient(180deg, #f0f4f8 0%, #e4eaf0 100%);
+    border-color: #8c9aab;
     color: #424a53;
-    box-shadow: 0 1px 3px rgba(31, 35, 40, 0.09);
+    box-shadow: 0 1px 3px rgba(31, 35, 40, 0.12), inset 0 1px 0 rgba(255,255,255,0.7);
 }
 [data-theme="light"] .btn-group .btn:hover,
 [data-theme="light"] .toggle-btn:hover,
 [data-theme="light"] .tab-btn:hover {
-    background: rgba(9, 105, 218, 0.06);
+    background: linear-gradient(180deg, #e4ecf5 0%, #d5e2ef 100%);
     border-color: #0969da;
     color: #0550ae;
-    box-shadow: 0 3px 8px rgba(9, 105, 218, 0.12);
+    box-shadow: 0 3px 10px rgba(9, 105, 218, 0.16), inset 0 1px 0 rgba(255,255,255,0.6);
 }
 [data-theme="light"] .btn-group .btn.active,
 [data-theme="light"] .toggle-btn.active,
@@ -415,7 +417,7 @@
     background: #0969da;
     color: #fff;
     border-color: #0969da;
-    box-shadow: 0 2px 6px rgba(9, 105, 218, 0.30);
+    box-shadow: 0 2px 8px rgba(9, 105, 218, 0.35), inset 0 1px 0 rgba(255,255,255,0.15);
 }
 
 /* ============================================
