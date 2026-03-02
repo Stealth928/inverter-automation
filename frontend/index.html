@@ -1605,6 +1605,8 @@
             border: 1px solid var(--accent-blue);
             margin-left: 2px;
         }
+
+        /* Fallback tooltip (CSS-only) */
         .tooltip-icon:hover::after {
             content: attr(data-tooltip);
             position: absolute;
@@ -1616,7 +1618,10 @@
             padding: 8px 10px;
             border-radius: 4px;
             border: 1px solid var(--border-primary);
-            white-space: nowrap;
+            white-space: normal;
+            max-width: min(280px, calc(100vw - 24px));
+            line-height: 1.35;
+            overflow-wrap: anywhere;
             font-size: 11px;
             font-weight: normal;
             z-index: 10000;
@@ -1631,6 +1636,56 @@
             border: 4px solid transparent;
             border-top-color: var(--bg-terminal);
             z-index: 10000;
+        }
+
+        /* JS-enhanced tooltip (viewport-aware) */
+        .tooltip-popover {
+            position: fixed;
+            left: -9999px;
+            top: -9999px;
+            background: var(--bg-terminal);
+            color: var(--text-primary);
+            padding: 8px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border-primary);
+            font-size: 11px;
+            font-weight: normal;
+            line-height: 1.35;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            box-shadow: 0 2px 8px var(--shadow-lg);
+            pointer-events: none;
+            z-index: 12050;
+            opacity: 0;
+            transform: translateY(2px);
+            transition: opacity 120ms ease, transform 120ms ease;
+        }
+        .tooltip-popover.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .tooltip-popover[data-placement="top"]::after,
+        .tooltip-popover[data-placement="bottom"]::after {
+            content: '';
+            position: absolute;
+            left: var(--tooltip-arrow-left, 50%);
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+        }
+        .tooltip-popover[data-placement="top"]::after {
+            top: 100%;
+            border-top-color: var(--bg-terminal);
+        }
+        .tooltip-popover[data-placement="bottom"]::after {
+            bottom: 100%;
+            border-bottom-color: var(--bg-terminal);
+        }
+
+        /* Disable CSS-only hover tooltip when JS popover is active */
+        body.tooltip-js .tooltip-icon:hover::after,
+        body.tooltip-js .tooltip-icon:hover::before {
+            content: none;
+            display: none;
         }
     </style>
     <style>
@@ -2467,6 +2522,109 @@
         document.addEventListener('DOMContentLoaded', () => {
             setTimeout(syncAutomationToggleVisibility, 0);
         });
+
+        function initSmartTooltips() {
+            if (window.__smartTooltipsInit) return;
+            window.__smartTooltipsInit = true;
+
+            if (document.body) {
+                document.body.classList.add('tooltip-js');
+            }
+
+            const popover = document.createElement('div');
+            popover.className = 'tooltip-popover';
+            popover.setAttribute('role', 'tooltip');
+            document.body.appendChild(popover);
+
+            let activeIcon = null;
+            let rafHandle = null;
+
+            function positionPopover() {
+                if (!activeIcon) return;
+
+                const margin = 10;
+                const maxWidth = Math.max(160, Math.min(320, window.innerWidth - (margin * 2)));
+                popover.style.maxWidth = `${maxWidth}px`;
+                popover.style.left = '-9999px';
+                popover.style.top = '-9999px';
+
+                const iconRect = activeIcon.getBoundingClientRect();
+                const popRect = popover.getBoundingClientRect();
+
+                let left = iconRect.left + (iconRect.width / 2) - (popRect.width / 2);
+                left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+
+                let top = iconRect.top - popRect.height - 10;
+                let placement = 'top';
+                if (top < margin) {
+                    top = iconRect.bottom + 10;
+                    placement = 'bottom';
+                }
+
+                top = Math.max(margin, Math.min(top, window.innerHeight - popRect.height - margin));
+
+                const arrowLeft = Math.max(10, Math.min(iconRect.left + (iconRect.width / 2) - left, popRect.width - 10));
+
+                popover.dataset.placement = placement;
+                popover.style.setProperty('--tooltip-arrow-left', `${Math.round(arrowLeft)}px`);
+                popover.style.left = `${Math.round(left)}px`;
+                popover.style.top = `${Math.round(top)}px`;
+            }
+
+            function schedulePosition() {
+                if (!activeIcon) return;
+                if (rafHandle) cancelAnimationFrame(rafHandle);
+                rafHandle = requestAnimationFrame(positionPopover);
+            }
+
+            function showFor(icon) {
+                const text = icon?.getAttribute('data-tooltip');
+                if (!text) return;
+                activeIcon = icon;
+                popover.textContent = text;
+                popover.classList.add('show');
+                schedulePosition();
+            }
+
+            function hidePopover() {
+                activeIcon = null;
+                popover.classList.remove('show');
+                popover.style.left = '-9999px';
+                popover.style.top = '-9999px';
+            }
+
+            document.addEventListener('mouseenter', (event) => {
+                const icon = event.target?.closest?.('.tooltip-icon[data-tooltip]');
+                if (icon) showFor(icon);
+            }, true);
+
+            document.addEventListener('mouseleave', (event) => {
+                const icon = event.target?.closest?.('.tooltip-icon[data-tooltip]');
+                if (!icon) return;
+                const to = event.relatedTarget;
+                if (to && to.closest && to.closest('.tooltip-icon[data-tooltip]')) return;
+                hidePopover();
+            }, true);
+
+            document.addEventListener('focusin', (event) => {
+                const icon = event.target?.closest?.('.tooltip-icon[data-tooltip]');
+                if (icon) showFor(icon);
+            });
+
+            document.addEventListener('focusout', (event) => {
+                const icon = event.target?.closest?.('.tooltip-icon[data-tooltip]');
+                if (icon) hidePopover();
+            });
+
+            document.addEventListener('click', (event) => {
+                if (!event.target?.closest?.('.tooltip-icon[data-tooltip]')) {
+                    hidePopover();
+                }
+            });
+
+            window.addEventListener('resize', schedulePosition);
+            window.addEventListener('scroll', schedulePosition, true);
+        }
 
         // Dynamically load Leaflet CSS+JS once and return a Promise when ready
         function ensureLeafletLoaded() {
@@ -6541,6 +6699,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             // Suppress auto-opening of the right-panel while the page initializes
             window.suppressPanelAutoOpen = true;
+            try { initSmartTooltips(); } catch (e) { console.warn('initSmartTooltips failed', e); }
 
             initDashboardCardVisibilityPreferences();
             initDashboardVisibilityCollapse();
@@ -7510,7 +7669,7 @@
                                 <div>
                                     <div class="field-label-with-tooltip">
                                         <label style="display:block;font-size:11px;color:var(--text-secondary)">Work Mode</label>
-                                        <span class="tooltip-icon" data-tooltip="Action type: Discharge, Charge, SelfUse, etc.">?</span>
+                                        <span class="tooltip-icon" data-tooltip="Mode sent to the inverter scheduler (ForceDischarge, ForceCharge, SelfUse, Feedin, Backup).">?</span>
                                     </div>
                                     <select id="newRuleWorkMode" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:6px;color:var(--text-primary);font-size:13px;margin-top:4px">
                                         <option value="ForceDischarge">Force Discharge</option>
@@ -7523,14 +7682,14 @@
                                 <div>
                                     <div class="field-label-with-tooltip">
                                         <label style="display:block;font-size:11px;color:var(--text-secondary)">Duration (min)</label>
-                                        <span class="tooltip-icon" data-tooltip="How long the segment runs">?</span>
+                                        <span class="tooltip-icon" data-tooltip="Requested run time in minutes. Segments cannot cross midnight; end time is capped at 23:59 if needed.">?</span>
                                     </div>
                                     <input type="number" id="newRuleDuration" value="30" min="5" max="120" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:6px;color:var(--text-primary);font-size:13px;margin-top:4px">
                                 </div>
                                 <div>
                                     <div class="field-label-with-tooltip">
                                         <label style="display:block;font-size:11px;color:var(--text-secondary)">Cooldown (min)</label>
-                                        <span class="tooltip-icon" data-tooltip="Min wait before rule can trigger again">?</span>
+                                        <span class="tooltip-icon" data-tooltip="Minimum wait before this rule can trigger again. Active rules are still re-evaluated while running.">?</span>
                                     </div>
                                     <input type="number" id="newRuleCooldown" value="5" min="1" max="60" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:6px;color:var(--text-primary);font-size:13px;margin-top:4px">
                                 </div>
@@ -7540,28 +7699,31 @@
                                 <div>
                                     <div class="field-label-with-tooltip">
                                         <label style="display:block;font-size:11px;color:var(--text-secondary)">Power (W)</label>
-                                        <span class="tooltip-icon" data-tooltip="Charge/discharge rate in watts">?</span>
+                                        <span class="tooltip-icon" data-tooltip="Requested charge/discharge power in watts (fdPwr).">?</span>
                                     </div>
                                     <input type="number" id="newRuleFdPwr" value="5000" min="0" max="10500" step="100" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:6px;color:var(--text-primary);font-size:13px;margin-top:4px">
                                 </div>
                                 <div>
                                     <div class="field-label-with-tooltip">
                                         <label style="display:block;font-size:11px;color:var(--text-secondary)">Stop SoC (%)</label>
-                                        <span class="tooltip-icon" data-tooltip="SoC where this action stops">?</span>
+                                        <span class="tooltip-icon" data-tooltip="Stop threshold: minimum SoC for discharge, maximum SoC for charge.">?</span>
                                     </div>
                                     <input type="number" id="newRuleFdSoc" value="35" min="10" max="100" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:6px;color:var(--text-primary);font-size:13px;margin-top:4px">
                                 </div>
                                 <div>
                                     <div class="field-label-with-tooltip">
                                         <label style="display:block;font-size:11px;color:var(--text-secondary)">Min SoC (Grid)</label>
-                                        <span class="tooltip-icon" data-tooltip="Don't draw from grid below this SoC">?</span>
+                                        <span class="tooltip-icon" data-tooltip="Set this at or above your global Battery SoC limits (Min SoC / Min SoC on Grid). Lower values may be rejected by the inverter scheduler (errno 40257).">?</span>
                                     </div>
                                     <input type="number" id="newRuleMinSoc" value="20" min="10" max="100" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:6px;color:var(--text-primary);font-size:13px;margin-top:4px">
+                                    <div id="newRuleMinSocWarning" style="display:none;margin-top:6px;font-size:11px;color:var(--color-warning);line-height:1.35">
+                                        ⚠️ Below recommended floor (20%). Keep this at or above your global battery Min SoC settings to reduce scheduler rejects (40257).
+                                    </div>
                                 </div>
                                 <div>
                                     <div class="field-label-with-tooltip">
                                         <label style="display:block;font-size:11px;color:var(--text-secondary)">Max SoC (%)</label>
-                                        <span class="tooltip-icon" data-tooltip="Hard cap - never exceed during segment">?</span>
+                                        <span class="tooltip-icon" data-tooltip="Maximum SoC limit sent with the segment (enforced by the inverter).">?</span>
                                     </div>
                                     <input type="number" id="newRuleMaxSoc" value="90" min="10" max="100" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:6px;color:var(--text-primary);font-size:13px;margin-top:4px">
                                 </div>
@@ -7599,6 +7761,13 @@
                 }
             }
             syncAutomationToggleVisibility();
+
+            const minSocInput = document.getElementById('newRuleMinSoc');
+            if (minSocInput) {
+                minSocInput.addEventListener('input', updateRuleMinSocFloorWarning);
+                minSocInput.addEventListener('change', updateRuleMinSocFloorWarning);
+                updateRuleMinSocFloorWarning();
+            }
             
             // Add event listeners for "between" operator toggle
             ['FeedIn', 'Buy', 'Soc'].forEach(type => {
@@ -7634,6 +7803,30 @@
                     input.max = 1;
                     if (parseInt(input.value) > 1) input.value = 1;
                     break;
+            }
+        }
+
+        function updateRuleMinSocFloorWarning() {
+            const warningFloor = 20;
+            const modal = document.getElementById('addRuleModal');
+            if (!modal) return;
+
+            const input = modal.querySelector('#newRuleMinSoc') || document.getElementById('newRuleMinSoc');
+            const warning = modal.querySelector('#newRuleMinSocWarning') || document.getElementById('newRuleMinSocWarning');
+            if (!input || !warning) return;
+
+            const minSoc = parseInt(input.value, 10);
+            const hasValidationError = input.style.borderColor === 'var(--color-danger)';
+            const showWarning = !hasValidationError && !isNaN(minSoc) && minSoc < warningFloor;
+
+            warning.style.display = showWarning ? 'block' : 'none';
+
+            if (showWarning) {
+                input.style.borderColor = 'var(--color-warning)';
+                input.style.boxShadow = '0 0 0 2px rgba(210,153,34,0.25)';
+            } else if (!hasValidationError) {
+                input.style.borderColor = 'var(--border-primary)';
+                input.style.boxShadow = 'none';
             }
         }
         
@@ -7859,6 +8052,9 @@
             if (!isNaN(fdSoc) && !isNaN(minSoc) && fdSoc > minSoc + 50) {
                 // Warning but not error - Stop SoC much higher than Min might be intentional
             }
+
+            // Re-apply non-blocking warning styling after validation pass
+            updateRuleMinSocFloorWarning();
             
             return { valid: errors.length === 0, errors };
         }
@@ -8123,6 +8319,7 @@
                 document.getElementById('newRuleFdSoc').value = action.fdSoc || 10;
                 document.getElementById('newRuleMinSoc').value = action.minSocOnGrid || 10;
                 document.getElementById('newRuleMaxSoc').value = action.maxSoc || 100;
+                updateRuleMinSocFloorWarning();
                 
                 // Change button text
                 const createBtn = modal?.querySelector('button[onclick="createBackendRule()"]');
