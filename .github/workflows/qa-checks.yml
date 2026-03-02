@@ -13,7 +13,7 @@ jobs:
     
     strategy:
       matrix:
-        node-version: [20.x]
+        node-version: [22.x]
     
     steps:
     - name: Checkout code
@@ -27,14 +27,14 @@ jobs:
         cache-dependency-path: functions/package-lock.json
     
     - name: Install functions dependencies
-      run: npm --prefix functions install
+      run: npm --prefix functions ci
     
     - name: Run pre-deployment checks
       run: node scripts/pre-deploy-check.js
       continue-on-error: true
     
     - name: Run test suite
-      run: npm --prefix functions test -- --passWithNoTests
+      run: npm --prefix functions test -- --passWithNoTests --runInBand
     
     - name: Generate coverage report
       run: npm --prefix functions run test:coverage
@@ -54,7 +54,7 @@ jobs:
     
     strategy:
       matrix:
-        node-version: [20.x]
+        node-version: [22.x]
     
     steps:
     - name: Checkout code
@@ -68,7 +68,7 @@ jobs:
         cache-dependency-path: functions/package-lock.json
     
     - name: Install dependencies
-      run: npm --prefix functions install
+      run: npm --prefix functions ci
     
     - name: Run ESLint
       run: npm --prefix functions run lint

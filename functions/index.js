@@ -16,6 +16,13 @@ const express = require('express');
 const cors = require('cors');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
+const {
+  evaluateTemperatureCondition,
+  evaluateTimeCondition,
+  getWeekdayIndexInTimezone,
+  isForecastTemperatureType,
+  normalizeWeekdays
+} = require('./lib/automation-conditions');
 const amberModule = require('./api/amber');
 let googleApis = null;
 try {
@@ -4214,10 +4221,16 @@ app.post('/api/automation/cycle', async (req, res) => {
       return res.json({ errno: 0, result: { skipped: true, reason: 'No rules enabled', totalRules } });
     }
     
-    // Check if any enabled rule uses weather-dependent conditions (solar radiation, cloud cover, UV)
+    // Check if any enabled rule uses weather-dependent conditions.
     const needsWeatherData = enabledRules.some(([_, rule]) => {
       const cond = rule.conditions || {};
-      return cond.solarRadiation?.enabled || cond.cloudCover?.enabled || cond.uvIndex?.enabled;
+      const tempCond = cond.temp || cond.temperature;
+      return (
+        cond.solarRadiation?.enabled ||
+        cond.cloudCover?.enabled ||
+        cond.uvIndex?.enabled ||
+        (tempCond?.enabled && isForecastTemperatureType(tempCond.type))
+      );
     });
     
     // Only fetch weather if a rule actually needs it
@@ -4246,14 +4259,23 @@ app.post('/api/automation/cycle', async (req, res) => {
             const days = unit === 'days' ? value : Math.ceil(value / 24);
             maxDaysNeeded = Math.max(maxDaysNeeded, days);
           }
+
+          // Check forecast daily temperature offset
+          const tempCond = cond.temp || cond.temperature;
+          if (tempCond?.enabled && isForecastTemperatureType(tempCond.type)) {
+            const dayOffset = Number.isInteger(tempCond.dayOffset)
+              ? tempCond.dayOffset
+              : Number.parseInt(tempCond.dayOffset, 10) || 0;
+            maxDaysNeeded = Math.max(maxDaysNeeded, dayOffset + 1);
+          }
         }
         
-        // Cap at 7 days (Open-Meteo free tier limit)
-        maxDaysNeeded = Math.min(maxDaysNeeded, 7);
+        // Support forecast temperature look-ahead up to day +10 (11 days including today)
+        const automationForecastDays = 11;
+        maxDaysNeeded = Math.min(maxDaysNeeded, automationForecastDays);
         
-        // Always fetch 7 days to maximize cache hits - any rule requesting ≤7 days will use cached data
-        // This prevents cache busting when different rules request different day counts
-        const daysToFetch = 7;
+        // Always fetch a stable forecast window to maximize cache reuse across rules
+        const daysToFetch = automationForecastDays;
         weatherData = await getCachedWeatherData(userId, place, daysToFetch);
         cache.weather = weatherData.result || weatherData;
       } catch (e) {
@@ -5904,17 +5926,33 @@ app.post('/api/automation/test', async (req, res) => {
     const sorted = Object.entries(rules || {}).filter(([_, r]) => r.enabled).sort((a,b) => (a[1].priority||99) - (b[1].priority||99));
 
     const allResults = [];
-    // Helper to check time window
-    const timeInWindow = (timeStr, start, end) => {
-      if (!timeStr) return true; // if no test time provided assume match
-      const toMins = t => { const [hh,mm] = (t||'00:00').split(':').map(x=>parseInt(x,10)||0); return hh*60+mm; };
-      const t = toMins(timeStr);
-      const s = toMins(start || '00:00');
-      const e = toMins(end || '23:59');
-      if (s <= e) return t >= s && t <= e;
-      // window spans midnight
-      return t >= s || t <= e;
+    const parseMockTime = (timeStr) => {
+      if (!timeStr || typeof timeStr !== 'string' || !timeStr.includes(':')) return null;
+      const [hh, mm] = timeStr.split(':').map((x) => parseInt(x, 10));
+      if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+        return null;
+      }
+      return { hour: hh, minute: mm };
     };
+
+    const mockTime = parseMockTime(mockData.testTime);
+    const mockDayRaw = mockData.testDayOfWeek !== undefined ? mockData.testDayOfWeek : mockData.dayOfWeek;
+    const normalizedMockDays = normalizeWeekdays(mockDayRaw !== undefined ? [mockDayRaw] : []);
+    const mockDayOfWeek = normalizedMockDays.length > 0 ? normalizedMockDays[0] : null;
+
+    let mockWeatherData = mockData.weatherData || mockData.weather || null;
+    if (!mockWeatherData) {
+      const maxDaily = Array.isArray(mockData.dailyMaxTemps) ? mockData.dailyMaxTemps : null;
+      const minDaily = Array.isArray(mockData.dailyMinTemps) ? mockData.dailyMinTemps : null;
+      if (maxDaily || minDaily) {
+        mockWeatherData = {
+          daily: {
+            temperature_2m_max: maxDaily || [],
+            temperature_2m_min: minDaily || []
+          }
+        };
+      }
+    }
 
     for (const [ruleId, rule] of sorted) {
       const cond = rule.conditions || {};
@@ -5949,21 +5987,60 @@ app.post('/api/automation/test', async (req, res) => {
       }
 
       // temperature
-      if (cond.temperature?.enabled) {
-        const type = cond.temperature.type || 'battery';
-        const tempVal = type === 'ambient' ? Number(mockData.ambientTemp || 0) : Number(mockData.batteryTemp || 0);
-        const target = Number(cond.temperature.value || 0);
-        const cmet = compareValue(tempVal, cond.temperature.operator, target);
-        condDetails.push({ name: (type === 'ambient' ? 'Ambient Temp' : 'Battery Temp'), value: tempVal, target, operator: cond.temperature.operator, met: !!cmet });
-        if (!cmet) met = false;
+      const tempCond = cond.temp || cond.temperature;
+      if (tempCond?.enabled) {
+        const tempResult = evaluateTemperatureCondition(tempCond, {
+          batteryTemp: Number(mockData.batteryTemp),
+          ambientTemp: Number(mockData.ambientTemp),
+          weatherData: mockWeatherData
+        });
+
+        if (tempResult.reason) {
+          condDetails.push({
+            name: 'Temperature',
+            value: null,
+            target: Number(tempCond.value || 0),
+            operator: tempCond.operator || tempCond.op || '>',
+            met: false,
+            reason: tempResult.reason
+          });
+          met = false;
+        } else {
+          const label = tempResult.source === 'weather_daily'
+            ? `Forecast ${tempResult.metric === 'min' ? 'Min' : 'Max'} Temp (D+${tempResult.dayOffset || 0})`
+            : (String(tempResult.type || '').toLowerCase() === 'battery' ? 'Battery Temp' : 'Ambient Temp');
+          condDetails.push({
+            name: label,
+            value: tempResult.actual,
+            target: tempResult.target,
+            operator: tempResult.operator,
+            met: !!tempResult.met
+          });
+          if (!tempResult.met) met = false;
+        }
       }
 
       // time
       const timeCond = cond.time || cond.timeWindow;
       if (timeCond?.enabled) {
-        const ok = timeInWindow(mockData.testTime || null, timeCond.startTime || timeCond.start, timeCond.endTime || timeCond.end);
-        condDetails.push({ name: 'Time Window', value: mockData.testTime || 'now', target: `${timeCond.startTime || timeCond.start || '00:00'}–${timeCond.endTime || timeCond.end || '23:59'}`, operator: 'in', met: !!ok });
-        if (!ok) met = false;
+        const defaultUserTime = getUserTime(DEFAULT_TIMEZONE);
+        const userTime = {
+          hour: mockTime ? mockTime.hour : defaultUserTime.hour,
+          minute: mockTime ? mockTime.minute : defaultUserTime.minute,
+          dayOfWeek: mockDayOfWeek !== null ? mockDayOfWeek : defaultUserTime.dayOfWeek
+        };
+        const timeResult = evaluateTimeCondition(timeCond, {
+          timezone: DEFAULT_TIMEZONE,
+          userTime
+        });
+        condDetails.push({
+          name: 'Time Window',
+          value: timeResult.actualTime,
+          target: `${timeResult.startTime}-${timeResult.endTime} (${timeResult.daysLabel})`,
+          operator: 'in',
+          met: !!timeResult.met
+        });
+        if (!timeResult.met) met = false;
       }
 
       allResults.push({ ruleName: rule.name || ruleId, ruleId, met, priority: rule.priority || 99, conditions: condDetails });
@@ -7492,19 +7569,41 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   const tempCondition = conditions.temp || conditions.temperature;
   if (tempCondition?.enabled) {
     enabledConditions.push('temperature');
-    const tempType = tempCondition.type || 'battery';
-    const actualTemp = tempType === 'battery' ? batTemp : ambientTemp;
-    if (actualTemp !== null) {
-      const operator = tempCondition.op || tempCondition.operator;
-      const value = tempCondition.value;
-      const met = compareValue(actualTemp, operator, value);
-      results.push({ condition: 'temperature', met, actual: actualTemp, operator, target: value, type: tempType });
-      if (!met) {
-        logger.debug('Automation', `Rule '${rule.name}' - Temperature condition NOT met: ${actualTemp} ${operator} ${value} = false`);
-      }
+    const tempResult = evaluateTemperatureCondition(tempCondition, {
+      batteryTemp: batTemp,
+      ambientTemp,
+      weatherData: cache.weather
+    });
+
+    if (tempResult.reason) {
+      results.push({
+        condition: 'temperature',
+        met: false,
+        reason: tempResult.reason,
+        type: tempResult.type,
+        source: tempResult.source,
+        dayOffset: tempResult.dayOffset
+      });
+      logger.debug('Automation', `Rule '${rule.name}' - Temperature condition NOT met: ${tempResult.reason}`);
     } else {
-      results.push({ condition: 'temperature', met: false, reason: `No ${tempType} temperature data` });
-      logger.debug('Automation', `Rule '${rule.name}' - Temperature condition NOT met: No ${tempType} temp data available`);
+      results.push({
+        condition: 'temperature',
+        met: tempResult.met,
+        actual: tempResult.actual,
+        operator: tempResult.operator,
+        target: tempResult.target,
+        target2: tempResult.target2,
+        type: tempResult.type,
+        source: tempResult.source,
+        metric: tempResult.metric,
+        dayOffset: tempResult.dayOffset
+      });
+      if (!tempResult.met) {
+        logger.debug(
+          'Automation',
+          `Rule '${rule.name}' - Temperature condition NOT met: ${tempResult.actual} ${tempResult.operator} ${tempResult.target} = false`
+        );
+      }
     }
   }
   
@@ -7512,23 +7611,26 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   const timeCondition = conditions.time || conditions.timeWindow;
   if (timeCondition?.enabled) {
     enabledConditions.push('time');
-    const startTime = timeCondition.startTime || timeCondition.start || '00:00';
-    const endTime = timeCondition.endTime || timeCondition.end || '23:59';
-    const [startH, startM] = startTime.split(':').map(Number);
-    const [endH, endM] = endTime.split(':').map(Number);
-    const startMins = startH * 60 + startM;
-    const endMins = endH * 60 + endM;
-    
-    let met = false;
-    // Handle windows that cross midnight
-    if (startMins <= endMins) {
-      met = currentMinutes >= startMins && currentMinutes < endMins;
-    } else {
-      met = currentMinutes >= startMins || currentMinutes < endMins;
-    }
-    results.push({ condition: 'time', met, actual: `${userTime.hour}:${String(userTime.minute).padStart(2,'0')}`, window: `${startTime}-${endTime}` });
-    if (!met) {
-      logger.debug('Automation', `Rule '${rule.name}' - Time condition NOT met: ${userTime.hour}:${String(userTime.minute).padStart(2,'0')} not in ${startTime}-${endTime}`);
+    const timeResult = evaluateTimeCondition(timeCondition, {
+      timezone: userTimezone,
+      userTime,
+      currentMinutes
+    });
+
+    results.push({
+      condition: 'time',
+      met: timeResult.met,
+      actual: timeResult.actualTime,
+      window: `${timeResult.startTime}-${timeResult.endTime}`,
+      days: timeResult.days,
+      daysLabel: timeResult.daysLabel,
+      dayMatched: timeResult.dayMatched
+    });
+    if (!timeResult.met) {
+      logger.debug(
+        'Automation',
+        `Rule '${rule.name}' - Time condition NOT met: ${timeResult.actualTime} not in ${timeResult.startTime}-${timeResult.endTime} (${timeResult.daysLabel})`
+      );
     }
   }
   
@@ -8002,7 +8104,7 @@ function getUserTime(timezone) {
     day: parseInt(day, 10),
     month: parseInt(month, 10),
     year: parseInt(year, 10),
-    dayOfWeek: now.getDay(), // 0 = Sunday, 6 = Saturday
+    dayOfWeek: getWeekdayIndexInTimezone(timezone, now) ?? now.getDay(), // 0 = Sunday, 6 = Saturday
     timezone: timezone
   };
 }

@@ -7106,7 +7106,14 @@
                         condBadges += `<span style="background:#8957e5;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">SoC ${socStr}</span>`;
                     }
                     const tempCond = conditions.temperature || conditions.temp;
-                    if (tempCond?.enabled) condBadges += `<span style="background:#f0883e;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">${tempCond.type || 'Bat'} Temp ${tempCond.operator} ${tempCond.value}°C</span>`;
+                    if (tempCond?.enabled) {
+                        const tempType = tempCond.type || 'battery';
+                        let tempLabel = 'Battery Temp';
+                        if (tempType === 'ambient' || tempType === 'inverter') tempLabel = 'Ambient Temp';
+                        if (tempType === 'forecastMax') tempLabel = `Forecast Max (D+${tempCond.dayOffset || 0})`;
+                        if (tempType === 'forecastMin') tempLabel = `Forecast Min (D+${tempCond.dayOffset || 0})`;
+                        condBadges += `<span style="background:#f0883e;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">${tempLabel} ${tempCond.operator} ${tempCond.value}°C</span>`;
+                    }
                     // Solar Radiation condition
                     if (conditions.solarRadiation?.enabled) {
                         const unit = conditions.solarRadiation.lookAheadUnit || 'hours';
@@ -7131,7 +7138,11 @@
                     }
                     if (conditions.time?.enabled || conditions.timeWindow?.enabled) {
                         const tw = conditions.time || conditions.timeWindow;
-                        condBadges += `<span style="background:#6e7681;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">${tw.start || tw.startTime}-${tw.end || tw.endTime}</span>`;
+                        const startTime = tw.start || tw.startTime || '00:00';
+                        const endTime = tw.end || tw.endTime || '23:59';
+                        const dayLabel = formatTimeConditionDays(tw.days);
+                        const daySuffix = dayLabel === 'Every day' ? '' : ` [${dayLabel}]`;
+                        condBadges += `<span style="background:#6e7681;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">${startTime}-${endTime}${daySuffix}</span>`;
                     }
                     if (!condBadges) condBadges = '<span style="color:var(--text-secondary);font-size:10px">No conditions set</span>';
                     
@@ -7486,6 +7497,11 @@
                             </label>
                             <span style="color:var(--text-secondary);font-size:11px;margin-left:auto">Disable to pause this rule temporarily</span>
                         </div>
+
+                        <div id="rulePlainEnglishTop" style="margin:-4px 0 14px 0;padding:10px 12px;border:1px solid color-mix(in srgb, var(--accent-blue) 35%, var(--border-primary));border-radius:8px;background:linear-gradient(135deg,color-mix(in srgb, var(--accent-blue) 12%, var(--bg-primary)),color-mix(in srgb, var(--accent-blue) 4%, var(--bg-primary)));">
+                            <div style="font-size:11px;font-weight:700;color:var(--accent-blue);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Plain-English Summary</div>
+                            <div id="rulePlainEnglishTopText" style="font-size:12px;line-height:1.45;color:var(--text-primary)">As you configure this rule, a plain-language summary will appear here.</div>
+                        </div>
                         
                         <!-- CONDITIONS SECTION -->
                         <div style="background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:8px;padding:16px;margin-bottom:16px">
@@ -7546,12 +7562,14 @@
                             </div>
                             
                             <!-- Temperature -->
-                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px">
+                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condTempEnabled" style="width:16px;height:16px">
                                     <span style="color:var(--text-primary);font-size:13px">🌡️ Temperature</span>
                                 </label>
-                                <select id="condTempType" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
+                                <select id="condTempType" onchange="updateTemperatureConditionUI()" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
+                                    <option value="forecastMax">Forecast Daily Max</option>
+                                    <option value="forecastMin">Forecast Daily Min</option>
                                     <option value="battery">Battery</option>
                                     <option value="ambient">Ambient</option>
                                     <option value="inverter">Inverter</option>
@@ -7564,6 +7582,23 @@
                                 </select>
                                 <input type="number" id="condTempVal" placeholder="°C" value="40" min="-40" max="80" step="1" style="width:70px;padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
                                 <span style="color:var(--text-secondary);font-size:11px">°C</span>
+                                <span id="condTempDayOffsetWrap" style="display:none;color:var(--text-secondary);font-size:11px">
+                                    in next
+                                    <select id="condTempDayOffset" style="min-width:180px;padding:4px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
+                                        <option value="0">0 days (today)</option>
+                                        <option value="1">1 day</option>
+                                        <option value="2">2 days</option>
+                                        <option value="3">3 days</option>
+                                        <option value="4">4 days</option>
+                                        <option value="5">5 days</option>
+                                        <option value="6">6 days</option>
+                                        <option value="7">7 days</option>
+                                        <option value="8">8 days</option>
+                                        <option value="9">9 days</option>
+                                        <option value="10">10 days</option>
+                                    </select>
+                                    days
+                                </span>
                             </div>
                             
                             <!-- Solar Radiation Forecast -->
@@ -7650,7 +7685,7 @@
                             </div>
                             
                             <!-- Time Window -->
-                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px">
+                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condTimeEnabled" style="width:16px;height:16px">
                                     <span style="color:var(--text-primary);font-size:13px">🕐 Time Window</span>
@@ -7658,6 +7693,17 @@
                                 <input type="time" id="condTimeStart" value="06:00" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
                                 <span style="color:var(--text-secondary);font-size:12px">to</span>
                                 <input type="time" id="condTimeEnd" value="18:00" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
+                                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                                    <span style="color:var(--text-secondary);font-size:11px">Days:</span>
+                                    <label style="display:flex;align-items:center;gap:4px;color:var(--text-primary);font-size:11px"><input type="checkbox" class="cond-time-day" value="1">Mon</label>
+                                    <label style="display:flex;align-items:center;gap:4px;color:var(--text-primary);font-size:11px"><input type="checkbox" class="cond-time-day" value="2">Tue</label>
+                                    <label style="display:flex;align-items:center;gap:4px;color:var(--text-primary);font-size:11px"><input type="checkbox" class="cond-time-day" value="3">Wed</label>
+                                    <label style="display:flex;align-items:center;gap:4px;color:var(--text-primary);font-size:11px"><input type="checkbox" class="cond-time-day" value="4">Thu</label>
+                                    <label style="display:flex;align-items:center;gap:4px;color:var(--text-primary);font-size:11px"><input type="checkbox" class="cond-time-day" value="5">Fri</label>
+                                    <label style="display:flex;align-items:center;gap:4px;color:var(--text-primary);font-size:11px"><input type="checkbox" class="cond-time-day" value="6">Sat</label>
+                                    <label style="display:flex;align-items:center;gap:4px;color:var(--text-primary);font-size:11px"><input type="checkbox" class="cond-time-day" value="0">Sun</label>
+                                    <span style="color:var(--text-muted);font-size:10px">(none = every day)</span>
+                                </div>
                             </div>
                         </div>
                         
@@ -7728,6 +7774,11 @@
                                     <input type="number" id="newRuleMaxSoc" value="90" min="10" max="100" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:6px;color:var(--text-primary);font-size:13px;margin-top:4px">
                                 </div>
                             </div>
+
+                            <div id="ruleActionPlainEnglish" style="margin-top:12px;padding:10px 12px;border:1px solid color-mix(in srgb, var(--color-success-dark) 45%, var(--border-primary));border-radius:8px;background:linear-gradient(135deg,color-mix(in srgb, var(--color-success-dark) 13%, var(--bg-primary)),color-mix(in srgb, var(--color-success-dark) 4%, var(--bg-primary)));">
+                                <div style="font-size:11px;font-weight:700;color:var(--color-success-dark);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Action Explained</div>
+                                <div id="ruleActionPlainEnglishText" style="font-size:12px;line-height:1.45;color:var(--text-primary)">Set action values to see a clear plain-language explanation.</div>
+                            </div>
                         </div>
                         
                         <div style="display:flex;gap:12px">
@@ -7779,6 +7830,318 @@
                     });
                 }
             });
+
+            setupRulePlainEnglishListeners(modal);
+            updateTemperatureConditionUI(modal);
+            updateRulePlainEnglishSummary(modal);
+        }
+
+        const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+        function normalizeTimeConditionDays(days) {
+            if (!Array.isArray(days)) return [];
+            const mapped = [];
+            days.forEach((value) => {
+                if (Number.isInteger(value) && value >= 0 && value <= 6) {
+                    mapped.push(value);
+                    return;
+                }
+                if (typeof value === 'string') {
+                    const trimmed = value.trim().toLowerCase();
+                    if (/^[0-6]$/.test(trimmed)) {
+                        mapped.push(parseInt(trimmed, 10));
+                        return;
+                    }
+                    const byName = {
+                        sun: 0, sunday: 0,
+                        mon: 1, monday: 1,
+                        tue: 2, tues: 2, tuesday: 2,
+                        wed: 3, wednesday: 3,
+                        thu: 4, thur: 4, thurs: 4, thursday: 4,
+                        fri: 5, friday: 5,
+                        sat: 6, saturday: 6
+                    };
+                    if (byName[trimmed] !== undefined) mapped.push(byName[trimmed]);
+                }
+            });
+            return [...new Set(mapped)].sort((a, b) => a - b);
+        }
+
+        function getSelectedTimeConditionDays(modal) {
+            if (!modal) return [];
+            const selected = Array.from(modal.querySelectorAll('.cond-time-day:checked'))
+                .map((el) => parseInt(el.value, 10))
+                .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6);
+            return [...new Set(selected)].sort((a, b) => a - b);
+        }
+
+        function setSelectedTimeConditionDays(modal, days) {
+            if (!modal) return;
+            const normalized = normalizeTimeConditionDays(days);
+            modal.querySelectorAll('.cond-time-day').forEach((el) => {
+                const dayValue = parseInt(el.value, 10);
+                el.checked = normalized.includes(dayValue);
+            });
+        }
+
+        function formatTimeConditionDays(days) {
+            const normalized = normalizeTimeConditionDays(days);
+            if (normalized.length === 0) return 'Every day';
+            return normalized.map((d) => WEEKDAY_LABELS[d]).join(', ');
+        }
+
+        const TEMP_OPERATOR_PRETTY = {
+            '<': 'is below',
+            '<=': 'is at or below',
+            '>': 'is above',
+            '>=': 'is at or above',
+            '==': 'equals',
+            '!=': 'is not'
+        };
+
+        function getTempTypeLabel(type) {
+            if (type === 'forecastMax') return 'forecast daily maximum temperature';
+            if (type === 'forecastMin') return 'forecast daily minimum temperature';
+            if (type === 'ambient') return 'ambient temperature';
+            if (type === 'inverter') return 'inverter temperature';
+            return 'battery temperature';
+        }
+
+        function getForecastOffsetDisplayLabel(offset) {
+            const n = Number.isInteger(offset) ? offset : 0;
+            if (n === 0) return '0 days (today)';
+            if (n === 1) return '1 day';
+            return `${n} days`;
+        }
+
+        function getForecastWindowSentence(offset) {
+            const n = Number.isInteger(offset) ? offset : 0;
+            if (n === 0) return 'today';
+            if (n === 1) return 'in the next 1 day';
+            return `in the next ${n} days`;
+        }
+
+        function buildTemperatureDayOffsetOptions(modal) {
+            if (!modal) return;
+            const selectEl = modal.querySelector('#condTempDayOffset');
+            if (!selectEl) return;
+
+            const currentValue = parseInt(selectEl.value, 10);
+            const selectedOffset = Number.isInteger(currentValue) ? currentValue : 0;
+
+            const options = [];
+            for (let i = 0; i <= 10; i++) {
+                options.push(`<option value="${i}">${getForecastOffsetDisplayLabel(i)}</option>`);
+            }
+            selectEl.innerHTML = options.join('');
+
+            const safeValue = Math.max(0, Math.min(10, selectedOffset));
+            selectEl.value = String(safeValue);
+        }
+
+        function readModalField(modal, selector, fallback = '') {
+            if (!modal) return fallback;
+            const el = modal.querySelector(selector);
+            if (!el) return fallback;
+            const value = el.value;
+            if (value === undefined || value === null || String(value).trim() === '') return fallback;
+            return String(value).trim();
+        }
+
+        function formatCountWithUnit(valueRaw, unitRaw) {
+            const count = Math.max(0, parseInt(valueRaw, 10) || 0);
+            const unit = (unitRaw || 'hours').toLowerCase();
+            if (unit === 'days') return `${count} ${count === 1 ? 'day' : 'days'}`;
+            if (unit === 'minutes') return `${count} ${count === 1 ? 'minute' : 'minutes'}`;
+            return `${count} ${count === 1 ? 'hour' : 'hours'}`;
+        }
+
+        function getConditionOperatorText(op) {
+            return TEMP_OPERATOR_PRETTY[op] || `is ${op}`;
+        }
+
+        function formatSimpleCondition(op, value, unitText = '') {
+            if (op === 'between') return '';
+            return `${getConditionOperatorText(op)} ${value}${unitText}`;
+        }
+
+        function getEnabledConditionPhrases(modal) {
+            const phrases = [];
+
+            if (modal.querySelector('#condFeedInEnabled')?.checked) {
+                const op = readModalField(modal, '#condFeedInOp', '>');
+                const val1 = readModalField(modal, '#condFeedInVal', '0');
+                if (op === 'between') {
+                    const val2 = readModalField(modal, '#condFeedInVal2', '0');
+                    phrases.push(`feed-in price is between ${val1} and ${val2} c/kWh`);
+                } else {
+                    phrases.push(`feed-in price ${formatSimpleCondition(op, val1, ' c/kWh')}`);
+                }
+            }
+
+            if (modal.querySelector('#condBuyEnabled')?.checked) {
+                const op = readModalField(modal, '#condBuyOp', '<');
+                const val1 = readModalField(modal, '#condBuyVal', '0');
+                if (op === 'between') {
+                    const val2 = readModalField(modal, '#condBuyVal2', '0');
+                    phrases.push(`buy price is between ${val1} and ${val2} c/kWh`);
+                } else {
+                    phrases.push(`buy price ${formatSimpleCondition(op, val1, ' c/kWh')}`);
+                }
+            }
+
+            if (modal.querySelector('#condSocEnabled')?.checked) {
+                const op = readModalField(modal, '#condSocOp', '>');
+                const val1 = readModalField(modal, '#condSocVal', '0');
+                if (op === 'between') {
+                    const val2 = readModalField(modal, '#condSocVal2', '100');
+                    phrases.push(`battery SoC is between ${val1}% and ${val2}%`);
+                } else {
+                    phrases.push(`battery SoC ${formatSimpleCondition(op, val1, '%')}`);
+                }
+            }
+
+            if (modal.querySelector('#condTempEnabled')?.checked) {
+                const type = readModalField(modal, '#condTempType', 'battery');
+                const op = readModalField(modal, '#condTempOp', '<');
+                const value = readModalField(modal, '#condTempVal', '40');
+                if (type === 'forecastMax' || type === 'forecastMin') {
+                    const dayOffset = Math.max(0, Math.min(10, parseInt(readModalField(modal, '#condTempDayOffset', '0'), 10) || 0));
+                    phrases.push(`${getTempTypeLabel(type)} ${getForecastWindowSentence(dayOffset)} ${getConditionOperatorText(op)} ${value}°C`);
+                } else {
+                    phrases.push(`${getTempTypeLabel(type)} ${getConditionOperatorText(op)} ${value}°C`);
+                }
+            }
+
+            if (modal.querySelector('#condSolarEnabled')?.checked) {
+                const checkType = readModalField(modal, '#condSolarCheck', 'average');
+                const checkLabel = checkType === 'min' ? 'minimum' : (checkType === 'max' ? 'maximum' : 'average');
+                const op = readModalField(modal, '#condSolarOp', '>');
+                const value = readModalField(modal, '#condSolarVal', '300');
+                const lookAhead = formatCountWithUnit(
+                    readModalField(modal, '#condSolarLookAhead', '6'),
+                    readModalField(modal, '#condSolarLookAheadUnit', 'hours')
+                );
+                phrases.push(`${checkLabel} solar radiation over the next ${lookAhead} ${getConditionOperatorText(op)} ${value} W/m²`);
+            }
+
+            if (modal.querySelector('#condCloudEnabled')?.checked) {
+                const checkType = readModalField(modal, '#condCloudCheck', 'average');
+                const checkLabel = checkType === 'min' ? 'minimum' : (checkType === 'max' ? 'maximum' : 'average');
+                const op = readModalField(modal, '#condCloudOp', '<');
+                const value = readModalField(modal, '#condCloudVal', '50');
+                const lookAhead = formatCountWithUnit(
+                    readModalField(modal, '#condCloudLookAhead', '6'),
+                    readModalField(modal, '#condCloudLookAheadUnit', 'hours')
+                );
+                phrases.push(`${checkLabel} cloud cover over the next ${lookAhead} ${getConditionOperatorText(op)} ${value}%`);
+            }
+
+            if (modal.querySelector('#condForecastEnabled')?.checked) {
+                const priceType = readModalField(modal, '#condForecastType', 'feedIn');
+                const priceLabel = priceType === 'feedIn' ? 'feed-in' : 'buy';
+                const checkType = readModalField(modal, '#condForecastCheck', 'average');
+                const op = readModalField(modal, '#condForecastOp', '>');
+                const value = readModalField(modal, '#condForecastVal', '0');
+                const lookAhead = formatCountWithUnit(
+                    readModalField(modal, '#condForecastLookAhead', '1'),
+                    readModalField(modal, '#condForecastLookAheadUnit', 'hours')
+                );
+
+                if (checkType === 'any') {
+                    phrases.push(`any ${priceLabel} forecast price in the next ${lookAhead} ${getConditionOperatorText(op)} ${value} c/kWh`);
+                } else {
+                    const checkLabel = checkType === 'min' ? 'minimum' : (checkType === 'max' ? 'maximum' : 'average');
+                    phrases.push(`${checkLabel} ${priceLabel} forecast price over the next ${lookAhead} ${getConditionOperatorText(op)} ${value} c/kWh`);
+                }
+            }
+
+            if (modal.querySelector('#condTimeEnabled')?.checked) {
+                const start = readModalField(modal, '#condTimeStart', '00:00');
+                const end = readModalField(modal, '#condTimeEnd', '23:59');
+                const days = getSelectedTimeConditionDays(modal);
+                const dayLabel = formatTimeConditionDays(days);
+                if (dayLabel === 'Every day') {
+                    phrases.push(`time is between ${start} and ${end} every day`);
+                } else {
+                    phrases.push(`time is between ${start} and ${end} on ${dayLabel}`);
+                }
+            }
+
+            return phrases;
+        }
+
+        function getWorkModeActionPhrase(mode) {
+            const map = {
+                ForceDischarge: 'force battery discharge',
+                ForceCharge: 'force battery charge',
+                SelfUse: 'switch inverter to self-use mode',
+                Feedin: 'switch inverter to feed-in mode',
+                Backup: 'switch inverter to backup mode'
+            };
+            return map[mode] || 'apply the selected work mode';
+        }
+
+        function buildRuleActionSummaryText(modal, compact = false) {
+            const mode = readModalField(modal, '#newRuleWorkMode', 'SelfUse');
+            const duration = readModalField(modal, '#newRuleDuration', '30');
+            const power = readModalField(modal, '#newRuleFdPwr', '0');
+            const stopSoc = readModalField(modal, '#newRuleFdSoc', '35');
+            const minSoc = readModalField(modal, '#newRuleMinSoc', '20');
+            const maxSoc = readModalField(modal, '#newRuleMaxSoc', '90');
+            const cooldown = readModalField(modal, '#newRuleCooldown', '5');
+
+            if (compact) {
+                return `Then it will ${getWorkModeActionPhrase(mode)} for ${duration} minutes.`;
+            }
+
+            return `When triggered, this rule will ${getWorkModeActionPhrase(mode)} for ${duration} minutes at ${power}W, with stop SoC ${stopSoc}%, min grid SoC ${minSoc}%, max SoC ${maxSoc}%, and cooldown ${cooldown} minutes before retrigger.`;
+        }
+
+        function updateRulePlainEnglishSummary(modalRef = null) {
+            const modal = modalRef || document.getElementById('addRuleModal') || document;
+            const topTextEl = modal.querySelector ? modal.querySelector('#rulePlainEnglishTopText') : null;
+            const actionTextEl = modal.querySelector ? modal.querySelector('#ruleActionPlainEnglishText') : null;
+            if (!topTextEl || !actionTextEl) return;
+
+            const ruleName = readModalField(modal, '#newRuleName', 'This rule');
+            const ruleEnabled = modal.querySelector('#newRuleEnabled')?.checked === true;
+            const ruleState = ruleEnabled ? 'enabled' : 'paused';
+            const conditions = getEnabledConditionPhrases(modal);
+            const triggerText = conditions.length > 0
+                ? `It triggers only when all selected conditions are true: ${conditions.join('; ')}.`
+                : 'No trigger conditions are selected yet, so this rule will not run automatically.';
+
+            topTextEl.textContent = `${ruleName} is ${ruleState}. ${triggerText} ${buildRuleActionSummaryText(modal, true)}`;
+            actionTextEl.textContent = buildRuleActionSummaryText(modal, false);
+        }
+
+        function setupRulePlainEnglishListeners(modal) {
+            if (!modal || modal.dataset.rulePlainEnglishBound === '1') return;
+            modal.dataset.rulePlainEnglishBound = '1';
+
+            const refresh = () => updateRulePlainEnglishSummary(modal);
+            modal.addEventListener('input', (event) => {
+                if (event?.target && event.target.matches && event.target.matches('input, select, textarea')) refresh();
+            });
+            modal.addEventListener('change', (event) => {
+                if (event?.target && event.target.matches && event.target.matches('input, select, textarea')) refresh();
+            });
+        }
+
+        function updateTemperatureConditionUI(modalRef = null) {
+            const modal = modalRef || document.getElementById('addRuleModal') || document;
+            const typeEl = modal.querySelector ? modal.querySelector('#condTempType') : null;
+            const dayWrap = modal.querySelector ? modal.querySelector('#condTempDayOffsetWrap') : null;
+            const daySelect = modal.querySelector ? modal.querySelector('#condTempDayOffset') : null;
+            if (!typeEl || !dayWrap || !daySelect) return;
+
+            const type = typeEl.value || 'battery';
+            const isForecastType = type === 'forecastMax' || type === 'forecastMin';
+            dayWrap.style.display = isForecastType ? 'inline-flex' : 'none';
+            buildTemperatureDayOffsetOptions(modal);
+            if (!isForecastType) daySelect.value = '0';
+            updateRulePlainEnglishSummary(modal);
         }
         
         function closeAddRuleModal() {
@@ -7858,7 +8221,7 @@
             // Clear all previous error styles first
             ['newRuleName', 'newRulePriority', 'newRuleDuration', 'newRuleCooldown', 'newRuleFdPwr', 
              'newRuleFdSoc', 'newRuleMinSoc', 'newRuleMaxSoc', 'condFeedInVal', 'condFeedInVal2',
-             'condBuyVal', 'condBuyVal2', 'condSocVal', 'condSocVal2', 'condTempVal', 'condSolarVal',
+             'condBuyVal', 'condBuyVal2', 'condSocVal', 'condSocVal2', 'condTempVal', 'condTempDayOffset', 'condSolarVal',
              'condSolarLookAhead', 'condCloudVal', 'condCloudLookAhead', 'condForecastVal', 
              'condForecastLookAhead', 'condTimeStart', 'condTimeEnd'].forEach(clearFieldError);
             
@@ -7951,6 +8314,13 @@
                 const val = parseFloat(modal.querySelector('#condTempVal')?.value);
                 if (isNaN(val) || val < -40 || val > 80) {
                     setFieldError('condTempVal', '🌡️ Temperature must be between -40°C and 80°C');
+                }
+                const tempType = modal.querySelector('#condTempType')?.value || 'battery';
+                if (tempType === 'forecastMax' || tempType === 'forecastMin') {
+                    const dayOffset = parseInt(modal.querySelector('#condTempDayOffset')?.value, 10);
+                    if (isNaN(dayOffset) || dayOffset < 0 || dayOffset > 10) {
+                        setFieldError('condTempDayOffset', '🌡️ Forecast look-ahead must be 0-10 days');
+                    }
                 }
             }
             
@@ -8128,9 +8498,10 @@
                 },
                 temperature: {
                     enabled: modal?.querySelector('#condTempEnabled')?.checked || false,
-                    type: modal?.querySelector('#condTempType')?.value || 'current',
+                    type: modal?.querySelector('#condTempType')?.value || 'battery',
                     operator: modal?.querySelector('#condTempOp')?.value || '>',
-                    value: parseFloat(modal?.querySelector('#condTempVal')?.value) || 40
+                    value: parseFloat(modal?.querySelector('#condTempVal')?.value) || 40,
+                    dayOffset: parseInt(modal?.querySelector('#condTempDayOffset')?.value, 10) || 0
                 },
                 solarRadiation: {
                     enabled: modal?.querySelector('#condSolarEnabled')?.checked || false,
@@ -8160,7 +8531,8 @@
                 time: {
                     enabled: modal?.querySelector('#condTimeEnabled')?.checked || false,
                     startTime: modal?.querySelector('#condTimeStart')?.value || '00:00',
-                    endTime: modal?.querySelector('#condTimeEnd')?.value || '23:59'
+                    endTime: modal?.querySelector('#condTimeEnd')?.value || '23:59',
+                    days: getSelectedTimeConditionDays(modal)
                 }
             };
             
@@ -8266,11 +8638,14 @@
                         const v2 = modal?.querySelector('#condSocVal2'); if (v2) v2.value = conditions.soc.value2 ?? 80;
                     }
                 }
-                if (conditions.temperature) {
-                    const el = modal?.querySelector('#condTempEnabled'); if (el) el.checked = conditions.temperature.enabled || false;
-                    const tp = modal?.querySelector('#condTempType'); if (tp) tp.value = conditions.temperature.type || 'battery';
-                    const op = modal?.querySelector('#condTempOp'); if (op) op.value = conditions.temperature.operator || '<';
-                    const val = modal?.querySelector('#condTempVal'); if (val) val.value = conditions.temperature.value || 40;
+                const tempCondition = conditions.temperature || conditions.temp;
+                if (tempCondition) {
+                    const el = modal?.querySelector('#condTempEnabled'); if (el) el.checked = tempCondition.enabled || false;
+                    const tp = modal?.querySelector('#condTempType'); if (tp) tp.value = tempCondition.type || 'battery';
+                    const op = modal?.querySelector('#condTempOp'); if (op) op.value = tempCondition.operator || tempCondition.op || '<';
+                    const val = modal?.querySelector('#condTempVal'); if (val) val.value = tempCondition.value || 40;
+                    const dayOffset = modal?.querySelector('#condTempDayOffset'); if (dayOffset) dayOffset.value = tempCondition.dayOffset || 0;
+                    updateTemperatureConditionUI(modal);
                 }
                 // Solar Radiation condition
                 if (conditions.solarRadiation) {
@@ -8309,6 +8684,7 @@
                     if (timeEnabledEl) timeEnabledEl.checked = timeCondition.enabled || false;
                     if (timeStartEl) timeStartEl.value = timeCondition.startTime || timeCondition.start || '06:00';
                     if (timeEndEl) timeEndEl.value = timeCondition.endTime || timeCondition.end || '18:00';
+                    setSelectedTimeConditionDays(modal, timeCondition.days || []);
                 }
                 
                 // Fill in action
@@ -8320,6 +8696,7 @@
                 document.getElementById('newRuleMinSoc').value = action.minSocOnGrid || 10;
                 document.getElementById('newRuleMaxSoc').value = action.maxSoc || 100;
                 updateRuleMinSocFloorWarning();
+                updateRulePlainEnglishSummary(modal);
                 
                 // Change button text
                 const createBtn = modal?.querySelector('button[onclick="createBackendRule()"]');
@@ -8631,7 +9008,11 @@
                 }
                 if (rule.conditions.time && rule.conditions.time.enabled) {
                     const tm = rule.conditions.time;
-                    conditionsHtml += `<span class="condition-tag weather">🕐 ${tm.start} - ${tm.end}</span>`;
+                    const startTime = tm.start || tm.startTime || '00:00';
+                    const endTime = tm.end || tm.endTime || '23:59';
+                    const dayLabel = formatTimeConditionDays(tm.days);
+                    const daySuffix = dayLabel === 'Every day' ? '' : ` [${dayLabel}]`;
+                    conditionsHtml += `<span class="condition-tag weather">🕐 ${startTime} - ${endTime}${daySuffix}</span>`;
                 }
             }
             if (!conditionsHtml) {
