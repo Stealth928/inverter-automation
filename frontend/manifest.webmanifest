@@ -1,6 +1,6 @@
 {
-  "name": "FoxESS Automation",
-  "short_name": "FoxESS",
+  "name": "SoCrates",
+  "short_name": "SoCrates",
   "id": "/",
   "description": "Monitor and automate your inverter with real-time pricing and weather insights.",
   "start_url": "/index.html",
@@ -11,20 +11,25 @@
   "background_color": "#0d1117",
   "icons": [
     {
-      "src": "/icons/icon-192-v2.png",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/icons/icon-512-v2.png",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "/icons/icon-maskable-512-v2.png",
+      "src": "/icons/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
     }
   ]
 }

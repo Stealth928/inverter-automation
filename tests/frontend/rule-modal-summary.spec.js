@@ -132,6 +132,7 @@ test.describe('Rule Modal Summaries', () => {
     await expect(actionSummary).toContainText('min grid SoC 25%');
     await expect(actionSummary).toContainText('max SoC 85%');
     await expect(actionSummary).toContainText('cooldown 7 minutes');
+    await expect(actionSummary).toContainText('Active cancellation applies');
   });
 
   test('shows forecast-first temperature choices and supports 0-10 day look-ahead', async ({ page }) => {

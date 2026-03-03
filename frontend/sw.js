@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'foxess-automation-v19';
+const CACHE_VERSION = 'foxess-automation-v21';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const STATIC_ASSETS = [

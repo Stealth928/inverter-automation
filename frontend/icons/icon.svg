@@ -1,0 +1,51 @@
+<!-- V2: Profile + Arc Ring — Side profile inside a bold charge arc, no text -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="arc2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#34d399"/>
+      <stop offset="100%" style="stop-color:#38bdf8"/>
+    </linearGradient>
+    <filter id="g2"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <clipPath id="c2"><circle cx="256" cy="256" r="230"/></clipPath>
+  </defs>
+  <!-- Background -->
+  <circle cx="256" cy="256" r="256" fill="#0a0e1a"/>
+  <!-- Charge arc — 88% fill, thick, glowing -->
+  <!-- r=235: circumference ≈ 1476. 88% = 1299 -->
+  <circle cx="256" cy="256" r="235" fill="none" stroke="#ffffff06" stroke-width="20"/>
+  <circle cx="256" cy="256" r="235" fill="none" stroke="url(#arc2)"
+          stroke-width="20" stroke-linecap="round"
+          stroke-dasharray="1299 177"
+          stroke-dashoffset="370" filter="url(#g2)"/>
+
+  <!-- Bust clipped to inner circle -->
+  <g clip-path="url(#c2)">
+    <!-- Profile facing right -->
+    <path d="M 295 64
+             C 325 68, 350 95, 354 130
+             C 358 162, 342 194, 330 220
+             C 318 244, 318 264, 320 284
+             C 322 305, 330 318, 326 340
+             C 320 364, 298 376, 274 382
+             C 258 386, 240 386, 240 400
+             L 240 510 L 150 510 L 150 400
+             C 150 386, 168 382, 188 378
+             C 210 372, 228 358, 232 336
+             C 236 314, 224 296, 222 274
+             C 220 254, 226 234, 222 212
+             C 216 184, 198 160, 198 128
+             C 198 90, 228 60, 262 60
+             C 276 59, 286 62, 295 64 Z"
+          fill="#e8e4dc"/>
+    <ellipse cx="332" cy="210" rx="20" ry="30" fill="#ddd8cc"/>
+    <ellipse cx="334" cy="210" rx="10" ry="18" fill="#ccc4b4"/>
+    <circle cx="224" cy="176" r="11" fill="#0a0e1a"/>
+    <circle cx="228" cy="173" r="3.5" fill="#ffffff" opacity="0.4"/>
+  </g>
+
+  <!-- Amber bolt: sits top-right, overlapping the head/arc -->
+  <g filter="url(#g2)">
+    <path d="M 330 80 L 296 168 L 318 168 L 284 270 L 368 156 L 342 156 Z" fill="#fbbf24"/>
+  </g>
+  <path d="M 330 80 L 296 168 L 318 168 L 284 270 L 368 156 L 342 156 Z" fill="#f59e0b"/>
+</svg>

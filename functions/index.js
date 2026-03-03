@@ -5518,6 +5518,11 @@ app.post('/api/automation/rule/create', async (req, res) => {
     if (!name) {
       return res.status(400).json({ errno: 400, error: 'Rule name is required' });
     }
+
+    const normalizedCooldown = cooldownMinutes === undefined ? 5 : Number(cooldownMinutes);
+    if (!Number.isInteger(normalizedCooldown) || normalizedCooldown < 1 || normalizedCooldown > 1440) {
+      return res.status(400).json({ errno: 400, error: 'cooldownMinutes must be an integer between 1 and 1440' });
+    }
     
     const ruleId = name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
     const rule = {
@@ -5526,7 +5531,7 @@ app.post('/api/automation/rule/create', async (req, res) => {
       priority: typeof priority === 'number' ? priority : 5, // Default to priority 5 for new rules
       conditions: conditions || {},
       action: action || {},
-      cooldownMinutes: typeof cooldownMinutes === 'number' ? cooldownMinutes : 5,
+      cooldownMinutes: normalizedCooldown,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
@@ -5560,7 +5565,13 @@ app.post('/api/automation/rule/update', async (req, res) => {
     if (enabled !== undefined) update.enabled = !!enabled;
     if (typeof priority === 'number') update.priority = priority;
     if (conditions !== undefined) update.conditions = conditions;
-    if (cooldownMinutes !== undefined) update.cooldownMinutes = cooldownMinutes;
+    if (cooldownMinutes !== undefined) {
+      const normalizedCooldown = Number(cooldownMinutes);
+      if (!Number.isInteger(normalizedCooldown) || normalizedCooldown < 1 || normalizedCooldown > 1440) {
+        return res.status(400).json({ errno: 400, error: 'cooldownMinutes must be an integer between 1 and 1440' });
+      }
+      update.cooldownMinutes = normalizedCooldown;
+    }
     
     // Handle action - merge with existing if partial update
     if (action !== undefined) {
@@ -8885,5 +8896,4 @@ exports.runAutomation = onSchedule(
   },
   runAutomationHandler
 );
-
 
