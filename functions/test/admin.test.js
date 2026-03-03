@@ -174,6 +174,9 @@ describe('Admin API', () => {
       expect(res.body.result.users[0]).toHaveProperty('uid');
       expect(res.body.result.users[0]).toHaveProperty('email');
       expect(res.body.result.users[0]).toHaveProperty('role');
+      expect(res.body.result.users[0]).toHaveProperty('configured');
+      expect(res.body.result.users[0]).toHaveProperty('inverterCapacityW');
+      expect(res.body.result.users[0]).toHaveProperty('batteryCapacityKWh');
 
       const onboardingOnly = res.body.result.users.find(u => u.uid === 'onboarding-uid-3');
       expect(onboardingOnly).toBeTruthy();
@@ -273,6 +276,9 @@ describe('Admin API', () => {
       expect(res.body.result).toHaveProperty('metrics');
       expect(res.body.result).toHaveProperty('ruleCount');
       expect(res.body.result).toHaveProperty('configSummary');
+      expect(res.body.result.configSummary).toHaveProperty('configured');
+      expect(res.body.result.configSummary).toHaveProperty('inverterCapacityW');
+      expect(res.body.result.configSummary).toHaveProperty('batteryCapacityKWh');
     });
 
     it('should return 403 for non-admin', async () => {

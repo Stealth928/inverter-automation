@@ -39,7 +39,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should load dashboard page', async ({ page }) => {
-    await expect(page).toHaveTitle(/FoxESS Automation|Dashboard|Inverter|Home/i);
+    await expect(page).toHaveTitle(/SoCrates|FoxESS Automation|Dashboard|Inverter|Home/i);
   });
 
   test('should display main navigation elements', async ({ page }) => {

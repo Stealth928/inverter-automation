@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rules Library — SoCrates</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/icons/favicon.ico" sizes="any">
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+    <link rel="icon" href="/icons/icon-32.png" type="image/png" sizes="32x32">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <link rel="mask-icon" href="/icons/icon.svg" color="#34d399">
+    <meta name="theme-color" content="#0d1117">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="SoCrates">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="stylesheet" href="css/shared-styles.css?v=7" />
+    <link rel="stylesheet" href="css/tour.css?v=2" />
+    <script src="js/theme-init.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
+    <script src="js/firebase-auth.js"></script>
+    <script src="js/api-client.js"></script>
+    <script src="js/shared-utils.js"></script>
+    <script src="js/rule-library-data.js"></script>
+    <script src="js/app-shell.js?v=9"></script>
+    <script src="js/tour.js?v=9"></script>
+    <style>
+        .container {
+            max-width: 1300px;
+            margin: 0 auto;
+            padding: 20px 20px 120px;
+        }
+
+        /* ── Page header ── */
+        .page-header {
+            margin-bottom: 28px;
+        }
+        .page-header h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 6px;
+        }
+        .page-header p {
+            color: var(--text-muted);
+            font-size: 14px;
+            max-width: 640px;
+            line-height: 1.5;
+        }
+
+        /* ── Toolbar ── */
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .search-wrap {
+            position: relative;
+            flex: 1;
+            min-width: 200px;
+            max-width: 340px;
+        }
+        .search-wrap .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+        .search-input {
+            width: 100%;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 9px 12px 9px 32px;
+            font-size: 14px;
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.15s;
+            box-sizing: border-box;
+        }
+        .search-input::placeholder { color: var(--text-muted); }
+        .search-input:focus { border-color: var(--accent-blue); }
+
+        /* ── Category pills ── */
+        .category-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .pill {
+            padding: 7px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-muted);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+            user-select: none;
+        }
+        .pill:hover {
+            border-color: var(--accent-blue);
+            color: var(--text);
+        }
+        .pill.active {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+            color: #fff;
+            font-weight: 600;
+        }
+
+        /* ── Stats row ── */
+        .stats-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        .stats-row .count {
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        /* ── Card grid ── */
+        .rules-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 18px;
+        }
+
+        /* ── Rule card ── */
+        .rule-card {
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            border-radius: 14px;
+            padding: 20px;
+            position: relative;
+            cursor: pointer;
+            transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .rule-card:hover {
+            border-color: var(--accent-blue);
+            box-shadow: 0 4px 20px rgba(59,130,246,0.12);
+        }
+        .rule-card.selected {
+            border-color: var(--accent-blue);
+            background: color-mix(in srgb, var(--bg-card) 90%, var(--accent-blue) 10%);
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+        }
+        .rule-card.already-imported {
+            opacity: 0.55;
+            cursor: default;
+        }
+        .rule-card.already-imported:hover {
+            border-color: var(--border);
+            box-shadow: none;
+        }
+
+        /* card checkbox */
+        .card-checkbox {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            border: 2px solid var(--border);
+            background: var(--bg-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+        .rule-card.selected .card-checkbox {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+            color: #fff;
+        }
+        .rule-card.already-imported .card-checkbox {
+            background: var(--bg-overlay);
+            border-color: var(--border);
+            color: var(--text-muted);
+            font-size: 11px;
+        }
+
+        /* card header row */
+        .card-top {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding-right: 36px;
+        }
+        .card-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 2px;
+        }
+        .badge {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 10px;
+            white-space: nowrap;
+        }
+        .badge-price    { background: rgba(251,191,36,0.15);  color: #fbbf24; }
+        .badge-battery  { background: rgba(52,211,153,0.15);  color: #34d399; }
+        .badge-solar    { background: rgba(250,204,21,0.15);  color: #facc15; }
+        .badge-time     { background: rgba(139,92,246,0.15);  color: #a78bfa; }
+        .badge-seasonal { background: rgba(99,102,241,0.15);  color: #818cf8; }
+        .badge-ev       { background: rgba(236,72,153,0.15);  color: #f472b6; }
+
+        .badge-beginner     { background: rgba(52,211,153,0.12);  color: #34d399; }
+        .badge-intermediate { background: rgba(251,146,60,0.12);  color: #fb923c; }
+        .badge-advanced     { background: rgba(239,68,68,0.12);   color: #f87171; }
+
+        .card-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.3;
+        }
+
+        /* description */
+        .card-description {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.55;
+        }
+
+        /* why-use-it callout */
+        .card-why {
+            background: var(--bg-overlay);
+            border-left: 3px solid var(--accent-blue);
+            border-radius: 0 8px 8px 0;
+            padding: 10px 12px;
+            font-size: 12px;
+            color: var(--text);
+            line-height: 1.5;
+        }
+        .card-why strong {
+            color: var(--accent-blue);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        /* condition chips */
+        .card-conditions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .condition-chip {
+            font-size: 11px;
+            padding: 3px 9px;
+            border-radius: 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        /* action summary */
+        .card-action {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .action-mode {
+            font-weight: 600;
+            color: var(--text);
+            background: var(--bg-overlay);
+            border: 1px solid var(--border);
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        /* already-imported banner inside card */
+        .already-badge {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--color-success);
+            background: rgba(52,211,153,0.1);
+            border: 1px solid rgba(52,211,153,0.25);
+            border-radius: 6px;
+            padding: 4px 10px;
+            width: fit-content;
+            margin-top: 2px;
+        }
+
+        /* ── Empty state ── */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+        .empty-state p { font-size: 14px; }
+
+        /* ── Sticky action bar ── */
+        .action-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--bg-card);
+            border-top: 1px solid var(--border);
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            z-index: 100;
+            transform: translateY(100%);
+            transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+        }
+        .action-bar.visible {
+            transform: translateY(0);
+        }
+        .action-bar-count {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            flex: 1;
+        }
+        .action-bar-count span {
+            color: var(--accent-blue);
+        }
+        .btn-import {
+            background: var(--accent-blue);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 22px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.15s, opacity 0.15s;
+        }
+        .btn-import:hover { background: #2563eb; }
+        .btn-import:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-clear-sel {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 13px;
+            cursor: pointer;
+            padding: 8px 4px;
+            text-decoration: underline;
+        }
+        .btn-clear-sel:hover { color: var(--text); }
+
+        /* ── Import progress/result banner ── */
+        .import-banner {
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            display: none;
+            gap: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .import-banner.show { display: flex; align-items: flex-start; }
+        .import-banner.success {
+            background: rgba(52,211,153,0.1);
+            border: 1px solid rgba(52,211,153,0.3);
+            color: var(--text);
+        }
+        .import-banner.warning {
+            background: rgba(251,146,60,0.1);
+            border: 1px solid rgba(251,146,60,0.3);
+            color: var(--text);
+        }
+        .import-banner.error {
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.25);
+            color: var(--text);
+        }
+        .import-banner .banner-icon { font-size: 1.3rem; flex-shrink: 0; margin-top: 1px; }
+        .import-banner .banner-body { flex: 1; }
+        .import-banner .banner-title { font-weight: 700; margin-bottom: 4px; }
+        .import-banner .banner-detail { color: var(--text-muted); font-size: 13px; }
+        .import-banner a { color: var(--accent-blue); text-decoration: underline; }
+        .import-banner .banner-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0 4px;
+            flex-shrink: 0;
+        }
+
+        /* ── Spinner on import button ── */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+
+        /* ── Info callout about inactive rules ── */
+        .inactive-info {
+            background: var(--bg-overlay);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 18px;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            line-height: 1.5;
+        }
+        .inactive-info .info-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+
+        /* ── Responsive ── */
+        @media (max-width: 600px) {
+            .rules-grid { grid-template-columns: 1fr; }
+            .toolbar { flex-direction: column; align-items: stretch; }
+            .search-wrap { max-width: 100%; }
+            .action-bar { flex-wrap: wrap; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="nav-main">
+        <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
+        <div class="nav-links">
+            <a href="/" class="nav-link">🏠 Overview</a>
+            <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
+            <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
+            <a href="/history.html" class="nav-link">📊 Reports</a>
+            <a href="/control.html" class="nav-link">🎮 Controls</a>
+            <a href="/rules-library.html" class="nav-link">📚 Rules Library</a>
+            <a href="/settings.html" class="nav-link">⚙️ Settings</a>
+            <a href="/curtailment-discovery.html" class="nav-link" id="topologyNavLink" style="display: none;">🔬 WIP - Topology Discovery</a>
+            <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
+            <a href="/admin.html" class="nav-link" id="adminNavLink" style="display: none;">🛡️ Admin</a>
+        </div>
+        <div class="nav-right">
+            <div class="user-menu" data-user-menu>
+                <button class="user-avatar" type="button" data-user-avatar>
+                    <span data-user-initials>?</span>
+                </button>
+                <div class="user-dropdown" data-user-dropdown>
+                    <div class="user-dropdown-header">
+                        <div class="user-name" data-user-name>Guest</div>
+                        <div class="user-email" data-user-email>Not signed in</div>
+                    </div>
+                    <button class="user-dropdown-item" type="button" data-go-settings>⚙️ Settings</button>
+                    <button class="user-dropdown-item" type="button" data-contact-us>💬 Contact Us</button>
+                    <button class="user-dropdown-item danger" type="button" data-signout>🚪 Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Page header -->
+        <div class="page-header">
+            <h1>📚 Rules Library</h1>
+            <p>Ready-to-use automation recipes — browse by category, understand what each rule does, and import directly into your automation in one click. All rules are added as <strong>inactive</strong> so you stay in control.</p>
+        </div>
+
+        <!-- Import result banner -->
+        <div id="importBanner" class="import-banner">
+            <div class="banner-icon" id="bannerIcon"></div>
+            <div class="banner-body">
+                <div class="banner-title" id="bannerTitle"></div>
+                <div class="banner-detail" id="bannerDetail"></div>
+            </div>
+            <button class="banner-close" id="bannerClose" onclick="closeBanner()" aria-label="Dismiss">✕</button>
+        </div>
+
+        <!-- Inactive info note -->
+        <div class="inactive-info">
+            <div class="info-icon">💡</div>
+            <div>Imported rules are added to your automation as <strong>inactive</strong> — they will not trigger until you review and enable them in the <a href="/">Automation Panel</a>. You can customise any rule's thresholds after import, or <a href="/test.html">test them in Automation Lab</a> first.</div>
+        </div>
+
+        <!-- Toolbar: search + category filter -->
+        <div class="toolbar">
+            <div class="search-wrap">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="searchInput" class="search-input" placeholder="Search rules…" oninput="filterRules()" autocomplete="off">
+            </div>
+            <div class="category-pills" id="categoryPills">
+                <button class="pill active" data-cat="all" onclick="selectCategory('all', this)">All</button>
+                <button class="pill" data-cat="price"    onclick="selectCategory('price', this)">💰 Price Optimisation</button>
+                <button class="pill" data-cat="battery"  onclick="selectCategory('battery', this)">🔋 Battery Protection</button>
+                <button class="pill" data-cat="solar"    onclick="selectCategory('solar', this)">☀️ Solar Forecasting</button>
+                <button class="pill" data-cat="time"     onclick="selectCategory('time', this)">🕐 Time Scheduling</button>
+                <button class="pill" data-cat="seasonal" onclick="selectCategory('seasonal', this)">🌦️ Seasonal &amp; Weather</button>
+                <button class="pill" data-cat="ev"       onclick="selectCategory('ev', this)">🚗 EV-Friendly</button>
+            </div>
+        </div>
+
+        <!-- Stats row -->
+        <div class="stats-row">
+            <span class="count" id="visibleCount">0</span>&nbsp;rules shown
+        </div>
+
+        <!-- Rules grid -->
+        <div class="rules-grid" id="rulesGrid"></div>
+
+        <!-- Empty state -->
+        <div class="empty-state" id="emptyState" style="display:none;">
+            <div class="icon">🔍</div>
+            <p>No rules match your search. Try a different keyword or category.</p>
+        </div>
+    </div>
+
+    <!-- Sticky import action bar -->
+    <div class="action-bar" id="actionBar">
+        <div class="action-bar-count">
+            <span id="selectedCountLabel">0</span> rule(s) selected
+        </div>
+        <button class="btn-clear-sel" onclick="clearSelection()">Clear selection</button>
+        <button class="btn-import" id="importBtn" onclick="importSelected()">
+            <span id="importBtnText">Import to Automation →</span>
+        </button>
+    </div>
+
+    <script>
+    (() => {
+        // ── State ──────────────────────────────────────────────
+        let selectedIds   = new Set();
+        let existingRules = {}; // ruleId → true (already imported)
+        let activeCategory = 'all';
+
+        // ── Init ───────────────────────────────────────────────
+        AppShell.init({
+            pageName: 'rules-library',
+            onReady: async () => {
+                await loadExistingRules();
+                renderCards();
+            }
+        });
+
+        async function loadExistingRules() {
+            try {
+                const client = window.apiClient;
+                if (!client) return;
+                const res = await client.get('/api/automation/status');
+                if (res && res.errno === 0 && res.result && res.result.rules) {
+                    existingRules = res.result.rules; // keyed by ruleId
+                }
+            } catch (e) {
+                // silently continue — duplicates will just be flagged at import time
+            }
+        }
+
+        // ── Category filter ────────────────────────────────────
+        window.selectCategory = function(cat, el) {
+            activeCategory = cat;
+            document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+            el.classList.add('active');
+            filterRules();
+        };
+
+        // ── Search + filter ────────────────────────────────────
+        window.filterRules = function() {
+            const q = document.getElementById('searchInput').value.trim().toLowerCase();
+            const cards = document.querySelectorAll('.rule-card');
+            let visible = 0;
+            cards.forEach(card => {
+                const id  = card.dataset.id;
+                const tmpl = window.RULE_LIBRARY.find(r => r.id === id);
+                if (!tmpl) return;
+
+                const catMatch = activeCategory === 'all' || tmpl.category === activeCategory;
+                const qMatch   = !q
+                    || tmpl.name.toLowerCase().includes(q)
+                    || tmpl.description.toLowerCase().includes(q)
+                    || tmpl.whyUseIt.toLowerCase().includes(q)
+                    || tmpl.categoryLabel.toLowerCase().includes(q)
+                    || tmpl.conditionSummary.some(c => c.toLowerCase().includes(q));
+
+                const show = catMatch && qMatch;
+                card.style.display = show ? '' : 'none';
+                if (show) visible++;
+            });
+
+            document.getElementById('visibleCount').textContent = visible;
+            document.getElementById('emptyState').style.display = visible === 0 ? '' : 'none';
+        };
+
+        // ── Render cards ───────────────────────────────────────
+        function renderCards() {
+            const grid = document.getElementById('rulesGrid');
+            grid.innerHTML = '';
+
+            window.RULE_LIBRARY.forEach(tmpl => {
+                const alreadyImported = !!existingRules[slugify(tmpl.name)];
+                const card = document.createElement('div');
+                card.className = 'rule-card' + (alreadyImported ? ' already-imported' : '');
+                card.dataset.id = tmpl.id;
+                if (!alreadyImported) {
+                    card.onclick = () => toggleCard(tmpl.id, card);
+                }
+
+                const catClass  = 'badge-' + tmpl.category;
+                const diffClass = 'badge-' + tmpl.difficulty.toLowerCase();
+
+                const checkboxContent = alreadyImported
+                    ? '✓'
+                    : (selectedIds.has(tmpl.id) ? '✓' : '');
+
+                const existingBadge = alreadyImported
+                    ? '<div class="already-badge">✓ Already in your automation</div>'
+                    : '';
+
+                const actionLabel = formatActionLabel(tmpl.rule.action);
+
+                card.innerHTML = `
+                    <div class="card-checkbox" id="chk-${tmpl.id}">${checkboxContent}</div>
+                    <div class="card-top">
+                        <div>
+                            <div class="card-badges">
+                                <span class="badge ${catClass}">${tmpl.categoryLabel}</span>
+                                <span class="badge ${diffClass}">${tmpl.difficulty}</span>
+                            </div>
+                            <div class="card-name">${escHtml(tmpl.name)}</div>
+                        </div>
+                    </div>
+                    ${existingBadge}
+                    <div class="card-description">${escHtml(tmpl.description)}</div>
+                    <div class="card-why">
+                        <strong>Great for</strong>
+                        ${escHtml(tmpl.whyUseIt)}
+                    </div>
+                    <div class="card-conditions">
+                        ${tmpl.conditionSummary.map(c => `<span class="condition-chip">${escHtml(c)}</span>`).join('')}
+                    </div>
+                    <div class="card-action">
+                        Action: <span class="action-mode">${escHtml(actionLabel)}</span>
+                        for ${tmpl.rule.action.durationMinutes} min
+                        · Priority ${tmpl.rule.priority}
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+
+            filterRules();
+        }
+
+        function toggleCard(id, card) {
+            if (selectedIds.has(id)) {
+                selectedIds.delete(id);
+                card.classList.remove('selected');
+                document.getElementById('chk-' + id).textContent = '';
+            } else {
+                selectedIds.add(id);
+                card.classList.add('selected');
+                document.getElementById('chk-' + id).textContent = '✓';
+            }
+            updateActionBar();
+        }
+
+        window.clearSelection = function() {
+            selectedIds.clear();
+            document.querySelectorAll('.rule-card.selected').forEach(c => {
+                c.classList.remove('selected');
+                const chk = c.querySelector('.card-checkbox');
+                if (chk) chk.textContent = '';
+            });
+            updateActionBar();
+        };
+
+        function updateActionBar() {
+            const bar = document.getElementById('actionBar');
+            const count = selectedIds.size;
+            document.getElementById('selectedCountLabel').textContent = count;
+            if (count > 0) {
+                bar.classList.add('visible');
+            } else {
+                bar.classList.remove('visible');
+            }
+        }
+
+        // ── Import ─────────────────────────────────────────────
+        window.importSelected = async function() {
+            if (selectedIds.size === 0) return;
+
+            const client = window.apiClient;
+            if (!client) {
+                showImportResult([], [], [{ name: 'Import', reason: 'Not authenticated. Please refresh and try again.' }]);
+                return;
+            }
+
+            const btn      = document.getElementById('importBtn');
+            const btnText  = document.getElementById('importBtnText');
+            btn.disabled   = true;
+            btnText.innerHTML = '<div class="spinner"></div> Importing…';
+
+            // Re-fetch live existing rules to catch any changes since page load
+            await loadExistingRules();
+
+            const toImport  = [];
+            const skipped   = [];
+
+            selectedIds.forEach(id => {
+                const tmpl = window.RULE_LIBRARY.find(r => r.id === id);
+                if (!tmpl) return;
+                const ruleId = slugify(tmpl.name);
+                if (existingRules[ruleId]) {
+                    skipped.push(tmpl.name);
+                } else {
+                    toImport.push(tmpl);
+                }
+            });
+
+            // ── Priority clash handling ──────────────────────────
+            // Collect all priorities already used by the user's existing rules
+            const usedPriorities = new Set();
+            Object.values(existingRules).forEach(r => {
+                if (r.priority != null) usedPriorities.add(Number(r.priority));
+            });
+
+            /** Find next available priority starting from `preferred`.
+             *  Tries preferred first, then sweeps 1-10. Falls back to preferred
+             *  if every slot is taken (duplicates are harmless). */
+            function pickAvailablePriority(preferred, alreadyClaimed) {
+                if (!alreadyClaimed.has(preferred) && !usedPriorities.has(preferred)) return preferred;
+                for (let p = 1; p <= 10; p++) {
+                    if (!usedPriorities.has(p) && !alreadyClaimed.has(p)) return p;
+                }
+                return preferred; // all 10 in use — duplicate is fine
+            }
+
+            // Assign non-clashing priorities before import
+            const claimedByBatch = new Set(); // tracks priorities allocated within this batch
+            const priorityAdjusted = [];
+            for (const tmpl of toImport) {
+                const wanted = tmpl.rule.priority;
+                const actual = pickAvailablePriority(wanted, claimedByBatch);
+                claimedByBatch.add(actual);
+                tmpl._importPriority = actual;
+                if (actual !== wanted) {
+                    priorityAdjusted.push(`${tmpl.name}: ${wanted} → ${actual}`);
+                }
+            }
+
+            const succeeded = [];
+            const failed    = [];
+
+            for (const tmpl of toImport) {
+                try {
+                    const body = {
+                        name:            tmpl.name,
+                        enabled:         false,
+                        priority:        tmpl._importPriority,
+                        cooldownMinutes: tmpl.rule.cooldownMinutes,
+                        conditions:      tmpl.rule.conditions,
+                        action:          tmpl.rule.action
+                    };
+                    const res = await client.post('/api/automation/rule/create', body);
+                    if (res && res.errno === 0) {
+                        succeeded.push(tmpl.name);
+                    } else {
+                        failed.push({ name: tmpl.name, reason: res?.error || 'Unknown error' });
+                    }
+                } catch (e) {
+                    failed.push({ name: tmpl.name, reason: e.message || 'Request failed' });
+                }
+            }
+
+            btn.disabled  = false;
+            btnText.textContent = 'Import to Automation →';
+
+            // Refresh existing rules to update card states
+            await loadExistingRules();
+            renderCards();
+            clearSelection();
+            showImportResult(succeeded, skipped, failed, priorityAdjusted);
+        };
+
+        function showImportResult(succeeded, skipped, failed, priorityAdjusted) {
+            const banner = document.getElementById('importBanner');
+            const icon   = document.getElementById('bannerIcon');
+            const title  = document.getElementById('bannerTitle');
+            const detail = document.getElementById('bannerDetail');
+
+            let type = 'success';
+            let titleText = '';
+            let detailLines = [];
+
+            if (succeeded.length > 0) {
+                titleText = `${succeeded.length} rule${succeeded.length > 1 ? 's' : ''} added to your automation as inactive.`;
+                detailLines.push(`<a href="/">View in Automation Panel →</a> to review and enable them, or <a href="/test.html">try them in Automation Lab</a> first.`);
+            }
+            if (priorityAdjusted && priorityAdjusted.length > 0) {
+                detailLines.push(`⚡ Priority adjusted to avoid clashes: <em>${priorityAdjusted.join('; ')}</em>.`);
+            }
+            if (skipped.length > 0) {
+                type = succeeded.length > 0 ? 'warning' : 'warning';
+                if (!titleText) titleText = 'No new rules were imported.';
+                detailLines.push(`Skipped ${skipped.length} rule${skipped.length > 1 ? 's' : ''} already in your automation: <em>${skipped.join(', ')}</em>.`);
+            }
+            if (failed.length > 0) {
+                type = 'error';
+                if (!titleText) titleText = 'Some imports failed.';
+                detailLines.push(`Failed: ${failed.map(f => `${f.name} (${f.reason})`).join(', ')}.`);
+            }
+
+            icon.textContent = type === 'success' ? '✅' : type === 'warning' ? '⚠️' : '❌';
+            title.textContent = titleText;
+            detail.innerHTML  = detailLines.join(' ');
+
+            banner.className = `import-banner show ${type}`;
+            banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        window.closeBanner = function() {
+            document.getElementById('importBanner').className = 'import-banner';
+        };
+
+        // ── Helpers ────────────────────────────────────────────
+        function slugify(name) {
+            return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+        }
+
+        function escHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function formatActionLabel(action) {
+            const modes = {
+                SelfUse:       'Self Use',
+                ForceDischarge: 'Force Discharge',
+                ForceCharge:    'Force Charge',
+                Backup:         'Backup'
+            };
+            return modes[action.workMode] || action.workMode;
+        }
+
+    })();
+    </script>
+</body>
+</html>

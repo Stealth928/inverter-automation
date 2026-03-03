@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'foxess-automation-v21';
+const CACHE_VERSION = 'socrates-v22';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const STATIC_ASSETS = [
@@ -21,10 +21,10 @@ const STATIC_ASSETS = [
   '/js/app-shell.js?v=9',
   '/favicon.ico',
   '/manifest.webmanifest',
-  '/icons/icon-192-v2.png',
-  '/icons/icon-512-v2.png',
-  '/icons/icon-maskable-512-v2.png',
-  '/icons/apple-touch-icon-v2.png'
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon-maskable-512.png',
+  '/icons/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (event) => {

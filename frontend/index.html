@@ -26,10 +26,10 @@
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
     <script src="js/app-shell.js?v=9"></script>
-    <script src="js/tour.js?v=8"></script>
+    <script src="js/tour.js?v=9"></script>
     <script src="js/theme-init.js"></script>
     <link rel="stylesheet" href="css/shared-styles.css?v=7" />
-    <link rel="stylesheet" href="css/tour.css" />
+    <link rel="stylesheet" href="css/tour.css?v=2" />
     <style>
         
         /* Header */
@@ -1764,6 +1764,7 @@
             <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
             <a href="/history.html" class="nav-link">📊 Reports</a>
             <a href="/control.html" class="nav-link">🎮 Controls</a>
+            <a href="/rules-library.html" class="nav-link">📚 Rules Library</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
             <a href="/curtailment-discovery.html" class="nav-link" id="topologyNavLink" style="display: none;">🔬 WIP - Topology Discovery</a>
             <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
@@ -1823,7 +1824,7 @@
                         <div class="card-title"><span class="icon">⚡</span> Inverter Status</div>
                             <div style="display:flex;align-items:center;gap:8px;flex-direction:column;align-items:flex-end">
                             <div style="display:flex;gap:8px;align-items:center">
-                                <span class="card-badge">Live</span>
+                                <span class="card-badge" id="inverterSourceBadge">Live</span>
                                 <div id="inverterLastUpdate" style="font-size:11px;color:var(--text-secondary);">—</div>
                                 <button class="btn btn-icon" onclick="callAPI('/api/inverter/real-time?forceRefresh=true', 'Real-time Data')" title="Refresh inverter data (bypasses cache)">🔄</button>
                             </div>
@@ -1857,7 +1858,7 @@
                     <div class="card-header">
                         <div class="card-title"><span class="icon">💰</span> Electricity Prices</div>
                         <div style="display:flex;align-items:center;gap:8px">
-                            <span class="card-badge">Amber</span>
+                            <span class="card-badge" id="amberSourceBadge">Amber</span>
                             <div id="amberLastUpdate" style="font-size:11px;color:var(--text-secondary);">—</div>
                             <button class="btn btn-icon" onclick="getAmberCurrent(true)" title="Force refresh from API (bypasses cache)">🔄</button>
                         </div>
@@ -2725,27 +2726,37 @@
             const startTime = Date.now();
             
                 try {
-                    // Ensure a global in-flight map exists for deduplication
-                    if (!window._inflightRequests) window._inflightRequests = {};
-                    const inflightKey = `GET ${url}`;
-                    let fetchPromise = window._inflightRequests[inflightKey];
-                    if (!fetchPromise) {
-                        fetchPromise = (async () => {
-                            try {
-                                const response = await authenticatedFetch(url);
-                                return await response.json();
-                            } finally {
-                                // Clear the in-flight entry when finished (success or error)
-                                try { delete window._inflightRequests[inflightKey]; } catch (e) {}
-                            }
-                        })();
-                        window._inflightRequests[inflightKey] = fetchPromise;
+                    const useMockInverterRealtime = isDashboardLocalMockEnabled() &&
+                        (endpoint.includes('/api/inverter/real-time') || name === 'Real-time Data');
+
+                    let data;
+                    if (useMockInverterRealtime) {
+                        // Short delay keeps UI behavior consistent with normal loading states.
+                        await new Promise((resolve) => setTimeout(resolve, 80));
+                        data = getMockInverterRealtimeData();
+                    } else {
+                        // Ensure a global in-flight map exists for deduplication
+                        if (!window._inflightRequests) window._inflightRequests = {};
+                        const inflightKey = `GET ${url}`;
+                        let fetchPromise = window._inflightRequests[inflightKey];
+                        if (!fetchPromise) {
+                            fetchPromise = (async () => {
+                                try {
+                                    const response = await authenticatedFetch(url);
+                                    return await response.json();
+                                } finally {
+                                    // Clear the in-flight entry when finished (success or error)
+                                    try { delete window._inflightRequests[inflightKey]; } catch (e) {}
+                                }
+                            })();
+                            window._inflightRequests[inflightKey] = fetchPromise;
+                        }
+                        data = await fetchPromise;
                     }
-                    const data = await fetchPromise;
                 const endTime = Date.now();
                 
                 statusBar.style.display = 'flex';
-                statusBar.querySelector('.endpoint').textContent = `${name} - ${endpoint}`;
+                statusBar.querySelector('.endpoint').textContent = `${name}${useMockInverterRealtime ? ' (mock)' : ''} - ${endpoint}`;
                 statusBar.querySelector('.time').textContent = `${endTime - startTime}ms`;
                 
                 resultEl.className = (data.errno === 0 || data.result) ? 'success' : 'error';
@@ -4294,6 +4305,16 @@
             const select = document.getElementById('amberSiteId');
             const card = document.getElementById('amberCard');
             select.innerHTML = '<option value="">Loading...</option>';
+
+            if (isDashboardLocalMockEnabled()) {
+                const sites = getMockAmberSites();
+                amberSites = sites;
+                select.innerHTML = sites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
+                if (select.options.length > 0) select.selectedIndex = 0;
+                card.innerHTML = '<div style="color:var(--color-success)">Mock sites loaded (local mode)</div>';
+                setTimeout(() => getAmberCurrent(forceRefresh), 80);
+                return;
+            }
             
             try {
                 let url = '/api/amber/sites';
@@ -4335,7 +4356,17 @@
         }
 
         async function getAmberCurrent(force = false) {
-            const siteId = document.getElementById('amberSiteId').value;
+            const select = document.getElementById('amberSiteId');
+            let siteId = select.value;
+            if (!siteId && isDashboardLocalMockEnabled()) {
+                const mockSites = getMockAmberSites();
+                if (mockSites.length > 0) {
+                    amberSites = mockSites;
+                    select.innerHTML = mockSites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
+                    siteId = mockSites[0].id;
+                    select.value = siteId;
+                }
+            }
             if (!siteId) { document.getElementById('amberCard').innerHTML = '<div style="color:var(--color-warning)">Select a site</div>'; return; }
             
             // Check if cached data is still fresh (TTL from backend config)
@@ -4343,7 +4374,8 @@
             const age = Date.now() - (cacheState.amberTime || 0);
             
             // Force refresh if requested (either explicit parameter or page reload bypass)
-            const shouldBypassCache = force || isPageReload;
+            const mockMode = isDashboardLocalMockEnabled();
+            const shouldBypassCache = force || isPageReload || mockMode;
             
             if (!shouldBypassCache && cacheState.amberTime && age < CONFIG.cache.amber) {
                 // Load cached full prices array and render
@@ -4362,13 +4394,18 @@
             
             try {
                 const next = Number(document.getElementById('amberNext')?.value) || 12;
-                let url = `/api/amber/prices/current?siteId=${siteId}&next=${next}`;
-                // Add forceRefresh if force flag is set
-                if (force) {
-                    url += '&forceRefresh=true';
+                let data;
+                if (mockMode) {
+                    data = { errno: 0, result: getMockAmberPrices(next), mock: true };
+                } else {
+                    let url = `/api/amber/prices/current?siteId=${siteId}&next=${next}`;
+                    // Add forceRefresh if force flag is set
+                    if (force) {
+                        url += '&forceRefresh=true';
+                    }
+                    const resp = await authenticatedFetch(url);
+                    data = await resp.json();
                 }
-                const resp = await authenticatedFetch(url);
-                const data = await resp.json();
                 
                 // Handle both wrapped {errno, result} and unwrapped array formats
                 let prices = [];
@@ -5880,6 +5917,216 @@
         // Legacy alias for backwards compatibility
         const REFRESH = CONFIG.refresh;
 
+        // ==================== LOCAL MOCK MODE ====================
+        // Supports local dashboard testing without real FoxESS/Amber credentials.
+        // Enable with:
+        //   - URL param: ?mockDashboard=1
+        //   - localStorage: dashboardLocalMockMode=1
+        const LOCAL_MOCK_STORAGE_KEY = 'dashboardLocalMockMode';
+        let autoLocalMockMode = false;
+
+        function isLocalHostEnv() {
+            const host = (window.location && window.location.hostname) || '';
+            return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+        }
+
+        function applyMockPreferenceFromQuery() {
+            try {
+                const params = new URLSearchParams(window.location.search || '');
+                const raw = String(params.get('mockDashboard') || '').toLowerCase();
+                if (raw === '1' || raw === 'true' || raw === 'on') {
+                    localStorage.setItem(LOCAL_MOCK_STORAGE_KEY, '1');
+                } else if (raw === '0' || raw === 'false' || raw === 'off') {
+                    localStorage.setItem(LOCAL_MOCK_STORAGE_KEY, '0');
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        function getStoredLocalMockPreference() {
+            try {
+                const raw = localStorage.getItem(LOCAL_MOCK_STORAGE_KEY);
+                if (raw === '1') return 'on';
+                if (raw === '0') return 'off';
+                return 'auto';
+            } catch (e) {
+                return 'auto';
+            }
+        }
+
+        function isDashboardLocalMockEnabled() {
+            if (!isLocalHostEnv()) return false;
+            const pref = getStoredLocalMockPreference();
+            if (pref === 'on') return true;
+            if (pref === 'off') return false;
+            return autoLocalMockMode;
+        }
+
+        function updateDataSourceBadges() {
+            const mock = isDashboardLocalMockEnabled();
+            const inverterBadge = document.getElementById('inverterSourceBadge');
+            const amberBadge = document.getElementById('amberSourceBadge');
+
+            if (inverterBadge) {
+                inverterBadge.textContent = mock ? 'Mock' : 'Live';
+                inverterBadge.style.background = mock ? 'color-mix(in srgb, var(--color-warning) 22%, transparent)' : '';
+                inverterBadge.style.color = mock ? 'var(--color-warning)' : '';
+            }
+            if (amberBadge) {
+                amberBadge.textContent = mock ? 'Mock' : 'Amber';
+                amberBadge.style.background = mock ? 'color-mix(in srgb, var(--color-warning) 22%, transparent)' : '';
+                amberBadge.style.color = mock ? 'var(--color-warning)' : '';
+            }
+        }
+
+        function maybeEnableAutoLocalMockFromConfig(configResult) {
+            if (!isLocalHostEnv() || !configResult) {
+                autoLocalMockMode = false;
+                updateDataSourceBadges();
+                return;
+            }
+
+            const deviceSn = String(configResult.deviceSn || '').toUpperCase();
+            const foxessToken = String(configResult.foxessToken || '').toUpperCase();
+            const amberApiKey = String(configResult.amberApiKey || '').toUpperCase();
+
+            autoLocalMockMode =
+                deviceSn.startsWith('TEST-') ||
+                foxessToken.startsWith('FAKE') ||
+                amberApiKey.startsWith('FAKE');
+
+            updateDataSourceBadges();
+            if (autoLocalMockMode) {
+                console.info('[LocalMock] Auto-enabled using local test credentials.');
+            }
+        }
+
+        function getMockAmberSites() {
+            return [{
+                id: 'mock-site-local',
+                nmi: 'MOCK-NMI-0001',
+                network: 'Local Grid'
+            }];
+        }
+
+        function getMockAmberPrices(next = 12) {
+            const count = Math.max(12, Math.min(500, Number(next) || 12));
+            const now = new Date();
+            const base = new Date(now);
+            base.setSeconds(0, 0);
+            base.setMinutes(base.getMinutes() < 30 ? 0 : 30);
+
+            function renewDescriptor(renewables) {
+                if (renewables >= 70) return 'best';
+                if (renewables >= 55) return 'great';
+                if (renewables >= 40) return 'ok';
+                if (renewables >= 25) return 'notGreat';
+                return 'worst';
+            }
+
+            const rows = [];
+            for (let i = 0; i < count; i++) {
+                const start = new Date(base.getTime() + (i * 30 * 60 * 1000));
+                const phase = i / 3;
+                const buy = Number(Math.max(6, 18 + Math.sin(phase) * 7 + (i % 8 === 0 ? 4 : 0)).toFixed(2));
+                // Amber feed-in values are negative when you are paid.
+                const feed = Number((-Math.max(2, 9 + Math.cos(phase) * 4)).toFixed(2));
+                const renewables = Math.max(15, Math.min(95, Math.round(62 + Math.sin(i / 4) * 22)));
+                const type = i === 0 ? 'CurrentInterval' : 'ForecastInterval';
+                const spikeStatus = buy >= 28 ? 'high' : 'none';
+
+                const common = {
+                    startTime: start.toISOString(),
+                    nemTime: start.toISOString(),
+                    type,
+                    date: start.toISOString().slice(0, 10)
+                };
+
+                rows.push({
+                    ...common,
+                    channelType: 'general',
+                    perKwh: buy,
+                    spotPerKwh: buy,
+                    renewables,
+                    descriptor: renewDescriptor(renewables),
+                    spikeStatus,
+                    advancedPrice: type === 'ForecastInterval'
+                        ? {
+                            low: Number((buy - 2.5).toFixed(2)),
+                            predicted: buy,
+                            high: Number((buy + 2.5).toFixed(2))
+                        }
+                        : undefined
+                });
+
+                rows.push({
+                    ...common,
+                    channelType: 'feedIn',
+                    perKwh: feed,
+                    spotPerKwh: feed,
+                    renewables,
+                    descriptor: renewDescriptor(renewables),
+                    spikeStatus: 'none'
+                });
+            }
+
+            return rows;
+        }
+
+        function getMockInverterRealtimeData() {
+            const now = new Date();
+            const t = (now.getMinutes() + (now.getSeconds() / 60)) / 60;
+
+            const solar = Math.max(0.2, 3.6 + Math.sin(t * Math.PI * 2) * 1.3);
+            const houseLoad = Math.max(0.5, 2.1 + Math.cos(t * Math.PI * 2) * 0.45);
+            const batteryDischarge = Math.max(0, houseLoad - solar + 0.35);
+            const batteryCharge = Math.max(0, solar - houseLoad - 0.45);
+            const feedIn = Math.max(0, solar - houseLoad - batteryCharge);
+            const gridImport = Math.max(0, houseLoad - solar - batteryDischarge + batteryCharge);
+            const soc = Math.max(22, Math.min(92, Math.round(64 + Math.sin((t + 0.15) * Math.PI * 2) * 8)));
+
+            const datas = [
+                { variable: 'pvPower', value: Number(solar.toFixed(2)), unit: 'kW' },
+                { variable: 'loadsPower', value: Number(houseLoad.toFixed(2)), unit: 'kW' },
+                { variable: 'feedinPower', value: Number(feedIn.toFixed(2)), unit: 'kW' },
+                { variable: 'gridConsumptionPower', value: Number(gridImport.toFixed(2)), unit: 'kW' },
+                { variable: 'batChargePower', value: Number(batteryCharge.toFixed(2)), unit: 'kW' },
+                { variable: 'batDischargePower', value: Number(batteryDischarge.toFixed(2)), unit: 'kW' },
+                { variable: 'SoC', value: soc, unit: '%' },
+                { variable: 'batTemperature', value: Number((28 + Math.sin(t * Math.PI * 2) * 1.8).toFixed(1)), unit: '°C' },
+                { variable: 'ambientTemperation', value: Number((24 + Math.cos(t * Math.PI * 2) * 2.2).toFixed(1)), unit: '°C' },
+                { variable: 'invTemperation', value: Number((36 + Math.sin((t + 0.3) * Math.PI * 2) * 2.6).toFixed(1)), unit: '°C' }
+            ];
+
+            return {
+                errno: 0,
+                result: [{
+                    time: now.toISOString(),
+                    datas
+                }],
+                mock: true
+            };
+        }
+
+        // Expose simple controls for local dev:
+        //   window.setDashboardMockMode(true|false)
+        //   window.isDashboardMockMode()
+        window.setDashboardMockMode = function setDashboardMockMode(enabled) {
+            try {
+                if (enabled === null || typeof enabled === 'undefined') {
+                    localStorage.removeItem(LOCAL_MOCK_STORAGE_KEY);
+                } else {
+                    localStorage.setItem(LOCAL_MOCK_STORAGE_KEY, enabled ? '1' : '0');
+                }
+            } catch (e) { /* ignore */ }
+            window.location.reload();
+        };
+        window.isDashboardMockMode = function isDashboardMockMode() {
+            return isDashboardLocalMockEnabled();
+        };
+
+        applyMockPreferenceFromQuery();
+        updateDataSourceBadges();
+
         const DASHBOARD_CARD_VISIBILITY_DEFAULTS = {
             inverter: true,
             prices: true,
@@ -5889,29 +6136,42 @@
         };
         let dashboardCardVisibilityState = { ...DASHBOARD_CARD_VISIBILITY_DEFAULTS };
 
-        function getDashboardCardVisibilityStorageKey() {
+        function getDashboardVisibilityUserId() {
             try {
-                const uid = window.AppShell && typeof window.AppShell.getUser === 'function'
-                    ? window.AppShell.getUser()?.uid
-                    : null;
-                return `dashboardCardVisibility:${uid || 'guest'}`;
+                if (window.AppShell && typeof window.AppShell.getUser === 'function') {
+                    return window.AppShell.getUser()?.uid || null;
+                }
             } catch (e) {
-                return 'dashboardCardVisibility:guest';
+                return null;
+            }
+            return null;
+        }
+
+        function getDashboardCardVisibilityStorageKey(uid) {
+            const resolvedUid = uid || getDashboardVisibilityUserId();
+            return `dashboardCardVisibility:${resolvedUid || 'guest'}`;
+        }
+
+        function ensureDashboardCardVisibilityDefaultsForUser(uid) {
+            if (!uid) return;
+            try {
+                const storageKey = getDashboardCardVisibilityStorageKey(uid);
+                const existing = localStorage.getItem(storageKey);
+                if (!existing) {
+                    localStorage.setItem(storageKey, JSON.stringify(DASHBOARD_CARD_VISIBILITY_DEFAULTS));
+                }
+            } catch (e) {
+                // ignore storage failures
             }
         }
 
         function loadDashboardCardVisibilityPreferences() {
             dashboardCardVisibilityState = { ...DASHBOARD_CARD_VISIBILITY_DEFAULTS };
             try {
-                const storageKey = getDashboardCardVisibilityStorageKey();
+                const uid = getDashboardVisibilityUserId();
+                if (uid) ensureDashboardCardVisibilityDefaultsForUser(uid);
+                const storageKey = getDashboardCardVisibilityStorageKey(uid);
                 let raw = localStorage.getItem(storageKey);
-                if (!raw && storageKey !== 'dashboardCardVisibility:guest') {
-                    const guestRaw = localStorage.getItem('dashboardCardVisibility:guest');
-                    if (guestRaw) {
-                        raw = guestRaw;
-                        try { localStorage.setItem(storageKey, guestRaw); } catch (copyErr) {}
-                    }
-                }
                 if (!raw) return;
                 const parsed = JSON.parse(raw);
                 if (!parsed || typeof parsed !== 'object') return;
@@ -5928,12 +6188,13 @@
         function saveDashboardCardVisibilityPreferences() {
             try {
                 const payload = JSON.stringify(dashboardCardVisibilityState);
-                const storageKey = getDashboardCardVisibilityStorageKey();
+                const uid = getDashboardVisibilityUserId();
+                const storageKey = getDashboardCardVisibilityStorageKey(uid);
                 localStorage.setItem(
                     storageKey,
                     payload
                 );
-                if (storageKey !== 'dashboardCardVisibility:guest') {
+                if (!uid) {
                     localStorage.setItem('dashboardCardVisibility:guest', payload);
                 }
             } catch (e) {
@@ -6009,6 +6270,8 @@
         }
 
         function refreshDashboardCardVisibilityPreferencesForCurrentUser() {
+            const uid = getDashboardVisibilityUserId();
+            if (uid) ensureDashboardCardVisibilityDefaultsForUser(uid);
             initDashboardCardVisibilityPreferences();
         }
 
@@ -6773,6 +7036,7 @@
         // This function is called ONLY after user is authenticated
         // It loads all data that requires Firebase auth tokens
         async function initializePageData() {
+            updateDataSourceBadges();
             
             // Declare cfg at function scope so it's accessible to all steps
             let cfg = null;
@@ -6782,6 +7046,7 @@
                 const cfgResp = await authenticatedFetch('/api/config');
                 cfg = await cfgResp.json();
                 if (cfg.errno === 0 && cfg.result) {
+                    maybeEnableAutoLocalMockFromConfig(cfg.result);
                     // Update USER_TZ from backend-provided config (user-specific or server default)
                     try {
                         USER_TZ = cfg.result.timezone || (cfg.result.config && cfg.result.config.automation && cfg.result.config.automation.timeZone) || USER_TZ;
@@ -7196,7 +7461,8 @@
                     <div style="padding:20px;background:var(--bg-secondary);border-radius:8px;text-align:center;margin-bottom:8px">
                         <div style="font-size:32px;margin-bottom:12px">📭</div>
                         <div style="font-size:14px;color:var(--text-secondary);margin-bottom:8px">No automation rules yet</div>
-                        <div style="font-size:12px;color:var(--text-muted)">Click the button below to create your first rule</div>
+                        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Click the button below to create your first rule</div>
+                        <a href="/rules-library.html" style="display:inline-flex;align-items:center;gap:6px;background:var(--bg-overlay);border:1px solid var(--border);border-radius:8px;padding:8px 14px;color:var(--accent-blue);font-size:12px;font-weight:600;text-decoration:none">📚 Or browse the Rules Library →</a>
                     </div>
                 `;
             }

@@ -28,8 +28,8 @@
       page: '/index.html',
       selector: null,
       position: 'center',
-      title: 'Welcome to FoxESS Automation 👋',
-      body: 'This 2-minute tour covers every feature of the app — live prices, weather, automation rules, manual controls, savings tracking and more. You can skip or relaunch it anytime from the Help menu.'
+      title: 'Welcome to SoCrates 👋',
+      body: 'This 2-minute tour covers a lot of what the app can do — live prices, weather, automation rules, manual controls, savings tracking and more. You can skip or relaunch it anytime from the Help menu.'
     },
 
     /* 1 — Live prices */
@@ -65,7 +65,7 @@
       selector: '#backendAutomationStatus',
       position: 'right',
       title: '🤖 Automation Engine',
-      body: 'Use the Master toggle to enable or disable automation. When on, the engine evaluates your rules every 60 seconds and applies the first one whose conditions are met.',
+      body: 'Use the Master toggle to enable or disable automation. By default, the engine evaluates your rules every 60 seconds (configurable in Settings) and applies the first one whose conditions are met.',
       beforeShow: function () {
         /* Expand the automation side-panel before highlighting its contents */
         try {
@@ -82,16 +82,26 @@
       selector: '#backendAutomationStatus',
       position: 'right',
       title: '📋 Automation Rules',
-      body: 'Rules are sorted by priority (1 = highest). Each rule has conditions (price, SoC, time, weather) and an action (ForceCharge, Discharge, SelfUse, Backup). Only the first matching rule fires per cycle.'
+      body: 'Rules are sorted by priority (1 = highest). Each rule can combine price, SoC, time and weather conditions with advanced actions (ForceCharge, Discharge, SelfUse, Backup) plus optional cool-downs and schedules. Only the first matching rule fires per cycle.',
+      tooltipClass: 'tour-tooltip--rules-hero'
     },
 
     /* 6 — Quick control */
     {
       page: '/index.html',
-      selector: '#quickControlForm',
+      selector: '[data-dashboard-card="quickControls"]',
       position: 'top',
       title: '🕹️ Quick Manual Control',
-      body: 'Override the inverter for a fixed time without disabling automation. Set a mode (charge/discharge), power level (0–10 kW) and duration (2–360 min). The inverter restores automatically when the timer expires.'
+      body: 'Override the inverter for a fixed time without disabling automation. Set a mode (charge/discharge), power level (0–10 kW) and duration (2–360 min). The inverter restores automatically when the timer expires.',
+      beforeShow: function () {
+        try {
+          var quickCard = document.querySelector('[data-dashboard-card="quickControls"]');
+          if (quickCard && quickCard.classList.contains('is-hidden-preference')) {
+            quickCard.classList.remove('is-hidden-preference');
+            quickCard.style.display = '';
+          }
+        } catch (e) { /* ignore */ }
+      }
     },
 
     /* 7 — Dashboard customisation */
@@ -237,7 +247,7 @@
       selector: null,
       position: 'center',
       title: "You're all set! 🎉",
-      body: 'You\'ve seen everything the app can do. Explore the docs for deeper dives, and use the Help menu (your avatar → ❓ Take a Tour) to relaunch this tour at any time.'
+      body: 'You\'ve seen a lot of what the app can do. Explore the docs for deeper dives, and use the Help menu (your avatar → ❓ Take a Tour) to relaunch this tour at any time.'
     }
   ];
 
@@ -438,6 +448,9 @@
 
     _tooltip = document.createElement('div');
     _tooltip.className = 'tour-tooltip';
+    if (step.tooltipClass) {
+      _tooltip.classList.add(step.tooltipClass);
+    }
     _tooltip.innerHTML =
       '<div class="tour-step-badge">Step ' + vIdx + ' of ' + total + '</div>' +
       '<div class="tour-progress">' + dots + '</div>' +

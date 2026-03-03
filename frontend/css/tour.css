@@ -229,6 +229,32 @@
   margin-left: 0;
 }
 
+/* ---------- Hero variant for Automation Rules step ---------- */
+.tour-tooltip--rules-hero {
+  border-color: rgba(240, 136, 62, 0.55);
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(240, 136, 62, 0.20) 0%, rgba(240, 136, 62, 0) 55%),
+    linear-gradient(165deg, #161b22 0%, #101826 100%);
+  box-shadow:
+    0 10px 34px rgba(0, 0, 0, 0.62),
+    0 0 0 1px rgba(240, 136, 62, 0.2) inset;
+}
+
+.tour-tooltip--rules-hero .tour-title {
+  color: #ffe2bf;
+  text-shadow: 0 1px 10px rgba(240, 136, 62, 0.2);
+}
+
+.tour-tooltip--rules-hero .tour-step-badge {
+  color: #ffd099;
+  border-color: rgba(240, 136, 62, 0.55);
+  background: rgba(240, 136, 62, 0.16);
+}
+
+.tour-tooltip--rules-hero .tour-dot.active {
+  background: #f0883e;
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 480px) {
   .tour-tooltip {

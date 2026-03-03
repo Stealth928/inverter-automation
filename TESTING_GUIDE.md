@@ -52,7 +52,7 @@ The coverage report is generated at `functions/coverage/index.html`.
 
 Some auth tests require the Firebase emulator:
 ```bash
-firebase emulators:start --only auth,firestore,functions
+npm run emu:start
 ```
 
 Run just the auth suite:

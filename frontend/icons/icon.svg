@@ -1,4 +1,4 @@
-<!-- V2: Profile + Arc Ring — Side profile inside a bold charge arc, no text -->
+<!-- V3: Transparent background — profile + arc, no opaque fill -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="arc2" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -6,46 +6,45 @@
       <stop offset="100%" style="stop-color:#38bdf8"/>
     </linearGradient>
     <filter id="g2"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    <clipPath id="c2"><circle cx="256" cy="256" r="230"/></clipPath>
+    <clipPath id="c2"><circle cx="256" cy="256" r="245"/></clipPath>
   </defs>
-  <!-- Background -->
-  <circle cx="256" cy="256" r="256" fill="#0a0e1a"/>
-  <!-- Charge arc — 88% fill, thick, glowing -->
-  <!-- r=235: circumference ≈ 1476. 88% = 1299 -->
-  <circle cx="256" cy="256" r="235" fill="none" stroke="#ffffff06" stroke-width="20"/>
-  <circle cx="256" cy="256" r="235" fill="none" stroke="url(#arc2)"
-          stroke-width="20" stroke-linecap="round"
-          stroke-dasharray="1299 177"
-          stroke-dashoffset="370" filter="url(#g2)"/>
+  <!-- No background fill — transparent -->
 
-  <!-- Bust clipped to inner circle -->
+  <!-- Charge arc — 88% fill, thick, glowing, enlarged -->
+  <circle cx="256" cy="256" r="248" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="22"/>
+  <circle cx="256" cy="256" r="248" fill="none" stroke="url(#arc2)"
+          stroke-width="22" stroke-linecap="round"
+          stroke-dasharray="1373 187"
+          stroke-dashoffset="390" filter="url(#g2)"/>
+
+  <!-- Bust clipped to inner circle — scaled up ~8% -->
   <g clip-path="url(#c2)">
-    <!-- Profile facing right -->
-    <path d="M 295 64
-             C 325 68, 350 95, 354 130
-             C 358 162, 342 194, 330 220
-             C 318 244, 318 264, 320 284
-             C 322 305, 330 318, 326 340
-             C 320 364, 298 376, 274 382
-             C 258 386, 240 386, 240 400
-             L 240 510 L 150 510 L 150 400
-             C 150 386, 168 382, 188 378
-             C 210 372, 228 358, 232 336
-             C 236 314, 224 296, 222 274
-             C 220 254, 226 234, 222 212
-             C 216 184, 198 160, 198 128
-             C 198 90, 228 60, 262 60
-             C 276 59, 286 62, 295 64 Z"
+    <!-- Profile facing right (scaled up, centered) -->
+    <path d="M 308 44
+             C 342 49, 370 80, 374 119
+             C 378 154, 360 189, 347 218
+             C 333 244, 333 266, 335 288
+             C 337 311, 346 325, 342 349
+             C 335 375, 311 388, 285 395
+             C 268 399, 249 399, 249 414
+             L 249 518 L 153 518 L 153 414
+             C 153 399, 173 395, 195 390
+             C 219 384, 238 369, 242 345
+             C 246 321, 233 302, 231 279
+             C 229 258, 236 237, 231 213
+             C 225 182, 205 156, 205 121
+             C 205 80, 238 48, 275 47
+             C 290 46, 300 42, 308 44 Z"
           fill="#e8e4dc"/>
-    <ellipse cx="332" cy="210" rx="20" ry="30" fill="#ddd8cc"/>
-    <ellipse cx="334" cy="210" rx="10" ry="18" fill="#ccc4b4"/>
-    <circle cx="224" cy="176" r="11" fill="#0a0e1a"/>
-    <circle cx="228" cy="173" r="3.5" fill="#ffffff" opacity="0.4"/>
+    <ellipse cx="348" cy="216" rx="21" ry="32" fill="#ddd8cc"/>
+    <ellipse cx="350" cy="216" rx="11" ry="19" fill="#ccc4b4"/>
+    <circle cx="233" cy="180" r="12" fill="#1a1f2e"/>
+    <circle cx="237" cy="177" r="3.8" fill="#ffffff" opacity="0.45"/>
   </g>
 
-  <!-- Amber bolt: sits top-right, overlapping the head/arc -->
+  <!-- Amber bolt: top-right, overlapping head/arc — scaled up -->
   <g filter="url(#g2)">
-    <path d="M 330 80 L 296 168 L 318 168 L 284 270 L 368 156 L 342 156 Z" fill="#fbbf24"/>
+    <path d="M 346 58 L 308 154 L 332 154 L 295 262 L 385 144 L 357 144 Z" fill="#fbbf24"/>
   </g>
-  <path d="M 330 80 L 296 168 L 318 168 L 284 270 L 368 156 L 342 156 Z" fill="#f59e0b"/>
+  <path d="M 346 58 L 308 154 L 332 154 L 295 262 L 385 144 L 357 144 Z" fill="#f59e0b"/>
 </svg>

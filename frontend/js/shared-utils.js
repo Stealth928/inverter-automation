@@ -1,5 +1,5 @@
 /**
- * FoxESS Automation - Shared Utilities
+ * SoCrates - Shared Utilities
  * 
  * Common JavaScript functions used across the application.
  */

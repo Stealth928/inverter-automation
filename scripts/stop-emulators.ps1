@@ -1,7 +1,7 @@
 # stop-emulators.ps1
 # Aggressively kill any processes on Firebase Emulator ports
 
-$ports = @(4000, 4400, 5000, 5001, 8080, 8085, 9000, 9099, 9199)
+$ports = @(4000, 4400, 5000, 5001, 8080, 8082, 8085, 9000, 9099, 9150, 9199, 9299, 9499)
 Write-Output "Checking ports: $($ports -join ', ')"
 
 foreach ($port in $ports) {

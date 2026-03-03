@@ -29,14 +29,14 @@ foreach ($p in $paths) {
 # Remove emulator caches under user profile
 $cache="$env:USERPROFILE\.cache\firebase"
 if (Test-Path $cache) { Remove-Item -Recurse -Force $cache -ErrorAction SilentlyContinue; Write-Output "Removed $cache" }
-$roam="$env:APPDATA\firebase"
-if (Test-Path $roam) { Remove-Item -Recurse -Force $roam -ErrorAction SilentlyContinue; Write-Output "Removed $roam" }
-Get-ChildItem $env:TEMP -Filter 'hub-*.json' -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Write-Output "Removed $_.FullName" }
+$roamEmulator="$env:APPDATA\firebase\emulators"
+if (Test-Path $roamEmulator) { Remove-Item -Recurse -Force $roamEmulator -ErrorAction SilentlyContinue; Write-Output "Removed $roamEmulator" }
+Get-ChildItem $env:TEMP -Filter 'hub-*.json' -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue; Write-Output "Removed $($_.FullName)" }
 Remove-Item -Force emulator.pid -ErrorAction SilentlyContinue
 
-# Start emulators
+# Start emulators (skip auto-seed here; we clear first, then seed once below)
 Write-Output "Starting emulators (background)..."
-.\scripts\start-emulators.ps1
+.\scripts\start-emulators.ps1 -SkipSeed
 Start-Sleep -Seconds 4
 
 # Ensure emulators are reachable
@@ -57,15 +57,13 @@ Push-Location functions
 $env:FIRESTORE_EMULATOR_HOST='127.0.0.1:8080'
 $env:FIREBASE_AUTH_EMULATOR_HOST='127.0.0.1:9099'
 node .\scripts\clear-firestore.js
+$code = $LASTEXITCODE
 Pop-Location
+if ($code -ne 0) { throw "clear-firestore.js failed with exit code $code." }
 
 # Seed the emulator with baseline data
-Write-Output "Seeding emulator state (auth, config, sample rule & history)"
-Push-Location functions
-$env:FIRESTORE_EMULATOR_HOST='127.0.0.1:8080'
-$env:FIREBASE_AUTH_EMULATOR_HOST='127.0.0.1:9099'
-node .\scripts\seed-emulator-state.js
-Pop-Location
+Write-Output "Seeding emulator state (test auth user + baseline docs)"
+.\scripts\seed-test-user.ps1
 
 # Verify setup status (retry a few times until functions are responsive)
 Write-Output "Verifying setup status via /api/config/setup-status"

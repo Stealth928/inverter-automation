@@ -851,7 +851,7 @@
         ensureMeta('theme-color', isLightTheme ? '#ffffff' : '#0d1117');
         ensureMeta('mobile-web-app-capable', 'yes');
         ensureMeta('apple-mobile-web-app-capable', 'yes');
-        ensureMeta('apple-mobile-web-app-title', 'FoxESS Automation');
+        ensureMeta('apple-mobile-web-app-title', 'SoCrates');
         ensureMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
     }
 

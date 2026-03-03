@@ -169,12 +169,22 @@ See [docs/AUTOMATION.md](docs/AUTOMATION.md) for complete rule documentation.
 ### Local Testing
 
 ```bash
-# Start Firebase emulators
-firebase emulators:start --only functions
+# Start local emulators (auth + firestore + functions + hosting + pubsub)
+# This also seeds/verifies a local test user automatically.
+npm run emu:start
 
 # Serve frontend (separate terminal)
 cd frontend && python -m http.server 8000
 ```
+
+Local seeded test user:
+- Email: `test@gmail.com`
+- Password: `123456`
+- Role: `admin` (local emulator only)
+
+Dashboard local mock mode (inverter + Amber cards):
+- Add `?mockDashboard=1` to the dashboard URL, or run in browser console: `setDashboardMockMode(true)`
+- Disable with `?mockDashboard=0` or `setDashboardMockMode(false)`
 
 ### Running Tests
 

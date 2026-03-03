@@ -1,35 +1,69 @@
 // clear-firestore.js
-// Deletes shared/serverConfig and specified user documents from Firestore using the Admin SDK.
+// Deletes seeded emulator test data from Auth and Firestore.
 const admin = require('firebase-admin');
+const {
+  TEST_USER,
+  getProjectId,
+  assertEmulatorEnvironment
+} = require('./emulator-test-user');
+
+async function getUserByEmailOrNull(auth, email) {
+  try {
+    return await auth.getUserByEmail(email);
+  } catch (error) {
+    if (error && error.code === 'auth/user-not-found') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function deleteDocumentTree(docRef) {
+  const subcollections = await docRef.listCollections();
+  for (const subcollection of subcollections) {
+    const snapshot = await subcollection.get();
+    for (const doc of snapshot.docs) {
+      await deleteDocumentTree(doc.ref);
+    }
+  }
+
+  await docRef.delete().catch(() => {
+    // Best-effort delete for cleanup scripts.
+  });
+}
 
 async function main() {
   try {
-    // Initialize admin with explicit projectId so emulator is targeted
-    admin.initializeApp({ projectId: 'inverter-automation-firebase' });
-    const db = admin.firestore();
+    assertEmulatorEnvironment();
 
-    console.log('Deleting shared/serverConfig doc...');
-    await db.collection('shared').doc('serverConfig').delete().catch(e => console.error('shared delete error:', e.message || e));
-
-    // Attempt to delete test user from Auth emulator (if present)
-    try {
-      const userRecord = await admin.auth().getUserByEmail('test@gmail.com');
-      console.log(`Found auth user ${userRecord.uid}, deleting...`);
-      await admin.auth().deleteUser(userRecord.uid);
-      console.log('Auth user deleted');
-    } catch (e) {
-      console.log('Auth user not found or deletion error (OK):', e.message || e);
+    const projectId = getProjectId();
+    if (!admin.apps.length) {
+      admin.initializeApp({ projectId });
     }
 
-    const uid = 'x1jvTN3mc3UcdApiQfQcS7ajWhES';
-    console.log(`Deleting user docs for ${uid}...`);
-    await db.collection('users').doc(uid).collection('config').doc('main').delete().catch(e => console.error('user config delete error:', e.message || e));
-    await db.collection('users').doc(uid).delete().catch(e => console.error('user doc delete error:', e.message || e));
+    const db = admin.firestore();
+    const auth = admin.auth();
 
-    console.log('Done.');
+    console.log('Deleting shared/serverConfig...');
+    await db.collection('shared').doc('serverConfig').delete().catch(() => {});
+
+    console.log(`Deleting Firestore user tree for uid=${TEST_USER.uid}...`);
+    await deleteDocumentTree(db.collection('users').doc(TEST_USER.uid));
+
+    console.log(`Deleting auth user by uid=${TEST_USER.uid}...`);
+    await auth.deleteUser(TEST_USER.uid).catch(() => {});
+
+    // Handle any legacy user with same email but different uid.
+    const byEmail = await getUserByEmailOrNull(auth, TEST_USER.email);
+    if (byEmail) {
+      console.log(`Deleting legacy auth user by email: ${byEmail.uid}`);
+      await auth.deleteUser(byEmail.uid).catch(() => {});
+    }
+
+    console.log('Cleanup complete.');
     process.exit(0);
   } catch (err) {
-    console.error('Error clearing firestore:', err);
+    console.error('Error clearing emulator data:', err && err.stack ? err.stack : err);
     process.exit(1);
   }
 }

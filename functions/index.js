@@ -2024,13 +2024,16 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
       const authMetadata = authUser && authUser.metadata ? authUser.metadata : null;
 
       let rulesCount = 0;
-      if (profileByUid.has(uid)) {
-        try {
-          const rulesSnap = await db.collection('users').doc(uid).collection('rules').get();
-          rulesCount = rulesSnap.size;
-        } catch (e) {
-          // Ignore errors per user and keep endpoint resilient
-        }
+      let configMain = null;
+      try {
+        const [rulesSnap, configDoc] = await Promise.all([
+          db.collection('users').doc(uid).collection('rules').get(),
+          db.collection('users').doc(uid).collection('config').doc('main').get()
+        ]);
+        rulesCount = rulesSnap.size;
+        configMain = configDoc.exists ? (configDoc.data() || {}) : null;
+      } catch (e) {
+        // Ignore per-user failures and keep endpoint resilient
       }
 
       // Joined date: prefer Firebase Auth creation time (source of truth),
@@ -2040,10 +2043,21 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
       const emailLc = String(email || '').toLowerCase();
       const isSeedAdmin = emailLc === SEED_ADMIN_EMAIL;
 
+      const hasDeviceSn = !!configMain?.deviceSn;
+      const hasFoxessToken = !!configMain?.foxessToken;
+      const hasAmberApiKey = !!configMain?.amberApiKey;
+      const configured = !!(configMain?.setupComplete === true || (hasDeviceSn && hasFoxessToken));
+
       return {
         uid,
         email,
         role: data.role || (isSeedAdmin ? 'admin' : 'user'),
+        configured,
+        hasDeviceSn,
+        hasFoxessToken,
+        hasAmberApiKey,
+        inverterCapacityW: Number.isFinite(Number(configMain?.inverterCapacityW)) ? Number(configMain.inverterCapacityW) : null,
+        batteryCapacityKWh: Number.isFinite(Number(configMain?.batteryCapacityKWh)) ? Number(configMain.batteryCapacityKWh) : null,
         automationEnabled: !!data.automationEnabled,
         createdAt: data.createdAt || null,
         joinedAt,
@@ -2407,9 +2421,12 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
         };
 
         configSummary = {
+          configured: !!(c.setupComplete === true || (c.deviceSn && c.foxessToken)),
           hasDeviceSn: !!c.deviceSn,
           hasFoxessToken: !!c.foxessToken,
           hasAmberApiKey: !!c.amberApiKey,
+          inverterCapacityW: Number.isFinite(Number(c.inverterCapacityW)) ? Number(c.inverterCapacityW) : null,
+          batteryCapacityKWh: Number.isFinite(Number(c.batteryCapacityKWh)) ? Number(c.batteryCapacityKWh) : null,
           location: c.location || null,
           timezone: c.timezone || null,
           systemTopology: normalizedSystemTopology

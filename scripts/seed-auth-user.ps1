@@ -1,3 +1,10 @@
-# DEPRECATED: seeding via individual script is replaced by scripts/reset-emulator-state.ps1
-Write-Output "This script is deprecated. Use `scripts\reset-emulator-state.ps1` to reset and seed the emulator suite (it handles cleanup, start, seed, and verification)."
-exit 0
+# seed-auth-user.ps1
+# Backward-compatible alias for scripts/seed-test-user.ps1
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Write-Output "Alias: scripts\\seed-auth-user.ps1 -> scripts\\seed-test-user.ps1"
+& powershell -ExecutionPolicy Bypass -File .\scripts\seed-test-user.ps1
+if ($LASTEXITCODE -ne 0) { throw "seed-test-user alias failed with exit code $LASTEXITCODE." }
+return

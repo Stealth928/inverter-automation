@@ -1,4 +1,10 @@
 {
+  "scripts": {
+    "emu:start": "powershell -ExecutionPolicy Bypass -File scripts/start-emulators.ps1",
+    "emu:seed": "powershell -ExecutionPolicy Bypass -File scripts/seed-test-user.ps1",
+    "emu:reset": "powershell -ExecutionPolicy Bypass -File scripts/reset-emulator-state.ps1",
+    "emu:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-emulators.ps1"
+  },
   "devDependencies": {
     "@playwright/test": "^1.57.0"
   },
