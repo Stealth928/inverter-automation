@@ -561,15 +561,39 @@
         let selectedIds   = new Set();
         let existingRules = {}; // ruleId → true (already imported)
         let activeCategory = 'all';
+        let userInverterCapacityW = 10000;
+        let userDefaultRulePowerW = null;
 
         // ── Init ───────────────────────────────────────────────
         AppShell.init({
             pageName: 'rules-library',
             onReady: async () => {
+                await loadUserPowerProfile();
                 await loadExistingRules();
                 renderCards();
             }
         });
+
+        async function loadUserPowerProfile() {
+            try {
+                const client = window.apiClient;
+                if (!client) return;
+                const res = await client.get('/api/config');
+                if (!res || res.errno !== 0 || !res.result) return;
+
+                const cfg = res.result || {};
+                userInverterCapacityW = getEffectiveInverterCapacityW(cfg.inverterCapacityW);
+
+                const preferredPower = Number(cfg?.defaults?.fdPwr);
+                if (Number.isFinite(preferredPower) && preferredPower > 0) {
+                    userDefaultRulePowerW = normalizePowerForImport(preferredPower, userInverterCapacityW);
+                } else {
+                    userDefaultRulePowerW = null;
+                }
+            } catch (_) {
+                // Keep safe defaults; import logic handles fallback.
+            }
+        }
 
         async function loadExistingRules() {
             try {
@@ -645,6 +669,7 @@
                     : '';
 
                 const actionLabel = formatActionLabel(tmpl.rule.action);
+                const actionPower = formatActionPowerSummary(tmpl.rule.action);
 
                 card.innerHTML = `
                     <div class="card-checkbox" id="chk-${tmpl.id}">${checkboxContent}</div>
@@ -668,6 +693,7 @@
                     </div>
                     <div class="card-action">
                         Action: <span class="action-mode">${escHtml(actionLabel)}</span>
+                        ${actionPower}
                         for ${tmpl.rule.action.durationMinutes} min
                         · Priority ${tmpl.rule.priority}
                     </div>
@@ -765,13 +791,19 @@
             // Assign non-clashing priorities before import
             const claimedByBatch = new Set(); // tracks priorities allocated within this batch
             const priorityAdjusted = [];
+            const powerAdjusted = [];
             for (const tmpl of toImport) {
                 const wanted = tmpl.rule.priority;
                 const actual = pickAvailablePriority(wanted, claimedByBatch);
                 claimedByBatch.add(actual);
                 tmpl._importPriority = actual;
+                const preparedAction = prepareTemplateActionForImport(tmpl.rule.action, userInverterCapacityW, userDefaultRulePowerW);
+                tmpl._importAction = preparedAction.action;
                 if (actual !== wanted) {
                     priorityAdjusted.push(`${tmpl.name}: ${wanted} → ${actual}`);
+                }
+                if (preparedAction.adjusted && preparedAction.note) {
+                    powerAdjusted.push(`${tmpl.name}: ${preparedAction.note}`);
                 }
             }
 
@@ -786,7 +818,7 @@
                         priority:        tmpl._importPriority,
                         cooldownMinutes: tmpl.rule.cooldownMinutes,
                         conditions:      tmpl.rule.conditions,
-                        action:          tmpl.rule.action
+                        action:          tmpl._importAction
                     };
                     const res = await client.post('/api/automation/rule/create', body);
                     if (res && res.errno === 0) {
@@ -806,10 +838,10 @@
             await loadExistingRules();
             renderCards();
             clearSelection();
-            showImportResult(succeeded, skipped, failed, priorityAdjusted);
+            showImportResult(succeeded, skipped, failed, priorityAdjusted, powerAdjusted);
         };
 
-        function showImportResult(succeeded, skipped, failed, priorityAdjusted) {
+        function showImportResult(succeeded, skipped, failed, priorityAdjusted, powerAdjusted) {
             const banner = document.getElementById('importBanner');
             const icon   = document.getElementById('bannerIcon');
             const title  = document.getElementById('bannerTitle');
@@ -825,6 +857,9 @@
             }
             if (priorityAdjusted && priorityAdjusted.length > 0) {
                 detailLines.push(`⚡ Priority adjusted to avoid clashes: <em>${priorityAdjusted.join('; ')}</em>.`);
+            }
+            if (powerAdjusted && powerAdjusted.length > 0) {
+                detailLines.push(`⚡ Power adjusted for inverter limits: <em>${powerAdjusted.join('; ')}</em>.`);
             }
             if (skipped.length > 0) {
                 type = succeeded.length > 0 ? 'warning' : 'warning';
@@ -867,9 +902,83 @@
                 SelfUse:       'Self Use',
                 ForceDischarge: 'Force Discharge',
                 ForceCharge:    'Force Charge',
+                Feedin:         'Feed In',
                 Backup:         'Backup'
             };
             return modes[action.workMode] || action.workMode;
+        }
+
+        function getEffectiveInverterCapacityW(rawCapacityW) {
+            const parsed = Number(rawCapacityW);
+            if (!Number.isFinite(parsed) || parsed < 1000) return 10000;
+            return Math.min(30000, Math.round(parsed));
+        }
+
+        function normalizePowerForImport(powerW, inverterCapacityW) {
+            const parsed = Number(powerW);
+            if (!Number.isFinite(parsed)) return null;
+            const rounded = Math.round(parsed / 100) * 100;
+            return Math.max(1000, Math.min(inverterCapacityW, rounded));
+        }
+
+        function deriveTemplatePowerW(inverterCapacityW, preferredPowerW) {
+            const preferred = normalizePowerForImport(preferredPowerW, inverterCapacityW);
+            if (preferred && preferred > 0) return preferred;
+            const halfCapacity = Math.round((inverterCapacityW * 0.5) / 100) * 100;
+            return Math.max(1000, Math.min(inverterCapacityW, halfCapacity));
+        }
+
+        function requiresExplicitPower(workMode) {
+            return workMode === 'ForceCharge' || workMode === 'ForceDischarge' || workMode === 'Feedin';
+        }
+
+        function prepareTemplateActionForImport(templateAction, inverterCapacityW, preferredPowerW) {
+            const action = JSON.parse(JSON.stringify(templateAction || {}));
+            const mode = action.workMode || 'SelfUse';
+
+            if (!requiresExplicitPower(mode)) {
+                action.fdPwr = 0;
+                return { action, adjusted: false, note: '' };
+            }
+
+            const parsedPower = Number(action.fdPwr);
+            const hasValidTemplatePower = Number.isFinite(parsedPower) && parsedPower > 0;
+            const normalizedTemplatePower = hasValidTemplatePower
+                ? normalizePowerForImport(parsedPower, inverterCapacityW)
+                : null;
+
+            if (!normalizedTemplatePower) {
+                const derivedPower = deriveTemplatePowerW(inverterCapacityW, preferredPowerW);
+                action.fdPwr = derivedPower;
+                return {
+                    action,
+                    adjusted: true,
+                    note: `Power auto-set to ${derivedPower}W (from ${Math.round(inverterCapacityW / 100) / 10}kW inverter capacity)`
+                };
+            }
+
+            if (normalizedTemplatePower !== parsedPower) {
+                action.fdPwr = normalizedTemplatePower;
+                return {
+                    action,
+                    adjusted: true,
+                    note: `Power capped to ${normalizedTemplatePower}W (inverter limit)`
+                };
+            }
+
+            action.fdPwr = normalizedTemplatePower;
+            return { action, adjusted: false, note: '' };
+        }
+
+        function formatActionPowerSummary(action) {
+            const mode = action?.workMode || 'SelfUse';
+            if (!requiresExplicitPower(mode)) return '· 0W';
+
+            const power = Number(action?.fdPwr);
+            if (Number.isFinite(power) && power > 0) {
+                return `· ${Math.round(power)}W`;
+            }
+            return '· Auto power on import';
         }
 
     })();

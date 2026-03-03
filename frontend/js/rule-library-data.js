@@ -6,6 +6,9 @@
  * activate from Settings after import.
  *
  * IMPORTANT: All minSocOnGrid values must be >= 20.
+ * NOTE: ForceCharge templates intentionally use fdPwr: 0 placeholders.
+ * The Rules Library import flow resolves these to non-zero, user-safe values
+ * derived from each user's inverter capacity/default power settings.
  *
  * Categories:
  *   price       — 💰 Price Optimisation
@@ -61,7 +64,7 @@ window.RULE_LIBRARY = [
     category: 'price',
     categoryLabel: '💰 Price Optimisation',
     difficulty: 'Beginner',
-    description: 'Force-charges the battery from the grid when electricity is cheap, filling up ready for higher-price periods.',
+    description: 'Charges the battery from the grid when electricity is cheap so it reaches your configured SoC target before higher-price periods.',
     whyUseIt: 'Great for overnight cheap-rate tariffs or negative-price events. Minimises the cost of energy stored in the battery.',
     conditionSummary: ['Buy price ≤ 5¢/kWh', 'Battery SoC ≤ 70%'],
     rule: {
@@ -95,8 +98,8 @@ window.RULE_LIBRARY = [
     category: 'price',
     categoryLabel: '💰 Price Optimisation',
     difficulty: 'Intermediate',
-    description: 'Aggressively charges the battery when grid prices go negative — you are literally paid to consume electricity.',
-    whyUseIt: 'Great for dynamic markets like Amber where negative prices occur during high renewable generation. Maximum economic capture.',
+    description: 'Charges the battery when grid prices go negative — you are paid to consume electricity while building stored energy for later use.',
+    whyUseIt: 'Great for dynamic markets like Amber where negative prices occur during high renewable generation. Captures negative-price windows without relying on overly aggressive charge settings.',
     conditionSummary: ['Buy price ≤ -3¢/kWh (negative)', 'Battery SoC ≤ 90%'],
     rule: {
       enabled: false,
@@ -163,7 +166,7 @@ window.RULE_LIBRARY = [
     category: 'price',
     categoryLabel: '💰 Price Optimisation',
     difficulty: 'Advanced',
-    description: 'Tops up the battery when current prices are low and forecasted prices in the next 2 hours are significantly higher — buying cheap before the peak.',
+    description: 'Pre-charges the battery when current prices are low and forecasted prices in the next 2 hours are significantly higher — buying cheap before the peak.',
     whyUseIt: 'Great for households with predictable morning and evening peak windows. Avoids drawing from the grid at peak rates.',
     conditionSummary: ['Buy price ≤ 10¢/kWh now', 'Forecast avg price > 25¢ next 2h', 'Battery SoC ≤ 60%'],
     rule: {
@@ -407,7 +410,7 @@ window.RULE_LIBRARY = [
     category: 'solar',
     categoryLabel: '☀️ Solar Forecasting',
     difficulty: 'Intermediate',
-    description: 'Charges the battery from cheap overnight power when the next day\'s solar forecast shows heavy cloud cover, ensuring you start the day topped up.',
+    description: 'Pre-charges the battery overnight when the next day\'s solar forecast shows heavy cloud cover, ensuring you start the day with useful reserve.',
     whyUseIt: 'Great for days when solar generation will be insufficient to fill the battery. Prevents arriving at peak demand with an empty battery.',
     conditionSummary: ['Cloud cover avg > 80% next 6h', 'Buy price ≤ 15¢/kWh', 'Battery SoC ≤ 50%'],
     rule: {
@@ -512,7 +515,7 @@ window.RULE_LIBRARY = [
     category: 'time',
     categoryLabel: '🕐 Time Scheduling',
     difficulty: 'Beginner',
-    description: 'Charges the battery during a fixed overnight off-peak window (1am–5am), taking advantage of cheaper fixed-rate tariff periods.',
+    description: 'Charges the battery during a fixed overnight off-peak window (1am–5am), using controlled charging power during cheaper tariff periods.',
     whyUseIt: 'Great for households on a fixed two-rate tariff (e.g. Economy 7 / Controlled Load). Fills the battery cheaply every night without relying on price signals.',
     conditionSummary: ['Time: 01:00 – 05:00', 'Battery SoC ≤ 80%'],
     rule: {
@@ -580,7 +583,7 @@ window.RULE_LIBRARY = [
     category: 'time',
     categoryLabel: '🕐 Time Scheduling',
     difficulty: 'Intermediate',
-    description: 'Tops up the battery before the morning peak demand window (6am–9am) if it drained overnight, using the shoulder rate just before solar generation kicks in.',
+    description: 'Tops up the battery before the morning peak demand window (6am–9am) if it drained overnight, using shoulder rates just before solar generation kicks in.',
     whyUseIt: 'Great for households with high morning loads (breakfast, heating, school/work prep) and time-of-use tariffs that spike at 7am. Fills the gap before solar takes over.',
     conditionSummary: ['Time: 05:00 – 06:30', 'Battery SoC ≤ 40%'],
     rule: {
@@ -756,7 +759,7 @@ window.RULE_LIBRARY = [
     category: 'ev',
     categoryLabel: '🚗 EV-Friendly',
     difficulty: 'Beginner',
-    description: 'Fills the home battery overnight using cheap off-peak electricity so that solar generation during the day can be directed to charging your EV rather than the grid battery.',
+    description: 'Charges the home battery overnight using cheap off-peak electricity so daytime solar can be directed to EV charging rather than refilling the house battery.',
     whyUseIt: 'Great for EV households — ensures the home battery is full by morning so daytime solar goes toward the car. Eliminates competition between home battery and EV charging during the day.',
     conditionSummary: ['Time: 00:00 – 06:00', 'Buy price ≤ 15¢/kWh', 'Battery SoC ≤ 75%'],
     rule: {
@@ -858,8 +861,8 @@ window.RULE_LIBRARY = [
     category: 'ev',
     categoryLabel: '🚗 EV-Friendly',
     difficulty: 'Intermediate',
-    description: 'When the EV is typically away for the weekend (no home EV load), discharges the battery fully to grid during moderate feed-in prices, since there\'s no car to soak up excess solar.',
-    whyUseIt: 'Great for EV owners whose car is away on weekends. Maximises export revenue on days when there\'s no EV to absorb surplus, preventing battery from sitting idle at 100%.',
+    description: 'When the EV is typically away for the weekend (no home EV load), exports battery energy at a controlled rate during moderate feed-in prices, since there\'s no car to soak up excess solar.',
+    whyUseIt: 'Great for EV owners whose car is away on weekends. Improves export revenue on days when there\'s no EV to absorb surplus, while keeping discharge behavior predictable.',
     conditionSummary: ['Feed-in price ≥ 8¢/kWh', 'Battery SoC ≥ 90%', 'Time: 10:00 – 15:00'],
     rule: {
       enabled: false,
@@ -929,7 +932,7 @@ window.RULE_LIBRARY = [
     category: 'price',
     categoryLabel: '💰 Price Optimisation',
     difficulty: 'Advanced',
-    description: 'Charges the battery during the day when a large feed-in price spike is forecast in the next 4–12 hours AND grid buy prices are still cheap — loading up to be ready to discharge when the spike arrives.',
+    description: 'Pre-charges the battery during the day when a large feed-in price spike is forecast in the next 4–12 hours and grid buy prices are still cheap — preparing to discharge when the spike arrives.',
     whyUseIt: 'Real users consistently name this as their highest-ROI rule. If you know a spike is coming, charge cheaply now so you can sell expensive later. Works particularly well on volatile grids like Amber.',
     conditionSummary: ['Feed-in forecast max > 50¢ next 4h', 'Buy price < 12¢ now', 'Battery SoC < 65%', 'Time: 09:00 – 16:00'],
     rule: {
@@ -997,7 +1000,7 @@ window.RULE_LIBRARY = [
     category: 'solar',
     categoryLabel: '☀️ Solar Forecasting',
     difficulty: 'Advanced',
-    description: 'Overnight (midnight–6am), checks tomorrow\'s solar forecast: if it looks weak (low radiation next 24h), charges the battery to a high SoC to cover tomorrow\'s loads. If solar is strong, only charges to a moderate level to leave room to absorb solar generation.',
+    description: 'Overnight (midnight–6am), checks tomorrow\'s solar forecast: if it looks weak (low radiation next 24h), charges the battery toward a higher SoC target to cover tomorrow\'s loads. If solar is strong, only charges to a moderate level to leave room to absorb solar generation.',
     whyUseIt: 'Inspired by real users who run paired "sunny" and "cloudy" overnight rules. Adapts the overnight charge target to the next day\'s forecast — charging more before bad-solar days, less before good ones.',
     conditionSummary: ['Time: 00:00 – 06:00', 'Solar avg < 250 W/m² next 24h (cloudy day ahead)', 'Battery SoC ≤ 80%'],
     rule: {

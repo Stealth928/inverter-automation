@@ -2813,6 +2813,64 @@ async function getUserConfig(userId) {
   }
 }
 
+const VALID_RULE_WORK_MODES = new Set(['SelfUse', 'ForceDischarge', 'ForceCharge', 'Feedin', 'Backup']);
+const POWER_REQUIRED_WORK_MODES = new Set(['ForceDischarge', 'ForceCharge', 'Feedin']);
+
+function getEffectiveInverterCapacityW(userConfig) {
+  const capacity = Number(userConfig?.inverterCapacityW);
+  if (!Number.isFinite(capacity) || capacity < 1000) return 10000;
+  return Math.min(30000, Math.round(capacity));
+}
+
+/**
+ * Validates automation rule action payload against mode-specific constraints.
+ * Returns null when valid; otherwise a human-readable error string.
+ */
+function validateRuleActionForUser(action, userConfig) {
+  if (!action || typeof action !== 'object') return null;
+
+  const workMode = action.workMode || 'SelfUse';
+  if (!VALID_RULE_WORK_MODES.has(workMode)) {
+    return `Invalid action.workMode: ${workMode}. Valid modes: ${Array.from(VALID_RULE_WORK_MODES).join(', ')}`;
+  }
+
+  if (action.durationMinutes !== undefined && action.durationMinutes !== null) {
+    const duration = Number(action.durationMinutes);
+    if (!Number.isFinite(duration) || duration < 5 || duration > 1440) {
+      return 'action.durationMinutes must be between 5 and 1440 minutes';
+    }
+  }
+
+  const inverterCapacityW = getEffectiveInverterCapacityW(userConfig);
+  const hasFdPwr = action.fdPwr !== undefined && action.fdPwr !== null && action.fdPwr !== '';
+
+  if (POWER_REQUIRED_WORK_MODES.has(workMode)) {
+    if (!hasFdPwr) {
+      return `action.fdPwr is required for workMode ${workMode} and must be greater than 0`;
+    }
+    const fdPwr = Number(action.fdPwr);
+    if (!Number.isFinite(fdPwr) || fdPwr <= 0) {
+      return `action.fdPwr must be greater than 0 for workMode ${workMode}`;
+    }
+    if (fdPwr > inverterCapacityW) {
+      return `action.fdPwr (${Math.round(fdPwr)}W) exceeds inverter capacity (${inverterCapacityW}W)`;
+    }
+    return null;
+  }
+
+  if (hasFdPwr) {
+    const fdPwr = Number(action.fdPwr);
+    if (!Number.isFinite(fdPwr) || fdPwr < 0) {
+      return 'action.fdPwr must be a non-negative number';
+    }
+    if (fdPwr > inverterCapacityW) {
+      return `action.fdPwr (${Math.round(fdPwr)}W) exceeds inverter capacity (${inverterCapacityW}W)`;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Get user automation state from Firestore
  */
@@ -5540,6 +5598,12 @@ app.post('/api/automation/rule/create', async (req, res) => {
     if (!Number.isInteger(normalizedCooldown) || normalizedCooldown < 1 || normalizedCooldown > 1440) {
       return res.status(400).json({ errno: 400, error: 'cooldownMinutes must be an integer between 1 and 1440' });
     }
+
+    const userConfig = await getUserConfig(req.user.uid);
+    const actionValidationError = validateRuleActionForUser(action, userConfig);
+    if (actionValidationError) {
+      return res.status(400).json({ errno: 400, error: actionValidationError });
+    }
     
     const ruleId = name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
     const rule = {
@@ -5599,6 +5663,12 @@ app.post('/api/automation/rule/update', async (req, res) => {
         update.action = { ...existingDoc.data().action, ...action };
       } else {
         update.action = action;
+      }
+
+      const userConfig = await getUserConfig(req.user.uid);
+      const actionValidationError = validateRuleActionForUser(update.action, userConfig);
+      if (actionValidationError) {
+        return res.status(400).json({ errno: 400, error: actionValidationError });
       }
     }
 
@@ -8164,6 +8234,19 @@ async function applyRuleAction(userId, rule, userConfig) {
   
   console.log(`[SegmentSend] 🎯 Target device: ${deviceSN}`);
   console.log(`[SegmentSend] 📋 Action config:`, JSON.stringify(action, null, 2));
+
+  const actionValidationError = validateRuleActionForUser(action, userConfig);
+  if (actionValidationError) {
+    console.error(`[SegmentSend] ❌ Invalid rule action for '${rule.name}': ${actionValidationError}`);
+    return {
+      errno: 400,
+      msg: actionValidationError,
+      segment: null,
+      flagResult: null,
+      verify: null,
+      retrysFailed: false
+    };
+  }
   
   // Get user's timezone from config (or configured default)
   const userTimezone = getAutomationTimezone(userConfig);
@@ -8254,6 +8337,7 @@ async function applyRuleAction(userId, rule, userConfig) {
   }
   
   // Build the new segment (V1 flat structure)
+  const normalizedFdPwr = Number(action.fdPwr ?? 0);
   const segment = {
     enable: 1,
     workMode: action.workMode || 'SelfUse',
@@ -8263,7 +8347,7 @@ async function applyRuleAction(userId, rule, userConfig) {
     endMinute,
     minSocOnGrid: action.minSocOnGrid ?? 20,
     fdSoc: action.fdSoc ?? 35,
-    fdPwr: action.fdPwr ?? 0,
+    fdPwr: Number.isFinite(normalizedFdPwr) ? normalizedFdPwr : 0,
     maxSoc: action.maxSoc ?? 90
   };
   
@@ -8913,4 +8997,3 @@ exports.runAutomation = onSchedule(
   },
   runAutomationHandler
 );
-
