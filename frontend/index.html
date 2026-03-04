@@ -4322,17 +4322,116 @@
 
         // Amber
         let amberSites = [];
+        let amberConfiguredSiteId = '';
+        let amberLastPersistedSiteId = '';
+
+        function getAmberUserStorageId() {
+            try {
+                const mode = localStorage.getItem('adminImpersonationMode') || '';
+                const impersonatedUid = localStorage.getItem('adminImpersonationUid') || '';
+                if (mode === 'header' && impersonatedUid) return impersonatedUid;
+            } catch (e) { /* ignore */ }
+            try {
+                if (window.AppShell && typeof window.AppShell.getUser === 'function') {
+                    const uid = window.AppShell.getUser()?.uid;
+                    if (uid) return uid;
+                }
+            } catch (e) { /* ignore */ }
+            return 'guest';
+        }
+
+        function getAmberSiteStorageKey() {
+            return `amberSiteSelection:${getAmberUserStorageId()}`;
+        }
+
+        function getStoredAmberSiteId() {
+            try {
+                const scoped = localStorage.getItem(getAmberSiteStorageKey());
+                if (scoped) return String(scoped).trim();
+            } catch (e) {
+                // continue to legacy fallback
+            }
+            try {
+                const legacy = localStorage.getItem('amberSiteId');
+                if (legacy) return String(legacy).trim();
+            } catch (e) {
+                return '';
+            }
+            return '';
+        }
+
+        function setStoredAmberSiteId(siteId) {
+            const normalized = String(siteId || '').trim();
+            if (!normalized) return;
+            try {
+                localStorage.setItem(getAmberSiteStorageKey(), normalized);
+                localStorage.setItem('amberSiteId', normalized);
+            } catch (e) { /* ignore */ }
+        }
+
+        async function persistAmberSiteSelection(siteId) {
+            const normalized = String(siteId || '').trim();
+            if (!normalized || isDashboardLocalMockEnabled()) return;
+            if (normalized === amberLastPersistedSiteId) return;
+
+            amberLastPersistedSiteId = normalized;
+            amberConfiguredSiteId = normalized;
+
+            try {
+                const resp = await authenticatedFetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amberSiteId: normalized })
+                });
+                if (!resp.ok) {
+                    throw new Error(`HTTP ${resp.status}`);
+                }
+                let payload = null;
+                try { payload = await resp.json(); } catch (e) { /* ignore parse */ }
+                if (payload && payload.errno !== undefined && payload.errno !== 0) {
+                    throw new Error(payload.msg || payload.error || 'Config save failed');
+                }
+            } catch (e) {
+                console.warn('[Amber] Failed to persist selected site:', e && e.message ? e.message : e);
+                if (amberLastPersistedSiteId === normalized) {
+                    amberLastPersistedSiteId = '';
+                }
+            }
+        }
         
         async function loadAmberSites(forceRefresh = false) {
             const select = document.getElementById('amberSiteId');
             const card = document.getElementById('amberCard');
             select.innerHTML = '<option value="">Loading...</option>';
 
+            if (!select.dataset.boundAmberChange) {
+                select.dataset.boundAmberChange = '1';
+                select.addEventListener('change', () => {
+                    const selectedSiteId = String(select.value || '').trim();
+                    if (!selectedSiteId) return;
+                    setStoredAmberSiteId(selectedSiteId);
+                    persistAmberSiteSelection(selectedSiteId);
+                    getAmberCurrent(true);
+                });
+            }
+
             if (isDashboardLocalMockEnabled()) {
                 const sites = getMockAmberSites();
                 amberSites = sites;
                 select.innerHTML = sites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
-                if (select.options.length > 0) select.selectedIndex = 0;
+                const storedSiteId = getStoredAmberSiteId();
+                // localStorage (user's last manual pick) takes priority over backend config
+                const preferredSiteId = storedSiteId || amberConfiguredSiteId;
+                const preferredExists = preferredSiteId && sites.some(s => String(s.id) === String(preferredSiteId));
+                if (preferredExists) {
+                    select.value = String(preferredSiteId);
+                } else if (select.options.length > 0) {
+                    select.selectedIndex = 0;
+                }
+                const selectedSiteId = String(select.value || '').trim();
+                if (selectedSiteId) {
+                    setStoredAmberSiteId(selectedSiteId);
+                }
                 card.innerHTML = '<div style="color:var(--color-success)">Mock sites loaded (local mode)</div>';
                 setTimeout(() => getAmberCurrent(forceRefresh), 80);
                 return;
@@ -4359,13 +4458,35 @@
                 if (sites.length > 0) {
                     amberSites = sites;
                     select.innerHTML = sites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
-                    // Select the first site by default
-                    if (select.options.length > 0) {
+                    const storedSiteId = getStoredAmberSiteId();
+                    // localStorage (user's last manual pick) takes priority over backend config
+                    const preferredSiteId = storedSiteId || amberConfiguredSiteId;
+                    const preferredExists = preferredSiteId && sites.some(s => String(s.id) === String(preferredSiteId));
+                    if (preferredExists) {
+                        select.value = String(preferredSiteId);
+                    } else if (select.options.length > 0) {
                         select.selectedIndex = 0;
+                    }
+                    const selectedSiteId = String(select.value || '').trim();
+                    if (selectedSiteId) {
+                        setStoredAmberSiteId(selectedSiteId);
+                        if (preferredExists) {
+                            // Found and applied the user's saved preference
+                            if (!amberConfiguredSiteId || amberConfiguredSiteId !== selectedSiteId) {
+                                persistAmberSiteSelection(selectedSiteId);
+                            } else {
+                                amberLastPersistedSiteId = amberConfiguredSiteId;
+                            }
+                        } else if (!preferredSiteId) {
+                            // Brand-new user with no prior preference — auto-save the default first site
+                            persistAmberSiteSelection(selectedSiteId);
+                        }
+                        // If preferredSiteId existed but wasn't found in the list, do NOT overwrite —
+                        // keep the server-saved preference intact and just temporarily show the first site
                     }
                     card.innerHTML = `<div style="color:var(--color-success)">✓ ${sites.length} site(s) found</div>`;
                     // Auto-fetch current prices
-                    setTimeout(getAmberCurrent, 500);
+                    setTimeout(() => getAmberCurrent(forceRefresh), 500);
                 } else {
                     select.innerHTML = '<option value="">No sites</option>';
                     card.innerHTML = `<div style="color:var(--color-warning)">No sites found</div>`;
@@ -4390,16 +4511,20 @@
                 }
             }
             if (!siteId) { document.getElementById('amberCard').innerHTML = '<div style="color:var(--color-warning)">Select a site</div>'; return; }
+            setStoredAmberSiteId(siteId);
             
             // Check if cached data is still fresh (TTL from backend config)
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
             const age = Date.now() - (cacheState.amberTime || 0);
+            const cacheSiteId = String(cacheState.amberSiteId || '');
+            const cacheOwnerId = String(cacheState.amberUserId || '');
+            const currentOwnerId = getAmberUserStorageId();
             
             // Force refresh if requested (either explicit parameter or page reload bypass)
             const mockMode = isDashboardLocalMockEnabled();
             const shouldBypassCache = force || isPageReload || mockMode;
             
-            if (!shouldBypassCache && cacheState.amberTime && age < CONFIG.cache.amber) {
+            if (!shouldBypassCache && cacheState.amberTime && age < CONFIG.cache.amber && cacheSiteId === String(siteId) && cacheOwnerId === currentOwnerId) {
                 // Load cached full prices array and render
                 try {
                     const cachedPricesFull = JSON.parse(localStorage.getItem('cachedPricesFull') || '[]');
@@ -4418,7 +4543,7 @@
                 const next = Number(document.getElementById('amberNext')?.value) || 12;
                 let data;
                 if (mockMode) {
-                    data = { errno: 0, result: getMockAmberPrices(next), mock: true };
+                    data = { errno: 0, result: getMockAmberPrices(next, siteId), mock: true };
                 } else {
                     let url = `/api/amber/prices/current?siteId=${siteId}&next=${next}`;
                     // Add forceRefresh if force flag is set
@@ -4459,6 +4584,8 @@
                         // Update cache timestamp
                         const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
                         cacheState.amberTime = Date.now();
+                        cacheState.amberSiteId = String(siteId);
+                        cacheState.amberUserId = currentOwnerId;
                         localStorage.setItem('cacheState', JSON.stringify(cacheState));
                     } catch (e) { /* ignore cache errors */ }
                 }
@@ -6024,18 +6151,23 @@
 
         function getMockAmberSites() {
             return [{
-                id: 'mock-site-local',
+                id: 'mock-site-local-1',
                 nmi: 'MOCK-NMI-0001',
-                network: 'Local Grid'
+                network: 'Local Grid A'
+            }, {
+                id: 'mock-site-local-2',
+                nmi: 'MOCK-NMI-0002',
+                network: 'Local Grid B'
             }];
         }
 
-        function getMockAmberPrices(next = 12) {
+        function getMockAmberPrices(next = 12, siteId = 'mock-site-local-1') {
             const count = Math.max(12, Math.min(500, Number(next) || 12));
             const now = new Date();
             const base = new Date(now);
             base.setSeconds(0, 0);
             base.setMinutes(base.getMinutes() < 30 ? 0 : 30);
+            const siteOffset = String(siteId) === 'mock-site-local-2' ? 3.5 : 0;
 
             function renewDescriptor(renewables) {
                 if (renewables >= 70) return 'best';
@@ -6049,9 +6181,9 @@
             for (let i = 0; i < count; i++) {
                 const start = new Date(base.getTime() + (i * 30 * 60 * 1000));
                 const phase = i / 3;
-                const buy = Number(Math.max(6, 18 + Math.sin(phase) * 7 + (i % 8 === 0 ? 4 : 0)).toFixed(2));
+                const buy = Number(Math.max(6, 18 + siteOffset + Math.sin(phase) * 7 + (i % 8 === 0 ? 4 : 0)).toFixed(2));
                 // Amber feed-in values are negative when you are paid.
-                const feed = Number((-Math.max(2, 9 + Math.cos(phase) * 4)).toFixed(2));
+                const feed = Number((-Math.max(2, (9 - (siteOffset * 0.45)) + Math.cos(phase) * 4)).toFixed(2));
                 const renewables = Math.max(15, Math.min(95, Math.round(62 + Math.sin(i / 4) * 22)));
                 const type = i === 0 ? 'CurrentInterval' : 'ForecastInterval';
                 const spikeStatus = buy >= 28 ? 'high' : 'none';
@@ -7108,6 +7240,15 @@
                     const snInput = document.getElementById('deviceSn');
                     if (snInput && !snInput.value && cfg.result.deviceSn) {
                         snInput.value = cfg.result.deviceSn;
+                    }
+                    const configuredAmberSite = String(cfg.result.amberSiteId || '').trim();
+                    amberConfiguredSiteId = configuredAmberSite;
+                    amberLastPersistedSiteId = configuredAmberSite;
+                    // Only seed localStorage from backend when it is empty (e.g. new browser / first login).
+                    // Do NOT overwrite when localStorage already has a value — the user's last manual
+                    // selection lives there and must take priority over the backend's cached value.
+                    if (configuredAmberSite && !getStoredAmberSiteId()) {
+                        setStoredAmberSiteId(configuredAmberSite);
                     }
 
                     // Apply backend-configured refresh intervals so the UI honors settings

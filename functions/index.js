@@ -7541,8 +7541,8 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   let ambientTemp = null;
   if (inverterData?.result?.[0]?.datas) {
     const datas = inverterData.result[0].datas;
-    const socData = datas.find(d => d.variable === 'SoC') || datas.find(d => d.variable === 'SoC1');
-    const batTempData = datas.find(d => d.variable === 'batTemperature');
+    const socData = datas.find(d => d.variable === 'SoC') || datas.find(d => d.variable === 'SoC1') || datas.find(d => d.variable === 'SoC_1');
+    const batTempData = datas.find(d => d.variable === 'batTemperature') || datas.find(d => d.variable === 'batTemperature_1');
     const ambientTempData = datas.find(d => d.variable === 'ambientTemperation');
     soc = socData?.value ?? null;
     batTemp = batTempData?.value ?? null;

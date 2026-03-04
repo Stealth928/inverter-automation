@@ -12,7 +12,7 @@ const TEST_CONFIG = Object.freeze({
   deviceSn: 'TEST-SN-0001',
   foxessToken: 'FAKE_TOKEN',
   amberApiKey: 'FAKE_AMBER',
-  amberSiteId: 'FAKE_SITE_ID',
+  amberSiteId: 'mock-site-local-1',
   weatherPlace: 'Sydney',
   location: 'Sydney, Australia'
 });

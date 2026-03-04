@@ -150,6 +150,9 @@
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 20px;
         }
+        .settings-grid--automation-refresh {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
         .setting-item {
             background: var(--bg-primary);
             border: 1px solid var(--border-primary);
@@ -440,6 +443,10 @@
         }
 
         @media (max-width: 768px) {
+            .settings-grid--automation-refresh {
+                grid-template-columns: 1fr;
+            }
+
             .container {
                 padding: 12px;
             }
@@ -510,6 +517,11 @@
                 white-space: normal;
             }
         }
+        @media (max-width: 1200px) and (min-width: 769px) {
+            .settings-grid--automation-refresh {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
     </style>
 </head>
 <body>
@@ -570,21 +582,21 @@
 
         <div id="messageArea"></div>
 
-        <!-- Automation Settings -->
-        <div class="section" id="credentialsSection">
+        <!-- Automation + Cache Settings -->
+        <div class="section" id="automationSection">
             <div class="section-header">
                 <div>
                     <div class="section-title">
-                        🤖 Automation Timing
+                        🤖 Automation & Data Refresh
                         <span class="badge badge-sync" id="automationBadge">Synced</span>
                     </div>
                 </div>
-                <button class="btn-secondary" onclick="resetSection('automation')">Undo Current Changes</button>
+                <button class="btn-secondary" onclick="resetAutomationAndCache()">Undo Current Changes</button>
             </div>
             <div class="section-description">
-                Controls how often the automation engine evaluates rules and triggers actions.
+                Controls how often automation runs and how frequently each data source refreshes.
             </div>
-            <div class="settings-grid">
+            <div class="settings-grid settings-grid--automation-refresh">
                 <div class="setting-item">
                     <div class="setting-label">Automation Cycle Interval</div>
                     <div class="setting-hint">How often automation rules are evaluated</div>
@@ -595,21 +607,30 @@
                     </div>
                 </div>
                 <div class="setting-item">
-                    <div class="setting-label">Startup Delay</div>
-                    <div class="setting-hint">Delay before automation starts after server boot</div>
+                    <div class="setting-label">Amber Prices Cache</div>
+                    <div class="setting-hint">Amber pricing data refresh interval</div>
                     <div class="setting-input">
-                        <input type="number" id="automation_startDelayMs" data-section="automation" data-key="startDelayMs" min="0" max="30000" step="1000" value="5000">
+                        <input type="number" id="cache_amber" data-section="cache" data-key="amber" min="30000" max="300000" step="5000" value="60000">
                         <span class="unit">ms</span>
-                        <span class="time-display" id="automation_startDelayMs_display">= 5s</span>
+                        <span class="time-display" id="cache_amber_display">= 60s</span>
                     </div>
                 </div>
                 <div class="setting-item">
-                    <div class="setting-label">Data Gathering Timeout</div>
-                    <div class="setting-hint">Max time to wait for API responses during automation cycle</div>
+                    <div class="setting-label">Inverter Data Cache</div>
+                    <div class="setting-hint">FoxESS inverter data refresh interval (respect rate limits)</div>
                     <div class="setting-input">
-                        <input type="number" id="automation_gatherDataTimeoutMs" data-section="automation" data-key="gatherDataTimeoutMs" min="5000" max="30000" step="1000" value="8000">
+                        <input type="number" id="cache_inverter" data-section="cache" data-key="inverter" min="60000" max="600000" step="30000" value="300000">
                         <span class="unit">ms</span>
-                        <span class="time-display" id="automation_gatherDataTimeoutMs_display">= 8s</span>
+                        <span class="time-display" id="cache_inverter_display">= 5m</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Weather Data Cache</div>
+                    <div class="setting-hint">Weather forecast refresh interval</div>
+                    <div class="setting-input">
+                        <input type="number" id="cache_weather" data-section="cache" data-key="weather" min="300000" max="3600000" step="300000" value="1800000">
+                        <span class="unit">ms</span>
+                        <span class="time-display" id="cache_weather_display">= 30m</span>
                     </div>
                 </div>
             </div>
@@ -619,25 +640,28 @@
                 </div>
                 <div class="faq-content">
                     <div class="faq-item">
-                        <div class="faq-question">What's the best cycle interval for my setup?</div>
+                        <div class="faq-question">What should I tune first?</div>
                         <div class="faq-answer">
-                            For most users, <code>60 seconds</code> is ideal. This balances responsiveness with API rate limits. 
-                            If you have time-sensitive price rules, try <code>30 seconds</code>. For battery longevity, <code>120 seconds</code> reduces switching frequency.
+                            Start with <code>Automation Cycle Interval</code> and <code>Amber Prices Cache</code>. Keeping both around <code>60 seconds</code> gives responsive rule decisions without excessive API traffic.
                         </div>
                     </div>
                     <div class="faq-item">
-                        <div class="faq-question">Why would I change the startup delay?</div>
+                        <div class="faq-question">Why is inverter cache usually longer than the cycle interval?</div>
                         <div class="faq-answer">
-                            The startup delay gives your network and external APIs time to stabilize after a server restart. 
-                            Increase it if you see errors on boot. Set to <code>0</code> if automation should start immediately.
+                            FoxESS endpoints have stricter rate limits than local rule evaluation. A <code>5 minute</code> inverter cache avoids unnecessary API pressure while automation can still run every minute using fresh-enough telemetry.
                         </div>
                     </div>
                     <div class="faq-item">
-                        <div class="faq-question">What happens if the data gathering times out?</div>
+                        <div class="faq-question">How do these intervals work together?</div>
                         <div class="faq-answer">
-                            If APIs don't respond within this timeout, the automation cycle skips that data source and uses cached values. 
-                            Increase this if you have a slow internet connection or see frequent timeout warnings in logs.
-                            <div class="faq-tip">Check the Logging section and set level to "Debug" to see detailed timeout information.</div>
+                            Each automation cycle evaluates rules using the latest available cached values. If a cache has expired, that source is refreshed first, then used by the same cycle.
+                            <div class="faq-tip">If you see frequent API throttling, increase cache intervals before increasing the automation cycle interval.</div>
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What defaults are recommended?</div>
+                        <div class="faq-answer">
+                            Recommended baseline: <code>60s</code> automation, <code>60s</code> Amber, <code>5m</code> inverter, <code>30m</code> weather. Adjust only if you have a clear need for faster or slower refresh behavior.
                         </div>
                     </div>
                 </div>
@@ -817,7 +841,7 @@
         </div>
 
         <!-- Credentials (FoxESS / Amber) -->
-        <div class="section">
+        <div class="section" id="credentialsSection">
             <div class="section-header">
                 <div>
                     <div class="section-title">
@@ -1006,80 +1030,6 @@
             </div>
         </div>
 
-        <!-- Cache Settings -->
-        <div class="section">
-            <div class="section-header">
-                <div>
-                    <div class="section-title">
-                        💾 Cache & Refresh Intervals
-                        <span class="badge badge-sync" id="cacheBadge">Synced</span>
-                    </div>
-                </div>
-                <button class="btn-secondary" onclick="resetSection('cache')">Undo Current Changes</button>
-            </div>
-            <div class="section-description">
-                Configure how long data is cached before refreshing from external APIs. Longer intervals reduce API calls.
-            </div>
-            <div class="settings-grid">
-                <div class="setting-item">
-                    <div class="setting-label">Amber Prices Cache</div>
-                    <div class="setting-hint">Amber pricing data refresh interval</div>
-                    <div class="setting-input">
-                        <input type="number" id="cache_amber" data-section="cache" data-key="amber" min="30000" max="300000" step="5000" value="60000">
-                        <span class="unit">ms</span>
-                        <span class="time-display" id="cache_amber_display">= 60s</span>
-                    </div>
-                </div>
-                <div class="setting-item">
-                    <div class="setting-label">Inverter Data Cache</div>
-                    <div class="setting-hint">FoxESS inverter data refresh interval (respect rate limits)</div>
-                    <div class="setting-input">
-                        <input type="number" id="cache_inverter" data-section="cache" data-key="inverter" min="60000" max="600000" step="30000" value="300000">
-                        <span class="unit">ms</span>
-                        <span class="time-display" id="cache_inverter_display">= 5m</span>
-                    </div>
-                </div>
-                <div class="setting-item">
-                    <div class="setting-label">Weather Data Cache</div>
-                    <div class="setting-hint">Weather forecast refresh interval</div>
-                    <div class="setting-input">
-                        <input type="number" id="cache_weather" data-section="cache" data-key="weather" min="300000" max="3600000" step="300000" value="1800000">
-                        <span class="unit">ms</span>
-                        <span class="time-display" id="cache_weather_display">= 30m</span>
-                    </div>
-                </div>
-            </div>
-            <div class="faq-section">
-                <div class="faq-toggle" onclick="toggleFaq(this)">
-                    <span class="arrow">▶</span> Frequently Asked Questions
-                </div>
-                <div class="faq-content">
-                    <div class="faq-item">
-                        <div class="faq-question">Why can't I set the inverter cache below 60 seconds?</div>
-                        <div class="faq-answer">
-                            FoxESS Cloud API has rate limits. Polling too frequently can get your API key temporarily blocked or cause errors. 
-                            <code>5 minutes</code> is the recommended minimum to stay well within limits while keeping data reasonably fresh.
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question">How does caching affect my automation rules?</div>
-                        <div class="faq-answer">
-                            Automation rules use cached data when making decisions. Shorter cache times mean more up-to-date data but more API calls.
-                            For price-based rules, <code>60 seconds</code> Amber cache ensures you react quickly to price changes.
-                            <div class="faq-tip">Balance responsiveness with API usage — aggressive caching can hit rate limits during busy periods.</div>
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question">Why is weather cache so long (30 minutes)?</div>
-                        <div class="faq-answer">
-                            Weather forecasts don't change frequently and the data is typically updated hourly by providers. 
-                            A <code>30 minute</code> cache is sufficient for solar production estimates while minimizing unnecessary API calls.
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- Default Rule Settings -->
         <div class="section">
             <div class="section-header">
@@ -1234,7 +1184,7 @@
         // Update all time displays
         function updateAllTimeDisplays() {
             const msInputs = [
-                'automation_intervalMs', 'automation_startDelayMs', 'automation_gatherDataTimeoutMs',
+                'automation_intervalMs',
                 'cache_amber', 'cache_inverter', 'cache_weather'
             ];
             msInputs.forEach(updateTimeDisplay);
@@ -1337,8 +1287,6 @@
                 // Automation
                 if (currentConfig.automation) {
                     setInput('automation_intervalMs', currentConfig.automation.intervalMs);
-                    setInput('automation_startDelayMs', currentConfig.automation.startDelayMs);
-                    setInput('automation_gatherDataTimeoutMs', currentConfig.automation.gatherDataTimeoutMs);
                 }
                 
                 // Cache
@@ -1522,10 +1470,10 @@
                     originalConfig.automation.intervalMs = getInputValue('automation_intervalMs') || 60000;
                 }
                 if (originalConfig.automation.startDelayMs === undefined || originalConfig.automation.startDelayMs === null) {
-                    originalConfig.automation.startDelayMs = getInputValue('automation_startDelayMs') || 5000;
+                    originalConfig.automation.startDelayMs = currentConfig?.automation?.startDelayMs ?? 5000;
                 }
                 if (originalConfig.automation.gatherDataTimeoutMs === undefined || originalConfig.automation.gatherDataTimeoutMs === null) {
-                    originalConfig.automation.gatherDataTimeoutMs = getInputValue('automation_gatherDataTimeoutMs') || 8000;
+                    originalConfig.automation.gatherDataTimeoutMs = currentConfig?.automation?.gatherDataTimeoutMs ?? 8000;
                 }
                 
                 if (originalConfig.cache.amber === undefined || originalConfig.cache.amber === null) {
@@ -1608,13 +1556,14 @@
             
             const sections = ['automation', 'cache', 'defaults', 'logging', 'api', 'preferences'];
             let hasChanges = false;
+            let automationChanged = false;
+            let cacheChanged = false;
             
             // Check credentials for changes
             const credentialsChanged = checkCredentialsChanged();
             if (credentialsChanged) hasChanges = true;
             
             sections.forEach(section => {
-                const badge = document.getElementById(`${section}Badge`);
                 let sectionChanged = false;
                 
                 // Check originalConfig section (which always exists after loading)
@@ -1645,17 +1594,38 @@
                         }
                     });
                 }
-                
-                if (badge) {
-                    if (sectionChanged) {
-                        badge.textContent = 'Modified';
-                        badge.className = 'badge badge-modified';
-                    } else {
-                        badge.textContent = 'Synced';
-                        badge.className = 'badge badge-sync';
-                    }
+
+                if (section === 'automation') {
+                    automationChanged = sectionChanged;
+                    return;
+                }
+                if (section === 'cache') {
+                    cacheChanged = sectionChanged;
+                    return;
+                }
+
+                const badge = document.getElementById(`${section}Badge`);
+                if (!badge) return;
+
+                if (sectionChanged) {
+                    badge.textContent = 'Modified';
+                    badge.className = 'badge badge-modified';
+                } else {
+                    badge.textContent = 'Synced';
+                    badge.className = 'badge badge-sync';
                 }
             });
+
+            const automationBadge = document.getElementById('automationBadge');
+            if (automationBadge) {
+                if (automationChanged || cacheChanged) {
+                    automationBadge.textContent = 'Modified';
+                    automationBadge.className = 'badge badge-modified';
+                } else {
+                    automationBadge.textContent = 'Synced';
+                    automationBadge.className = 'badge badge-sync';
+                }
+            }
             
             // Check blackout windows separately
             const currentWindows = JSON.stringify(getBlackoutWindowsFromUI());
@@ -1764,8 +1734,9 @@
                 const newConfig = {
                     automation: {
                         intervalMs: getInputValue('automation_intervalMs'),
-                        startDelayMs: getInputValue('automation_startDelayMs'),
-                        gatherDataTimeoutMs: getInputValue('automation_gatherDataTimeoutMs'),
+                        // Hidden advanced fields preserved from current config.
+                        startDelayMs: currentConfig?.automation?.startDelayMs ?? originalConfig?.automation?.startDelayMs ?? 5000,
+                        gatherDataTimeoutMs: currentConfig?.automation?.gatherDataTimeoutMs ?? originalConfig?.automation?.gatherDataTimeoutMs ?? 8000,
 
                         blackoutWindows: getBlackoutWindowsFromUI()
                     },
@@ -1808,12 +1779,6 @@
                 // Automation settings validation
                 if (newConfig.automation.intervalMs < 20000 || newConfig.automation.intervalMs > 600000) {
                     validationErrors.push('Automation cycle: must be 20s-10m (20,000-600,000ms)');
-                }
-                if (newConfig.automation.startDelayMs < 0 || newConfig.automation.startDelayMs > 30000) {
-                    validationErrors.push('Startup delay: must be 0-30s (0-30,000ms)');
-                }
-                if (newConfig.automation.gatherDataTimeoutMs < 5000 || newConfig.automation.gatherDataTimeoutMs > 30000) {
-                    validationErrors.push('Data timeout: must be 5-30s (5,000-30,000ms)');
                 }
                 
                 // Cache settings validation
@@ -1939,6 +1904,19 @@
             }
         }
 
+        function resetAutomationAndCache() {
+            if (!confirm('Undo changes to automation and cache settings?')) return;
+            ['automation', 'cache'].forEach(section => {
+                if (!originalConfig[section]) return;
+                Object.keys(originalConfig[section]).forEach(key => {
+                    if (key === 'blackoutWindows') return;
+                    setInputValue(`${section}_${key}`, originalConfig[section][key]);
+                });
+            });
+            updateAllTimeDisplays();
+            updateStatus();
+        }
+
         // Reset section to defaults
         function resetSection(section) {
             if (!confirm(`Undo changes to ${section} settings?`)) return;
@@ -2053,14 +2031,6 @@
             'automation_intervalMs': {
                 min: 20000, max: 600000,
                 errorMsg: 'Automation cycle must be 20s-10m (20,000-600,000ms)'
-            },
-            'automation_startDelayMs': {
-                min: 0, max: 30000,
-                errorMsg: 'Startup delay must be 0-30s (0-30,000ms)'
-            },
-            'automation_gatherDataTimeoutMs': {
-                min: 5000, max: 30000,
-                errorMsg: 'Data timeout must be 5-30s (5,000-30,000ms)'
             },
             'cache_amber': {
                 min: 10000, max: 300000,

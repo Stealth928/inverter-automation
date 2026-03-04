@@ -1316,14 +1316,70 @@
                 const now = Date.now();
                 
                 // Get stored Amber site ID (needed for Amber prices)
+                function getAmberUserStorageId() {
+                    try {
+                        const mode = localStorage.getItem('adminImpersonationMode') || '';
+                        const impersonatedUid = localStorage.getItem('adminImpersonationUid') || '';
+                        if (mode === 'header' && impersonatedUid) return impersonatedUid;
+                    } catch (e) { /* ignore */ }
+                    try {
+                        if (window.AppShell && typeof window.AppShell.getUser === 'function') {
+                            const uid = window.AppShell.getUser()?.uid;
+                            if (uid) return uid;
+                        }
+                    } catch (e) { /* ignore */ }
+                    return 'guest';
+                }
+
+                function getAmberSiteStorageKey() {
+                    return `amberSiteSelection:${getAmberUserStorageId()}`;
+                }
+
+                function getStoredAmberSiteId() {
+                    try {
+                        const scoped = localStorage.getItem(getAmberSiteStorageKey());
+                        if (scoped) return String(scoped).trim();
+                    } catch (e) { /* ignore */ }
+                    try {
+                        const legacy = localStorage.getItem('amberSiteId');
+                        if (legacy) return String(legacy).trim();
+                    } catch (e) { /* ignore */ }
+                    return null;
+                }
+
+                function storeAmberSiteId(siteId) {
+                    const normalized = String(siteId || '').trim();
+                    if (!normalized) return;
+                    try { localStorage.setItem(getAmberSiteStorageKey(), normalized); } catch (e) { /* ignore */ }
+                    try { localStorage.setItem('amberSiteId', normalized); } catch (e) { /* ignore */ }
+                }
+
                 let siteId = null;
                 try {
-                    const stored = localStorage.getItem('amberSiteId');
+                    const stored = getStoredAmberSiteId();
                     if (stored) {
                         siteId = stored;
                         console.log('[Fetch] Using stored Amber siteId:', siteId);
                     }
                 } catch (e) { /* ignore */ }
+
+                // If still missing, try persisted user config before hitting /api/amber/sites
+                if (!siteId && fetchAmber) {
+                    try {
+                        const cfgResp = await authenticatedFetch('/api/config');
+                        if (cfgResp.ok) {
+                            const cfg = await cfgResp.json();
+                            const cfgSiteId = String(cfg?.result?.amberSiteId || '').trim();
+                            if (cfgSiteId) {
+                                siteId = cfgSiteId;
+                                storeAmberSiteId(siteId);
+                                console.log('[Fetch] Using amberSiteId from /api/config:', siteId);
+                            }
+                        }
+                    } catch (e) {
+                        console.log('[Fetch] Could not read /api/config amberSiteId:', e.message);
+                    }
+                }
                 
                 // If no stored siteId and Amber fetch requested, try to get from Amber sites endpoint
                 if (!siteId && fetchAmber) {
@@ -1335,7 +1391,7 @@
                             const sitesList = Array.isArray(sites) ? sites : (sites.result || []);
                             if (sitesList.length > 0) {
                                 siteId = sitesList[0].id;
-                                localStorage.setItem('amberSiteId', siteId);
+                                storeAmberSiteId(siteId);
                                 console.log('[Fetch] Got siteId from API:', siteId);
                             }
                         }

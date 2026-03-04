@@ -311,7 +311,7 @@ test.describe('Settings Page - Change Detection', () => {
       await amberCache.fill('120000');
       
       // Check for "Modified" indicator
-      const cacheBadge = page.locator('#cacheBadge, .cache-badge');
+      const cacheBadge = page.locator('#automationBadge, #cacheBadge, .cache-badge');
       const badgeText = await cacheBadge.first().textContent().catch(() => '');
       
       expect(badgeText.toLowerCase()).toContain('modif');
@@ -456,7 +456,7 @@ test.describe('Settings Page - Change Detection', () => {
     await page.waitForTimeout(600);
     const statusText = (await page.locator('#configStatus').first().textContent().catch(() => '') || '').toLowerCase();
     const automationBadgeText = (await page.locator('#automationBadge').first().textContent().catch(() => '') || '').toLowerCase();
-    const cacheBadgeText = (await page.locator('#cacheBadge').first().textContent().catch(() => '') || '').toLowerCase();
+    const cacheBadgeText = (await page.locator('#automationBadge, #cacheBadge').first().textContent().catch(() => '') || '').toLowerCase();
     const hasIntervalValueChanged = ((await page.locator('#automation_intervalMs').first().inputValue().catch(() => '')) === '90000');
     const hasCacheValueChanged = ((await page.locator('#cache_amber').first().inputValue().catch(() => '')) === '120000');
 

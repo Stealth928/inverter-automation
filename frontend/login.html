@@ -53,20 +53,18 @@
         }
 
         .logo {
-            width: 88px;
-            height: 88px;
+            width: 96px;
+            height: 96px;
             margin: 0 auto 20px;
-            background: #0a0e1a;
-            border-radius: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 28px rgba(0, 0, 0, 0.5);
-            overflow: hidden;
+            filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.45));
         }
         .logo img {
-            width: 88px;
-            height: 88px;
+            width: 96px;
+            height: 96px;
+            object-fit: contain;
             display: block;
         }
 
@@ -426,7 +424,7 @@
     <div class="login-container">
         <div class="login-card">
             <div class="login-header">
-                <div class="logo"><img src="/icons/icon.svg" alt="SoCrates"></div>
+                <div class="logo"><img src="/icons/icon-192.png" srcset="/icons/icon-512.png 2x" alt="SoCrates"></div>
                 <h1>SoCrates</h1>
                 <p>Sign in to automate your solar & battery system</p>
             </div>
