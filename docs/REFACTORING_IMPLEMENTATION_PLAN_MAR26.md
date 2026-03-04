@@ -12,18 +12,18 @@ Primary Branch: `RefactoringMar26`
 | CI and Quality Gates | 1-5 | ✅ Done | 5/5 |
 | API Contract Baseline | 6-8 | ✅ Done | 3/3 |
 | Dead Code and Cleanup | 9-11 | ✅ Done | 3/3 |
-| Documentation and Security | 12-15 | ⏳ Pending | 0/4 |
-| Governance | 16-19 | ⏳ Pending | 0/4 |
+| Documentation and Security | 12-15 | ✅ Done | 4/4 |
+| Governance | 16-19 | ✅ Done | 4/4 |
 | Parallel Frontend Prep | 20-21 | ⏳ Pending | 0/2 |
-| **Sprint 1 Total** | **1-21** | **⏳ In Progress** | **11/21 (52%)** |
+| **Sprint 1 Total** | **1-21** | **⏳ In Progress** | **19/21 (90%)** |
 
 ---
 
 ## 0. Execution Progress
 
 **Sprint 1 Status Snapshot**
-- ✅ Completed: backlog items **1-11**
-- ⏳ Pending: backlog items **12-21**
+- ✅ Completed: backlog items **1-19**
+- ⏳ Pending: backlog items **20-21**
 
 ### ✅ 2026-03-04 - Chunk 1 (CI and quality-gate hardening)
 
@@ -102,6 +102,49 @@ Primary Branch: `RefactoringMar26`
   - `npm --prefix functions test -- auth-flows.test.js --runInBand`
   - `node scripts/pre-deploy-check.js`
 - Next target chunk: Sprint 1 items **12, 13, 14, 15** (documentation and security).
+
+### ✅ 2026-03-04 - Chunk 5 (Documentation and security hardening)
+
+- Completed Sprint 1 backlog items **12, 13, 14, 15**.
+- Item 12 completed:
+  - refreshed `docs/SETUP.md` Firestore schema to document the complete current data model, including all cache, metrics, quick-control, curtailment, and admin audit paths.
+- Item 13 completed:
+  - added explicit Firestore rules for:
+    - `users/{uid}/cache/{cacheId}`
+    - `users/{uid}/metrics/{metricId}`
+    - `users/{uid}/quickControl/{docId}`
+    - `users/{uid}/curtailment/{docId}`
+    - `admin_audit/{auditId}`
+- Item 14 completed:
+  - synchronized admin role updates in `POST /api/admin/users/:uid/role` by updating both Firestore role and Firebase Auth custom claims via `setCustomUserClaims()`.
+  - added best-effort custom-claim rollback if Firestore write fails after claim update.
+- Item 15 completed:
+  - replaced manual subcollection deletion in `POST /api/auth/cleanup-user` with shared recursive `deleteUserDataTree(userId)` so all nested collections are removed consistently.
+- Validation passed:
+  - `npm --prefix functions test -- admin.test.js cleanup-user.test.js --runInBand`
+  - `node scripts/pre-deploy-check.js`
+- Next target chunk: Sprint 1 items **16, 17, 18, 19** (governance).
+
+### ✅ 2026-03-04 - Chunk 6 (Governance deliverables)
+
+- Completed Sprint 1 backlog items **16, 17, 18, 19**.
+- Item 16 completed:
+  - published ADR-001 for target architecture boundaries:
+    - `docs/adr/ADR-001-target-architecture-boundaries.md`
+- Item 17 completed:
+  - published ADR-002 for v2 data model and migration strategy:
+    - `docs/adr/ADR-002-v2-data-model-and-migration-strategy.md`
+- Item 18 completed:
+  - created migration and rollback checklist templates:
+    - `docs/checklists/MIGRATION_SAFETY_CHECKLIST.md`
+    - `docs/checklists/ROLLBACK_CHECKLIST.md`
+- Item 19 completed:
+  - added phase-gate tracker artifacts with `P0`/`G0` workflow support:
+    - `docs/PHASE_GATE_DASHBOARD.md`
+    - `.github/ISSUE_TEMPLATE/phase-gate-tracker.md`
+- Documentation index updated:
+  - `docs/INDEX.md`
+- Next target chunk: Sprint 1 items **20, 21** (parallel frontend prep).
 
 ---
 
@@ -811,16 +854,16 @@ Status key: ✅ = done, ⏳ = pending.
 11. ✅ [DONE 2026-03-04] Fix `auth-flows.test.js` — marked planned coverage scenarios as explicit `test.todo()` entries.
 
 ### Documentation and Security
-12. ⏳ Document complete Firestore data model (all 20+ paths from Section 1A.4).
-13. ⏳ Add explicit Firestore security rules for `cache`, `metrics`, `quickControl`, `curtailment`, `admin_audit` subcollections.
-14. ⏳ Synchronize admin role: update `POST /api/admin/users/:uid/role` to also call `admin.auth().setCustomUserClaims()`.
-15. ⏳ Fix `POST /api/auth/cleanup-user` to include missing subcollections: `automationAudit`, `quickControl`, `curtailment`, `cache`.
+12. ✅ [DONE 2026-03-04] Document complete Firestore data model (all 20+ paths from Section 1A.4).
+13. ✅ [DONE 2026-03-04] Add explicit Firestore security rules for `cache`, `metrics`, `quickControl`, `curtailment`, `admin_audit` subcollections.
+14. ✅ [DONE 2026-03-04] Synchronize admin role: update `POST /api/admin/users/:uid/role` to also call `admin.auth().setCustomUserClaims()`.
+15. ✅ [DONE 2026-03-04] Fix `POST /api/auth/cleanup-user` to include missing subcollections: `automationAudit`, `quickControl`, `curtailment`, `cache`.
 
 ### Governance
-16. ⏳ Publish ADR-001 (target architecture boundaries).
-17. ⏳ Publish ADR-002 (v2 data model and migration strategy).
-18. ⏳ Create migration safety checklist and rollback checklist templates.
-19. ⏳ Add phase gate dashboard issue tracker (`P0`, `G0` labels).
+16. ✅ [DONE 2026-03-04] Publish ADR-001 (target architecture boundaries).
+17. ✅ [DONE 2026-03-04] Publish ADR-002 (v2 data model and migration strategy).
+18. ✅ [DONE 2026-03-04] Create migration safety checklist and rollback checklist templates.
+19. ✅ [DONE 2026-03-04] Add phase gate dashboard issue tracker (`P0`, `G0` labels).
 
 ### Parallel Frontend Prep (can start immediately)
 20. ⏳ Create `test/helpers/firebase-mock.js` with shared test utilities.
@@ -849,6 +892,8 @@ When execution is approved, run phases in order:
 | 2026-03-04 | Completed Sprint 1 item 5 by wiring Playwright E2E into CI as a hard gate (`frontend-e2e` job). Added root `test:e2e:frontend` script and made deployment readiness depend on E2E success. Stabilized flaky frontend E2E assertions in `dashboard.spec.js`, `control.spec.js`, and `history.spec.js` for CI reliability. | Codex |
 | 2026-03-04 | Completed Sprint 1 API contract baseline items 6-8. Added automated contract scanner (`scripts/api-contract-baseline.js`) that inventories backend routes, APIClient endpoints, and inline HTML endpoint usage; generated `docs/API_CONTRACT_BASELINE_MAR26.md`; documented 38 inline endpoint paths missing from APIClient; and added contract mismatch hard-gate execution in `scripts/pre-deploy-check.js`. | Codex |
 | 2026-03-04 | Completed Sprint 1 dead-code/cleanup items 9-11. Removed superseded `frontend/js/pwa-init.js` and its last include, removed dead `loadApiMetrics()` no-op block in `frontend/js/shared-utils.js`, and converted `functions/test/auth-flows.test.js` into explicit `test.todo()` coverage plan entries. Verified via targeted auth test and full pre-deploy gate. | Codex |
+| 2026-03-04 | Completed Sprint 1 documentation/security items 12-15. Updated `docs/SETUP.md` with full current Firestore schema inventory; added explicit Firestore rules for `users/{uid}/cache`, `users/{uid}/metrics`, `users/{uid}/quickControl`, `users/{uid}/curtailment`, and `admin_audit`; synchronized admin role updates to custom claims in `POST /api/admin/users/:uid/role`; and switched `POST /api/auth/cleanup-user` to shared recursive delete for full subcollection coverage. Added regression tests in `functions/test/admin.test.js` and new `functions/test/cleanup-user.test.js`. | Codex |
+| 2026-03-04 | Completed Sprint 1 governance items 16-19. Published ADR-001 (target architecture boundaries) and ADR-002 (v2 data model + migration strategy), added migration and rollback checklist templates, and added a phase-gate dashboard plus issue template for `P0`/`G0` tracking. Updated `docs/INDEX.md` with these new governance artifacts. | Codex |
 
 ---
 
@@ -921,3 +966,4 @@ functions/
 **Revised total:** 22-27 weeks (vs original 20 weeks). Recommend planning for 24 weeks with 2-week buffer.
 
 **Critical path mitigation:** Start frontend inline JS extraction during P2 (parallel). Start feature-flag infrastructure during P2. Start EV research/prototyping during P3-P4.
+
