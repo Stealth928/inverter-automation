@@ -126,10 +126,8 @@
 
     function setAdminNavVisibility(isAdmin) {
         try {
-            const teslaLink = document.getElementById('teslaNavLink');
             const topologyLink = document.getElementById('topologyNavLink');
             const adminLink = document.getElementById('adminNavLink');
-            if (teslaLink) teslaLink.style.display = isAdmin ? '' : 'none';
             if (topologyLink) topologyLink.style.display = isAdmin ? '' : 'none';
             if (adminLink) adminLink.style.display = isAdmin ? '' : 'none';
         } catch (e) {

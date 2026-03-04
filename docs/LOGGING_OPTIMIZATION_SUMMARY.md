@@ -82,7 +82,6 @@
 | Config loading logs | 3 | ❌ Remove (called frequently) |
 | Curtailment logs | 4 | ⚠️ Guard with DEBUG flag |
 | Automation cycle logs | 50+ | ⚠️ Guard with VERBOSE flag |
-| Tesla OAuth logs | 15 | ❌ Remove after stable |
 | User init logs | 3 | ✅ Keep (infrequent) |
 
 **High-Impact Removals (Frequent Calls):**
@@ -115,10 +114,6 @@
    - `frontend/js/shared-utils.js` (metrics, localStorage logs)
    - `frontend/js/firebase-auth.js` (auth state logs)
    - `frontend/test.html` (debug logs for automation lab)
-
-5. **Tesla OAuth cleanup** (index.js lines 1091-1244)
-   - OAuth is stable, remove verbose token exchange logs
-   - Keep only error logs
 
 ### Long-Term Actions (Priority 3)
 6. **Structured logging** - Implement JSON-structured logs

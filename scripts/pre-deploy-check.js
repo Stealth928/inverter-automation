@@ -247,7 +247,21 @@ if (fs.existsSync(firebaseJsonPath)) {
 }
 
 // ============================================================================
-// 8. SUMMARY AND EXIT
+// 8. API CONTRACT CHECKS
+// ============================================================================
+section('8. Verifying API Contract Baseline');
+
+try {
+  log(colors.cyan, 'Running: node scripts/api-contract-baseline.js --silent');
+  execSync('node scripts/api-contract-baseline.js --silent', { stdio: 'inherit', cwd: repoRoot });
+  checkPass('APIClient routes match backend routes');
+} catch (e) {
+  checkFail('API contract mismatch detected - run: node scripts/api-contract-baseline.js --write-doc');
+  failures.push('API_CONTRACT_FAILURE');
+}
+
+// ============================================================================
+// 9. SUMMARY AND EXIT
 // ============================================================================
 section('Pre-Deployment Check Summary');
 

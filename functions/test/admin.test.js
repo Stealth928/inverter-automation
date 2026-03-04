@@ -14,7 +14,8 @@ const mockAuth = {
   getUser: jest.fn(),
   listUsers: jest.fn(),
   createCustomToken: jest.fn(),
-  deleteUser: jest.fn()
+  deleteUser: jest.fn(),
+  setCustomUserClaims: jest.fn()
 };
 
 jest.mock('firebase-admin', () => {
@@ -90,6 +91,8 @@ beforeAll(() => {
     ],
     pageToken: undefined
   });
+  mockAuth.getUser.mockResolvedValue({ uid: 'user-uid-2', email: 'regular@example.com', customClaims: {} });
+  mockAuth.setCustomUserClaims.mockResolvedValue(undefined);
 
   const mockDoc = (data = {}) => ({
     exists: !!data,
@@ -224,6 +227,11 @@ describe('Admin API', () => {
   });
 
   describe('POST /api/admin/users/:uid/role', () => {
+    beforeEach(() => {
+      mockAuth.setCustomUserClaims.mockClear();
+      mockAuth.getUser.mockResolvedValue({ uid: 'user-uid-2', email: 'regular@example.com', customClaims: {} });
+    });
+
     it('should update user role for admin', async () => {
       const res = await request(app)
         .post('/api/admin/users/user-uid-2/role')
@@ -233,6 +241,29 @@ describe('Admin API', () => {
       expect(res.status).toBe(200);
       expect(res.body.errno).toBe(0);
       expect(res.body.result.role).toBe('admin');
+      expect(res.body.result.customClaimsUpdated).toBe(true);
+      expect(mockAuth.setCustomUserClaims).toHaveBeenCalledWith(
+        'user-uid-2',
+        expect.objectContaining({ admin: true })
+      );
+    });
+
+    it('should remove admin claim when role is set to user', async () => {
+      mockAuth.getUser.mockResolvedValue({
+        uid: 'user-uid-2',
+        email: 'regular@example.com',
+        customClaims: { admin: true, support: true }
+      });
+
+      const res = await request(app)
+        .post('/api/admin/users/user-uid-2/role')
+        .set(authHeaders('mock-admin-token'))
+        .send({ role: 'user' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.errno).toBe(0);
+      expect(res.body.result.role).toBe('user');
+      expect(mockAuth.setCustomUserClaims).toHaveBeenCalledWith('user-uid-2', { support: true });
     });
 
     it('should reject invalid role', async () => {
@@ -252,6 +283,20 @@ describe('Admin API', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('own admin role');
+    });
+
+    it('should return 404 when target user does not exist', async () => {
+      const notFound = new Error('User not found');
+      notFound.code = 'auth/user-not-found';
+      mockAuth.getUser.mockRejectedValueOnce(notFound);
+
+      const res = await request(app)
+        .post('/api/admin/users/missing-user/role')
+        .set(authHeaders('mock-admin-token'))
+        .send({ role: 'admin' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.errno).toBe(404);
     });
 
     it('should return 403 for non-admin', async () => {

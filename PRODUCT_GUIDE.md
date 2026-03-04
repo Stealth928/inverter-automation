@@ -130,14 +130,7 @@ Each household gets their own secure, isolated account.
 - No interference between different users or systems
 - Scale from one home to hundreds of installations
 
-### 8. **Tesla Powerwall Integration** *(Advanced)*
-Control your Tesla Powerwall alongside your FoxESS inverter.
-
-**Requirements:** Tesla Fleet API access, cryptographic key setup  
-**Capabilities:** Charge control, discharge management, SOC targeting  
-**Status:** Fully functional with signed command support  
-
-### 9. **Comprehensive History & Analytics**
+### 8. **Comprehensive History & Analytics**
 Track every automation decision and measure your savings.
 
 **Available Reports:**
@@ -149,7 +142,7 @@ Track every automation decision and measure your savings.
 
 **Visibility:** Understand exactly how automation is helping you save.
 
-### 10. **Return on Investment (ROI) Tracking**
+### 9. **Return on Investment (ROI) Tracking**
 See how much money automation has saved you.
 
 **Metrics Tracked:**
@@ -171,7 +164,6 @@ Create your account using secure email/password authentication. Your account is 
 Enter your API credentials (we'll guide you through getting these):
 - FoxESS Cloud account token
 - Amber Electric API key
-- Tesla credentials (optional)
 
 **Don't worry—** These are stored securely and never shared.
 
@@ -423,7 +415,6 @@ Configure your system and integrations.
 **API Credentials:**
 - FoxESS account token
 - Amber API key
-- Tesla credentials (optional)
 - Validation and testing tools
 
 **Automation Configuration:**
@@ -510,23 +501,6 @@ Discovery and testing interface for solar production control.
 - Explicit confirmation required for changes
 - One-click restore to defaults
 - Activity audit trail
-
----
-
-### **Tesla Integration Page** *(Advanced)*
-Connect and control your Tesla Powerwall or vehicle.
-
-**Setup Wizard:**
-- Generate cryptographic keys
-- Register public key with Tesla
-- Test connection
-- Configure charge/discharge parameters
-
-**Control Options:**
-- Coordinate with FoxESS automation
-- Set Powerwall charge/discharge schedule
-- Vehicle charging optimization (if applicable)
-- Combined system efficiency
 
 ---
 

@@ -23,7 +23,6 @@
    - Preserved all historical information in archive
 
 3. **Validation & Testing**
-   - ✅ 398 of 402 unit tests passing (3 pre-existing Tesla OAuth failures)
    - ✅ ESLint: 94 warnings (mostly unused test variables - acceptable)
    - ✅ 1 unreachable code error (pre-existing, unrelated to logging changes)
    - ✅ No regressions introduced by logging cleanup
@@ -84,7 +83,6 @@
 | Automation cycle logs | 50+ | High | 25% |
 | Config loading logs | 3 | Very High | 10% |
 | Curtailment logs | 4 | Medium | 5% |
-| Tesla OAuth logs | 15 | Low | 2% |
 
 **Reason for Deferral:**
 Given the extensive nature of index.js (6400+ lines) and the need to carefully validate each log removal, we documented the audit findings rather than risking regressions. The amber.js cleanup demonstrates the approach and validates the testing methodology.
@@ -139,7 +137,6 @@ Feature Guides:
 - `README_CURTAILMENT.md` - Curtailment guide
 - `CURTAILMENT_QUICK_START.md` - Quick setup
 - `BACKGROUND_AUTOMATION.md` - Scheduler
-- `TESLA_SECURITY.md` - Tesla OAuth
 
 Operations:
 - `DEPLOYMENT_GUIDE.md` - CI/CD procedures
@@ -205,7 +202,6 @@ Tests:       3 failed, 1 skipped, 398 passed, 402 total
 ```
 
 **Failures:**
-- 3 Tesla OAuth tests (pre-existing, unrelated to logging changes)
 - Root cause: Mock fetch `.text()` issue in test setup
 - Impact: None (feature works in production, test needs update)
 

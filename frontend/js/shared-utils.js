@@ -93,16 +93,7 @@ async function loadApiMetrics(days = 1) {
             resp = await fetch(apiUrl);
         }
         
-        // Handle response using normalizeFetchResponse logic if available, or manual check
         let data;
-        if (typeof normalizeFetchResponse === 'function') {
-             // If we have the helper (from api-client.js or inline), use it? 
-             // Actually api-client.js is not imported here.
-             // But apiClient.fetch returns a Response object that might be normalized if it came from apiClient.
-             // If it came from fetchWithAuth, it's raw.
-        }
-        
-        // Just try to parse JSON
         const contentType = resp.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
              data = await resp.json();

@@ -15,7 +15,6 @@ const admin = require('firebase-admin');
 const express = require('express');
 const cors = require('cors');
 const fetch = require('node-fetch');
-const crypto = require('crypto');
 const {
   evaluateTemperatureCondition,
   evaluateTimeCondition,
@@ -1130,235 +1129,6 @@ app.get('/api/metrics/api-calls', async (req, res) => {
   }
 });
 
-// ==================== TESLA OAUTH ENDPOINTS (Before Auth Middleware) ====================
-// These endpoints must be before app.use('/api', authenticateUser) because:
-// 1. oauth-authorize manually verifies the token from query param
-// 2. oauth-callback receives redirect from Tesla (no auth headers)
-
-// OAuth authorize endpoint - redirects to Tesla
-// Note: This endpoint receives idToken as query param since redirects don't send Authorization headers
-// It manually handles authentication to support query param tokens
-app.get('/api/tesla/oauth-authorize', async (req, res) => {
-  try {
-    // Manually authenticate using query param token
-    const { idToken, clientId } = req.query;
-    if (!idToken) {
-      return res.status(401).json({ errno: 401, error: 'No authentication token provided' });
-    }
-    
-    if (!clientId) {
-      return res.status(400).json({ errno: 400, error: 'clientId is required in query params' });
-    }
-    
-    let user;
-    try {
-      user = await admin.auth().verifyIdToken(idToken);
-    } catch (tokenError) {
-      console.error('[Tesla] Token verification failed:', tokenError.message);
-      return res.status(401).json({ errno: 401, error: 'Invalid or expired token' });
-    }
-    
-    // Check if user is authorized for Tesla
-    const allowedEmail = 'sardanapalos928@hotmail.com';
-    if (user.email !== allowedEmail) {
-      return res.status(403).json({ 
-        errno: 403, 
-        error: 'Access denied. Tesla integration is currently restricted to authorized users.' 
-      });
-    }
-    
-    // Generate state token for CSRF protection
-    const state = Buffer.from(JSON.stringify({ 
-      userId: user.uid, 
-      clientId: clientId.trim(),  // Store clientId in state for use in callback
-      timestamp: Date.now(),
-      nonce: crypto.randomBytes(16).toString('hex')
-    })).toString('base64');
-    
-    // Tesla OAuth authorize URL
-    const teslaAuthUrl = 'https://auth.tesla.com/oauth2/v3/authorize';
-    // Get the original host from the referer or use X-Forwarded-Host header
-    // When called from Firebase Hosting, X-Forwarded-Host will be the Firebase domain
-    // If not available, use a hardcoded Firebase domain since that's where OAuth will redirect to
-    const host = req.get('X-Forwarded-Host') || req.get('referer')?.split('/')[2] || 'inverter-automation-firebase.web.app';
-    const redirectUri = `https://${host}/api/tesla/oauth-callback`;
-    // Tesla Fleet API scopes: vehicle_device_data (read), vehicle_cmds (control), vehicle_charging_cmds (charging), offline_access (refresh tokens)
-    const scope = 'openid vehicle_device_data vehicle_cmds vehicle_charging_cmds offline_access';
-    
-    const authorizeUrl = `${teslaAuthUrl}?` +
-      `client_id=${encodeURIComponent(clientId)}&` +
-      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-      `response_type=code&` +
-      `scope=${encodeURIComponent(scope)}&` +
-      `state=${encodeURIComponent(state)}`;
-    
-    logger.debug('Tesla', `User ${user.uid} initiating OAuth flow`);
-    res.redirect(authorizeUrl);
-  } catch (error) {
-    console.error('[Tesla] oauth-authorize error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// OAuth callback endpoint - handles redirect from Tesla
-app.get('/api/tesla/oauth-callback', async (req, res) => {
-  try {
-    const { code, state, error: teslaError } = req.query;
-    
-    // Check for errors from Tesla
-    if (teslaError) {
-      console.error('[Tesla] OAuth error from Tesla:', teslaError);
-      return res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent(teslaError)}`);
-    }
-    
-    if (!code || !state) {
-      console.error('[Tesla] Missing code or state in callback');
-      return res.redirect('/tesla-integration.html?oauth_error=missing_code_or_state');
-    }
-    
-    // Decode and verify state
-    let stateData;
-    try {
-      stateData = JSON.parse(Buffer.from(state, 'base64').toString());
-      
-      // Verify state has required fields
-      if (!stateData.userId || !stateData.timestamp || !stateData.nonce) {
-        console.error('[Tesla] State missing required fields:', stateData);
-        return res.redirect('/tesla-integration.html?oauth_error=invalid_state_format');
-      }
-      
-      // Check state age (15 minutes max)
-      const stateAge = Date.now() - stateData.timestamp;
-      if (stateAge > 15 * 60 * 1000) {
-        console.error('[Tesla] State token expired:', stateAge / 1000, 'seconds old');
-        return res.redirect('/tesla-integration.html?oauth_error=state_expired');
-      }
-      
-      logger.debug('Tesla', `Valid state token for user ${stateData.userId}`);
-    } catch (e) {
-      console.error('[Tesla] Invalid state token:', e);
-      return res.redirect('/tesla-integration.html?oauth_error=invalid_state');
-    }
-    
-    const userId = stateData.userId;
-    const clientId = stateData.clientId;  // Retrieved from state token
-    
-    logger.debug('Tesla', `oauth-callback received, attempting token exchange for user ${userId}`);
-    
-    // Get user's client secret from Firestore
-    let clientSecret = '';
-    try {
-      const userTeslaConfig = await db.collection('users').doc(userId).collection('config').doc('tesla').get();
-      if (userTeslaConfig.exists) {
-        clientSecret = userTeslaConfig.data().clientSecret;
-      }
-    } catch (err) {
-      console.warn('[Tesla] Error fetching user Tesla config:', err.message);
-    }
-    
-    if (!clientId || !clientSecret) {
-      console.error('[Tesla] Missing Tesla clientSecret for user or clientId in state');
-      return res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent('User Tesla credentials not configured')}`);
-    }
-    
-    // Exchange authorization code for tokens
-    // Get the original host from X-Forwarded-Host or use hardcoded Firebase domain
-    const host = req.get('X-Forwarded-Host') || 'inverter-automation-firebase.web.app';
-    const redirectUri = `https://${host}/api/tesla/oauth-callback`;
-    const tokenUrl = 'https://auth.tesla.com/oauth2/v3/token';
-    
-    logger.debug('Tesla', `Token exchange - redirectUri: ${redirectUri}, clientId: ${clientId}`);
-    
-    const tokenResponse = await fetch(tokenUrl, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Tesla-Automation/1.0'
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri
-      }),
-      redirect: 'manual'  // Don't follow redirects - handle manually if needed
-    });
-    
-    let tokenData;
-    const responseText = await tokenResponse.text();
-    
-    logger.debug('Tesla', `Token endpoint response status: ${tokenResponse.status} ${tokenResponse.statusText}`);
-    console.log(`[Tesla] Response headers:`, {
-      contentType: tokenResponse.headers.get('content-type'),
-      contentLength: tokenResponse.headers.get('content-length')
-    });
-    console.log(`[Tesla] Response body (first 1000 chars):`, responseText.substring(0, 1000));
-    
-    try {
-      tokenData = JSON.parse(responseText);
-    } catch (parseError) {
-      // If response is not JSON, it's likely an HTML error page from Tesla
-      console.error('[Tesla] Token response is not JSON:', {
-        status: tokenResponse.status,
-        statusText: tokenResponse.statusText,
-        headers: Object.fromEntries(tokenResponse.headers),
-        body: responseText.substring(0, 500)
-      });
-      console.error('[Tesla] Full request details:', {
-        redirect_uri: redirectUri,
-        client_id: clientId,
-        code: code.substring(0, 50) + '...'
-      });
-      return res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent('Tesla API error: ' + tokenResponse.statusText)}`);
-    }
-    
-    if (!tokenResponse.ok) {
-      const errorDetail = tokenData.error_description || tokenData.error || 'Unknown error';
-      console.error('[Tesla] Token exchange failed:', {
-        status: tokenResponse.status,
-        error: tokenData.error,
-        description: tokenData.error_description,
-        raw: tokenData
-      });
-      console.error('[Tesla] FORBIDDEN details:', {
-        client_id_starts_with: clientId.substring(0, 10),
-        client_secret_starts_with: clientSecret.substring(0, 10),
-        redirect_uri: redirectUri,
-        code_starts_with: code.substring(0, 20)
-      });
-      return res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent('Token exchange failed: ' + errorDetail)}`);
-    }
-    
-    if (!tokenData.access_token) {
-      console.error('[Tesla] No access token in response:', tokenData);
-      return res.redirect('/tesla-integration.html?oauth_error=no_access_token');
-    }
-    
-    logger.debug('Tesla', `Successfully exchanged code for tokens (access_token: ${tokenData.access_token.substring(0, 20)}..., refresh_token: ${tokenData.refresh_token ? 'present' : 'missing'})`);
-    
-    // Save tokens to Firestore
-    try {
-      await teslaAPI.saveUserTokens(
-        userId,
-        tokenData.access_token,
-        tokenData.refresh_token || null,
-        tokenData.expires_in || null
-      );
-      logger.debug('Tesla', `Tokens saved for user ${userId}`);
-    } catch (saveError) {
-      console.error('[Tesla] Failed to save tokens:', saveError);
-      return res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent('Failed to save tokens')}`);
-    }
-    
-    // Redirect back to tesla-integration page with success
-    res.redirect('/tesla-integration.html?oauth_success=true');
-  } catch (error) {
-    console.error('[Tesla] oauth-callback error:', error);
-    res.redirect(`/tesla-integration.html?oauth_error=${encodeURIComponent(error.message)}`);
-  }
-});
-
 // ==================== ADMIN API ENDPOINTS ====================
 // All admin routes use authenticateUser + requireAdmin explicitly so they
 // are registered before the catch-all app.use('/api', authenticateUser).
@@ -2283,6 +2053,9 @@ app.post('/api/admin/users/:uid/role', authenticateUser, requireAdmin, async (re
   try {
     const { uid } = req.params;
     const { role } = req.body;
+    if (!uid) {
+      return res.status(400).json({ errno: 400, error: 'uid is required' });
+    }
     if (!['admin', 'user'].includes(role)) {
       return res.status(400).json({ errno: 400, error: 'Role must be "admin" or "user"' });
     }
@@ -2290,8 +2063,39 @@ app.post('/api/admin/users/:uid/role', authenticateUser, requireAdmin, async (re
     if (uid === req.user.uid && role !== 'admin') {
       return res.status(400).json({ errno: 400, error: 'Cannot remove your own admin role' });
     }
-    await db.collection('users').doc(uid).set({ role, lastUpdated: serverTimestamp() }, { merge: true });
-    res.json({ errno: 0, result: { uid, role } });
+
+    let authUser;
+    try {
+      authUser = await admin.auth().getUser(uid);
+    } catch (authErr) {
+      if (authErr && authErr.code === 'auth/user-not-found') {
+        return res.status(404).json({ errno: 404, error: 'User not found' });
+      }
+      throw authErr;
+    }
+
+    const currentClaims = (authUser && authUser.customClaims && typeof authUser.customClaims === 'object')
+      ? authUser.customClaims
+      : {};
+    const updatedClaims = { ...currentClaims };
+    if (role === 'admin') {
+      updatedClaims.admin = true;
+    } else {
+      delete updatedClaims.admin;
+    }
+
+    await admin.auth().setCustomUserClaims(uid, updatedClaims);
+    try {
+      await db.collection('users').doc(uid).set({ role, lastUpdated: serverTimestamp() }, { merge: true });
+    } catch (firestoreErr) {
+      // Best-effort rollback: avoid leaving auth claims out of sync if Firestore update fails.
+      await admin.auth().setCustomUserClaims(uid, currentClaims).catch((rollbackErr) => {
+        console.error('[Admin] Failed to rollback custom claims after Firestore role update error:', rollbackErr);
+      });
+      throw firestoreErr;
+    }
+
+    res.json({ errno: 0, result: { uid, role, customClaimsUpdated: true } });
   } catch (error) {
     console.error('[Admin] Error setting role:', error);
     res.status(500).json({ errno: 500, error: error.message });
@@ -7091,415 +6895,6 @@ app.post('/api/scheduler/v1/clear-all', authenticateUser, async (req, res) => {
   }
 });
 
-// ==================== TESLA INTEGRATION (WIP - Restricted Access) ====================
-// Initialize Tesla API module
-const teslaModule = require('./api/tesla');
-const teslaAPI = teslaModule.init({
-  db,
-  logger
-});
-
-// Middleware to restrict Tesla routes to specific user
-const restrictToTeslaUser = (req, res, next) => {
-  const allowedEmail = 'sardanapalos928@hotmail.com';
-  
-  if (!req.user || req.user.email !== allowedEmail) {
-    return res.status(403).json({ 
-      errno: 403, 
-      error: 'Access denied. Tesla integration is currently restricted to authorized users.' 
-    });
-  }
-  
-  next();
-};
-
-// Save Tesla tokens
-app.post('/api/tesla/save-tokens', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const { accessToken, refreshToken } = req.body;
-    
-    if (!accessToken) {
-      return res.status(400).json({ errno: 400, error: 'Access token is required' });
-    }
-    
-    await teslaAPI.saveUserTokens(req.user.uid, accessToken, refreshToken);
-    res.json({ errno: 0, msg: 'Tokens saved successfully' });
-  } catch (error) {
-    console.error('[Tesla] save-tokens error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Test authentication
-app.get('/api/tesla/test-auth', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    // Just try to list vehicles as a test
-    const result = await teslaAPI.listVehicles(req.user.uid);
-    
-    if (result.errno === 0) {
-      res.json({ errno: 0, result: { message: 'Authentication successful', vehicleCount: result.result?.vehicles?.length || 0 } });
-    } else {
-      res.json({ errno: result.errno, error: result.error });
-    }
-  } catch (error) {
-    console.error('[Tesla] test-auth error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Register partner account (required once per region)
-app.post('/api/tesla/register-partner', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const result = await teslaAPI.registerPartner(userId);
-    res.json(result);
-  } catch (error) {
-    console.error('[Tesla] register-partner error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// List vehicles
-app.get('/api/tesla/vehicles', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const result = await teslaAPI.listVehicles(req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.error('[Tesla] list-vehicles error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Get vehicle data (use sparingly)
-app.get('/api/tesla/vehicles/:vehicleTag/data', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const { vehicleTag } = req.params;
-    const result = await teslaAPI.getVehicleData(req.user.uid, vehicleTag);
-    res.json(result);
-  } catch (error) {
-    console.error('[Tesla] get-vehicle-data error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Wake vehicle
-app.post('/api/tesla/vehicles/:vehicleTag/wake', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const { vehicleTag } = req.params;
-    const result = await teslaAPI.wakeVehicle(req.user.uid, vehicleTag);
-    res.json(result);
-  } catch (error) {
-    console.error('[Tesla] wake-vehicle error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Check fleet status
-app.post('/api/tesla/fleet-status', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const { vehicleTags } = req.body;
-    const result = await teslaAPI.checkFleetStatus(req.user.uid, vehicleTags);
-    res.json(result);
-  } catch (error) {
-    console.error('[Tesla] fleet-status error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Start charging
-app.post('/api/tesla/vehicles/:vehicleTag/charge/start', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const { vehicleTag } = req.params;
-    logger.debug('Tesla', `User ${req.user.uid} starting charge on vehicle ${vehicleTag}`);
-    const result = await teslaAPI.startCharging(req.user.uid, vehicleTag);
-    res.json(result);
-  } catch (error) {
-    console.error('[Tesla] start-charging error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Stop charging
-app.post('/api/tesla/vehicles/:vehicleTag/charge/stop', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const { vehicleTag } = req.params;
-    logger.debug('Tesla', `User ${req.user.uid} stopping charge on vehicle ${vehicleTag}`);
-    const result = await teslaAPI.stopCharging(req.user.uid, vehicleTag);
-    res.json(result);
-  } catch (error) {
-    console.error('[Tesla] stop-charging error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Set charging amps
-app.post('/api/tesla/vehicles/:vehicleTag/charge/set-amps', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const { vehicleTag } = req.params;
-    const { amps } = req.body;
-    
-    if (typeof amps !== 'number' || amps < 5 || amps > 32) {
-      return res.status(400).json({ errno: 400, error: 'Amps must be a number between 5 and 32' });
-    }
-    
-    logger.debug('Tesla', `User ${req.user.uid} setting ${amps}A on vehicle ${vehicleTag}`);
-    const result = await teslaAPI.setChargingAmps(req.user.uid, vehicleTag, amps);
-    res.json(result);
-  } catch (error) {
-    console.error('[Tesla] set-amps error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Set charge limit
-app.post('/api/tesla/vehicles/:vehicleTag/charge/set-limit', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const { vehicleTag } = req.params;
-    const { percent } = req.body;
-    
-    if (typeof percent !== 'number' || percent < 50 || percent > 100) {
-      return res.status(400).json({ errno: 400, error: 'Charge limit must be a number between 50 and 100' });
-    }
-    
-    logger.debug('Tesla', `User ${req.user.uid} setting charge limit to ${percent}% on vehicle ${vehicleTag}`);
-    const result = await teslaAPI.setChargeLimit(req.user.uid, vehicleTag, percent);
-    res.json(result);
-  } catch (error) {
-    console.error('[Tesla] set-limit error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// ==================== TESLA ADMIN CONFIGURATION ====================
-
-// Get Tesla server configuration
-// Check if user has their own Tesla OAuth credentials configured
-app.get('/api/tesla/check-config', authenticateUser, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    console.log('[Tesla] check-config: checking user credentials for user =', userId);
-    
-    try {
-      const teslaDoc = await db.collection('users').doc(userId).collection('config').doc('tesla').get();
-      
-      if (teslaDoc.exists && teslaDoc.data()) {
-        const data = teslaDoc.data();
-        const hasClientId = !!data.clientId;
-        const hasClientSecret = !!data.clientSecret;
-        console.log('[Tesla] check-config: user has credentials -', { hasClientId, hasClientSecret });
-        
-        return res.json({ 
-          errno: 0, 
-          result: {
-            configured: hasClientId && hasClientSecret,
-            hasClientId,
-            hasClientSecret
-          }
-        });
-      }
-    } catch (err) {
-      console.warn('[Tesla] check-config: Error reading user config -', err.message);
-    }
-    
-    // No credentials found
-    res.json({ 
-      errno: 0, 
-      result: {
-        configured: false,
-        hasClientId: false,
-        hasClientSecret: false
-      }
-    });
-  } catch (error) {
-    console.error('[Tesla] check-config error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Get user's stored Tesla OAuth app credentials
-app.get('/api/tesla/get-config', authenticateUser, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    console.log('[Tesla] get-config: retrieving credentials for user =', userId);
-    
-    try {
-      const teslaDoc = await db.collection('users').doc(userId).collection('config').doc('tesla').get();
-      
-      if (teslaDoc.exists && teslaDoc.data()) {
-        const data = teslaDoc.data();
-        logger.debug('Tesla', 'get-config: user credentials retrieved');
-        
-        return res.json({ 
-          errno: 0, 
-          result: {
-            clientId: data.clientId || null,
-            clientSecret: data.clientSecret || null,
-            accessToken: data.accessToken || null,
-            refreshToken: data.refreshToken || null,
-            hasClientId: !!data.clientId,
-            hasClientSecret: !!data.clientSecret,
-            hasAccessToken: !!data.accessToken,
-            hasRefreshToken: !!data.refreshToken
-          }
-        });
-      }
-    } catch (err) {
-      console.warn('[Tesla] get-config: Error reading user config -', err.message);
-    }
-    
-    // No credentials found
-    res.json({ 
-      errno: 0, 
-      result: {
-        clientId: null,
-        clientSecret: null,
-        accessToken: null,
-        refreshToken: null,
-        hasClientId: false,
-        hasClientSecret: false,
-        hasAccessToken: false,
-        hasRefreshToken: false
-      }
-    });
-  } catch (error) {
-    console.error('[Tesla] get-config error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Save user's Tesla OAuth app credentials (client_id and client_secret)
-app.post('/api/tesla/save-credentials', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const { clientId, clientSecret } = req.body;
-    const userId = req.user.uid;
-    
-    if (!clientId || typeof clientId !== 'string' || clientId.trim().length === 0) {
-      return res.status(400).json({ errno: 400, error: 'clientId is required and must be a non-empty string' });
-    }
-    
-    if (!clientSecret || typeof clientSecret !== 'string' || clientSecret.trim().length === 0) {
-      return res.status(400).json({ errno: 400, error: 'clientSecret is required and must be a non-empty string' });
-    }
-    
-    try {
-      await teslaAPI.saveUserCredentials(userId, clientId, clientSecret);
-      logger.debug('Tesla', `OAuth credentials saved for user ${userId}`);
-      res.json({ errno: 0, result: { success: true }, msg: 'Credentials saved successfully' });
-    } catch (saveError) {
-      console.error('[Tesla] Failed to save credentials:', saveError);
-      res.status(500).json({ errno: 500, error: 'Failed to save credentials: ' + saveError.message });
-    }
-  } catch (error) {
-    console.error('[Tesla] save-credentials error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Get shared public key for Tesla Fleet API registration
-app.get('/api/tesla/public-key', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const privateKey = await teslaAPI.getSharedPrivateKey();
-    
-    if (!privateKey) {
-      return res.status(500).json({ 
-        errno: 500, 
-        error: 'Shared signing key not configured on server. Contact administrator.' 
-      });
-    }
-    
-    try {
-      // Derive public key from private key
-      const crypto = require('crypto');
-      const keyObject = crypto.createPrivateKey(privateKey);
-      const publicKey = crypto.createPublicKey(keyObject);
-      const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' });
-      
-      res.json({ 
-        errno: 0, 
-        result: { publicKey: publicKeyPem },
-        msg: 'Public key is deployed at /.well-known/appspecific/com.tesla.3p.public-key.pem'
-      });
-    } catch (cryptoError) {
-      console.error('[Tesla] Failed to derive public key:', cryptoError);
-      res.status(500).json({ errno: 500, error: 'Failed to derive public key: ' + cryptoError.message });
-    }
-  } catch (error) {
-    console.error('[Tesla] public-key error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Check user's Tesla connection status
-app.get('/api/tesla/status', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const teslaDoc = await db.collection('users').doc(userId).collection('config').doc('tesla').get();
-    
-    if (!teslaDoc.exists) {
-      return res.json({ 
-        errno: 0, 
-        result: { 
-          connected: false 
-        }
-      });
-    }
-    
-    try {
-      const data = teslaDoc.data() || {};
-      const hasTokens = !!(data.accessToken && data.refreshToken);
-      
-      // Check global partner registration status
-      let partnerRegistered = false;
-      try {
-        const sharedDoc = await db.collection('shared').doc('config').get();
-        if (sharedDoc.exists && sharedDoc.data().teslaPartnerRegistered) {
-          partnerRegistered = true;
-        }
-      } catch (sharedError) {
-        console.warn('[Tesla] Error checking shared config:', sharedError.message);
-      }
-      
-      res.json({ 
-        errno: 0, 
-        result: {
-          connected: hasTokens,
-          partnerRegistered,
-          connectedAt: data.updatedAt ? (data.updatedAt.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt) : null,
-          expiresAt: data.expiresAt ? (data.expiresAt.toDate ? data.expiresAt.toDate().toISOString() : data.expiresAt) : null
-        }
-      });
-    } catch (dataError) {
-      console.warn('[Tesla] Error reading tesla doc data:', dataError);
-      res.json({ 
-        errno: 0, 
-        result: { 
-          connected: false 
-        }
-      });
-    }
-  } catch (error) {
-    console.error('[Tesla] status error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Disconnect Tesla account (remove stored tokens)
-app.post('/api/tesla/disconnect', authenticateUser, restrictToTeslaUser, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    await db.collection('users').doc(userId).collection('config').doc('tesla').delete();
-    
-    logger.debug('Tesla', `User ${userId} disconnected Tesla account`);
-    res.json({ 
-      errno: 0, 
-      result: { success: true }
-    });
-  } catch (error) {
-    console.error('[Tesla] disconnect error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
 // ==================== EXPORT EXPRESS APP AS CLOUD FUNCTION ====================
 // Use the broadly-compatible onRequest export to avoid depending on newer SDK features
 exports.api = functions.https.onRequest(app);
@@ -8570,18 +7965,9 @@ app.post('/api/auth/cleanup-user', authenticateUser, async (req, res) => {
   try {
     const userId = req.user.uid;
     logger.info('Auth', `Cleaning up user: ${userId}`, true);
-    
-    // Delete user's subcollections
-    const subcollections = ['config', 'automation', 'rules', 'history', 'notifications', 'metrics'];
-    for (const subcol of subcollections) {
-      const snapshot = await db.collection('users').doc(userId).collection(subcol).get();
-      const batch = db.batch();
-      snapshot.docs.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
-    }
-    
-    // Delete user document
-    await db.collection('users').doc(userId).delete();
+
+    // Use shared recursive delete to remove all nested subcollections consistently.
+    await deleteUserDataTree(userId);
     
     logger.info('Auth', `User ${userId} data cleaned up successfully`, true);
     res.json({ errno: 0, msg: 'User data deleted' });
@@ -9016,3 +8402,4 @@ exports.runAutomation = onSchedule(
   },
   runAutomationHandler
 );
+

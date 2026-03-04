@@ -192,47 +192,42 @@ inverter-automation/
 
 ## Firestore Schema
 
-```
-users/{userId}/
-  ├── profile               # User profile
-  │   ├── email
-  │   ├── displayName
-  │   └── createdAt
-  │
-  ├── config/main           # User configuration
-  │   ├── deviceSn
-  │   ├── foxessToken
-  │   ├── amberApiKey
-  │   ├── amberSiteId
-  │   └── location
-  │
-  ├── automation/state      # Automation state
-  │   ├── enabled
-  │   ├── lastCheck
-  │   ├── activeRule
-  │   └── activeUntil
-  │
-  ├── rules/{ruleId}        # Automation rules
-  │   ├── name
-  │   ├── enabled
-  │   ├── priority
-  │   ├── conditions
-  │   └── action
-  │
-  └── history/{docId}       # Automation history
-      ├── timestamp
-      ├── type
-      ├── rule
-      └── result
+This section documents the current Firestore model used by backend code.
 
-Per-user caches at `users/{uid}/cache/`:
-  ├── inverter               # Real-time inverter telemetry (5-min TTL)
-  ├── weather                # Weather forecast data (30-min TTL)
-  └── history_*              # Historical power data chunks (30-min TTL)
+### Top-level collections
 
-Global caches:
-  └── amber_prices/{siteId}  # Electricity pricing by site (24-hr TTL)
-```
+| Path | Purpose |
+|---|---|
+| `users/{uid}` | User profile and top-level flags (`email`, `displayName`, `role`, `automationEnabled`, timestamps). |
+| `shared/serverConfig` | Legacy shared setup config used by selected pre-auth setup flows. |
+| `metrics/{YYYY-MM-DD}` | Platform-wide daily API usage counters. |
+| `admin_audit/{docId}` | Admin action audit trail (role changes, impersonation, deletion events). |
+
+### User-scoped collections (`users/{uid}/...`)
+
+| Path | Purpose |
+|---|---|
+| `config/main` | User config (FoxESS token/SN, Amber key/site, timezone/location, system topology, automation preferences). |
+| `automation/state` | Runtime automation status (`enabled`, `lastCheck`, `activeRule`, transition metadata). |
+| `rules/{ruleId}` | User automation rules (conditions, action, schedule/priority). |
+| `history/{docId}` | Immutable rule/action history log. |
+| `notifications/{notificationId}` | User notifications (read/unread state). |
+| `automationAudit/{auditId}` | Per-cycle audit data including evaluation snapshots and ROI context. |
+| `metrics/{YYYY-MM-DD}` | Per-user daily API usage counters (`foxess`, `amber`, `weather`, timestamps). |
+| `quickControl/state` | Active quick-control override (`type`, `power`, `expiresAt`, metadata). |
+| `curtailment/state` | Curtailment feature state (`active`, threshold/price snapshot, transition metadata). |
+| `cache/inverter` | Cached inverter summary telemetry (TTL-based). |
+| `cache/inverter-realtime` | Cached full inverter real-time payload (TTL-based). |
+| `cache/weather` | Cached weather forecast payload (TTL-based). |
+| `cache/amber_sites` | Cached Amber site list. |
+| `cache/amber_current_{siteId}` | Cached Amber current price payload per site. |
+| `cache/amber_{siteId}` | Cached Amber historical/materialized price payload per site. |
+| `cache/history_{sn}_{begin}_{end}` | Cached FoxESS history query chunks by serial and time window. |
+
+### Notes
+
+- Cache and audit documents store `ttl` where configured for Firestore TTL cleanup policies.
+- User deletion endpoints now remove the full user document tree recursively, covering all subcollections above.
 
 ---
 

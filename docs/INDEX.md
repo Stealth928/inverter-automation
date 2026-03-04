@@ -1,6 +1,6 @@
 # Documentation Index
 
-**Last Updated:** December 25, 2025  
+**Last Updated:** March 4, 2026  
 **Purpose:** Central index for all project documentation
 
 ---
@@ -17,7 +17,6 @@
 5. **[README_CURTAILMENT.md](README_CURTAILMENT.md)** - Solar curtailment feature guide
 6. **[CURTAILMENT_QUICK_START.md](CURTAILMENT_QUICK_START.md)** - Quick setup for curtailment
 7. **[BACKGROUND_AUTOMATION.md](BACKGROUND_AUTOMATION.md)** - Scheduled automation details
-8. **[TESLA_SECURITY.md](TESLA_SECURITY.md)** - Tesla integration security guide
 
 ### Operations & Maintenance
 9. **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - CI/CD and deployment procedures
@@ -30,9 +29,15 @@
 14. **[COST_ANALYSIS_2025.md](COST_ANALYSIS_2025.md)** - Firebase cost projections
 15. **[FIREBASE_COST_ANALYSIS.md](FIREBASE_COST_ANALYSIS.md)** - Detailed Firebase pricing breakdown
 16. **[TEST_COVERAGE_REPORT.md](TEST_COVERAGE_REPORT.md)** - Unit test coverage summary
+17. **[REFACTORING_IMPLEMENTATION_PLAN_MAR26.md](REFACTORING_IMPLEMENTATION_PLAN_MAR26.md)** - Execution-ready refactoring roadmap for scale
+18. **[PHASE_GATE_DASHBOARD.md](PHASE_GATE_DASHBOARD.md)** - Phase/gate tracker and label strategy
+19. **[adr/ADR-001-target-architecture-boundaries.md](adr/ADR-001-target-architecture-boundaries.md)** - Architecture boundary decision record
+20. **[adr/ADR-002-v2-data-model-and-migration-strategy.md](adr/ADR-002-v2-data-model-and-migration-strategy.md)** - v2 schema and migration strategy decision
+21. **[checklists/MIGRATION_SAFETY_CHECKLIST.md](checklists/MIGRATION_SAFETY_CHECKLIST.md)** - Migration readiness and execution checklist
+22. **[checklists/ROLLBACK_CHECKLIST.md](checklists/ROLLBACK_CHECKLIST.md)** - Rollback execution checklist
 
 ### Archived Documentation
-17. **[archive/](archive/)** - Historical docs (completed milestones, bugfixes, analyses)
+23. **[archive/](archive/)** - Historical docs (completed milestones, bugfixes, analyses)
 
 ---
 
@@ -56,7 +61,6 @@ Feature-specific documentation:
 | [README_CURTAILMENT.md](README_CURTAILMENT.md) | Solar curtailment | ✅ Stable |
 | [CURTAILMENT_QUICK_START.md](CURTAILMENT_QUICK_START.md) | Curtailment setup | ✅ Stable |
 | [BACKGROUND_AUTOMATION.md](BACKGROUND_AUTOMATION.md) | Scheduler | ✅ Stable |
-| [TESLA_SECURITY.md](TESLA_SECURITY.md) | Tesla OAuth | ✅ Stable |
 
 ### Operations Guides (Maintenance)
 For DevOps and maintenance:
@@ -76,6 +80,12 @@ Cost and coverage analysis:
 | [COST_ANALYSIS_2025.md](COST_ANALYSIS_2025.md) | Firebase cost projections | Quarterly |
 | [FIREBASE_COST_ANALYSIS.md](FIREBASE_COST_ANALYSIS.md) | Detailed cost breakdown | Bi-annual |
 | [TEST_COVERAGE_REPORT.md](TEST_COVERAGE_REPORT.md) | Unit test coverage | After major features |
+| [REFACTORING_IMPLEMENTATION_PLAN_MAR26.md](REFACTORING_IMPLEMENTATION_PLAN_MAR26.md) | Refactor execution plan and phase gates | Per sprint |
+| [PHASE_GATE_DASHBOARD.md](PHASE_GATE_DASHBOARD.md) | Phase/gate issue tracker | Weekly |
+| [adr/ADR-001-target-architecture-boundaries.md](adr/ADR-001-target-architecture-boundaries.md) | Architecture boundaries ADR | On architectural change |
+| [adr/ADR-002-v2-data-model-and-migration-strategy.md](adr/ADR-002-v2-data-model-and-migration-strategy.md) | Data model and migration ADR | On migration strategy change |
+| [checklists/MIGRATION_SAFETY_CHECKLIST.md](checklists/MIGRATION_SAFETY_CHECKLIST.md) | Migration run checklist | Per migration run |
+| [checklists/ROLLBACK_CHECKLIST.md](checklists/ROLLBACK_CHECKLIST.md) | Rollback run checklist | Per rollback event |
 
 ---
 
@@ -192,9 +202,8 @@ All docs should include:
 4. [COST_ANALYSIS_2025.md](COST_ANALYSIS_2025.md)
 
 ### Security Auditor
-1. [TESLA_SECURITY.md](TESLA_SECURITY.md)
-2. [API.md](API.md) (auth sections)
-3. [archive/COMPREHENSIVE_PROJECT_ANALYSIS.md](archive/COMPREHENSIVE_PROJECT_ANALYSIS.md) (security findings)
+1. [API.md](API.md) (auth sections)
+2. [archive/COMPREHENSIVE_PROJECT_ANALYSIS.md](archive/COMPREHENSIVE_PROJECT_ANALYSIS.md) (security findings)
 
 ---
 
@@ -205,6 +214,8 @@ All docs should include:
 | 2025-12-25 | Created documentation index | This file |
 | 2025-12-25 | Archived 20+ milestone/bugfix docs | Moved to archive/ |
 | 2025-12-25 | Added logging optimization guide | LOGGING_OPTIMIZATION_SUMMARY.md |
+| 2026-03-04 | Added execution-ready refactoring implementation plan | REFACTORING_IMPLEMENTATION_PLAN_MAR26.md |
+| 2026-03-04 | Added governance artifacts (ADRs, migration/rollback checklists, phase gate dashboard) | ADR-001, ADR-002, MIGRATION_SAFETY_CHECKLIST.md, ROLLBACK_CHECKLIST.md, PHASE_GATE_DASHBOARD.md |
 
 ---
 

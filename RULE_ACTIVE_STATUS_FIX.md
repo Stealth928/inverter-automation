@@ -95,7 +95,6 @@ await saveUserAutomationState(userId, {
 
 ## Testing
 All automation tests passed:
-- ✅ 24 test suites (only 1 failed - Tesla OAuth, unrelated)
 - ✅ 414 automation-related tests passed
 - ✅ No breaking changes to existing functionality
 

@@ -11,7 +11,6 @@ Comprehensive audit of entire inverter-automation project covering security, per
 
 **Audit Scope:**
 - `functions/index.js` (7,326 lines, ~77 API endpoints)
-- `functions/api/` modules (amber.js, foxess.js, tesla.js)
 - Frontend code (8,377-line index.html)
 - Firebase configuration (firebase.json, storage.rules, database.rules.json, firestore.rules)
 - Test coverage (435 tests across 25 suites)
@@ -65,13 +64,6 @@ Comprehensive audit of entire inverter-automation project covering security, per
 **Issue:** No per-user rate limiting on API endpoints  
 **Risk:** API abuse possible  
 **Recommendation:** Implement Firebase App Check + per-user rate limits  
-**Priority:** MEDIUM  
-**Status:** 🔶 PENDING
-
-#### 6. Tesla Private Key Security [MEDIUM]
-**Issue:** User-generated Tesla private keys stored in Firestore plaintext  
-**Current:** Protected by Firestore rules  
-**Recommendation:** Encrypt at rest using Cloud KMS  
 **Priority:** MEDIUM  
 **Status:** 🔶 PENDING
 
@@ -226,7 +218,6 @@ Comprehensive audit of entire inverter-automation project covering security, per
 **Recommendation:** 
 - Add integration tests for `/api/automation/cycle` end-to-end
 - Add tests for scheduler logic (`runAutomationHandler`)
-- Add tests for Tesla signed command generation
 - Target: 60%+ coverage of core automation logic
 **Priority:** HIGH  
 **Status:** 🔶 PENDING
@@ -472,7 +463,6 @@ logger.log({ severity: 'INFO', message: 'Cycle complete', userId, ruleId });
 15. 🔶 Error alerting (#42)
 
 ### 🔹 LOW PRIORITY (Backlog)
-16. 🔶 Tesla key encryption (#6)
 17. 🔶 Request rate limiting per user (#5)
 18. 🔶 Structured logging (#41)
 19. 🔶 All other LOW priority items

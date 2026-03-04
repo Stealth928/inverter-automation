@@ -77,6 +77,34 @@ service cloud.firestore {
       // No updates to audit logs (immutable log)
       allow update: if false;
     }
+
+    // ==================== USER CACHE ====================
+    // Per-user cache docs: /users/{userId}/cache/{cacheId}
+    match /users/{userId}/cache/{cacheId} {
+      allow read: if isOwner(userId);
+      allow write: if false; // Only Cloud Functions can write (via Admin SDK)
+    }
+
+    // ==================== USER METRICS ====================
+    // Per-user API counters: /users/{userId}/metrics/{metricId}
+    match /users/{userId}/metrics/{metricId} {
+      allow read: if isOwner(userId);
+      allow write: if false; // Only Cloud Functions can write (via Admin SDK)
+    }
+
+    // ==================== QUICK CONTROL STATE ====================
+    // Per-user quick-control override state: /users/{userId}/quickControl/{docId}
+    match /users/{userId}/quickControl/{docId} {
+      allow read: if isOwner(userId);
+      allow write: if false; // Only Cloud Functions can write (via Admin SDK)
+    }
+
+    // ==================== CURTAILMENT STATE ====================
+    // Per-user curtailment state: /users/{userId}/curtailment/{docId}
+    match /users/{userId}/curtailment/{docId} {
+      allow read: if isOwner(userId);
+      allow write: if false; // Only Cloud Functions can write (via Admin SDK)
+    }
     
     // ==================== SHARED CACHE (GLOBAL) - RESERVED ====================
     // NOTE: This collection is currently UNUSED. All caching is done per-user
@@ -99,6 +127,13 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false; // Only Cloud Functions can write
     }
+
+    // ==================== ADMIN AUDIT LOGS ====================
+    // Admin audit records: /admin_audit/{auditId}
+    match /admin_audit/{auditId} {
+      allow read: if isAdmin();
+      allow write: if false; // Only Cloud Functions can write (via Admin SDK)
+    }
     
     // ==================== NOTIFICATIONS ====================
     // Per-user notifications: /users/{userId}/notifications/{notificationId}
@@ -110,12 +145,10 @@ service cloud.firestore {
     }
 
     // ==================== SHARED SERVER CONFIG ====================
-    // NOTE: TESLA TOKENS ARE STRICTLY PER-USER AT users/{userId}/config/tesla
     // Shared collection holds only non-sensitive server configuration:
-    // - shared/config: OAuth app config (Tesla client_id, client_secret) - admin only
     // - shared/serverConfig: FoxESS/Amber/Weather config from unauthenticated setup - admin only
     match /shared/{docId} {
-      allow read: if isAuthenticated(); // Authenticated users can read (e.g., to check if Tesla is configured)
+      allow read: if isAuthenticated();
       allow write: if false; // Only Cloud Functions (Admin SDK) can write - NEVER from client
     }
   }
