@@ -1,4 +1,4 @@
-<!-- V3: Transparent background — profile + arc, no opaque fill -->
+<!-- V4: Dark background circle — crisp tab icon, no white bleed -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="arc2" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -8,7 +8,11 @@
     <filter id="g2"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     <clipPath id="c2"><circle cx="256" cy="256" r="245"/></clipPath>
   </defs>
-  <!-- No background fill — transparent -->
+  <!-- Dark background circle — fills entire viewBox so tab never shows white -->
+  <circle cx="256" cy="256" r="256" fill="#0a0e1a"/>
+
+  <!-- All art scaled up 12% from centre so content fills the badge -->
+  <g transform="translate(256,256) scale(1.12) translate(-256,-256)">
 
   <!-- Charge arc — 88% fill, thick, glowing, enlarged -->
   <circle cx="256" cy="256" r="248" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="22"/>
@@ -17,9 +21,9 @@
           stroke-dasharray="1373 187"
           stroke-dashoffset="390" filter="url(#g2)"/>
 
-  <!-- Bust clipped to inner circle — scaled up ~8% -->
+  <!-- Bust clipped to inner circle -->
   <g clip-path="url(#c2)">
-    <!-- Profile facing right (scaled up, centered) -->
+    <!-- Profile facing right -->
     <path d="M 308 44
              C 342 49, 370 80, 374 119
              C 378 154, 360 189, 347 218
@@ -42,9 +46,11 @@
     <circle cx="237" cy="177" r="3.8" fill="#ffffff" opacity="0.45"/>
   </g>
 
-  <!-- Amber bolt: top-right, overlapping head/arc — scaled up -->
+  <!-- Amber bolt: top-right, overlapping head/arc -->
   <g filter="url(#g2)">
     <path d="M 346 58 L 308 154 L 332 154 L 295 262 L 385 144 L 357 144 Z" fill="#fbbf24"/>
   </g>
   <path d="M 346 58 L 308 154 L 332 154 L 295 262 L 385 144 L 357 144 Z" fill="#f59e0b"/>
+
+  </g>
 </svg>
