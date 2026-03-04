@@ -20,7 +20,7 @@ Primary Branch: `RefactoringMar26`
 | Phase | Gate | Status | Progress |
 |---|---|---|---:|
 | P0 | G0 | ✅ Complete | 100% |
-| P1 | G1 | ⏳ In Progress | 1/8 tasks started |
+| P1 | G1 | ⏳ In Progress | 6/8 tasks drafted, 1/8 partial, 1/8 pending |
 
 ---
 
@@ -29,6 +29,11 @@ Primary Branch: `RefactoringMar26`
 **Sprint 1 Status Snapshot**
 - ✅ Completed: backlog items **1-21**
 - ⏳ Pending: none (Sprint 1 complete)
+
+**Execution Authorization Record**
+- Status: ⚠️ formal approver name/date is not yet captured in-repo.
+- Execution start recorded: **2026-03-04** (Chunk 1).
+- Governance requirement: add named sign-off entry before closing **G1**.
 
 ### ✅ 2026-03-04 - Chunk 1 (CI and quality-gate hardening)
 
@@ -184,6 +189,22 @@ Primary Branch: `RefactoringMar26`
   - `docs/PHASE_GATE_DASHBOARD.md` (P0/G0 set to Completed, P1/G1 set to In Progress)
 - Next target chunk: continue P1 by defining legacy-to-v2 field mapping table in implementation-ready detail and adding CI OpenAPI validation.
 
+### ✅ 2026-03-04 - Chunk 9 (Gate hygiene and tracker accuracy)
+
+- Reconciled G0 compliance gaps identified in verification review.
+- Updated P1 tracker accuracy:
+  - phase tracker now reflects **6/8 tasks drafted, 1/8 partial, 1/8 pending**.
+- Strengthened risk register for gate compliance:
+  - added explicit **Owner** and **Trigger Threshold** columns for all risks in Section 13.
+- Added governance approval tracking section:
+  - `## 14A. Execution Approval Log` with explicit missing-signoff status for P0/G0 start.
+- Updated phase-gate dashboard issue links:
+  - replaced placeholders with prefilled GitHub issue creation links for `P0/G0` and `P1/G1`.
+  - recorded local tooling limitation (`gh` CLI missing) so issue creation remains explicit and trackable.
+- Annotated stale baseline items in Section 1A with Sprint 1 completion notes (APIClient coverage, `pwa-init.js`, CI gates, coverage scope/thresholds, shared test helper).
+- Updated Exit Gate G0 wording to require owner/mitigation/trigger fields in the risk register.
+- Next target chunk: continue P1 by defining legacy-to-v2 field mapping table in implementation-ready detail and adding CI OpenAPI validation.
+
 ---
 
 ## 1. Purpose
@@ -196,7 +217,7 @@ This document defines a systematic implementation plan to refactor the project f
 4. Long-term maintainability, scalability, and delivery safety.
 5. Sanity of cost and effectiveness - we don't want unnecessary complexity or API calls etc.
 
-This plan is execution-ready. Work starts when explicitly approved.
+This plan is execution-ready. Work starts when explicitly approved (see Section **14A** for recorded approval status).
 
 ---
 
@@ -218,6 +239,8 @@ This section captures the actual state of the codebase as of 2026-03-04, measure
 - Every page re-defines its own `authenticatedFetch()` wrapper locally; some pages make raw `fetch('/api/...')` calls without any auth header.
 - No ES module system, no bundler — everything uses global `<script>` tags and `window.*` globals.
 - `pwa-init.js` (59 lines) is fully superseded by `app-shell.js` but still loaded.
+- ✅ **Sprint 1 update (2026-03-04):** `pwa-init.js` removed from runtime page includes.
+- ✅ **Sprint 1 update (2026-03-04):** API contract baseline now reports **60 APIClient endpoint methods** and **0 inline endpoint gaps** (`docs/API_CONTRACT_BASELINE_MAR26.md`).
 
 ### 1A.3 External Integrations (Current)
 
@@ -273,6 +296,10 @@ This section captures the actual state of the codebase as of 2026-03-04, measure
 - **Dead npm scripts:** `test:integration`, `test:e2e`, `test:e2e:prod`, `test:all` reference files (`integration-test.js`, `e2e-tests.js`) that do not exist.
 - **E2E:** 11 Playwright specs exist (tests/frontend/) but are **not run in CI**.
 - **CI gates:** `.github/workflows/qa-checks.yml` has `continue-on-error: true` on lint, security audit, and pre-deploy checks — failures do not block PRs.
+- ✅ **Sprint 1 update (2026-03-04):** coverage thresholds were raised to **20%/10%/5%/20%** (statements/branches/functions/lines).
+- ✅ **Sprint 1 update (2026-03-04):** coverage scope now includes `functions/api/**/*.js` and `functions/lib/**/*.js`.
+- ✅ **Sprint 1 update (2026-03-04):** Playwright frontend E2E is now a hard CI gate.
+- ✅ **Sprint 1 update (2026-03-04):** shared Firebase Admin test helper added at `functions/test/helpers/firebase-mock.js`.
 
 ### 1A.7 Security Findings
 
@@ -434,7 +461,7 @@ Total planned window: 20 weeks.
 3. Frontend-to-backend contract drift inventory complete.
 4. Coverage collection includes all source files.
 5. Dead scripts and dead code removed.
-6. Risk register active.
+6. Risk register active with owner + mitigation + trigger thresholds.
 7. Refactor governance process approved.
 
 ## Phase P1 - Target Architecture and Data Contracts (Weeks 3-5)
@@ -834,20 +861,20 @@ The following tasks have no cross-phase dependencies and can run in parallel wit
 
 ## 13. Risk Register (Audit-Informed)
 
-| # | Risk | Likelihood | Impact | Mitigation | Source |
-|---|---|---|---|---|---|
-| R1 | Migration regressions for existing users | Medium | High | Dual-read/write, canary migrations, rollback flags | Plan |
-| R2 | Adapter abstraction complexity delays delivery | Medium | Medium | Keep interfaces minimal, prioritize contract-first MVP | Plan |
-| R3 | Scheduler race conditions persist | **High** | High | Idempotency keys, Firestore transaction locks, bounded concurrency, failure tests | **Audit: no locking, no idempotency, no transactions on lastCheck** |
-| R4 | Frontend drift returns after refactor | Medium | Medium | Single API client policy, contract tests, lint rules | Plan |
-| R5 | Documentation drifts from implementation | **High** | Medium | Docs update required in PR checklist, periodic doc audits | **Audit: SETUP.md missing 10+ collections** |
-| R6 | P5 EV timeline too aggressive | **High** | Medium | Re-scope P5 to MVP (one vehicle, one command type); extend to 4-5 weeks if needed | **Audit: zero existing EV code — entirely greenfield but plan says "move from test-only"** |
-| R7 | Frontend inline JS extraction scale | **High** | Medium | Start during P2 as parallel workstream; prioritize `index.html` (7,478 lines) first | **Audit: 16,729 lines of inline JS across 12 files — too much for 2-week P6** |
-| R8 | FoxESS adapter extraction breaks caching | Medium | High | Extract caching layer first, add regression tests before moving adapter code | **Audit: Amber's multi-layer caching with gap detection and in-flight dedup is sophisticated** |
-| R9 | Admin role model inconsistency | Medium | Medium | Synchronize Firestore `role` and custom claims in one migration; test both paths | **Audit: server checks Firestore, rules check custom claims — never synchronized** |
-| R10 | Pre-auth endpoint data leakage | Low | Medium | Add rate limiting to unauthenticated endpoints; consider requiring auth for price data | **Audit: Amber prices accessible without auth via shared config** |
-| R11 | Device variable name fragmentation | Medium | Medium | Build canonical variable map in device adapter; regression test all known variants | **Audit: SoC/SoC1/SoC_1 and batTemperature/batTemperature_1 already caused production bug** |
-| R12 | User data cleanup gaps | Low | Low | Align `cleanup-user` with `deleteUserDataTree`; test all subcollections are cleaned | **Audit: cleanup-user misses 4 subcollections** |
+| # | Risk | Owner | Likelihood | Impact | Mitigation | Trigger Threshold | Source |
+|---|---|---|---|---|---|---|---|
+| R1 | Migration regressions for existing users | Data Migration Lead | Medium | High | Dual-read/write, canary migrations, rollback flags | Fallback-read rate > 5% for 24h after a migration batch, or batch failure rate > 1% | Plan |
+| R2 | Adapter abstraction complexity delays delivery | Architecture Lead | Medium | Medium | Keep interfaces minimal, prioritize contract-first MVP | P2 extraction slips by > 1 sprint, or 3+ unresolved interface disputes remain open > 7 days | Plan |
+| R3 | Scheduler race conditions persist | Backend Orchestration Lead | High | High | Idempotency keys, Firestore transaction locks, bounded concurrency, failure tests | Any duplicate cycle execution for same user within 60s, or scheduler error rate > 1% daily | Audit: no locking, no idempotency, no transactions on lastCheck |
+| R4 | Frontend drift returns after refactor | Frontend Lead | Medium | Medium | Single API client policy, contract tests, lint rules | Any new raw `fetch('/api/...')` in page scripts, or contract drift check failure in CI | Plan |
+| R5 | Documentation drifts from implementation | Documentation Owner | High | Medium | Docs update required in PR checklist, periodic doc audits | 2 consecutive API/schema PRs merged without docs updates in same PR | Audit: SETUP.md missing 10+ collections |
+| R6 | P5 EV timeline too aggressive | EV Workstream Lead | High | Medium | Re-scope P5 to MVP (one vehicle, one command type); extend to 4-5 weeks if needed | Fleet auth/command MVP not proven by end of P4, or P5 scope grows > 20% from MVP | Audit: zero existing EV code and P5 is greenfield |
+| R7 | Frontend inline JS extraction scale | Frontend Refactor Lead | High | Medium | Start during P2 as parallel workstream; prioritize `index.html` (7,478 lines) first | Extraction throughput < 1,500 inline JS lines per sprint for 2 consecutive sprints | Audit: 16,729 lines of inline JS across 12 files |
+| R8 | FoxESS adapter extraction breaks caching | Device Adapter Lead | Medium | High | Extract caching layer first, add regression tests before moving adapter code | Cache hit rate drops > 20%, or FoxESS API calls/user/day increase > 30% after extraction | Audit: Amber caching has multi-layer gap detection and in-flight dedup |
+| R9 | Admin role model inconsistency | Auth/Security Lead | Medium | Medium | Synchronize Firestore `role` and custom claims in one migration; test both paths | Any mismatch detected between Firestore role and auth custom claim in audit script/tests | Audit: server checks Firestore, rules check custom claims |
+| R10 | Pre-auth endpoint data leakage | Security Lead | Low | Medium | Add rate limiting to unauthenticated endpoints; consider requiring auth for price data | Unauthenticated price endpoint traffic grows > 50% above baseline, or abuse alert is raised | Audit: Amber prices accessible without auth via shared config |
+| R11 | Device variable name fragmentation | Device Integration Lead | Medium | Medium | Build canonical variable map in device adapter; regression test all known variants | New firmware alias observed without map update, or > 2 variable-parse incidents/day | Audit: SoC/SoC1/SoC_1 and batTemperature/batTemperature_1 already caused issues |
+| R12 | User data cleanup gaps | User Lifecycle Lead | Low | Low | Align `cleanup-user` with `deleteUserDataTree`; test all subcollections are cleaned | Any regression test failure proving incomplete subtree cleanup, or cleanup incident ticket | Audit: cleanup-user previously missed 4 subcollections |
 
 ---
 
@@ -862,6 +889,13 @@ The following tasks have no cross-phase dependencies and can run in parallel wit
    - dependency alignment
 3. Sprint planning and sprint review every 2 weeks.
 4. Go/no-go release review for each phase gate.
+
+## 14A. Execution Approval Log
+
+| Date | Phase/Gate | Status | Approver | Notes |
+|---|---|---|---|---|
+| 2026-03-04 | P0 / G0 execution start | Missing formal sign-off record | TBD | Sprint 1 execution began and completed; approval evidence needs explicit in-repo entry. |
+| 2026-03-04 | G1 prerequisite governance update | In progress | RefactoringMar26 owner | Formal named approver + date must be recorded before G1 close. |
 
 ---
 
@@ -934,6 +968,7 @@ When execution is approved, run phases in order:
 | 2026-03-04 | Completed Sprint 1 governance items 16-19. Published ADR-001 (target architecture boundaries) and ADR-002 (v2 data model + migration strategy), added migration and rollback checklist templates, and added a phase-gate dashboard plus issue template for `P0`/`G0` tracking. Updated `docs/INDEX.md` with these new governance artifacts. | Codex |
 | 2026-03-04 | Completed Sprint 1 parallel frontend prep items 20-21. Added shared Firebase Admin test harness (`functions/test/helpers/firebase-mock.js`) and migrated `admin.test.js` + `cleanup-user.test.js` to use it. Expanded APIClient endpoint coverage and refreshed baseline report to 60 APIClient methods with 0 inline endpoint gaps. | Codex |
 | 2026-03-04 | Started P1/G1 contract artifacts. Added `docs/P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md` (bounded contexts, adapter interfaces, variable normalization, error taxonomy) and `docs/openapi/openapi.v1.yaml` as the OpenAPI source-of-truth baseline. Updated phase dashboard status: P0/G0 completed, P1/G1 in progress. | Codex |
+| 2026-03-04 | Applied verification follow-ups: corrected P1 tracker progress, upgraded Section 13 risk register with owner + trigger-threshold columns, added Section 14A execution approval log, and annotated stale Section 1A baseline items with Sprint 1 completion notes. | Codex |
 
 ---
 

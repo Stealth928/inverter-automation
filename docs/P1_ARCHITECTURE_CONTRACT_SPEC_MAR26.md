@@ -188,6 +188,7 @@ Normalization rule:
 
 Source file:
 - `docs/openapi/openapi.v1.yaml`
+- Baseline coverage at P1 kickoff (2026-03-04): **3 of 73** backend routes documented; expand incrementally each PR.
 
 Rules:
 1. Route changes and OpenAPI changes ship in same PR.
