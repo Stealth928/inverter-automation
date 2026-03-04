@@ -1,6 +1,6 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Draft - Reviewed and amended with codebase audit findings  
+Status: Active execution - Sprint 1 complete, P1 in progress  
 Scope: Planning + execution progress tracking  
 Last Updated: 2026-03-04  
 Primary Branch: `RefactoringMar26`
@@ -14,16 +14,21 @@ Primary Branch: `RefactoringMar26`
 | Dead Code and Cleanup | 9-11 | ✅ Done | 3/3 |
 | Documentation and Security | 12-15 | ✅ Done | 4/4 |
 | Governance | 16-19 | ✅ Done | 4/4 |
-| Parallel Frontend Prep | 20-21 | ⏳ Pending | 0/2 |
-| **Sprint 1 Total** | **1-21** | **⏳ In Progress** | **19/21 (90%)** |
+| Parallel Frontend Prep | 20-21 | ✅ Done | 2/2 |
+| **Sprint 1 Total** | **1-21** | **✅ Done** | **21/21 (100%)** |
+
+| Phase | Gate | Status | Progress |
+|---|---|---|---:|
+| P0 | G0 | ✅ Complete | 100% |
+| P1 | G1 | ⏳ In Progress | 1/8 tasks started |
 
 ---
 
 ## 0. Execution Progress
 
 **Sprint 1 Status Snapshot**
-- ✅ Completed: backlog items **1-19**
-- ⏳ Pending: backlog items **20-21**
+- ✅ Completed: backlog items **1-21**
+- ⏳ Pending: none (Sprint 1 complete)
 
 ### ✅ 2026-03-04 - Chunk 1 (CI and quality-gate hardening)
 
@@ -145,6 +150,39 @@ Primary Branch: `RefactoringMar26`
 - Documentation index updated:
   - `docs/INDEX.md`
 - Next target chunk: Sprint 1 items **20, 21** (parallel frontend prep).
+
+### ✅ 2026-03-04 - Chunk 7 (Parallel frontend prep completion + P1 kickoff)
+
+- Completed Sprint 1 backlog items **20, 21**.
+- Item 20 completed:
+  - added shared Firebase Admin test harness:
+    - `functions/test/helpers/firebase-mock.js`
+  - migrated suites to shared helper:
+    - `functions/test/admin.test.js`
+    - `functions/test/cleanup-user.test.js`
+- Item 21 completed:
+  - expanded `frontend/js/api-client.js` endpoint coverage so inline frontend endpoint usage is now captured in APIClient methods.
+  - regenerated contract baseline: `docs/API_CONTRACT_BASELINE_MAR26.md`
+    - APIClient endpoint-method entries: **60**
+    - inline HTML endpoint paths missing from APIClient: **0**
+- Validation passed:
+  - `npm --prefix functions test -- admin.test.js cleanup-user.test.js --runInBand`
+  - `node scripts/api-contract-baseline.js --write-doc`
+  - `node scripts/pre-deploy-check.js`
+- Next target chunk: Phase **P1** contract artifacts (bounded contexts, adapter interfaces, error taxonomy, OpenAPI workflow).
+
+### ✅ 2026-03-04 - Chunk 8 (P1 contract artifacts kickoff)
+
+- Started Phase **P1** deliverables for `G1`.
+- Added architecture and contract implementation spec:
+  - `docs/P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md`
+  - includes bounded contexts, dependency rules, tariff/device/EV adapter interfaces, canonical device variable map, and error taxonomy.
+- Added OpenAPI source-of-truth baseline:
+  - `docs/openapi/openapi.v1.yaml`
+- Updated documentation and governance trackers:
+  - `docs/INDEX.md`
+  - `docs/PHASE_GATE_DASHBOARD.md` (P0/G0 set to Completed, P1/G1 set to In Progress)
+- Next target chunk: continue P1 by defining legacy-to-v2 field mapping table in implementation-ready detail and adding CI OpenAPI validation.
 
 ---
 
@@ -844,7 +882,7 @@ Status key: ✅ = done, ⏳ = pending.
 6. ✅ [DONE 2026-03-04] Build authoritative backend route inventory: all backend routes with method, path, auth requirement, handler location, and consumer (APIClient/inline/server-only).  
    Output: `docs/API_CONTRACT_BASELINE_MAR26.md` (currently 73 routes).
 7. ✅ [DONE 2026-03-04] Document the 15+ endpoints called from inline HTML that are missing from `APIClient`.  
-   Output: `docs/API_CONTRACT_BASELINE_MAR26.md` (currently 38 inline paths missing from APIClient).
+   Output: `docs/API_CONTRACT_BASELINE_MAR26.md` (initially 38 inline paths missing; now 0 after item 21).
 8. ✅ [DONE 2026-03-04] Add contract mismatch checks between frontend API client and backend routes.  
    Implementation: `scripts/api-contract-baseline.js` + hard gate in `scripts/pre-deploy-check.js`.
 
@@ -866,8 +904,8 @@ Status key: ✅ = done, ⏳ = pending.
 19. ✅ [DONE 2026-03-04] Add phase gate dashboard issue tracker (`P0`, `G0` labels).
 
 ### Parallel Frontend Prep (can start immediately)
-20. ⏳ Create `test/helpers/firebase-mock.js` with shared test utilities.
-21. ⏳ Begin adding missing endpoint methods to `APIClient` (non-breaking, additive).
+20. ✅ [DONE 2026-03-04] Create `test/helpers/firebase-mock.js` with shared test utilities.
+21. ✅ [DONE 2026-03-04] Begin adding missing endpoint methods to `APIClient` (non-breaking, additive).
 
 ---
 
@@ -894,6 +932,8 @@ When execution is approved, run phases in order:
 | 2026-03-04 | Completed Sprint 1 dead-code/cleanup items 9-11. Removed superseded `frontend/js/pwa-init.js` and its last include, removed dead `loadApiMetrics()` no-op block in `frontend/js/shared-utils.js`, and converted `functions/test/auth-flows.test.js` into explicit `test.todo()` coverage plan entries. Verified via targeted auth test and full pre-deploy gate. | Codex |
 | 2026-03-04 | Completed Sprint 1 documentation/security items 12-15. Updated `docs/SETUP.md` with full current Firestore schema inventory; added explicit Firestore rules for `users/{uid}/cache`, `users/{uid}/metrics`, `users/{uid}/quickControl`, `users/{uid}/curtailment`, and `admin_audit`; synchronized admin role updates to custom claims in `POST /api/admin/users/:uid/role`; and switched `POST /api/auth/cleanup-user` to shared recursive delete for full subcollection coverage. Added regression tests in `functions/test/admin.test.js` and new `functions/test/cleanup-user.test.js`. | Codex |
 | 2026-03-04 | Completed Sprint 1 governance items 16-19. Published ADR-001 (target architecture boundaries) and ADR-002 (v2 data model + migration strategy), added migration and rollback checklist templates, and added a phase-gate dashboard plus issue template for `P0`/`G0` tracking. Updated `docs/INDEX.md` with these new governance artifacts. | Codex |
+| 2026-03-04 | Completed Sprint 1 parallel frontend prep items 20-21. Added shared Firebase Admin test harness (`functions/test/helpers/firebase-mock.js`) and migrated `admin.test.js` + `cleanup-user.test.js` to use it. Expanded APIClient endpoint coverage and refreshed baseline report to 60 APIClient methods with 0 inline endpoint gaps. | Codex |
+| 2026-03-04 | Started P1/G1 contract artifacts. Added `docs/P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md` (bounded contexts, adapter interfaces, variable normalization, error taxonomy) and `docs/openapi/openapi.v1.yaml` as the OpenAPI source-of-truth baseline. Updated phase dashboard status: P0/G0 completed, P1/G1 in progress. | Codex |
 
 ---
 

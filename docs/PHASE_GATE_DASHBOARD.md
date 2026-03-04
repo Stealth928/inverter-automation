@@ -40,8 +40,8 @@ Shared label:
 
 | Phase | Gate | Owner | Issue Link | Status | Last Update |
 |---|---|---|---|---|---|
-| P0 | G0 | RefactoringMar26 | _create issue using phase-gate template_ | In Progress | 2026-03-04 |
-| P1 | G1 | TBD | - | Pending | - |
+| P0 | G0 | RefactoringMar26 | _create issue using phase-gate template_ | Completed | 2026-03-04 |
+| P1 | G1 | RefactoringMar26 | _create issue using phase-gate template_ | In Progress | 2026-03-04 |
 | P2 | G2 | TBD | - | Pending | - |
 | P3 | G3 | TBD | - | Pending | - |
 | P4 | G4 | TBD | - | Pending | - |

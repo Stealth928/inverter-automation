@@ -3,36 +3,13 @@
  * Tests for admin role system, user management, impersonation, and stats endpoints
  */
 
-// Mock firebase-admin before requiring anything
-const mockFirestore = {
-  collection: jest.fn(),
-  runTransaction: jest.fn()
-};
-
-const mockAuth = {
-  verifyIdToken: jest.fn(),
-  getUser: jest.fn(),
-  listUsers: jest.fn(),
-  createCustomToken: jest.fn(),
-  deleteUser: jest.fn(),
-  setCustomUserClaims: jest.fn()
-};
+const { createFirebaseAdminHarness } = require('./helpers/firebase-mock');
+const mockAdminHarness = createFirebaseAdminHarness();
+const { mockFirestore, mockAuth } = mockAdminHarness;
 
 jest.mock('firebase-admin', () => {
   const actualAdmin = jest.requireActual('firebase-admin');
-  return {
-    ...actualAdmin,
-    initializeApp: jest.fn(),
-    apps: [{ name: 'test' }],
-    firestore: Object.assign(jest.fn(() => mockFirestore), {
-      FieldValue: {
-        serverTimestamp: jest.fn(() => new Date()),
-        increment: jest.fn((n) => n),
-        delete: jest.fn()
-      }
-    }),
-    auth: jest.fn(() => mockAuth)
-  };
+  return mockAdminHarness.buildAdminMock(actualAdmin);
 });
 
 jest.mock('firebase-functions', () => ({

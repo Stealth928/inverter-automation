@@ -35,9 +35,11 @@
 20. **[adr/ADR-002-v2-data-model-and-migration-strategy.md](adr/ADR-002-v2-data-model-and-migration-strategy.md)** - v2 schema and migration strategy decision
 21. **[checklists/MIGRATION_SAFETY_CHECKLIST.md](checklists/MIGRATION_SAFETY_CHECKLIST.md)** - Migration readiness and execution checklist
 22. **[checklists/ROLLBACK_CHECKLIST.md](checklists/ROLLBACK_CHECKLIST.md)** - Rollback execution checklist
+23. **[P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md](P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md)** - P1 bounded contexts, adapter contracts, and error taxonomy
+24. **[openapi/openapi.v1.yaml](openapi/openapi.v1.yaml)** - OpenAPI v1 source-of-truth baseline (P1 kickoff)
 
 ### Archived Documentation
-23. **[archive/](archive/)** - Historical docs (completed milestones, bugfixes, analyses)
+25. **[archive/](archive/)** - Historical docs (completed milestones, bugfixes, analyses)
 
 ---
 
@@ -86,6 +88,8 @@ Cost and coverage analysis:
 | [adr/ADR-002-v2-data-model-and-migration-strategy.md](adr/ADR-002-v2-data-model-and-migration-strategy.md) | Data model and migration ADR | On migration strategy change |
 | [checklists/MIGRATION_SAFETY_CHECKLIST.md](checklists/MIGRATION_SAFETY_CHECKLIST.md) | Migration run checklist | Per migration run |
 | [checklists/ROLLBACK_CHECKLIST.md](checklists/ROLLBACK_CHECKLIST.md) | Rollback run checklist | Per rollback event |
+| [P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md](P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md) | P1 architecture + contracts implementation spec | During P1/G1 |
+| [openapi/openapi.v1.yaml](openapi/openapi.v1.yaml) | OpenAPI source-of-truth baseline | Per API contract change |
 
 ---
 
@@ -216,6 +220,7 @@ All docs should include:
 | 2025-12-25 | Added logging optimization guide | LOGGING_OPTIMIZATION_SUMMARY.md |
 | 2026-03-04 | Added execution-ready refactoring implementation plan | REFACTORING_IMPLEMENTATION_PLAN_MAR26.md |
 | 2026-03-04 | Added governance artifacts (ADRs, migration/rollback checklists, phase gate dashboard) | ADR-001, ADR-002, MIGRATION_SAFETY_CHECKLIST.md, ROLLBACK_CHECKLIST.md, PHASE_GATE_DASHBOARD.md |
+| 2026-03-04 | Added P1 architecture contract spec and OpenAPI baseline skeleton | P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md, openapi/openapi.v1.yaml |
 
 ---
 

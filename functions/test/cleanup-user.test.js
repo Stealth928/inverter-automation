@@ -3,30 +3,13 @@
  * Verifies /api/auth/cleanup-user deletes the full user data tree.
  */
 
-const mockFirestore = {
-  collection: jest.fn(),
-  recursiveDelete: jest.fn()
-};
-
-const mockAuth = {
-  verifyIdToken: jest.fn()
-};
+const { createFirebaseAdminHarness } = require('./helpers/firebase-mock');
+const mockAdminHarness = createFirebaseAdminHarness();
+const { mockFirestore, mockAuth } = mockAdminHarness;
 
 jest.mock('firebase-admin', () => {
   const actualAdmin = jest.requireActual('firebase-admin');
-  return {
-    ...actualAdmin,
-    initializeApp: jest.fn(),
-    apps: [{ name: 'test' }],
-    firestore: Object.assign(jest.fn(() => mockFirestore), {
-      FieldValue: {
-        serverTimestamp: jest.fn(() => new Date()),
-        increment: jest.fn((n) => n),
-        delete: jest.fn()
-      }
-    }),
-    auth: jest.fn(() => mockAuth)
-  };
+  return mockAdminHarness.buildAdminMock(actualAdmin);
 });
 
 jest.mock('firebase-functions', () => ({

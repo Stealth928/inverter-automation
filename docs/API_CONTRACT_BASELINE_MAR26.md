@@ -5,131 +5,92 @@ Generated: 2026-03-04 via `node scripts/api-contract-baseline.js --write-doc`
 ## Summary
 
 - Backend routes discovered: **73**
-- APIClient endpoint-method entries: **19**
+- APIClient endpoint-method entries: **60**
 - Inline HTML endpoint paths discovered: **51**
-- Inline HTML endpoint paths missing from APIClient: **38**
+- Inline HTML endpoint paths missing from APIClient: **0**
 - APIClient mismatches vs backend routes: **0**
 
 ## Backend Route Inventory
 
 | # | Method | Path | Auth Requirement | Handler | Consumer |
 |---:|---|---|---|---|---|
-| 1 | GET | `/api/admin/check` | authenticated | `functions/index.js:2280` | inline |
-| 2 | GET | `/api/admin/firestore-metrics` | admin | `functions/index.js:1516` | inline |
-| 3 | POST | `/api/admin/impersonate` | admin | `functions/index.js:2219` | inline |
-| 4 | GET | `/api/admin/platform-stats` | admin | `functions/index.js:1852` | inline |
-| 5 | GET | `/api/admin/users` | admin | `functions/index.js:1765` | inline |
-| 6 | POST | `/api/admin/users/:uid/delete` | admin | `functions/index.js:2075` | inline |
-| 7 | POST | `/api/admin/users/:uid/role` | admin | `functions/index.js:2052` | inline |
-| 8 | GET | `/api/admin/users/:uid/stats` | admin | `functions/index.js:2134` | inline |
+| 1 | GET | `/api/admin/check` | authenticated | `functions/index.js:2314` | APIClient |
+| 2 | GET | `/api/admin/firestore-metrics` | admin | `functions/index.js:1516` | APIClient |
+| 3 | POST | `/api/admin/impersonate` | admin | `functions/index.js:2253` | APIClient |
+| 4 | GET | `/api/admin/platform-stats` | admin | `functions/index.js:1852` | APIClient |
+| 5 | GET | `/api/admin/users` | admin | `functions/index.js:1765` | APIClient |
+| 6 | POST | `/api/admin/users/:uid/delete` | admin | `functions/index.js:2109` | APIClient |
+| 7 | POST | `/api/admin/users/:uid/role` | admin | `functions/index.js:2052` | APIClient |
+| 8 | GET | `/api/admin/users/:uid/stats` | admin | `functions/index.js:2168` | APIClient |
 | 9 | GET | `/api/amber/prices` | optional | `functions/index.js:837` | APIClient |
 | 10 | GET | `/api/amber/prices/actual` | authenticated | `functions/index.js:914` | APIClient |
-| 11 | GET | `/api/amber/prices/current` | optional | `functions/index.js:759` | inline |
+| 11 | GET | `/api/amber/prices/current` | optional | `functions/index.js:759` | APIClient |
 | 12 | GET | `/api/amber/sites` | optional | `functions/index.js:690` | APIClient |
-| 13 | POST | `/api/auth/cleanup-user` | authenticated | `functions/index.js:7930` | server-only |
+| 13 | POST | `/api/auth/cleanup-user` | authenticated | `functions/index.js:7964` | server-only |
 | 14 | POST | `/api/auth/forgot-password` | public | `functions/index.js:473` | server-only |
-| 15 | POST | `/api/auth/init-user` | public | `functions/index.js:7881` | inline |
-| 16 | GET | `/api/automation/audit` | public | `functions/index.js:5654` | inline |
-| 17 | POST | `/api/automation/cancel` | public | `functions/index.js:4769` | server-only |
-| 18 | POST | `/api/automation/cycle` | public | `functions/index.js:3702` | inline |
-| 19 | POST | `/api/automation/enable` | public | `functions/index.js:3580` | inline |
-| 20 | GET | `/api/automation/history` | public | `functions/index.js:5633` | APIClient |
-| 21 | POST | `/api/automation/reset` | public | `functions/index.js:3676` | inline |
-| 22 | POST | `/api/automation/rule/create` | public | `functions/index.js:5359` | APIClient |
-| 23 | POST | `/api/automation/rule/delete` | public | `functions/index.js:5540` | APIClient |
-| 24 | POST | `/api/automation/rule/end` | public | `functions/index.js:5260` | server-only |
-| 25 | POST | `/api/automation/rule/update` | public | `functions/index.js:5399` | inline |
-| 26 | GET | `/api/automation/status` | public | `functions/index.js:3308` | APIClient |
-| 27 | POST | `/api/automation/test` | public | `functions/index.js:5788` | APIClient |
-| 28 | POST | `/api/automation/toggle` | public | `functions/index.js:3533` | APIClient |
-| 29 | POST | `/api/automation/trigger` | public | `functions/index.js:3633` | inline |
-| 30 | GET | `/api/config` | public | `functions/index.js:3076` | APIClient |
-| 31 | POST | `/api/config` | public | `functions/index.js:3183` | APIClient |
-| 32 | POST | `/api/config/clear-credentials` | authenticated | `functions/index.js:3247` | inline |
-| 33 | GET | `/api/config/setup-status` | optional | `functions/index.js:595` | inline |
-| 34 | GET | `/api/config/system-topology` | public | `functions/index.js:3112` | inline |
-| 35 | POST | `/api/config/system-topology` | public | `functions/index.js:3139` | inline |
-| 36 | GET | `/api/config/tour-status` | authenticated | `functions/index.js:3270` | server-only |
-| 37 | POST | `/api/config/tour-status` | authenticated | `functions/index.js:3287` | server-only |
-| 38 | POST | `/api/config/validate-keys` | optional | `functions/index.js:493` | inline |
-| 39 | GET | `/api/device/battery/forceChargeTime/get` | public | `functions/index.js:6207` | inline |
-| 40 | POST | `/api/device/battery/forceChargeTime/set` | public | `functions/index.js:6221` | inline |
-| 41 | GET | `/api/device/battery/soc/get` | public | `functions/index.js:5978` | inline |
-| 42 | POST | `/api/device/battery/soc/set` | public | `functions/index.js:5992` | inline |
-| 43 | POST | `/api/device/getMeterReader` | public | `functions/index.js:6235` | server-only |
-| 44 | POST | `/api/device/setting/get` | authenticated | `functions/index.js:6030` | inline |
-| 45 | POST | `/api/device/setting/set` | authenticated | `functions/index.js:6103` | inline |
-| 46 | GET | `/api/device/status/check` | authenticated | `functions/index.js:6143` | server-only |
-| 47 | GET | `/api/device/workmode/get` | public | `functions/index.js:6525` | inline |
-| 48 | POST | `/api/device/workmode/set` | public | `functions/index.js:6540` | inline |
-| 49 | GET | `/api/ems/list` | public | `functions/index.js:6471` | server-only |
+| 15 | POST | `/api/auth/init-user` | public | `functions/index.js:7915` | APIClient |
+| 16 | GET | `/api/automation/audit` | public | `functions/index.js:5688` | APIClient |
+| 17 | POST | `/api/automation/cancel` | public | `functions/index.js:4803` | server-only |
+| 18 | POST | `/api/automation/cycle` | public | `functions/index.js:3736` | APIClient |
+| 19 | POST | `/api/automation/enable` | public | `functions/index.js:3614` | APIClient |
+| 20 | GET | `/api/automation/history` | public | `functions/index.js:5667` | APIClient |
+| 21 | POST | `/api/automation/reset` | public | `functions/index.js:3710` | APIClient |
+| 22 | POST | `/api/automation/rule/create` | public | `functions/index.js:5393` | APIClient |
+| 23 | POST | `/api/automation/rule/delete` | public | `functions/index.js:5574` | APIClient |
+| 24 | POST | `/api/automation/rule/end` | public | `functions/index.js:5294` | server-only |
+| 25 | POST | `/api/automation/rule/update` | public | `functions/index.js:5433` | APIClient |
+| 26 | GET | `/api/automation/status` | public | `functions/index.js:3342` | APIClient |
+| 27 | POST | `/api/automation/test` | public | `functions/index.js:5822` | APIClient |
+| 28 | POST | `/api/automation/toggle` | public | `functions/index.js:3567` | APIClient |
+| 29 | POST | `/api/automation/trigger` | public | `functions/index.js:3667` | APIClient |
+| 30 | GET | `/api/config` | public | `functions/index.js:3110` | APIClient |
+| 31 | POST | `/api/config` | public | `functions/index.js:3217` | APIClient |
+| 32 | POST | `/api/config/clear-credentials` | authenticated | `functions/index.js:3281` | APIClient |
+| 33 | GET | `/api/config/setup-status` | optional | `functions/index.js:595` | APIClient |
+| 34 | GET | `/api/config/system-topology` | public | `functions/index.js:3146` | APIClient |
+| 35 | POST | `/api/config/system-topology` | public | `functions/index.js:3173` | APIClient |
+| 36 | GET | `/api/config/tour-status` | authenticated | `functions/index.js:3304` | server-only |
+| 37 | POST | `/api/config/tour-status` | authenticated | `functions/index.js:3321` | server-only |
+| 38 | POST | `/api/config/validate-keys` | optional | `functions/index.js:493` | APIClient |
+| 39 | GET | `/api/device/battery/forceChargeTime/get` | public | `functions/index.js:6241` | APIClient |
+| 40 | POST | `/api/device/battery/forceChargeTime/set` | public | `functions/index.js:6255` | APIClient |
+| 41 | GET | `/api/device/battery/soc/get` | public | `functions/index.js:6012` | APIClient |
+| 42 | POST | `/api/device/battery/soc/set` | public | `functions/index.js:6026` | APIClient |
+| 43 | POST | `/api/device/getMeterReader` | public | `functions/index.js:6269` | server-only |
+| 44 | POST | `/api/device/setting/get` | authenticated | `functions/index.js:6064` | APIClient |
+| 45 | POST | `/api/device/setting/set` | authenticated | `functions/index.js:6137` | APIClient |
+| 46 | GET | `/api/device/status/check` | authenticated | `functions/index.js:6177` | server-only |
+| 47 | GET | `/api/device/workmode/get` | public | `functions/index.js:6559` | APIClient |
+| 48 | POST | `/api/device/workmode/set` | public | `functions/index.js:6574` | APIClient |
+| 49 | GET | `/api/ems/list` | public | `functions/index.js:6505` | server-only |
 | 50 | GET | `/api/health` | optional | `functions/index.js:437` | APIClient |
-| 51 | GET | `/api/health/auth` | public | `functions/index.js:2298` | server-only |
-| 52 | POST | `/api/inverter/all-data` | authenticated | `functions/index.js:6382` | inline |
-| 53 | GET | `/api/inverter/discover-variables` | authenticated | `functions/index.js:6354` | inline |
-| 54 | GET | `/api/inverter/generation` | authenticated | `functions/index.js:6301` | inline |
-| 55 | GET | `/api/inverter/history` | authenticated | `functions/index.js:7961` | inline |
-| 56 | GET | `/api/inverter/list` | public | `functions/index.js:5931` | APIClient |
-| 57 | GET | `/api/inverter/real-time` | public | `functions/index.js:5941` | APIClient |
-| 58 | GET | `/api/inverter/report` | authenticated | `functions/index.js:6265` | inline |
-| 59 | GET | `/api/inverter/settings` | public | `functions/index.js:5963` | inline |
-| 60 | GET | `/api/inverter/temps` | public | `functions/index.js:6250` | APIClient |
-| 61 | GET | `/api/meter/list` | public | `functions/index.js:6513` | server-only |
-| 62 | GET | `/api/metrics/api-calls` | optional | `functions/index.js:1028` | inline |
-| 63 | GET | `/api/module/list` | public | `functions/index.js:6483` | server-only |
-| 64 | GET | `/api/module/signal` | public | `functions/index.js:6495` | server-only |
-| 65 | POST | `/api/quickcontrol/end` | authenticated | `functions/index.js:5072` | inline |
-| 66 | POST | `/api/quickcontrol/start` | authenticated | `functions/index.js:4851` | inline |
-| 67 | GET | `/api/quickcontrol/status` | authenticated | `functions/index.js:5200` | inline |
-| 68 | POST | `/api/scheduler/v1/clear-all` | authenticated | `functions/index.js:6794` | APIClient |
-| 69 | GET | `/api/scheduler/v1/get` | optional | `functions/index.js:6593` | APIClient |
-| 70 | POST | `/api/scheduler/v1/set` | public | `functions/index.js:6631` | APIClient |
-| 71 | POST | `/api/user/delete-account` | authenticated | `functions/index.js:3484` | server-only |
-| 72 | POST | `/api/user/init-profile` | authenticated | `functions/index.js:3427` | server-only |
-| 73 | GET | `/api/weather` | optional | `functions/index.js:6577` | APIClient |
+| 51 | GET | `/api/health/auth` | public | `functions/index.js:2332` | server-only |
+| 52 | POST | `/api/inverter/all-data` | authenticated | `functions/index.js:6416` | APIClient |
+| 53 | GET | `/api/inverter/discover-variables` | authenticated | `functions/index.js:6388` | APIClient |
+| 54 | GET | `/api/inverter/generation` | authenticated | `functions/index.js:6335` | APIClient |
+| 55 | GET | `/api/inverter/history` | authenticated | `functions/index.js:7986` | APIClient |
+| 56 | GET | `/api/inverter/list` | public | `functions/index.js:5965` | APIClient |
+| 57 | GET | `/api/inverter/real-time` | public | `functions/index.js:5975` | APIClient |
+| 58 | GET | `/api/inverter/report` | authenticated | `functions/index.js:6299` | APIClient |
+| 59 | GET | `/api/inverter/settings` | public | `functions/index.js:5997` | APIClient |
+| 60 | GET | `/api/inverter/temps` | public | `functions/index.js:6284` | APIClient |
+| 61 | GET | `/api/meter/list` | public | `functions/index.js:6547` | server-only |
+| 62 | GET | `/api/metrics/api-calls` | optional | `functions/index.js:1028` | APIClient |
+| 63 | GET | `/api/module/list` | public | `functions/index.js:6517` | server-only |
+| 64 | GET | `/api/module/signal` | public | `functions/index.js:6529` | server-only |
+| 65 | POST | `/api/quickcontrol/end` | authenticated | `functions/index.js:5106` | APIClient |
+| 66 | POST | `/api/quickcontrol/start` | authenticated | `functions/index.js:4885` | APIClient |
+| 67 | GET | `/api/quickcontrol/status` | authenticated | `functions/index.js:5234` | APIClient |
+| 68 | POST | `/api/scheduler/v1/clear-all` | authenticated | `functions/index.js:6828` | APIClient |
+| 69 | GET | `/api/scheduler/v1/get` | optional | `functions/index.js:6627` | APIClient |
+| 70 | POST | `/api/scheduler/v1/set` | public | `functions/index.js:6665` | APIClient |
+| 71 | POST | `/api/user/delete-account` | authenticated | `functions/index.js:3518` | APIClient |
+| 72 | POST | `/api/user/init-profile` | authenticated | `functions/index.js:3461` | APIClient |
+| 73 | GET | `/api/weather` | optional | `functions/index.js:6611` | APIClient |
 
 ## Inline HTML Endpoints Missing from APIClient
 
-| Path | Backend Method(s) | Auth Requirement(s) | Example Source(s) |
-|---|---|---|---|
-| `/api/admin/check` | GET | authenticated | `frontend/admin.html:769` |
-| `/api/admin/firestore-metrics` | GET | admin | `frontend/admin.html:1142` |
-| `/api/admin/impersonate` | POST | admin | `frontend/admin.html:1284` |
-| `/api/admin/platform-stats` | GET | admin | `frontend/admin.html:820` |
-| `/api/admin/users` | GET | admin | `frontend/admin.html:796` |
-| `/api/admin/users/:param/delete` | POST | admin | `frontend/admin.html:1018` |
-| `/api/admin/users/:param/role` | POST | admin | `frontend/admin.html:1254` |
-| `/api/admin/users/:param/stats` | GET | admin | `frontend/admin.html:1337` |
-| `/api/amber/prices/current` | GET | optional | `frontend/index.html:4547, frontend/test.html:1449` |
-| `/api/auth/init-user` | POST | public | `frontend/login.html:740` |
-| `/api/automation/audit` | GET | public | `frontend/roi.html:1635` |
-| `/api/automation/cycle` | POST | public | `frontend/index.html:7792, frontend/index.html:9157 (+2 more)` |
-| `/api/automation/enable` | POST | public | `frontend/index.html:9186` |
-| `/api/automation/reset` | POST | public | `frontend/index.html:9336` |
-| `/api/automation/rule/update` | POST | public | `frontend/index.html:8974, frontend/index.html:9239 (+2 more)` |
-| `/api/automation/trigger` | POST | public | `frontend/index.html:9307` |
-| `/api/config/clear-credentials` | POST | authenticated | `frontend/settings.html:2319` |
-| `/api/config/setup-status` | GET | optional | `frontend/login.html:592, frontend/setup.html:780 (+1 more)` |
-| `/api/config/system-topology` | GET, POST | public | `frontend/history.html:1029, frontend/history.html:988` |
-| `/api/config/validate-keys` | POST | optional | `frontend/settings.html:2289, frontend/setup.html:892` |
-| `/api/device/battery/forceChargeTime/get` | GET | public | `frontend/control.html:819` |
-| `/api/device/battery/forceChargeTime/set` | POST | public | `frontend/control.html:798` |
-| `/api/device/battery/soc/get` | GET | public | `frontend/control.html:651` |
-| `/api/device/battery/soc/set` | POST | public | `frontend/control.html:606` |
-| `/api/device/setting/get` | POST | authenticated | `frontend/control.html:671, frontend/curtailment-discovery.html:727 (+1 more)` |
-| `/api/device/setting/set` | POST | authenticated | `frontend/control.html:620, frontend/curtailment-discovery.html:1002 (+2 more)` |
-| `/api/device/workmode/get` | GET | public | `frontend/control.html:738, frontend/index.html:2938` |
-| `/api/device/workmode/set` | POST | public | `frontend/control.html:716, frontend/index.html:3006` |
-| `/api/inverter/all-data` | POST | authenticated | `frontend/control.html:922` |
-| `/api/inverter/discover-variables` | GET | authenticated | `frontend/control.html:884` |
-| `/api/inverter/generation` | GET | authenticated | `frontend/history.html:1773` |
-| `/api/inverter/history` | GET | authenticated | `frontend/history.html:1122, frontend/history.html:1203` |
-| `/api/inverter/report` | GET | authenticated | `frontend/history.html:1515` |
-| `/api/inverter/settings` | GET | public | `frontend/index.html:2927, frontend/index.html:3048 (+1 more)` |
-| `/api/metrics/api-calls` | GET | optional | `frontend/control.html:855, frontend/history.html:1959 (+1 more)` |
-| `/api/quickcontrol/end` | POST | authenticated | `frontend/index.html:5601, frontend/index.html:5638` |
-| `/api/quickcontrol/start` | POST | authenticated | `frontend/index.html:5540` |
-| `/api/quickcontrol/status` | GET | authenticated | `frontend/index.html:5318` |
+No inline-only endpoints were detected.
 
 ## APIClient vs Backend Mismatch Check
 
