@@ -2,7 +2,7 @@
 
 Status: Active execution - Sprint 1 complete, P1 in progress  
 Scope: Planning + execution progress tracking  
-Last Updated: 2026-03-04  
+Last Updated: 2026-03-05  
 Primary Branch: `RefactoringMar26`
 
 ## Progress Tracker
@@ -20,7 +20,7 @@ Primary Branch: `RefactoringMar26`
 | Phase | Gate | Status | Progress |
 |---|---|---|---:|
 | P0 | G0 | ✅ Complete | 100% |
-| P1 | G1 | ⏳ In Progress | 6/8 tasks drafted, 1/8 partial, 1/8 pending |
+| P1 | G1 | ⏳ In Progress | 10/10 tasks drafted, gate approval pending |
 
 ---
 
@@ -205,6 +205,66 @@ Primary Branch: `RefactoringMar26`
 - Updated Exit Gate G0 wording to require owner/mitigation/trigger fields in the risk register.
 - Next target chunk: continue P1 by defining legacy-to-v2 field mapping table in implementation-ready detail and adding CI OpenAPI validation.
 
+### ✅ 2026-03-05 - Chunk 10 (P1 mapping + OpenAPI CI validation)
+
+- Completed the two remaining P1 contract hardening items identified in chunk 8/9 follow-ups.
+- Added implementation-ready legacy-to-v2 mapping matrix:
+  - `docs/P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md`
+  - includes deterministic v2 entity ID rules, field-level source-to-target mappings, transform rules, dual-read order, and dual-write constraints.
+- Added OpenAPI CI validation guard:
+  - new script `scripts/openapi-contract-check.js` validates:
+    - OpenAPI YAML syntax/structure
+    - unique `operationId` values
+    - OpenAPI path+method parity against backend route declarations in `functions/index.js`
+  - wired into hard pre-deploy gate in `scripts/pre-deploy-check.js`
+  - added runnable script entry: `npm run openapi:check`
+- Validation passed:
+  - `node scripts/openapi-contract-check.js`
+  - `node scripts/pre-deploy-check.js`
+- Next target chunk: close G1 governance prerequisites (named approver record) and begin P2 extraction sequencing prep.
+
+### ✅ 2026-03-05 - Chunk 11 (Target-state update: recurring billing objective)
+
+- Added recurring subscription billing to target-state objectives:
+  - support **weekly** and **monthly** billing cadences
+  - enforce feature access via subscription entitlements
+- Updated Phase P1 scope to include billing/paywall contracts (data model + adapter + webhook/idempotency expectations).
+- No rollback/rework required for completed chunks (P0 and prior P1 deliverables remain valid); this introduces additional **forward** work items in P1 and later implementation phases.
+- Next target chunk: draft/approve billing adapter and entitlement contract artifacts (new P1 tasks 9-10), then close G1 governance prerequisite.
+
+### ✅ 2026-03-05 - Chunk 12 (P1 billing contract artifacts in code)
+
+- Implemented non-breaking billing contract scaffolding under `functions/lib/`:
+  - `functions/lib/adapters/payment-adapter.js`
+  - `functions/lib/billing/entitlements.js`
+  - `functions/lib/billing/webhook-idempotency.js`
+- Added contract-focused tests:
+  - `functions/test/payment-adapter-contract.test.js`
+  - `functions/test/billing-entitlements.test.js`
+  - `functions/test/billing-webhook-idempotency.test.js`
+- Validation passed:
+  - `npm --prefix functions test -- payment-adapter-contract.test.js billing-entitlements.test.js billing-webhook-idempotency.test.js --runInBand`
+  - `npm --prefix functions run lint`
+- Outcome: P1 tasks **9-10** now have implementation artifacts (contract definitions + executable tests) and are no longer pending.
+- Next target chunk: close G1 governance prerequisite (named approver record) and lock P2 extraction kickoff list.
+
+### ✅ 2026-03-05 - Chunk 13 (Local emulator restart/reseed incident runbook)
+
+- Documented repeat emulator restart/reseed failure patterns and fixes:
+  - `docs/LOCAL_DEV_KNOWN_ISSUES.md`
+- Captured confirmed causes from live debugging:
+  - UI (`:4000`) readiness can occur before Auth (`:9099`) is ready.
+  - Seeding too early causes `ECONNREFUSED 127.0.0.1:9099`.
+  - Orphan Firestore/PubSub Java listeners (`:8080`/`:8085`) can block next starts.
+  - Multiple emulator instances for the same project create hub conflicts.
+- Added deterministic, copy-pasteable restart + reseed flow:
+  - port cleanup
+  - explicit Java env
+  - startup in persistent terminal
+  - readiness check across all required ports
+  - clear + seed + setup-status verification
+- Next target chunk: codify the same readiness gating into automation scripts so manual runs and scripted runs behave identically.
+
 ---
 
 ## 1. Purpose
@@ -216,6 +276,7 @@ This document defines a systematic implementation plan to refactor the project f
 3. Proper EV integration at production quality with an extensible design.
 4. Long-term maintainability, scalability, and delivery safety.
 5. Sanity of cost and effectiveness - we don't want unnecessary complexity or API calls etc.
+6. Introduce recurring-user monetization with subscription options (weekly or monthly) and entitlement-based access control.
 
 This plan is execution-ready. Work starts when explicitly approved (see Section **14A** for recorded approval status).
 
@@ -325,6 +386,7 @@ This section captures the actual state of the codebase as of 2026-03-04, measure
 1. Add a second electricity provider with minimal custom glue code.
 2. Add a second inverter or battery vendor using a common adapter model.
 3. Promote EV integration from test-only to production-grade under feature flags.
+4. Support recurring user billing with weekly/monthly plans and subscription-aware feature gating.
 
 ### 2.2 Engineering outcomes
 
@@ -344,6 +406,8 @@ This section captures the actual state of the codebase as of 2026-03-04, measure
 7. Zero inline `<script>` blocks exceeding 200 lines in any HTML file.
 8. 100% of API calls flow through `APIClient` — zero raw `fetch()` in page scripts.
 9. ⏳ Coverage collection includes all source files under `functions/` (not only `index.js`).
+10. Subscription billing cycle success rate (weekly + monthly renewals): >= 99.5%.
+11. Entitlement enforcement coverage: 100% of paid features guarded by centralized checks.
 
 ---
 
@@ -360,11 +424,12 @@ This section captures the actual state of the codebase as of 2026-03-04, measure
 7. Firestore data model documentation and security rules alignment.
 8. Dead code and dead npm script cleanup.
 9. ⏳ Device variable name normalization (e.g., `SoC` vs `SoC_1` vs `SoC1`).
+10. Subscription billing architecture (weekly/monthly cadence), payment-provider abstraction, and entitlement gating.
 
 ### 3.2 Out of scope
 
 1. Full UX redesign unrelated to refactoring goals.
-2. Net-new commercial features not required for architecture migration.
+2. Net-new commercial features **other than** recurring subscription billing (e.g., coupons, affiliate/referral systems, complex invoicing workflows).
 3. Immediate migration to a new frontend framework.
 4. Migration from global `<script>` tags to ES modules or a bundler (can happen later; focus is on extracting inline JS to separate files first).
 
@@ -395,6 +460,7 @@ This section captures the actual state of the codebase as of 2026-03-04, measure
 | WS-H | Quality | Raise confidence and prevent regressions | Contract tests, integration tests, hard CI gates |
 | WS-I | Security | Align auth and admin model, improve secrets posture | Unified role model, policy cleanup, controls |
 | WS-J | Observability | Improve operational visibility and reliability | Structured logs, dashboards, alerts, runbooks |
+| WS-K | Billing and Entitlements | Monetize safely with recurring plans | Billing adapter contract, subscription model (weekly/monthly), entitlement guards, webhook/idempotency handling |
 
 ---
 
@@ -471,6 +537,7 @@ Total planned window: 20 weeks.
 1. Define stable contracts before code movement.
 2. Lock v2 data model and compatibility plan.
 3. Design device variable normalization layer.
+4. Define subscription billing/paywall contracts for weekly and monthly plans.
 
 ### Tasks
 
@@ -503,6 +570,14 @@ Total planned window: 20 weeks.
    - **Audit finding:** Current API uses `{ errno, result, error }` envelope inconsistently. Some endpoints return `{ errno: 0, result: {...} }`, others return `{ success: true/false }`, others return raw Express error responses. Standardize.
 8. Define OpenAPI versioning and source-of-truth workflow.
    - **Audit finding:** No OpenAPI spec exists today. The only contract documentation is `docs/API.md` which may be outdated.
+9. Define recurring billing data model and cadence policy.
+   - minimum entities: `billingCustomers`, `subscriptions`, `entitlements`, `billingEvents`.
+   - required billing cadence options: `WEEKLY`, `MONTHLY`.
+   - **Audit finding:** Billing/paywall domain is currently absent in backend and data model (greenfield).
+10. Define payment adapter interface and webhook/idempotency model.
+   - normalize provider events (checkout completed, renewal succeeded/failed, cancellation, chargeback/refund).
+   - enforce idempotent webhook processing and replay safety.
+   - standardize entitlement transition semantics (active, grace_period, past_due, canceled).
 
 ### Exit Gate G1
 
@@ -511,6 +586,7 @@ Total planned window: 20 weeks.
 3. Approved v2 schema design with field-level migration mapping.
 4. Device variable normalization spec published.
 5. Approved migration plan with backward compatibility strategy.
+6. Approved billing/paywall contract covering weekly/monthly subscription cadence and entitlement lifecycle.
 
 ## Phase P2 - Backend Decomposition (Weeks 6-9)
 
@@ -618,6 +694,7 @@ Total planned window: 20 weeks.
 ### Objectives
 
 1. Prove the adapter architecture with real additional integrations.
+2. Extend the adapter model to recurring payments for weekly/monthly subscription plans.
 
 ### Tasks
 
@@ -641,6 +718,10 @@ Total planned window: 20 weeks.
 8. Add migration and backfill jobs for existing single-device users.
    - Read legacy flat config → create asset + provider account documents → set compatibility pointer.
 9. ⏳ Add end-to-end tests across both providers and both device adapters.
+10. Add payment provider integration behind billing adapter contract.
+   - Implement normalized billing events (`checkout_completed`, `renewal_succeeded`, `renewal_failed`, `canceled`, `refund`).
+   - Implement plan cadence support: `WEEKLY`, `MONTHLY`.
+   - Persist canonical subscription state and entitlement transitions.
 
 ### Exit Gate G4
 
@@ -649,6 +730,7 @@ Total planned window: 20 weeks.
 3. Existing users continue to function without manual migration steps.
 4. Device variable names are normalized regardless of firmware version or vendor.
 5. Amber caching sophistication is preserved (no regression in API call efficiency).
+6. Billing provider adapter supports weekly/monthly subscriptions with normalized lifecycle events.
 
 ## Phase P5 - EV Integration (Weeks 16-18)
 
@@ -742,6 +824,9 @@ Total planned window: 20 weeks.
    - `/api/automation/rule/end`, `/api/automation/rule/update`
    - `/api/automation/audit`, `/api/automation/test`
 9. ⏳ Finalize docs and release checklists.
+10. Add subscription management and billing status UI flows.
+   - expose current plan, cadence, next renewal date, and subscription state.
+   - wire frontend to entitlement-aware API responses and graceful downgrade messaging.
 
 ### Exit Gate G6
 
@@ -750,6 +835,7 @@ Total planned window: 20 weeks.
 3. All API calls go through `APIClient` — zero raw `fetch()` in page scripts.
 4. No HTML file has more than 200 lines of inline `<script>`.
 5. Release readiness checklist complete.
+6. Subscription management UX and entitlement-aware flows validated for both weekly and monthly plans.
 
 ---
 
@@ -760,8 +846,9 @@ Total planned window: 20 weeks.
 3. P3 orchestration work depends on P2 domain extraction (specifically: scheduler must call service layer, not route stack).
 4. P4 adapter onboarding depends on P1 interface contracts and P2 adapter infrastructure.
 5. P5 EV integration depends on P3 orchestration controls and P4 adapter registry infrastructure.
-6. P6 frontend consolidation can begin inline JS extraction in parallel with P2-P3 (no backend dependency for extracting scripts to files). Full P6 closure depends on P4/P5 completing the API surface.
-7. **New:** Frontend inline JS extraction (P6 task 2) should start during P2 as a parallel workstream — it is independent of backend changes and the 16,729-line inline JS problem is too large to compress into 2 weeks at the end.
+6. Billing/paywall implementation depends on P1 billing contracts and P4 payment adapter infrastructure.
+7. P6 frontend consolidation can begin inline JS extraction in parallel with P2-P3 (no backend dependency for extracting scripts to files). Full P6 closure depends on P4/P5 completing the API surface.
+8. **New:** Frontend inline JS extraction (P6 task 2) should start during P2 as a parallel workstream — it is independent of backend changes and the 16,729-line inline JS problem is too large to compress into 2 weeks at the end.
 
 ---
 
@@ -778,6 +865,7 @@ The following tasks have no cross-phase dependencies and can run in parallel wit
 | Firestore security rules alignment | P0 | P0 |
 | Document complete Firestore data model | P0 | P0 |
 | Build feature-flag infrastructure | P2 | P5 |
+| Draft billing plan catalog + entitlement policy | P1 | P4 |
 
 ---
 
@@ -969,6 +1057,9 @@ When execution is approved, run phases in order:
 | 2026-03-04 | Completed Sprint 1 parallel frontend prep items 20-21. Added shared Firebase Admin test harness (`functions/test/helpers/firebase-mock.js`) and migrated `admin.test.js` + `cleanup-user.test.js` to use it. Expanded APIClient endpoint coverage and refreshed baseline report to 60 APIClient methods with 0 inline endpoint gaps. | Codex |
 | 2026-03-04 | Started P1/G1 contract artifacts. Added `docs/P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md` (bounded contexts, adapter interfaces, variable normalization, error taxonomy) and `docs/openapi/openapi.v1.yaml` as the OpenAPI source-of-truth baseline. Updated phase dashboard status: P0/G0 completed, P1/G1 in progress. | Codex |
 | 2026-03-04 | Applied verification follow-ups: corrected P1 tracker progress, upgraded Section 13 risk register with owner + trigger-threshold columns, added Section 14A execution approval log, and annotated stale Section 1A baseline items with Sprint 1 completion notes. | Codex |
+| 2026-03-05 | Completed P1 follow-up chunk for contract hardening: added implementation-ready legacy-to-v2 field mapping rules (deterministic IDs, field-level transforms, dual-read/dual-write guidance) to `docs/P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md`; added `scripts/openapi-contract-check.js` for OpenAPI syntax + path/method parity + duplicate operationId validation; and wired the new check into `scripts/pre-deploy-check.js` and root script `openapi:check`. | Codex |
+| 2026-03-05 | Updated target-state objectives to include recurring subscription billing/paywall support (weekly/monthly cadence). Extended P1 with billing contract tasks, added billing workstream and measurable targets, and scheduled implementation expectations across P4/P6 without invalidating completed P0/P1 refactor work. | Codex |
+| 2026-03-05 | Implemented P1 billing contract scaffolding in backend code: added payment adapter contract module, entitlement derivation utilities, webhook idempotency helpers, and dedicated unit tests to make the weekly/monthly billing contract executable and regression-checked before payment-provider integration work. | Codex |
 
 ---
 
@@ -1041,4 +1132,3 @@ functions/
 **Revised total:** 22-27 weeks (vs original 20 weeks). Recommend planning for 24 weeks with 2-week buffer.
 
 **Critical path mitigation:** Start frontend inline JS extraction during P2 (parallel). Start feature-flag infrastructure during P2. Start EV research/prototyping during P3-P4.
-

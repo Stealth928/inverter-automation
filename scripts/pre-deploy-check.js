@@ -261,7 +261,21 @@ try {
 }
 
 // ============================================================================
-// 9. SUMMARY AND EXIT
+// 9. OPENAPI CONTRACT CHECKS
+// ============================================================================
+section('9. Verifying OpenAPI Contract');
+
+try {
+  log(colors.cyan, 'Running: node scripts/openapi-contract-check.js --silent');
+  execSync('node scripts/openapi-contract-check.js --silent', { stdio: 'inherit', cwd: repoRoot });
+  checkPass('OpenAPI spec syntax and path/method parity are valid');
+} catch (e) {
+  checkFail('OpenAPI contract validation failed - run: node scripts/openapi-contract-check.js');
+  failures.push('OPENAPI_CONTRACT_FAILURE');
+}
+
+// ============================================================================
+// 10. SUMMARY AND EXIT
 // ============================================================================
 section('Pre-Deployment Check Summary');
 

@@ -9,8 +9,16 @@ This runbook captures recurring local issues and the exact fixes.
 - Seeding fails with `connect ECONNREFUSED 127.0.0.1:9099`.
 - Only Firestore/PubSub Java processes remain.
 
+### Confirmed Findings (March 5, 2026)
+- Port `4000` (Emulator UI) can be reachable before Auth/Functions/Hosting are actually ready.
+- Seeding immediately after UI readiness can fail with `ECONNREFUSED 127.0.0.1:9099`.
+- Orphan Java processes on `8080`/`8085` are common after interrupted runs and block subsequent restarts.
+- Multiple emulator instances for the same project produce hub warnings and non-deterministic behavior.
+- Functions warning about `engines.node=22` vs host `node=25` is noisy but was not the direct cause of reseed failures.
+
 ### Root Causes
 - Java runtime not on active shell `PATH` (macOS stub `java` used instead of Homebrew OpenJDK).
+- Readiness check was too weak (UI only) and allowed seed to run before Auth was listening.
 - Emulator suite launched from a short-lived shell/session that exits and kills parent `firebase` process.
 
 ### Prevention
@@ -23,10 +31,52 @@ export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"
 ```bash
 firebase emulators:start --only functions,firestore,hosting,auth,pubsub --project inverter-automation-firebase
 ```
-- Verify listeners are up:
+- Verify listeners are up before clear/seed:
 ```bash
 lsof -nP -iTCP:4000,5000,5001,8080,8085,9099 -sTCP:LISTEN
 ```
+
+### Deterministic Restart + Reseed (macOS/zsh)
+Run from repo root:
+
+```bash
+# 1) Clean leftover listeners from previous failed runs
+for p in 4000 4400 4500 5000 5001 8080 8085 9099 9150 9299 9499; do
+  lsof -tiTCP:$p -sTCP:LISTEN 2>/dev/null | xargs -r kill -9
+done
+
+# 2) Ensure Java is available for Firestore/PubSub
+export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
+export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"
+
+# 3) Start emulators in this terminal and keep it open
+npx firebase emulators:start --only functions,firestore,hosting,auth,pubsub --import=./emulator-state --export-on-exit
+```
+
+In a second terminal, wait until all required services are listening, then clear + seed:
+
+```bash
+for p in 4000 5000 5001 8080 8085 9099; do
+  until lsof -nP -iTCP:$p -sTCP:LISTEN >/dev/null 2>&1; do
+    sleep 1
+  done
+done
+
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
+FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+node functions/scripts/clear-firestore.js
+
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
+FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+node functions/scripts/seed-emulator-state.js
+
+curl -sf http://127.0.0.1:5000/api/config/setup-status
+```
+
+### Anti-Pattern (Do Not Repeat)
+- Do not treat `http://127.0.0.1:4000` responding as full emulator readiness.
+- Do not run clear/seed until `9099` (Auth) and `5001` (Functions) are listening.
+- Do not start a second emulator instance while one is already running for `inverter-automation-firebase`.
 
 ## 2) “No Test Data” In UI
 
@@ -87,4 +137,3 @@ curl http://127.0.0.1:5000/api/config/setup-status
   - `#simConditionsCard`
   - `#simRunActions`
   - `[data-tour="automation-card"]`
-

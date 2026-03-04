@@ -6,10 +6,12 @@
     "emu:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-emulators.ps1",
     "api:contract:check": "node scripts/api-contract-baseline.js",
     "api:contract:refresh": "node scripts/api-contract-baseline.js --write-doc",
+    "openapi:check": "node scripts/openapi-contract-check.js",
     "test:e2e:frontend": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.57.0"
+    "@playwright/test": "^1.57.0",
+    "js-yaml": "^4.1.1"
   },
   "dependencies": {
     "firebase-admin": "^13.6.0"

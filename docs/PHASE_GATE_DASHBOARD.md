@@ -41,7 +41,7 @@ Shared label:
 | Phase | Gate | Owner | Issue Link | Status | Last Update |
 |---|---|---|---|---|---|
 | P0 | G0 | RefactoringMar26 | [Create P0/G0 tracker](https://github.com/Stealth928/inverter-automation/issues/new?template=phase-gate-tracker.md&title=P0%20-%20G0%20Tracker&labels=phase-gate,P0,G0) | Completed | 2026-03-04 |
-| P1 | G1 | RefactoringMar26 | [Create P1/G1 tracker](https://github.com/Stealth928/inverter-automation/issues/new?template=phase-gate-tracker.md&title=P1%20-%20G1%20Tracker&labels=phase-gate,P1,G1) | In Progress | 2026-03-04 |
+| P1 | G1 | RefactoringMar26 | [Create P1/G1 tracker](https://github.com/Stealth928/inverter-automation/issues/new?template=phase-gate-tracker.md&title=P1%20-%20G1%20Tracker&labels=phase-gate,P1,G1) | In Progress | 2026-03-05 |
 | P2 | G2 | TBD | - | Pending | - |
 | P3 | G3 | TBD | - | Pending | - |
 | P4 | G4 | TBD | - | Pending | - |
