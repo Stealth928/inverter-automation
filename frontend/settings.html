@@ -16,7 +16,7 @@
     <meta name="apple-mobile-web-app-title" content="SoCrates">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="stylesheet" href="css/shared-styles.css?v=7" />
-    <link rel="stylesheet" href="css/tour.css?v=2" />
+    <link rel="stylesheet" href="css/tour.css?v=3" />
     <script src="js/theme-init.js"></script>
     <!-- Firebase SDK (compat) - must load before firebase-auth.js -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -26,8 +26,8 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=9"></script>
-    <script src="js/tour.js?v=9"></script>
+    <script src="js/app-shell.js?v=11"></script>
+    <script src="js/tour.js?v=29"></script>
     <style>
         /* Page-specific styles */
         .container {
@@ -50,34 +50,65 @@
             gap: 10px;
         }
         .status-bar {
-            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--color-success-dark) 100%);
-            padding: 10px 16px;
-            border-radius: 8px;
+            background: var(--gradient-card);
+            border: 1px solid var(--border-secondary);
+            box-shadow: var(--shadow-sm);
+            padding: 12px 16px;
+            border-radius: var(--radius-xl);
             margin-bottom: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 12px;
         }
         .status-bar .info {
             display: flex;
-            gap: 30px;
+            gap: 12px;
             align-items: center;
+            flex-wrap: wrap;
         }
         .status-bar .info-item {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 5px;
+            min-width: 150px;
+            background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            padding: 8px 10px;
         }
         .status-bar .label {
-            font-size: 11px;
-            color: rgba(255,255,255,0.7);
+            font-size: 10px;
+            color: var(--text-secondary);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.08em;
+            font-weight: 600;
         }
         .status-bar .value {
-            font-size: 18px;
+            font-size: 16px;
+            line-height: 1.2;
             font-weight: 700;
-            color: #fff;
+            color: var(--text-primary);
+        }
+        .status-state {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .status-state--ok {
+            color: var(--color-success);
+        }
+        .status-state--warning {
+            color: var(--color-warning);
+        }
+        .status-state--error {
+            color: var(--color-danger);
+        }
+        .status-state--muted {
+            color: var(--text-secondary);
+        }
+        [data-theme="light"] .status-bar .info-item {
+            background: color-mix(in srgb, #ffffff 88%, var(--bg-secondary));
         }
         .status-bar .actions {
             display: flex;
@@ -425,6 +456,11 @@
                 justify-content: space-between;
             }
 
+            .status-bar .info-item {
+                min-width: 0;
+                flex: 1 1 calc(50% - 6px);
+            }
+
             .status-bar .actions {
                 width: 100%;
                 flex-wrap: wrap;
@@ -519,11 +555,11 @@
             <div class="info">
                 <div class="info-item">
                     <div class="label">Changes</div>
-                    <div class="value" id="configStatus">Loading...</div>
+                    <div class="value" id="configStatus"><span class="status-state status-state--muted">Loading...</span></div>
                 </div>
                 <div class="info-item">
                     <div class="label">Last Saved</div>
-                    <div class="value" id="lastSaved">-</div>
+                    <div class="value" id="lastSaved"><span class="status-state status-state--muted">—</span></div>
                 </div>
             </div>
             <div class="actions">
@@ -535,7 +571,7 @@
         <div id="messageArea"></div>
 
         <!-- Automation Settings -->
-        <div class="section">
+        <div class="section" id="credentialsSection">
             <div class="section-header">
                 <div>
                     <div class="section-title">
@@ -553,7 +589,7 @@
                     <div class="setting-label">Automation Cycle Interval</div>
                     <div class="setting-hint">How often automation rules are evaluated</div>
                     <div class="setting-input">
-                        <input type="number" id="automation_intervalMs" data-section="automation" data-key="intervalMs" min="10000" max="300000" step="1000" value="60000">
+                        <input type="number" id="automation_intervalMs" data-section="automation" data-key="intervalMs" min="20000" max="600000" step="1000" value="60000">
                         <span class="unit">ms</span>
                         <span class="time-display" id="automation_intervalMs_display">= 60s</span>
                     </div>
@@ -609,7 +645,7 @@
         </div>
 
         <!-- Blackout Windows (Advanced) -->
-        <div class="section">
+        <div class="section" id="blackoutSection">
             <div class="section-header">
                 <div>
                     <div class="section-title">
@@ -660,7 +696,7 @@
         </div>
 
         <!-- Solar Curtailment -->
-        <div class="section">
+        <div class="section" id="curtailmentSection">
             <div class="section-header">
                 <div>
                     <div class="section-title">
@@ -1212,6 +1248,26 @@
             setTimeout(() => area.innerHTML = '', 5000);
         }
 
+        function setConfigStatus(kind, text) {
+            const el = document.getElementById('configStatus');
+            if (!el) return;
+
+            if (kind === 'loading') {
+                const label = text || 'Loading...';
+                el.innerHTML = `<span class="spinner"></span> ${label}`;
+                return;
+            }
+
+            const clsMap = {
+                ok: 'status-state status-state--ok',
+                warning: 'status-state status-state--warning',
+                error: 'status-state status-state--error',
+                muted: 'status-state status-state--muted'
+            };
+            const cls = clsMap[kind] || clsMap.muted;
+            el.innerHTML = `<span class="${cls}">${text}</span>`;
+        }
+
         // Load current settings from server
         async function reloadFromServer() {
             try {
@@ -1226,13 +1282,13 @@
 
         async function loadSettings() {
             try {
-                document.getElementById('configStatus').innerHTML = '<span class="spinner"></span> Loading...';
+                setConfigStatus('loading', 'Loading...');
                 
                 const resp = await authenticatedFetch('/api/config?t=' + Date.now());
                 // If the server responded 401, treat as unauthorized -> redirect to login after a short delay
                 if (resp && resp.status === 401) {
                     console.warn('[Settings] /api/config returned 401 (unauthorized)');
-                    document.getElementById('configStatus').textContent = 'Unauthorized';
+                    setConfigStatus('error', 'Unauthorized');
                     showMessage('warning', 'Not signed in or session expired — redirecting to login');
                     // Give the user a moment to see the message and avoid immediate bounce.
                     setTimeout(() => safeRedirect('/login.html'), 700);
@@ -1246,14 +1302,14 @@
                 } catch (jsonErr) {
                     const text = await (typeof resp.text === 'function' ? resp.text() : Promise.resolve(String(resp)));
                     console.warn('[Settings] Received non-JSON response from /api/config:', text.substring ? text.substring(0, 300) : text);
-                    document.getElementById('configStatus').textContent = 'Error';
+                    setConfigStatus('error', 'Error');
                     showMessage('warning', 'Invalid response from server — check network or server logs');
                     return;
                 }
 
                 if (!data || data.errno !== 0 || !data.result) {
                     // Provide clearer message rather than a thrown exception which can cause missing cleanup
-                    document.getElementById('configStatus').textContent = 'Error';
+                    setConfigStatus('error', 'Error');
                     showMessage('warning', `Failed to load configuration: ${data?.msg || 'Invalid response from server'}`);
                     return;
                 }
@@ -1525,7 +1581,7 @@
                 showMessage('success', 'Configuration loaded from server');
             } catch (error) {
                 console.error('loadSettings error:', error);
-                document.getElementById('configStatus').textContent = 'Error';
+                setConfigStatus('error', 'Error');
                 showMessage('warning', `Failed to load: ${error.message}`);
             }
         }
@@ -1694,11 +1750,10 @@
 
         // Update status display
         function updateStatus() {
-            const status = document.getElementById('configStatus');
             if (checkForChanges()) {
-                status.innerHTML = '<span style="color:var(--color-warning)">⚠️ Unsaved</span>';
+                setConfigStatus('warning', '⚠️ Unsaved');
             } else {
-                status.innerHTML = '<span style="color:var(--color-success)">✓ No Changes</span>';
+                setConfigStatus('ok', 'Up to Date');
             }
         }
 
@@ -1751,8 +1806,8 @@
                 const validationErrors = [];
                 
                 // Automation settings validation
-                if (newConfig.automation.intervalMs < 10000 || newConfig.automation.intervalMs > 300000) {
-                    validationErrors.push('Automation cycle: must be 10s-5m (10,000-300,000ms)');
+                if (newConfig.automation.intervalMs < 20000 || newConfig.automation.intervalMs > 600000) {
+                    validationErrors.push('Automation cycle: must be 20s-10m (20,000-600,000ms)');
                 }
                 if (newConfig.automation.startDelayMs < 0 || newConfig.automation.startDelayMs > 30000) {
                     validationErrors.push('Startup delay: must be 0-30s (0-30,000ms)');
@@ -1809,7 +1864,9 @@
                 }
 
                 const statusEl = document.getElementById('configStatus');
-                statusEl.innerHTML = '<span class="spinner"></span> Saving...';
+                if (statusEl) {
+                    setConfigStatus('loading', 'Saving...');
+                }
 
                 // Add browser timezone for detection (most reliable source)
                 const browserTz = apiClient.getBrowserTimezone();
@@ -1872,7 +1929,8 @@
                 } catch (e) { /* non-fatal */ }
 
                 updateStatus();
-                document.getElementById('lastSaved').textContent = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
+                const savedAt = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
+                document.getElementById('lastSaved').innerHTML = `<span class="status-state">${savedAt}</span>`;
                 
                 showMessage('success', '✅ Configuration saved to server and persisted to disk!');
             } catch (error) {
@@ -1993,8 +2051,8 @@
         // Define validation rules for each input
         const validationRules = {
             'automation_intervalMs': {
-                min: 10000, max: 300000,
-                errorMsg: 'Automation cycle must be 10s-5m (10,000-300,000ms)'
+                min: 20000, max: 600000,
+                errorMsg: 'Automation cycle must be 20s-10m (20,000-600,000ms)'
             },
             'automation_startDelayMs': {
                 min: 0, max: 30000,

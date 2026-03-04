@@ -6,9 +6,12 @@
  * activate from Settings after import.
  *
  * IMPORTANT: All minSocOnGrid values must be >= 20.
- * NOTE: ForceCharge templates intentionally use fdPwr: 0 placeholders.
- * The Rules Library import flow resolves these to non-zero, user-safe values
- * derived from each user's inverter capacity/default power settings.
+ * NOTE: Power templates may use either:
+ *   - fdPwr (absolute watts), and/or
+ *   - fdPwrPercent (% of each user's inverter capacity).
+ * ForceCharge templates with fdPwr: 0 are still valid placeholders.
+ * The Rules Library import flow resolves all of these to non-zero, user-safe
+ * watts derived from each user's inverter capacity.
  *
  * Categories:
  *   price       — 💰 Price Optimisation
@@ -51,6 +54,7 @@ window.RULE_LIBRARY = [
         workMode: 'ForceDischarge',
         durationMinutes: 30,
         fdPwr: 5000,
+        fdPwrPercent: 50,
         fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 100
@@ -65,7 +69,7 @@ window.RULE_LIBRARY = [
     categoryLabel: '💰 Price Optimisation',
     difficulty: 'Beginner',
     description: 'Charges the battery from the grid when electricity is cheap so it reaches your configured SoC target before higher-price periods.',
-    whyUseIt: 'Great for overnight cheap-rate tariffs or negative-price events. Minimises the cost of energy stored in the battery.',
+    whyUseIt: 'Great for cheap-rate or negative-price windows. Minimises the cost of stored energy without assuming a fixed overnight schedule.',
     conditionSummary: ['Buy price ≤ 5¢/kWh', 'Battery SoC ≤ 70%'],
     rule: {
       enabled: false,
@@ -153,6 +157,7 @@ window.RULE_LIBRARY = [
         workMode: 'ForceDischarge',
         durationMinutes: 20,
         fdPwr: 8000,
+        fdPwrPercent: 80,
         fdSoc: 25,
         minSocOnGrid: 25,
         maxSoc: 100
@@ -221,6 +226,7 @@ window.RULE_LIBRARY = [
         workMode: 'ForceDischarge',
         durationMinutes: 30,
         fdPwr: 2500,
+        fdPwrPercent: 25,
         fdSoc: 40,
         minSocOnGrid: 20,
         maxSoc: 100
@@ -412,7 +418,7 @@ window.RULE_LIBRARY = [
     difficulty: 'Intermediate',
     description: 'Pre-charges the battery overnight when the next day\'s solar forecast shows heavy cloud cover, ensuring you start the day with useful reserve.',
     whyUseIt: 'Great for days when solar generation will be insufficient to fill the battery. Prevents arriving at peak demand with an empty battery.',
-    conditionSummary: ['Cloud cover avg > 80% next 6h', 'Buy price ≤ 15¢/kWh', 'Battery SoC ≤ 50%'],
+    conditionSummary: ['Time: 00:00 – 06:00', 'Cloud cover avg > 80% next 6h', 'Buy price ≤ 15¢/kWh', 'Battery SoC ≤ 50%'],
     rule: {
       enabled: false,
       priority: 4,
@@ -425,7 +431,7 @@ window.RULE_LIBRARY = [
         solarRadiation: { enabled: false },
         cloudCover:     { enabled: true, checkType: 'average', operator: '>=', value: 80, lookAhead: 6, lookAheadUnit: 'hours' },
         forecastPrice:  { enabled: false },
-        time:           { enabled: false }
+        time:           { enabled: true, startTime: '00:00', endTime: '06:00' }
       },
       action: {
         workMode: 'ForceCharge',
@@ -465,6 +471,7 @@ window.RULE_LIBRARY = [
         workMode: 'ForceDischarge',
         durationMinutes: 30,
         fdPwr: 3000,
+        fdPwrPercent: 30,
         fdSoc: 50,
         minSocOnGrid: 20,
         maxSoc: 100
@@ -638,6 +645,7 @@ window.RULE_LIBRARY = [
         workMode: 'ForceDischarge',
         durationMinutes: 60,
         fdPwr: 2000,
+        fdPwrPercent: 20,
         fdSoc: 60,
         minSocOnGrid: 25,
         maxSoc: 100
@@ -722,9 +730,9 @@ window.RULE_LIBRARY = [
     category: 'seasonal',
     categoryLabel: '🌦️ Seasonal & Weather',
     difficulty: 'Advanced',
-    description: 'When both the cloud cover forecast is high and solar radiation is low over the next day, reduces max SoC cycling and preserves battery for self-use — acknowledging that solar won\'t recharge fully for a while.',
-    whyUseIt: 'Great for multi-day overcast weather events. Limits aggressive discharge/export so you keep a useful reserve throughout the cloudy period.',
-    conditionSummary: ['Cloud cover avg ≥ 85% next 24h', 'Solar radiation avg ≤ 150 W/m² next 24h'],
+    description: 'When both the cloud cover forecast is high and solar radiation is low over the next week, reduces max SoC cycling and preserves battery for self-use — acknowledging that solar won\'t recharge fully for a while.',
+    whyUseIt: 'Great for extended overcast weather events. Limits aggressive discharge/export so you keep a useful reserve throughout the cloudy period.',
+    conditionSummary: ['Cloud cover avg ≥ 85% next 7d', 'Solar radiation avg ≤ 150 W/m² next 7d'],
     rule: {
       enabled: false,
       priority: 7,
@@ -734,8 +742,8 @@ window.RULE_LIBRARY = [
         buyPrice:    { enabled: false },
         soc:         { enabled: false },
         temperature: { enabled: false },
-        solarRadiation: { enabled: true, checkType: 'average', operator: '<=', value: 150, lookAhead: 1, lookAheadUnit: 'days' },
-        cloudCover:     { enabled: true, checkType: 'average', operator: '>=', value: 85, lookAhead: 1, lookAheadUnit: 'days' },
+        solarRadiation: { enabled: true, checkType: 'average', operator: '<=', value: 150, lookAhead: 7, lookAheadUnit: 'days' },
+        cloudCover:     { enabled: true, checkType: 'average', operator: '>=', value: 85, lookAhead: 7, lookAheadUnit: 'days' },
         forecastPrice:  { enabled: false },
         time:           { enabled: false }
       },
@@ -857,13 +865,13 @@ window.RULE_LIBRARY = [
 
   {
     id: 'ev_weekend_surplus_export',
-    name: 'Weekend EV Away — Full Export',
+    name: 'Weekend EV Away — Controlled Export',
     category: 'ev',
     categoryLabel: '🚗 EV-Friendly',
     difficulty: 'Intermediate',
     description: 'When the EV is typically away for the weekend (no home EV load), exports battery energy at a controlled rate during moderate feed-in prices, since there\'s no car to soak up excess solar.',
     whyUseIt: 'Great for EV owners whose car is away on weekends. Improves export revenue on days when there\'s no EV to absorb surplus, while keeping discharge behavior predictable.',
-    conditionSummary: ['Feed-in price ≥ 8¢/kWh', 'Battery SoC ≥ 90%', 'Time: 10:00 – 15:00'],
+    conditionSummary: ['Weekend (Sat/Sun) 10:00 – 15:00', 'Feed-in price ≥ 8¢/kWh', 'Battery SoC ≥ 90%'],
     rule: {
       enabled: false,
       priority: 8,
@@ -876,12 +884,13 @@ window.RULE_LIBRARY = [
         solarRadiation: { enabled: false },
         cloudCover:     { enabled: false },
         forecastPrice:  { enabled: false },
-        time:           { enabled: true, startTime: '10:00', endTime: '15:00' }
+        time:           { enabled: true, startTime: '10:00', endTime: '15:00', days: [0, 6] }
       },
       action: {
         workMode: 'ForceDischarge',
         durationMinutes: 60,
         fdPwr: 3000,
+        fdPwrPercent: 30,
         fdSoc: 40,
         minSocOnGrid: 20,
         maxSoc: 100
@@ -919,6 +928,7 @@ window.RULE_LIBRARY = [
         workMode: 'ForceDischarge',
         durationMinutes: 30,
         fdPwr: 5000,
+        fdPwrPercent: 50,
         fdSoc: 50,
         minSocOnGrid: 20,
         maxSoc: 90
@@ -932,7 +942,7 @@ window.RULE_LIBRARY = [
     category: 'price',
     categoryLabel: '💰 Price Optimisation',
     difficulty: 'Advanced',
-    description: 'Pre-charges the battery during the day when a large feed-in price spike is forecast in the next 4–12 hours and grid buy prices are still cheap — preparing to discharge when the spike arrives.',
+    description: 'Pre-charges the battery during the day when a large feed-in price spike is forecast in the next 4 hours and grid buy prices are still cheap — preparing to discharge when the spike arrives.',
     whyUseIt: 'Real users consistently name this as their highest-ROI rule. If you know a spike is coming, charge cheaply now so you can sell expensive later. Works particularly well on volatile grids like Amber.',
     conditionSummary: ['Feed-in forecast max > 50¢ next 4h', 'Buy price < 12¢ now', 'Battery SoC < 65%', 'Time: 09:00 – 16:00'],
     rule: {
@@ -966,22 +976,22 @@ window.RULE_LIBRARY = [
     category: 'price',
     categoryLabel: '💰 Price Optimisation',
     difficulty: 'Intermediate',
-    description: 'A "circuit breaker" companion to spike-export rules. Switches the inverter back to self-use mode once the feed-in price has dropped below a threshold, stopping unnecessary export after the spike window passes.',
-    whyUseIt: 'Prevents the inverter from continuing to export at low prices after a spike ends. Pair this with a high-price export rule — this handles the graceful exit back to normal operation.',
-    conditionSummary: ['Feed-in price < 11¢/kWh (spike has passed)', 'Switches back to SelfUse'],
+    description: 'A companion to spike-export rules. During the evening window, switches the inverter back to self-use once feed-in price has dropped below a threshold, stopping unnecessary low-value export.',
+    whyUseIt: 'Prevents the inverter from continuing to export cheaply after a spike ends, while requiring a minimum SoC reserve before switching mode.',
+    conditionSummary: ['Time: 17:00 – 23:59', 'Feed-in price < 11¢/kWh', 'Battery SoC ≥ 25%', 'Switches back to SelfUse'],
     rule: {
       enabled: false,
-      priority: 1,
-      cooldownMinutes: 5,
+      priority: 8,
+      cooldownMinutes: 30,
       conditions: {
         feedInPrice: { enabled: true, operator: '<', value: 11, value2: null },
         buyPrice:    { enabled: false },
-        soc:         { enabled: false },
+        soc:         { enabled: true, operator: '>=', value: 25, value2: null },
         temperature: { enabled: false },
         solarRadiation: { enabled: false },
         cloudCover:     { enabled: false },
         forecastPrice:  { enabled: false },
-        time:           { enabled: false }
+        time:           { enabled: true, startTime: '17:00', endTime: '23:59' }
       },
       action: {
         workMode: 'SelfUse',
@@ -1000,9 +1010,9 @@ window.RULE_LIBRARY = [
     category: 'solar',
     categoryLabel: '☀️ Solar Forecasting',
     difficulty: 'Advanced',
-    description: 'Overnight (midnight–6am), checks tomorrow\'s solar forecast: if it looks weak (low radiation next 24h), charges the battery toward a higher SoC target to cover tomorrow\'s loads. If solar is strong, only charges to a moderate level to leave room to absorb solar generation.',
-    whyUseIt: 'Inspired by real users who run paired "sunny" and "cloudy" overnight rules. Adapts the overnight charge target to the next day\'s forecast — charging more before bad-solar days, less before good ones.',
-    conditionSummary: ['Time: 00:00 – 06:00', 'Solar avg < 250 W/m² next 24h (cloudy day ahead)', 'Battery SoC ≤ 80%'],
+    description: 'Overnight (midnight–6am), checks tomorrow\'s solar outlook and pre-charges only when next-day generation is likely weak (low radiation with high cloud cover), so morning loads start with reserve.',
+    whyUseIt: 'Useful for bad-solar days where daytime generation will likely underperform. It prepares a reserve overnight without relying on a separate paired rule.',
+    conditionSummary: ['Time: 00:00 – 06:00', 'Solar avg < 250 W/m² next 24h', 'Cloud cover avg ≥ 70% next 24h', 'Battery SoC ≤ 80%'],
     rule: {
       enabled: false,
       priority: 5,
@@ -1013,7 +1023,7 @@ window.RULE_LIBRARY = [
         soc:         { enabled: true, operator: '<=', value: 80, value2: null },
         temperature: { enabled: false },
         solarRadiation: { enabled: true, checkType: 'average', operator: '<', value: 250, lookAhead: 24, lookAheadUnit: 'hours' },
-        cloudCover:     { enabled: false },
+        cloudCover:     { enabled: true, checkType: 'average', operator: '>=', value: 70, lookAhead: 24, lookAheadUnit: 'hours' },
         forecastPrice:  { enabled: false },
         time:           { enabled: true, startTime: '00:00', endTime: '06:00' }
       },

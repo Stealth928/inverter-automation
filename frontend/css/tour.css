@@ -17,14 +17,25 @@
   transition: opacity 0.25s ease;
 }
 
-/* ---------- Highlight ring on target element ---------- */
+/* ---------- Highlight ring — fixed-position element appended to <body> ----------
+   Using a separate DOM node (not box-shadow on the target) means ancestor
+   overflow:hidden and stacking contexts can never clip or trap the ring. */
+.tour-highlight-ring {
+  z-index: 9100;
+  box-shadow: 0 0 0 4px #58a6ff, 0 0 0 8px rgba(88, 166, 255, 0.25);
+  transition: box-shadow 0.2s ease;
+  /* pointer-events:none set inline; kept here for specificity */
+  pointer-events: none;
+}
+
+/* Legacy class kept for any external references */
 .tour-highlight {
   position: relative !important;
   z-index: 9100 !important;
   box-shadow: 0 0 0 4px #58a6ff, 0 0 0 8px rgba(88, 166, 255, 0.25) !important;
   border-radius: 8px;
   transition: box-shadow 0.2s ease;
-  pointer-events: none; /* prevent accidental clicks during tour */
+  pointer-events: none;
 }
 
 /* ---------- Tooltip card ---------- */

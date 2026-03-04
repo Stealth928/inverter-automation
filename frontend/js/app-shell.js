@@ -405,7 +405,11 @@
                     window.TourEngine.start(0);
                 } else {
                     // TourEngine not loaded on this page — navigate to dashboard and start there
-                    try { sessionStorage.setItem('tourStep', '0'); } catch (e) {}
+                    try {
+                        sessionStorage.setItem('tourStep', '0');
+                        sessionStorage.setItem('tourStepVersion', 'tour-v2026-03-04-theme-preview-step');
+                        sessionStorage.setItem('tourStepAt', String(Date.now()));
+                    } catch (e) {}
                     if (typeof safeRedirect === 'function') {
                         safeRedirect('/index.html');
                     } else {

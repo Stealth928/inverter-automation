@@ -127,6 +127,7 @@ inverter-automation/
 | **SelfUse** | Prioritize self-consumption |
 | **ForceDischarge** | Export battery to grid |
 | **ForceCharge** | Charge from grid |
+| **Feedin** | Force export mode on supported inverters |
 | **Backup** | Preserve battery for backup |
 
 ## Example Rules
@@ -176,6 +177,17 @@ npm run emu:start
 # Serve frontend (separate terminal)
 cd frontend && python -m http.server 8000
 ```
+
+Repeat-issue runbook:
+- See [docs/LOCAL_DEV_KNOWN_ISSUES.md](docs/LOCAL_DEV_KNOWN_ISSUES.md) for emulator startup, seeding, service-worker cache, and tour-highlight pitfalls.
+
+Important local emulator note (macOS/Homebrew):
+- Firestore and Pub/Sub emulators require Java. If startup fails with `Unable to locate a Java Runtime`, export:
+```bash
+export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
+export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"
+```
+- Keep `firebase emulators:start` in a dedicated terminal tab/session. If launched from a short-lived runner, the process can exit when that runner exits.
 
 Local seeded test user:
 - Email: `test@gmail.com`

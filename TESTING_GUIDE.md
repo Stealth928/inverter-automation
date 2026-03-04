@@ -6,9 +6,17 @@ This repository has two test tracks:
 - **Backend (Jest)**: All Cloud Functions tests in `functions/test/*.test.js`
 - **Frontend (Playwright)**: UI tests in `tests/frontend/*.spec.js`
 
-**Last verified:** 2025-12-24  
-**Backend Jest result:** 22 suites, 376 tests (1 skipped), all passing  
-**Coverage command used:**
+**Last verified:** 2026-03-04  
+**Current inventory commands:**
+```bash
+npm --prefix functions test -- --listTests
+npx playwright test --list
+```
+Current inventory at verification time:
+- Backend Jest files: 31
+- Frontend Playwright tests: 176 (11 spec files)
+
+**Coverage command:**
 ```bash
 npm --prefix functions test -- --coverage --collectCoverageFrom="**/*.js" --collectCoverageFrom="!**/test/**" --collectCoverageFrom="!**/node_modules/**"
 ```
@@ -36,7 +44,7 @@ npm --prefix functions test
 npm --prefix functions test -- routes-integration.test.js
 ```
 
-**Coverage (latest run):**
+**Coverage (example output format):**
 ```
 Overall: Lines 10.84% (335/3091) | Functions 10.14% (28/276) | Branches 5.58% (132/2365)
 root:    Lines 10.63% (273/2569) | Functions  9.13% (20/219) | Branches 5.15% (108/2099)
@@ -115,5 +123,10 @@ Example workflow steps:
 ## Troubleshooting
 
 - **Auth tests fail**: ensure the emulator is running and reachable.
+- **Emulators fail to start on macOS with `Unable to locate a Java Runtime`**:
+  - Firestore/PubSub need Java. Use Homebrew OpenJDK in your shell:
+    - `export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"`
+    - `export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"`
+  - Then restart emulators in a persistent terminal session.
 - **Playwright fails to launch**: install browsers with `npx playwright install`.
 - **Coverage looks low**: coverage includes all JS files under `functions/`, including scripts.

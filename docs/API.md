@@ -396,6 +396,12 @@ Content-Type: application/json
 }
 ```
 
+Validation:
+- `action.workMode` must be one of: `SelfUse`, `ForceDischarge`, `ForceCharge`, `Feedin`, `Backup`.
+- `action.durationMinutes` (if provided) must be `5-1440`.
+- `action.fdPwr` must be `> 0` for `ForceDischarge`, `ForceCharge`, `Feedin`.
+- `action.fdPwr` must not exceed configured inverter capacity (`inverterCapacityW`, fallback 10000W).
+
 **Response:**
 ```json
 { "errno": 0, "ruleId": "rule_abc123" }
@@ -408,12 +414,17 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "ruleId": "rule_abc123",
+  "ruleName": "high_feed_in_export",
   "name": "High Feed-in Export",
   "enabled": false,
   ...
 }
 ```
+
+Notes:
+- `ruleName` or `name` is required to identify the rule.
+- Partial `action` updates are merged with existing action before validation.
+- The same action validation rules from create apply to update.
 
 **Response:**
 ```json

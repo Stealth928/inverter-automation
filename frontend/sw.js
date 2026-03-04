@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'socrates-v22';
+const CACHE_VERSION = 'socrates-v42';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const STATIC_ASSETS = [
@@ -12,13 +12,13 @@ const STATIC_ASSETS = [
   '/roi.html',
   '/curtailment-discovery.html',
   '/css/shared-styles.css?v=7',
-  '/css/tour.css',
-  '/js/tour.js?v=8',
+  '/css/tour.css?v=3',
+  '/js/tour.js?v=29',
   '/js/firebase-config.js',
   '/js/firebase-auth.js',
   '/js/api-client.js',
   '/js/shared-utils.js',
-  '/js/app-shell.js?v=9',
+  '/js/app-shell.js?v=11',
   '/favicon.ico',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
@@ -39,7 +39,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key.startsWith('foxess-automation-') && key !== STATIC_CACHE)
+          .filter((key) => key !== STATIC_CACHE)
           .map((key) => caches.delete(key))
       )
     )
@@ -82,9 +82,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      const networkFetch = fetch(request)
+  const isTourOrShellScript =
+    requestUrl.pathname === '/js/tour.js' ||
+    requestUrl.pathname === '/js/app-shell.js';
+
+  if (isTourOrShellScript) {
+    event.respondWith(
+      fetch(request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const copy = networkResponse.clone();
@@ -92,9 +96,27 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         })
+        .catch(async () => {
+          const cache = await caches.open(STATIC_CACHE);
+          return cache.match(request);
+        })
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.open(STATIC_CACHE).then((cache) => cache.match(request).then((cachedResponse) => {
+      const networkFetch = fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            cache.put(request, copy);
+          }
+          return networkResponse;
+        })
         .catch(() => cachedResponse);
 
       return cachedResponse || networkFetch;
-    })
+    }))
   );
 });

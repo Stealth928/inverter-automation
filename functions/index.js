@@ -7810,7 +7810,10 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           actualValue = radiationValues.reduce((a, b) => a + b, 0) / radiationValues.length;
         }
         
-        const met = compareValue(actualValue, operator, threshold);
+        const value2 = conditions.solarRadiation.value2;
+        const met = (operator === 'between' && value2 != null)
+          ? compareValue(actualValue, 'between', threshold, value2)
+          : compareValue(actualValue, operator, threshold);
         const lookAheadDisplay = lookAheadUnit === 'days' ? `${lookAheadValue}d` : `${lookAheadValue}h`;
         
         // Warn if we got fewer hours than requested (incomplete timeframe)
@@ -7878,7 +7881,10 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           actualValue = cloudValues.reduce((a, b) => a + b, 0) / cloudValues.length;
         }
         
-        const met = compareValue(actualValue, operator, threshold);
+        const value2 = conditions.cloudCover.value2;
+        const met = (operator === 'between' && value2 != null)
+          ? compareValue(actualValue, 'between', threshold, value2)
+          : compareValue(actualValue, operator, threshold);
         const lookAheadDisplay = lookAheadUnit === 'days' ? `${lookAheadValue}d` : `${lookAheadValue}h`;
         
         // Warn if we got fewer hours than requested (incomplete timeframe)
@@ -8101,7 +8107,12 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
         
         const operator = conditions.forecastPrice.operator;
         const value = conditions.forecastPrice.value;
-        const met = checkType === 'any' ? actualValue !== undefined : compareValue(actualValue, operator, value);
+        const forecastValue2 = conditions.forecastPrice.value2;
+        const met = checkType === 'any'
+          ? actualValue !== undefined
+          : (operator === 'between' && forecastValue2 != null)
+            ? compareValue(actualValue, 'between', value, forecastValue2)
+            : compareValue(actualValue, operator, value);
         
         // Format lookAhead for display
         const lookAheadDisplay = lookAheadUnit === 'days' 
@@ -8156,8 +8167,12 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
 
 /**
  * Compare a value using an operator
+ * @param {number} actual - The actual measured value
+ * @param {string} operator - Comparison operator: '>', '>=', '<', '<=', '==', '!=', 'between'
+ * @param {number|Array|Object} target - Target value (or min for 'between')
+ * @param {number} [target2] - Upper bound for 'between' operator
  */
-function compareValue(actual, operator, target) {
+function compareValue(actual, operator, target, target2) {
   if (actual === null || actual === undefined) return false;
   switch (operator) {
     case '>': return actual > target;
@@ -8167,7 +8182,11 @@ function compareValue(actual, operator, target) {
     case '==': return actual == target;
     case '!=': return actual != target;
     case 'between':
-      // For "between" operator, target should be an object with min/max or an array [min, max]
+      // Support multiple calling conventions:
+      // 1. compareValue(actual, 'between', min, max)  — preferred
+      // 2. compareValue(actual, 'between', [min, max]) — legacy array
+      // 3. compareValue(actual, 'between', {min, max}) — legacy object
+      if (target2 != null) return actual >= Math.min(target, target2) && actual <= Math.max(target, target2);
       if (Array.isArray(target)) return actual >= target[0] && actual <= target[1];
       if (target && typeof target === 'object') return actual >= (target.min || 0) && actual <= (target.max || 100);
       return false;

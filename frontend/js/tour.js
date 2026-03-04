@@ -16,8 +16,16 @@
   var _apiClient = null;
   var _overlay   = null;
   var _tooltip   = null;
+  var _highlightRing = null;
+  var _inlineHighlightSnapshot = null;
   var _active    = false;
   var _currentStep = 0;
+  var _themeOverrideState = null;
+  var TOUR_STEP_KEY = 'tourStep';
+  var TOUR_STEP_VERSION_KEY = 'tourStepVersion';
+  var TOUR_STEP_AT_KEY = 'tourStepAt';
+  var TOUR_FLOW_VERSION = 'tour-v2026-03-04-theme-preview-step';
+  var TOUR_PENDING_MAX_AGE_MS = 5 * 60 * 1000;
 
   /* ------------------------------------------------------------------ */
   /*  Step definitions                                                    */
@@ -29,10 +37,28 @@
       selector: null,
       position: 'center',
       title: 'Welcome to SoCrates 👋',
-      body: 'This 2-minute tour covers a lot of what the app can do — live prices, weather, automation rules, manual controls, savings tracking and more. You can skip or relaunch it anytime from the Help menu.'
+      body: 'This quick tour walks through live data, automation rules, manual controls, testing and reports. You can skip now and restart anytime from your avatar menu.'
     },
 
-    /* 1 — Live prices */
+    /* 1 — Battery & inverter status */
+    {
+      page: '/index.html',
+      selector: '[data-dashboard-card="inverter"]',
+      position: 'bottom',
+      title: '🔋 Battery & Inverter Status',
+      body: 'Real-time state of charge (%), power flows, inverter mode and temperatures. The battery fill and colour reflect your SoC at a glance.',
+      beforeShow: function () {
+        try {
+          var inverterCard = document.querySelector('[data-dashboard-card="inverter"]');
+          if (inverterCard && inverterCard.classList.contains('is-hidden-preference')) {
+            inverterCard.classList.remove('is-hidden-preference');
+            inverterCard.style.display = '';
+          }
+        } catch (e) { /* ignore */ }
+      }
+    },
+
+    /* 2 — Live prices */
     {
       page: '/index.html',
       selector: '#amberCard',
@@ -41,7 +67,7 @@
       body: 'Amber Electric buy and feed-in prices refresh every 60 seconds. Price forecast tiles show the next few hours so rules can react before a spike or cheap window arrives.'
     },
 
-    /* 2 — Weather forecast */
+    /* 3 — Weather forecast */
     {
       page: '/index.html',
       selector: '#weatherCard',
@@ -50,20 +76,11 @@
       body: 'Live shortwave radiation, cloud cover, temperature and multi-day forecast. Automation rules can condition on radiation level or cloud percentage — e.g. only charge when solar is abundant.'
     },
 
-    /* 3 — Battery status */
-    {
-      page: '/index.html',
-      selector: '.battery-tile',
-      position: 'bottom',
-      title: '🔋 Battery & Inverter Status',
-      body: 'Real-time state of charge (%), power flows, inverter mode and temperatures. The battery fill and colour reflect your SoC at a glance. Data refreshes every 5 minutes from FoxESS.'
-    },
-
     /* 4 — Automation panel + master toggle */
     {
       page: '/index.html',
-      selector: '#backendAutomationStatus',
-      position: 'right',
+      selector: '[data-tour="automation-card"]',
+      position: 'left',
       title: '🤖 Automation Engine',
       body: 'Use the Master toggle to enable or disable automation. By default, the engine evaluates your rules every 60 seconds (configurable in Settings) and applies the first one whose conditions are met.',
       beforeShow: function () {
@@ -72,6 +89,9 @@
           if (typeof window.toggleAutomationPanel === 'function') {
             window.toggleAutomationPanel(false);   /* false = expand */
           }
+          if (typeof window.loadBackendAutomationStatus === 'function') {
+            setTimeout(function () { window.loadBackendAutomationStatus(); }, 120);
+          }
         } catch (e) { /* ignore */ }
       }
     },
@@ -79,8 +99,8 @@
     /* 5 — Rules list */
     {
       page: '/index.html',
-      selector: '#backendAutomationStatus',
-      position: 'right',
+      selector: '#backendAutomationStatus [data-tour="automation-rules"], [data-tour="automation-card"]',
+      position: 'left',
       title: '📋 Automation Rules',
       body: 'Rules are sorted by priority (1 = highest). Each rule can combine price, SoC, time and weather conditions with advanced actions (ForceCharge, Discharge, SelfUse, Backup) plus optional cool-downs and schedules. Only the first matching rule fires per cycle.',
       tooltipClass: 'tour-tooltip--rules-hero'
@@ -121,22 +141,32 @@
       }
     },
 
-    /* 8 — Manual Scheduler (Time Segments) */
+    /* 8 — Rules Library intro */
     {
-      page: '/index.html',
-      selector: '[data-dashboard-card="scheduler"]',
+      page: '/rules-library.html',
+      selector: '.toolbar',
+      position: 'bottom',
+      title: '📚 Rules Library',
+      body: 'Browse ready-made recipes by category and difficulty. Treat them as a starting point — after import, you can edit thresholds, actions and priorities to suit your setup.'
+    },
+
+    /* 9 — Rules Library import capabilities */
+    {
+      page: '/rules-library.html',
+      selector: '#rulesGrid .rule-card',
       position: 'top',
-      title: '\uD83D\uDCC5 Manual Scheduler (Time Segments)',
-      body: 'Program up to 8 time-based segments directly on the inverter — each with its own work mode (Self Use, Force Charge, Discharge, Feed In), start/end time, power and SoC targets. Use this for deterministic control independent of automation rules.',
+      title: '⚙️ Smart Import & Remove',
+      body: 'Import templates in one click as inactive so you stay in control. Power is pre-calculated for your inverter in each card before import, then saved on import. Priorities are auto-adjusted to avoid clashes, and already-imported rules are highlighted so you can remove them here.',
       beforeShow: function () {
         try {
-          var card = document.querySelector('[data-dashboard-card="scheduler"]');
-          if (card && card.classList.contains('is-hidden-preference')) {
-            card.classList.remove('is-hidden-preference');
-            card.style.display = '';
+          var input = document.getElementById('searchInput');
+          if (input) input.value = '';
+          if (typeof window.selectCategory === 'function') {
+            var allBtn = document.querySelector('[data-cat="all"]');
+            if (allBtn) window.selectCategory('all', allBtn);
           }
-          if (typeof window.loadSchedulerSegments === 'function') {
-            setTimeout(function () { window.loadSchedulerSegments(); }, 350);
+          if (typeof window.filterRules === 'function') {
+            window.filterRules();
           }
         } catch (e) { /* ignore */ }
       }
@@ -151,16 +181,7 @@
       body: 'Directly set the inverter work mode: SelfUse, ForceCharge, ForceDischarge or Backup. Changes take effect immediately and persist until another rule or manual action overrides them.'
     },
 
-    /* 10 — Time-based charge schedule */
-    {
-      page: '/control.html',
-      selector: '#form-forceCharge',
-      position: 'right',
-      title: '⏰ Time-Based Charge Windows',
-      body: 'Configure up to 2 time windows for force-charging — useful for off-peak tariffs. The scheduler segments are sent directly to the inverter and work independently of the automation rules.'
-    },
-
-    /* 11 — Battery SoC settings */
+    /* 10 — Battery SoC settings */
     {
       page: '/control.html',
       selector: '#form-batterySoc',
@@ -169,52 +190,52 @@
       body: 'Set the minimum state-of-charge the inverter must maintain. "Min SoC on Grid" is the threshold while grid-connected; the inverter will not discharge below this level.'
     },
 
-    /* 12 — Credentials */
+    /* 11 — Credentials */
     {
       page: '/settings.html',
-      selector: '#credentials_deviceSn',
+      selector: '#credentialsSection',
       position: 'bottom',
       title: '🔑 API Credentials',
       body: 'Your FoxESS device serial, API token and Amber Electric key live here. Update them at any time — keys are stored securely in Firestore and never exposed client-side.'
     },
 
-    /* 13 — Blackout windows */
+    /* 12 — Blackout windows */
     {
       page: '/settings.html',
-      selector: '#blackoutWindowsList',
+      selector: '#blackoutSection',
       position: 'top',
       title: '🚫 Blackout Windows',
       body: 'Blackout windows pause the automation engine on specific days and times — e.g. every weekday morning to avoid discharging during your commute. Automation resumes automatically after the window ends.'
     },
 
-    /* 14 — Solar Curtailment */
+    /* 13 — Solar Curtailment */
     {
       page: '/settings.html',
-      selector: '#curtailment_enabled',
+      selector: '#curtailmentSection',
       position: 'right',
       title: '\u2600\uFE0F Solar Curtailment',
       body: 'Solar curtailment automatically limits your inverter\u2019s grid export when the Amber feed-in price drops below your chosen threshold — protecting against zero or negative feed-in rates. Toggle it on and set the price threshold to activate it.'
     },
 
-    /* 15 — Automation lab inputs */
+    /* 14 — Automation lab inputs */
     {
       page: '/test.html',
-      selector: '#simFeedIn',
+      selector: '#simConditionsCard',
       position: 'right',
       title: '🧪 Simulated Conditions',
       body: 'The Automation Lab lets you test what your rules would do given any hypothetical price, SoC, time or weather. No commands are sent to the inverter — it\'s a completely safe sandbox.'
     },
 
-    /* 16 — Run test button */
+    /* 15 — Run test button */
     {
       page: '/test.html',
-      selector: '[onclick="runTest()"]',
+      selector: '#simRunActions',
       position: 'top',
       title: '🚀 Run the Simulation',
       body: 'Click "Run Automation Test" to see which rule (if any) would fire given the conditions above. The result shows which conditions matched, the action that would be taken, and why other rules were skipped.'
     },
 
-    /* 17 — History / reports */
+    /* 16 — History / reports */
     {
       page: '/history.html',
       selector: '#btnFetchHistory',
@@ -223,7 +244,7 @@
       body: 'The History page lets you fetch inverter time-series data (up to 7 days), view aggregated energy reports by month or year, and browse historical Amber prices. All data is loaded on-demand to preserve your API quota.'
     },
 
-    /* 18 — ROI */
+    /* 17 — ROI */
     {
       page: '/roi.html',
       selector: '#btnCalculateROI',
@@ -232,16 +253,17 @@
       body: 'Track the financial value of your automation. The ROI calculator estimates grid import savings, feed-in revenue gains and avoided peak costs over a date range you choose.'
     },
 
-    /* 19 — Light / Dark theme */
+    /* 18 — Light / Dark theme */
     {
       page: '/index.html',
       selector: null,
       position: 'center',
       title: '🎨 Light & Dark Themes',
-      body: 'The app defaults to a dark theme — easy on the eyes at night. Want a brighter look? Click your avatar in the top-right corner and choose ☀️ Light Theme.'
+      body: 'The app defaults to a dark theme — easy on the eyes at night. Want a brighter look? Click your avatar in the top-right corner and choose ☀️ Light Theme.',
+      themeOverride: 'light'
     },
 
-    /* 20 — Outro splash */
+    /* 19 — Outro splash */
     {
       page: '/index.html',
       selector: null,
@@ -286,11 +308,69 @@
     return count;
   }
 
+  function updateThemeToggleLabels() {
+    var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    var label = isLight ? '🌙 Dark Theme' : '☀️ Light Theme';
+    document.querySelectorAll('[data-toggle-theme]').forEach(function (btn) {
+      btn.textContent = label;
+    });
+  }
+
+  function applyThemeOverride(theme) {
+    if (_themeOverrideState) return;
+    var html = document.documentElement;
+    var themeMeta = document.querySelector('meta[name="theme-color"]');
+    _themeOverrideState = {
+      hadThemeAttr: html.hasAttribute('data-theme'),
+      themeAttrValue: html.getAttribute('data-theme'),
+      metaThemeColor: themeMeta ? themeMeta.getAttribute('content') : null
+    };
+
+    if (theme === 'light') {
+      html.setAttribute('data-theme', 'light');
+    } else {
+      html.removeAttribute('data-theme');
+    }
+
+    if (themeMeta) {
+      themeMeta.setAttribute('content', theme === 'light' ? '#ffffff' : '#0d1117');
+    }
+    updateThemeToggleLabels();
+  }
+
+  function clearThemeOverride() {
+    if (!_themeOverrideState) return;
+    var html = document.documentElement;
+    if (_themeOverrideState.hadThemeAttr) {
+      if (_themeOverrideState.themeAttrValue) {
+        html.setAttribute('data-theme', _themeOverrideState.themeAttrValue);
+      } else {
+        html.removeAttribute('data-theme');
+      }
+    } else {
+      html.removeAttribute('data-theme');
+    }
+
+    var themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) {
+      if (_themeOverrideState.metaThemeColor) {
+        themeMeta.setAttribute('content', _themeOverrideState.metaThemeColor);
+      } else {
+        themeMeta.setAttribute('content', html.getAttribute('data-theme') === 'light' ? '#ffffff' : '#0d1117');
+      }
+    }
+
+    _themeOverrideState = null;
+    updateThemeToggleLabels();
+  }
+
   /* ------------------------------------------------------------------ */
   /*  Core render                                                         */
   /* ------------------------------------------------------------------ */
 
   function renderStep(index) {
+    clearThemeOverride();
+
     if (index < 0 || index >= STEPS.length) {
       complete();
       return;
@@ -307,7 +387,7 @@
 
     /* redirect if on wrong page */
     if (!onStepPage(step)) {
-      try { sessionStorage.setItem('tourStep', String(index)); } catch (e) {}
+      savePendingStep(index);
       try {
         if (typeof safeRedirect === 'function') {
           safeRedirect(step.page);
@@ -320,6 +400,10 @@
 
     _currentStep = index;
     _active = true;
+
+    if (step.themeOverride) {
+      applyThemeOverride(step.themeOverride);
+    }
 
     /* CRITICAL: unlock scroll first so scrollIntoView actually works.
        On step-to-step transitions the body is already position:fixed from
@@ -374,6 +458,14 @@
     }, settleMs);
   }
 
+  function savePendingStep(index) {
+    try {
+      sessionStorage.setItem(TOUR_STEP_KEY, String(index));
+      sessionStorage.setItem(TOUR_STEP_VERSION_KEY, TOUR_FLOW_VERSION);
+      sessionStorage.setItem(TOUR_STEP_AT_KEY, String(Date.now()));
+    } catch (e) {}
+  }
+
   /* ------------------------------------------------------------------ */
   /*  Overlay                                                             */
   /* ------------------------------------------------------------------ */
@@ -413,6 +505,47 @@
     /* Clicking the overlay dismisses the current step without ending the tour */
     _overlay.onclick = function () { /* no-op — let users use buttons */ };
     _overlay.style.display = 'block';
+  }
+
+  function applyInlineTargetHighlight(el) {
+    if (!el) return;
+    clearInlineTargetHighlight();
+
+    _inlineHighlightSnapshot = {
+      el: el,
+      position: el.style.position,
+      zIndex: el.style.zIndex,
+      outline: el.style.outline,
+      outlineOffset: el.style.outlineOffset,
+      boxShadow: el.style.boxShadow,
+      borderRadius: el.style.borderRadius
+    };
+
+    var computedPos = window.getComputedStyle(el).position;
+    if (!computedPos || computedPos === 'static') {
+      el.style.position = 'relative';
+    }
+    el.style.zIndex = '9101';
+    el.style.outline = '3px solid #58a6ff';
+    el.style.outlineOffset = '2px';
+    el.style.boxShadow = '0 0 0 6px rgba(88, 166, 255, 0.25)';
+    if (!el.style.borderRadius) {
+      el.style.borderRadius = '8px';
+    }
+  }
+
+  function clearInlineTargetHighlight() {
+    if (!_inlineHighlightSnapshot || !_inlineHighlightSnapshot.el) return;
+
+    var el = _inlineHighlightSnapshot.el;
+    el.style.position = _inlineHighlightSnapshot.position;
+    el.style.zIndex = _inlineHighlightSnapshot.zIndex;
+    el.style.outline = _inlineHighlightSnapshot.outline;
+    el.style.outlineOffset = _inlineHighlightSnapshot.outlineOffset;
+    el.style.boxShadow = _inlineHighlightSnapshot.boxShadow;
+    el.style.borderRadius = _inlineHighlightSnapshot.borderRadius;
+
+    _inlineHighlightSnapshot = null;
   }
 
   /* ------------------------------------------------------------------ */
@@ -465,12 +598,31 @@
     document.body.appendChild(_tooltip);
 
     /* highlight target & position tooltip.
-       No scrollIntoView here — renderStep already scrolled before locking body. */
+       No scrollIntoView here — renderStep already scrolled before locking body.
+       Keep both highlight strategies:
+       1) class on target (.tour-highlight) for backward-compatible CSS,
+       2) fixed ring element for overflow/stacking-context safety. */
     if (targetEl) {
       targetEl.classList.add('tour-highlight');
+      applyInlineTargetHighlight(targetEl);
       /* rAF + small timeout ensures layout is fully composited on mobile */
       requestAnimationFrame(function () {
-        setTimeout(function () { positionTooltip(targetEl, pos); }, 60);
+        setTimeout(function () {
+          /* Remove any stale ring */
+          if (_highlightRing) { try { _highlightRing.remove(); } catch (e) {} _highlightRing = null; }
+          var rect = targetEl.getBoundingClientRect();
+          _highlightRing = document.createElement('div');
+          _highlightRing.className = 'tour-highlight-ring';
+          _highlightRing.style.cssText =
+            'position:fixed;pointer-events:none;border-radius:10px;z-index:9100;' +
+            'box-shadow:0 0 0 4px #58a6ff,0 0 0 8px rgba(88, 166, 255, 0.25);' +
+            'top:'    + (rect.top    - 4) + 'px;' +
+            'left:'   + (rect.left   - 4) + 'px;' +
+            'width:'  + (rect.width  + 8) + 'px;' +
+            'height:' + (rect.height + 8) + 'px;';
+          document.body.appendChild(_highlightRing);
+          positionTooltip(targetEl, pos);
+        }, 60);
       });
     } else {
       centerTooltip();
@@ -570,16 +722,23 @@
   /* ------------------------------------------------------------------ */
 
   function cleanTooltip() {
+    clearInlineTargetHighlight();
     if (_tooltip) {
       try { _tooltip.remove(); } catch (e) {}
       _tooltip = null;
     }
+    if (_highlightRing) {
+      try { _highlightRing.remove(); } catch (e) {}
+      _highlightRing = null;
+    }
+    /* also clean up any legacy class-based highlights */
     document.querySelectorAll('.tour-highlight').forEach(function (el) {
       el.classList.remove('tour-highlight');
     });
   }
 
   function cleanAll() {
+    clearThemeOverride();
     cleanTooltip();
     if (_overlay) {
       try { _overlay.remove(); } catch (e) {}
@@ -587,7 +746,10 @@
     }
     unlockBodyScroll();
     _active = false;
-    try { sessionStorage.removeItem('tourStep');      } catch (e) {}
+    try { sessionStorage.removeItem(TOUR_STEP_KEY); } catch (e) {}
+    try { sessionStorage.removeItem(TOUR_STEP_VERSION_KEY); } catch (e) {}
+    try { sessionStorage.removeItem(TOUR_STEP_AT_KEY); } catch (e) {}
+    try { sessionStorage.removeItem('tourStep'); } catch (e) {}
     try { sessionStorage.removeItem('tourAutoLaunch'); } catch (e) {}
   }
 
@@ -654,11 +816,23 @@
   function resume() {
     /* 1. Cross-page resume */
     var pending = null;
-    try { pending = sessionStorage.getItem('tourStep'); } catch (e) {}
+    var pendingVersion = null;
+    var pendingAt = null;
+    try {
+      pending = sessionStorage.getItem(TOUR_STEP_KEY) || sessionStorage.getItem('tourStep');
+      pendingVersion = sessionStorage.getItem(TOUR_STEP_VERSION_KEY);
+      pendingAt = sessionStorage.getItem(TOUR_STEP_AT_KEY);
+    } catch (e) {}
     if (pending !== null) {
       var idx = parseInt(pending, 10);
+      var pendingAtMs = Number(pendingAt);
+      var isFresh = Number.isFinite(pendingAtMs) && (Date.now() - pendingAtMs) <= TOUR_PENDING_MAX_AGE_MS;
+      var versionMatches = pendingVersion === TOUR_FLOW_VERSION;
+      try { sessionStorage.removeItem(TOUR_STEP_KEY); } catch (e) {}
+      try { sessionStorage.removeItem(TOUR_STEP_VERSION_KEY); } catch (e) {}
+      try { sessionStorage.removeItem(TOUR_STEP_AT_KEY); } catch (e) {}
       try { sessionStorage.removeItem('tourStep'); } catch (e) {}
-      if (!isNaN(idx)) {
+      if (!isNaN(idx) && idx >= 0 && idx < STEPS.length && isFresh && versionMatches) {
         renderStep(idx);
         return;
       }

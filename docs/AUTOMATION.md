@@ -66,9 +66,9 @@ Each automation rule has the following structure:
   },
   
   action: {
-    workMode: "ForceDischarge",        // SelfUse, ForceDischarge, ForceCharge, Backup
+    workMode: "ForceDischarge",        // SelfUse, ForceDischarge, ForceCharge, Feedin, Backup
     durationMinutes: 30,               // How long the scheduler segment runs
-    fdPwr: 5000,                       // Force discharge power (watts)
+    fdPwr: 5000,                       // Power setpoint (required for ForceCharge/ForceDischarge/Feedin)
     fdSoc: 10,                         // Force discharge minimum SoC
     minSocOnGrid: 10,                  // Minimum SoC on grid
     maxSoc: 100                        // Maximum SoC limit
@@ -283,19 +283,25 @@ forecastPrice: {
 ```
 
 ### 8. Time Window (`time`)
-Restricts rule to specific hours of the day.
+Restricts rule to specific hours of the day and optionally specific days of the week.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `enabled` | boolean | Whether this condition is active |
 | `startTime` | string | Start time in HH:MM format |
 | `endTime` | string | End time in HH:MM format |
+| `days` | array | Day-of-week filter: 0=Sunday through 6=Saturday. Empty/omitted = every day |
 
 **Note**: Supports overnight ranges (e.g., 22:00 to 06:00).
 
 **Example**: Only between 6am and 6pm
 ```javascript
 time: { enabled: true, startTime: '06:00', endTime: '18:00' }
+```
+
+**Example**: Weekends only, 10am–3pm
+```javascript
+time: { enabled: true, startTime: '10:00', endTime: '15:00', days: [0, 6] }
 ```
 
 ---
@@ -341,6 +347,7 @@ When a rule triggers, it creates a **scheduler segment** on the inverter.
 | `SelfUse` | Prioritize self-consumption | Default mode, use solar first |
 | `ForceDischarge` | Force battery to discharge | Export to grid when prices high |
 | `ForceCharge` | Force battery to charge | Charge when prices low |
+| `Feedin` | Force feed-in/export mode | Export-focused dispatch on supported inverters |
 | `Backup` | Preserve battery for backup | Storm warning, grid instability |
 
 ### Action Parameters
@@ -349,10 +356,14 @@ When a rule triggers, it creates a **scheduler segment** on the inverter.
 |-----------|------|-------------|
 | `workMode` | string | One of the work modes above |
 | `durationMinutes` | number | How long the segment runs (5-1440) |
-| `fdPwr` | number | Power in watts (0-10000) - applies to all modes |
+| `fdPwr` | number | Power in watts. Required and >0 for `ForceCharge`, `ForceDischarge`, `Feedin`; optional non-negative for other modes |
 | `fdSoc` | number | Stop SoC threshold (0-100) - min for discharge, max for charge |
 | `minSocOnGrid` | number | Min SoC when in grid mode (0-100) |
 | `maxSoc` | number | Max SoC limit (0-100) |
+
+Validation notes:
+- `fdPwr` must not exceed user inverter capacity (`inverterCapacityW`, fallback 10000W).
+- Invalid action payloads are rejected on both rule create and rule update endpoints.
 
 ---
 
@@ -372,6 +383,12 @@ Rules are evaluated in **priority order** (lowest number first):
 { name: "Default Behavior", priority: 10 }     // Checked last
 ```
 
+Rules Library import behavior:
+- If imported templates clash on priority, import auto-assigns the next free priority (1-10) and reports adjustments.
+- Templates can include absolute `fdPwr` and/or template-only `fdPwrPercent` (% of inverter capacity).
+- `fdPwrPercent` is resolved to watts at import time (rounded/clamped against inverter capacity) and is not persisted in API payloads.
+- Force-charge templates with placeholder `fdPwr: 0` are normalized at import from inverter capacity (50% baseline, clamped to inverter limits).
+
 ---
 
 ## Cooldown System
@@ -379,7 +396,7 @@ Rules are evaluated in **priority order** (lowest number first):
 After a rule triggers, it enters a **cooldown period** to prevent rapid re-triggering.
 
 - Default cooldown: 5 minutes
-- Configurable per rule: 1-60 minutes
+- Configurable per rule: 1–1440 minutes (up to 24 hours)
 - Cooldown resets when:
   - Rule is manually disabled
   - Rule is manually cancelled
@@ -541,21 +558,25 @@ Charge battery when electricity is cheap overnight.
 }
 ```
 
-### 3. Sunny Day Self-Use
-Maximize self-consumption on sunny days.
+### 3. Cloud-Aware Self-Use
+Maximize self-consumption when cloud cover is low and solar radiation is strong.
 
 ```javascript
 {
-  name: "Sunny Self-Use",
+  name: "Clear Sky Self-Use",
   priority: 5,
   conditions: {
-    weather: { enabled: true, condition: 'sunny' },
+    solarRadiation: { enabled: true, checkType: 'average', operator: '>=', value: 300, lookAhead: 6, lookAheadUnit: 'hours' },
+    cloudCover: { enabled: true, checkType: 'average', operator: '<', value: 40, lookAhead: 6, lookAheadUnit: 'hours' },
     soc: { enabled: true, operator: '<', value: 90 }
   },
   action: {
     workMode: "SelfUse",
     durationMinutes: 120,
-    minSocOnGrid: 20
+    fdPwr: 0,
+    fdSoc: 0,
+    minSocOnGrid: 20,
+    maxSoc: 100
   }
 }
 ```
@@ -574,14 +595,18 @@ Discharge before predicted high prices.
       checkType: 'average', 
       operator: '>', 
       value: 25, 
-      lookAhead: 30 
+      lookAhead: 1,
+      lookAheadUnit: 'hours'
     },
     soc: { enabled: true, operator: '>', value: 70 }
   },
   action: {
     workMode: "ForceDischarge",
     durationMinutes: 30,
-    fdPwr: 3000
+    fdPwr: 3000,
+    fdSoc: 20,
+    minSocOnGrid: 20,
+    maxSoc: 100
   }
 }
 ```

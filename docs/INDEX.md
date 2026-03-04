@@ -24,14 +24,15 @@
 10. **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)** - Performance optimization techniques
 11. **[LOGGING_AUDIT_REPORT.md](LOGGING_AUDIT_REPORT.md)** - Logging analysis (original audit)
 12. **[LOGGING_OPTIMIZATION_SUMMARY.md](LOGGING_OPTIMIZATION_SUMMARY.md)** - ✨ NEW: Cost reduction via logging optimization
+13. **[LOCAL_DEV_KNOWN_ISSUES.md](LOCAL_DEV_KNOWN_ISSUES.md)** - Recurring local emulator/tour/cache issues and fixes
 
 ### Analysis & Planning
-13. **[COST_ANALYSIS_2025.md](COST_ANALYSIS_2025.md)** - Firebase cost projections
-14. **[FIREBASE_COST_ANALYSIS.md](FIREBASE_COST_ANALYSIS.md)** - Detailed Firebase pricing breakdown
-15. **[TEST_COVERAGE_REPORT.md](TEST_COVERAGE_REPORT.md)** - Unit test coverage summary
+14. **[COST_ANALYSIS_2025.md](COST_ANALYSIS_2025.md)** - Firebase cost projections
+15. **[FIREBASE_COST_ANALYSIS.md](FIREBASE_COST_ANALYSIS.md)** - Detailed Firebase pricing breakdown
+16. **[TEST_COVERAGE_REPORT.md](TEST_COVERAGE_REPORT.md)** - Unit test coverage summary
 
 ### Archived Documentation
-16. **[archive/](archive/)** - Historical docs (completed milestones, bugfixes, analyses)
+17. **[archive/](archive/)** - Historical docs (completed milestones, bugfixes, analyses)
 
 ---
 
@@ -65,6 +66,7 @@ For DevOps and maintenance:
 | [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) | CI/CD procedures | Per deploy |
 | [OPTIMIZATIONS.md](OPTIMIZATIONS.md) | Performance tuning | As needed |
 | [LOGGING_OPTIMIZATION_SUMMARY.md](LOGGING_OPTIMIZATION_SUMMARY.md) | Log cost reduction | Periodic review |
+| [LOCAL_DEV_KNOWN_ISSUES.md](LOCAL_DEV_KNOWN_ISSUES.md) | Local known pitfalls runbook | During local setup/debug |
 
 ### Analysis Documents (Planning)
 Cost and coverage analysis:
