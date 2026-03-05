@@ -1,7 +1,7 @@
 # P2 Backend Decomposition Kickoff (March 2026)
 
-Status: Ready  
-Phase: P2 (Backend Decomposition) preparation  
+Status: Active execution - Wave 3 mutation extraction in progress (automation cycle pending)  
+Phase: P2 (Backend Decomposition) execution  
 Owner: RefactoringMar26
 
 ## Purpose
@@ -44,8 +44,8 @@ Validation for Wave 1:
    - `metrics.js`
 2. ✅ [DONE 2026-03-05] Keep existing route paths and middleware chain unchanged while extracting core inverter read-only GET handlers into:
    - `inverter-read.js`
-3. ⏳ [IN PROGRESS 2026-03-05] Keep `functions/index.js` as composition/root wiring only.
-   - latest extractions in this wave:
+3. ✅ [DONE 2026-03-06] Complete planned read-only extraction coverage while preserving `functions/index.js` as composition root for remaining mutation routes.
+   - final extraction set in this wave:
      - `inverter-history.js` (`/api/inverter/history` + Firestore cache helpers)
      - `device-read.js` (battery/device/module/meter/EMS read endpoints)
      - `diagnostics-read.js` (`/api/device/setting/get`, `/api/inverter/all-data`)
@@ -59,10 +59,12 @@ Validation for Wave 2:
 
 ### Wave 3 (state-changing route extraction)
 
-1. Extract config and automation mutation endpoints:
-   - `config.js`
-   - `automation.js`
-   - `scheduler.js`
+1. ⏳ [IN PROGRESS 2026-03-06] Extract state-changing endpoints into route modules while preserving route signatures and envelopes:
+   - ✅ `scheduler-mutations.js` (`/api/scheduler/v1/set`, `/api/scheduler/v1/clear-all`)
+   - ✅ `config-mutations.js` (`POST /api/config/system-topology`, `POST /api/config`, `POST /api/config/clear-credentials`, `POST /api/config/tour-status`)
+   - ✅ `automation-mutations.js` (`POST /api/automation/toggle`, `/enable`, `/trigger`, `/reset`, `/cancel`, `/rule/end`, `/rule/create`, `/rule/update`, `/rule/delete`, `/test`)
+   - pending:
+     - extract remaining `/api/automation/cycle` route
 2. Introduce service modules (`lib/services/*`) only after route extraction is stable.
 
 Validation for Wave 3:

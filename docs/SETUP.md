@@ -114,6 +114,10 @@ Users configure their own API keys in the Settings page after login.
 npm run emu:reset
 ```
 
+`emu:reset` launcher hardening:
+- On Windows, the CLI now auto-falls back from `npx.cmd` to `npm.cmd exec -- ...` when needed.
+- On macOS/Linux, it falls back from `npx` to `npm exec -- ...`.
+
 - Hosting + frontend pages: http://127.0.0.1:5000
 - Emulator UI: http://127.0.0.1:4000
 - Functions: http://127.0.0.1:5001
@@ -138,6 +142,11 @@ npm run emu:status
 Notes:
 - The warning `You are using the Auth Emulator, which is intended for local testing only` is expected in local development.
 - If `localhost:5000` or `127.0.0.1:9099` shows `ERR_CONNECTION_REFUSED`, emulators are down; run `npm run emu:reset`.
+- If your local clone is older and reset/start fails with `spawn npx ENOENT`, use:
+```bash
+npm run emu:stop
+npm exec -- firebase emulators:start --only functions,firestore,hosting,auth,pubsub --import=./emulator-state --export-on-exit
+```
 
 ### Option 2: Manual Emulator Start (advanced/troubleshooting)
 

@@ -34,7 +34,10 @@ const { registerDeviceReadRoutes } = require('./api/routes/device-read');
 const { registerDiagnosticsReadRoutes } = require('./api/routes/diagnostics-read');
 const { registerInverterReadRoutes } = require('./api/routes/inverter-read');
 const { registerInverterHistoryRoutes } = require('./api/routes/inverter-history');
+const { registerConfigMutationRoutes } = require('./api/routes/config-mutations');
 const { registerSchedulerReadRoutes } = require('./api/routes/scheduler-read');
+const { registerSchedulerMutationRoutes } = require('./api/routes/scheduler-mutations');
+const { registerAutomationMutationRoutes } = require('./api/routes/automation-mutations');
 const { parseAutomationTelemetry } = require('./lib/device-telemetry');
 const { getCurrentAmberPrices } = require('./lib/pricing-normalization');
 const { createUserAutomationRepository } = require('./lib/repositories/user-automation-repository');
@@ -2748,133 +2751,18 @@ app.get('/api/config/system-topology', async (req, res) => {
   }
 });
 
-// Persist system topology/coupling hint (manual or auto)
-app.post('/api/config/system-topology', async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const coupling = normalizeCouplingValue(req.body?.coupling);
-    const sourceRaw = String(req.body?.source || 'auto').toLowerCase().trim();
-    const source = (sourceRaw === 'manual' || sourceRaw === 'auto') ? sourceRaw : 'auto';
-    const confidenceRaw = Number(req.body?.confidence);
-    const confidence = Number.isFinite(confidenceRaw)
-      ? Math.max(0, Math.min(1, confidenceRaw))
-      : null;
-    const refreshAfterMsRaw = Number(req.body?.refreshAfterMs);
-    const refreshAfterMs = Number.isFinite(refreshAfterMsRaw) && refreshAfterMsRaw > 0
-      ? Math.floor(refreshAfterMsRaw)
-      : DEFAULT_TOPOLOGY_REFRESH_MS;
-    const lastDetectedAtRaw = Number(req.body?.lastDetectedAt);
-    const lastDetectedAt = Number.isFinite(lastDetectedAtRaw) && lastDetectedAtRaw > 0
-      ? Math.floor(lastDetectedAtRaw)
-      : Date.now();
-
-    const systemTopology = {
-      coupling,
-      source,
-      updatedAt: serverTimestamp(),
-      lastDetectedAt
-    };
-
-    if (confidence !== null) systemTopology.confidence = confidence;
-    systemTopology.refreshAfterMs = refreshAfterMs;
-    if (req.body?.evidence && typeof req.body.evidence === 'object') {
-      systemTopology.evidence = req.body.evidence;
-    }
-
-    await setUserConfig(userId, {
-      systemTopology
-    }, { merge: true });
-
-    res.json({ errno: 0, msg: 'System topology saved', result: systemTopology });
-  } catch (error) {
-    console.error('[Config] Error saving system topology:', error.message);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Save user config
-app.post('/api/config', async (req, res) => {
-  try {
-    // Accept both shapes: { config: {...} } (older functions API) or raw config object in body
-    const newConfig = req.body && typeof req.body === 'object' ? (req.body.config ?? req.body) : null;
-    if (!newConfig || typeof newConfig !== 'object') {
-      return res.status(400).json({ errno: 400, error: 'Invalid payload: expected config object' });
-    }
-
-    const userId = req.user.uid;
-
-    // Get existing config to check if location changed
-    const existingConfig = await getUserConfig(userId);
-    
-    // Normalize location fields: ensure location and preferences.weatherPlace stay in sync
-    // Priority: use whichever field was provided, and sync to both
-    const locationValue = newConfig.location || newConfig.preferences?.weatherPlace || existingConfig?.location || existingConfig?.preferences?.weatherPlace;
-    if (locationValue) {
-      newConfig.location = locationValue;
-      if (!newConfig.preferences) newConfig.preferences = {};
-      newConfig.preferences.weatherPlace = locationValue;
-    }
-    
-    const locationChanged = newConfig.location && newConfig.location !== existingConfig?.location;
-    
-    // PRIORITY 1: If browser sent timezone, ALWAYS use it (most reliable - from user's OS)
-    if (newConfig.browserTimezone && isValidTimezone(newConfig.browserTimezone)) {
-      newConfig.timezone = newConfig.browserTimezone;
-    }
-    // PRIORITY 2: If location changed or no timezone set, detect from location
-    else if (locationChanged || !newConfig.timezone) {
-      const locationToUse = newConfig.location || existingConfig?.location || 'Sydney';
-      try {
-        const weatherData = await callWeatherAPI(locationToUse, 1, userId);
-        const tzValid = weatherData?.result?.place?.timezone && isValidTimezone(weatherData.result.place.timezone);
-        if (tzValid) {
-          newConfig.timezone = weatherData.result.place.timezone;
-        }
-      } catch (err) {
-        console.error(`[Config] Failed to detect timezone from location:`, err.message);
-      }
-    }
-    // PRIORITY 3: Keep existing timezone if still valid
-    else if (newConfig.timezone && isValidTimezone(newConfig.timezone)) {
-      // timezone already set
-    }
-    
-    // Remove browserTimezone from stored config (it's transient, only for detection)
-    delete newConfig.browserTimezone;
-
-    // CRITICAL FIX: Deep merge to preserve nested fields that weren't sent
-    // Firestore's merge: true only works at top level, not for nested objects
-    // This prevents accidentally clearing blackoutWindows or curtailment settings
-    const mergedConfig = existingConfig ? deepMerge(existingConfig, newConfig) : newConfig;
-
-    // Persist to Firestore under user's config/main
-    await setUserConfig(userId, mergedConfig, { merge: true });
-    res.json({ errno: 0, msg: 'Config saved', result: mergedConfig });
-  } catch (error) {
-    console.error('[API] /api/config save error:', error && error.stack ? error.stack : String(error));
-    res.status(500).json({ errno: 500, error: error.message || String(error) });
-  }
-});
-
-// Clear credentials (clear deviceSN, foxessToken, amberApiKey from user config)
-app.post('/api/config/clear-credentials', authenticateUser, async (req, res) => {
-  try {
-    const updates = {
-      deviceSn: deleteField(),
-      foxessToken: deleteField(),
-      amberApiKey: deleteField(),
-      setupComplete: false,
-      updatedAt: serverTimestamp()
-    };
-
-    // Update the user's config/main document to clear these fields
-    await updateUserConfig(req.user.uid, updates);
-    
-    res.json({ errno: 0, msg: 'Credentials cleared successfully' });
-  } catch (error) {
-    console.error('[API] /api/config/clear-credentials error:', error && error.stack ? error.stack : String(error));
-    res.status(500).json({ errno: 500, error: error.message || String(error) });
-  }
+registerConfigMutationRoutes(app, {
+  authenticateUser,
+  callWeatherAPI,
+  deepMerge,
+  deleteField,
+  isValidTimezone,
+  normalizeCouplingValue,
+  serverTimestamp,
+  setUserConfig,
+  updateUserConfig,
+  getUserConfig,
+  DEFAULT_TOPOLOGY_REFRESH_MS
 });
 
 // ---------- Onboarding tour state ----------
@@ -2892,27 +2780,6 @@ app.get('/api/config/tour-status', authenticateUser, async (req, res) => {
     });
   } catch (error) {
     console.error('[API] /api/config/tour-status GET error:', error && error.stack ? error.stack : String(error));
-    res.status(500).json({ errno: 500, error: error.message || String(error) });
-  }
-});
-
-// POST /api/config/tour-status — persist tour completion / reset flag
-app.post('/api/config/tour-status', authenticateUser, async (req, res) => {
-  try {
-    const { tourComplete, tourCompletedAt, tourDismissedAt } = req.body || {};
-    const updates = {};
-    if (typeof tourComplete === 'boolean') updates.tourComplete = tourComplete;
-    if (tourCompletedAt)  updates.tourCompletedAt  = tourCompletedAt;
-    if (tourDismissedAt)  updates.tourDismissedAt  = tourDismissedAt;
-
-    if (!Object.keys(updates).length) {
-      return res.status(400).json({ errno: 400, error: 'No valid fields to update' });
-    }
-
-    await updateUserConfig(req.user.uid, updates);
-    res.json({ errno: 0, msg: 'Tour status updated' });
-  } catch (error) {
-    console.error('[API] /api/config/tour-status POST error:', error && error.stack ? error.stack : String(error));
     res.status(500).json({ errno: 500, error: error.message || String(error) });
   }
 });
@@ -3141,169 +3008,30 @@ app.post('/api/user/delete-account', authenticateUser, async (req, res) => {
     res.status(500).json({ errno: 500, error: error.message || String(error) });
   }
 });
-
-// Toggle automation
-
-app.post('/api/automation/toggle', async (req, res) => {
-  try {
-    const { enabled } = req.body;
-    const userId = req.user.uid;
-    
-    // When disabling automation, check if curtailment is active and restore export power
-    if (enabled === false) {
-      try {
-        const userConfig = await getUserConfig(userId);
-        const stateDoc = await db.collection('users').doc(userId).collection('curtailment').doc('state').get();
-        const curtailmentState = stateDoc.exists ? stateDoc.data() : { active: false };
-        
-        if (curtailmentState.active && userConfig?.deviceSn) {
-          console.log(`[Automation Toggle] Restoring export power (curtailment was active, automation disabled)`);
-          
-          const setResult = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', {
-            sn: userConfig.deviceSn,
-            key: 'ExportLimit',
-            value: 12000
-          }, userConfig, userId);
-          
-          if (setResult?.errno === 0) {
-            await db.collection('users').doc(userId).collection('curtailment').doc('state').set({
-              active: false,
-              lastPrice: null,
-              lastDeactivated: Date.now(),
-              disabledByAutomationToggle: true
-            });
-            console.log(`[Automation Toggle] ✓ Export power restored successfully`);
-          } else {
-            console.warn(`[Automation Toggle] ⚠️ Failed to restore export power: ${setResult?.msg || 'Unknown error'}`);
-          }
-        }
-      } catch (curtErr) {
-        console.error('[Automation Toggle] Error checking/restoring curtailment:', curtErr);
-        // Don't fail the toggle operation if curtailment restoration fails
-      }
-    }
-    
-    await saveUserAutomationState(userId, { enabled: !!enabled });
-    res.json({ errno: 0, result: { enabled: !!enabled } });
-  } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Backwards-compatible alias: some frontends call /api/automation/enable
-app.post('/api/automation/enable', async (req, res) => {
-  try {
-    const { enabled } = req.body;
-    const userId = req.user.uid;
-    const stateUpdate = { enabled: !!enabled };
-    
-    // When re-enabling automation, clear the segmentsCleared flag so segments will be re-cleared on next disable
-    if (enabled === true) {
-      stateUpdate.segmentsCleared = false;
-    }
-    
-    // When disabling automation, check if curtailment is active and restore export power
-    if (enabled === false) {
-      try {
-        const userConfig = await getUserConfig(userId);
-        const stateDoc = await db.collection('users').doc(userId).collection('curtailment').doc('state').get();
-        const curtailmentState = stateDoc.exists ? stateDoc.data() : { active: false };
-        
-        if (curtailmentState.active && userConfig?.deviceSn) {
-          console.log(`[Automation Enable] Restoring export power (curtailment was active, automation disabled)`);
-          
-          const setResult = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', {
-            sn: userConfig.deviceSn,
-            key: 'ExportLimit',
-            value: 12000
-          }, userConfig, userId);
-          
-          if (setResult?.errno === 0) {
-            await db.collection('users').doc(userId).collection('curtailment').doc('state').set({
-              active: false,
-              lastPrice: null,
-              lastDeactivated: Date.now(),
-              disabledByAutomationToggle: true
-            });
-            console.log(`[Automation Enable] ✓ Export power restored successfully`);
-          } else {
-            console.warn(`[Automation Enable] ⚠️ Failed to restore export power: ${setResult?.msg || 'Unknown error'}`);
-          }
-        }
-      } catch (curtErr) {
-        console.error('[Automation Enable] Error checking/restoring curtailment:', curtErr);
-        // Don't fail the toggle operation if curtailment restoration fails
-      }
-    }
-    
-    await saveUserAutomationState(userId, stateUpdate);
-    res.json({ errno: 0, result: { enabled: !!enabled } });
-  } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Manually trigger a rule (for testing) - applies the rule's action immediately
-app.post('/api/automation/trigger', async (req, res) => {
-  try {
-    const { ruleName } = req.body;
-    
-    if (!ruleName) {
-      return res.status(400).json({ errno: 400, error: 'Rule name is required' });
-    }
-    
-    // Get the rule
-    const rules = await getUserRules(req.user.uid);
-    const ruleId = ruleName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    const rule = rules[ruleId] || rules[ruleName];
-    
-    if (!rule) {
-      return res.status(400).json({ errno: 400, error: `Unknown rule: ${ruleName}` });
-    }
-    
-    // Get user config
-    const userConfig = await getUserConfig(req.user.uid);
-    
-    // Apply the rule action (uses v1 API, sets flag, does verification)
-    const result = await applyRuleAction(req.user.uid, rule, userConfig);
-    
-    // Update automation state - use ruleId for UI matching
-    await saveUserAutomationState(req.user.uid, {
-      lastTriggered: Date.now(),
-      activeRule: ruleId,
-      activeRuleName: rule.name || ruleName
-    });
-    
-    // Update rule's lastTriggered
-    await setUserRule(req.user.uid, ruleId, {
-      lastTriggered: serverTimestamp()
-    }, { merge: true });
-    
-    res.json({ errno: 0, result, ruleName });
-  } catch (error) {
-    console.error('[Automation] Trigger error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Reset automation state (clear cooldowns, active rule, etc.)
-app.post('/api/automation/reset', async (req, res) => {
-  try {
-    // Reset automation state
-    await saveUserAutomationState(req.user.uid, {
-      lastTriggered: null,
-      activeRule: null,
-      lastCheck: null
-    });
-    
-    // Reset lastTriggered on all rules
-    await clearRulesLastTriggered(req.user.uid);
-    
-    logger.debug('Automation', `State reset for user ${req.user.uid}`);
-    res.json({ errno: 0, result: 'Automation state reset' });
-  } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
+registerAutomationMutationRoutes(app, {
+  addAutomationAuditEntry,
+  addHistoryEntry,
+  applyRuleAction,
+  clearRulesLastTriggered,
+  compareValue,
+  db,
+  DEFAULT_TIMEZONE,
+  deleteUserRule,
+  evaluateTemperatureCondition,
+  evaluateTimeCondition,
+  foxessAPI,
+  getAutomationAuditLogs,
+  getUserAutomationState,
+  getUserConfig,
+  getUserRule,
+  getUserRules,
+  getUserTime,
+  logger,
+  normalizeWeekdays,
+  saveUserAutomationState,
+  serverTimestamp,
+  setUserRule,
+  validateRuleActionForUser
 });
 
 // Run automation cycle - evaluates all rules and triggers if conditions met
@@ -3352,10 +3080,10 @@ app.post('/api/automation/cycle', async (req, res) => {
               // Mark segments as cleared so we don't do this again every cycle
               await saveUserAutomationState(userId, { segmentsCleared: true });
             } else {
-              console.warn(`[Automation] ⚠️ Segment clear returned errno=${clearResult?.errno}`);
+              console.warn(`[Automation] � ️ Segment clear returned errno=${clearResult?.errno}`);
             }
           } else {
-            console.warn(`[Automation] ⚠️ No deviceSN found - cannot clear segments`);
+            console.warn(`[Automation] � ️ No deviceSN found - cannot clear segments`);
           }
         } catch (err) {
           console.error(`[Automation] ❌ Error clearing segments on disable:`, err.message);
@@ -3398,10 +3126,10 @@ app.post('/api/automation/cycle', async (req, res) => {
               automationDisabled: true  // Flag indicating this was due to automation being disabled
             });
           } catch (auditErr) {
-            console.warn(`[Automation] ⚠️ Failed to create audit entry:`, auditErr.message);
+            console.warn(`[Automation] � ️ Failed to create audit entry:`, auditErr.message);
           }
         } catch (err) {
-          console.warn(`[Automation] ⚠️ Error clearing rule lastTriggered:`, err.message);
+          console.warn(`[Automation] � ️ Error clearing rule lastTriggered:`, err.message);
         }
       }
       
@@ -3516,7 +3244,7 @@ app.post('/api/automation/cycle', async (req, res) => {
           // Real API call - counted in metrics for accurate quota tracking
           const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
           if (clearResult?.errno !== 0) {
-            console.warn(`[Cycle] ⚠️ Failed to clear segments due to rule disable flag: errno=${clearResult?.errno}`);
+            console.warn(`[Cycle] � ️ Failed to clear segments due to rule disable flag: errno=${clearResult?.errno}`);
           }
         }
       } catch (err) {
@@ -3553,7 +3281,7 @@ app.post('/api/automation/cycle', async (req, res) => {
           // Real API call - counted in metrics for accurate quota tracking
           const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
           if (clearResult?.errno !== 0) {
-            console.warn(`[Automation] ⚠️ Failed to clear segments: errno=${clearResult?.errno}`);
+            console.warn(`[Automation] � ️ Failed to clear segments: errno=${clearResult?.errno}`);
           }
         }
       } catch (err) {
@@ -3784,7 +3512,7 @@ app.post('/api/automation/cycle', async (req, res) => {
           
           // CRITICAL: If segment failed to send but rule is active, attempt to re-send the segment
           if (state.activeSegmentEnabled === false && state.activeRule === ruleId) {
-            logger.debug('Automation', `⚠️ Segment previously failed for active rule '${rule.name}' - attempting RETRY...`);
+            logger.debug('Automation', `� ️ Segment previously failed for active rule '${rule.name}' - attempting RETRY...`);
             logger.debug('Automation', `🔧 Retry attempt for userId=${userId}, ruleId=${ruleId}`);
             let retryResult = null;
             try {
@@ -3857,7 +3585,7 @@ app.post('/api/automation/cycle', async (req, res) => {
               actionResult = await applyRuleAction(userId, rule, userConfig);
               const _applyDuration = Date.now() - applyStart;
               if (actionResult?.retrysFailed) {
-                console.warn(`[Automation] ⚠️ Some retries failed during atomic segment update`);
+                console.warn(`[Automation] � ️ Some retries failed during atomic segment update`);
               }
             } catch (actionError) {
               console.error(`[Automation] ❌ Action failed:`, actionError);
@@ -4337,7 +4065,7 @@ app.post('/api/automation/cycle', async (req, res) => {
       curtailmentResult = await checkAndApplyCurtailment(userId, userConfig, amberData);
       logger.debug('Cycle', `🌞 Curtailment result: ${JSON.stringify(curtailmentResult)}`);
       if (curtailmentResult.error) {
-        console.warn(`[Cycle] ⚠️ Curtailment check failed: ${curtailmentResult.error}`);
+        console.warn(`[Cycle] � ️ Curtailment check failed: ${curtailmentResult.error}`);
       }
     } catch (curtErr) {
       console.error('[Cycle] ❌ Curtailment exception:', curtErr);
@@ -4370,80 +4098,6 @@ app.post('/api/automation/cycle', async (req, res) => {
     try {
       await saveUserAutomationState(req.user.uid, { lastCheck: Date.now() });
     } catch (e) { /* ignore */ }
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Cancel active automation segment - clears all scheduler segments
-app.post('/api/automation/cancel', async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const userConfig = await getUserConfig(userId);
-    const deviceSN = userConfig?.deviceSn;
-    
-    if (!deviceSN) {
-      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    }
-    
-    logger.debug('Automation', `Cancel request for user ${userId}, device ${deviceSN}`);
-
-    // Create 8 empty/disabled segments (matching device's actual group count)
-    const emptyGroups = [];
-    for (let i = 0; i < 8; i++) {
-      emptyGroups.push({
-        enable: 0,
-        workMode: 'SelfUse',
-        startHour: 0, startMinute: 0,
-        endHour: 0, endMinute: 0,
-        minSocOnGrid: 10,
-        fdSoc: 10,
-        fdPwr: 0,
-        maxSoc: 100
-      });
-    }
-    
-    // Send to device via v1 API
-    const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: emptyGroups }, userConfig, userId);
-    logger.debug('Automation', `Cancel v1 result: errno=${result.errno}`);
-    
-    // Disable the scheduler flag
-    let flagResult = null;
-    try {
-      flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
-      logger.debug('Automation', `Cancel flag result: errno=${flagResult?.errno}`);
-    } catch (flagErr) {
-      console.warn('[Automation] Flag disable failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
-    }
-    
-    // Verification read
-    let verify = null;
-    try {
-      verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
-    } catch (e) {
-      console.warn('[Automation] Verify read failed:', e && e.message ? e.message : e);
-    }
-    
-    // Clear active rule in state
-    await saveUserAutomationState(userId, {
-      activeRule: null
-    });
-    
-    // Log to history
-    try {
-      await addHistoryEntry(userId, {
-        type: 'automation_cancel',
-        timestamp: serverTimestamp()
-      });
-    } catch (e) { /* ignore */ }
-    
-    res.json({
-      errno: result.errno,
-      msg: result.msg || (result.errno === 0 ? 'Automation cancelled' : 'Failed'),
-      flagResult,
-      verify: verify?.result || null
-    });
-  } catch (error) {
-    console.error('[Automation] Cancel error:', error);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
@@ -4864,380 +4518,6 @@ app.get('/api/quickcontrol/status', authenticateUser, async (req, res) => {
   }
 });
 
-// Manually end an orphan ongoing rule (create a "complete" audit entry with endTime)
-// This fixes rules that get stuck in "ongoing" state without a proper termination event
-app.post('/api/automation/rule/end', async (req, res) => {
-  try {
-    const { ruleId, ruleName, endTime } = req.body;
-    const userId = req.user.uid;
-    
-    if (!ruleId && !ruleName) {
-      return res.status(400).json({ errno: 400, error: 'ruleId or ruleName is required' });
-    }
-    
-    const actualRuleId = ruleId || (ruleName || '').toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    const endTimestamp = endTime || Date.now();
-    
-    logger.debug('Automation', `Manual rule end requested: ruleId=${actualRuleId}, endTime=${endTimestamp}`);
-    
-    // Get automation audit logs to find the start event for this rule
-    const auditLogs = await getAutomationAuditLogs(userId, 500);
-    
-    // Find the most recent log where this rule became active
-    let startEvent = null;
-    let startTimestamp = null;
-    
-    for (const log of auditLogs) {
-      if (log.activeRuleAfter === actualRuleId && log.triggered) {
-        startTimestamp = log.epochMs;
-        startEvent = {
-          ruleName: log.ruleName,
-          ruleId: actualRuleId,
-          conditions: log.evaluationResults,
-          allRuleEvaluations: log.allRuleEvaluations,
-          action: log.actionTaken
-        };
-        break;  // Found the most recent activation (logs are in desc order)
-      }
-    }
-    
-    if (!startEvent) {
-      return res.status(400).json({ errno: 400, error: `No activation event found for rule ${actualRuleId}` });
-    }
-    
-    logger.debug('Automation', `Found start event at ${new Date(startTimestamp).toISOString()}`);
-    
-    // Create an audit entry that shows the rule being deactivated
-    // This creates the "off" event that pairs with the "on" event in the audit trail
-    await addAutomationAuditEntry(userId, {
-      cycleId: `cycle_manual_end_${Date.now()}`,
-      triggered: false,
-      ruleName: startEvent.ruleName,
-      ruleId: actualRuleId,
-      evaluationResults: [],
-      allRuleEvaluations: [{
-        name: startEvent.ruleName,
-        ruleId: actualRuleId,
-        triggered: false,
-        conditions: [],
-        feedInPrice: null,
-        buyPrice: null
-      }],
-      actionTaken: null,
-      activeRuleBefore: actualRuleId,
-      activeRuleAfter: null,  // This is the key - switching from activeRule to null marks it as ended
-      rulesEvaluated: 0,
-      cycleDurationMs: endTimestamp - startTimestamp,
-      manualEnd: true  // Flag to indicate this was manually ended
-    });
-    
-    // Also clear the active rule from state if it's still set to this rule
-    const state = await getUserAutomationState(userId);
-    if (state && state.activeRule === actualRuleId) {
-      logger.debug('Automation', `Clearing active rule state for ${actualRuleId}`);
-      await saveUserAutomationState(userId, {
-        activeRule: null,
-        activeRuleName: null,
-        activeSegment: null,
-        activeSegmentEnabled: false
-      });
-    }
-    
-    const durationMs = endTimestamp - startTimestamp;
-    logger.debug('Automation', `✅ Orphan rule ended: ${startEvent.ruleName} (${Math.round(durationMs / 1000)}s duration)`);
-    
-    res.json({
-      errno: 0,
-      result: {
-        ended: true,
-        ruleName: startEvent.ruleName,
-        ruleId: actualRuleId,
-        startTime: startTimestamp,
-        endTime: endTimestamp,
-        durationMs,
-        message: 'Orphan rule successfully ended with completion timestamp'
-      }
-    });
-  } catch (error) {
-    console.error('[Automation] Manual rule end error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Create automation rule
-app.post('/api/automation/rule/create', async (req, res) => {
-  try {
-    const { name, enabled, priority, conditions, action, cooldownMinutes } = req.body;
-    
-    if (!name) {
-      return res.status(400).json({ errno: 400, error: 'Rule name is required' });
-    }
-
-    const normalizedCooldown = cooldownMinutes === undefined ? 5 : Number(cooldownMinutes);
-    if (!Number.isInteger(normalizedCooldown) || normalizedCooldown < 1 || normalizedCooldown > 1440) {
-      return res.status(400).json({ errno: 400, error: 'cooldownMinutes must be an integer between 1 and 1440' });
-    }
-
-    const userConfig = await getUserConfig(req.user.uid);
-    const actionValidationError = validateRuleActionForUser(action, userConfig);
-    if (actionValidationError) {
-      return res.status(400).json({ errno: 400, error: actionValidationError });
-    }
-    
-    const ruleId = name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    const rule = {
-      name,
-      enabled: enabled !== false,
-      priority: typeof priority === 'number' ? priority : 5, // Default to priority 5 for new rules
-      conditions: conditions || {},
-      action: action || {},
-      cooldownMinutes: normalizedCooldown,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    };
-    
-    await setUserRule(req.user.uid, ruleId, rule);
-    res.json({ errno: 0, result: { ruleId, ...rule } });
-  } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Update automation rule (backwards-compatible endpoint used by frontend)
-// IMPORTANT: Only updates provided fields - does NOT overwrite with defaults
-app.post('/api/automation/rule/update', async (req, res) => {
-  try {
-    const { ruleName, name, enabled, priority, conditions, action, cooldownMinutes } = req.body;
-
-    if (!ruleName && !name) {
-      return res.status(400).json({ errno: 400, error: 'Rule name or ruleId is required' });
-    }
-
-    const ruleId = (ruleName || name).toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    
-    // Build update object with ONLY provided fields to avoid overwriting existing data
-    const update = {
-      updatedAt: serverTimestamp()
-    };
-    
-    // Only include fields that were explicitly provided in the request
-    if (name !== undefined) update.name = name;
-    if (enabled !== undefined) update.enabled = !!enabled;
-    if (typeof priority === 'number') update.priority = priority;
-    if (conditions !== undefined) update.conditions = conditions;
-    if (cooldownMinutes !== undefined) {
-      const normalizedCooldown = Number(cooldownMinutes);
-      if (!Number.isInteger(normalizedCooldown) || normalizedCooldown < 1 || normalizedCooldown > 1440) {
-        return res.status(400).json({ errno: 400, error: 'cooldownMinutes must be an integer between 1 and 1440' });
-      }
-      update.cooldownMinutes = normalizedCooldown;
-    }
-    
-    // Handle action - merge with existing if partial update
-    if (action !== undefined) {
-      // Get existing rule to merge action properly
-      const existingRule = await getUserRule(req.user.uid, ruleId);
-      if (existingRule && existingRule.data.action) {
-        // Merge new action fields with existing action
-        update.action = { ...existingRule.data.action, ...action };
-      } else {
-        update.action = action;
-      }
-
-      const userConfig = await getUserConfig(req.user.uid);
-      const actionValidationError = validateRuleActionForUser(update.action, userConfig);
-      if (actionValidationError) {
-        return res.status(400).json({ errno: 400, error: actionValidationError });
-      }
-    }
-
-    console.log(`[Rule Update] Updating rule ${ruleId} with fields:`, Object.keys(update));
-    
-    // If rule is being DISABLED, clear lastTriggered to reset cooldown
-    // This ensures the rule can trigger immediately when re-enabled
-    if (enabled === false) {
-      update.lastTriggered = null;
-      console.log(`[Rule Update] Rule ${ruleId} disabled - clearing lastTriggered to reset cooldown`);
-      
-      // Also check if this was the active rule and clear segments IMMEDIATELY + create audit entry
-      const state = await getUserAutomationState(req.user.uid);
-      if (state && state.activeRule === ruleId) {
-        console.log(`[Rule Update] Disabled rule was active - clearing segments immediately`);
-        
-        // Get user config for device SN
-        const userConfig = await getUserConfig(req.user.uid);
-        const deviceSN = userConfig?.deviceSn;
-        
-        // Clear scheduler segments immediately
-        if (deviceSN) {
-          try {
-            const clearedGroups = [];
-            for (let i = 0; i < 8; i++) {
-              clearedGroups.push({
-                enable: 0,
-                workMode: 'SelfUse',
-                startHour: 0, startMinute: 0,
-                endHour: 0, endMinute: 0,
-                minSocOnGrid: 10,
-                fdSoc: 10,
-                fdPwr: 0,
-                maxSoc: 100
-              });
-            }
-            const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, req.user.uid);
-            if (clearResult?.errno === 0) {
-              console.log(`[Rule Update] ✓ Segments cleared successfully`);
-            } else {
-              console.warn(`[Rule Update] ⚠️ Failed to clear segments: errno=${clearResult?.errno}`);
-            }
-          } catch (err) {
-            console.error(`[Rule Update] ❌ Error clearing segments:`, err.message);
-          }
-        }
-        
-        // Create audit entry to mark rule as ended (critical for ROI display)
-        const activationTime = state.lastTriggered || Date.now();
-        const deactivationTime = Date.now();
-        const durationMs = deactivationTime - activationTime;
-        
-        await addAutomationAuditEntry(req.user.uid, {
-          cycleId: `cycle_rule_disabled_${Date.now()}`,
-          triggered: false,
-          ruleName: state.activeRuleName || state.activeRule,
-          ruleId: state.activeRule,
-          evaluationResults: [],
-          allRuleEvaluations: [{
-            name: state.activeRuleName || state.activeRule,
-            ruleId: state.activeRule,
-            triggered: false,
-            conditions: [],
-            feedInPrice: null,
-            buyPrice: null
-          }],
-          actionTaken: null,
-          activeRuleBefore: state.activeRule,
-          activeRuleAfter: null,  // This marks the rule as ended
-          rulesEvaluated: 0,
-          cycleDurationMs: durationMs,
-          manualEnd: true,
-          reason: 'Rule disabled by user'
-        });
-        
-        console.log(`[Rule Update] ✓ Audit entry created - rule marked as ended`);
-        
-        // Clear active rule state
-        await saveUserAutomationState(req.user.uid, {
-          activeRule: null,
-          activeRuleName: null,
-          activeSegment: null,
-          activeSegmentEnabled: false
-        });
-      }
-    }
-    
-    await setUserRule(req.user.uid, ruleId, update, { merge: true });
-    
-    // Return the updated rule
-    const updatedRule = await getUserRule(req.user.uid, ruleId);
-    res.json({ errno: 0, result: { ruleId, ...(updatedRule ? updatedRule.data : {}) } });
-  } catch (error) {
-    console.error('[Rule Update] Error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-// Delete automation rule
-app.post('/api/automation/rule/delete', async (req, res) => {
-  try {
-    const { ruleName } = req.body;
-    
-    if (!ruleName) {
-      return res.status(400).json({ errno: 400, error: 'Rule name is required' });
-    }
-    
-    const ruleId = ruleName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    
-    // Check if this is the active rule, if so, set flag to clear segments
-    const state = await getUserAutomationState(req.user.uid);
-    if (state && state.activeRule === ruleId) {
-      console.log(`[Rule Delete] Deleted rule was active - clearing segments immediately`);
-      
-      // Get user config for device SN
-      const userConfig = await getUserConfig(req.user.uid);
-      const deviceSN = userConfig?.deviceSn;
-      
-      // Clear scheduler segments immediately
-      if (deviceSN) {
-        try {
-          const clearedGroups = [];
-          for (let i = 0; i < 8; i++) {
-            clearedGroups.push({
-              enable: 0,
-              workMode: 'SelfUse',
-              startHour: 0, startMinute: 0,
-              endHour: 0, endMinute: 0,
-              minSocOnGrid: 10,
-              fdSoc: 10,
-              fdPwr: 0,
-              maxSoc: 100
-            });
-          }
-          const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, req.user.uid);
-          if (clearResult?.errno === 0) {
-            console.log(`[Rule Delete] ✓ Segments cleared successfully`);
-          } else {
-            console.warn(`[Rule Delete] ⚠️ Failed to clear segments: errno=${clearResult?.errno}`);
-          }
-        } catch (err) {
-          console.error(`[Rule Delete] ❌ Error clearing segments:`, err.message);
-        }
-      }
-      
-      // Create audit entry to mark rule as ended (critical for ROI display)
-      const activationTime = state.lastTriggered || Date.now();
-      const deactivationTime = Date.now();
-      const durationMs = deactivationTime - activationTime;
-      
-      await addAutomationAuditEntry(req.user.uid, {
-        cycleId: `cycle_rule_deleted_${Date.now()}`,
-        triggered: false,
-        ruleName: state.activeRuleName || state.activeRule,
-        ruleId: state.activeRule,
-        evaluationResults: [],
-        allRuleEvaluations: [{
-          name: state.activeRuleName || state.activeRule,
-          ruleId: state.activeRule,
-          triggered: false,
-          conditions: [],
-          feedInPrice: null,
-          buyPrice: null
-        }],
-        actionTaken: null,
-        activeRuleBefore: state.activeRule,
-        activeRuleAfter: null,  // This marks the rule as ended
-        rulesEvaluated: 0,
-        cycleDurationMs: durationMs,
-        manualEnd: true,
-        reason: 'Rule deleted by user'
-      });
-      
-      console.log(`[Rule Delete] ✓ Audit entry created - rule marked as ended`);
-      
-      // Clear active rule state
-      await saveUserAutomationState(req.user.uid, {
-        activeRule: null,
-        activeRuleName: null,
-        activeSegment: null,
-        activeSegmentEnabled: false
-      });
-    }
-    
-    await deleteUserRule(req.user.uid, ruleId);
-    res.json({ errno: 0, result: { deleted: ruleName } });
-  } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
 // Get automation history
 app.get('/api/automation/history', async (req, res) => {
   try {
@@ -5380,149 +4660,6 @@ app.get('/api/automation/audit', async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Run automation test with provided mock data (simulation)
-app.post('/api/automation/test', async (req, res) => {
-  try {
-    const mockData = req.body && req.body.mockData ? req.body.mockData : (req.body || {});
-
-    // Load user rules
-    const rules = await getUserRules(req.user.uid);
-    const sorted = Object.entries(rules || {}).filter(([_, r]) => r.enabled).sort((a,b) => (a[1].priority||99) - (b[1].priority||99));
-
-    const allResults = [];
-    const parseMockTime = (timeStr) => {
-      if (!timeStr || typeof timeStr !== 'string' || !timeStr.includes(':')) return null;
-      const [hh, mm] = timeStr.split(':').map((x) => parseInt(x, 10));
-      if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
-        return null;
-      }
-      return { hour: hh, minute: mm };
-    };
-
-    const mockTime = parseMockTime(mockData.testTime);
-    const mockDayRaw = mockData.testDayOfWeek !== undefined ? mockData.testDayOfWeek : mockData.dayOfWeek;
-    const normalizedMockDays = normalizeWeekdays(mockDayRaw !== undefined ? [mockDayRaw] : []);
-    const mockDayOfWeek = normalizedMockDays.length > 0 ? normalizedMockDays[0] : null;
-
-    let mockWeatherData = mockData.weatherData || mockData.weather || null;
-    if (!mockWeatherData) {
-      const maxDaily = Array.isArray(mockData.dailyMaxTemps) ? mockData.dailyMaxTemps : null;
-      const minDaily = Array.isArray(mockData.dailyMinTemps) ? mockData.dailyMinTemps : null;
-      if (maxDaily || minDaily) {
-        mockWeatherData = {
-          daily: {
-            temperature_2m_max: maxDaily || [],
-            temperature_2m_min: minDaily || []
-          }
-        };
-      }
-    }
-
-    for (const [ruleId, rule] of sorted) {
-      const cond = rule.conditions || {};
-      let met = true;
-      const condDetails = [];
-
-      // feedInPrice
-      if (cond.feedInPrice?.enabled) {
-        const price = Number(mockData.feedInPrice || 0);
-        const target = Number(cond.feedInPrice.value || 0);
-        const cmet = compareValue(price, cond.feedInPrice.operator, target);
-        condDetails.push({ name: 'Feed-in Price', value: price, target, operator: cond.feedInPrice.operator, met: !!cmet });
-        if (!cmet) met = false;
-      }
-
-      // buyPrice
-      if (cond.buyPrice?.enabled) {
-        const price = Number(mockData.buyPrice || 0);
-        const target = Number(cond.buyPrice.value || 0);
-        const cmet = compareValue(price, cond.buyPrice.operator, target);
-        condDetails.push({ name: 'Buy Price', value: price, target, operator: cond.buyPrice.operator, met: !!cmet });
-        if (!cmet) met = false;
-      }
-
-      // soc
-      if (cond.soc?.enabled) {
-        const soc = Number(mockData.soc || 0);
-        const target = Number(cond.soc.value || 0);
-        const cmet = compareValue(soc, cond.soc.operator, target);
-        condDetails.push({ name: 'Battery SoC', value: soc, target, operator: cond.soc.operator, met: !!cmet });
-        if (!cmet) met = false;
-      }
-
-      // temperature
-      const tempCond = cond.temp || cond.temperature;
-      if (tempCond?.enabled) {
-        const tempResult = evaluateTemperatureCondition(tempCond, {
-          batteryTemp: Number(mockData.batteryTemp),
-          ambientTemp: Number(mockData.ambientTemp),
-          weatherData: mockWeatherData
-        });
-
-        if (tempResult.reason) {
-          condDetails.push({
-            name: 'Temperature',
-            value: null,
-            target: Number(tempCond.value || 0),
-            operator: tempCond.operator || tempCond.op || '>',
-            met: false,
-            reason: tempResult.reason
-          });
-          met = false;
-        } else {
-          const label = tempResult.source === 'weather_daily'
-            ? `Forecast ${tempResult.metric === 'min' ? 'Min' : 'Max'} Temp (D+${tempResult.dayOffset || 0})`
-            : (String(tempResult.type || '').toLowerCase() === 'battery' ? 'Battery Temp' : 'Ambient Temp');
-          condDetails.push({
-            name: label,
-            value: tempResult.actual,
-            target: tempResult.target,
-            operator: tempResult.operator,
-            met: !!tempResult.met
-          });
-          if (!tempResult.met) met = false;
-        }
-      }
-
-      // time
-      const timeCond = cond.time || cond.timeWindow;
-      if (timeCond?.enabled) {
-        const defaultUserTime = getUserTime(DEFAULT_TIMEZONE);
-        const userTime = {
-          hour: mockTime ? mockTime.hour : defaultUserTime.hour,
-          minute: mockTime ? mockTime.minute : defaultUserTime.minute,
-          dayOfWeek: mockDayOfWeek !== null ? mockDayOfWeek : defaultUserTime.dayOfWeek
-        };
-        const timeResult = evaluateTimeCondition(timeCond, {
-          timezone: DEFAULT_TIMEZONE,
-          userTime
-        });
-        condDetails.push({
-          name: 'Time Window',
-          value: timeResult.actualTime,
-          target: `${timeResult.startTime}-${timeResult.endTime} (${timeResult.daysLabel})`,
-          operator: 'in',
-          met: !!timeResult.met
-        });
-        if (!timeResult.met) met = false;
-      }
-
-      allResults.push({ ruleName: rule.name || ruleId, ruleId, met, priority: rule.priority || 99, conditions: condDetails });
-
-      if (met) {
-        // First match wins
-        return res.json({ errno: 0, triggered: true, result: { ruleName: rule.name || ruleId, ruleId, priority: rule.priority || 99, action: rule.action || {} }, testData: mockData, allResults });
-      }
-    }
-
-    // No rules triggered
-    res.json({ errno: 0, triggered: false, result: null, testData: mockData, allResults });
-  } catch (error) {
-    console.error('[API] /api/automation/test error:', error);
     res.status(500).json({ errno: 500, error: error.message });
   }
 });
@@ -5690,60 +4827,12 @@ registerSchedulerReadRoutes(app, {
   tryAttachUser
 });
 
-app.post('/api/scheduler/v1/set', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const deviceSN = req.body.sn || req.body.deviceSN || userConfig?.deviceSn;
-    const groups = req.body.groups || [];
-    
-    if (!deviceSN) {
-      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    }
-    
-    logger.debug('Scheduler', `SET request for device ${deviceSN}, ${groups.length} groups`);
-    
-    // Primary: v1 API (this is what backend server.js uses and it works)
-    const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups }, userConfig, req.user.uid);
-
-    // Determine if we should enable or disable the scheduler flag
-    const shouldEnable = Array.isArray(groups) && groups.some(g => Number(g.enable) === 1);
-    
-    // Set scheduler flag (required for FoxESS app to show the schedule)
-    let flagResult = null;
-    try {
-      flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: shouldEnable ? 1 : 0 }, userConfig, req.user.uid);
-    } catch (flagErr) {
-      logger.warn('Scheduler', `Flag set failed: ${flagErr && flagErr.message ? flagErr.message : flagErr}`);
-    }
-
-    // Log action to history
-    await addHistoryEntry(req.user.uid, {
-      type: 'scheduler_update',
-      action: 'manual',
-      groups,
-      result: result.errno === 0 ? 'success' : 'failed'
-    });
-
-    // Verification read: fetch what the device actually has now
-    let verify = null;
-    try {
-      verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, req.user.uid);
-    } catch (e) { 
-      logger.warn('Scheduler', `Verify read failed: ${e && e.message ? e.message : e}`);
-    }
-
-    // Return the result with verification data
-    res.json({
-      errno: result.errno,
-      msg: result.msg || (result.errno === 0 ? 'Success' : 'Failed'),
-      result: result.result,
-      flagResult,
-      verify: verify?.result || null
-    });
-  } catch (error) {
-    console.error('[Scheduler] SET error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
+registerSchedulerMutationRoutes(app, {
+  addHistoryEntry,
+  authenticateUser,
+  foxessAPI,
+  getUserConfig,
+  logger
 });
 
 // ==================== API METRICS (USER-SPECIFIC) ====================
@@ -5840,87 +4929,6 @@ async function incrementGlobalApiCount(apiType) {
 // NOTE: 404 handler moved to the end of the file so all routes
 // declared below (including scheduler user-scoped endpoints)
 // are reachable. See end-of-file for the catch-all handler.
-
-// ==================== SCHEDULER ENDPOINTS (USER-SCOPED) ====================
-/**
- * Get scheduler segments for the authenticated user
- * Response: { errno: 0, result: { groups: [...], enable: boolean } }
- */
-
-
-/**
- * Clear all scheduler segments (set to disabled / zeroed).
- * Sends directly to the device, same pattern as backend/server.js
- * Body: {}
- */
-app.post('/api/scheduler/v1/clear-all', authenticateUser, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const userConfig = await getUserConfig(userId);
-    const deviceSN = req.body.sn || req.body.deviceSN || userConfig?.deviceSn;
-    
-    if (!deviceSN) {
-      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    }
-    
-    logger.debug('Scheduler', `CLEAR-ALL request for device ${deviceSN}`);
-
-    // Create 8 empty/disabled segments (matching device's actual group count)
-    const emptyGroups = [];
-    for (let i = 0; i < 8; i++) {
-      emptyGroups.push({
-        enable: 0,
-        workMode: 'SelfUse',
-        startHour: 0,
-        startMinute: 0,
-        endHour: 0,
-        endMinute: 0,
-        minSocOnGrid: 10,
-        fdSoc: 10,
-        fdPwr: 0,
-        maxSoc: 100
-      });
-    }
-    
-    // Send to device via v1 API (primary - this is what works in server.js)
-    const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: emptyGroups }, userConfig, userId);
-    
-    // Disable the scheduler flag
-    let flagResult = null;
-    try {
-      flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
-    } catch (flagErr) {
-      logger.warn('Scheduler', `Flag disable failed: ${flagErr && flagErr.message ? flagErr.message : flagErr}`);
-    }
-    
-    // Verification read
-    let verify = null;
-    try {
-      verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
-    } catch (e) {
-      logger.warn('Scheduler', `Verify read failed: ${e && e.message ? e.message : e}`);
-    }
-    
-    // Log to history
-    try {
-      await addHistoryEntry(userId, {
-        type: 'scheduler_clear',
-        by: userId
-      });
-    } catch (e) { console.warn('[Scheduler] Failed to write history entry:', e && e.message); }
-
-    res.json({ 
-      errno: result.errno, 
-      msg: result.msg || (result.errno === 0 ? 'Scheduler cleared' : 'Failed'),
-      result: result.result,
-      flagResult,
-      verify: verify?.result || null
-    });
-  } catch (err) {
-    console.error('[Scheduler] clear-all error:', err.message || err);
-    res.status(500).json({ errno: 500, error: err.message || String(err) });
-  }
-});
 
 // ==================== EXPORT EXPRESS APP AS CLOUD FUNCTION ====================
 // Use the broadly-compatible onRequest export to avoid depending on newer SDK features
@@ -6694,7 +5702,7 @@ async function applyRuleAction(userId, rule, userConfig) {
   
   if (endTotalMins <= startTotalMins) {
     // Segment would cross midnight - cap at 23:59 instead
-    console.warn(`[SegmentSend] ⚠️ MIDNIGHT CROSSING DETECTED: Original end time ${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} would cross midnight`);
+    console.warn(`[SegmentSend] � ️ MIDNIGHT CROSSING DETECTED: Original end time ${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} would cross midnight`);
     endHour = 23;
     endMinute = 59;
     const actualDuration = (endHour * 60 + endMinute) - startTotalMins;
@@ -6849,10 +5857,10 @@ async function applyRuleAction(userId, rule, userConfig) {
       console.log(`[SegmentSend] ✅ Segment CONFIRMED ENABLED on device!`);
       console.log(`[SegmentSend] 🎉 Device segment: ${deviceSegment.startHour}:${deviceSegment.startMinute}-${deviceSegment.endHour}:${deviceSegment.endMinute} ${deviceSegment.workMode}`);
     } else {
-      console.warn(`[SegmentSend] ⚠️ Segment on device but DISABLED (enable=${deviceSegment.enable})`);
+      console.warn(`[SegmentSend] � ️ Segment on device but DISABLED (enable=${deviceSegment.enable})`);
     }
   } else {
-    console.warn(`[SegmentSend] ⚠️ No verification data available for Group 0`);
+    console.warn(`[SegmentSend] � ️ No verification data available for Group 0`);
   }
   console.log(`[SegmentSend] ========== END applyRuleAction (SUCCESS) ==========`);
   console.log(`[SegmentSend] 🏁 Final result: errno=0, segment sent and verified`);
@@ -7192,3 +6200,4 @@ exports.runAutomation = onSchedule(
   },
   runAutomationHandler
 );
+

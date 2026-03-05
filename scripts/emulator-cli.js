@@ -23,6 +23,7 @@ const EMULATOR_ARGS = [
   '--import=./emulator-state',
   '--export-on-exit'
 ];
+const NPM_EXEC_ARGS = ['exec', '--', ...EMULATOR_ARGS];
 
 function log(message) {
   console.log(`[emu] ${message}`);
@@ -247,6 +248,65 @@ function runNodeScript(scriptPath, env, label) {
   }
 }
 
+function getEmulatorSpawnCandidates() {
+  if (process.platform === 'win32') {
+    const npxCommand = `npx ${EMULATOR_ARGS.join(' ')}`;
+    const npmExecCommand = `npm ${NPM_EXEC_ARGS.join(' ')}`;
+    return [
+      { command: 'cmd.exe', args: ['/d', '/s', '/c', npxCommand], label: 'cmd /c npx' },
+      { command: 'cmd.exe', args: ['/d', '/s', '/c', npmExecCommand], label: 'cmd /c npm exec --' }
+    ];
+  }
+
+  return [
+    { command: 'npx', args: EMULATOR_ARGS, label: 'npx' },
+    { command: 'npm', args: NPM_EXEC_ARGS, label: 'npm exec --' }
+  ];
+}
+
+function spawnDetached(command, args, options) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, options);
+
+    const onError = (error) => {
+      child.removeListener('spawn', onSpawn);
+      reject(error);
+    };
+    const onSpawn = () => {
+      child.removeListener('error', onError);
+      resolve(child);
+    };
+
+    child.once('error', onError);
+    child.once('spawn', onSpawn);
+  });
+}
+
+async function spawnEmulatorProcess(env, logFd) {
+  const spawnOptions = {
+    cwd: REPO_ROOT,
+    env,
+    detached: true,
+    stdio: ['ignore', logFd, logFd]
+  };
+
+  const candidates = getEmulatorSpawnCandidates();
+  const failures = [];
+
+  for (const candidate of candidates) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const child = await spawnDetached(candidate.command, candidate.args, spawnOptions);
+      log(`Spawned emulator parent via ${candidate.label}`);
+      return child;
+    } catch (error) {
+      failures.push(`${candidate.label}: ${error && error.code ? error.code : error && error.message ? error.message : 'unknown error'}`);
+    }
+  }
+
+  throw new Error(`Failed to spawn emulator process (${failures.join('; ')})`);
+}
+
 async function verifySetupStatus() {
   const attempts = 25;
   for (let i = 0; i < attempts; i += 1) {
@@ -280,13 +340,13 @@ async function startEmulators() {
 
   fs.mkdirSync(LOG_DIR, { recursive: true });
   const logFd = fs.openSync(LOG_FILE, 'a');
+  let child;
+  try {
+    child = await spawnEmulatorProcess(env, logFd);
+  } finally {
+    fs.closeSync(logFd);
+  }
 
-  const child = spawn('npx', EMULATOR_ARGS, {
-    cwd: REPO_ROOT,
-    env,
-    detached: true,
-    stdio: ['ignore', logFd, logFd]
-  });
   child.unref();
   writePid(child.pid);
 

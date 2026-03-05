@@ -18,11 +18,19 @@ This runbook captures recurring local issues and the exact fixes.
 - Multiple emulator instances for the same project produce hub warnings and non-deterministic behavior.
 - Functions warning about `engines.node=22` vs host `node=25` is noisy but was not the direct cause of reseed failures.
 - Auth SDK warning `You are using the Auth Emulator...` is expected in local dev and not a failure signal.
+- On some Windows/Node setups, `npx` is not on PATH for detached child processes even when `npm` works in the shell.
 
 ### Root Causes
 - Java runtime not on active shell `PATH` (macOS stub `java` used instead of Homebrew OpenJDK).
 - Readiness check was too weak (UI only) and allowed seed to run before Auth was listening.
 - Emulator suite launched from a short-lived shell/session that exits and kills parent `firebase` process.
+- Emulator launcher using `spawn('npx', ...)` can fail with `spawn npx ENOENT` in detached mode on Windows.
+
+### 2026-03-06 Hardening Update
+- `scripts/emulator-cli.js` now tries multiple launch strategies:
+  - Windows: `npx.cmd ...` then `npm.cmd exec -- ...`
+  - macOS/Linux: `npx ...` then `npm exec -- ...`
+- This removes the prior dependency on a single `npx` binary path and makes `npm run emu:reset` resilient across local shells.
 
 ### Prevention
 - Use explicit Java env before startup:
@@ -88,6 +96,17 @@ npm run emu:reset
 ```
 
 If `emu:status` reports any required port as `FREE`, the app will fail with `ERR_CONNECTION_REFUSED` until reset/start succeeds.
+
+If reset fails with a launcher error (legacy clones before hardening), run:
+```bash
+npm run emu:stop
+npm exec -- firebase emulators:start --only functions,firestore,hosting,auth,pubsub --import=./emulator-state --export-on-exit
+```
+Then in a second terminal:
+```bash
+npm run emu:seed
+npm run emu:status
+```
 
 ## 2) “No Test Data” In UI
 

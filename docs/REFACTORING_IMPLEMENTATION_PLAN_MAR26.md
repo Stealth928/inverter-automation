@@ -1,8 +1,8 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 2 in progress  
+Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 3 step 1 in progress  
 Scope: Planning + execution progress tracking  
-Last Updated: 2026-03-05  
+Last Updated: 2026-03-06  
 Primary Branch: `RefactoringMar26`
 
 ## Progress Tracker
@@ -21,7 +21,7 @@ Primary Branch: `RefactoringMar26`
 |---|---|---|---:|
 | P0 | G0 | ✅ Complete | 100% |
 | P1 | G1 | ⏳ In Progress | 10/10 tasks drafted, key contract artifacts implemented, formal gate close pending |
-| P2 | G2 | ⏳ In Progress | Wave 1 complete (3/3), Wave 2 step 3 in progress (inverter read + history + device read + diagnostics read + scheduler read routes extracted) |
+| P2 | G2 | ⏳ In Progress | Wave 1 complete (3/3), Wave 2 read-route extraction complete, Wave 3 step 1 in progress (scheduler + config + automation mutation routes extracted; automation cycle extraction pending) |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -569,7 +569,113 @@ Tracker hygiene rule: update this section at the end of every completed executio
   - `node scripts/api-contract-baseline.js --silent`
   - `node scripts/openapi-contract-check.js --silent`
   - `node scripts/pre-deploy-check.js`
-- Next target chunk: begin Wave 3 by extracting scheduler mutation endpoints (`/api/scheduler/v1/set`, `/api/scheduler/v1/clear`) so `index.js` keeps shrinking toward composition-only responsibilities.
+- Next target chunk: begin Wave 3 by extracting scheduler mutation endpoints (`/api/scheduler/v1/set`, `/api/scheduler/v1/clear-all`) so `index.js` keeps shrinking toward composition-only responsibilities.
+
+### ✅ 2026-03-06 - Chunk 27 (P2 Wave 3 step 1: scheduler mutation-route extraction)
+
+- Extracted scheduler mutation endpoints from `functions/index.js` into:
+  - `functions/api/routes/scheduler-mutations.js`
+  - moved:
+    - `/api/scheduler/v1/set`
+    - `/api/scheduler/v1/clear-all`
+- Rewired composition in `functions/index.js` via:
+  - `registerSchedulerMutationRoutes(app, { ... })`
+- Added focused supertest coverage for mutation-route extraction:
+  - `functions/test/scheduler-mutation-routes-modules.test.js`
+  - added checks for:
+    - missing-device guard on `/api/scheduler/v1/set`
+    - scheduler set path (enable + flag update + verify + history write)
+    - clear-all auth enforcement + 8-group clear payload + verify + history write
+- Validation passed:
+  - `npm --prefix functions test -- scheduler-mutation-routes-modules.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/api-contract-baseline.js --silent`
+  - `node scripts/openapi-contract-check.js --silent`
+  - `node scripts/pre-deploy-check.js`
+- Updated Wave 2/3 tracker artifact for transition to mutation extraction:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: continue Wave 3 step 1 by extracting remaining state-changing route domains (`config`, `automation`) into route modules while preserving current API contracts.
+
+### ✅ 2026-03-06 - Chunk 28 (Local reset hardening + runbook update)
+
+- Captured emulator reset incident and codified permanent fix for fast local recovery:
+  - `npm run emu:reset` previously failed on Windows with `spawn npx ENOENT` / `EINVAL` when launching detached child processes.
+- Hardened emulator launcher in:
+  - `scripts/emulator-cli.js`
+  - Windows launcher now uses `cmd.exe /c ...` with fallback chain:
+    - `npx firebase emulators:start ...`
+    - `npm exec -- firebase emulators:start ...`
+  - preserves existing readiness-gated stop/start/seed/status workflow.
+- Updated reset/runbook docs:
+  - `docs/LOCAL_DEV_KNOWN_ISSUES.md`
+  - `docs/SETUP.md`
+  - added explicit launcher-fallback guidance for legacy clones and cross-shell reliability notes.
+- Validation passed:
+  - `npm run emu:reset`
+  - `npm run emu:status`
+  - `GET http://127.0.0.1:5000/api/config/setup-status` returned HTTP 200
+- Next target chunk: continue Wave 3 step 1 by extracting remaining state-changing route domains (`config`, `automation`) into route modules while preserving current API contracts.
+
+### ✅ 2026-03-06 - Chunk 29 (P2 Wave 3 step 1: config mutation-route extraction)
+
+- Extracted config mutation endpoints from `functions/index.js` into:
+  - `functions/api/routes/config-mutations.js`
+  - moved:
+    - `POST /api/config/system-topology`
+    - `POST /api/config`
+    - `POST /api/config/clear-credentials`
+    - `POST /api/config/tour-status`
+- Rewired composition in `functions/index.js` via:
+  - `registerConfigMutationRoutes(app, { ... })`
+- Added focused supertest coverage for extracted config mutation routes:
+  - `functions/test/config-mutation-routes-modules.test.js`
+  - added checks for:
+    - topology payload normalization + persistence
+    - config save payload guards and timezone-priority/fallback paths
+    - clear-credentials auth guard + field-clearing behavior
+    - tour-status payload validation + persistence behavior
+- Validation passed:
+  - `npm --prefix functions run lint`
+  - `node scripts/api-contract-baseline.js --silent`
+  - `node scripts/openapi-contract-check.js --silent`
+  - `node scripts/pre-deploy-check.js`
+- Updated Wave 3 tracker artifact to reflect completed config-mutation extraction:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: continue Wave 3 step 1 by extracting remaining automation mutation routes into a dedicated route module while preserving current API contracts.
+
+### ✅ 2026-03-06 - Chunk 30 (P2 Wave 3 step 1: automation mutation-route extraction)
+
+- Extracted automation mutation endpoints from `functions/index.js` into:
+  - `functions/api/routes/automation-mutations.js`
+  - moved:
+    - `POST /api/automation/toggle`
+    - `POST /api/automation/enable`
+    - `POST /api/automation/trigger`
+    - `POST /api/automation/reset`
+    - `POST /api/automation/cancel`
+    - `POST /api/automation/rule/end`
+    - `POST /api/automation/rule/create`
+    - `POST /api/automation/rule/update`
+    - `POST /api/automation/rule/delete`
+    - `POST /api/automation/test`
+- Rewired composition in `functions/index.js` via:
+  - `registerAutomationMutationRoutes(app, { ... })`
+- Added focused supertest coverage for extracted automation mutation routes:
+  - `functions/test/automation-mutation-routes-modules.test.js`
+  - added checks for:
+    - toggle/enable/reset/trigger validation and state updates
+    - cancel flow (device guard + scheduler clear + flag + verify + history write)
+    - rule create/update/end guards and active-rule cleanup behavior
+    - automation test simulation path returning first matching rule
+- Validation passed:
+  - `npm --prefix functions test -- automation-mutation-routes-modules.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/api-contract-baseline.js --silent`
+  - `node scripts/openapi-contract-check.js --silent`
+  - `node scripts/pre-deploy-check.js`
+- Updated Wave 3 tracker artifact to reflect automation mutation extraction:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: continue Wave 3 by extracting `/api/automation/cycle` (largest remaining mutation route) and then stabilizing with targeted regression coverage before service-layer moves.
 
 ---
 
@@ -1378,6 +1484,10 @@ When execution is approved, run phases in order:
 | 2026-03-05 | Continued P2 Wave 2 step 3 by extracting additional device read-only endpoints into `functions/api/routes/device-read.js`, wiring registration in `functions/index.js`, adding route-module tests for device/module/workmode/diagnostic reads, and validating all quality and contract gates. | Codex |
 | 2026-03-05 | Continued P2 Wave 2 step 3 by extracting diagnostics read endpoints into `functions/api/routes/diagnostics-read.js`, wiring registration in `functions/index.js`, extending route-module tests for device-setting/all-data diagnostic reads, and patching extracted route logging calls (`logger.log` -> `console.log`) to match runtime logger capabilities. | Codex |
 | 2026-03-05 | Continued P2 Wave 2 step 3 by extracting scheduler read route `/api/scheduler/v1/get` into `functions/api/routes/scheduler-read.js`, wiring module registration in `functions/index.js`, extending read-route module supertest coverage for defaults/device-source paths, and re-validating lint + contract + pre-deploy gates. | Codex |
+| 2026-03-06 | Began P2 Wave 3 step 1 by extracting scheduler mutation routes into `functions/api/routes/scheduler-mutations.js`, wiring module registration in `functions/index.js`, adding dedicated supertest coverage for `/api/scheduler/v1/set` and `/api/scheduler/v1/clear-all`, and re-validating lint + contract + pre-deploy gates. | Codex |
+| 2026-03-06 | Hardened local emulator reset reliability after Windows launcher failures: updated `scripts/emulator-cli.js` to use a resilient detached launch chain (`cmd /c npx ...` then `cmd /c npm exec -- ...`), documented the incident and fallback workflow in `docs/LOCAL_DEV_KNOWN_ISSUES.md` and `docs/SETUP.md`, and re-verified local reset/status/setup-health flows. | Codex |
+| 2026-03-06 | Continued P2 Wave 3 step 1 by extracting config mutation routes into `functions/api/routes/config-mutations.js`, wiring module registration in `functions/index.js`, adding focused supertest coverage in `functions/test/config-mutation-routes-modules.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
+| 2026-03-06 | Continued P2 Wave 3 step 1 by extracting automation mutation routes into `functions/api/routes/automation-mutations.js` (toggle/enable/trigger/reset/cancel/rule CRUD/test), wiring module registration in `functions/index.js`, adding focused supertest coverage in `functions/test/automation-mutation-routes-modules.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
 
 ---
 
