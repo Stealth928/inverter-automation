@@ -34,6 +34,7 @@ const { registerDeviceReadRoutes } = require('./api/routes/device-read');
 const { registerDiagnosticsReadRoutes } = require('./api/routes/diagnostics-read');
 const { registerInverterReadRoutes } = require('./api/routes/inverter-read');
 const { registerInverterHistoryRoutes } = require('./api/routes/inverter-history');
+const { registerSchedulerReadRoutes } = require('./api/routes/scheduler-read');
 const { parseAutomationTelemetry } = require('./lib/device-telemetry');
 const { getCurrentAmberPrices } = require('./lib/pricing-normalization');
 const { createUserAutomationRepository } = require('./lib/repositories/user-automation-repository');
@@ -5683,46 +5684,11 @@ registerWeatherRoutes(app, {
   tryAttachUser
 });
 
-// Scheduler endpoints
-// IMPORTANT: Always fetch from the live FoxESS device to ensure UI matches actual device state
-// (not from Firestore cache, which caused segments to appear saved but not sync to manufacturer app)
-app.get('/api/scheduler/v1/get', async (req, res) => {
-  try {
-    await tryAttachUser(req);
-    const userConfig = await getUserConfig(req.user?.uid);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    
-    if (!sn) {
-      // No device SN configured - return sensible defaults
-      const defaultGroups = Array.from({ length: 10 }).map((_unused, _i) => ({
-        startHour: 0, startMinute: 0,
-        endHour: 0, endMinute: 0,
-        enable: 0,
-        workMode: 'SelfUse',
-        minSocOnGrid: 10,
-        fdSoc: 10,
-        fdPwr: 0,
-        maxSoc: 100
-      }));
-      return res.json({ errno: 0, result: { groups: defaultGroups, enable: false }, source: 'defaults' });
-    }
-    
-    // Always fetch live data from the device (this is what the manufacturer app sees)
-    const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN: sn }, userConfig, req.user?.uid);
-    
-    // Tag the source so debugging is easier
-    if (result && result.errno === 0) {
-      result.source = 'device';
-    }
-    
-    res.json(result);
-  } catch (error) {
-    console.error('[Scheduler] GET error:', error.message);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
+registerSchedulerReadRoutes(app, {
+  foxessAPI,
+  getUserConfig,
+  tryAttachUser
 });
-
-
 
 app.post('/api/scheduler/v1/set', async (req, res) => {
   try {

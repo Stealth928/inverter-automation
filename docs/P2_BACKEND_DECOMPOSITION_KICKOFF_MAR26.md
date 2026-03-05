@@ -49,6 +49,7 @@ Validation for Wave 1:
      - `inverter-history.js` (`/api/inverter/history` + Firestore cache helpers)
      - `device-read.js` (battery/device/module/meter/EMS read endpoints)
      - `diagnostics-read.js` (`/api/device/setting/get`, `/api/inverter/all-data`)
+     - `scheduler-read.js` (`/api/scheduler/v1/get`)
 
 Validation for Wave 2:
 - Existing API contract checks remain green:

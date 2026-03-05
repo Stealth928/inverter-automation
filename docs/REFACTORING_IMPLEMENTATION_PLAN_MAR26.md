@@ -21,7 +21,7 @@ Primary Branch: `RefactoringMar26`
 |---|---|---|---:|
 | P0 | G0 | ✅ Complete | 100% |
 | P1 | G1 | ⏳ In Progress | 10/10 tasks drafted, key contract artifacts implemented, formal gate close pending |
-| P2 | G2 | ⏳ In Progress | Wave 1 complete (3/3), Wave 2 step 3 in progress (inverter read + history + device read + diagnostics read routes extracted) |
+| P2 | G2 | ⏳ In Progress | Wave 1 complete (3/3), Wave 2 step 3 in progress (inverter read + history + device read + diagnostics read + scheduler read routes extracted) |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -547,6 +547,29 @@ Tracker hygiene rule: update this section at the end of every completed executio
   - `node scripts/openapi-contract-check.js --silent`
   - `node scripts/pre-deploy-check.js`
 - Next target chunk: continue Wave 2 step 3 by evaluating whether `/api/scheduler/v1/get` should be isolated as read-only scheduler-route wiring before beginning Wave 3 mutation-route extraction.
+
+### ✅ 2026-03-05 - Chunk 26 (P2 Wave 2 step 3: scheduler read-route extraction)
+
+- Extracted scheduler read endpoint from `functions/index.js` into:
+  - `functions/api/routes/scheduler-read.js`
+  - moved:
+    - `/api/scheduler/v1/get`
+- Rewired composition in `functions/index.js` via:
+  - `registerSchedulerReadRoutes(app, { ... })`
+- Expanded read-route module supertest coverage:
+  - `functions/test/read-only-routes-modules.test.js`
+  - added checks for:
+    - default scheduler payload when device SN is not configured
+    - device-backed scheduler read path with `source: 'device'` tagging and SN override handling
+- Updated Wave 2 kickoff tracker note with latest extraction set:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Validation passed:
+  - `npm --prefix functions test -- read-only-routes-modules.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/api-contract-baseline.js --silent`
+  - `node scripts/openapi-contract-check.js --silent`
+  - `node scripts/pre-deploy-check.js`
+- Next target chunk: begin Wave 3 by extracting scheduler mutation endpoints (`/api/scheduler/v1/set`, `/api/scheduler/v1/clear`) so `index.js` keeps shrinking toward composition-only responsibilities.
 
 ---
 
@@ -1353,6 +1376,7 @@ When execution is approved, run phases in order:
 | 2026-03-05 | Continued P2 Wave 2 step 3 by extracting `/api/inverter/history` and history cache helpers into `functions/api/routes/inverter-history.js`, wiring route composition in `functions/index.js`, expanding route-module supertest coverage, and validating all contract/pre-deploy gates. | Codex |
 | 2026-03-05 | Continued P2 Wave 2 step 3 by extracting additional device read-only endpoints into `functions/api/routes/device-read.js`, wiring registration in `functions/index.js`, adding route-module tests for device/module/workmode/diagnostic reads, and validating all quality and contract gates. | Codex |
 | 2026-03-05 | Continued P2 Wave 2 step 3 by extracting diagnostics read endpoints into `functions/api/routes/diagnostics-read.js`, wiring registration in `functions/index.js`, extending route-module tests for device-setting/all-data diagnostic reads, and patching extracted route logging calls (`logger.log` -> `console.log`) to match runtime logger capabilities. | Codex |
+| 2026-03-05 | Continued P2 Wave 2 step 3 by extracting scheduler read route `/api/scheduler/v1/get` into `functions/api/routes/scheduler-read.js`, wiring module registration in `functions/index.js`, extending read-route module supertest coverage for defaults/device-source paths, and re-validating lint + contract + pre-deploy gates. | Codex |
 
 ---
 

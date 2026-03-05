@@ -9,6 +9,7 @@ const { registerInverterHistoryRoutes } = require('../api/routes/inverter-histor
 const { registerInverterReadRoutes } = require('../api/routes/inverter-read');
 const { registerMetricsRoutes } = require('../api/routes/metrics');
 const { registerPricingRoutes } = require('../api/routes/pricing');
+const { registerSchedulerReadRoutes } = require('../api/routes/scheduler-read');
 const { registerWeatherRoutes } = require('../api/routes/weather');
 
 function buildApp(registerFn) {
@@ -732,6 +733,79 @@ describe('read-only route modules', () => {
       }),
       { deviceSn: 'SN-DIAG' },
       'u-diagnostics'
+    );
+  });
+
+  test('scheduler read routes return defaults when device SN is unavailable', async () => {
+    const foxessAPI = { callFoxESSAPI: jest.fn() };
+    const getUserConfig = jest.fn(async () => ({}));
+
+    const app = buildApp((instance) => {
+      registerSchedulerReadRoutes(instance, {
+        foxessAPI,
+        getUserConfig,
+        tryAttachUser: jest.fn(async () => null)
+      });
+    });
+
+    const response = await request(app).get('/api/scheduler/v1/get');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.source).toBe('defaults');
+    expect(response.body.result.enable).toBe(false);
+    expect(response.body.result.groups).toHaveLength(10);
+    expect(response.body.result.groups[0]).toEqual(expect.objectContaining({
+      enable: 0,
+      workMode: 'SelfUse'
+    }));
+    expect(getUserConfig).toHaveBeenCalledWith(undefined);
+    expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
+  });
+
+  test('scheduler read routes proxy device scheduler and tag source', async () => {
+    const foxessAPIResult = {
+      errno: 0,
+      result: {
+        groups: [{ enable: 1, startHour: 1, startMinute: 30, endHour: 2, endMinute: 0 }],
+        enable: true
+      }
+    };
+    const foxessAPI = {
+      callFoxESSAPI: jest.fn(async () => foxessAPIResult)
+    };
+    const getUserConfig = jest.fn(async () => ({ deviceSn: 'SN-CFG' }));
+
+    const app = buildApp((instance) => {
+      registerSchedulerReadRoutes(instance, {
+        foxessAPI,
+        getUserConfig,
+        tryAttachUser: jest.fn(async (req) => {
+          req.user = { uid: 'u-scheduler' };
+          return req.user;
+        })
+      });
+    });
+
+    const response = await request(app)
+      .get('/api/scheduler/v1/get')
+      .query({ sn: 'SN-OVERRIDE' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      result: {
+        groups: [{ enable: 1, startHour: 1, startMinute: 30, endHour: 2, endMinute: 0 }],
+        enable: true
+      },
+      source: 'device'
+    });
+    expect(foxessAPI.callFoxESSAPI).toHaveBeenCalledWith(
+      '/op/v1/device/scheduler/get',
+      'POST',
+      { deviceSN: 'SN-OVERRIDE' },
+      { deviceSn: 'SN-CFG' },
+      'u-scheduler'
     );
   });
 });
