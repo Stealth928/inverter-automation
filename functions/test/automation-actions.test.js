@@ -3,6 +3,7 @@
 const {
   applySegmentToGroups,
   buildAutomationSchedulerSegment,
+  buildClearedSchedulerGroups,
   clearSchedulerGroups,
   createDefaultSchedulerGroup,
   ensureSchedulerGroups,
@@ -93,5 +94,11 @@ describe('automation action helpers', () => {
     const groups = applySegmentToGroups([], segment, 0);
     expect(groups).toHaveLength(1);
     expect(groups[0]).toEqual(segment);
+  });
+
+  test('buildClearedSchedulerGroups returns requested count of default groups', () => {
+    const groups = buildClearedSchedulerGroups(8);
+    expect(groups).toHaveLength(8);
+    expect(groups.every((group) => group.enable === 0 && group.workMode === 'SelfUse')).toBe(true);
   });
 });

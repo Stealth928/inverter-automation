@@ -1,6 +1,6 @@
 # P2 Backend Decomposition Kickoff (March 2026)
 
-Status: Active execution - Wave 3 step 1 complete, step 2 pending  
+Status: Active execution - Wave 3 step 1 complete, step 2 in progress  
 Phase: P2 (Backend Decomposition) execution  
 Owner: RefactoringMar26
 
@@ -64,7 +64,9 @@ Validation for Wave 2:
    - ✅ `config-mutations.js` (`POST /api/config/system-topology`, `POST /api/config`, `POST /api/config/clear-credentials`, `POST /api/config/tour-status`)
    - ✅ `automation-mutations.js` (`POST /api/automation/toggle`, `/enable`, `/trigger`, `/reset`, `/cancel`, `/rule/end`, `/rule/create`, `/rule/update`, `/rule/delete`, `/test`)
    - ✅ `automation-cycle.js` (`POST /api/automation/cycle`)
-2. Introduce service modules (`lib/services/*`) only after route extraction is stable.
+2. ⏳ [IN PROGRESS 2026-03-06] Introduce service modules (`lib/services/*`) only after route extraction is stable.
+   - ✅ shared scheduler-group builder centralized in `functions/lib/automation-actions.js` via `buildClearedSchedulerGroups()`
+   - in progress: migrate remaining repeated automation helpers into service modules (`lib/services/*`) with no behavior changes
 
 Validation for Wave 3:
 - Regression suite for automation cycle, rule CRUD, scheduler endpoints.

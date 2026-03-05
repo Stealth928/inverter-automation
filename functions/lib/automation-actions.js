@@ -19,6 +19,17 @@ function createDefaultSchedulerGroup() {
   };
 }
 
+function buildClearedSchedulerGroups(count = 8) {
+  const safeCount = Number.isInteger(count) && count > 0 ? count : 8;
+  const groups = [];
+
+  for (let i = 0; i < safeCount; i++) {
+    groups.push(createDefaultSchedulerGroup());
+  }
+
+  return groups;
+}
+
 function cloneSchedulerGroups(groups) {
   if (!Array.isArray(groups)) return [];
   return groups.map((group) => ({
@@ -95,6 +106,7 @@ function applySegmentToGroups(groups, segment, index = 0) {
 module.exports = {
   applySegmentToGroups,
   buildAutomationSchedulerSegment,
+  buildClearedSchedulerGroups,
   clearSchedulerGroups,
   createDefaultSchedulerGroup,
   ensureSchedulerGroups,

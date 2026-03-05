@@ -1,5 +1,7 @@
 'use strict';
 
+const { buildClearedSchedulerGroups } = require('../../lib/automation-actions');
+
 function registerAutomationCycleRoute(app, deps = {}) {
   const addAutomationAuditEntry = deps.addAutomationAuditEntry;
   const amberAPI = deps.amberAPI;
@@ -118,19 +120,7 @@ app.post('/api/automation/cycle', async (req, res) => {
           const userConfig = await getUserConfig(userId);
           const deviceSN = userConfig?.deviceSn;
           if (deviceSN) {
-            const clearedGroups = [];
-            for (let i = 0; i < 8; i++) {
-              clearedGroups.push({
-                enable: 0,
-                workMode: 'SelfUse',
-                startHour: 0, startMinute: 0,
-                endHour: 0, endMinute: 0,
-                minSocOnGrid: 10,
-                fdSoc: 10,
-                fdPwr: 0,
-                maxSoc: 100
-              });
-            }
+            const clearedGroups = buildClearedSchedulerGroups();
             // Real API call - counted in metrics for accurate quota tracking
             const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
             if (clearResult?.errno === 0) {
@@ -285,19 +275,7 @@ app.post('/api/automation/cycle', async (req, res) => {
       try {
         const deviceSN = userConfig?.deviceSn;
         if (deviceSN) {
-          const clearedGroups = [];
-          for (let i = 0; i < 8; i++) {
-            clearedGroups.push({
-              enable: 0,
-              workMode: 'SelfUse',
-              startHour: 0, startMinute: 0,
-              endHour: 0, endMinute: 0,
-              minSocOnGrid: 10,
-              fdSoc: 10,
-              fdPwr: 0,
-              maxSoc: 100
-            });
-          }
+          const clearedGroups = buildClearedSchedulerGroups();
           // Real API call - counted in metrics for accurate quota tracking
           const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
           if (clearResult?.errno !== 0) {
@@ -322,19 +300,7 @@ app.post('/api/automation/cycle', async (req, res) => {
       try {
         const deviceSN = userConfig?.deviceSn;
         if (deviceSN) {
-          const clearedGroups = [];
-          for (let i = 0; i < 8; i++) {
-            clearedGroups.push({
-              enable: 0,
-              workMode: 'SelfUse',
-              startHour: 0, startMinute: 0,
-              endHour: 0, endMinute: 0,
-              minSocOnGrid: 10,
-              fdSoc: 10,
-              fdPwr: 0,
-              maxSoc: 100
-            });
-          }
+          const clearedGroups = buildClearedSchedulerGroups();
           // Real API call - counted in metrics for accurate quota tracking
           const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
           if (clearResult?.errno !== 0) {
@@ -714,19 +680,7 @@ app.post('/api/automation/cycle', async (req, res) => {
               try {
                 const deviceSN = userConfig?.deviceSn;
                 if (deviceSN) {
-                  const clearedGroups = [];
-                  for (let i = 0; i < 8; i++) {
-                    clearedGroups.push({
-                      enable: 0,
-                      workMode: 'SelfUse',
-                      startHour: 0, startMinute: 0,
-                      endHour: 0, endMinute: 0,
-                      minSocOnGrid: 10,
-                      fdSoc: 10,
-                      fdPwr: 0,
-                      maxSoc: 100
-                    });
-                  }
+                  const clearedGroups = buildClearedSchedulerGroups();
                   // Real API call - counted in metrics for accurate quota tracking
                   await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
                   await new Promise(resolve => setTimeout(resolve, 2500)); // Wait for inverter to process
@@ -994,19 +948,7 @@ app.post('/api/automation/cycle', async (req, res) => {
             // Clear all scheduler segments
             const deviceSN = userConfig?.deviceSn;
             if (deviceSN) {
-              const clearedGroups = [];
-              for (let i = 0; i < 8; i++) {
-                clearedGroups.push({
-                  enable: 0,
-                  workMode: 'SelfUse',
-                  startHour: 0, startMinute: 0,
-                  endHour: 0, endMinute: 0,
-                  minSocOnGrid: 10,
-                  fdSoc: 10,
-                  fdPwr: 0,
-                  maxSoc: 100
-                });
-              }
+              const clearedGroups = buildClearedSchedulerGroups();
               
               // Retry logic for segment clearing (up to 3 attempts)
               let clearAttempt = 0;

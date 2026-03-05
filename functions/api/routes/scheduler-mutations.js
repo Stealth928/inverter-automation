@@ -1,25 +1,6 @@
 'use strict';
 
-function buildClearedSchedulerGroups() {
-  const emptyGroups = [];
-
-  for (let i = 0; i < 8; i++) {
-    emptyGroups.push({
-      enable: 0,
-      workMode: 'SelfUse',
-      startHour: 0,
-      startMinute: 0,
-      endHour: 0,
-      endMinute: 0,
-      minSocOnGrid: 10,
-      fdSoc: 10,
-      fdPwr: 0,
-      maxSoc: 100
-    });
-  }
-
-  return emptyGroups;
-}
+const { buildClearedSchedulerGroups } = require('../../lib/automation-actions');
 
 function registerSchedulerMutationRoutes(app, deps = {}) {
   const addHistoryEntry = deps.addHistoryEntry;
