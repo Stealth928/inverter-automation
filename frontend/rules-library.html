@@ -139,8 +139,11 @@
         /* ── Card grid ── */
         .rules-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
             gap: 18px;
+        }
+        .rules-grid > * {
+            min-width: 0;
         }
 
         /* ── Rule card ── */
@@ -155,6 +158,8 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
+            min-width: 0;
+            max-width: 100%;
         }
         .rule-card:hover {
             border-color: var(--accent-blue);
@@ -373,6 +378,73 @@
             line-height: 1.2;
         }
 
+        /* ── Light theme contrast overrides for card pills/chips ── */
+        [data-theme="light"] .badge-price {
+            background: #fff1d9;
+            color: #8a4b00;
+            border: 1px solid #f0c77a;
+        }
+        [data-theme="light"] .badge-battery {
+            background: #def6e8;
+            color: #0f6e45;
+            border: 1px solid #9ed9be;
+        }
+        [data-theme="light"] .badge-solar {
+            background: #fff5d7;
+            color: #7d5a00;
+            border: 1px solid #ecd086;
+        }
+        [data-theme="light"] .badge-time {
+            background: #ede7ff;
+            color: #5533ad;
+            border: 1px solid #c7b7f5;
+        }
+        [data-theme="light"] .badge-seasonal {
+            background: #e6ecff;
+            color: #3652a8;
+            border: 1px solid #b8c8f4;
+        }
+        [data-theme="light"] .badge-ev {
+            background: #ffe3f0;
+            color: #a32967;
+            border: 1px solid #efb4d2;
+        }
+        [data-theme="light"] .badge-beginner {
+            background: #dff7ea;
+            color: #0f7a47;
+            border: 1px solid #9ed9be;
+        }
+        [data-theme="light"] .badge-intermediate {
+            background: #ffe9dc;
+            color: #9f4d10;
+            border: 1px solid #f1c5a6;
+        }
+        [data-theme="light"] .badge-advanced {
+            background: #ffe2e2;
+            color: #a72222;
+            border: 1px solid #efb1b1;
+        }
+        [data-theme="light"] .card-priority-pill {
+            color: #2b59b6;
+            background: #e7efff;
+            border-color: #9fb7f2;
+        }
+        [data-theme="light"] .condition-chip {
+            color: #245ea8;
+            background: #e8f2ff;
+            border-color: #9abef3;
+        }
+        [data-theme="light"] .action-mode {
+            color: #8a5a00;
+            background: #fff2d7;
+            border-color: #e3bf7f;
+        }
+        [data-theme="light"] .action-meta {
+            color: #8a5a00;
+            background: #fff6e5;
+            border-color: #e8c994;
+        }
+
         /* ── Empty state ── */
         .empty-state {
             text-align: center;
@@ -576,9 +648,21 @@
 
         /* ── Responsive ── */
         @media (max-width: 600px) {
-            .rules-grid { grid-template-columns: 1fr; }
+            .container { padding: 16px 12px 120px; }
+            .rules-grid { grid-template-columns: 1fr; gap: 14px; }
+            .rule-card { padding: 16px; }
             .toolbar { flex-direction: column; align-items: stretch; }
             .search-wrap { max-width: 100%; }
+            .card-top { flex-direction: column; align-items: stretch; gap: 8px; }
+            .card-top-main { width: 100%; }
+            .card-badges { flex-wrap: wrap; }
+            .card-corner-controls { width: 100%; justify-content: space-between; }
+            .badge,
+            .card-priority-pill,
+            .condition-chip,
+            .action-meta {
+                max-width: 100%;
+            }
             .action-bar { flex-wrap: wrap; }
         }
     </style>

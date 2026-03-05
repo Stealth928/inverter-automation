@@ -8,6 +8,8 @@ This runbook captures recurring local issues and the exact fixes.
 - Emulator table prints as ready, then local requests fail (`ERR_CONNECTION_REFUSED`).
 - Seeding fails with `connect ECONNREFUSED 127.0.0.1:9099`.
 - Only Firestore/PubSub Java processes remain.
+- Browser console shows static asset failures from hosting emulator, e.g. `GET http://localhost:5000/js/*.js net::ERR_CONNECTION_REFUSED`.
+- Firebase login call fails with `POST http://127.0.0.1:9099/... net::ERR_CONNECTION_REFUSED`.
 
 ### Confirmed Findings (March 5, 2026)
 - Port `4000` (Emulator UI) can be reachable before Auth/Functions/Hosting are actually ready.
@@ -15,6 +17,7 @@ This runbook captures recurring local issues and the exact fixes.
 - Orphan Java processes on `8080`/`8085` are common after interrupted runs and block subsequent restarts.
 - Multiple emulator instances for the same project produce hub warnings and non-deterministic behavior.
 - Functions warning about `engines.node=22` vs host `node=25` is noisy but was not the direct cause of reseed failures.
+- Auth SDK warning `You are using the Auth Emulator...` is expected in local dev and not a failure signal.
 
 ### Root Causes
 - Java runtime not on active shell `PATH` (macOS stub `java` used instead of Homebrew OpenJDK).
@@ -77,6 +80,14 @@ curl -sf http://127.0.0.1:5000/api/config/setup-status
 - Do not treat `http://127.0.0.1:4000` responding as full emulator readiness.
 - Do not run clear/seed until `9099` (Auth) and `5001` (Functions) are listening.
 - Do not start a second emulator instance while one is already running for `inverter-automation-firebase`.
+
+### 60-Second Triage
+```bash
+npm run emu:status
+npm run emu:reset
+```
+
+If `emu:status` reports any required port as `FREE`, the app will fail with `ERR_CONNECTION_REFUSED` until reset/start succeeds.
 
 ## 2) “No Test Data” In UI
 

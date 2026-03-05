@@ -107,29 +107,47 @@ Users configure their own API keys in the Settings page after login.
 
 ## Local Development
 
-### Option 1: Firebase Emulators (Recommended)
+### Option 1: One-command Emulator Reset + Reseed (Recommended)
 
 ```bash
-# Start functions emulator
-firebase emulators:start --only functions
-
-# In another terminal, serve frontend
-cd frontend
-python -m http.server 8000
+# Deterministic stop -> start -> seed -> health-check
+npm run emu:reset
 ```
 
-- Frontend: http://localhost:8000
-- Functions: http://localhost:5001
-- Emulator UI: http://localhost:4000
+- Hosting + frontend pages: http://127.0.0.1:5000
+- Emulator UI: http://127.0.0.1:4000
+- Functions: http://127.0.0.1:5001
+- Auth Emulator: http://127.0.0.1:9099
 
-### Option 2: Full Emulator Suite (Requires Java)
+Helpful commands:
 
 ```bash
-# Install Java 11+, then:
-firebase emulators:start
+# Start only (no reseed)
+npm run emu:start
+
+# Reseed only (when emulators are already up)
+npm run emu:seed
+
+# Stop all emulators and cleanup listeners
+npm run emu:stop
+
+# Show quick port status
+npm run emu:status
 ```
 
-This runs Auth, Firestore, and Functions emulators.
+Notes:
+- The warning `You are using the Auth Emulator, which is intended for local testing only` is expected in local development.
+- If `localhost:5000` or `127.0.0.1:9099` shows `ERR_CONNECTION_REFUSED`, emulators are down; run `npm run emu:reset`.
+
+### Option 2: Manual Emulator Start (advanced/troubleshooting)
+
+```bash
+firebase emulators:start --only functions,firestore,hosting,auth,pubsub
+```
+
+Use this mode when you want interactive logs in the same terminal.
+
+Requires Java (OpenJDK) for Firestore and Pub/Sub emulators.
 
 ---
 

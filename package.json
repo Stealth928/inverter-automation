@@ -1,9 +1,10 @@
 {
   "scripts": {
-    "emu:start": "powershell -ExecutionPolicy Bypass -File scripts/start-emulators.ps1",
-    "emu:seed": "powershell -ExecutionPolicy Bypass -File scripts/seed-test-user.ps1",
-    "emu:reset": "powershell -ExecutionPolicy Bypass -File scripts/reset-emulator-state.ps1",
-    "emu:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-emulators.ps1",
+    "emu:start": "node scripts/emulator-cli.js start",
+    "emu:seed": "node scripts/emulator-cli.js seed",
+    "emu:reset": "node scripts/emulator-cli.js reset",
+    "emu:stop": "node scripts/emulator-cli.js stop",
+    "emu:status": "node scripts/emulator-cli.js status",
     "api:contract:check": "node scripts/api-contract-baseline.js",
     "api:contract:refresh": "node scripts/api-contract-baseline.js --write-doc",
     "openapi:check": "node scripts/openapi-contract-check.js",

@@ -335,9 +335,12 @@ Executable contract scaffolding added to backend codebase:
   - `functions/lib/billing/entitlements.js`
 - Webhook idempotency utilities:
   - `functions/lib/billing/webhook-idempotency.js`
+- Device telemetry normalization helper (canonical alias resolution for rule evaluation):
+  - `functions/lib/device-telemetry.js`
 
 Contract-level tests:
 
 - `functions/test/payment-adapter-contract.test.js`
 - `functions/test/billing-entitlements.test.js`
 - `functions/test/billing-webhook-idempotency.test.js`
+- `functions/test/device-telemetry.test.js`

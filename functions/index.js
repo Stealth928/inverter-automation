@@ -22,6 +22,7 @@ const {
   isForecastTemperatureType,
   normalizeWeekdays
 } = require('./lib/automation-conditions');
+const { parseAutomationTelemetry } = require('./lib/device-telemetry');
 const amberModule = require('./api/amber');
 let googleApis = null;
 try {
@@ -6931,18 +6932,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   logger.debug('Automation', `Evaluating rule '${rule.name}' in timezone ${userTimezone} (${String(userTime.hour).padStart(2,'0')}:${String(userTime.minute).padStart(2,'0')})`);
   
   // Parse inverter data
-  let soc = null;
-  let batTemp = null;
-  let ambientTemp = null;
-  if (inverterData?.result?.[0]?.datas) {
-    const datas = inverterData.result[0].datas;
-    const socData = datas.find(d => d.variable === 'SoC') || datas.find(d => d.variable === 'SoC1') || datas.find(d => d.variable === 'SoC_1');
-    const batTempData = datas.find(d => d.variable === 'batTemperature') || datas.find(d => d.variable === 'batTemperature_1');
-    const ambientTempData = datas.find(d => d.variable === 'ambientTemperation');
-    soc = socData?.value ?? null;
-    batTemp = batTempData?.value ?? null;
-    ambientTemp = ambientTempData?.value ?? null;
-  }
+  const { soc, batTemp, ambientTemp } = parseAutomationTelemetry(inverterData);
   
   // Parse Amber prices
   let feedInPrice = null;
@@ -8402,4 +8392,3 @@ exports.runAutomation = onSchedule(
   },
   runAutomationHandler
 );
-

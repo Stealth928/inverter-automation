@@ -1,6 +1,6 @@
 # Documentation Index
 
-**Last Updated:** March 4, 2026  
+**Last Updated:** March 5, 2026  
 **Purpose:** Central index for all project documentation
 
 ---
@@ -37,9 +37,10 @@
 22. **[checklists/ROLLBACK_CHECKLIST.md](checklists/ROLLBACK_CHECKLIST.md)** - Rollback execution checklist
 23. **[P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md](P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md)** - P1 bounded contexts, adapter contracts, and error taxonomy
 24. **[openapi/openapi.v1.yaml](openapi/openapi.v1.yaml)** - OpenAPI v1 source-of-truth baseline (P1 kickoff)
+25. **[P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md](P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md)** - Locked extraction sequence for P2 backend decomposition kickoff
 
 ### Archived Documentation
-25. **[archive/](archive/)** - Historical docs (completed milestones, bugfixes, analyses)
+26. **[archive/](archive/)** - Historical docs (completed milestones, bugfixes, analyses)
 
 ---
 
@@ -90,6 +91,7 @@ Cost and coverage analysis:
 | [checklists/ROLLBACK_CHECKLIST.md](checklists/ROLLBACK_CHECKLIST.md) | Rollback run checklist | Per rollback event |
 | [P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md](P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md) | P1 architecture + contracts implementation spec | During P1/G1 |
 | [openapi/openapi.v1.yaml](openapi/openapi.v1.yaml) | OpenAPI source-of-truth baseline | Per API contract change |
+| [P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md](P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md) | P2 backend extraction sequencing and rollout guardrails | At P2 kickoff and weekly |
 
 ---
 
