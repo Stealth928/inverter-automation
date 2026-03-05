@@ -22,7 +22,21 @@ const {
   isForecastTemperatureType,
   normalizeWeekdays
 } = require('./lib/automation-conditions');
+const {
+  applySegmentToGroups,
+  buildAutomationSchedulerSegment,
+  clearSchedulerGroups
+} = require('./lib/automation-actions');
+const { registerMetricsRoutes } = require('./api/routes/metrics');
+const { registerPricingRoutes } = require('./api/routes/pricing');
+const { registerWeatherRoutes } = require('./api/routes/weather');
+const { registerDeviceReadRoutes } = require('./api/routes/device-read');
+const { registerDiagnosticsReadRoutes } = require('./api/routes/diagnostics-read');
+const { registerInverterReadRoutes } = require('./api/routes/inverter-read');
+const { registerInverterHistoryRoutes } = require('./api/routes/inverter-history');
 const { parseAutomationTelemetry } = require('./lib/device-telemetry');
+const { getCurrentAmberPrices } = require('./lib/pricing-normalization');
+const { createUserAutomationRepository } = require('./lib/repositories/user-automation-repository');
 const amberModule = require('./api/amber');
 let googleApis = null;
 try {
@@ -185,6 +199,12 @@ const logger = {
     }
   }
 };
+
+const userAutomationRepository = createUserAutomationRepository({
+  db,
+  logger,
+  serverTimestamp
+});
 
 // ==================== CACHED INVERTER DATA HELPER ====================
 /**
@@ -446,8 +466,7 @@ app.get('/api/health', async (req, res) => {
     
     if (userId) {
       try {
-        const configDoc = await db.collection('users').doc(userId).collection('config').doc('main').get();
-        const config = configDoc.data() || {};
+        const config = (await getUserConfig(userId)) || {};
         foxessTokenPresent = !!config.foxessToken;
         amberApiKeyPresent = !!config.amberApiKey;
       } catch (e) {
@@ -567,7 +586,7 @@ app.post('/api/config/validate-keys', async (req, res) => {
       };
 
       if (req.user?.uid) {
-        await db.collection('users').doc(req.user.uid).collection('config').doc('main').set(configData, { merge: true });
+        await setUserConfig(req.user.uid, configData, { merge: true });
         logger.info('Validation', `Config saved successfully for user ${req.user.uid}`, true);
       } else {
         // Persist to shared server config so the setup flow completes for unauthenticated users
@@ -687,447 +706,20 @@ app.get('/api/config/setup-status', async (req, res) => {
   }
 });
 
-// Amber sites (allow unauthenticated calls - return empty list when no user)
-app.get('/api/amber/sites', async (req, res) => {
-  try {
-    // Attach optional user if provided, but don't require auth
-    await tryAttachUser(req);
-    const userId = req.user?.uid;
-    const debug = req.query.debug === 'true';
-    
-
-    if (!userId) {
-      // No user signed in - safe empty response for UI
-      const response = { errno: 0, result: [] };
-      if (debug) response._debug = 'Not authenticated';
-      return res.json(response);
-    }
-
-    const userConfig = await getUserConfig(userId);
-    const hasKey = userConfig?.amberApiKey;
-
-    if (!userConfig || !hasKey) {
-      const response = { errno: 0, result: [] };
-      if (debug) {
-        response._debug = `Config issue: userConfig=${!!userConfig}, hasAmberKey=${hasKey}`;
-      }
-      return res.json(response);
-    }
-
-    // Try cache first
-    let cachedSites = await amberAPI.getCachedAmberSites(userId);
-    if (cachedSites) {
-      return res.json({ errno: 0, result: cachedSites, _cached: true });
-    }
-
-    // Cache miss - call API
-    incrementApiCount(userId, 'amber').catch(err => console.warn('[Amber] Failed to log API call:', err.message));
-    const result = await amberAPI.callAmberAPI('/sites', {}, userConfig, userId, true);
-
-
-    let sites = [];
-    if (result && result.data && Array.isArray(result.data)) sites = result.data;
-    else if (result && result.sites && Array.isArray(result.sites)) sites = result.sites;
-    else if (Array.isArray(result)) sites = result;
-    
-    // Store in cache for future requests
-    if (sites.length > 0) {
-      await amberAPI.cacheAmberSites(userId, sites);
-    }
-
-    if (sites.length > 0) {
-      return res.json({ errno: 0, result: sites });
-    }
-    
-    // If there's an error from Amber API, pass it through with debug info if requested
-    if (result && result.errno && result.errno !== 0) {
-      const response = { errno: 0, result: [] };
-      if (debug) response._debug = `Amber API error: ${result.error || result.msg}`;
-      return res.json(response);
-    }
-    
-    return res.json({ errno: 0, result: [] });
-  } catch (e) {
-    console.error('[Amber] Pre-auth /sites error:', e && e.message ? e.message : e);
-    const response = { errno: 0, result: [] };
-    if (req.query.debug === 'true') response._debug = `Exception: ${e?.message || String(e)}`;
-    return res.json(response);
-  }
+registerPricingRoutes(app, {
+  amberAPI,
+  amberPricesInFlight,
+  authenticateUser,
+  getUserConfig,
+  incrementApiCount,
+  logger,
+  tryAttachUser
 });
 
-// Public-friendly endpoint for current prices (mirror of /api/amber/prices but accepts
-// the '/current' path which the frontend sometimes uses). Returns safe JSON when unauthenticated.
-app.get('/api/amber/prices/current', async (req, res) => {
-  try {
-    await tryAttachUser(req);
-    const userId = req.user?.uid;
-    if (!userId) return res.json({ errno: 0, result: [] });
-
-    const userConfig = await getUserConfig(userId);
-    if (!userConfig || !userConfig.amberApiKey) {
-      return res.json({ errno: 0, result: [] });
-    }
-
-    let siteId = req.query.siteId || userConfig.amberSiteId;
-    const next = Number(req.query.next || '1') || 1;
-    const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
-
-    if (!siteId) {
-      // Try to fetch sites and use the first one if not configured
-      const sites = await amberAPI.callAmberAPI('/sites', {}, userConfig, userId);
-      if (Array.isArray(sites) && sites.length > 0) {
-        siteId = sites[0].id;
-      }
-    }
-
-    if (!siteId) return res.status(400).json({ errno: 400, error: 'Site ID is required', result: [] });
-
-    // Try cache first for current prices (unless force refresh requested)
-    let result = null;
-    if (!forceRefresh) {
-      result = await amberAPI.getCachedAmberPricesCurrent(siteId, userId, userConfig);
-    }
-    
-    if (!result) {
-      const inflightKey = `${userId}:${siteId}`;
-      
-      // Check if another request is already fetching this data
-      if (amberPricesInFlight.has(inflightKey)) {
-        try {
-          result = await amberPricesInFlight.get(inflightKey);
-        } catch (err) {
-          logger.warn('Amber', `In-flight request failed for ${userId}: ${err.message}`);
-        }
-      }
-      
-      // If still no data (first request or in-flight failed), fetch it
-      if (!result) {
-        const fetchPromise = amberAPI.callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next }, userConfig, userId)
-          .then(async (data) => {
-            if (Array.isArray(data) && data.length > 0) {
-              await amberAPI.cacheAmberPricesCurrent(siteId, data, userId, userConfig);
-            }
-            return data;
-          })
-          .finally(() => {
-            amberPricesInFlight.delete(inflightKey);
-          });
-        
-        amberPricesInFlight.set(inflightKey, fetchPromise);
-        result = await fetchPromise;
-      }
-    }
-    
-    // Normalize response to wrapped format
-    if (Array.isArray(result)) {
-      return res.json({ errno: 0, result });
-    }
-    // If already wrapped, return as-is
-    if (result?.errno !== undefined) {
-      return res.json(result);
-    }
-    // Fallback: wrap whatever we got (ensure array)
-    return res.json({ errno: 0, result: result || [] });
-  } catch (e) {
-    console.error('[Amber] /prices/current error (pre-auth):', e && e.message ? e.message : e);
-    return res.json({ errno: 0, result: [] });
-  }
-});
-
-// Amber prices (standard endpoint) - Allow unauthenticated access (returns empty if no user)
-app.get('/api/amber/prices', async (req, res) => {
-  try {
-    await tryAttachUser(req);
-    const userId = req.user?.uid;
-    
-    if (!userId) {
-      // No user signed in - safe empty response for UI
-      return res.json({ errno: 0, result: [] });
-    }
-
-    const userConfig = await getUserConfig(userId);
-    if (!userConfig || !userConfig.amberApiKey) {
-      return res.status(400).json({ errno: 400, error: 'Amber not configured', result: [] });
-    }
-    let siteId = req.query.siteId || userConfig.amberSiteId;
-    
-    if (!siteId) {
-      // Try to fetch sites and use the first one if not configured
-      const sites = await amberAPI.callAmberAPI('/sites', {}, userConfig, userId);
-      if (Array.isArray(sites) && sites.length > 0) {
-        siteId = sites[0].id;
-      }
-    }
-    
-    if (!siteId) {
-      return res.status(400).json({ errno: 400, error: 'Site ID is required' });
-    }
-    
-    // Check if caller wants only actual (non-forecast) prices
-    const actualOnly = req.query.actual_only === 'true';
-    
-    // If the caller provided startDate/endDate, treat this as a historical range
-    // request and use intelligent caching to avoid repeated API calls.
-    const startDate = req.query.startDate;
-    const endDate = req.query.endDate;
-    if (startDate || endDate) {
-      const resolution = req.query.resolution || 30;
-      
-      
-      // If actualOnly is set, check if this is a recent date range
-      // For dates older than 3 days, use cache since they're definitely materialized
-      // For recent dates (today, yesterday, day before), fetch fresh to avoid forecast
-      if (actualOnly) {
-        const endDateObj = new Date(endDate);
-        const now = new Date();
-        const daysSinceEnd = Math.floor((now - endDateObj) / (1000 * 60 * 60 * 24));
-        
-        if (daysSinceEnd > 3) {
-          // Old data - safe to use cache (it's all materialized)
-          const result = await amberAPI.fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, resolution, userConfig, userId);
-          return res.json(result);
-        } else {
-          // Recent data - fetch fresh to avoid forecast pollution
-          const result = await amberAPI.fetchAmberHistoricalPricesActualOnly(siteId, startDate, endDate, resolution, userConfig, userId);
-          return res.json(result);
-        }
-      }
-      
-      // Default: use cache
-      const result = await amberAPI.fetchAmberHistoricalPricesWithCache(siteId, startDate, endDate, resolution, userConfig, userId);
-      return res.json(result);
-    }
-
-    // Default behavior: return the current forecast/prices
-    const result = await amberAPI.callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 1 }, userConfig, userId);
-    res.json(result);
-  } catch (error) {
-    console.warn('[Amber] Error fetching prices:', error.message);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-/**
- * Get actual (settled) Amber prices for a specific timestamp
- * Used by ROI calculator to get accurate prices for completed rules
- * Only works for timestamps within last 7 days (Amber API limitation)
- */
-app.get('/api/amber/prices/actual', authenticateUser, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const userConfig = await getUserConfig(userId);
-    
-    if (!userConfig || !userConfig.amberApiKey) {
-      return res.status(400).json({ errno: 400, error: 'Amber not configured' });
-    }
-    
-    let siteId = req.query.siteId || userConfig.amberSiteId;
-    const timestamp = req.query.timestamp; // ISO 8601 timestamp
-    
-    if (!siteId) {
-      // Try to fetch sites and use the first one if not configured
-      const sites = await amberAPI.callAmberAPI('/sites', {}, userConfig, userId);
-      if (Array.isArray(sites) && sites.length > 0) {
-        siteId = sites[0].id;
-      }
-    }
-    
-    if (!siteId) {
-      return res.status(400).json({ errno: 400, error: 'Site ID is required' });
-    }
-    
-    if (!timestamp) {
-      return res.status(400).json({ errno: 400, error: 'Timestamp is required' });
-    }
-    
-    // Parse timestamp and check if within 7-day window
-    const targetTime = new Date(timestamp);
-    const now = new Date();
-    const ageMs = now.getTime() - targetTime.getTime();
-    const ageDays = ageMs / (1000 * 60 * 60 * 24);
-    
-    if (isNaN(targetTime.getTime())) {
-      return res.status(400).json({ errno: 400, error: 'Invalid timestamp format' });
-    }
-    
-    if (ageDays > 7) {
-      logger.debug('Amber Actual', `Timestamp ${timestamp} is ${ageDays.toFixed(2)} days old (>7 days) - outside Amber data retention`);
-      return res.json({ errno: 0, result: null, reason: 'outside_retention_window', ageDays: ageDays.toFixed(2) });
-    }
-    
-    if (ageMs < 5 * 60 * 1000) {
-      logger.debug('Amber Actual', `Timestamp ${timestamp} is only ${(ageMs / 60000).toFixed(1)} minutes old - price may not be settled yet`);
-      return res.json({ errno: 0, result: null, reason: 'too_recent', ageMinutes: (ageMs / 60000).toFixed(1) });
-    }
-    
-    // Calculate date for the timestamp (Amber uses date-based queries)
-    const targetDate = targetTime.toISOString().split('T')[0]; // YYYY-MM-DD
-    
-    logger.debug('Amber Actual', `Fetching actual prices for ${targetDate} (timestamp: ${timestamp}, age: ${ageDays.toFixed(2)} days)`);
-    
-    // Fetch prices for that date (we'll filter to the specific interval)
-    // Use the same resolution as the user's billing interval (5 or 30 minutes)
-    const resolution = req.query.resolution || 30;
-    
-    try {
-      const result = await amberAPI.callAmberAPI(
-        `/sites/${encodeURIComponent(siteId)}/prices`,
-        { startDate: targetDate, endDate: targetDate, resolution },
-        userConfig,
-        userId
-      );
-      
-      if (!result || (result.errno && result.errno !== 0)) {
-        console.warn(`[Amber Actual] API error: ${result?.error || 'unknown'}`);
-        return res.json({ errno: result?.errno || 500, error: result?.error || 'API call failed', result: null });
-      }
-      
-      // Extract prices array
-      let prices = [];
-      if (Array.isArray(result)) {
-        prices = result;
-      } else if (result.result && Array.isArray(result.result)) {
-        prices = result.result;
-      }
-      
-      if (prices.length === 0) {
-        logger.debug('Amber Actual', `No prices returned for ${targetDate}`);
-        return res.json({ errno: 0, result: null, reason: 'no_data' });
-      }
-      
-      // Filter to find the interval containing our timestamp
-      // Amber prices have startTime and endTime fields
-      const matchingInterval = prices.find(price => {
-        const intervalStart = new Date(price.startTime);
-        const intervalEnd = new Date(price.endTime);
-        return targetTime >= intervalStart && targetTime <= intervalEnd;
-      });
-      
-      if (!matchingInterval) {
-        logger.debug('Amber Actual', `No matching interval found for ${timestamp} in ${prices.length} price intervals`);
-        return res.json({ errno: 0, result: null, reason: 'no_matching_interval' });
-      }
-      
-      // Return the actual price data
-      logger.debug('Amber Actual', `Found matching interval: type=${matchingInterval.type}, channel=${matchingInterval.channelType}, price=${matchingInterval.perKwh}c/kWh`);
-      
-      res.json({
-        errno: 0,
-        result: matchingInterval
-      });
-    } catch (error) {
-      console.warn('[Amber Actual] Error fetching actual prices:', error.message);
-      res.status(500).json({ errno: 500, error: error.message });
-    }
-  } catch (error) {
-    console.warn('[Amber Actual] Error in route handler:', error.message);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Metrics (platform global or per-user). Allow unauthenticated callers to read global metrics by default.
-app.get('/api/metrics/api-calls', async (req, res) => {
-  // Parse days outside try block so it's available in catch
-  const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
-  
-  try {
-    // Attach optional user (don't require auth globally here)
-    await tryAttachUser(req);
-
-    const scope = String(req.query.scope || 'global');
-
-    if (!db) {
-      const result = {};
-      const endDate = new Date();
-      for (let i = 0; i < days; i++) {
-        const d = new Date(endDate);
-        d.setDate(d.getDate() - i);
-        const key = getAusDateKey(d);
-        result[key] = { foxess: 0, amber: 0, weather: 0 };
-      }
-      return res.json({ errno: 0, result });
-    }
-
-    const endDate = new Date();
-
-    if (scope === 'user') {
-      const userId = req.user?.uid;
-      if (!userId) {
-        console.warn(`[Metrics] User scope requested but no userId - returning 401`);
-        return res.status(401).json({ errno: 401, error: 'Unauthorized: user scope requested' });
-      }
-
-      // Query without orderBy to avoid needing a composite index
-      // Get all metrics docs for the user and filter/sort in code
-      const metricsSnapshot = await db.collection('users').doc(userId)
-        .collection('metrics')
-        .get();
-
-      const result = {};
-      const allDocs = [];
-      metricsSnapshot.forEach(doc => {
-        const d = doc.data() || {};
-        allDocs.push({
-          id: doc.id,
-          foxess: Number(d.foxess || 0),
-          amber: Number(d.amber || 0),
-          weather: Number(d.weather || 0)
-        });
-      });
-
-      // Sort by date descending (YYYY-MM-DD format sorts alphabetically)
-      allDocs.sort((a, b) => b.id.localeCompare(a.id));
-
-      // Take only the most recent N days
-      allDocs.slice(0, days).forEach(doc => {
-        result[doc.id] = {
-          foxess: doc.foxess,
-          amber: doc.amber,
-          weather: doc.weather
-        };
-      });
-
-      // Fill in missing days with zeros (Australia/Sydney local date)
-      for (let i = 0; i < days; i++) {
-        const d = new Date(endDate);
-        d.setDate(d.getDate() - i);
-        const key = getAusDateKey(d);
-        if (!result[key]) result[key] = { foxess: 0, amber: 0, weather: 0 };
-      }
-
-      return res.json({ errno: 0, result });
-
-    }
-
-    // Global scope: read top-level `metrics` collection for each date
-    const result = {};
-    for (let i = 0; i < days; i++) {
-      const d = new Date(endDate);
-      d.setDate(d.getDate() - i);
-      const key = getAusDateKey(d);
-
-      const doc = await db.collection('metrics').doc(key).get();
-      const data = doc.exists ? doc.data() : null;
-      result[key] = {
-        foxess: Number(data?.foxess || 0),
-        amber: Number(data?.amber || 0),
-        weather: Number(data?.weather || 0)
-      };
-    }
-
-    res.json({ errno: 0, result });
-  } catch (error) {
-    console.error('[Metrics] Error in /api/metrics/api-calls (pre-auth):', error && error.message);
-    const result = {};
-    const endDate = new Date();
-    for (let i = 0; i < days; i++) {
-      const d = new Date(endDate);
-      d.setDate(d.getDate() - i);
-      const key = getAusDateKey(d);
-      result[key] = { foxess: 0, amber: 0, weather: 0 };
-    }
-    return res.json({ errno: 0, result });
-  }
+registerMetricsRoutes(app, {
+  db,
+  getAusDateKey,
+  tryAttachUser
 });
 
 // ==================== ADMIN API ENDPOINTS ====================
@@ -2497,10 +2089,11 @@ async function getCachedWeatherData(userId, place = 'Sydney', days = 16, forceRe
     if (data?.errno === 0 && data?.result?.place?.timezone && userId) {
       const detectedTimezone = data.result.place.timezone;
       try {
-        await db.collection('users').doc(userId).collection('config').doc('main').set(
-          { timezone: detectedTimezone },
-          { merge: true }
-        );
+        await setUserConfig(userId, {
+          timezone: detectedTimezone
+        }, {
+          merge: true
+        });
       } catch (tzErr) {
         console.warn(`[Weather] Failed to update user timezone: ${tzErr.message}`);
       }
@@ -2571,51 +2164,7 @@ function getAutomationTimezone(userConfig) {
  * Get user config from Firestore
  */
 async function getUserConfig(userId) {
-  try {
-    logger.debug('Config', `Loading config for user: ${userId}`);
-    
-    // Primary location: users/{uid}/config/main (newer code)
-    const configDoc = await db.collection('users').doc(userId).collection('config').doc('main').get();
-    if (configDoc.exists) {
-      const data = configDoc.data() || {};
-      logger.debug('Config', `Found config at users/${userId}/config/main: { hasDeviceSn: ${!!data.deviceSn}, hasFoxessToken: ${!!data.foxessToken} }`);
-      return { ...data, _source: 'config-main' };
-    }
-
-    // Backward compatibility: older deployments stored credentials directly on users/{uid}.credentials
-    const userDoc = await db.collection('users').doc(userId).get();
-    if (userDoc.exists) {
-      const data = userDoc.data() || {};
-
-      // If the older 'credentials' object exists, map its snake_case fields to the config shape
-      if (data.credentials && (data.credentials.device_sn || data.credentials.foxess_token || data.credentials.amber_api_key)) {
-        return {
-          deviceSn: data.credentials.device_sn || '',
-          foxessToken: data.credentials.foxess_token || '',
-          amberApiKey: data.credentials.amber_api_key || '',
-          // No explicit setupComplete flag in old storage — consider presence of tokens as complete
-          setupComplete: !!(data.credentials.device_sn && data.credentials.foxess_token),
-          _source: 'legacy-credentials'
-        };
-      }
-
-      // If top-level config keys exist directly on the user doc, use them too
-      if (data.deviceSn || data.foxessToken || data.amberApiKey) {
-        return {
-          deviceSn: data.deviceSn || '',
-          foxessToken: data.foxessToken || '',
-          amberApiKey: data.amberApiKey || '',
-          setupComplete: !!(data.deviceSn && data.foxessToken),
-          _source: 'user-top-level'
-        };
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Error getting user config:', error);
-    return null;
-  }
+  return userAutomationRepository.getUserConfig(userId);
 }
 
 const VALID_RULE_WORK_MODES = new Set(['SelfUse', 'ForceDischarge', 'ForceCharge', 'Feedin', 'Backup']);
@@ -2901,15 +2450,13 @@ async function checkAndApplyCurtailment(userId, userConfig, amberData) {
       return result;
     }
 
-    const currentInterval = amberData.find(p => p.type === 'CurrentInterval' && p.channelType === 'feedIn');
-    if (!currentInterval) {
+    const { feedInPrice: currentFeedInPrice } = getCurrentAmberPrices(amberData);
+    if (currentFeedInPrice === null) {
       result.error = 'No current feed-in price found';
       return result;
     }
 
-    // Negate the feed-in price for display (Amber API returns negative values for feed-in)
-    // This makes it positive for display and comparison
-    result.currentPrice = -currentInterval.perKwh;
+    result.currentPrice = currentFeedInPrice;
 
     // Get curtailment state from Firestore
     const stateDoc = await db.collection('users').doc(userId).collection('curtailment').doc('state').get();
@@ -2989,17 +2536,49 @@ async function checkAndApplyCurtailment(userId, userConfig, amberData) {
  * Get user automation rules from Firestore
  */
 async function getUserRules(userId) {
-  try {
-    const rulesSnapshot = await db.collection('users').doc(userId).collection('rules').get();
-    const rules = {};
-    rulesSnapshot.forEach(doc => {
-      rules[doc.id] = doc.data();
-    });
-    return rules;
-  } catch (error) {
-    console.error('Error getting user rules:', error);
-    return {};
-  }
+  return userAutomationRepository.getUserRules(userId);
+}
+
+/**
+ * Get one user automation rule by id
+ */
+async function getUserRule(userId, ruleId) {
+  return userAutomationRepository.getUserRule(userId, ruleId);
+}
+
+/**
+ * Persist user config (users/{uid}/config/main)
+ */
+async function setUserConfig(userId, config, options = { merge: true }) {
+  return userAutomationRepository.setUserConfig(userId, config, options);
+}
+
+/**
+ * Update user config fields (users/{uid}/config/main)
+ */
+async function updateUserConfig(userId, updates) {
+  return userAutomationRepository.updateUserConfig(userId, updates);
+}
+
+/**
+ * Persist one user automation rule by id
+ */
+async function setUserRule(userId, ruleId, rule, options) {
+  return userAutomationRepository.setUserRule(userId, ruleId, rule, options);
+}
+
+/**
+ * Delete one user automation rule by id
+ */
+async function deleteUserRule(userId, ruleId) {
+  return userAutomationRepository.deleteUserRule(userId, ruleId);
+}
+
+/**
+ * Clear lastTriggered for all user rules
+ */
+async function clearRulesLastTriggered(userId) {
+  return userAutomationRepository.clearRulesLastTriggered(userId);
 }
 
 /**
@@ -3056,16 +2635,14 @@ const DEFAULT_TOPOLOGY_REFRESH_MS = 4 * 60 * 60 * 1000;
  * Add entry to user history
  */
 async function addHistoryEntry(userId, entry) {
-  try {
-    await db.collection('users').doc(userId).collection('history').add({
-      ...entry,
-      timestamp: serverTimestamp()
-    });
-    return true;
-  } catch (error) {
-    console.error('Error adding history entry:', error);
-    return false;
-  }
+  return userAutomationRepository.addHistoryEntry(userId, entry);
+}
+
+/**
+ * Get recent user history entries ordered by timestamp desc
+ */
+async function getUserHistoryEntries(userId, limit = 50) {
+  return userAutomationRepository.getHistoryEntries(userId, limit);
 }
 
 async function deleteCollectionDocs(query, batchSize = 200) {
@@ -3203,7 +2780,7 @@ app.post('/api/config/system-topology', async (req, res) => {
       systemTopology.evidence = req.body.evidence;
     }
 
-    await db.collection('users').doc(userId).collection('config').doc('main').set({
+    await setUserConfig(userId, {
       systemTopology
     }, { merge: true });
 
@@ -3270,7 +2847,7 @@ app.post('/api/config', async (req, res) => {
     const mergedConfig = existingConfig ? deepMerge(existingConfig, newConfig) : newConfig;
 
     // Persist to Firestore under user's config/main
-    await db.collection('users').doc(userId).collection('config').doc('main').set(mergedConfig, { merge: true });
+    await setUserConfig(userId, mergedConfig, { merge: true });
     res.json({ errno: 0, msg: 'Config saved', result: mergedConfig });
   } catch (error) {
     console.error('[API] /api/config save error:', error && error.stack ? error.stack : String(error));
@@ -3290,7 +2867,7 @@ app.post('/api/config/clear-credentials', authenticateUser, async (req, res) => 
     };
 
     // Update the user's config/main document to clear these fields
-    await db.collection('users').doc(req.user.uid).collection('config').doc('main').update(updates);
+    await updateUserConfig(req.user.uid, updates);
     
     res.json({ errno: 0, msg: 'Credentials cleared successfully' });
   } catch (error) {
@@ -3331,7 +2908,7 @@ app.post('/api/config/tour-status', authenticateUser, async (req, res) => {
       return res.status(400).json({ errno: 400, error: 'No valid fields to update' });
     }
 
-    await db.collection('users').doc(req.user.uid).collection('config').doc('main').update(updates);
+    await updateUserConfig(req.user.uid, updates);
     res.json({ errno: 0, msg: 'Tour status updated' });
   } catch (error) {
     console.error('[API] /api/config/tour-status POST error:', error && error.stack ? error.stack : String(error));
@@ -3374,10 +2951,11 @@ app.get('/api/automation/status', async (req, res) => {
         if (weatherData?.result?.place?.timezone) {
           const weatherTimezone = weatherData.result.place.timezone;
           if (userConfig.timezone !== weatherTimezone) {
-            await db.collection('users').doc(userId).collection('config').doc('main').set(
-              { timezone: weatherTimezone },
-              { merge: true }
-            );
+            await setUserConfig(userId, {
+              timezone: weatherTimezone
+            }, {
+              merge: true
+            });
             userConfig.timezone = weatherTimezone;
           }
         }
@@ -3696,7 +3274,7 @@ app.post('/api/automation/trigger', async (req, res) => {
     });
     
     // Update rule's lastTriggered
-    await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).set({
+    await setUserRule(req.user.uid, ruleId, {
       lastTriggered: serverTimestamp()
     }, { merge: true });
     
@@ -3718,12 +3296,7 @@ app.post('/api/automation/reset', async (req, res) => {
     });
     
     // Reset lastTriggered on all rules
-    const rulesSnapshot = await db.collection('users').doc(req.user.uid).collection('rules').get();
-    const batch = db.batch();
-    rulesSnapshot.forEach(doc => {
-      batch.update(doc.ref, { lastTriggered: null });
-    });
-    await batch.commit();
+    await clearRulesLastTriggered(req.user.uid);
     
     logger.debug('Automation', `State reset for user ${req.user.uid}`);
     res.json({ errno: 0, result: 'Automation state reset' });
@@ -3791,7 +3364,7 @@ app.post('/api/automation/cycle', async (req, res) => {
       // Clear lastTriggered on the active rule if one exists (so it can re-trigger when automation re-enabled)
       if (state.activeRule) {
         try {
-          await db.collection('users').doc(userId).collection('rules').doc(state.activeRule).set({
+          await setUserRule(userId, state.activeRule, {
             lastTriggered: null
           }, { merge: true });
           
@@ -4243,7 +3816,7 @@ app.post('/api/automation/cycle', async (req, res) => {
             
             try {
               // Reset lastTriggered to allow immediate re-trigger
-              await db.collection('users').doc(userId).collection('rules').doc(ruleId).set({
+              await setUserRule(userId, ruleId, {
                 lastTriggered: null
               }, { merge: true });
               
@@ -4291,7 +3864,7 @@ app.post('/api/automation/cycle', async (req, res) => {
             }
             
             // Update rule's lastTriggered (new trigger)
-            await db.collection('users').doc(userId).collection('rules').doc(ruleId).set({
+            await setUserRule(userId, ruleId, {
               lastTriggered: serverTimestamp()
             }, { merge: true });
             
@@ -4377,7 +3950,7 @@ app.post('/api/automation/cycle', async (req, res) => {
               }
               // Reset active rule's lastTriggered so it can be re-triggered later
               if (state.activeRule) {
-                await db.collection('users').doc(userId).collection('rules').doc(state.activeRule).set({ lastTriggered: null }, { merge: true });
+                await setUserRule(userId, state.activeRule, { lastTriggered: null }, { merge: true });
               }
             }
           }
@@ -4405,7 +3978,7 @@ app.post('/api/automation/cycle', async (req, res) => {
           }
           
           // Update rule's lastTriggered (new rule triggered)
-          await db.collection('users').doc(userId).collection('rules').doc(ruleId).set({
+          await setUserRule(userId, ruleId, {
             lastTriggered: serverTimestamp()
           }, { merge: true });
           
@@ -4679,7 +4252,7 @@ app.post('/api/automation/cycle', async (req, res) => {
             // Clear lastTriggered when rule is canceled (conditions failed)
             // This allows the rule to re-trigger immediately if conditions become valid again
             // Cooldown only applies to CONTINUING active rules, not canceled ones
-            await db.collection('users').doc(userId).collection('rules').doc(ruleId).set({
+            await setUserRule(userId, ruleId, {
               lastTriggered: null
             }, { merge: true });
           } catch (cancelError) {
@@ -5422,7 +4995,7 @@ app.post('/api/automation/rule/create', async (req, res) => {
       updatedAt: serverTimestamp()
     };
     
-    await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).set(rule);
+    await setUserRule(req.user.uid, ruleId, rule);
     res.json({ errno: 0, result: { ruleId, ...rule } });
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -5462,10 +5035,10 @@ app.post('/api/automation/rule/update', async (req, res) => {
     // Handle action - merge with existing if partial update
     if (action !== undefined) {
       // Get existing rule to merge action properly
-      const existingDoc = await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).get();
-      if (existingDoc.exists && existingDoc.data().action) {
+      const existingRule = await getUserRule(req.user.uid, ruleId);
+      if (existingRule && existingRule.data.action) {
         // Merge new action fields with existing action
-        update.action = { ...existingDoc.data().action, ...action };
+        update.action = { ...existingRule.data.action, ...action };
       } else {
         update.action = action;
       }
@@ -5561,11 +5134,11 @@ app.post('/api/automation/rule/update', async (req, res) => {
       }
     }
     
-    await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).set(update, { merge: true });
+    await setUserRule(req.user.uid, ruleId, update, { merge: true });
     
     // Return the updated rule
-    const updatedDoc = await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).get();
-    res.json({ errno: 0, result: { ruleId, ...updatedDoc.data() } });
+    const updatedRule = await getUserRule(req.user.uid, ruleId);
+    res.json({ errno: 0, result: { ruleId, ...(updatedRule ? updatedRule.data : {}) } });
   } catch (error) {
     console.error('[Rule Update] Error:', error);
     res.status(500).json({ errno: 500, error: error.message });
@@ -5657,7 +5230,7 @@ app.post('/api/automation/rule/delete', async (req, res) => {
       });
     }
     
-    await db.collection('users').doc(req.user.uid).collection('rules').doc(ruleId).delete();
+    await deleteUserRule(req.user.uid, ruleId);
     res.json({ errno: 0, result: { deleted: ruleName } });
   } catch (error) {
     res.status(500).json({ errno: 500, error: error.message });
@@ -5668,16 +5241,7 @@ app.post('/api/automation/rule/delete', async (req, res) => {
 app.get('/api/automation/history', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit || '50', 10);
-    const historySnapshot = await db.collection('users').doc(req.user.uid)
-      .collection('history')
-      .orderBy('timestamp', 'desc')
-      .limit(limit)
-      .get();
-    
-    const history = [];
-    historySnapshot.forEach(doc => {
-      history.push({ id: doc.id, ...doc.data() });
-    });
+    const history = await getUserHistoryEntries(req.user.uid, limit);
     
     res.json({ errno: 0, result: history });
   } catch (error) {
@@ -5962,65 +5526,25 @@ app.post('/api/automation/test', async (req, res) => {
   }
 });
 
-// Inverter endpoints (proxy to FoxESS)
-app.get('/api/inverter/list', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
+registerInverterReadRoutes(app, {
+  authenticateUser,
+  foxessAPI,
+  getCachedInverterRealtimeData,
+  getUserConfig,
+  logger
 });
 
-app.get('/api/inverter/real-time', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    
-    if (!sn) {
-      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    }
-    
-    // Check for force refresh query parameter (bypass cache when ?forceRefresh=true)
-    const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
-    
-    // Use cached data to avoid excessive Fox API calls (unless force refresh requested)
-    // This respects per-user cache TTL and reduces API quota usage significantly
-    const result = await getCachedInverterRealtimeData(req.user.uid, sn, userConfig, forceRefresh);
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
+registerDeviceReadRoutes(app, {
+  authenticateUser,
+  foxessAPI,
+  getUserConfig,
+  logger
 });
 
-// Read a specific inverter setting (returns the value for a given key)
-app.get('/api/inverter/settings', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    const key = req.query.key;
-    if (!key) return res.status(400).json({ errno: 400, error: 'Missing required parameter: key' });
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key }, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.error('[API] /api/inverter/settings error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Battery SoC read endpoint used by control UI
-app.get('/api/device/battery/soc/get', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    const result = await foxessAPI.callFoxESSAPI(`/op/v0/device/battery/soc/get?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.error('[API] /api/device/battery/soc/get error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
+registerDiagnosticsReadRoutes(app, {
+  authenticateUser,
+  foxessAPI,
+  getUserConfig
 });
 
 // Battery SoC set
@@ -6060,79 +5584,6 @@ app.post('/api/device/battery/soc/set', async (req, res) => {
 
 // ==================== DEVICE SETTINGS (Curtailment Discovery) ====================
 
-// Read device setting (for discovery / testing)
-// NOTE: Includes retry logic for empty results (transient failures)
-app.post('/api/device/setting/get', authenticateUser, async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.body.sn || userConfig?.deviceSn;
-    const key = req.body.key;
-    
-    console.log(`\n${'='.repeat(80)}`);
-    console.log(`[DeviceSetting] REQUEST - Key: ${key}, SN: ${sn}`);
-    console.log(`[DeviceSetting] User: ${req.user.uid}`);
-    
-    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    if (!key) return res.status(400).json({ errno: 400, error: 'Missing required parameter: key' });
-    
-    // Retry logic: if result is empty, retry once after short delay
-    let result = null;
-    let retryCount = 0;
-    const maxRetries = 1;
-    
-    while (retryCount <= maxRetries) {
-      if (retryCount > 0) {
-        console.log(`[DeviceSetting] Retry ${retryCount}/${maxRetries} for key ${key} after 500ms delay...`);
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-      
-      console.log(`[DeviceSetting] Calling FoxESS API with:`, { sn, key });
-      result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key }, userConfig, req.user.uid);
-      
-      // 🔍 AGGRESSIVE DEBUG LOGGING
-      console.log(`[DeviceSetting] FULL RESPONSE OBJECT:`, JSON.stringify(result, null, 2));
-      console.log(`[DeviceSetting] errno:`, result?.errno);
-      console.log(`[DeviceSetting] result field:`, JSON.stringify(result?.result, null, 2));
-      console.log(`[DeviceSetting] result.data:`, JSON.stringify(result?.result?.data, null, 2));
-      console.log(`[DeviceSetting] result.value:`, result?.result?.value);
-      console.log(`[DeviceSetting] error field:`, result?.error);
-      console.log(`[DeviceSetting] msg field:`, result?.msg);
-      
-      // Check if result is not empty or if we got an explicit error (don't retry those)
-      const resultIsEmpty = result?.result && Object.keys(result.result).length === 0;
-      const hasError = result?.errno !== 0 && result?.error;
-      
-      if (!resultIsEmpty || hasError) {
-        // Either we got data or an explicit error - don't retry
-        console.log(`[DeviceSetting] Result received${resultIsEmpty ? ' (empty)' : ''}${hasError ? ` (error: ${result.errno})` : ''} - stopping retries`);
-        break;
-      }
-      
-      // Empty result and no explicit error - this might be transient
-      if (resultIsEmpty && retryCount < maxRetries) {
-        console.log(`[DeviceSetting] ⚠️ Empty result received for ${key} (possible transient failure) - will retry...`);
-        retryCount++;
-        continue;
-      } else if (resultIsEmpty && retryCount >= maxRetries) {
-        console.log(`[DeviceSetting] ⚠️ Empty result received for ${key} after ${maxRetries + 1} attempts (device may not support this setting)`);
-        break;
-      }
-    }
-    
-    if (result?.result?.data) {
-      console.log(`[DeviceSetting] Keys in result.data:`, Object.keys(result.result.data));
-      Object.entries(result.result.data).forEach(([k, v]) => {
-        console.log(`  - ${k}: ${JSON.stringify(v)} (type: ${typeof v})`);
-      });
-    }
-    console.log(`${'='.repeat(80)}\n`);
-    
-    res.json(result);
-  } catch (error) {
-    console.error('[API] /api/device/setting/get error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
 
 // Write device setting (for discovery / testing and curtailment control)
 app.post('/api/device/setting/set', authenticateUser, async (req, res) => {
@@ -6174,84 +5625,6 @@ app.post('/api/device/setting/set', authenticateUser, async (req, res) => {
   }
 });
 
-// Device status check (diagnostic endpoint to verify device connectivity and API responsiveness)
-app.get('/api/device/status/check', authenticateUser, async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    
-    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    
-    console.log(`[DeviceStatusCheck] Checking device status for SN: ${sn}`);
-    
-    // Try to fetch device list - this tells us if the API is responding and device is online
-    const deviceListResult = await foxessAPI.callFoxESSAPI('/op/v0/device/list', 'GET', null, userConfig, req.user.uid);
-    
-    let deviceFound = false;
-    let deviceInfo = null;
-    
-    if (deviceListResult?.errno === 0 && deviceListResult?.result?.data?.length > 0) {
-      const devices = deviceListResult.result.data;
-      deviceInfo = devices.find(d => d.sn === sn);
-      deviceFound = !!deviceInfo;
-    }
-    
-    // Try to fetch real-time data - this verifies the device is actively reporting
-    const realtimeResult = await foxessAPI.callFoxESSAPI(`/op/v0/device/real-time?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
-    
-    const realtimeWorking = realtimeResult?.errno === 0 && realtimeResult?.result?.data;
-    
-    // Try to fetch a sample setting to verify settings API is working
-    const settingResult = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key: 'ExportLimit' }, userConfig, req.user.uid);
-    
-    const settingResponseOk = settingResult?.errno === 0;
-    const settingHasData = settingResult?.result && Object.keys(settingResult.result).length > 0;
-    
-    const potentialIssues = [];
-    if (!deviceFound) potentialIssues.push('Device not found in device list - may be offline or using wrong SN');
-    if (!realtimeWorking) potentialIssues.push('Real-time data API not responding - device may be offline');
-    if (!settingResponseOk) potentialIssues.push('Settings API error - possible API issue with FoxESS');
-    if (settingResponseOk && !settingHasData) potentialIssues.push('Settings API returned empty result - this setting may not be supported by your device');
-
-    return res.json({
-      errno: 0,
-      result: {
-        deviceSn: sn,
-        deviceFound,
-        deviceInfo: deviceInfo ? { sn: deviceInfo.sn, deviceName: deviceInfo.deviceName, deviceType: deviceInfo.deviceType } : null,
-        realtimeWorking,
-        settingResponseOk,
-        settingHasData,
-        diagnosticSummary: {
-          apiResponsive: deviceListResult?.errno === 0,
-          deviceOnline: deviceFound,
-          realtimeDataAvailable: realtimeWorking,
-          settingReadSupported: settingResponseOk && settingHasData,
-          potentialIssues
-        }
-      }
-    });
-    
-  } catch (error) {
-    console.error('[API] /api/device/status/check error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Force charge time read
-app.get('/api/device/battery/forceChargeTime/get', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    const result = await foxessAPI.callFoxESSAPI(`/op/v0/device/battery/forceChargeTime/get?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.error('[API] /api/device/battery/forceChargeTime/get error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
 // Force charge time set
 app.post('/api/device/battery/forceChargeTime/set', async (req, res) => {
   try {
@@ -6266,310 +5639,7 @@ app.post('/api/device/battery/forceChargeTime/set', async (req, res) => {
   }
 });
 
-// FoxESS: Get meter reader (legacy endpoint used by UI)
-app.post('/api/device/getMeterReader', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.body.sn || userConfig?.deviceSn;
-    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    const body = Object.assign({ sn }, req.body);
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/getMeterReader', 'POST', body, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.error('[API] /api/device/getMeterReader error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Dedicated temperatures endpoint - returns only temperature-related variables
-app.get('/api/inverter/temps', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    const variables = ['batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation'];
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', { sn, variables }, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.error('[API] /api/inverter/temps error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Device report (daily, monthly, yearly, hourly data)
-app.get('/api/inverter/report', authenticateUser, async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    
-    const dimension = req.query.dimension || 'month';
-    const year = parseInt(req.query.year) || new Date().getFullYear();
-    const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
-    
-    // FoxESS API dimensions:
-    // 'year' = monthly data for the year (needs: year)
-    // 'month' = daily data for the month (needs: year, month)
-    const body = {
-      sn,
-      dimension,
-      year,
-      variables: ['generation', 'feedin', 'gridConsumption', 'chargeEnergyToTal', 'dischargeEnergyToTal']
-    };
-    
-    // Add month for 'month' dimension
-    if (dimension === 'month') {
-      body.month = month;
-    }
-    
-    console.log(`[API] /api/inverter/report - dimension: ${dimension}, body: ${JSON.stringify(body)}`);
-    
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/report/query', 'POST', body, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.error('[API] /api/inverter/report error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Device generation summary
-app.get('/api/inverter/generation', authenticateUser, async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    
-    // Get point-in-time generation data (today, month, cumulative)
-    const genResult = await foxessAPI.callFoxESSAPI(`/op/v0/device/generation?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
-    
-    // Enhance with yearly data from report endpoint
-    try {
-      const year = new Date().getFullYear();
-      // Try multiple variable names — AC-coupled systems may not report under 'generation'.
-      // Priority: generation > generationPower > pvPower (pick first with non-zero sum)
-      const reportVarCandidates = ['generation', 'generationPower', 'pvPower'];
-      const reportBody = {
-        sn,
-        dimension: 'year',
-        year,
-        variables: reportVarCandidates
-      };
-      const reportResult = await foxessAPI.callFoxESSAPI('/op/v0/device/report/query', 'POST', reportBody, userConfig, req.user.uid);
-      
-      // Extract yearly generation from report — prefer first candidate with a non-zero sum
-      if (reportResult.result && Array.isArray(reportResult.result) && reportResult.result.length > 0) {
-        let yearGeneration = 0;
-        for (const candidate of reportVarCandidates) {
-          const varEntry = reportResult.result.find(v => v.variable === candidate);
-          if (varEntry && Array.isArray(varEntry.values)) {
-            const sum = varEntry.values.reduce((acc, val) => acc + (val || 0), 0);
-            if (sum > 0) { yearGeneration = sum; break; }
-          }
-        }
-        if (genResult.result && typeof genResult.result === 'object') {
-          genResult.result.year = yearGeneration;
-          genResult.result.yearGeneration = yearGeneration;
-        }
-      }
-    } catch (reportError) {
-      // Log but don't fail - report endpoint might not be available
-      console.warn('[API] /api/inverter/generation - report endpoint failed:', reportError.message);
-    }
-    
-    res.json(genResult);
-  } catch (error) {
-    console.error('[API] /api/inverter/generation error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
 // ==================== DIAGNOSTIC ENDPOINTS ====================
-
-// Discover all available variables for a device (topology detection)
-app.get('/api/inverter/discover-variables', authenticateUser, async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const deviceSN = req.query.sn || userConfig?.deviceSn;
-    if (!deviceSN) {
-      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    }
-
-    console.log(`[Diagnostics] Discovering variables for device: ${deviceSN}`);
-    
-    // Call FoxESS API to get available variables
-    const result = await foxessAPI.callFoxESSAPI(
-      `/op/v0/device/variable/get?deviceSN=${encodeURIComponent(deviceSN)}`,
-      'GET',
-      null,
-      userConfig,
-      req.user.uid
-    );
-
-    console.log(`[Diagnostics] Variables discovered:`, result);
-    res.json(result);
-  } catch (error) {
-    console.error('[Diagnostics] discover-variables error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Get ALL real-time data (no variable filtering) for topology analysis
-app.post('/api/inverter/all-data', authenticateUser, async (req, res) => {
-  try {
-    console.log(`[Diagnostics] all-data endpoint called by user: ${req.user.uid}`);
-    
-    const userConfig = await getUserConfig(req.user.uid);
-    console.log(`[Diagnostics] User config loaded, deviceSn: ${userConfig?.deviceSn}`);
-    
-    const sn = req.body.sn || userConfig?.deviceSn;
-    if (!sn) {
-      console.error('[Diagnostics] No device SN found');
-      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    }
-
-    console.log(`[Diagnostics] Querying ALL variables for device: ${sn}`);
-    
-    // Use the comprehensive list of all available variables
-    // Including PV, meter, battery, loads, grid, etc.
-    const allVariables = [
-      'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power',
-      'meterPower', 'meterPower2', 'meterPowerR', 'meterPowerS', 'meterPowerT',
-      'loadsPower', 'loadsPowerR', 'loadsPowerS', 'loadsPowerT',
-      'generationPower', 'feedinPower', 'gridConsumptionPower',
-      'batChargePower', 'batDischargePower', 'batVolt', 'batCurrent', 'SoC',
-      'invBatVolt', 'invBatCurrent', 'invBatPower',
-      'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation', 'chargeTemperature',
-      'RVolt', 'RCurrent', 'RFreq', 'RPower',
-      'SVolt', 'SCurrent', 'SFreq', 'SPower',
-      'TVolt', 'TCurrent', 'TFreq', 'TPower',
-      'epsPower', 'epsVoltR', 'epsCurrentR', 'epsPowerR',
-      'epsVoltS', 'epsCurrentS', 'epsPowerS',
-      'epsVoltT', 'epsCurrentT', 'epsPowerT',
-      'ReactivePower', 'PowerFactor', 'runningState', 'currentFault'
-    ];
-
-    const body = {
-      sn,
-      variables: allVariables
-    };
-
-    console.log(`[Diagnostics] Calling FoxESS API /op/v0/device/real/query with ${allVariables.length} variables`);
-    
-    const result = await foxessAPI.callFoxESSAPI(
-      '/op/v0/device/real/query',
-      'POST',
-      body,
-      userConfig,
-      req.user.uid
-    );
-
-    console.log(`[Diagnostics] FoxESS API response errno: ${result.errno}, has result: ${!!result.result}`);
-    
-    if (result.errno !== 0) {
-      console.warn(`[Diagnostics] FoxESS API returned error: ${result.errno} - ${result.msg || result.error}`);
-      return res.json(result); // Return the error response as-is
-    }
-
-    // Add topology hints based on data
-    if (result.result && Array.isArray(result.result)) {
-      const datas = result.result[0]?.datas || [];
-      const pvPower = datas.find(d => d.variable === 'pvPower')?.value || 0;
-      const meterPower = datas.find(d => d.variable === 'meterPower')?.value || null;
-      const meterPower2 = datas.find(d => d.variable === 'meterPower2')?.value || null;
-      const batChargePower = datas.find(d => d.variable === 'batChargePower')?.value || 0;
-      const gridConsumptionPower = datas.find(d => d.variable === 'gridConsumptionPower')?.value || 0;
-
-      result.topologyHints = {
-        pvPower,
-        meterPower,
-        meterPower2,
-        batChargePower,
-        gridConsumptionPower,
-        likelyTopology: 
-          (pvPower < 0.1 && (batChargePower > 0.5 || meterPower2 > 0.5) && gridConsumptionPower < 0.5)
-            ? 'AC-coupled (external PV via meter)'
-            : (pvPower > 0.5)
-            ? 'DC-coupled (standard)'
-            : 'Unknown (check during solar production hours)'
-      };
-    }
-
-    console.log(`[Diagnostics] All data retrieved, topology hints:`, result.topologyHints);
-    res.json(result);
-  } catch (error) {
-    console.error('[Diagnostics] all-data error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// EMS list
-app.get('/api/ems/list', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/ems/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.error('[API] /api/ems/list error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Module list
-app.get('/api/module/list', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/module/list', 'POST', { currentPage: 1, pageSize: 10, sn: userConfig?.deviceSn }, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.error('[API] /api/module/list error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Module signal (requires moduleSN parameter)
-app.get('/api/module/signal', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const moduleSN = req.query.moduleSN;
-    
-    if (!moduleSN) {
-      return res.status(400).json({ errno: 400, error: 'moduleSN parameter is required' });
-    }
-    
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/module/getSignal', 'POST', { sn: moduleSN }, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.error('[API] /api/module/signal error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Meter list
-app.get('/api/meter/list', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/gw/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.error('[API] /api/meter/list error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Get work mode setting (default active mode, not scheduler)
-app.get('/api/device/workmode/get', async (req, res) => {
-  try {
-    const userConfig = await getUserConfig(req.user.uid);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-
-    const result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key: 'WorkMode' }, userConfig, req.user.uid);
-    res.json(result);
-  } catch (error) {
-    console.error('[API] /api/device/workmode/get error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
 
 // Set work mode setting (default active mode, not scheduler)
 app.post('/api/device/workmode/set', async (req, res) => {
@@ -6608,18 +5678,9 @@ app.post('/api/device/workmode/set', async (req, res) => {
 // (Amber sites handler moved earlier to allow unauthenticated callers)
 // (Amber prices handler moved earlier to allow unauthenticated callers)
 
-// Weather endpoint
-app.get('/api/weather', async (req, res) => {
-  try {
-    await tryAttachUser(req);
-    const place = req.query.place || 'Sydney';
-    const days = parseInt(req.query.days || '3', 10);
-    const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
-    const result = await getCachedWeatherData(req.user?.uid || 'anonymous', place, days, forceRefresh);
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ errno: 500, error: error.message });
-  }
+registerWeatherRoutes(app, {
+  getCachedWeatherData,
+  tryAttachUser
 });
 
 // Scheduler endpoints
@@ -6876,10 +5937,9 @@ app.post('/api/scheduler/v1/clear-all', authenticateUser, async (req, res) => {
     
     // Log to history
     try {
-      await db.collection('users').doc(userId).collection('history').add({
+      await addHistoryEntry(userId, {
         type: 'scheduler_clear',
-        by: userId,
-        timestamp: serverTimestamp()
+        by: userId
       });
     } catch (e) { console.warn('[Scheduler] Failed to write history entry:', e && e.message); }
 
@@ -6935,14 +5995,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   const { soc, batTemp, ambientTemp } = parseAutomationTelemetry(inverterData);
   
   // Parse Amber prices
-  let feedInPrice = null;
-  let buyPrice = null;
-  if (Array.isArray(cache.amber)) {
-    const feedInInterval = cache.amber.find(ch => ch.channelType === 'feedIn' && ch.type === 'CurrentInterval');
-    const generalInterval = cache.amber.find(ch => ch.channelType === 'general' && ch.type === 'CurrentInterval');
-    if (feedInInterval) feedInPrice = -feedInInterval.perKwh; // Convert to positive (what you earn)
-    if (generalInterval) buyPrice = generalInterval.perKwh;
-  }
+  const { feedInPrice, buyPrice } = getCurrentAmberPrices(cache.amber);
   
   logger.debug('Automation', `Evaluating rule '${rule.name}' - Live data: SoC=${soc}%, BatTemp=${batTemp}°C, FeedIn=${feedInPrice?.toFixed(1)}¢, Buy=${buyPrice?.toFixed(1)}¢`);
   
@@ -7696,38 +6749,11 @@ async function applyRuleAction(userId, rule, userConfig) {
     console.warn('[Automation] Failed to get current scheduler:', e && e.message ? e.message : e);
   }
   
-  // Ensure we have at least one group (don't pad to 10 - use device's actual count)
-  if (currentGroups.length === 0) {
-    currentGroups.push({
-      enable: 0,
-      workMode: 'SelfUse',
-      startHour: 0, startMinute: 0,
-      endHour: 0, endMinute: 0,
-      minSocOnGrid: 10,
-      fdSoc: 10,
-      fdPwr: 0,
-      maxSoc: 100
-    });
-  }
-  
   // Clear all existing enabled segments (same as backend server.js does)
-  // This avoids FoxESS reordering issues and ensures clean state
-  let clearedCount = 0;
-  currentGroups.forEach((group, idx) => {
-    if (group.enable === 1 || group.startHour !== 0 || group.startMinute !== 0 || group.endHour !== 0 || group.endMinute !== 0) {
-      currentGroups[idx] = {
-        enable: 0,
-        workMode: 'SelfUse',
-        startHour: 0, startMinute: 0,
-        endHour: 0, endMinute: 0,
-        minSocOnGrid: 10,
-        fdSoc: 10,
-        fdPwr: 0,
-        maxSoc: 100
-      };
-      clearedCount++;
-    }
-  });
+  // This avoids FoxESS reordering issues and ensures clean state.
+  const clearedResult = clearSchedulerGroups(currentGroups);
+  currentGroups = clearedResult.groups;
+  const clearedCount = clearedResult.clearedCount;
   if (clearedCount > 0) {
     logger.debug('Automation', `Cleared ${clearedCount} existing segment(s)`);
   }
@@ -7741,22 +6767,15 @@ async function applyRuleAction(userId, rule, userConfig) {
   }
   
   // Build the new segment (V1 flat structure)
-  const normalizedFdPwr = Number(action.fdPwr ?? 0);
-  const segment = {
-    enable: 1,
-    workMode: action.workMode || 'SelfUse',
+  const segment = buildAutomationSchedulerSegment(action, {
     startHour,
     startMinute,
     endHour,
-    endMinute,
-    minSocOnGrid: action.minSocOnGrid ?? 20,
-    fdSoc: action.fdSoc ?? 35,
-    fdPwr: Number.isFinite(normalizedFdPwr) ? normalizedFdPwr : 0,
-    maxSoc: action.maxSoc ?? 90
-  };
+    endMinute
+  });
   
   // Always use Group 1 (index 0) for automation - clean slate approach
-  currentGroups[0] = segment;
+  currentGroups = applySegmentToGroups(currentGroups, segment, 0);
   console.log(`[SegmentSend] 📦 Final segment prepared for Group 1:`, JSON.stringify(segment, null, 2));
   console.log(`[SegmentSend] 📊 Total groups to send: ${currentGroups.length}`);
   
@@ -7917,7 +6936,7 @@ app.post('/api/auth/init-user', async (req, res) => {
     }, { merge: true });
     
     // Create default config
-    await db.collection('users').doc(userId).collection('config').doc('main').set({
+    await setUserConfig(userId, {
       deviceSn: '',
       foxessToken: '',
       amberApiKey: '',
@@ -7967,198 +6986,13 @@ app.post('/api/auth/cleanup-user', authenticateUser, async (req, res) => {
   }
 });
 
-// ==================== INVERTER HISTORY ENDPOINT ====================
-/**
- * Get inverter history data from FoxESS API
- * Handles large date ranges by splitting into 24-hour chunks
- * Caches results in Firestore to reduce API calls
- */
-app.get('/api/inverter/history', authenticateUser, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const userConfig = await getUserConfig(userId);
-    const sn = req.query.sn || userConfig?.deviceSn;
-    
-    if (!sn) {
-      return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
-    }
-    
-    let begin = Number(req.query.begin);
-    let end = Number(req.query.end);
-
-    const DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000;
-
-    if (!Number.isFinite(begin)) begin = Date.now() - DEFAULT_RANGE_MS;
-    if (!Number.isFinite(end)) end = Date.now();
-
-    // Normalize to milliseconds (FoxESS expects ms)
-    if (begin < 1e12) begin *= 1000;
-    if (end < 1e12) end *= 1000;
-
-    begin = Math.floor(begin);
-    end = Math.floor(end);
-    
-    
-    // Set a strict timeout for the FoxESS call
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Request timeout')), 9000)
-    );
-    
-    try {
-      const MAX_RANGE_MS = 24 * 60 * 60 * 1000; // 24 hours per FoxESS request
-
-      // If the requested window is small, call FoxESS once. For larger windows, split into chunks and merge results.
-      if ((end - begin) <= MAX_RANGE_MS) {
-        // Check cache first
-        const cachedResult = await getHistoryFromCacheFirestore(userId, sn, begin, end);
-        if (cachedResult) {
-          return res.json(cachedResult);
-        }
-        
-        const result = await Promise.race([
-          foxessAPI.callFoxESSAPI('/op/v0/device/history/query', 'POST', {
-            sn,
-            begin,
-            end,
-            variables: ['generationPower', 'pvPower', 'meterPower', 'meterPower2', 'feedinPower', 'gridConsumptionPower', 'loadsPower']
-          }, userConfig, userId),
-          timeoutPromise
-        ]);
-        
-        // Cache successful response
-        if (result && result.errno === 0) {
-          await setHistoryToCacheFirestore(userId, sn, begin, end, result).catch(e => console.warn('[History] Cache write failed:', e.message));
-        }
-        
-        return res.json(result);
-      }
-
-      // Build chunk ranges
-      const chunks = [];
-      let cursor = begin;
-      while (cursor < end) {
-        const chunkEnd = Math.min(end, cursor + MAX_RANGE_MS - 1);
-        chunks.push({ cbeg: cursor, cend: chunkEnd });
-        cursor = chunkEnd + 1;
-      }
-
-      // Aggregate results per variable
-      const aggMap = {}; // variable -> array of {time, value}
-      let deviceSN = sn;
-
-      for (const ch of chunks) {
-        // Check cache for this chunk
-        let chunkResp = await getHistoryFromCacheFirestore(userId, sn, ch.cbeg, ch.cend);
-        if (!chunkResp) {
-          chunkResp = await foxessAPI.callFoxESSAPI('/op/v0/device/history/query', 'POST', {
-            sn,
-            begin: ch.cbeg,
-            end: ch.cend,
-            variables: ['generationPower', 'pvPower', 'meterPower', 'meterPower2', 'feedinPower', 'gridConsumptionPower', 'loadsPower']
-          }, userConfig, userId);
-          
-          // Cache successful chunk response
-          if (chunkResp && chunkResp.errno === 0) {
-            await setHistoryToCacheFirestore(userId, sn, ch.cbeg, ch.cend, chunkResp).catch(e => console.warn('[History] Cache write failed:', e.message));
-          }
-        }
-
-        if (!chunkResp || chunkResp.errno !== 0) {
-          // Bubble up the upstream error
-          const errMsg = chunkResp && chunkResp.msg ? chunkResp.msg : 'Unknown FoxESS error';
-          console.warn(`[History] FoxESS chunk error for ${new Date(ch.cbeg).toISOString()} - ${new Date(ch.cend).toISOString()}: ${errMsg}`);
-          return res.status(500).json({ errno: chunkResp?.errno || 500, msg: `FoxESS API error: ${errMsg}` });
-        }
-
-        const r = Array.isArray(chunkResp.result) && chunkResp.result[0] ? chunkResp.result[0] : null;
-        if (!r) continue;
-        deviceSN = r.deviceSN || deviceSN;
-
-        const datas = Array.isArray(r.datas) ? r.datas : [];
-        for (const item of datas) {
-          const variable = item.variable || item.name || 'unknown';
-          if (!Array.isArray(item.data)) continue;
-          if (!aggMap[variable]) aggMap[variable] = [];
-          // Append all points (chunks are non-overlapping)
-          aggMap[variable].push(...item.data);
-        }
-
-        // Small delay to be kind to upstream when many chunks requested
-        await new Promise(resolve => setTimeout(resolve, 150));
-      }
-
-      // Merge & dedupe per-variable by time, then sort chronologically
-      const mergedDatas = [];
-      for (const [variable, points] of Object.entries(aggMap)) {
-        const mapByTime = new Map();
-        for (const p of points) {
-          // Use the time string prefix (YYYY-MM-DD HH:MM:SS) as key when available
-          const tKey = (typeof p.time === 'string' && p.time.length >= 19) ? p.time.substr(0, 19) : String(p.time);
-          mapByTime.set(tKey, p);
-        }
-        // Convert back to array and sort by key (YYYY-MM-DD HH:MM:SS sorts lexicographically)
-        const merged = Array.from(mapByTime.values()).sort((a, b) => {
-          const ta = (typeof a.time === 'string' ? a.time.substr(0,19) : String(a.time));
-          const tb = (typeof b.time === 'string' ? b.time.substr(0,19) : String(b.time));
-          return ta < tb ? -1 : (ta > tb ? 1 : 0);
-        });
-        mergedDatas.push({ unit: 'kW', data: merged, name: variable, variable });
-      }
-
-      return res.json({ errno: 0, msg: 'Operation successful', result: [{ datas: mergedDatas, deviceSN }] });
-    } catch (apiError) {
-      console.warn(`[History] API error: ${apiError.message}`);
-      res.status(500).json({ errno: 500, msg: `FoxESS API error: ${apiError.message}` });
-    }
-  } catch (error) {
-    console.error(`[History] Request error: ${error.message}`);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
+registerInverterHistoryRoutes(app, {
+  authenticateUser,
+  db,
+  foxessAPI,
+  getUserConfig,
+  logger
 });
-
-/**
- * Get inverter history from Firestore cache
- * Cache TTL: 30 minutes
- */
-async function getHistoryFromCacheFirestore(userId, sn, begin, end) {
-  try {
-    const cacheKey = `history_${sn}_${begin}_${end}`;
-    const docRef = db.collection('users').doc(userId).collection('cache').doc(cacheKey);
-    const doc = await docRef.get();
-    
-    if (doc.exists) {
-      const entry = doc.data();
-      const ttl = 30 * 60 * 1000; // 30 minutes
-      if (entry.timestamp && (Date.now() - entry.timestamp) < ttl) {
-        return entry.data;
-      }
-      // Delete expired entry
-      await docRef.delete().catch(() => {});
-    }
-    return null;
-  } catch (error) {
-    console.warn('[History] Cache get error:', error.message);
-    return null;
-  }
-}
-
-/**
- * Set inverter history to Firestore cache
- */
-async function setHistoryToCacheFirestore(userId, sn, begin, end, data) {
-  try {
-    const cacheKey = `history_${sn}_${begin}_${end}`;
-    const docRef = db.collection('users').doc(userId).collection('cache').doc(cacheKey);
-    await docRef.set({
-      timestamp: Date.now(),
-      data: data,
-      ttl: Math.floor(Date.now() / 1000) + (30 * 60) // Firestore TTL in seconds (30 min from now)
-    });
-  } catch (error) {
-    console.warn('[History] Cache set error:', error.message);
-    // Don't throw - cache is optional
-  }
-}
 
 // ==================== 404 HANDLER ====================
 // Catch-all for undefined routes to prevent HTML responses

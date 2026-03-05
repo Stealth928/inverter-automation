@@ -18,6 +18,7 @@ function getRepoRoot() {
 
 const repoRoot = getRepoRoot();
 const backendFile = path.join(repoRoot, 'functions', 'index.js');
+const backendRoutesDir = path.join(repoRoot, 'functions', 'api', 'routes');
 const apiClientFile = path.join(repoRoot, 'frontend', 'js', 'api-client.js');
 const frontendDir = path.join(repoRoot, 'frontend');
 const outputDocFile = path.join(repoRoot, 'docs', 'API_CONTRACT_BASELINE_MAR26.md');
@@ -102,7 +103,7 @@ function lineNumberFromIndex(content, index) {
   return content.slice(0, index).split(/\r?\n/).length;
 }
 
-function parseBackendRoutes(content) {
+function parseBackendRoutesFromFile(content, sourceFile) {
   const lines = content.split(/\r?\n/);
   const routeLinePattern = /^\s*app\.(get|post|put|delete|patch)\(\s*['"]([^'"]+)['"]\s*,\s*(.*)$/;
   const routes = [];
@@ -146,10 +147,30 @@ function parseBackendRoutes(content) {
       method: route.method,
       path: route.path,
       authRequirement,
-      handlerLocation: `functions/index.js:${route.line}`,
+      handlerLocation: `${sourceFile}:${route.line}`,
       lineIndex: route.lineIndex,
     };
   });
+}
+
+function getBackendRouteFiles() {
+  const files = [backendFile];
+  if (fs.existsSync(backendRoutesDir)) {
+    const routeFiles = walkFiles(backendRoutesDir, (filePath) => filePath.toLowerCase().endsWith('.js'))
+      .sort();
+    files.push(...routeFiles);
+  }
+  return files;
+}
+
+function parseBackendRoutes(routeFiles) {
+  const routes = [];
+  routeFiles.forEach((filePath) => {
+    const content = readFileOrThrow(filePath);
+    const source = toRelPath(filePath);
+    routes.push(...parseBackendRoutesFromFile(content, source));
+  });
+  return routes;
 }
 
 function parseApiClientEndpoints(content) {
@@ -386,10 +407,10 @@ function generateMarkdownReport(data) {
 }
 
 function main() {
-  const backendContent = readFileOrThrow(backendFile);
+  const routeFiles = getBackendRouteFiles();
   const apiClientContent = readFileOrThrow(apiClientFile);
 
-  const backendRoutes = parseBackendRoutes(backendContent);
+  const backendRoutes = parseBackendRoutes(routeFiles);
   const apiClientEntries = dedupeByMethodAndPath(parseApiClientEndpoints(apiClientContent));
   const inlineHtmlEntries = parseInlineHtmlEndpoints(frontendDir);
   const inlinePathEntries = groupByPath(inlineHtmlEntries);

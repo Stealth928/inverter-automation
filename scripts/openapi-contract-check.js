@@ -19,6 +19,7 @@ function getRepoRoot() {
 const repoRoot = getRepoRoot();
 const openApiSpecPath = path.join(repoRoot, 'docs', 'openapi', 'openapi.v1.yaml');
 const backendFilePath = path.join(repoRoot, 'functions', 'index.js');
+const backendRoutesDir = path.join(repoRoot, 'functions', 'api', 'routes');
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch']);
 
@@ -109,7 +110,26 @@ function readFileOrThrow(filePath) {
   return fs.readFileSync(filePath, 'utf8');
 }
 
-function parseBackendRoutes(content) {
+function walkFiles(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    return [];
+  }
+  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  const results = [];
+  entries.forEach((entry) => {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...walkFiles(fullPath));
+      return;
+    }
+    if (entry.name.toLowerCase().endsWith('.js')) {
+      results.push(fullPath);
+    }
+  });
+  return results;
+}
+
+function parseBackendRoutesFromFile(content, sourceFile) {
   const lines = content.split(/\r?\n/);
   const routeLinePattern = /^\s*app\.(get|post|put|delete|patch)\(\s*['"]([^'"]+)['"]/;
   const routes = [];
@@ -129,10 +149,20 @@ function parseBackendRoutes(content) {
     routes.push({
       method,
       path: routePath,
-      source: `functions/index.js:${i + 1}`,
+      source: `${sourceFile}:${i + 1}`,
     });
   }
 
+  return routes;
+}
+
+function parseBackendRoutes() {
+  const files = [backendFilePath, ...walkFiles(backendRoutesDir).sort()];
+  const routes = [];
+  files.forEach((filePath) => {
+    const content = readFileOrThrow(filePath);
+    routes.push(...parseBackendRoutesFromFile(content, toRelPath(filePath)));
+  });
   return routes;
 }
 
@@ -228,11 +258,9 @@ function parseOpenApiOperations(specDoc) {
 
 function main() {
   let specContent;
-  let backendContent;
 
   try {
     specContent = readFileOrThrow(openApiSpecPath);
-    backendContent = readFileOrThrow(backendFilePath);
   } catch (error) {
     console.error(`[OpenAPI] ${error.message}`);
     process.exit(1);
@@ -247,7 +275,7 @@ function main() {
     process.exit(1);
   }
 
-  const backendRoutes = parseBackendRoutes(backendContent);
+  const backendRoutes = parseBackendRoutes();
   const { operations, errors: structuralErrors } = parseOpenApiOperations(specDoc);
 
   const parityMismatches = operations

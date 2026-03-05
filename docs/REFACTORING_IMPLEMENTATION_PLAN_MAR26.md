@@ -1,6 +1,6 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Active execution - Sprint 1 complete, P1 in progress  
+Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 1 complete  
 Scope: Planning + execution progress tracking  
 Last Updated: 2026-03-05  
 Primary Branch: `RefactoringMar26`
@@ -21,6 +21,9 @@ Primary Branch: `RefactoringMar26`
 |---|---|---|---:|
 | P0 | G0 | ✅ Complete | 100% |
 | P1 | G1 | ⏳ In Progress | 10/10 tasks drafted, key contract artifacts implemented, formal gate close pending |
+| P2 | G2 | ⏳ In Progress | Wave 1 complete (3/3), Wave 2 step 3 in progress (inverter read + history + device read + diagnostics read routes extracted) |
+
+Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
 ---
 
@@ -317,6 +320,233 @@ Primary Branch: `RefactoringMar26`
   - historical P0 start sign-off remains a record gap,
   - active P1 execution approval is now documented in-repo with approver + date.
 - Next target chunk: execute Wave 1 utility extraction from the locked P2 kickoff sequence.
+
+### ✅ 2026-03-05 - Chunk 17 (P2 Wave 1 step 1: pricing normalization extraction)
+
+- Implemented shared pricing interval parsing utility:
+  - `functions/lib/pricing-normalization.js`
+  - exports `findCurrentInterval()` and `getCurrentAmberPrices()`.
+- Replaced duplicated Amber current-interval parsing in `functions/index.js`:
+  - automation rule evaluation now reads current feed-in/buy prices via `getCurrentAmberPrices(cache.amber)`
+  - curtailment current feed-in lookup now uses `getCurrentAmberPrices(amberData)` with equivalent error behavior.
+- Added focused unit tests:
+  - `functions/test/pricing-normalization.test.js`
+- Validation passed:
+  - `npm --prefix functions test -- pricing-normalization.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- Updated P2 kickoff tracker artifact:
+  - marked Wave 1 item 1 as done in `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`.
+- Next target chunk: P2 Wave 1 step 2 — extract scheduler segment construction into `lib/automation-actions.js`.
+
+### ✅ 2026-03-05 - Chunk 18 (P2 Wave 1 step 2: scheduler action extraction)
+
+- Implemented shared scheduler-action construction utilities:
+  - `functions/lib/automation-actions.js`
+  - includes default-group creation, group normalization/clear, segment build, and segment apply helpers.
+- Rewired `applyRuleAction()` in `functions/index.js` to use extracted helpers:
+  - replaced inline group-clear block with `clearSchedulerGroups(...)`
+  - replaced inline segment object construction with `buildAutomationSchedulerSegment(...)`
+  - replaced direct group assignment with `applySegmentToGroups(...)`
+- Added focused unit tests:
+  - `functions/test/automation-actions.test.js`
+- Validation passed:
+  - `npm --prefix functions test -- automation-actions.test.js pricing-normalization.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- Updated P2 kickoff tracker artifact:
+  - marked Wave 1 item 2 as done in `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`.
+- Next target chunk: P2 Wave 1 step 3 — extract config/rules/history Firestore reads/writes into repository modules under `functions/lib/repositories/`.
+
+### ✅ 2026-03-05 - Chunk 19 (P2 Wave 1 step 3: repository extraction completion)
+
+- Expanded repository layer for user-scoped config/rules/history operations:
+  - `functions/lib/repositories/user-automation-repository.js`
+  - added helpers for config set/update, rule get/set/delete, rule cooldown reset batch, and history list retrieval.
+- Rewired user-scoped config/rule/history flows in `functions/index.js` to repository helpers:
+  - config writes/updates (`/api/config*`, weather timezone sync, setup validation persistence, init-user default config)
+  - rule CRUD + rule runtime timestamp updates (`/api/automation/rule/*`, trigger/reset/cycle flows)
+  - history reads/writes (`/api/automation/history`, scheduler clear history log)
+- Added/expanded repository contract tests:
+  - `functions/test/user-automation-repository.test.js`
+  - now covers read fallbacks + write/query helpers.
+- Validation passed:
+  - `npm --prefix functions test -- user-automation-repository.test.js rule-action-validation-routes.test.js quick-control.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- Updated kickoff tracker artifact:
+  - marked Wave 1 item 3 as done in `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`.
+- Next target chunk: P2 Wave 2 step 1 — start read-only route extraction into `functions/api/routes/` (`pricing.js`, `weather.js`, `metrics.js`).
+
+### ✅ 2026-03-05 - Chunk 20 (P2 Wave 2 step 1: read-only route extraction)
+
+- Extracted read-only route handlers into route modules under `functions/api/routes/`:
+  - `functions/api/routes/pricing.js`
+  - `functions/api/routes/weather.js`
+  - `functions/api/routes/metrics.js`
+- Rewired `functions/index.js` to register route modules while preserving existing paths and middleware behavior:
+  - pre-auth route registration for pricing + metrics
+  - post-auth route registration position preserved for weather
+- Added focused supertest coverage for extracted modules:
+  - `functions/test/read-only-routes-modules.test.js`
+- Updated contract/gate tooling to handle multi-file route declarations (no longer `index.js`-only):
+  - `scripts/api-contract-baseline.js`
+  - `scripts/openapi-contract-check.js`
+  - `scripts/pre-deploy-check.js`
+- Validation passed:
+  - `npm --prefix functions test -- read-only-routes-modules.test.js routes-integration.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- Updated kickoff tracker artifact:
+  - marked Wave 2 item 1 as done in `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`.
+- Next target chunk: P2 Wave 2 step 2 — continue route extraction coverage and add supertest coverage for remaining moved read-only handlers.
+
+### ✅ 2026-03-05 - Chunk 21 (P2 Wave 2 step 2: coverage + contract gate alignment)
+
+- Expanded supertest coverage for extracted read-only route modules:
+  - `functions/test/read-only-routes-modules.test.js`
+  - added checks for:
+    - metrics user-scope auth enforcement and user-scope success path
+    - pricing current cache-hit behavior
+    - pricing actual endpoint auth gate + matching-interval response path
+    - weather anonymous fallback behavior
+- Aligned contract/gate scripts with route-module extraction architecture:
+  - `scripts/api-contract-baseline.js` now discovers backend routes from:
+    - `functions/index.js`
+    - `functions/api/routes/**/*.js`
+  - `scripts/openapi-contract-check.js` now validates parity against route declarations in:
+    - `functions/index.js`
+    - `functions/api/routes/**/*.js`
+  - `scripts/pre-deploy-check.js` route presence checks now scan:
+    - `functions/index.js`
+    - `functions/api/routes/**/*.js`
+- Validation passed:
+  - `npm --prefix functions test -- read-only-routes-modules.test.js --runInBand`
+  - `npm --prefix functions test -- routes-integration.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/api-contract-baseline.js --silent`
+  - `node scripts/openapi-contract-check.js --silent`
+  - `node scripts/pre-deploy-check.js`
+- Next target chunk: P2 Wave 2 step 3 — evaluate remaining read-only candidates for extraction and keep `index.js` focused on composition/wiring.
+
+### ✅ 2026-03-05 - Chunk 22 (P2 Wave 2 step 3: inverter read-only extraction)
+
+- Extracted core inverter read-only GET endpoints from `functions/index.js` into:
+  - `functions/api/routes/inverter-read.js`
+  - routes moved:
+    - `/api/inverter/list`
+    - `/api/inverter/real-time`
+    - `/api/inverter/settings`
+    - `/api/inverter/temps`
+    - `/api/inverter/report`
+    - `/api/inverter/generation`
+    - `/api/inverter/discover-variables`
+- Rewired composition in `functions/index.js` via:
+  - `registerInverterReadRoutes(app, { ... })`
+- Added supertest coverage for the new module:
+  - `functions/test/read-only-routes-modules.test.js`
+  - coverage includes:
+    - inverter list proxy request shape
+    - real-time missing-SN guard + force-refresh path
+    - generation yearly enrichment from report data
+- Updated P2 kickoff tracker to mark Wave 2 item 2 as done:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Validation passed:
+  - `npm --prefix functions test -- read-only-routes-modules.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/api-contract-baseline.js --silent`
+  - `node scripts/openapi-contract-check.js --silent`
+  - `node scripts/pre-deploy-check.js`
+- Next target chunk: continue Wave 2 step 3 by extracting remaining read-only candidates (history + diagnostic read paths) to further reduce `functions/index.js` routing surface.
+
+### ✅ 2026-03-05 - Chunk 23 (P2 Wave 2 step 3: inverter history route extraction)
+
+- Extracted inverter history route and cache helpers from `functions/index.js` into:
+  - `functions/api/routes/inverter-history.js`
+  - moved:
+    - `/api/inverter/history`
+    - Firestore cache helpers previously inlined with history handling
+- Rewired composition in `functions/index.js` via:
+  - `registerInverterHistoryRoutes(app, { ... })`
+- Added/expanded supertest coverage for extracted history route:
+  - `functions/test/read-only-routes-modules.test.js`
+  - coverage includes:
+    - explicit auth middleware enforcement
+    - cache-hit return path for single-range history requests
+    - cache-miss fetch + cache-write path with normalized millisecond range inputs
+- Hardened extracted route timeout handling:
+  - replaced raw `Promise.race` timer pattern with a safe `withTimeout(...)` helper that clears timeout handles after completion.
+- Updated P2 kickoff tracker artifact to reflect Wave 2 step 3 progress:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Validation passed:
+  - `npm --prefix functions test -- read-only-routes-modules.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/api-contract-baseline.js --silent`
+  - `node scripts/openapi-contract-check.js --silent`
+  - `node scripts/pre-deploy-check.js`
+- Next target chunk: continue Wave 2 step 3 by extracting remaining read-only diagnostic/device-read candidates so `functions/index.js` remains primarily composition and orchestration wiring.
+
+### ✅ 2026-03-05 - Chunk 24 (P2 Wave 2 step 3: device read-route extraction)
+
+- Extracted additional read-only device and diagnostics endpoints from `functions/index.js` into:
+  - `functions/api/routes/device-read.js`
+  - moved:
+    - `/api/device/battery/soc/get`
+    - `/api/device/status/check`
+    - `/api/device/battery/forceChargeTime/get`
+    - `/api/device/getMeterReader`
+    - `/api/ems/list`
+    - `/api/module/list`
+    - `/api/module/signal`
+    - `/api/meter/list`
+    - `/api/device/workmode/get`
+- Rewired composition in `functions/index.js` via:
+  - `registerDeviceReadRoutes(app, { ... })`
+- Expanded supertest route-module coverage:
+  - `functions/test/read-only-routes-modules.test.js`
+  - added checks for:
+    - module signal required-parameter guard
+    - battery SoC read missing-SN guard
+    - workmode read proxy payload and user-scoped config usage
+    - device status diagnostic envelope path
+- Validation passed:
+  - `npm --prefix functions test -- read-only-routes-modules.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/api-contract-baseline.js --silent`
+  - `node scripts/openapi-contract-check.js --silent`
+  - `node scripts/pre-deploy-check.js`
+- Updated Wave 2 kickoff tracker note with latest extraction set:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: continue Wave 2 step 3 by extracting remaining read-only candidates (for example: safe diagnostic/read paths around device settings and inverter diagnostics) to further shrink `functions/index.js` routing surface.
+
+### ✅ 2026-03-05 - Chunk 25 (P2 Wave 2 step 3: diagnostics read-route extraction + logging safety fix)
+
+- Extracted remaining diagnostic read endpoints from `functions/index.js` into:
+  - `functions/api/routes/diagnostics-read.js`
+  - moved:
+    - `/api/device/setting/get`
+    - `/api/inverter/all-data`
+- Rewired composition in `functions/index.js` via:
+  - `registerDiagnosticsReadRoutes(app, { ... })`
+- Added supertest coverage for extracted diagnostics routes:
+  - `functions/test/read-only-routes-modules.test.js`
+  - added checks for:
+    - required-key guard on `/api/device/setting/get`
+    - successful proxy payload/response flow on `/api/device/setting/get`
+    - topology hint generation on `/api/inverter/all-data`
+- Fixed runtime logging regression introduced by prior module extraction:
+  - replaced `logger.log(...)` usage with `console.log(...)` in extracted read modules where runtime logger does not expose `.log`:
+    - `functions/api/routes/inverter-read.js`
+    - `functions/api/routes/device-read.js`
+- Updated Wave 2 kickoff tracker note with latest extraction set:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Validation passed:
+  - `npm --prefix functions test -- read-only-routes-modules.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/api-contract-baseline.js --silent`
+  - `node scripts/openapi-contract-check.js --silent`
+  - `node scripts/pre-deploy-check.js`
+- Next target chunk: continue Wave 2 step 3 by evaluating whether `/api/scheduler/v1/get` should be isolated as read-only scheduler-route wiring before beginning Wave 3 mutation-route extraction.
 
 ---
 
@@ -1117,6 +1347,12 @@ When execution is approved, run phases in order:
 | 2026-03-05 | Extracted device telemetry variable normalization into `functions/lib/device-telemetry.js` and wired `evaluateRule()` to shared parsing (`parseAutomationTelemetry`) to remove inline alias coupling. Added regression tests in `functions/test/device-telemetry.test.js` and passed lint/test validation. | Codex |
 | 2026-03-05 | Locked P2 backend decomposition kickoff sequence in `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`, and updated architecture/index docs (`docs/P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md`, `docs/INDEX.md`) to track executable refactor artifacts and sequencing guardrails. | Codex |
 | 2026-03-05 | Updated governance records for active P1 execution: captured explicit named approver evidence in Section 14A and aligned execution-authorization status wording to reflect recorded in-repo approval for continuation work. | Codex |
+| 2026-03-05 | Completed P2 Wave 1 step 1 extraction: centralized Amber current-interval parsing in `functions/lib/pricing-normalization.js`, rewired automation and curtailment call sites in `functions/index.js`, added `functions/test/pricing-normalization.test.js`, and validated with full pre-deploy checks. | Codex |
+| 2026-03-05 | Completed P2 Wave 1 step 2 extraction: moved scheduler segment/group construction logic into `functions/lib/automation-actions.js`, rewired `applyRuleAction()` to shared helpers, added `functions/test/automation-actions.test.js`, and validated with full pre-deploy checks. | Codex |
+| 2026-03-05 | Continued P2 Wave 2 extraction by moving core inverter read-only GET handlers into `functions/api/routes/inverter-read.js`, rewiring composition in `functions/index.js`, expanding supertest coverage in `functions/test/read-only-routes-modules.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
+| 2026-03-05 | Continued P2 Wave 2 step 3 by extracting `/api/inverter/history` and history cache helpers into `functions/api/routes/inverter-history.js`, wiring route composition in `functions/index.js`, expanding route-module supertest coverage, and validating all contract/pre-deploy gates. | Codex |
+| 2026-03-05 | Continued P2 Wave 2 step 3 by extracting additional device read-only endpoints into `functions/api/routes/device-read.js`, wiring registration in `functions/index.js`, adding route-module tests for device/module/workmode/diagnostic reads, and validating all quality and contract gates. | Codex |
+| 2026-03-05 | Continued P2 Wave 2 step 3 by extracting diagnostics read endpoints into `functions/api/routes/diagnostics-read.js`, wiring registration in `functions/index.js`, extending route-module tests for device-setting/all-data diagnostic reads, and patching extracted route logging calls (`logger.log` -> `console.log`) to match runtime logger capabilities. | Codex |
 
 ---
 

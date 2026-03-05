@@ -27,9 +27,9 @@ Lock the first implementation sequence for P2 so backend extraction starts with 
 
 ### Wave 1 (utility-first extraction, no route moves)
 
-1. Extract pricing interval parsing helpers from `index.js` into `lib/pricing-normalization.js`.
-2. Extract scheduler group construction into `lib/automation-actions.js`.
-3. Extract Firestore read/write helpers for config/rules/history into `lib/repositories/*.js`.
+1. ✅ [DONE 2026-03-05] Extract pricing interval parsing helpers from `index.js` into `lib/pricing-normalization.js` and wire call sites.
+2. ✅ [DONE 2026-03-05] Extract scheduler group construction into `lib/automation-actions.js` and wire `applyRuleAction()` path.
+3. ✅ [DONE 2026-03-05] Extract Firestore read/write helpers for config/rules/history into `lib/repositories/*.js` and migrate user-scoped config/rule/history flows.
 
 Validation for Wave 1:
 - `npm --prefix functions run lint`
@@ -38,12 +38,17 @@ Validation for Wave 1:
 
 ### Wave 2 (read-only route extraction)
 
-1. Create route modules under `functions/api/routes/` for read-only endpoints:
+1. ✅ [DONE 2026-03-05] Create route modules under `functions/api/routes/` for read-only endpoints:
    - `pricing.js`
    - `weather.js`
    - `metrics.js`
-2. Keep existing route paths and middleware chain unchanged.
-3. Keep `functions/index.js` as composition/root wiring only.
+2. ✅ [DONE 2026-03-05] Keep existing route paths and middleware chain unchanged while extracting core inverter read-only GET handlers into:
+   - `inverter-read.js`
+3. ⏳ [IN PROGRESS 2026-03-05] Keep `functions/index.js` as composition/root wiring only.
+   - latest extractions in this wave:
+     - `inverter-history.js` (`/api/inverter/history` + Firestore cache helpers)
+     - `device-read.js` (battery/device/module/meter/EMS read endpoints)
+     - `diagnostics-read.js` (`/api/device/setting/get`, `/api/inverter/all-data`)
 
 Validation for Wave 2:
 - Existing API contract checks remain green:

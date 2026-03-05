@@ -126,6 +126,31 @@ section('4. Verifying Module Imports in index.js');
 
 const indexPath = path.join(repoRoot, 'functions', 'index.js');
 const indexContent = fs.readFileSync(indexPath, 'utf8');
+const routesDir = path.join(repoRoot, 'functions', 'api', 'routes');
+
+function walkFiles(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    return [];
+  }
+  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  const results = [];
+  entries.forEach((entry) => {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...walkFiles(fullPath));
+      return;
+    }
+    if (entry.name.toLowerCase().endsWith('.js')) {
+      results.push(fullPath);
+    }
+  });
+  return results;
+}
+
+const routeSourceFiles = [indexPath, ...walkFiles(routesDir)];
+const routeSourceContent = routeSourceFiles
+  .map((filePath) => fs.readFileSync(filePath, 'utf8'))
+  .join('\n');
 
 const requiredImports = [
   { pattern: /const\s+amberAPI\s*=\s*amberModule\.init/, name: 'amberAPI initialization' },
@@ -165,7 +190,7 @@ const criticalRoutes = [
 let routesChecksPassed = true;
 
 criticalRoutes.forEach(({ pattern, name }) => {
-  if (pattern.test(indexContent)) {
+  if (pattern.test(routeSourceContent)) {
     checkPass(`Route defined: ${name}`);
   } else {
     checkFail(`Route missing: ${name}`);
