@@ -1,6 +1,6 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 3 step 1 in progress  
+Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 3 step 1 complete  
 Scope: Planning + execution progress tracking  
 Last Updated: 2026-03-06  
 Primary Branch: `RefactoringMar26`
@@ -21,7 +21,7 @@ Primary Branch: `RefactoringMar26`
 |---|---|---|---:|
 | P0 | G0 | ✅ Complete | 100% |
 | P1 | G1 | ⏳ In Progress | 10/10 tasks drafted, key contract artifacts implemented, formal gate close pending |
-| P2 | G2 | ⏳ In Progress | Wave 1 complete (3/3), Wave 2 read-route extraction complete, Wave 3 step 1 in progress (scheduler + config + automation mutation routes extracted; automation cycle extraction pending) |
+| P2 | G2 | ⏳ In Progress | Wave 1 complete (3/3), Wave 2 read-route extraction complete, Wave 3 step 1 complete (scheduler + config + automation mutation routes + automation cycle route extracted); Wave 3 step 2 service decomposition pending |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -676,6 +676,30 @@ Tracker hygiene rule: update this section at the end of every completed executio
 - Updated Wave 3 tracker artifact to reflect automation mutation extraction:
   - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
 - Next target chunk: continue Wave 3 by extracting `/api/automation/cycle` (largest remaining mutation route) and then stabilizing with targeted regression coverage before service-layer moves.
+
+### ✅ 2026-03-06 - Chunk 31 (P2 Wave 3 step 1: automation cycle-route extraction)
+
+- Extracted automation cycle route from `functions/index.js` into:
+  - `functions/api/routes/automation-cycle.js`
+  - moved:
+    - `POST /api/automation/cycle`
+- Rewired composition in `functions/index.js` via:
+  - `registerAutomationCycleRoute(app, { ... })`
+- Added focused supertest coverage for extracted cycle route module:
+  - `functions/test/automation-cycle-route-module.test.js`
+  - added checks for:
+    - automation-disabled skip path
+    - quick-control-active skip path
+    - no-rules-configured skip path
+- Validation passed:
+  - `npm --prefix functions test -- automation-cycle-route-module.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/api-contract-baseline.js --silent`
+  - `node scripts/openapi-contract-check.js --silent`
+  - `node scripts/pre-deploy-check.js`
+- Updated Wave 3 tracker artifact to mark step 1 extraction complete:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: start Wave 3 step 2 by identifying high-churn automation/service seams for `lib/services/*` extraction while preserving current API behavior.
 
 ---
 
@@ -1488,6 +1512,7 @@ When execution is approved, run phases in order:
 | 2026-03-06 | Hardened local emulator reset reliability after Windows launcher failures: updated `scripts/emulator-cli.js` to use a resilient detached launch chain (`cmd /c npx ...` then `cmd /c npm exec -- ...`), documented the incident and fallback workflow in `docs/LOCAL_DEV_KNOWN_ISSUES.md` and `docs/SETUP.md`, and re-verified local reset/status/setup-health flows. | Codex |
 | 2026-03-06 | Continued P2 Wave 3 step 1 by extracting config mutation routes into `functions/api/routes/config-mutations.js`, wiring module registration in `functions/index.js`, adding focused supertest coverage in `functions/test/config-mutation-routes-modules.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
 | 2026-03-06 | Continued P2 Wave 3 step 1 by extracting automation mutation routes into `functions/api/routes/automation-mutations.js` (toggle/enable/trigger/reset/cancel/rule CRUD/test), wiring module registration in `functions/index.js`, adding focused supertest coverage in `functions/test/automation-mutation-routes-modules.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
+| 2026-03-06 | Completed P2 Wave 3 step 1 by extracting `POST /api/automation/cycle` into `functions/api/routes/automation-cycle.js`, wiring `registerAutomationCycleRoute(...)` in `functions/index.js`, adding focused route-module tests in `functions/test/automation-cycle-route-module.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
 
 ---
 

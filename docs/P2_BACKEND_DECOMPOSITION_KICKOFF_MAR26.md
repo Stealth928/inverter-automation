@@ -1,6 +1,6 @@
 # P2 Backend Decomposition Kickoff (March 2026)
 
-Status: Active execution - Wave 3 mutation extraction in progress (automation cycle pending)  
+Status: Active execution - Wave 3 step 1 complete, step 2 pending  
 Phase: P2 (Backend Decomposition) execution  
 Owner: RefactoringMar26
 
@@ -59,12 +59,11 @@ Validation for Wave 2:
 
 ### Wave 3 (state-changing route extraction)
 
-1. ⏳ [IN PROGRESS 2026-03-06] Extract state-changing endpoints into route modules while preserving route signatures and envelopes:
+1. ✅ [DONE 2026-03-06] Extract state-changing endpoints into route modules while preserving route signatures and envelopes:
    - ✅ `scheduler-mutations.js` (`/api/scheduler/v1/set`, `/api/scheduler/v1/clear-all`)
    - ✅ `config-mutations.js` (`POST /api/config/system-topology`, `POST /api/config`, `POST /api/config/clear-credentials`, `POST /api/config/tour-status`)
    - ✅ `automation-mutations.js` (`POST /api/automation/toggle`, `/enable`, `/trigger`, `/reset`, `/cancel`, `/rule/end`, `/rule/create`, `/rule/update`, `/rule/delete`, `/test`)
-   - pending:
-     - extract remaining `/api/automation/cycle` route
+   - ✅ `automation-cycle.js` (`POST /api/automation/cycle`)
 2. Introduce service modules (`lib/services/*`) only after route extraction is stable.
 
 Validation for Wave 3:
