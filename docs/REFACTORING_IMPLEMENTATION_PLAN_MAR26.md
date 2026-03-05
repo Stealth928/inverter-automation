@@ -1,6 +1,6 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 1 complete  
+Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 2 in progress  
 Scope: Planning + execution progress tracking  
 Last Updated: 2026-03-05  
 Primary Branch: `RefactoringMar26`
@@ -594,9 +594,10 @@ This section captures the actual state of the codebase as of 2026-03-04, measure
 
 ### 1A.1 Backend Monolith
 
-- **`functions/index.js`:** 9,019 lines. Contains **65 Express routes**, **47 inline helper functions**, **2 Cloud Function exports** (`api`, `runAutomation`), and all business logic for **11 distinct domains** (auth, config, automation, pricing, devices, quick control, curtailment, weather, metrics, admin, scheduler).
+- **`functions/index.js`:** 9,019 lines at baseline. Contains **65 Express routes**, **47 inline helper functions**, **2 Cloud Function exports** (`api`, `runAutomation`), and all business logic for **11 distinct domains** (auth, config, automation, pricing, devices, quick control, curtailment, weather, metrics, admin, scheduler).
 - **Only ~12% of backend logic has been extracted to modules.** The `functions/lib/` directory contains 1 file (298 lines). The `functions/api/` directory contains 3 files (~913 lines total: `amber.js`, `foxess.js`, `auth.js`).
 - Route handlers directly call Firestore, external APIs, and each other. Zero separation of concerns between HTTP transport, business logic, and persistence.
+- ✅ **P2 update (2026-03-05):** `functions/index.js` reduced to **7,194 lines** (~20% reduction). **47 routes remain inline**; 8 read-only route modules extracted to `functions/api/routes/` (2,328 lines total). `functions/lib/` expanded to 8 modules (1,114 lines total) covering automation-actions, device-telemetry, pricing-normalization, repositories, billing, and adapters.
 
 ### 1A.2 Frontend Monolith
 

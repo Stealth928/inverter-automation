@@ -24,7 +24,7 @@
 - Run unit tests for functions: `npm --prefix functions test` (Jest).
 - Run linter: `npm --prefix functions run lint`.
 - Frontend quick-serve (separate terminal): `cd frontend && python -m http.server 8000` → open `http://localhost:8000`.
-- End-to-end emulator test (Windows): run `d:/inverter-automation/archive/run-emulator-tests.ps1` (script starts the emulator and runs `test-emulator.js`).
+- Cross-platform emulator reset: `npm run emu:reset` (kills stale processes, restarts emulator, seeds data, verifies readiness).
 
 # Secrets & config
 
@@ -47,25 +47,29 @@
 
 # Code conventions & notes for PRs
 
-- Node runtime: `node 20` (see `functions/package.json` engines). Prefer modern syntax but maintain compatibility with the deployed runtime.
+- Node runtime: `node 22` (see `functions/package.json` engines). Prefer modern syntax but maintain compatibility with the deployed runtime.
 - Avoid changing public API shapes or the `{ errno, result }` envelope unless you update both frontend and API docs.
 - Run `npm --prefix functions test` and `npm --prefix functions run lint` before opening PRs touching `functions/`.
 
 # Files to reference while coding
 
-- `functions/index.js` — main API, auth middleware, caching, automation scheduler.
+- `functions/index.js` — main API composition, auth middleware, caching, automation scheduler.
+- `functions/api/routes/` — extracted read-only route modules (pricing, weather, metrics, inverter, device, diagnostics, scheduler).
+- `functions/lib/` — extracted domain logic (automation-actions, automation-conditions, device-telemetry, pricing-normalization, billing, adapters, repositories).
+- `functions/api/amber.js`, `functions/api/foxess.js`, `functions/api/auth.js` — external API integration modules.
 - `functions/package.json` — scripts and dependency versions.
 - `firebase.json` — hosting rewrites and headers (important if you change URLs).
 - `docs/SETUP.md`, `docs/AUTOMATION.md`, `docs/API.md` — deployment, rule formats, and API contract.
-- `archive/run-emulator-tests.ps1`, `archive/backend/server.js` — useful local test harnesses and legacy server behavior to reference (not deployed).
+- `docs/REFACTORING_IMPLEMENTATION_PLAN_MAR26.md` — active refactoring plan and progress tracker.
 
 # If you are an AI agent: checklist
 
-1. Search `functions/index.js` for the endpoint you will change; follow existing middleware and response envelope.
+1. Search `functions/index.js` and `functions/api/routes/` for the endpoint you will change; follow existing middleware and response envelope.
 2. Run `npm --prefix functions install` and `npm --prefix functions run lint` locally before tests.
-3. Validate behavior with `npm --prefix functions run serve` + serving frontend locally.
-4. Update `docs/` (API.md or AUTOMATION.md) if you change request/response shapes.
-5. Keep changes small and test with the emulator; note any required Firebase config changes in the PR description.
+3. Run `npm --prefix functions test` to validate unit tests pass.
+4. Validate behavior with `npm --prefix functions run serve` + serving frontend locally.
+5. Update `docs/` (API.md or AUTOMATION.md) if you change request/response shapes.
+6. Keep changes small and test with the emulator; note any required Firebase config changes in the PR description.
 
 ---
 If anything here is unclear or you want me to expand a section (examples, test commands, or code snippets), tell me which part to improve.

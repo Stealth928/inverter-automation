@@ -24,6 +24,9 @@
 11. **[LOGGING_AUDIT_REPORT.md](LOGGING_AUDIT_REPORT.md)** - Logging analysis (original audit)
 12. **[LOGGING_OPTIMIZATION_SUMMARY.md](LOGGING_OPTIMIZATION_SUMMARY.md)** - ✨ NEW: Cost reduction via logging optimization
 13. **[LOCAL_DEV_KNOWN_ISSUES.md](LOCAL_DEV_KNOWN_ISSUES.md)** - Recurring local emulator/tour/cache issues and fixes
+14. **[PROD_BACKUP_ROLLBACK_RUNBOOK.md](PROD_BACKUP_ROLLBACK_RUNBOOK.md)** - Production backup and rollback procedures
+15. **[TESTING_GUIDE.md](../TESTING_GUIDE.md)** - Test framework guide (Jest + Playwright)
+16. **[PRODUCT_GUIDE.md](../PRODUCT_GUIDE.md)** - Product overview and feature guide
 
 ### Analysis & Planning
 14. **[COST_ANALYSIS_2025.md](COST_ANALYSIS_2025.md)** - Firebase cost projections
@@ -74,6 +77,8 @@ For DevOps and maintenance:
 | [OPTIMIZATIONS.md](OPTIMIZATIONS.md) | Performance tuning | As needed |
 | [LOGGING_OPTIMIZATION_SUMMARY.md](LOGGING_OPTIMIZATION_SUMMARY.md) | Log cost reduction | Periodic review |
 | [LOCAL_DEV_KNOWN_ISSUES.md](LOCAL_DEV_KNOWN_ISSUES.md) | Local known pitfalls runbook | During local setup/debug |
+| [TESTING_GUIDE.md](../TESTING_GUIDE.md) | Test framework guide | After test infra changes |
+| [PRODUCT_GUIDE.md](../PRODUCT_GUIDE.md) | Product overview and features | As needed |
 
 ### Analysis Documents (Planning)
 Cost and coverage analysis:
