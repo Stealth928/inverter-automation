@@ -1,0 +1,173 @@
+'use strict';
+
+function registerDeviceMutationRoutes(app, deps = {}) {
+  const authenticateUser = deps.authenticateUser;
+  const foxessAPI = deps.foxessAPI;
+  const getUserConfig = deps.getUserConfig;
+
+  if (!app || typeof app.post !== 'function') {
+    throw new Error('registerDeviceMutationRoutes requires an Express app');
+  }
+  if (typeof authenticateUser !== 'function') {
+    throw new Error('registerDeviceMutationRoutes requires authenticateUser middleware');
+  }
+  if (!foxessAPI || typeof foxessAPI.callFoxESSAPI !== 'function') {
+    throw new Error('registerDeviceMutationRoutes requires foxessAPI.callFoxESSAPI()');
+  }
+  if (typeof getUserConfig !== 'function') {
+    throw new Error('registerDeviceMutationRoutes requires getUserConfig()');
+  }
+
+  // Battery SoC set
+  app.post('/api/device/battery/soc/set', async (req, res) => {
+    try {
+      const userConfig = await getUserConfig(req.user.uid);
+      const sn = req.body.sn || userConfig?.deviceSn;
+      const { minSoc, minSocOnGrid, maxSoc } = req.body;
+
+      console.log(`\n${'='.repeat(80)}`);
+      console.log('[BatterySoC] SET REQUEST');
+      console.log(`  User: ${req.user.uid}`);
+      console.log(`  Device SN: ${sn}`);
+      console.log('  Request body:', JSON.stringify(req.body, null, 2));
+      console.log(`  Extracted: minSoc=${minSoc}, minSocOnGrid=${minSocOnGrid}, maxSoc=${maxSoc}`);
+
+      if (!sn) {
+        console.log('[BatterySoC] No device SN configured');
+        return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+      }
+
+      const foxessPayload = { sn, minSoc, minSocOnGrid, maxSoc };
+      console.log('[BatterySoC] Calling FoxESS API with payload:', JSON.stringify(foxessPayload, null, 2));
+
+      const result = await foxessAPI.callFoxESSAPI(
+        '/op/v0/device/battery/soc/set',
+        'POST',
+        foxessPayload,
+        userConfig,
+        req.user.uid
+      );
+
+      console.log('[BatterySoC] FoxESS Response:', JSON.stringify(result, null, 2));
+      console.log(`${'='.repeat(80)}\n`);
+
+      res.json(result);
+    } catch (error) {
+      console.error('[BatterySoC] Error:', error);
+      console.log(`${'='.repeat(80)}\n`);
+      res.status(500).json({ errno: 500, error: error.message });
+    }
+  });
+
+  // Write device setting (for discovery / testing and curtailment control)
+  app.post('/api/device/setting/set', authenticateUser, async (req, res) => {
+    let key; let value;
+    try {
+      const userConfig = await getUserConfig(req.user.uid);
+      const sn = req.body.sn || userConfig?.deviceSn;
+      key = req.body.key;
+      value = req.body.value;
+
+      console.log(`\n${'='.repeat(80)}`);
+      console.log('[DeviceSetting] SET REQUEST');
+      console.log(`  User: ${req.user.uid}`);
+      console.log(`  Device SN: ${sn}`);
+      console.log(`  Key: ${key}`);
+      console.log(`  Value: ${value} (type: ${typeof value})`);
+
+      if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+      if (!key) return res.status(400).json({ errno: 400, error: 'Missing required parameter: key' });
+      if (value === undefined || value === null) {
+        return res.status(400).json({ errno: 400, error: 'Missing required parameter: value' });
+      }
+
+      console.log('[DeviceSetting] Calling FoxESS API...');
+      const result = await foxessAPI.callFoxESSAPI(
+        '/op/v0/device/setting/set',
+        'POST',
+        { sn, key, value },
+        userConfig,
+        req.user.uid
+      );
+
+      console.log('[DeviceSetting] SET RESPONSE:');
+      console.log('  Full response:', JSON.stringify(result, null, 2));
+      console.log('  errno:', result?.errno);
+      console.log('  result:', JSON.stringify(result?.result, null, 2));
+      console.log('  error:', result?.error);
+      console.log('  msg:', result?.msg);
+      console.log(`${'='.repeat(80)}\n`);
+
+      res.json(result);
+    } catch (error) {
+      console.error(`[DeviceSetting] SET ERROR for ${key}=${value}:`, error);
+      console.log(`${'='.repeat(80)}\n`);
+      res.status(500).json({ errno: 500, error: error.message });
+    }
+  });
+
+  // Force charge time set
+  app.post('/api/device/battery/forceChargeTime/set', async (req, res) => {
+    try {
+      const userConfig = await getUserConfig(req.user.uid);
+      const sn = req.body.sn || userConfig?.deviceSn;
+      const body = Object.assign({ sn }, req.body);
+      const result = await foxessAPI.callFoxESSAPI(
+        '/op/v0/device/battery/forceChargeTime/set',
+        'POST',
+        body,
+        userConfig,
+        req.user.uid
+      );
+      res.json(result);
+    } catch (error) {
+      console.error('[API] /api/device/battery/forceChargeTime/set error:', error);
+      res.status(500).json({ errno: 500, error: error.message });
+    }
+  });
+
+  // Set work mode setting (default active mode, not scheduler)
+  app.post('/api/device/workmode/set', async (req, res) => {
+    try {
+      const userConfig = await getUserConfig(req.user.uid);
+      const sn = req.body.sn || userConfig?.deviceSn;
+      const { workMode } = req.body;
+      if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+      if (!workMode) {
+        return res.status(400).json({ errno: 400, error: 'workMode is required (SelfUse, Feedin, Backup)' });
+      }
+
+      const workModeMap = {
+        SelfUse: 0,
+        Feedin: 1,
+        FeedinFirst: 1,
+        Backup: 2,
+        PeakShaving: 3
+      };
+
+      const numericWorkMode = workModeMap[workMode];
+      if (numericWorkMode === undefined) {
+        return res.status(400).json({
+          errno: 400,
+          error: `Invalid work mode: ${workMode}. Valid modes: SelfUse, Feedin, Backup, PeakShaving`
+        });
+      }
+
+      const result = await foxessAPI.callFoxESSAPI(
+        '/op/v0/device/setting/set',
+        'POST',
+        { sn, key: 'WorkMode', value: numericWorkMode },
+        userConfig,
+        req.user.uid
+      );
+      res.json(result);
+    } catch (error) {
+      console.error('[API] /api/device/workmode/set error:', error);
+      res.status(500).json({ errno: 500, error: error.message });
+    }
+  });
+}
+
+module.exports = {
+  registerDeviceMutationRoutes
+};

@@ -1,6 +1,6 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 3 step 2 complete with closeout evidence drafted, scheduler service-runner decoupling complete, and index.js reduction continuing (G2 blockers remain)
+Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 3 step 2 complete with closeout evidence drafted, scheduler service-runner decoupling complete, and index.js reduction continuing (G2 blockers remain; latest config/status + user-self extraction landed)
 Scope: Planning + execution progress tracking  
 Last Updated: 2026-03-06  
 Primary Branch: `RefactoringMar26`
@@ -21,7 +21,7 @@ Primary Branch: `RefactoringMar26`
 |---|---|---|---|---|
 | P0 | G0 | ✅ Complete | 100% | - |
 | P1 | G1 | ⏳ In Progress | 10/10 tasks implemented; formal gate close pending | Capture closeout evidence + sign-off |
-| P2 | G2 | In Progress | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence drafted, residual helper dedupe continued (`number-utils`), scheduler route-stack coupling removed, pure scheduler service runner landed, and public setup/auth routes extracted from `index.js` | Execute remaining G2 blocker closure (index.js size reduction + utility/test-harness normalization) |
+| P2 | G2 | In Progress | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence refreshed with verified metrics, config/status + user-self route domains extracted, `index.js` at 3,772 lines (58.2% reduction), and inline routes reduced to 9 | Continue G2 blocker closure: extract remaining admin route domain + residual helper/test-harness normalization toward <1,500 line target |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -1009,6 +1009,116 @@ Tracker hygiene rule: update this section at the end of every completed executio
   - `node scripts/pre-deploy-check.js`
 - Next target chunk: continue remaining G2 blockers (additional `index.js` route-domain extraction and shared test-harness normalization).
 
+### 2026-03-06 - Chunk 47 (G2 blocker execution: auth lifecycle route extraction)
+
+- Continued `functions/index.js` reduction by extracting protected auth lifecycle handlers into a dedicated route module:
+  - `functions/api/routes/auth-lifecycle.js`
+  - moved:
+    - `GET /api/health/auth`
+    - `POST /api/auth/init-user`
+    - `POST /api/auth/cleanup-user`
+- Rewired composition in `functions/index.js`:
+  - added `registerAuthLifecycleRoutes(...)` import and registration after API auth middleware setup.
+  - removed duplicated inline handler bodies while preserving auth requirements and response envelopes.
+- Added focused regression coverage for extracted route module:
+  - `functions/test/auth-lifecycle-routes-modules.test.js`
+  - covers dependency guardrails, auth enforcement for health check, init-user persistence flow, and cleanup-user recursive-delete invocation.
+- Validation passed:
+  - `npm --prefix functions test -- auth-lifecycle-routes-modules.test.js routes-integration.test.js cleanup-user.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- Next target chunk: continue remaining G2 blockers (additional high-volume route-domain extraction and shared test-harness normalization).
+
+### 2026-03-06 - Chunk 48 (G2 blocker execution: quick-control route extraction)
+
+- Continued `functions/index.js` reduction by extracting quick manual-control endpoints into a dedicated route module:
+  - `functions/api/routes/quick-control.js`
+  - moved:
+    - `POST /api/quickcontrol/start`
+    - `POST /api/quickcontrol/end`
+    - `GET /api/quickcontrol/status`
+- Rewired composition in `functions/index.js`:
+  - added `registerQuickControlRoutes(...)` import and registration.
+  - removed large inline quick-control handler block while preserving retry/verification/state-history behavior.
+- Added focused regression coverage for extracted route module:
+  - `functions/test/quick-control-routes-modules.test.js`
+  - covers dependency guardrails, start validation branch, no-op end branch, inactive status envelope, and expired status auto-cleanup envelope.
+- Validation passed:
+  - `npm --prefix functions test -- quick-control-routes-modules.test.js quick-control.test.js routes-integration.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- Next target chunk: continue remaining G2 blockers (extract remaining large inline route domains and continue shared test-harness normalization).
+
+### 2026-03-06 - Chunk 49 (G2 blocker execution: automation history/audit route extraction)
+
+- Continued `functions/index.js` reduction by extracting automation history and audit read endpoints into a dedicated route module:
+  - `functions/api/routes/automation-history.js`
+  - moved:
+    - `GET /api/automation/history`
+    - `GET /api/automation/audit`
+- Rewired composition in `functions/index.js`:
+  - added `registerAutomationHistoryRoutes(...)` import and registration.
+  - removed inline history/audit route handler block while preserving date-range parsing, rule-event reconstruction, and response envelope semantics.
+- Added focused regression coverage for extracted route module:
+  - `functions/test/automation-history-routes-modules.test.js`
+  - covers dependency guardrails, history limit parsing, invalid explicit date range handling, complete rule-event assembly, and ongoing rule-event assembly.
+- Validation passed:
+  - `npm --prefix functions test -- automation-history-routes-modules.test.js routes-integration.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- Next target chunk: continue remaining G2 blockers (extract remaining inline mutation route domains and continue shared test-harness normalization).
+
+### 2026-03-06 - Chunk 50 (G2 blocker execution: device mutation route extraction)
+
+- Continued `functions/index.js` reduction by extracting device mutation endpoints into a dedicated route module:
+  - `functions/api/routes/device-mutations.js`
+  - moved:
+    - `POST /api/device/battery/soc/set`
+    - `POST /api/device/setting/set`
+    - `POST /api/device/battery/forceChargeTime/set`
+    - `POST /api/device/workmode/set`
+- Rewired composition in `functions/index.js`:
+  - added `registerDeviceMutationRoutes(...)` import and registration.
+  - removed inline device mutation handler block while preserving validation, FoxESS payload semantics, and response envelopes.
+- Added focused regression coverage for extracted route module:
+  - `functions/test/device-mutation-routes-modules.test.js`
+  - covers dependency guardrails, missing-SN handling, auth enforcement, required-key validation, invalid work-mode guard, and `FeedinFirst` to `WorkMode=1` mapping.
+- Validation passed:
+  - `npm --prefix functions test -- device-mutation-routes-modules.test.js auth-lifecycle-routes-modules.test.js quick-control-routes-modules.test.js automation-history-routes-modules.test.js routes-integration.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- `functions/index.js` current size after this chunk: **4,051 lines** (from 9,019 baseline, ~55.1% reduction).
+- Inline route declarations remaining in `functions/index.js`: **15** (`app.get/post/put/delete/patch` registrations).
+- Next target chunk: continue remaining G2 blockers (extract remaining inline device/admin/config domains and continue shared test-harness normalization).
+
+### 2026-03-06 - Chunk 51 (G2 blocker execution: config/status + user-self route extraction)
+
+- Continued `functions/index.js` reduction by extracting remaining inline config/status and self-service user routes into dedicated route modules:
+  - `functions/api/routes/config-read-status.js`
+  - moved:
+    - `GET /api/config`
+    - `GET /api/config/system-topology`
+    - `GET /api/config/tour-status`
+    - `GET /api/automation/status`
+  - `functions/api/routes/user-self.js`
+  - moved:
+    - `POST /api/user/init-profile`
+    - `POST /api/user/delete-account`
+- Rewired composition in `functions/index.js`:
+  - added `registerConfigReadStatusRoutes(...)` and `registerUserSelfRoutes(...)` imports + registrations.
+  - removed inline handler blocks while preserving migration sync, blackout evaluation, config envelope behavior, profile init defaults, and account-delete safety checks.
+- Added focused regression coverage for extracted route modules:
+  - `functions/test/config-read-status-routes-modules.test.js`
+  - `functions/test/user-self-routes-modules.test.js`
+  - covers dependency guardrails, config/system-topology/tour-status envelopes, automation-status blackout + migration sync behavior, init-profile defaults, and delete-account validation/safety/cleanup paths.
+- Validation passed:
+  - `npm --prefix functions test -- config-read-status-routes-modules.test.js user-self-routes-modules.test.js routes-integration.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- `functions/index.js` current size after this chunk: **3,772 lines** (from 9,019 baseline, ~58.2% reduction).
+- Inline route declarations remaining in `functions/index.js`: **9** (`app.get/post/put/delete/patch` registrations).
+- Next target chunk: continue remaining G2 blockers by extracting the inline admin route domain and final residual helpers.
+
 ---
 
 ## 1. Purpose
@@ -1036,6 +1146,7 @@ This section captures the actual state of the codebase as of 2026-03-04, measure
 - **Only ~12% of backend logic has been extracted to modules.** The `functions/lib/` directory contains 1 file (298 lines). The `functions/api/` directory contains 3 files (~913 lines total: `amber.js`, `foxess.js`, `auth.js`).
 - Route handlers directly call Firestore, external APIs, and each other. Zero separation of concerns between HTTP transport, business logic, and persistence.
 - ✅ **P2 update (2026-03-05):** `functions/index.js` reduced to **7,194 lines** (~20% reduction). **47 routes remain inline**; 8 read-only route modules extracted to `functions/api/routes/` (2,328 lines total). `functions/lib/` expanded to 8 modules (1,114 lines total) covering automation-actions, device-telemetry, pricing-normalization, repositories, billing, and adapters.
+- ✅ **P2 update (2026-03-06, verified):** `functions/index.js` reduced to **4,053 lines** (55% reduction from 9,019 baseline). **9 routes remain inline** (admin domain + health); **19 route modules** extracted to `functions/api/routes/` (4,990 lines total). `functions/lib/` expanded to **14 modules** across services/repositories/adapters/billing (2,157 lines total). **9 service modules** in `functions/lib/services/` (1,031 lines). Test suite: **57 suites, 682 tests passing**. Coverage: **50.3% statements, 42.6% branches, 62.4% functions, 51.3% lines**.
 
 ### 1A.2 Frontend Monolith
 
@@ -1839,6 +1950,11 @@ When execution is approved, run phases in order:
 | 2026-03-06 | Continued implementation by drafting P2/G2 closeout evidence in `docs/P2_G2_CLOSEOUT_EVIDENCE_MAR26.md`, updating phase-gate/index tracker references, running contract/lint/pre-deploy validations, and reducing residual helper duplication by extracting shared `toFiniteNumber(...)` utility to `functions/lib/services/number-utils.js` with focused coverage in `functions/test/number-utils.test.js`. | Codex |
 | 2026-03-06 | Continued G2 blocker execution by removing scheduler route-stack coupling: `registerAutomationCycleRoute(...)` now returns `automationCycleHandler` (`functions/api/routes/automation-cycle.js`) and `runAutomationHandler(...)` now invokes that handler reference directly instead of traversing `app._router.stack` (`functions/index.js`), with targeted route/integration regression coverage and lint validation. | Codex |
 | 2026-03-06 | Continued G2 blocker execution by extracting public setup/auth endpoints (`/api/auth/forgot-password`, `/api/config/validate-keys`, `/api/config/setup-status`) into `functions/api/routes/setup-public.js`, wiring `registerSetupPublicRoutes(...)` in `functions/index.js`, adding focused module coverage in `functions/test/setup-public-routes-modules.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by extracting protected auth lifecycle endpoints (`/api/health/auth`, `/api/auth/init-user`, `/api/auth/cleanup-user`) into `functions/api/routes/auth-lifecycle.js`, wiring `registerAuthLifecycleRoutes(...)` in `functions/index.js`, adding focused module coverage in `functions/test/auth-lifecycle-routes-modules.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by extracting quick-control endpoints (`/api/quickcontrol/start`, `/api/quickcontrol/end`, `/api/quickcontrol/status`) into `functions/api/routes/quick-control.js`, wiring `registerQuickControlRoutes(...)` in `functions/index.js`, adding focused module coverage in `functions/test/quick-control-routes-modules.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by extracting automation history/audit endpoints (`/api/automation/history`, `/api/automation/audit`) into `functions/api/routes/automation-history.js`, wiring `registerAutomationHistoryRoutes(...)` in `functions/index.js`, adding focused module coverage in `functions/test/automation-history-routes-modules.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by extracting device mutation endpoints (`/api/device/battery/soc/set`, `/api/device/setting/set`, `/api/device/battery/forceChargeTime/set`, `/api/device/workmode/set`) into `functions/api/routes/device-mutations.js`, wiring `registerDeviceMutationRoutes(...)` in `functions/index.js`, adding focused module coverage in `functions/test/device-mutation-routes-modules.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by extracting config/status read endpoints (`/api/config`, `/api/config/system-topology`, `/api/config/tour-status`, `/api/automation/status`) into `functions/api/routes/config-read-status.js` and self-service user endpoints (`/api/user/init-profile`, `/api/user/delete-account`) into `functions/api/routes/user-self.js`, wiring both registrations in `functions/index.js`, adding focused module coverage in `functions/test/config-read-status-routes-modules.test.js` and `functions/test/user-self-routes-modules.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
 
 ---
 

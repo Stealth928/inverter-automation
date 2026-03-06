@@ -16,7 +16,8 @@
 ### Feature-Specific Guides
 5. **[README_CURTAILMENT.md](README_CURTAILMENT.md)** - Solar curtailment feature guide
 6. **[CURTAILMENT_QUICK_START.md](CURTAILMENT_QUICK_START.md)** - Quick setup for curtailment
-7. **[BACKGROUND_AUTOMATION.md](BACKGROUND_AUTOMATION.md)** - Scheduled automation details
+7. **[CURTAILMENT_MONITORING_GUIDE.md](CURTAILMENT_MONITORING_GUIDE.md)** - Operational monitoring for curtailment
+8. **[BACKGROUND_AUTOMATION.md](BACKGROUND_AUTOMATION.md)** - Scheduled automation details
 
 ### Operations & Maintenance
 9. **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - CI/CD and deployment procedures
@@ -67,6 +68,7 @@ Feature-specific documentation:
 |----------|---------|--------|
 | [README_CURTAILMENT.md](README_CURTAILMENT.md) | Solar curtailment | ✅ Stable |
 | [CURTAILMENT_QUICK_START.md](CURTAILMENT_QUICK_START.md) | Curtailment setup | ✅ Stable |
+| [CURTAILMENT_MONITORING_GUIDE.md](CURTAILMENT_MONITORING_GUIDE.md) | Curtailment monitoring | ✅ Stable |
 | [BACKGROUND_AUTOMATION.md](BACKGROUND_AUTOMATION.md) | Scheduler | ✅ Stable |
 
 ### Operations Guides (Maintenance)
