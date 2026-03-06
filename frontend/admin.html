@@ -1724,7 +1724,32 @@
         warningEl.textContent = '';
 
         try {
-            const data = await adminApiClient.getAdminSchedulerMetrics(14, true, 20);
+            const days = 14;
+            const includeRuns = true;
+            const runLimit = 20;
+            let data;
+            if (typeof adminApiClient.getAdminSchedulerMetrics === 'function') {
+                data = await adminApiClient.getAdminSchedulerMetrics(days, includeRuns, runLimit);
+            } else {
+                const query = new URLSearchParams({
+                    days: String(days),
+                    includeRuns: includeRuns ? '1' : '0',
+                    runLimit: String(runLimit)
+                });
+                const resp = await adminApiClient.fetch(`/api/admin/scheduler-metrics?${query.toString()}`);
+                if (!resp.ok) throw new Error(`Request failed: ${resp.status}`);
+                const rawBody = await resp.text();
+                let parsed = null;
+                if (rawBody) {
+                    try {
+                        parsed = JSON.parse(rawBody);
+                    } catch (parseError) {
+                        throw new Error('Invalid scheduler metrics response');
+                    }
+                }
+                if (!parsed || typeof parsed !== 'object') throw new Error('Invalid scheduler metrics response');
+                data = parsed;
+            }
             if (!data || data.errno !== 0) throw new Error(data?.error || 'Failed to load scheduler metrics');
 
             const result = data.result || {};
