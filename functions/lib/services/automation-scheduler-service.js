@@ -377,6 +377,92 @@ function buildCycleKey(userId, nowMs, intervalMs) {
   return `${userId}_${cycleWindow}`;
 }
 
+function classifyFailureType(error, cycleResult) {
+  const errno = toFiniteNumber(cycleResult?.errno, NaN);
+  if (Number.isFinite(errno)) {
+    if (errno === 429) return 'api_rate_limit';
+    if (errno === 408 || errno === 504) return 'api_timeout';
+    if (errno === 503) return 'service_unavailable';
+    if (errno === 409) return 'conflict';
+    if (errno >= 500) return 'server_error';
+    return `errno_${errno}`;
+  }
+
+  const message = String(error?.message || '').toLowerCase();
+  if (!message) {
+    return 'unknown_error';
+  }
+
+  if (
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('etimedout') ||
+    message.includes('deadline exceeded')
+  ) {
+    return 'api_timeout';
+  }
+  if (
+    message.includes('rate limit') ||
+    message.includes('too many requests') ||
+    message.includes('resource exhausted')
+  ) {
+    return 'api_rate_limit';
+  }
+  if (message.includes('contention') || message.includes('aborted')) {
+    return 'firestore_contention';
+  }
+  if (
+    message.includes('econnreset') ||
+    message.includes('socket hang up') ||
+    message.includes('network')
+  ) {
+    return 'network_error';
+  }
+
+  return 'unknown_error';
+}
+
+function buildDurationStats(values) {
+  const safeValues = (Array.isArray(values) ? values : [])
+    .map((value) => toFiniteNumber(value, NaN))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  if (safeValues.length === 0) {
+    return {
+      avgMs: 0,
+      count: 0,
+      maxMs: 0,
+      minMs: 0
+    };
+  }
+
+  let sum = 0;
+  let min = safeValues[0];
+  let max = safeValues[0];
+  for (const value of safeValues) {
+    sum += value;
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+
+  return {
+    avgMs: Math.round(sum / safeValues.length),
+    count: safeValues.length,
+    maxMs: Math.round(max),
+    minMs: Math.round(min)
+  };
+}
+
+function tallyFailureTypes(entries) {
+  const failureByType = {};
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (entry && entry.success === false) {
+      const type = entry.failureType || 'unknown_error';
+      failureByType[type] = (failureByType[type] || 0) + 1;
+    }
+  }
+  return failureByType;
+}
+
 async function invokeAutomationCycleHandler(options = {}) {
   const automationCycleHandler = options.automationCycleHandler;
   const userId = options.userId;
@@ -412,6 +498,7 @@ async function runCycleWithRetry(options = {}) {
   const retryJitterMs = options.retryJitterMs;
   const sleepFn = options.sleepFn;
   const userId = options.userId;
+  const runStartMs = Date.now();
 
   let attempts = 0;
   let lastError = null;
@@ -432,7 +519,9 @@ async function runCycleWithRetry(options = {}) {
       return {
         success: true,
         attempts,
-        cycleResult: invokeResult.cycleResult
+        cycleResult: invokeResult.cycleResult,
+        durationMs: Date.now() - runStartMs,
+        failureType: null
       };
     }
 
@@ -445,7 +534,9 @@ async function runCycleWithRetry(options = {}) {
         success: false,
         attempts,
         cycleResult: lastCycleResult,
-        error: lastError
+        error: lastError,
+        durationMs: Date.now() - runStartMs,
+        failureType: classifyFailureType(lastError, lastCycleResult)
       };
     }
 
@@ -463,13 +554,16 @@ async function runCycleWithRetry(options = {}) {
     success: false,
     attempts,
     cycleResult: lastCycleResult,
-    error: lastError || new Error('Unknown scheduler retry failure')
+    error: lastError || new Error('Unknown scheduler retry failure'),
+    durationMs: Date.now() - runStartMs,
+    failureType: classifyFailureType(lastError, lastCycleResult)
   };
 }
 
 async function runAutomationSchedulerCycle(_context, deps = {}) {
   const automationCycleHandler = deps.automationCycleHandler;
   const db = deps.db;
+  const emitSchedulerMetrics = deps.emitSchedulerMetrics;
   const getConfig = deps.getConfig;
   const getTimeInTimezone = deps.getTimeInTimezone;
   const getUserAutomationState = deps.getUserAutomationState;
@@ -488,6 +582,9 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
   assertFunction(getUserConfig, 'getUserConfig');
   assertFunction(getUserRules, 'getUserRules');
   assertFunction(isTimeInRange, 'isTimeInRange');
+  if (emitSchedulerMetrics != null) {
+    assertFunction(emitSchedulerMetrics, 'emitSchedulerMetrics');
+  }
 
   const schedulerStartTime = Date.now();
   const schedId = `${schedulerStartTime}_${Math.random().toString(36).slice(2, 11)}`;
@@ -632,11 +729,16 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
     let skippedIdempotent = 0;
     let deadLetters = 0;
     let totalRetries = 0;
+    let queueLagStats = buildDurationStats([]);
+    let cycleDurationStats = buildDurationStats([]);
+    let failureByType = {};
     if (cycleCandidates.length > 0) {
       const cycleResults = await mapWithConcurrency(
         cycleCandidates,
         schedulerOptions.maxConcurrentUsers,
         async ({ userId, cycleKey }) => {
+        const cycleStartMs = Date.now();
+        const queueLagMs = Math.max(0, cycleStartMs - schedulerStartTime);
         let lockHandle = null;
         try {
           lockHandle = await acquireUserCycleLock({
@@ -647,7 +749,16 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
           });
           if (!lockHandle || lockHandle.acquired !== true) {
             logger.log(`[Scheduler] User ${userId}: skipped due to active lock`);
-            return { success: true, skippedLocked: 1, skippedIdempotent: 0, deadLetters: 0, retriesUsed: 0 };
+            return {
+              success: true,
+              skippedLocked: 1,
+              skippedIdempotent: 0,
+              deadLetters: 0,
+              retriesUsed: 0,
+              failureType: null,
+              queueLagMs,
+              cycleDurationMs: Date.now() - cycleStartMs
+            };
           }
 
           const shouldRun = await shouldRunCycleKey({
@@ -659,7 +770,16 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
           });
           if (!shouldRun) {
             logger.log(`[Scheduler] User ${userId}: skipped due to idempotency key ${cycleKey}`);
-            return { success: true, skippedLocked: 0, skippedIdempotent: 1, deadLetters: 0, retriesUsed: 0 };
+            return {
+              success: true,
+              skippedLocked: 0,
+              skippedIdempotent: 1,
+              deadLetters: 0,
+              retriesUsed: 0,
+              failureType: null,
+              queueLagMs,
+              cycleDurationMs: Date.now() - cycleStartMs
+            };
           }
 
           const cycleExecution = await runCycleWithRetry({
@@ -673,7 +793,6 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
             userId
           });
 
-          totalRetries += Math.max(0, cycleExecution.attempts - 1);
           await markCycleOutcome({
             cycleKey,
             db,
@@ -693,16 +812,43 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               result: {
                 attempts: cycleExecution.attempts,
                 error: cycleExecution.error ? cycleExecution.error.message : 'Scheduler cycle failed'
-              },
-              userId
+                },
+                userId
             });
-            return { success: false, skippedLocked: 0, skippedIdempotent: 0, deadLetters: 1, retriesUsed: Math.max(0, cycleExecution.attempts - 1) };
+            return {
+              success: false,
+              skippedLocked: 0,
+              skippedIdempotent: 0,
+              deadLetters: 1,
+              retriesUsed: Math.max(0, cycleExecution.attempts - 1),
+              failureType: cycleExecution.failureType || 'unknown_error',
+              queueLagMs,
+              cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, Date.now() - cycleStartMs)
+            };
           }
 
-          return { success: true, skippedLocked: 0, skippedIdempotent: 0, deadLetters: 0, retriesUsed: Math.max(0, cycleExecution.attempts - 1) };
+          return {
+            success: true,
+            skippedLocked: 0,
+            skippedIdempotent: 0,
+            deadLetters: 0,
+            retriesUsed: Math.max(0, cycleExecution.attempts - 1),
+            failureType: null,
+            queueLagMs,
+            cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, Date.now() - cycleStartMs)
+          };
         } catch (error) {
           logger.error(`[Scheduler] User ${userId}: Exception: ${error.message}`);
-          return { success: false, skippedLocked: 0, skippedIdempotent: 0, deadLetters: 0, retriesUsed: 0 };
+          return {
+            success: false,
+            skippedLocked: 0,
+            skippedIdempotent: 0,
+            deadLetters: 0,
+            retriesUsed: 0,
+            failureType: classifyFailureType(error, null),
+            queueLagMs,
+            cycleDurationMs: Date.now() - cycleStartMs
+          };
         } finally {
           try {
             await releaseUserCycleLock({
@@ -723,13 +869,47 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
       skippedIdempotent = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.skippedIdempotent, 0), 0);
       deadLetters = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.deadLetters, 0), 0);
       totalRetries = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.retriesUsed, 0), 0);
+      queueLagStats = buildDurationStats(cycleResults.map((entry) => entry.queueLagMs));
+      cycleDurationStats = buildDurationStats(cycleResults.map((entry) => entry.cycleDurationMs));
+      failureByType = tallyFailureTypes(cycleResults);
     }
 
     const duration = Date.now() - schedulerStartTime;
+    const schedulerMetrics = {
+      schedulerId: schedId,
+      startedAtMs: schedulerStartTime,
+      completedAtMs: schedulerStartTime + duration,
+      durationMs: duration,
+      totalEnabledUsers: totalEnabled,
+      cycleCandidates: cycleCandidates.length,
+      cyclesRun,
+      deadLetters,
+      errors,
+      retries: totalRetries,
+      queueLagMs: queueLagStats,
+      cycleDurationMs: cycleDurationStats,
+      skipped: {
+        disabledOrBlackout: skippedDisabled,
+        idempotent: skippedIdempotent,
+        locked: skippedLocked,
+        tooSoon: skippedTooSoon
+      },
+      failureByType
+    };
     logger.log(`[Scheduler] ========== Background check ${schedId} COMPLETE ==========`);
     logger.log(
       `[Scheduler] ${totalEnabled} enabled users: ${cyclesRun} cycles, ${skippedTooSoon} too soon, ${skippedDisabled} skipped, ${skippedLocked} locked, ${skippedIdempotent} idempotent, ${errors} errors, ${deadLetters} dead-letter, ${totalRetries} retries (${duration}ms)`
     );
+    logger.log(
+      `[SchedulerMetrics] queueLag avg=${queueLagStats.avgMs}ms max=${queueLagStats.maxMs}ms; cycleDuration avg=${cycleDurationStats.avgMs}ms max=${cycleDurationStats.maxMs}ms; failureTypes=${JSON.stringify(failureByType)}`
+    );
+    if (typeof emitSchedulerMetrics === 'function') {
+      try {
+        await emitSchedulerMetrics(schedulerMetrics);
+      } catch (emitError) {
+        warnLog(logger, `[SchedulerMetrics] Failed to emit scheduler metrics: ${emitError.message}`);
+      }
+    }
     return null;
   } catch (error) {
     logger.error('[Scheduler] FATAL:', error);

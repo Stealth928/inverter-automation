@@ -47,6 +47,7 @@ function buildSchedulerDeps(overrides = {}) {
     }),
     acquireUserCycleLock: overrides.acquireUserCycleLock || jest.fn(async () => ({ acquired: true, lockId: 'lock-1' })),
     db,
+    emitSchedulerMetrics: overrides.emitSchedulerMetrics,
     getConfig: overrides.getConfig || jest.fn(() => ({ automation: { intervalMs: 60000 } })),
     getTimeInTimezone: overrides.getTimeInTimezone || jest.fn(() => new Date('2026-03-06T12:00:00Z')),
     getUserAutomationState:
@@ -111,6 +112,49 @@ describe('automation scheduler service', () => {
         userId: 'u-1'
       })
     );
+  });
+
+  test('emits scheduler metrics with failure type and timing summary', async () => {
+    const emitSchedulerMetrics = jest.fn(async () => undefined);
+    const automationCycleHandler = jest.fn(async (req, res) => {
+      if (req.user.uid === 'u-1') {
+        res.json({ errno: 429, error: 'Too many requests' });
+        return;
+      }
+      res.json({ errno: 0, result: { skipped: true, reason: 'No rules configured' } });
+    });
+    const { deps } = buildSchedulerDeps({
+      automationCycleHandler,
+      emitSchedulerMetrics,
+      schedulerOptions: {
+        maxConcurrentUsers: 1,
+        retryAttempts: 1,
+        retryBaseDelayMs: 0,
+        retryJitterMs: 0
+      },
+      userIds: ['u-1', 'u-2']
+    });
+
+    await runAutomationSchedulerCycle({}, deps);
+
+    expect(emitSchedulerMetrics).toHaveBeenCalledTimes(1);
+    const metrics = emitSchedulerMetrics.mock.calls[0][0];
+    expect(metrics).toEqual(expect.objectContaining({
+      totalEnabledUsers: 2,
+      cycleCandidates: 2,
+      cyclesRun: 1,
+      deadLetters: 1,
+      errors: 1
+    }));
+    expect(metrics.failureByType).toEqual(expect.objectContaining({
+      api_rate_limit: 1
+    }));
+    expect(metrics.queueLagMs).toEqual(expect.objectContaining({
+      count: 2
+    }));
+    expect(metrics.cycleDurationMs).toEqual(expect.objectContaining({
+      count: 2
+    }));
   });
 
   test('limits user cycle execution with bounded concurrency', async () => {
@@ -250,6 +294,23 @@ describe('automation scheduler service', () => {
     ).toBe(true);
     expect(
       logger.log.mock.calls.some((call) => String(call[0]).includes('1 idempotent'))
+    ).toBe(true);
+  });
+
+  test('warns and continues when metric emission fails', async () => {
+    const emitSchedulerMetrics = jest.fn(async () => {
+      throw new Error('metrics sink unavailable');
+    });
+    const { deps, logger } = buildSchedulerDeps({
+      emitSchedulerMetrics,
+      userIds: ['u-1']
+    });
+
+    await runAutomationSchedulerCycle({}, deps);
+
+    expect(emitSchedulerMetrics).toHaveBeenCalledTimes(1);
+    expect(
+      logger.warn.mock.calls.some((call) => String(call[0]).includes('Failed to emit scheduler metrics'))
     ).toBe(true);
   });
 });
