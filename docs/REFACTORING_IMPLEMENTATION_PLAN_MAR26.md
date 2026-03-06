@@ -1,6 +1,6 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 3 step 2 complete with closeout evidence drafted, scheduler service-runner decoupling complete, and index.js reduction continuing (G2 blockers narrowed materially; admin + health route extraction landed, admin access + billing/monitoring + weather/cache + API metrics helper extraction landed, repository/state/time + curtailment + rule-action + rule-evaluation service extraction landed, index.js is now below the <1,500 line gate target, and repo hygiene checks are now enforced in pre-deploy)
+Status: Active execution - Sprint 1 complete, P1 closeout pending, P2/G2 closed, scheduler service-runner decoupling complete, and backend decomposition validated in gate evidence (admin + health route extraction landed, admin access + billing/monitoring + weather/cache + API metrics helper extraction landed, repository/state/time + curtailment + rule-action + rule-evaluation + quick-control service extraction landed, thin repository-wrapper duplication in index composition root removed, index.js remains below the <1,500 line gate target, and repo hygiene checks are enforced in pre-deploy)
 Scope: Planning + execution progress tracking  
 Last Updated: 2026-03-06  
 Primary Branch: `RefactoringMar26`
@@ -21,7 +21,7 @@ Primary Branch: `RefactoringMar26`
 |---|---|---|---|---|
 | P0 | G0 | ✅ Complete | 100% | - |
 | P1 | G1 | ⏳ In Progress | 10/10 tasks implemented; formal gate close pending | Capture closeout evidence + sign-off |
-| P2 | G2 | In Progress | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence refreshed with verified metrics, admin + health route domains extracted, admin access + billing/monitoring + weather/cache + API metrics helper domains extracted, repository/state/time + curtailment + rule-action + rule-evaluation service extraction landed, `index.js` at 944 lines (89.5% reduction), inline routes reduced to 0, and repo-hygiene gating added to pre-deploy | Continue G2 closeout by finalizing evidence/sign-off artifacts and resolving remaining documentation hygiene items |
+| P2 | G2 | ✅ Complete | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence finalized, all G2 criteria marked met, `index.js` measured at 918 lines (89.8% reduction), inline routes reduced to 0, scheduler route-stack coupling removed, and repo-hygiene gating integrated into pre-deploy | Transition to P3/G3 orchestration hardening planning and execution |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -1320,6 +1320,60 @@ Tracker hygiene rule: update this section at the end of every completed executio
   - repo hygiene rules are now automated and enforced in the same hard gate path as lint/tests/contract checks.
 - Next target chunk: finalize remaining G2 closeout evidence/sign-off artifacts and resolve outstanding documentation hygiene deltas.
 
+### 2026-03-06 - Chunk 61 (G2 blocker execution: composition-root repository wrapper normalization)
+
+- Continued `functions/index.js` cleanup by removing residual thin wrappers around `createUserAutomationRepository(...)` methods and wiring repository methods directly in composition:
+  - direct composition now binds:
+    - `getUserConfig`, `getUserRules`, `getUserRule`
+    - `setUserConfig`, `updateUserConfig`, `setUserRule`, `deleteUserRule`
+    - `clearRulesLastTriggered`
+    - `addHistoryEntry`, `getHistoryEntries` (aliased to `getUserHistoryEntries`)
+- Removed duplicated inline wrapper functions from `functions/index.js` for the above methods so route/service modules consume shared repository behavior without indirection.
+- Validation passed:
+  - `npm --prefix functions run lint`
+  - `npm --prefix functions test -- test/config-read-status-routes-modules.test.js test/automation-mutation-routes-modules.test.js test/automation-cycle-route-module.test.js test/quick-control-routes-modules.test.js`
+  - `node scripts/pre-deploy-check.js`
+- `functions/index.js` current size after this chunk: **895 lines** (from 9,019 baseline, ~90.1% reduction).
+- Inline route declarations remaining in `functions/index.js`: **0** (`app.get/post/put/delete/patch` registrations).
+- Next target chunk: continue G2 closeout by finalizing sign-off evidence/governance artifacts and shared test-harness normalization.
+
+### 2026-03-06 - Chunk 62 (G2 blocker execution: quick-control cleanup service extraction)
+
+- Continued decomposition by extracting expired quick-control cleanup behavior from `functions/index.js` into a dedicated shared service:
+  - `functions/lib/services/quick-control-service.js`
+  - moved:
+    - `cleanupExpiredQuickControl(...)`
+- Rewired composition in `functions/index.js`:
+  - added `createQuickControlService(...)` import.
+  - initialized service with existing dependencies (`addHistoryEntry`, `foxessAPI`, `getUserConfig`, `saveQuickControlState`, `serverTimestamp`, `logger`).
+  - removed the inline quick-control cleanup helper body from `index.js` while preserving behavior for both `automation-cycle` and `quick-control` route modules.
+- Added focused regression coverage:
+  - `functions/test/quick-control-service.test.js`
+  - covers dependency guardrails, non-expired no-op behavior, successful clear/flag/state/history flow, and failure-tolerant cleanup behavior.
+- Validation passed:
+  - `npm --prefix functions run lint`
+  - `npm --prefix functions test -- test/quick-control-service.test.js test/quick-control-routes-modules.test.js test/automation-cycle-route-module.test.js`
+  - `node scripts/pre-deploy-check.js`
+- `functions/index.js` current size after this chunk: **918 lines** (from 9,019 baseline, ~89.8% reduction).
+- Inline route declarations remaining in `functions/index.js`: **0** (`app.get/post/put/delete/patch` registrations).
+- Next target chunk: finalize G2 closeout governance artifacts and phase-gate dashboard status.
+
+### 2026-03-06 - Chunk 63 (G2 closeout finalization and governance sync)
+
+- Finalized G2 evidence and governance records:
+  - updated `docs/P2_G2_CLOSEOUT_EVIDENCE_MAR26.md` from draft/conditional state to final closeout (`Go`, gate closed).
+  - updated `docs/PHASE_GATE_DASHBOARD.md` `P2/G2` status to `Completed`.
+  - refreshed plan tracker status/progress row to mark `P2/G2` complete.
+- Added objective closeout verification entries to evidence:
+  - `functions/index.js` measured at **918 lines**.
+  - route modules under `functions/api/routes`: **21**.
+  - inline route declarations in `index.js`: **0**.
+  - direct scheduler dependency on `app._router.stack`: **0 matches**.
+  - targeted duplicate-utility sweep across extracted helper domains shows single shared definitions for prior overlap areas.
+- Validation passed:
+  - `node scripts/pre-deploy-check.js` (full gate pass: **71/71** suites, **750** passing, **44** todo).
+- Next target chunk: begin P3/G3 orchestration hardening execution planning.
+
 ---
 
 ## 1. Purpose
@@ -1348,7 +1402,7 @@ This section captures the actual state of the codebase as of 2026-03-04, measure
 - Route handlers directly call Firestore, external APIs, and each other. Zero separation of concerns between HTTP transport, business logic, and persistence.
 - ✅ **P2 update (2026-03-05):** `functions/index.js` reduced to **7,194 lines** (~20% reduction). **47 routes remain inline**; 8 read-only route modules extracted to `functions/api/routes/` (2,328 lines total). `functions/lib/` expanded to 8 modules (1,114 lines total) covering automation-actions, device-telemetry, pricing-normalization, repositories, billing, and adapters.
 - ✅ **P2 update (2026-03-06, verified):** `functions/index.js` reduced to **4,053 lines** (55% reduction from 9,019 baseline). **9 routes remain inline** (admin domain + health); **19 route modules** extracted to `functions/api/routes/` (4,990 lines total). `functions/lib/` expanded to **14 modules** across services/repositories/adapters/billing (2,157 lines total). **9 service modules** in `functions/lib/services/` (1,031 lines). Test suite: **57 suites, 682 tests passing**. Coverage: **50.3% statements, 42.6% branches, 62.4% functions, 51.3% lines**.
-- ✅ **P2 update (2026-03-06, latest):** `functions/index.js` reduced to **944 lines** (89.5% reduction from 9,019 baseline). **0 inline routes remain**; **21 route modules** extracted to `functions/api/routes/`. `functions/lib/` now includes shared admin access/metrics, weather/cache, API metrics, automation state/time utilities, curtailment, rule-action, and rule-evaluation service domains. Full gate validation currently passes with **70 test suites** and **790 tests** (`44` marked `todo`).
+- ✅ **P2 update (2026-03-06, latest):** `functions/index.js` reduced to **918 lines** (89.8% reduction from 9,019 baseline). **0 inline routes remain**; **21 route modules** extracted to `functions/api/routes/`. `functions/lib/` now includes shared admin access/metrics, weather/cache, API metrics, automation state/time utilities, curtailment, rule-action, rule-evaluation, and quick-control cleanup service domains, and thin repository-wrapper duplication in `index.js` has been removed. Full gate validation currently passes with **71 test suites** and **794 tests** (`44` marked `todo`), and **P2/G2 is closed**.
 
 ### 1A.2 Frontend Monolith
 
@@ -2167,6 +2221,9 @@ When execution is approved, run phases in order:
 | 2026-03-06 | Continued G2 blocker execution by extracting rule-action validation/dispatch logic into `functions/lib/services/automation-rule-action-service.js`, rewiring `functions/index.js` to compose `applyRuleAction(...)` and `validateRuleActionForUser(...)` via `createAutomationRuleActionService(...)`, adding focused coverage in `functions/test/automation-rule-action-service.test.js`, and re-validating lint, contract checks, and full pre-deploy gates (`70` suites / `746` passing / `790` total). | Codex |
 | 2026-03-06 | Continued G2 blocker execution by wiring `createAutomationRuleEvaluationService(...)` in `functions/index.js`, switching duplicated inline timezone/state/time helper usage to shared modules (`functions/lib/time-utils.js`, `functions/lib/repositories/automation-state-repository.js`), removing the large inlined rule-evaluation/comparison/helper block, and re-validating with lint, targeted extraction tests, and full pre-deploy gates (`functions/index.js` now 944 lines). | Codex |
 | 2026-03-06 | Continued G2 blocker execution by adding automated repo hygiene gates via `scripts/repo-hygiene-check.js` (tracked-noise artifact detection + root-doc minimization + required ignore policy checks), wiring `npm run hygiene:check` in `package.json`, integrating the new stage into `scripts/pre-deploy-check.js`, and re-validating the full pre-deploy gate end-to-end. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by removing thin `user-automation-repository` passthrough wrappers from `functions/index.js`, wiring repository methods directly in the composition root (including `getHistoryEntries` aliasing to `getUserHistoryEntries`), and re-validating via lint, focused route-module regression suites, and full pre-deploy checks (`functions/index.js` now 895 lines). | Codex |
+| 2026-03-06 | Continued G2 blocker execution by extracting quick-control expired-state cleanup into `functions/lib/services/quick-control-service.js`, rewiring `functions/index.js` to compose `cleanupExpiredQuickControl(...)` via `createQuickControlService(...)`, adding focused coverage in `functions/test/quick-control-service.test.js`, and re-validating lint, focused route-module regression suites, and full pre-deploy gates (`functions/index.js` now 918 lines; full suite `71/71` passed). | Codex |
+| 2026-03-06 | Finalized G2 closeout governance by updating `docs/P2_G2_CLOSEOUT_EVIDENCE_MAR26.md` to final `Go` state (all criteria met), marking `P2/G2` as completed in `docs/PHASE_GATE_DASHBOARD.md`, syncing tracker status in this plan, and re-validating `node scripts/pre-deploy-check.js` (`71/71` suites, `750` passing, `44` todo). | Codex |
 
 ---
 
@@ -2174,7 +2231,7 @@ When execution is approved, run phases in order:
 
 ```
 functions/
-├── index.js                          # ~1,000 lines target (currently 944): Express app, middleware, route mounting, exports
+├── index.js                          # ~1,000 lines target (currently 918): Express app, middleware, route mounting, exports
 ├── package.json
 ├── jest.config.js
 ├── api/
@@ -2239,3 +2296,5 @@ functions/
 **Revised total:** 22-27 weeks (vs original 20 weeks). Recommend planning for 24 weeks with 2-week buffer.
 
 **Critical path mitigation:** Start frontend inline JS extraction during P2 (parallel). Start feature-flag infrastructure during P2. Start EV research/prototyping during P3-P4.
+
+

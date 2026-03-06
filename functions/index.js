@@ -55,6 +55,7 @@ const { createApiMetricsService } = require('./lib/services/api-metrics-service'
 const { createAutomationRuleActionService } = require('./lib/services/automation-rule-action-service');
 const { createAutomationRuleEvaluationService } = require('./lib/services/automation-rule-evaluation-service');
 const { createCurtailmentService } = require('./lib/services/curtailment-service');
+const { createQuickControlService } = require('./lib/services/quick-control-service');
 const { createWeatherService } = require('./lib/services/weather-service');
 const { parseAutomationTelemetry } = require('./lib/device-telemetry');
 const { getCurrentAmberPrices } = require('./lib/pricing-normalization');
@@ -232,7 +233,18 @@ const logger = {
   }
 };
 
-const userAutomationRepository = createUserAutomationRepository({
+const {
+  addHistoryEntry,
+  clearRulesLastTriggered,
+  deleteUserRule,
+  getHistoryEntries: getUserHistoryEntries,
+  getUserConfig,
+  getUserRule,
+  getUserRules,
+  setUserConfig,
+  setUserRule,
+  updateUserConfig
+} = createUserAutomationRepository({
   db,
   logger,
   serverTimestamp
@@ -301,6 +313,17 @@ const {
   logger,
   parseAutomationTelemetry,
   resolveAutomationTimezone: getAutomationTimezone
+});
+
+const {
+  cleanupExpiredQuickControl
+} = createQuickControlService({
+  addHistoryEntry,
+  foxessAPI,
+  getUserConfig,
+  logger,
+  saveQuickControlState,
+  serverTimestamp
 });
 
 // ==================== CACHED INVERTER DATA HELPER ====================
@@ -614,127 +637,6 @@ registerAuthLifecycleRoutes(app, {
 // Functions are initialized at module load and reinit after dependencies are available (line ~4178)
 // Access via amberAPI.callAmberAPI(), amberAPI.getCachedAmberSites(), etc.
 
-/**
- * Get user config from Firestore
- */
-async function getUserConfig(userId) {
-  return userAutomationRepository.getUserConfig(userId);
-}
-
-/**
- * Clean up expired quick control: clear scheduler segments, disable flag, delete state
- * Called from both automation cycle (server-side) and status endpoint (on user poll)
- * Returns true if cleanup was performed, false if nothing to clean up
- */
-async function cleanupExpiredQuickControl(userId, quickState) {
-  if (!quickState || !quickState.active || quickState.expiresAt > Date.now()) {
-    return false;
-  }
-  
-  logger.info('QuickControl', `Auto-cleanup expired quick control: type=${quickState.type}, expiresAt=${new Date(quickState.expiresAt).toISOString()}, userId=${userId}`);
-  
-  // Clear all scheduler segments
-  try {
-    const userConfig = await getUserConfig(userId);
-    const deviceSN = userConfig?.deviceSn;
-    if (deviceSN) {
-      const clearedGroups = [];
-      for (let i = 0; i < 8; i++) {
-        clearedGroups.push({
-          enable: 0,
-          workMode: 'SelfUse',
-          startHour: 0, startMinute: 0,
-          endHour: 0, endMinute: 0,
-          minSocOnGrid: 10,
-          fdSoc: 10,
-          fdPwr: 0,
-          maxSoc: 100
-        });
-      }
-      const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
-      if (clearResult?.errno === 0) {
-        logger.debug('QuickControl', `Auto-cleanup cleared segments successfully`);
-      } else {
-        console.warn(`[QuickControl] Auto-cleanup segment clear returned errno=${clearResult?.errno}`);
-      }
-      
-      // Disable scheduler flag
-      try {
-        await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
-      } catch (flagErr) {
-        console.warn('[QuickControl] Auto-cleanup flag disable failed:', flagErr?.message || flagErr);
-      }
-    }
-  } catch (err) {
-    console.error(`[QuickControl] Auto-cleanup error:`, err.message);
-  }
-  
-  // Delete quick control state
-  await saveQuickControlState(userId, null);
-  
-  // Log to history
-  try {
-    await addHistoryEntry(userId, {
-      type: 'quickcontrol_auto_cleanup',
-      controlType: quickState.type,
-      power: quickState.power,
-      durationMinutes: quickState.durationMinutes,
-      timestamp: serverTimestamp()
-    });
-  } catch (e) { /* ignore */ }
-  
-  return true;
-}
-
-/**
- * Get user automation rules from Firestore
- */
-async function getUserRules(userId) {
-  return userAutomationRepository.getUserRules(userId);
-}
-
-/**
- * Get one user automation rule by id
- */
-async function getUserRule(userId, ruleId) {
-  return userAutomationRepository.getUserRule(userId, ruleId);
-}
-
-/**
- * Persist user config (users/{uid}/config/main)
- */
-async function setUserConfig(userId, config, options = { merge: true }) {
-  return userAutomationRepository.setUserConfig(userId, config, options);
-}
-
-/**
- * Update user config fields (users/{uid}/config/main)
- */
-async function updateUserConfig(userId, updates) {
-  return userAutomationRepository.updateUserConfig(userId, updates);
-}
-
-/**
- * Persist one user automation rule by id
- */
-async function setUserRule(userId, ruleId, rule, options) {
-  return userAutomationRepository.setUserRule(userId, ruleId, rule, options);
-}
-
-/**
- * Delete one user automation rule by id
- */
-async function deleteUserRule(userId, ruleId) {
-  return userAutomationRepository.deleteUserRule(userId, ruleId);
-}
-
-/**
- * Clear lastTriggered for all user rules
- */
-async function clearRulesLastTriggered(userId) {
-  return userAutomationRepository.clearRulesLastTriggered(userId);
-}
-
 function normalizeCouplingValue(value) {
   const raw = String(value || '').toLowerCase().trim();
   if (raw === 'ac' || raw === 'ac-coupled' || raw === 'ac_coupled') return 'ac';
@@ -743,20 +645,6 @@ function normalizeCouplingValue(value) {
 }
 
 const DEFAULT_TOPOLOGY_REFRESH_MS = 4 * 60 * 60 * 1000;
-
-/**
- * Add entry to user history
- */
-async function addHistoryEntry(userId, entry) {
-  return userAutomationRepository.addHistoryEntry(userId, entry);
-}
-
-/**
- * Get recent user history entries ordered by timestamp desc
- */
-async function getUserHistoryEntries(userId, limit = 50) {
-  return userAutomationRepository.getHistoryEntries(userId, limit);
-}
 
 // ==================== API ENDPOINTS ====================
 
