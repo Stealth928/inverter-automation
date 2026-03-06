@@ -1,6 +1,7 @@
 'use strict';
 
 const { buildAllRuleEvaluationsForAudit } = require('../../lib/services/automation-audit-service');
+const { extractHouseLoadWatts } = require('../../lib/services/automation-roi-service');
 const { clearSchedulerSegments } = require('../../lib/services/scheduler-segment-service');
 
 function registerAutomationCycleRoute(app, deps = {}) {
@@ -762,90 +763,9 @@ app.post('/api/automation/cycle', async (req, res) => {
           // Log to audit trail - Rule turned ON
           // Include full evaluation context: ALL rules and their condition states
           const allRulesForAudit = buildAllRuleEvaluationsForAudit(evaluationResults, sortedRules);
-          
-          // ⭐ Extract house load at trigger time (for accurate ROI calculation)
-          // Use the SAME logic as index.html which successfully extracts house load (showing 1.68kW)
-          
-          // Helper function - same as index.html findValue (using const to avoid inner function declaration lint error)
-          const findValue = (arr, keysOrPatterns) => {
-            if (!Array.isArray(arr)) return null;
-            for (const k of keysOrPatterns) {
-              // Try exact match on variable
-              const exact = arr.find(it => 
-                (it.variable && it.variable.toString().toLowerCase() === k.toString().toLowerCase()) || 
-                (it.key && it.key.toString().toLowerCase() === k.toString().toLowerCase())
-              );
-              if (exact && exact.value !== undefined && exact.value !== null) return exact.value;
-              
-              // Try includes match on variable name
-              const incl = arr.find(it => 
-                (it.variable && it.variable.toString().toLowerCase().includes(k.toString().toLowerCase())) || 
-                (it.key && it.key.toString().toLowerCase().includes(k.toString().toLowerCase()))
-              );
-              if (incl && incl.value !== undefined && incl.value !== null) return incl.value;
-            }
-            return null;
-          };
-          
-          // ⭐ CRITICAL: Validate inverterData exists and is valid before extracting house load
-          // If API call failed or cache is empty, inverterData.errno won't be 0
-          if (!inverterData || inverterData.errno !== 0) {
-            console.error(`[Automation ROI] Cannot extract house load - inverterData invalid: errno=${inverterData?.errno}, error=${inverterData?.error || inverterData?.msg || 'unknown'}`);
-          }
-          
-          // Normalize response structure - same as index.html
-          let datas = [];
-          if (Array.isArray(inverterData?.result)) {
-            // result may be array of frames with datas arrays
-            if (inverterData.result.length > 0 && Array.isArray(inverterData.result[0].datas)) {
-              inverterData.result.forEach(r => { if (Array.isArray(r.datas)) datas.push(...r.datas); });
-            } else {
-              // result is array of simple datapoints
-              datas = inverterData.result.slice();
-            }
-          } else if (inverterData?.result && typeof inverterData.result === 'object') {
-            if (Array.isArray(inverterData.result.datas)) datas = inverterData.result.datas.slice();
-            else if (Array.isArray(inverterData.result.data)) datas = inverterData.result.data.slice();
-          }
-          
-          // Log the structure we're working with for debugging
-          if (datas.length === 0) {
-            console.error(`[Automation ROI] No datapoints extracted! inverterData structure: errno=${inverterData?.errno}, hasResult=${!!inverterData?.result}, resultType=${Array.isArray(inverterData?.result) ? 'array' : typeof inverterData?.result}, resultLength=${Array.isArray(inverterData?.result) ? inverterData.result.length : 'N/A'}`);
-            if (inverterData?.result && Array.isArray(inverterData.result) && inverterData.result.length > 0) {
-              console.error(`[Automation ROI] First result item structure: ${JSON.stringify(Object.keys(inverterData.result[0]))}, hasDatas=${!!inverterData.result[0].datas}`);
-            }
-          }
-          
-          // Extract house load using same keys and logic as index.html
-          const loadKeys = ['loadspower', 'loadpower', 'load', 'houseload', 'house_load', 'consumption', 'load_active_power', 'loadactivepower', 'loadsPower'];
-          let houseLoadW = findValue(datas, loadKeys);
-          
-          // Convert to number, but preserve null if data not found (don't default to 0)
-          if (houseLoadW !== null && houseLoadW !== undefined) {
-            houseLoadW = Number(houseLoadW);
-            if (isNaN(houseLoadW)) {
-              console.warn(`[Automation ROI] House load found but NaN: ${houseLoadW}`);
-              houseLoadW = null;
-            } else {
-              // CRITICAL FIX: FoxESS API returns loadsPower in KILOWATTS, not watts!
-              // Example: API returns 2.545 meaning 2.545kW (2545W actual house load)
-              // We need to convert to watts for consistency with variable name (houseLoadW)
-              // If value < 100, it's definitely in kW (house load rarely exceeds 100kW residential)
-              if (Math.abs(houseLoadW) < 100) {
-                  houseLoadW = houseLoadW * 1000; // Convert kW to W (was < 100, so treating as kW input)
-              }
-            }
-          }
-          
-          if (houseLoadW === null) {
-            console.error(`[Automation ROI] ❌ FAILED to extract house load from ${datas.length} datapoints - tried keys: ${loadKeys.join(', ')}`);
-            // Log what variables ARE present to help diagnose
-            if (datas.length > 0) {
-              const presentVars = datas.map(d => d.variable || d.key).filter(v => v).join(', ');
-              console.error(`[Automation ROI] Variables present in data: [${presentVars}]`);
-            }
-          }
-          
+
+          const { houseLoadW } = extractHouseLoadWatts(inverterData, console);
+
           const fdPwr = rule.action?.fdPwr || 0;
           const workMode = rule.action?.workMode || 'SelfUse';
           const isChargeRule = workMode === 'ForceCharge';
