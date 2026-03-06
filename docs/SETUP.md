@@ -103,33 +103,76 @@ Users configure their own API keys in the Settings page after login.
 3. Generate API token
 4. Copy the token (shown once)
 
+### Scheduler SLO Alert Channel (Optional but Recommended)
+
+Configure environment variables for operational alerting and threshold overrides:
+
+```bash
+AUTOMATION_SCHEDULER_SLO_ERROR_RATE_PCT=1.0
+AUTOMATION_SCHEDULER_SLO_DEAD_LETTER_RATE_PCT=0.2
+AUTOMATION_SCHEDULER_SLO_MAX_QUEUE_LAG_MS=120000
+AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS=60000
+AUTOMATION_SCHEDULER_SLO_ALERT_WEBHOOK_URL=https://your-alert-endpoint.example.com
+AUTOMATION_SCHEDULER_SLO_ALERT_COOLDOWN_MS=300000
+```
+
+Operational response playbook:
+- `docs/SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md`
+
 ---
 
 ## Local Development
 
-### Option 1: Firebase Emulators (Recommended)
+### Option 1: One-command Emulator Reset + Reseed (Recommended)
 
 ```bash
-# Start functions emulator
-firebase emulators:start --only functions
-
-# In another terminal, serve frontend
-cd frontend
-python -m http.server 8000
+# Deterministic stop -> start -> seed -> health-check
+npm run emu:reset
 ```
 
-- Frontend: http://localhost:8000
-- Functions: http://localhost:5001
-- Emulator UI: http://localhost:4000
+`emu:reset` launcher hardening:
+- On Windows, the CLI now auto-falls back from `npx.cmd` to `npm.cmd exec -- ...` when needed.
+- On macOS/Linux, it falls back from `npx` to `npm exec -- ...`.
 
-### Option 2: Full Emulator Suite (Requires Java)
+- Hosting + frontend pages: http://127.0.0.1:5000
+- Emulator UI: http://127.0.0.1:4000
+- Functions: http://127.0.0.1:5001
+- Auth Emulator: http://127.0.0.1:9099
+
+Helpful commands:
 
 ```bash
-# Install Java 11+, then:
-firebase emulators:start
+# Start only (no reseed)
+npm run emu:start
+
+# Reseed only (when emulators are already up)
+npm run emu:seed
+
+# Stop all emulators and cleanup listeners
+npm run emu:stop
+
+# Show quick port status
+npm run emu:status
 ```
 
-This runs Auth, Firestore, and Functions emulators.
+Notes:
+- The warning `You are using the Auth Emulator, which is intended for local testing only` is expected in local development.
+- If `localhost:5000` or `127.0.0.1:9099` shows `ERR_CONNECTION_REFUSED`, emulators are down; run `npm run emu:reset`.
+- If your local clone is older and reset/start fails with `spawn npx ENOENT`, use:
+```bash
+npm run emu:stop
+npm exec -- firebase emulators:start --only functions,firestore,hosting,auth,pubsub --import=./emulator-state --export-on-exit
+```
+
+### Option 2: Manual Emulator Start (advanced/troubleshooting)
+
+```bash
+firebase emulators:start --only functions,firestore,hosting,auth,pubsub
+```
+
+Use this mode when you want interactive logs in the same terminal.
+
+Requires Java (OpenJDK) for Firestore and Pub/Sub emulators.
 
 ---
 
@@ -192,47 +235,46 @@ inverter-automation/
 
 ## Firestore Schema
 
-```
-users/{userId}/
-  ├── profile               # User profile
-  │   ├── email
-  │   ├── displayName
-  │   └── createdAt
-  │
-  ├── config/main           # User configuration
-  │   ├── deviceSn
-  │   ├── foxessToken
-  │   ├── amberApiKey
-  │   ├── amberSiteId
-  │   └── location
-  │
-  ├── automation/state      # Automation state
-  │   ├── enabled
-  │   ├── lastCheck
-  │   ├── activeRule
-  │   └── activeUntil
-  │
-  ├── rules/{ruleId}        # Automation rules
-  │   ├── name
-  │   ├── enabled
-  │   ├── priority
-  │   ├── conditions
-  │   └── action
-  │
-  └── history/{docId}       # Automation history
-      ├── timestamp
-      ├── type
-      ├── rule
-      └── result
+This section documents the current Firestore model used by backend code.
 
-Per-user caches at `users/{uid}/cache/`:
-  ├── inverter               # Real-time inverter telemetry (5-min TTL)
-  ├── weather                # Weather forecast data (30-min TTL)
-  └── history_*              # Historical power data chunks (30-min TTL)
+### Top-level collections
 
-Global caches:
-  └── amber_prices/{siteId}  # Electricity pricing by site (24-hr TTL)
-```
+| Path | Purpose |
+|---|---|
+| `users/{uid}` | User profile and top-level flags (`email`, `displayName`, `role`, `automationEnabled`, timestamps). |
+| `shared/serverConfig` | Legacy shared setup config used by selected pre-auth setup flows. |
+| `metrics/{YYYY-MM-DD}` | Platform-wide daily API usage counters. |
+| `metrics/automationScheduler/runs/{runId}` | Per-run scheduler orchestration metrics snapshots. |
+| `metrics/automationScheduler/daily/{YYYY-MM-DD}` | Daily scheduler orchestration aggregate metrics for admin dashboards. |
+| `metrics/automationScheduler/alerts/current` | Latest scheduler SLO alert snapshot (healthy/watch/breach status + measured/threshold metrics). |
+| `metrics/automationScheduler/alerts/{YYYY-MM-DD}` | Daily scheduler SLO watch/breach alert snapshots for operational follow-up. |
+| `admin_audit/{docId}` | Admin action audit trail (role changes, impersonation, deletion events). |
+
+### User-scoped collections (`users/{uid}/...`)
+
+| Path | Purpose |
+|---|---|
+| `config/main` | User config (FoxESS token/SN, Amber key/site, timezone/location, system topology, automation preferences). |
+| `automation/state` | Runtime automation status (`enabled`, `lastCheck`, `activeRule`, transition metadata). |
+| `rules/{ruleId}` | User automation rules (conditions, action, schedule/priority). |
+| `history/{docId}` | Immutable rule/action history log. |
+| `notifications/{notificationId}` | User notifications (read/unread state). |
+| `automationAudit/{auditId}` | Per-cycle audit data including evaluation snapshots and ROI context. |
+| `metrics/{YYYY-MM-DD}` | Per-user daily API usage counters (`foxess`, `amber`, `weather`, timestamps). |
+| `quickControl/state` | Active quick-control override (`type`, `power`, `expiresAt`, metadata). |
+| `curtailment/state` | Curtailment feature state (`active`, threshold/price snapshot, transition metadata). |
+| `cache/inverter` | Cached inverter summary telemetry (TTL-based). |
+| `cache/inverter-realtime` | Cached full inverter real-time payload (TTL-based). |
+| `cache/weather` | Cached weather forecast payload (TTL-based). |
+| `cache/amber_sites` | Cached Amber site list. |
+| `cache/amber_current_{siteId}` | Cached Amber current price payload per site. |
+| `cache/amber_{siteId}` | Cached Amber historical/materialized price payload per site. |
+| `cache/history_{sn}_{begin}_{end}` | Cached FoxESS history query chunks by serial and time window. |
+
+### Notes
+
+- Cache and audit documents store `ttl` where configured for Firestore TTL cleanup policies.
+- User deletion endpoints now remove the full user document tree recursively, covering all subcollections above.
 
 ---
 

@@ -308,7 +308,31 @@ class APIClient {
   }
 
   async testRule(ruleName, testTime = null) {
-    return this.post('/api/automation/rule/test', { ruleName, testTime });
+    return this.post('/api/automation/test', { ruleName, testTime });
+  }
+
+  async updateRule(ruleName, ruleData) {
+    return this.post('/api/automation/rule/update', { ruleName, ruleData });
+  }
+
+  async triggerAutomation() {
+    return this.post('/api/automation/trigger', {});
+  }
+
+  async resetAutomation() {
+    return this.post('/api/automation/reset', {});
+  }
+
+  async enableAutomation(enabled) {
+    return this.post('/api/automation/enable', { enabled });
+  }
+
+  async runAutomationCycle() {
+    return this.post('/api/automation/cycle', {});
+  }
+
+  async getAutomationAudit(limit = 100) {
+    return this.get('/api/automation/audit', { limit });
   }
 
   // ==================== INVERTER ====================
@@ -322,11 +346,35 @@ class APIClient {
   }
 
   async getInverterDetail(sn) {
-    return this.get('/api/inverter/detail', { sn });
+    return this.get('/api/inverter/real-time', { sn });
   }
 
   async getInverterTemps(sn) {
     return this.get('/api/inverter/temps', { sn });
+  }
+
+  async getInverterSettings(sn) {
+    return this.get('/api/inverter/settings', { sn });
+  }
+
+  async getInverterHistory(sn, begin, end) {
+    return this.get('/api/inverter/history', { sn, begin, end });
+  }
+
+  async getInverterGeneration(sn, begin, end) {
+    return this.get('/api/inverter/generation', { sn, begin, end });
+  }
+
+  async getInverterReport(sn, begin, end) {
+    return this.get('/api/inverter/report', { sn, begin, end });
+  }
+
+  async discoverInverterVariables(sn) {
+    return this.get('/api/inverter/discover-variables', { sn });
+  }
+
+  async getInverterAllData(sn) {
+    return this.post('/api/inverter/all-data', { sn });
   }
 
   // ==================== SCHEDULER ====================
@@ -351,6 +399,10 @@ class APIClient {
 
   async getAmberPrices(siteId) {
     return this.get('/api/amber/prices', { siteId });
+  }
+
+  async getAmberCurrentPrices(siteId, forceRefresh = false) {
+    return this.get('/api/amber/prices/current', { siteId, forceRefresh });
   }
 
   async getAmberHistoricalPrices(siteId, startDate, endDate, resolution = 30, actualOnly = false) {
@@ -382,6 +434,138 @@ class APIClient {
   async getAmberActualPrice(siteId, timestamp, resolution = 30) {
     return this.get('/api/amber/prices/actual', { siteId, timestamp, resolution });
   }
+
+  // ==================== QUICK CONTROL ====================
+
+  async getQuickControlStatus() {
+    return this.get('/api/quickcontrol/status');
+  }
+
+  async startQuickControl(type, power, durationMinutes) {
+    return this.post('/api/quickcontrol/start', { type, power, durationMinutes });
+  }
+
+  async endQuickControl() {
+    return this.post('/api/quickcontrol/end', {});
+  }
+
+  // ==================== DEVICE ====================
+
+  async getBatterySoC(sn) {
+    return this.get('/api/device/battery/soc/get', { sn });
+  }
+
+  async setBatterySoC(sn, minSocOnGrid, minSoc) {
+    return this.post('/api/device/battery/soc/set', { sn, minSocOnGrid, minSoc });
+  }
+
+  async getForceChargeTime(sn) {
+    return this.get('/api/device/battery/forceChargeTime/get', { sn });
+  }
+
+  async setForceChargeTime(sn, forceChargeEnable, startTime, endTime) {
+    return this.post('/api/device/battery/forceChargeTime/set', {
+      sn,
+      forceChargeEnable,
+      startTime,
+      endTime
+    });
+  }
+
+  async getDeviceSetting(sn, key) {
+    return this.post('/api/device/setting/get', { sn, key });
+  }
+
+  async setDeviceSetting(sn, key, value) {
+    return this.post('/api/device/setting/set', { sn, key, value });
+  }
+
+  async getDeviceWorkmode(sn) {
+    return this.get('/api/device/workmode/get', { sn });
+  }
+
+  async setDeviceWorkmode(sn, workMode) {
+    return this.post('/api/device/workmode/set', { sn, workMode });
+  }
+
+  // ==================== CONFIG AND PROFILE ====================
+
+  async validateKeys(payload) {
+    return this.post('/api/config/validate-keys', payload);
+  }
+
+  async getSetupStatus() {
+    return this.get('/api/config/setup-status');
+  }
+
+  async clearCredentials() {
+    return this.post('/api/config/clear-credentials', {});
+  }
+
+  async getSystemTopology() {
+    return this.get('/api/config/system-topology');
+  }
+
+  async saveSystemTopology(payload) {
+    return this.post('/api/config/system-topology', payload);
+  }
+
+  async initUserProfile() {
+    return this.post('/api/user/init-profile', {});
+  }
+
+  async deleteUserAccount(confirmText, confirmEmail) {
+    return this.post('/api/user/delete-account', { confirmText, confirmEmail });
+  }
+
+  async initAuthUser() {
+    return this.post('/api/auth/init-user', {});
+  }
+
+  // ==================== ADMIN ====================
+
+  async checkAdminAccess() {
+    return this.get('/api/admin/check');
+  }
+
+  async getAdminUsers() {
+    return this.get('/api/admin/users');
+  }
+
+  async getAdminPlatformStats(days = 90) {
+    return this.get('/api/admin/platform-stats', { days });
+  }
+
+  async getAdminSchedulerMetrics(days = 14, includeRuns = true, runLimit = 20) {
+    return this.get('/api/admin/scheduler-metrics', { days, includeRuns, runLimit });
+  }
+
+  async getAdminUserStats(uid) {
+    return this.get(`/api/admin/users/${encodeURIComponent(uid)}/stats`);
+  }
+
+  async updateAdminUserRole(uid, role) {
+    return this.post(`/api/admin/users/${encodeURIComponent(uid)}/role`, { role });
+  }
+
+  async deleteAdminUser(uid, confirmText = 'DELETE') {
+    return this.post(`/api/admin/users/${encodeURIComponent(uid)}/delete`, { confirmText });
+  }
+
+  async impersonateUser(uid) {
+    return this.post('/api/admin/impersonate', { uid });
+  }
+
+  async getAdminFirestoreMetrics(days = 30) {
+    return this.get('/api/admin/firestore-metrics', { days });
+  }
+
+  // ==================== METRICS ====================
+
+  async getApiCallMetrics(days = 30, scope = 'user') {
+    return this.get('/api/metrics/api-calls', { days, scope });
+  }
+
   // ==================== WEATHER ====================
 
   async getWeather(place, days = 3) {

@@ -4,14 +4,16 @@ module.exports = {
   testMatch: ['**/test/**/*.test.js'],
   collectCoverageFrom: [
     'index.js',
+    'api/**/*.js',
+    'lib/**/*.js',
     '!**/node_modules/**'
   ],
   coverageThreshold: {
     global: {
-      statements: 3, // Start low, increase incrementally
-      branches: 1,
-      functions: 0.5,
-      lines: 3
+      statements: 20,
+      branches: 10,
+      functions: 5,
+      lines: 20
     }
   },
   coverageReporters: ['text', 'lcov', 'html'],

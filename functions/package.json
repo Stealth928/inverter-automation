@@ -19,11 +19,6 @@
     "test:unit": "jest test/automation.test.js",
     "test:edge-cases": "jest test/automation-edge-cases.test.js",
     "test:auth": "jest test/auth-flows.test.js",
-    "test:integration": "node integration-test.js",
-    "test:e2e": "node e2e-tests.js",
-    "test:e2e:prod": "TEST_ENV=prod node e2e-tests.js",
-    "test:e2e:auth": "node e2e-tests.js",
-    "test:all": "npm test && npm run test:integration && npm run test:e2e",
     "pre-deploy": "node ../scripts/pre-deploy-check.js"
   },
   "dependencies": {

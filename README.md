@@ -34,8 +34,8 @@ See [docs/SETUP.md](docs/SETUP.md) for detailed setup instructions.
 | [docs/AUTOMATION.md](docs/AUTOMATION.md) | **Automation rules engine** - conditions, actions, examples |
 | [docs/API.md](docs/API.md) | **API reference** - all endpoints and parameters |
 | [docs/SETUP.md](docs/SETUP.md) | **Setup guide** - deployment and configuration |
-| [docs/FOXESS_SCHEDULER_REORDERING.md](docs/FOXESS_SCHEDULER_REORDERING.md) | FoxESS API quirks and workarounds |
-| [TESTING_GUIDE.md](TESTING_GUIDE.md) | **Testing guide** - how to run tests, current coverage, known gaps |
+| [docs/BACKGROUND_AUTOMATION.md](docs/BACKGROUND_AUTOMATION.md) | Scheduler/runtime behavior and background processing details |
+| [docs/guides/TESTING_GUIDE.md](docs/guides/TESTING_GUIDE.md) | **Testing guide** - how to run tests, coverage, and known gaps |
 
 ## Architecture
 
@@ -80,7 +80,10 @@ inverter-automation/
 |   |-- AUTOMATION.md
 |   |-- API.md
 |   |-- SETUP.md
-|   |-- FOXESS_SCHEDULER_REORDERING.md
+|   |-- BACKGROUND_AUTOMATION.md
+|   |-- guides/
+|   |   |-- TESTING_GUIDE.md
+|   |   |-- PRODUCT_GUIDE.md
 |-- archive/                 # Deprecated files (not deployed)
 ```
 
@@ -216,7 +219,7 @@ Dashboard local mock mode (inverter + Amber cards):
 .\run-tests.ps1 -Type e2e -Prod -AuthToken "your-token"
 ```
 
-See [TESTING_GUIDE.md](TESTING_GUIDE.md) for complete testing documentation.
+See [docs/guides/TESTING_GUIDE.md](docs/guides/TESTING_GUIDE.md) for complete testing documentation.
 
 ## ⚡ Quality Control & Deployment
 
@@ -241,7 +244,7 @@ firebase deploy --only functions
 ```
 
 **The pre-deploy script verifies:**
-- ✓ All Jest tests pass (current count in TESTING_GUIDE.md)
+- ✓ All Jest tests pass (current count in `docs/guides/TESTING_GUIDE.md`)
 - ✓ No linting errors
 - ✓ All critical modules properly imported/exported
 - ✓ All critical routes defined and functional
@@ -275,3 +278,4 @@ firebase deploy --only hosting     # Deploy frontend only
 ## License
 
 MIT
+

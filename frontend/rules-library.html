@@ -139,8 +139,11 @@
         /* ── Card grid ── */
         .rules-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
             gap: 18px;
+        }
+        .rules-grid > * {
+            min-width: 0;
         }
 
         /* ── Rule card ── */
@@ -155,6 +158,8 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
+            min-width: 0;
+            max-width: 100%;
         }
         .rule-card:hover {
             border-color: var(--accent-blue);
@@ -373,6 +378,73 @@
             line-height: 1.2;
         }
 
+        /* ── Light theme contrast overrides for card pills/chips ── */
+        [data-theme="light"] .badge-price {
+            background: #fff1d9;
+            color: #8a4b00;
+            border: 1px solid #f0c77a;
+        }
+        [data-theme="light"] .badge-battery {
+            background: #def6e8;
+            color: #0f6e45;
+            border: 1px solid #9ed9be;
+        }
+        [data-theme="light"] .badge-solar {
+            background: #fff5d7;
+            color: #7d5a00;
+            border: 1px solid #ecd086;
+        }
+        [data-theme="light"] .badge-time {
+            background: #ede7ff;
+            color: #5533ad;
+            border: 1px solid #c7b7f5;
+        }
+        [data-theme="light"] .badge-seasonal {
+            background: #e6ecff;
+            color: #3652a8;
+            border: 1px solid #b8c8f4;
+        }
+        [data-theme="light"] .badge-ev {
+            background: #ffe3f0;
+            color: #a32967;
+            border: 1px solid #efb4d2;
+        }
+        [data-theme="light"] .badge-beginner {
+            background: #dff7ea;
+            color: #0f7a47;
+            border: 1px solid #9ed9be;
+        }
+        [data-theme="light"] .badge-intermediate {
+            background: #ffe9dc;
+            color: #9f4d10;
+            border: 1px solid #f1c5a6;
+        }
+        [data-theme="light"] .badge-advanced {
+            background: #ffe2e2;
+            color: #a72222;
+            border: 1px solid #efb1b1;
+        }
+        [data-theme="light"] .card-priority-pill {
+            color: #2b59b6;
+            background: #e7efff;
+            border-color: #9fb7f2;
+        }
+        [data-theme="light"] .condition-chip {
+            color: #245ea8;
+            background: #e8f2ff;
+            border-color: #9abef3;
+        }
+        [data-theme="light"] .action-mode {
+            color: #8a5a00;
+            background: #fff2d7;
+            border-color: #e3bf7f;
+        }
+        [data-theme="light"] .action-meta {
+            color: #8a5a00;
+            background: #fff6e5;
+            border-color: #e8c994;
+        }
+
         /* ── Empty state ── */
         .empty-state {
             text-align: center;
@@ -381,6 +453,73 @@
         }
         .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
         .empty-state p { font-size: 14px; }
+
+        /* ── Initial rules loading state ── */
+        .rules-loading {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            background: var(--bg-overlay);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 14px;
+            color: var(--text);
+        }
+        .rules-loading.show { display: flex; }
+        .rules-loading .spinner {
+            border: 2px solid color-mix(in srgb, var(--accent-blue) 20%, transparent);
+            border-top-color: var(--accent-blue);
+        }
+        .rules-loading-title {
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.35;
+        }
+        .rules-loading-subtitle {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.35;
+        }
+        .rules-grid.loading {
+            pointer-events: none;
+        }
+        .rule-skeleton {
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            border-radius: 14px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .skeleton-line {
+            height: 10px;
+            border-radius: 6px;
+            background: linear-gradient(
+                90deg,
+                color-mix(in srgb, var(--bg-overlay) 90%, #fff 10%) 0%,
+                color-mix(in srgb, var(--bg-overlay) 72%, #fff 28%) 50%,
+                color-mix(in srgb, var(--bg-overlay) 90%, #fff 10%) 100%
+            );
+            background-size: 220% 100%;
+            animation: skeleton-shimmer 1.2s ease-in-out infinite;
+        }
+        .skeleton-line.w-20 { width: 20%; }
+        .skeleton-line.w-30 { width: 30%; }
+        .skeleton-line.w-45 { width: 45%; }
+        .skeleton-line.w-55 { width: 55%; }
+        .skeleton-line.w-65 { width: 65%; }
+        .skeleton-line.w-75 { width: 75%; }
+        .skeleton-line.w-90 { width: 90%; }
+        .pill:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+        @keyframes skeleton-shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -20% 0; }
+        }
 
         /* ── Sticky action bar ── */
         .action-bar {
@@ -509,9 +648,21 @@
 
         /* ── Responsive ── */
         @media (max-width: 600px) {
-            .rules-grid { grid-template-columns: 1fr; }
+            .container { padding: 16px 12px 120px; }
+            .rules-grid { grid-template-columns: 1fr; gap: 14px; }
+            .rule-card { padding: 16px; }
             .toolbar { flex-direction: column; align-items: stretch; }
             .search-wrap { max-width: 100%; }
+            .card-top { flex-direction: column; align-items: stretch; gap: 8px; }
+            .card-top-main { width: 100%; }
+            .card-badges { flex-wrap: wrap; }
+            .card-corner-controls { width: 100%; justify-content: space-between; }
+            .badge,
+            .card-priority-pill,
+            .condition-chip,
+            .action-meta {
+                max-width: 100%;
+            }
             .action-bar { flex-wrap: wrap; }
         }
     </style>
@@ -528,7 +679,6 @@
             <a href="/rules-library.html" class="nav-link">📚 Rules Library</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
             <a href="/curtailment-discovery.html" class="nav-link" id="topologyNavLink" style="display: none;">🔬 WIP - Topology Discovery</a>
-            <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
             <a href="/admin.html" class="nav-link" id="adminNavLink" style="display: none;">🛡️ Admin</a>
         </div>
         <div class="nav-right">
@@ -593,6 +743,15 @@
             <span class="count" id="visibleCount">0</span>&nbsp;rules shown
         </div>
 
+        <!-- Loading indicator -->
+        <div id="rulesLoading" class="rules-loading" role="status" aria-live="polite" aria-busy="false">
+            <div class="spinner spinner-accent" aria-hidden="true"></div>
+            <div>
+                <div class="rules-loading-title">Loading rules library...</div>
+                <div class="rules-loading-subtitle">Checking your existing automation rules.</div>
+            </div>
+        </div>
+
         <!-- Rules grid -->
         <div class="rules-grid" id="rulesGrid"></div>
 
@@ -638,10 +797,15 @@
         AppShell.init({
             pageName: 'rules-library',
             onReady: async () => {
-                await loadUserPowerProfile();
-                await loadExistingRules();
-                renderCards();
-                try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch(e) {}
+                setRulesLoading(true);
+                try {
+                    await loadUserPowerProfile();
+                    await loadExistingRules();
+                    renderCards();
+                    try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch(e) {}
+                } finally {
+                    setRulesLoading(false);
+                }
             }
         });
 
@@ -649,10 +813,59 @@
         // inverter-capacity-based power chips are never stale after Settings edits.
         window.addEventListener('pageshow', async (event) => {
             if (!event.persisted) return;
-            await loadUserPowerProfile();
-            await loadExistingRules();
-            renderCards();
+            setRulesLoading(true);
+            try {
+                await loadUserPowerProfile();
+                await loadExistingRules();
+                renderCards();
+            } finally {
+                setRulesLoading(false);
+            }
         });
+
+        function setRulesLoading(isLoading) {
+            const loading = document.getElementById('rulesLoading');
+            const grid = document.getElementById('rulesGrid');
+            const searchInput = document.getElementById('searchInput');
+            const pills = document.querySelectorAll('#categoryPills .pill');
+
+            if (!loading || !grid) return;
+
+            if (isLoading) {
+                loading.classList.add('show');
+                loading.setAttribute('aria-busy', 'true');
+                grid.classList.add('loading');
+                renderLoadingSkeletons();
+                if (searchInput) searchInput.disabled = true;
+                pills.forEach(p => { p.disabled = true; });
+                document.getElementById('emptyState').style.display = 'none';
+                document.getElementById('visibleCount').textContent = '...';
+                return;
+            }
+
+            loading.classList.remove('show');
+            loading.setAttribute('aria-busy', 'false');
+            grid.classList.remove('loading');
+            if (searchInput) searchInput.disabled = false;
+            pills.forEach(p => { p.disabled = false; });
+        }
+
+        function renderLoadingSkeletons() {
+            const grid = document.getElementById('rulesGrid');
+            if (!grid) return;
+
+            const cardSkeleton = `
+                <div class="rule-skeleton" aria-hidden="true">
+                    <div class="skeleton-line w-30"></div>
+                    <div class="skeleton-line w-55"></div>
+                    <div class="skeleton-line w-90"></div>
+                    <div class="skeleton-line w-75"></div>
+                    <div class="skeleton-line w-45"></div>
+                    <div class="skeleton-line w-65"></div>
+                </div>
+            `;
+            grid.innerHTML = cardSkeleton.repeat(6);
+        }
 
         async function loadUserPowerProfile() {
             try {
@@ -727,6 +940,7 @@
         // ── Render cards ───────────────────────────────────────
         function renderCards() {
             const grid = document.getElementById('rulesGrid');
+            grid.classList.remove('loading');
             grid.innerHTML = '';
 
             window.RULE_LIBRARY.forEach(tmpl => {

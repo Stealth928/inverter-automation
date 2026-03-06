@@ -94,6 +94,41 @@ describe('Routes Integration Tests', () => {
       expect(res.statusCode).toBeGreaterThanOrEqual(200);
       expect(res.body).toHaveProperty('errno');
     });
+
+    test('POST /api/config/validate-keys accepts non-empty FoxESS token in emulator mode', async () => {
+      const prevFunctionsEmulator = process.env.FUNCTIONS_EMULATOR;
+      const prevFirestoreEmulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
+      process.env.FUNCTIONS_EMULATOR = 'true';
+      delete process.env.FIRESTORE_EMULATOR_HOST;
+
+      try {
+        const res = await request(app)
+          .post('/api/config/validate-keys')
+          .send({
+            device_sn: 'SN-EMU-001',
+            foxess_token: 'emu-token-123'
+          });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toEqual({
+          errno: 0,
+          msg: 'Credentials validated successfully',
+          result: { deviceSn: 'SN-EMU-001' }
+        });
+      } finally {
+        if (prevFunctionsEmulator === undefined) {
+          delete process.env.FUNCTIONS_EMULATOR;
+        } else {
+          process.env.FUNCTIONS_EMULATOR = prevFunctionsEmulator;
+        }
+
+        if (prevFirestoreEmulatorHost === undefined) {
+          delete process.env.FIRESTORE_EMULATOR_HOST;
+        } else {
+          process.env.FIRESTORE_EMULATOR_HOST = prevFirestoreEmulatorHost;
+        }
+      }
+    });
   });
 
   describe('Error Handling', () => {

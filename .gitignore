@@ -23,6 +23,7 @@ tmp_docker_check/
 # Firebase cache and deployment artifacts
 .firebase/
 .firebase_logs.txt
+firebase.local.json
 
 # Runtime artifacts and log dumps
 *.pid
@@ -40,3 +41,6 @@ coverage/
 
 # Archived/deprecated files
 archive/
+
+# Exported data snapshots
+exports/

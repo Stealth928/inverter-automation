@@ -1,0 +1,177 @@
+'use strict';
+
+function getLogger(logger = console) {
+  return {
+    info: logger && typeof logger.log === 'function' ? logger.log.bind(logger) : console.log,
+    warn: logger && typeof logger.warn === 'function' ? logger.warn.bind(logger) : console.warn
+  };
+}
+
+function hasNestedDatasFrame(payload) {
+  return !!payload?.result?.[0]?.datas;
+}
+
+async function fetchAutomationInverterData(options = {}) {
+  const deviceSN = options.deviceSN;
+  const getCachedInverterData = options.getCachedInverterData;
+  const getCachedInverterRealtimeData = options.getCachedInverterRealtimeData;
+  const logger = getLogger(options.logger);
+  const userConfig = options.userConfig;
+  const userId = options.userId;
+
+  if (!deviceSN || typeof getCachedInverterData !== 'function') {
+    return null;
+  }
+
+  let inverterData = null;
+
+  try {
+    inverterData = await getCachedInverterData(userId, deviceSN, userConfig, false);
+
+    // If automation cache misses expected datas payload, try realtime cache fallback.
+    if (!hasNestedDatasFrame(inverterData) && typeof getCachedInverterRealtimeData === 'function') {
+      logger.warn(
+        '[Automation] Automation inverter cache missing datas structure (errno=%s), falling back to realtime cache',
+        inverterData?.errno
+      );
+      try {
+        const realtimeData = await getCachedInverterRealtimeData(userId, deviceSN, userConfig, false);
+        if (hasNestedDatasFrame(realtimeData)) {
+          inverterData = realtimeData;
+          logger.info('[Automation] Realtime cache fallback succeeded - SoC data now available');
+        }
+      } catch (fallbackError) {
+        logger.warn('[Automation] Realtime cache fallback also failed:', fallbackError.message);
+      }
+    }
+  } catch (error) {
+    logger.warn('[Automation] Failed to get inverter data:', error.message);
+  }
+
+  return inverterData;
+}
+
+function logAmberForecastSummary(amberData, logger = console) {
+  const info = logger && typeof logger.log === 'function' ? logger.log.bind(logger) : console.log;
+
+  if (!Array.isArray(amberData) || amberData.length === 0) {
+    return;
+  }
+
+  const generalForecasts = amberData.filter(
+    (price) => price.type === 'ForecastInterval' && price.channelType === 'general'
+  );
+  const feedInForecasts = amberData.filter(
+    (price) => price.type === 'ForecastInterval' && price.channelType === 'feedIn'
+  );
+
+  if (generalForecasts.length > 0) {
+    const generalPrices = generalForecasts.map((forecast) => forecast.perKwh);
+    info(
+      `[Automation] General forecast: ${generalForecasts.length} intervals, max ${Math.max(...generalPrices).toFixed(2)}¢/kWh`
+    );
+  }
+
+  if (feedInForecasts.length > 0) {
+    const feedInPrices = feedInForecasts.map((forecast) => -forecast.perKwh);
+    info(
+      `[Automation] Feed-in forecast: ${feedInForecasts.length} intervals, max ${Math.max(...feedInPrices).toFixed(2)}¢/kWh`
+    );
+  }
+}
+
+async function fetchAutomationAmberData(options = {}) {
+  const amberAPI = options.amberAPI;
+  const amberPricesInFlight = options.amberPricesInFlight;
+  const logger = getLogger(options.logger);
+  const userConfig = options.userConfig;
+  const userId = options.userId;
+
+  if (!userConfig?.amberApiKey) {
+    return null;
+  }
+
+  if (
+    !amberAPI ||
+    typeof amberAPI.callAmberAPI !== 'function' ||
+    typeof amberAPI.getCachedAmberSites !== 'function' ||
+    typeof amberAPI.getCachedAmberPricesCurrent !== 'function' ||
+    typeof amberAPI.cacheAmberSites !== 'function' ||
+    typeof amberAPI.cacheAmberPricesCurrent !== 'function'
+  ) {
+    return null;
+  }
+
+  let amberData = null;
+
+  try {
+    let sites = await amberAPI.getCachedAmberSites(userId);
+    if (!sites) {
+      sites = await amberAPI.callAmberAPI('/sites', {}, userConfig, userId);
+      if (Array.isArray(sites) && sites.length > 0) {
+        await amberAPI.cacheAmberSites(userId, sites);
+      }
+    }
+
+    if (!Array.isArray(sites) || sites.length === 0) {
+      return null;
+    }
+
+    const siteId = userConfig.amberSiteId || sites[0].id;
+    amberData = await amberAPI.getCachedAmberPricesCurrent(siteId, userId, userConfig);
+
+    if (!amberData) {
+      const inflightKey = `${userId}:${siteId}`;
+
+      if (amberPricesInFlight instanceof Map && amberPricesInFlight.has(inflightKey)) {
+        try {
+          amberData = await amberPricesInFlight.get(inflightKey);
+        } catch (inflightError) {
+          logger.warn(
+            `[Automation] In-flight request failed for ${userId}, will retry:`,
+            inflightError.message
+          );
+        }
+      }
+
+      if (!amberData) {
+        const fetchPromise = amberAPI
+          .callAmberAPI(
+            `/sites/${encodeURIComponent(siteId)}/prices/current`,
+            { next: 288 },
+            userConfig,
+            userId
+          )
+          .then(async (data) => {
+            if (Array.isArray(data) && data.length > 0) {
+              await amberAPI.cacheAmberPricesCurrent(siteId, data, userId, userConfig);
+            }
+            return data;
+          })
+          .finally(() => {
+            if (amberPricesInFlight instanceof Map) {
+              amberPricesInFlight.delete(inflightKey);
+            }
+          });
+
+        if (amberPricesInFlight instanceof Map) {
+          amberPricesInFlight.set(inflightKey, fetchPromise);
+        }
+        amberData = await fetchPromise;
+      }
+    }
+
+    logAmberForecastSummary(amberData, options.logger);
+  } catch (error) {
+    logger.warn('[Automation] Failed to get Amber data:', error.message);
+  }
+
+  return amberData;
+}
+
+module.exports = {
+  fetchAutomationAmberData,
+  fetchAutomationInverterData,
+  hasNestedDatasFrame,
+  logAmberForecastSummary
+};

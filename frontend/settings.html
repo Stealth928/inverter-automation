@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -536,7 +536,6 @@
             <a href="/rules-library.html" class="nav-link">📚 Rules Library</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
             <a href="/curtailment-discovery.html" class="nav-link" id="topologyNavLink" style="display: none;">🔬 WIP - Topology Discovery</a>
-            <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
             <a href="/admin.html" class="nav-link" id="adminNavLink" style="display: none;">🛡️ Admin</a>
         </div>
         <div class="nav-right">
@@ -601,36 +600,36 @@
                     <div class="setting-label">Automation Cycle Interval</div>
                     <div class="setting-hint">How often automation rules are evaluated</div>
                     <div class="setting-input">
-                        <input type="number" id="automation_intervalMs" data-section="automation" data-key="intervalMs" min="20000" max="600000" step="1000" value="60000">
-                        <span class="unit">ms</span>
-                        <span class="time-display" id="automation_intervalMs_display">= 60s</span>
+                        <input type="number" id="automation_intervalMs" data-section="automation" data-key="intervalMs" min="20" max="600" step="1" value="60">
+                        <span class="unit">sec</span>
+                        <span class="time-display" id="automation_intervalMs_display">= 1.0m</span>
                     </div>
                 </div>
                 <div class="setting-item">
-                    <div class="setting-label">Amber Prices Cache</div>
-                    <div class="setting-hint">Amber pricing data refresh interval</div>
+                    <div class="setting-label">Pricing Data Cache</div>
+                    <div class="setting-hint">Pricing data refresh interval</div>
                     <div class="setting-input">
-                        <input type="number" id="cache_amber" data-section="cache" data-key="amber" min="30000" max="300000" step="5000" value="60000">
-                        <span class="unit">ms</span>
-                        <span class="time-display" id="cache_amber_display">= 60s</span>
+                        <input type="number" id="cache_amber" data-section="cache" data-key="amber" min="10" max="300" step="1" value="60">
+                        <span class="unit">sec</span>
+                        <span class="time-display" id="cache_amber_display">= 1.0m</span>
                     </div>
                 </div>
                 <div class="setting-item">
                     <div class="setting-label">Inverter Data Cache</div>
-                    <div class="setting-hint">FoxESS inverter data refresh interval (respect rate limits)</div>
+                    <div class="setting-hint">Inverter API data refresh interval</div>
                     <div class="setting-input">
-                        <input type="number" id="cache_inverter" data-section="cache" data-key="inverter" min="60000" max="600000" step="30000" value="300000">
-                        <span class="unit">ms</span>
-                        <span class="time-display" id="cache_inverter_display">= 5m</span>
+                        <input type="number" id="cache_inverter" data-section="cache" data-key="inverter" min="60" max="600" step="1" value="300">
+                        <span class="unit">sec</span>
+                        <span class="time-display" id="cache_inverter_display">= 5.0m</span>
                     </div>
                 </div>
                 <div class="setting-item">
                     <div class="setting-label">Weather Data Cache</div>
                     <div class="setting-hint">Weather forecast refresh interval</div>
                     <div class="setting-input">
-                        <input type="number" id="cache_weather" data-section="cache" data-key="weather" min="300000" max="3600000" step="300000" value="1800000">
-                        <span class="unit">ms</span>
-                        <span class="time-display" id="cache_weather_display">= 30m</span>
+                        <input type="number" id="cache_weather" data-section="cache" data-key="weather" min="300" max="3600" step="1" value="1800">
+                        <span class="unit">sec</span>
+                        <span class="time-display" id="cache_weather_display">= 30.0m</span>
                     </div>
                 </div>
             </div>
@@ -642,26 +641,26 @@
                     <div class="faq-item">
                         <div class="faq-question">What should I tune first?</div>
                         <div class="faq-answer">
-                            Start with <code>Automation Cycle Interval</code> and <code>Amber Prices Cache</code>. Keeping both around <code>60 seconds</code> gives responsive rule decisions without excessive API traffic.
+                            Start with <code>Automation Cycle Interval</code> and <code>Pricing Data Cache</code>. Keeping both around <code>60 seconds</code> gives responsive rule decisions without excessive API traffic.
                         </div>
                     </div>
                     <div class="faq-item">
                         <div class="faq-question">Why is inverter cache usually longer than the cycle interval?</div>
                         <div class="faq-answer">
-                            FoxESS endpoints have stricter rate limits than local rule evaluation. A <code>5 minute</code> inverter cache avoids unnecessary API pressure while automation can still run every minute using fresh-enough telemetry.
+                            Inverter APIs often have stricter rate limits than local rule evaluation. A <code>5 minute</code> inverter cache avoids unnecessary API pressure while automation can still run every minute using fresh-enough telemetry.
                         </div>
                     </div>
                     <div class="faq-item">
                         <div class="faq-question">How do these intervals work together?</div>
                         <div class="faq-answer">
                             Each automation cycle evaluates rules using the latest available cached values. If a cache has expired, that source is refreshed first, then used by the same cycle.
-                            <div class="faq-tip">If you see frequent API throttling, increase cache intervals before increasing the automation cycle interval.</div>
+                            <div class="faq-tip">Inputs on this page are in seconds; values are converted to milliseconds when saved to the API. If you see frequent API throttling, increase cache intervals before increasing the automation cycle interval.</div>
                         </div>
                     </div>
                     <div class="faq-item">
                         <div class="faq-question">What defaults are recommended?</div>
                         <div class="faq-answer">
-                            Recommended baseline: <code>60s</code> automation, <code>60s</code> Amber, <code>5m</code> inverter, <code>30m</code> weather. Adjust only if you have a clear need for faster or slower refresh behavior.
+                            Recommended baseline: <code>60s</code> automation, <code>60s</code> pricing, <code>5m</code> inverter, <code>30m</code> weather. Adjust only if you have a clear need for faster or slower refresh behavior.
                         </div>
                     </div>
                 </div>
@@ -840,7 +839,7 @@
             </div>
         </div>
 
-        <!-- Credentials (FoxESS / Amber) -->
+        <!-- Credentials -->
         <div class="section" id="credentialsSection">
             <div class="section-header">
                 <div>
@@ -854,12 +853,12 @@
                 </div>
             </div>
             <div class="section-description">
-                Configure your FoxESS device serial number, FoxESS API token, and Amber API key. Tokens are not shown by default for security — enter them when you want to update them.
+                Configure your inverter device serial number, inverter API token, and pricing API key. Tokens are not shown by default for security — enter them when you want to update them.
             </div>
             <div class="settings-grid">
                 <div class="setting-item">
-                    <div class="setting-label">FoxESS Device Serial Number</div>
-                    <div class="setting-hint">The serial number of your inverter (visible in FoxESS Cloud)</div>
+                    <div class="setting-label">Inverter Device Serial Number</div>
+                    <div class="setting-hint">The serial number of your inverter (visible in your inverter provider portal)</div>
                     <div class="setting-input">
                         <input type="text" id="credentials_deviceSn" placeholder="e.g., AFTWXK7A123456">
                     </div>
@@ -867,8 +866,8 @@
 
                 <form id="credentials-form">
                     <div class="setting-item">
-                        <div class="setting-label">FoxESS API Token</div>
-                        <div class="setting-hint">Enter a FoxESS API token to allow the server to talk to your inverter (kept hidden)</div>
+                        <div class="setting-label">Inverter API Token</div>
+                        <div class="setting-hint">Enter an inverter API token to allow the server to read inverter data (kept hidden)</div>
                         <div class="setting-input">
                             <input type="password" id="credentials_foxessToken" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
                             <button type="button" class="btn-secondary" id="credentials_toggleFoxess">Show</button>
@@ -876,8 +875,8 @@
                     </div>
 
                     <div class="setting-item">
-                        <div class="setting-label">Amber API Key (optional)</div>
-                        <div class="setting-hint">Optional API key for Amber electricity pricing (used for automation)</div>
+                        <div class="setting-label">Pricing API Key (optional)</div>
+                        <div class="setting-hint">Optional API key for electricity pricing data (used for automation)</div>
                         <div class="setting-input">
                             <input type="password" id="credentials_amberKey" placeholder="•••••••• (optional)" autocomplete="new-password">
                             <button type="button" class="btn-secondary" id="credentials_toggleAmber">Show</button>
@@ -942,7 +941,7 @@
                         <div class="faq-answer">
                             Location determines the actual sunrise/sunset times and cloud cover for your area. If you set a rule like "Discharge during peak export hours",
                             the system uses your location to calculate when peak sun is expected. Wrong location = wrong time windows = suboptimal discharge timing.
-                            Additionally, timezone information from your location is used to align with local electricity markets (e.g., Amber pricing in Australia uses local times).
+                            Additionally, timezone information from your location is used to align with local electricity-market data (pricing providers use local times).
                         </div>
                     </div>
                     <div class="faq-item">
@@ -1017,7 +1016,7 @@
                     <div class="faq-item">
                         <div class="faq-question">Where do I find my inverter capacity?</div>
                         <div class="faq-answer">
-                            Check the nameplate on your inverter or its datasheet. For FoxESS inverters it is labelled <em>Rated AC Output Power</em>. Common sizes are 5, 8, 10, 12 and 15 kW.
+                            Check the nameplate on your inverter or its datasheet. It is often labelled <em>Rated AC Output Power</em>. Common sizes are 5, 8, 10, 12 and 15 kW.
                         </div>
                     </div>
                     <div class="faq-item">
@@ -1162,13 +1161,37 @@
             }
         }
 
+        const TIMING_INPUT_IDS = new Set([
+            'automation_intervalMs',
+            'cache_amber',
+            'cache_inverter',
+            'cache_weather'
+        ]);
+
+        function isTimingInputId(inputId) {
+            return TIMING_INPUT_IDS.has(inputId);
+        }
+
+        function millisecondsToUiSeconds(ms) {
+            const numeric = Number(ms);
+            if (!Number.isFinite(numeric)) return '';
+            const seconds = numeric / 1000;
+            return Number.isInteger(seconds) ? String(seconds) : String(Number(seconds.toFixed(3)));
+        }
+
+        function uiSecondsToMilliseconds(seconds) {
+            const numeric = Number(seconds);
+            if (!Number.isFinite(numeric)) return null;
+            return Math.round(numeric * 1000);
+        }
+
         // Helper to format milliseconds to human-readable
         function formatMs(ms) {
             if (ms === null || ms === undefined || isNaN(ms)) return '?';
             ms = parseInt(ms);
             if (ms < 1000) return `${ms}ms`;
             if (ms < 60000) return `${Math.round(ms/1000)}s`;
-            if (ms < 3600000) return `${Math.round(ms/60000)}m`;
+            if (ms < 3600000) return `${(ms/60000).toFixed(1)}m`;
             return `${(ms/3600000).toFixed(1)}h`;
         }
 
@@ -1177,7 +1200,8 @@
             const input = document.getElementById(inputId);
             const display = document.getElementById(inputId + '_display');
             if (input && display) {
-                display.textContent = '= ' + formatMs(input.value);
+                const msValue = getInputValue(inputId);
+                display.textContent = '= ' + formatMs(msValue);
             }
         }
 
@@ -1277,12 +1301,7 @@
                 });
                 
                 // Helper to safely set input value
-                const setInput = (id, value) => {
-                    const input = document.getElementById(id);
-                    if (input) {
-                        input.value = value;
-                    }
-                };
+                const setInput = (id, value) => setInputValue(id, value);
                 
                 // Automation
                 if (currentConfig.automation) {
@@ -1343,15 +1362,22 @@
                     // Initialize originalCredentials to reflect what we just loaded so the
                     // UI doesn't consider the credentials section "modified" by default.
                     originalCredentials.deviceSn = currentConfig.deviceSn || '';
-                    originalCredentials.deviceSn = currentConfig.deviceSn || '';
                     // For credentials, store masked dots in originalCredentials to match the display
                     // The actual values are stored in the dataset for Show/Hide functionality
                     
                     // Clear credential input fields before reloading to ensure fresh state
                     const foxessInput = document.getElementById('credentials_foxessToken');
                     const amberInput = document.getElementById('credentials_amberKey');
-                    if (foxessInput) foxessInput.value = '';
-                    if (amberInput) amberInput.value = '';
+                    if (foxessInput) {
+                        foxessInput.value = '';
+                        delete foxessInput.dataset.actualValue;
+                        setSavedCredentialFlag(foxessInput, false);
+                    }
+                    if (amberInput) {
+                        amberInput.value = '';
+                        delete amberInput.dataset.actualValue;
+                        setSavedCredentialFlag(amberInput, false);
+                    }
                     
                     // Store actual credentials in a data attribute for Show/Hide functionality
                     if (foxessInput && currentConfig.foxessToken) {
@@ -1361,7 +1387,7 @@
                         amberInput.dataset.actualValue = currentConfig.amberApiKey;
                     }
                     
-                    // Check presence of both FoxESS token and Amber API key via /api/health endpoint
+                    // Check presence of inverter token and pricing API key via /api/health endpoint
                     try {
                         const healthResp = await authenticatedFetch('/api/health');
                         const health = await healthResp.json();
@@ -1376,31 +1402,41 @@
                             if (foxessInput) {
                                 foxessInput.value = '••••••••';
                                 originalCredentials.foxessToken = '••••••••';  // Match the display
+                                setSavedCredentialFlag(foxessInput, true);
                             }
                         } else {
                             originalCredentials.foxessToken = '';
+                            if (foxessInput) {
+                                delete foxessInput.dataset.actualValue;
+                                setSavedCredentialFlag(foxessInput, false);
+                            }
                         }
                         
                         if (hasAmber) {
                             if (amberInput) {
                                 amberInput.value = '••••••••';
                                 originalCredentials.amberKey = '••••••••';  // Match the display
+                                setSavedCredentialFlag(amberInput, true);
                             }
                         } else {
                             originalCredentials.amberKey = '';
+                            if (amberInput) {
+                                delete amberInput.dataset.actualValue;
+                                setSavedCredentialFlag(amberInput, false);
+                            }
                         }
                         
                         if (hasFoxess && hasAmber) {
                             // Both credentials present
-                            if (credStatusEl) credStatusEl.textContent = 'FoxESS token and Amber API key are present (hidden)';
+                            if (credStatusEl) credStatusEl.textContent = 'Inverter token and pricing API key are present (hidden)';
                             if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
                         } else if (hasFoxess && !hasAmber) {
-                            // Only FoxESS present
-                            if (credStatusEl) credStatusEl.textContent = 'FoxESS token is present (hidden) — Amber API key not set';
+                            // Only inverter token present
+                            if (credStatusEl) credStatusEl.textContent = 'Inverter token is present (hidden) — pricing API key not set';
                             if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
                         } else if (!hasFoxess && hasAmber) {
-                            // Only Amber present
-                            if (credStatusEl) credStatusEl.textContent = 'Amber API key is present (hidden) — FoxESS token not set';
+                            // Only pricing API key present
+                            if (credStatusEl) credStatusEl.textContent = 'Pricing API key is present (hidden) — inverter token not set';
                             if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
                         } else {
                             // Neither present
@@ -1537,13 +1573,28 @@
         function setInputValue(id, value) {
             const input = document.getElementById(id);
             if (input) {
-                input.value = value !== undefined && value !== null ? value : '';
+                if (isTimingInputId(id)) {
+                    input.value = millisecondsToUiSeconds(value);
+                } else {
+                    input.value = value !== undefined && value !== null ? value : '';
+                }
             }
         }
 
         function getInputValue(id) {
             const input = document.getElementById(id);
-            return input ? parseInt(input.value) : null;
+            if (!input) return null;
+
+            if (input.type === 'number') {
+                const numericValue = Number(input.value);
+                if (!Number.isFinite(numericValue)) return null;
+                if (isTimingInputId(id)) {
+                    return uiSecondsToMilliseconds(numericValue);
+                }
+                return Math.trunc(numericValue);
+            }
+
+            return input.value;
         }
 
         // Check for unsaved changes
@@ -1581,12 +1632,21 @@
                         if (input.tagName === 'SELECT') {
                             currentValue = input.value;
                         } else if (input.type === 'number') {
-                            currentValue = parseInt(input.value);
+                            const numericValue = Number(input.value);
+                            if (!Number.isFinite(numericValue)) {
+                                currentValue = null;
+                            } else if (isTimingInputId(inputId)) {
+                                currentValue = uiSecondsToMilliseconds(numericValue);
+                            } else {
+                                currentValue = Math.trunc(numericValue);
+                            }
                         } else {
                             // For text inputs, use the string value as-is
                             currentValue = input.value;
                         }
-                        const originalValue = originalConfig[section][key];
+                        const originalValue = input.type === 'number'
+                            ? (Number.isFinite(Number(originalConfig[section][key])) ? Number(originalConfig[section][key]) : null)
+                            : originalConfig[section][key];
                         
                         if (currentValue !== originalValue) {
                             sectionChanged = true;
@@ -1778,18 +1838,18 @@
                 
                 // Automation settings validation
                 if (newConfig.automation.intervalMs < 20000 || newConfig.automation.intervalMs > 600000) {
-                    validationErrors.push('Automation cycle: must be 20s-10m (20,000-600,000ms)');
+                    validationErrors.push('Automation cycle: must be 20s-10m');
                 }
                 
                 // Cache settings validation
                 if (newConfig.cache.amber < 10000 || newConfig.cache.amber > 300000) {
-                    validationErrors.push('Amber cache: must be 10s-5m (10,000-300,000ms)');
+                    validationErrors.push('Pricing data cache: must be 10s-5m');
                 }
                 if (newConfig.cache.inverter < 60000 || newConfig.cache.inverter > 600000) {
-                    validationErrors.push('Inverter cache: must be 1m-10m (60,000-600,000ms) - respect API rate limits');
+                    validationErrors.push('Inverter cache: must be 1m-10m (respect API rate limits)');
                 }
                 if (newConfig.cache.weather < 300000 || newConfig.cache.weather > 3600000) {
-                    validationErrors.push('Weather cache: must be 5m-1h (300,000-3,600,000ms)');
+                    validationErrors.push('Weather cache: must be 5m-1h');
                 }
                 
                 // Hardware validation
@@ -2029,20 +2089,20 @@
         // Define validation rules for each input
         const validationRules = {
             'automation_intervalMs': {
-                min: 20000, max: 600000,
-                errorMsg: 'Automation cycle must be 20s-10m (20,000-600,000ms)'
+                min: 20, max: 600,
+                errorMsg: 'Automation cycle must be 20s-10m'
             },
             'cache_amber': {
-                min: 10000, max: 300000,
-                errorMsg: 'Amber cache must be 10s-5m (10,000-300,000ms)'
+                min: 10, max: 300,
+                errorMsg: 'Pricing data cache must be 10s-5m'
             },
             'cache_inverter': {
-                min: 60000, max: 600000,
-                errorMsg: 'Inverter cache must be 1m-10m (60,000-600,000ms) - respect API rate limits'
+                min: 60, max: 600,
+                errorMsg: 'Inverter cache must be 1m-10m (respect API rate limits)'
             },
             'cache_weather': {
-                min: 300000, max: 3600000,
-                errorMsg: 'Weather cache must be 5m-1h (300,000-3,600,000ms)'
+                min: 300, max: 3600,
+                errorMsg: 'Weather cache must be 5m-1h'
             },
             'defaults_cooldownMinutes': {
                 min: 0, max: 60,
@@ -2169,15 +2229,36 @@
             }
         }
 
+        function setSavedCredentialFlag(input, isPresent) {
+            if (!input) return;
+            if (isPresent) {
+                input.dataset.hasSavedCredential = '1';
+            } else {
+                delete input.dataset.hasSavedCredential;
+            }
+        }
+
+        function isMaskedCredentialValue(value) {
+            if (!value) return false;
+            return /^[•*]+$/.test(value.trim());
+        }
+
         // Load only credentials status (reload deviceSn and token presence)
         function checkCredentialsChanged() {
             const deviceSn = (document.getElementById('credentials_deviceSn')?.value || '').trim();
-            const foxessToken = (document.getElementById('credentials_foxessToken')?.value || '').trim();
-            const amberKey = (document.getElementById('credentials_amberKey')?.value || '').trim();
-            
-            const changed = (deviceSn !== originalCredentials.deviceSn) || 
-                           (foxessToken !== (originalCredentials.foxessToken || '')) || 
-                           (amberKey !== (originalCredentials.amberKey || ''));
+            const foxessInput = document.getElementById('credentials_foxessToken');
+            const amberInput = document.getElementById('credentials_amberKey');
+            const foxessToken = (foxessInput?.value || '').trim();
+            const amberKey = (amberInput?.value || '').trim();
+
+            const foxessMatchesOriginal = foxessToken === (originalCredentials.foxessToken || '');
+            const amberMatchesOriginal = amberKey === (originalCredentials.amberKey || '');
+            const foxessMaskedSaved = isMaskedCredentialValue(foxessToken) && foxessInput?.dataset.hasSavedCredential === '1';
+            const amberMaskedSaved = isMaskedCredentialValue(amberKey) && amberInput?.dataset.hasSavedCredential === '1';
+            const credentialsChanged = !(foxessMatchesOriginal || foxessMaskedSaved) ||
+                !(amberMatchesOriginal || amberMaskedSaved);
+
+            const changed = (deviceSn !== originalCredentials.deviceSn) || credentialsChanged;
             
             const badge = document.getElementById('credentialsBadge');
             if (badge) {
@@ -2216,35 +2297,56 @@
                 const foxessInput = document.getElementById('credentials_foxessToken');
                 const amberInput = document.getElementById('credentials_amberKey');
                 
-                // Show masked credentials if they exist, but store actual values for Show/Hide
-                if (foxessPresent && actualFoxess) {
+                // Show masked credentials if they exist, and keep actual values for Show/Hide when available.
+                // Always reset input type to password so the masked display is properly hidden after reload.
+                if (foxessPresent) {
                     foxessInput.value = '••••••••';
-                    foxessInput.dataset.actualValue = actualFoxess;
+                    foxessInput.type = 'password';
+                    const tFox = document.getElementById('credentials_toggleFoxess');
+                    if (tFox) tFox.textContent = 'Show';
+                    if (actualFoxess) {
+                        foxessInput.dataset.actualValue = actualFoxess;
+                    }
                     originalCredentials.foxessToken = '••••••••';
+                    setSavedCredentialFlag(foxessInput, true);
                 } else {
                     foxessInput.value = '';
+                    foxessInput.type = 'password';
+                    const tFox = document.getElementById('credentials_toggleFoxess');
+                    if (tFox) tFox.textContent = 'Show';
                     delete foxessInput.dataset.actualValue;
                     originalCredentials.foxessToken = '';
+                    setSavedCredentialFlag(foxessInput, false);
                 }
                 
-                if (amberPresent && actualAmber) {
+                if (amberPresent) {
                     amberInput.value = '••••••••';
-                    amberInput.dataset.actualValue = actualAmber;
+                    amberInput.type = 'password';
+                    const tAmber = document.getElementById('credentials_toggleAmber');
+                    if (tAmber) tAmber.textContent = 'Show';
+                    if (actualAmber) {
+                        amberInput.dataset.actualValue = actualAmber;
+                    }
                     originalCredentials.amberKey = '••••••••';
+                    setSavedCredentialFlag(amberInput, true);
                 } else {
                     amberInput.value = '';
+                    amberInput.type = 'password';
+                    const tAmber = document.getElementById('credentials_toggleAmber');
+                    if (tAmber) tAmber.textContent = 'Show';
                     delete amberInput.dataset.actualValue;
                     originalCredentials.amberKey = '';
+                    setSavedCredentialFlag(amberInput, false);
                 }
                 
                 const credStatusEl = document.getElementById('credentialsStatus');
                 
                 if (foxessPresent && amberPresent) {
-                  credStatusEl.textContent = 'FoxESS token and Amber API key are present (hidden)';
+                  credStatusEl.textContent = 'Inverter token and pricing API key are present (hidden)';
                 } else if (foxessPresent) {
-                  credStatusEl.textContent = 'FoxESS token is present (hidden) — Amber API key not set';
+                  credStatusEl.textContent = 'Inverter token is present (hidden) — pricing API key not set';
                 } else if (amberPresent) {
-                  credStatusEl.textContent = 'Amber API key is present (hidden) — FoxESS token not set';
+                  credStatusEl.textContent = 'Pricing API key is present (hidden) — inverter token not set';
                 } else {
                   credStatusEl.textContent = 'No credentials detected';
                 }
@@ -2262,24 +2364,87 @@
             const deviceSn = (document.getElementById('credentials_deviceSn')?.value || '').trim();
             const foxessInput = document.getElementById('credentials_foxessToken');
             const amberInput = document.getElementById('credentials_amberKey');
-            
+
             // Get the displayed value (either masked dots or actual)
             const foxessDisplayed = (foxessInput?.value || '').trim();
             const amberDisplayed = (amberInput?.value || '').trim();
-            
-            // Check if values are masked (just dots) - if so, use the stored actual value
-            const foxessToken = (foxessDisplayed === '••••••••' && foxessInput?.dataset.actualValue) 
-                ? foxessInput.dataset.actualValue 
+            const originalFoxess = (originalCredentials.foxessToken || '').trim();
+            const originalAmber = (originalCredentials.amberKey || '').trim();
+            const foxessHasSavedFlag = foxessInput?.dataset.hasSavedCredential === '1';
+            const amberHasSavedFlag = amberInput?.dataset.hasSavedCredential === '1';
+            // Defensive fallback: infer saved credential state from masked/original/dataset values
+            // so validation is not forced when UI flags are temporarily out of sync.
+            const foxessHasExistingCredential = foxessHasSavedFlag ||
+                !!foxessInput?.dataset.actualValue ||
+                isMaskedCredentialValue(originalFoxess) ||
+                isMaskedCredentialValue(foxessDisplayed);
+            const amberHasExistingCredential = amberHasSavedFlag ||
+                !!amberInput?.dataset.actualValue ||
+                isMaskedCredentialValue(originalAmber) ||
+                isMaskedCredentialValue(amberDisplayed);
+
+            // Treat masked placeholders as unchanged when we know a saved credential exists.
+            // This avoids re-validating existing hidden credentials on every save.
+            const foxessUnchangedHidden = isMaskedCredentialValue(foxessDisplayed) &&
+                foxessHasExistingCredential;
+            const amberUnchangedHidden = isMaskedCredentialValue(amberDisplayed) &&
+                amberHasExistingCredential;
+
+            // Also treat "shown then unchanged" as unchanged if the value matches in-memory actual value.
+            const foxessShownUnchanged = !!foxessInput?.dataset.actualValue &&
+                foxessDisplayed === foxessInput.dataset.actualValue &&
+                (isMaskedCredentialValue(originalFoxess) || foxessHasExistingCredential);
+            const amberShownUnchanged = !!amberInput?.dataset.actualValue &&
+                amberDisplayed === amberInput.dataset.actualValue &&
+                (isMaskedCredentialValue(originalAmber) || amberHasExistingCredential);
+
+            const foxessUnchanged = foxessUnchangedHidden || foxessShownUnchanged;
+            const amberUnchanged = amberUnchangedHidden || amberShownUnchanged;
+
+            // Resolve actual values when dataset.actualValue is available.
+            const foxessToken = (foxessDisplayed === originalFoxess && foxessInput?.dataset.actualValue)
+                ? foxessInput.dataset.actualValue
                 : foxessDisplayed;
-            const amberKey = (amberDisplayed === '••••••••' && amberInput?.dataset.actualValue) 
-                ? amberInput.dataset.actualValue 
+            const amberKey = (amberDisplayed === originalAmber && amberInput?.dataset.actualValue)
+                ? amberInput.dataset.actualValue
                 : amberDisplayed;
 
-            // If token fields are empty, use original stored values (user didn't change them)
-            const tokenToSend = foxessToken || null;
-            const amberToSend = amberKey || null;
+            const tokenToSend = foxessUnchanged ? null : (foxessToken || null);
+            const amberToSend = amberUnchanged ? null : (amberKey || null);
 
-            if (!deviceSn) { showMessage('warning', 'Device Serial Number is required'); return; }
+            // Safety guard: never send the masked placeholder (•••••••• or ****) to validate-keys.
+            // If a masked value somehow slips through the unchanged-detection above, recover the
+            // actual stored value from dataset or treat the token as unchanged.
+            if (tokenToSend && isMaskedCredentialValue(tokenToSend)) {
+                const recoveredToken = foxessInput?.dataset.actualValue || null;
+                if (!recoveredToken) {
+                    // Can't recover — treat as unchanged to avoid sending garbage to FoxESS
+                    showMessage('warning', 'Enter a new token or keep the existing hidden token unchanged.');
+                    return;
+                }
+                // Use the in-memory actual value instead and skip re-validation
+                const patchPayload = { deviceSn };
+                if (!amberUnchanged && amberToSend) patchPayload.amberApiKey = amberToSend;
+                const pr = await authenticatedFetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(patchPayload)
+                });
+                const pd = await pr.json();
+                if (!pr.ok || pd.errno !== 0) throw new Error(pd?.msg || pd?.error || `HTTP ${pr.status}`);
+                await loadCredentials();
+                showMessage('success', 'Credential changes saved.');
+                return;
+            }
+
+            if (!deviceSn) {
+                showMessage('warning', 'Device Serial Number is required');
+                return;
+            }
+            if (!foxessUnchanged && !tokenToSend) {
+                showMessage('warning', 'Inverter API Token is required (enter a token or keep the saved hidden token unchanged).');
+                return;
+            }
 
             const saveBtn = document.getElementById('credentialsSaveBtn');
             const prevText = saveBtn.innerHTML;
@@ -2287,6 +2452,29 @@
             saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
 
             try {
+                // Existing token is hidden and unchanged in this session.
+                // Avoid sending placeholder characters to validate-keys; just persist editable fields.
+                if (foxessUnchanged) {
+                    const patchPayload = { deviceSn };
+                    if (!amberUnchanged) {
+                        patchPayload.amberApiKey = amberToSend || '';
+                    }
+
+                    const patchResp = await authenticatedFetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(patchPayload)
+                    });
+                    const patchData = await patchResp.json();
+                    if (!patchResp.ok || patchData.errno !== 0) {
+                        throw new Error(patchData?.msg || patchData?.error || `HTTP ${patchResp.status}`);
+                    }
+
+                    await loadCredentials();
+                    showMessage('success', 'Credential changes saved. Existing inverter token was kept unchanged.');
+                    return;
+                }
+
                 const resp = await authenticatedFetch('/api/config/validate-keys', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2350,13 +2538,11 @@
             });
         });
 
-        // WIP Pages visibility - Tesla & Topology Discovery (admin only)
+        // WIP Pages visibility - Topology Discovery (admin only)
         if (typeof window.auth !== 'undefined' && window.auth) {
             window.auth.onAuthStateChanged((user) => {
                 if (user && user.email === 'sardanapalos928@hotmail.com') {
-                    const teslaLink = document.getElementById('teslaNavLink');
                     const topologyLink = document.getElementById('topologyNavLink');
-                    if (teslaLink) teslaLink.style.display = '';
                     if (topologyLink) topologyLink.style.display = '';
                 }
             });
@@ -2452,3 +2638,4 @@
     </script>
 </body>
 </html>
+

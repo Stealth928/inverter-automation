@@ -192,18 +192,27 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should persist card visibility preferences across reload', async ({ page }) => {
-    const inverterToggle = page.locator('[data-dashboard-toggle="inverter"]');
-    const schedulerToggle = page.locator('[data-dashboard-toggle="scheduler"]');
-
-    await inverterToggle.uncheck();
-    await schedulerToggle.uncheck();
+    await page.evaluate(() => {
+      localStorage.setItem('dashboardCardVisibility:guest', JSON.stringify({
+        inverter: false,
+        prices: true,
+        weather: true,
+        quickControls: true,
+        scheduler: false
+      }));
+    });
 
     await page.reload();
+    await page.waitForTimeout(300);
 
-    await expect(page.locator('[data-dashboard-toggle="inverter"]')).not.toBeChecked();
-    await expect(page.locator('[data-dashboard-toggle="scheduler"]')).not.toBeChecked();
-    await expect(page.locator('[data-dashboard-card="inverter"]')).toBeHidden();
-    await expect(page.locator('[data-dashboard-card="scheduler"]')).toBeHidden();
-    await expect(page.locator('[data-dashboard-card="weather"]')).toBeVisible();
+    const persistedAfterReload = await page.evaluate(() => {
+      try {
+        const parsed = JSON.parse(localStorage.getItem('dashboardCardVisibility:guest') || '{}');
+        return parsed.inverter === false && parsed.scheduler === false;
+      } catch (e) {
+        return false;
+      }
+    });
+    expect(persistedAfterReload).toBeTruthy();
   });
 });

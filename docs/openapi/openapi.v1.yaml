@@ -1,0 +1,270 @@
+openapi: 3.1.0
+info:
+  title: Inverter Automation API
+  version: 1.0.0
+  description: >
+    Source-of-truth OpenAPI baseline started in Phase P1.
+    This spec will be expanded incrementally as routes are refactored.
+servers:
+  - url: /
+tags:
+  - name: Health
+  - name: Config
+  - name: Automation
+  - name: Admin
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Health check endpoint
+      operationId: getHealth
+      responses:
+        "200":
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopeHealth"
+  /api/config:
+    get:
+      tags: [Config]
+      summary: Get current user config
+      operationId: getConfig
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Config payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopeConfig"
+    post:
+      tags: [Config]
+      summary: Save current user config
+      operationId: saveConfig
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [config]
+              properties:
+                config:
+                  type: object
+      responses:
+        "200":
+          description: Save result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopeGeneric"
+  /api/automation/status:
+    get:
+      tags: [Automation]
+      summary: Get automation status and rules
+      operationId: getAutomationStatus
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Automation status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopeAutomationStatus"
+  /api/admin/check:
+    get:
+      tags: [Admin]
+      summary: Check whether the current authenticated user is an admin
+      operationId: getAdminCheck
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Admin check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopeAdminCheck"
+  /api/admin/platform-stats:
+    get:
+      tags: [Admin]
+      summary: Get compact platform KPIs and trend data
+      operationId: getAdminPlatformStats
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: days
+          description: Number of trailing days to include (7-365).
+          required: false
+          schema:
+            type: integer
+            minimum: 7
+            maximum: 365
+            default: 90
+      responses:
+        "200":
+          description: Platform KPI/trend payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopeAdminPlatformStats"
+  /api/admin/scheduler-metrics:
+    get:
+      tags: [Admin]
+      summary: Get scheduler orchestration summary, daily trend, and optional recent runs
+      operationId: getAdminSchedulerMetrics
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: days
+          description: Number of trailing days to include (1-90).
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+            default: 14
+        - in: query
+          name: includeRuns
+          description: Include recent run-level snapshots.
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - in: query
+          name: runLimit
+          description: Maximum number of recent runs when includeRuns=true (1-100).
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Scheduler metrics read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopeAdminSchedulerMetrics"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ApiEnvelopeBase:
+      type: object
+      required: [errno, result]
+      properties:
+        errno:
+          type: integer
+          description: 0 on success, non-zero for error class.
+        result:
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        meta:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ApiEnvelopeHealth:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            result:
+              type: object
+              properties:
+                status:
+                  type: string
+                  examples: [ok]
+    ApiEnvelopeConfig:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            result:
+              type: object
+    ApiEnvelopeAutomationStatus:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            result:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                rules:
+                  type: array
+                  items:
+                    type: object
+    ApiEnvelopeAdminCheck:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            result:
+              type: object
+              properties:
+                isAdmin:
+                  type: boolean
+    ApiEnvelopeAdminPlatformStats:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            result:
+              type: object
+              properties:
+                summary:
+                  type: object
+                trend:
+                  type: array
+                  items:
+                    type: object
+                days:
+                  type: integer
+    ApiEnvelopeAdminSchedulerMetrics:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            result:
+              type: object
+              properties:
+                days:
+                  type: integer
+                includeRuns:
+                  type: boolean
+                runLimit:
+                  type: integer
+                summary:
+                  type: object
+                daily:
+                  type: array
+                  items:
+                    type: object
+                recentRuns:
+                  type: array
+                  items:
+                    type: object
+                currentAlert:
+                  nullable: true
+                  type: object
+                updatedAt:
+                  type: string
+                  format: date-time
+    ApiEnvelopeGeneric:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"

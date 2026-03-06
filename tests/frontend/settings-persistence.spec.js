@@ -46,24 +46,74 @@ test.describe('Settings Page - Data Persistence', () => {
           weatherPlace: 'Sydney, Australia'  // CRITICAL: Include weatherPlace in preferences
         },
         location: 'Sydney, Australia',
-        deviceSn: 'TEST123456'
+        deviceSn: 'TEST123456',
+        foxessToken: 'mock-foxess-token-existing',
+        amberApiKey: 'mock-amber-key-existing'
       };
+
+      window.lastConfigPostBody = null;
+      window.lastValidateKeysBody = null;
+      window.validateKeysCallCount = 0;
       
       // Mock the fetch API to simulate backend
       window.originalFetch = window.fetch;
       window.fetch = async (url, options) => {
+        const requestUrl = new URL(url, window.location.origin);
+        const path = requestUrl.pathname;
+
+        if (path === '/api/health') {
+          return new Response(JSON.stringify({
+            ok: true,
+            FOXESS_TOKEN: !!window.mockServerConfig.foxessToken,
+            AMBER_API_KEY: !!window.mockServerConfig.amberApiKey
+          }));
+        }
+
         // GET /api/config - return current mock config
-        if (url === '/api/config' && (!options || options.method === 'GET' || options.method === 'get')) {
+        if (path === '/api/config' && (!options || options.method === 'GET' || options.method === 'get')) {
           return new Response(JSON.stringify({
             errno: 0,
             result: JSON.parse(JSON.stringify(window.mockServerConfig))  // Return clone of current state
           }));
         }
+
+        // POST /api/config/validate-keys - validate and persist credentials
+        if (path === '/api/config/validate-keys' && options && (options.method === 'POST' || options.method === 'post')) {
+          window.validateKeysCallCount += 1;
+          try {
+            const body = JSON.parse(options.body || '{}');
+            window.lastValidateKeysBody = JSON.parse(JSON.stringify(body));
+            if (!body.device_sn || !body.foxess_token) {
+              return new Response(JSON.stringify({
+                errno: 1,
+                msg: 'Validation failed for: foxess_token',
+                failed_keys: ['foxess_token'],
+                errors: { foxess_token: 'FoxESS API Token is required' }
+              }), { status: 400 });
+            }
+
+            window.mockServerConfig = {
+              ...window.mockServerConfig,
+              deviceSn: body.device_sn,
+              foxessToken: body.foxess_token,
+              amberApiKey: body.amber_api_key || window.mockServerConfig.amberApiKey
+            };
+
+            return new Response(JSON.stringify({
+              errno: 0,
+              msg: 'Credentials validated successfully',
+              result: { deviceSn: body.device_sn }
+            }));
+          } catch (e) {
+            return new Response(JSON.stringify({ errno: 1, msg: e.message }), { status: 400 });
+          }
+        }
         
         // POST /api/config - update mock config with new data
-        if (url === '/api/config' && options && (options.method === 'POST' || options.method === 'post')) {
+        if (path === '/api/config' && options && (options.method === 'POST' || options.method === 'post')) {
           try {
             const body = JSON.parse(options.body);
+            window.lastConfigPostBody = JSON.parse(JSON.stringify(body));
             
             // Simulate backend normalization: sync location and preferences.weatherPlace
             const locationValue = body.location || body.preferences?.weatherPlace;
@@ -154,7 +204,7 @@ test.describe('Settings Page - Data Persistence', () => {
     
     const intervalInput = page.locator('#automation_intervalMs');
     if (await intervalInput.count() > 0) {
-      const newValue = '90000';
+      const newValue = '90';
       await intervalInput.fill(newValue);
       
       // Save
@@ -165,9 +215,64 @@ test.describe('Settings Page - Data Persistence', () => {
         
         // Verify backend
         const serverConfig = await page.evaluate(() => window.mockServerConfig);
-        expect(serverConfig.automation?.intervalMs).toBe(parseInt(newValue));
+        expect(serverConfig.automation?.intervalMs).toBe(parseInt(newValue, 10) * 1000);
       }
     }
+  });
+
+  test('should render API millisecond timing values as seconds in UI', async ({ page }) => {
+    await page.waitForTimeout(500);
+    const intervalInput = page.locator('#automation_intervalMs');
+    if (await intervalInput.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+    await expect(intervalInput).toHaveValue('60');
+    await expect(page.locator('#cache_amber')).toHaveValue('60');
+    await expect(page.locator('#cache_inverter')).toHaveValue('300');
+    await expect(page.locator('#cache_weather')).toHaveValue('1800');
+    await expect(page.locator('#automation_intervalMs_display')).toHaveText('= 1.0m');
+    await expect(page.locator('#cache_amber_display')).toHaveText('= 1.0m');
+    await expect(page.locator('#cache_inverter_display')).toHaveText('= 5.0m');
+    await expect(page.locator('#cache_weather_display')).toHaveText('= 30.0m');
+  });
+
+  test('should translate seconds input values to milliseconds in API payload', async ({ page }) => {
+    await page.waitForTimeout(500);
+    const intervalInput = page.locator('#automation_intervalMs');
+    if (await intervalInput.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await intervalInput.fill('42');
+    await page.locator('#cache_amber').fill('11');
+    await page.locator('#cache_inverter').fill('77');
+    await page.locator('#cache_weather').fill('333');
+
+    const saveBtn = page.locator('button:has-text("Save")').first();
+    await saveBtn.click();
+    await page.waitForTimeout(1500);
+
+    const lastPost = await page.evaluate(() => window.lastConfigPostBody);
+    expect(lastPost.automation?.intervalMs).toBe(42000);
+    expect(lastPost.cache?.amber).toBe(11000);
+    expect(lastPost.cache?.inverter).toBe(77000);
+    expect(lastPost.cache?.weather).toBe(333000);
+  });
+
+  test('should keep automation FAQ and units aligned to seconds UI', async ({ page }) => {
+    await page.waitForTimeout(500);
+    const faqToggle = page.locator('#automationSection .faq-toggle').first();
+    if (await faqToggle.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+    await faqToggle.click();
+
+    const secUnitCount = await page.locator('#automationSection .setting-input .unit:has-text("sec")').count();
+    expect(secUnitCount).toBe(4);
+    await expect(page.locator('#automationSection .faq-content')).toContainText('Inputs on this page are in seconds; values are converted to milliseconds when saved to the API.');
   });
 
   test('should survive reload after automation interval change', async ({ page }) => {
@@ -175,7 +280,7 @@ test.describe('Settings Page - Data Persistence', () => {
     
     const intervalInput = page.locator('#automation_intervalMs');
     if (await intervalInput.count() > 0) {
-      const newValue = '75000';
+      const newValue = '75';
       await intervalInput.fill(newValue);
       
       // Save
@@ -191,7 +296,7 @@ test.describe('Settings Page - Data Persistence', () => {
         
         // Verify value persisted
         const reloadedValue = await page.locator('#automation_intervalMs').inputValue();
-        expect(parseInt(reloadedValue)).toBe(parseInt(newValue));
+        expect(parseInt(reloadedValue, 10)).toBe(parseInt(newValue, 10));
       }
     }
   });
@@ -201,7 +306,7 @@ test.describe('Settings Page - Data Persistence', () => {
     
     const amberCache = page.locator('#cache_amber');
     if (await amberCache.count() > 0) {
-      const newValue = '120000';
+      const newValue = '120';
       await amberCache.fill(newValue);
       
       // Save
@@ -212,7 +317,7 @@ test.describe('Settings Page - Data Persistence', () => {
         
         // Verify backend
         const serverConfig = await page.evaluate(() => window.mockServerConfig);
-        expect(serverConfig.cache?.amber).toBe(parseInt(newValue));
+        expect(serverConfig.cache?.amber).toBe(parseInt(newValue, 10) * 1000);
       }
     }
   });
@@ -250,7 +355,7 @@ test.describe('Settings Page - Data Persistence', () => {
     // Change interval
     const intervalInput = page.locator('#automation_intervalMs');
     if (await intervalInput.count() > 0) {
-      await intervalInput.fill('85000');
+      await intervalInput.fill('85');
     }
     
     // Change forecast days
@@ -280,7 +385,7 @@ test.describe('Settings Page - Data Persistence', () => {
     // Make multiple changes
     const changes = {
       location: 'Tokyo, Japan',
-      interval: '95000',
+      interval: '95',
       forecast: '8'
     };
     
@@ -316,8 +421,8 @@ test.describe('Settings Page - Data Persistence', () => {
       const forecastValue = await page.locator('#preferences_forecastDays').inputValue();
       
       expect(locationValue).toBe(changes.location);
-      expect(parseInt(intervalValue)).toBe(parseInt(changes.interval));
-      expect(parseInt(forecastValue)).toBe(parseInt(changes.forecast));
+      expect(parseInt(intervalValue, 10)).toBe(parseInt(changes.interval, 10));
+      expect(parseInt(forecastValue, 10)).toBe(parseInt(changes.forecast, 10));
     }
   });
 
@@ -371,5 +476,88 @@ test.describe('Settings Page - Data Persistence', () => {
       // If control is not rendered (auth/load timing in mocked env), keep test non-flaky.
       expect(true).toBeTruthy();
     }
+  });
+
+  test('should save credential edits without validate-keys when foxess token stays masked and unchanged', async ({ page }) => {
+    await page.waitForTimeout(500);
+
+    const deviceSnInput = page.locator('#credentials_deviceSn');
+    const saveCredentialsBtn = page.locator('#credentialsSaveBtn');
+
+    if (await deviceSnInput.count() === 0 || await saveCredentialsBtn.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await deviceSnInput.fill('TEST123456-UPDATED');
+    await saveCredentialsBtn.click();
+    await page.waitForTimeout(1200);
+
+    const result = await page.evaluate(() => ({
+      validateKeysCallCount: window.validateKeysCallCount,
+      lastConfigPostBody: window.lastConfigPostBody,
+      serverDeviceSn: window.mockServerConfig.deviceSn
+    }));
+
+    expect(result.validateKeysCallCount).toBe(0);
+    expect(result.lastConfigPostBody?.deviceSn).toBe('TEST123456-UPDATED');
+    expect(result.serverDeviceSn).toBe('TEST123456-UPDATED');
+  });
+
+  test('should avoid validate-keys when masked foxess token is unchanged even if saved flag is missing', async ({ page }) => {
+    await page.waitForTimeout(500);
+
+    await page.evaluate(() => {
+      const foxessInput = document.getElementById('credentials_foxessToken');
+      if (!foxessInput) return;
+      delete foxessInput.dataset.hasSavedCredential;
+      foxessInput.value = '••••••••';
+      if (window.originalCredentials) {
+        window.originalCredentials.foxessToken = '••••••••';
+      }
+    });
+
+    const saveCredentialsBtn = page.locator('#credentialsSaveBtn');
+    if (await saveCredentialsBtn.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await saveCredentialsBtn.click();
+    await page.waitForTimeout(1200);
+
+    const result = await page.evaluate(() => ({
+      validateKeysCallCount: window.validateKeysCallCount,
+      lastConfigPostBody: window.lastConfigPostBody
+    }));
+
+    expect(result.validateKeysCallCount).toBe(0);
+    expect(result.lastConfigPostBody?.deviceSn).toBe('TEST123456');
+  });
+
+  test('should call validate-keys when foxess token is explicitly changed', async ({ page }) => {
+    await page.waitForTimeout(500);
+
+    const foxessInput = page.locator('#credentials_foxessToken');
+    const saveCredentialsBtn = page.locator('#credentialsSaveBtn');
+
+    if (await foxessInput.count() === 0 || await saveCredentialsBtn.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await foxessInput.fill('mock-foxess-token-new-value');
+    await saveCredentialsBtn.click();
+    await page.waitForTimeout(1200);
+
+    const result = await page.evaluate(() => ({
+      validateKeysCallCount: window.validateKeysCallCount,
+      lastValidateKeysBody: window.lastValidateKeysBody,
+      serverToken: window.mockServerConfig.foxessToken
+    }));
+
+    expect(result.validateKeysCallCount).toBe(1);
+    expect(result.lastValidateKeysBody?.foxess_token).toBe('mock-foxess-token-new-value');
+    expect(result.serverToken).toBe('mock-foxess-token-new-value');
   });
 });

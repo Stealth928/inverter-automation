@@ -126,6 +126,31 @@ section('4. Verifying Module Imports in index.js');
 
 const indexPath = path.join(repoRoot, 'functions', 'index.js');
 const indexContent = fs.readFileSync(indexPath, 'utf8');
+const routesDir = path.join(repoRoot, 'functions', 'api', 'routes');
+
+function walkFiles(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    return [];
+  }
+  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  const results = [];
+  entries.forEach((entry) => {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...walkFiles(fullPath));
+      return;
+    }
+    if (entry.name.toLowerCase().endsWith('.js')) {
+      results.push(fullPath);
+    }
+  });
+  return results;
+}
+
+const routeSourceFiles = [indexPath, ...walkFiles(routesDir)];
+const routeSourceContent = routeSourceFiles
+  .map((filePath) => fs.readFileSync(filePath, 'utf8'))
+  .join('\n');
 
 const requiredImports = [
   { pattern: /const\s+amberAPI\s*=\s*amberModule\.init/, name: 'amberAPI initialization' },
@@ -165,7 +190,7 @@ const criticalRoutes = [
 let routesChecksPassed = true;
 
 criticalRoutes.forEach(({ pattern, name }) => {
-  if (pattern.test(indexContent)) {
+  if (pattern.test(routeSourceContent)) {
     checkPass(`Route defined: ${name}`);
   } else {
     checkFail(`Route missing: ${name}`);
@@ -247,7 +272,49 @@ if (fs.existsSync(firebaseJsonPath)) {
 }
 
 // ============================================================================
-// 8. SUMMARY AND EXIT
+// 8. API CONTRACT CHECKS
+// ============================================================================
+section('8. Verifying API Contract Baseline');
+
+try {
+  log(colors.cyan, 'Running: node scripts/api-contract-baseline.js --silent');
+  execSync('node scripts/api-contract-baseline.js --silent', { stdio: 'inherit', cwd: repoRoot });
+  checkPass('APIClient routes match backend routes');
+} catch (e) {
+  checkFail('API contract mismatch detected - run: node scripts/api-contract-baseline.js --write-doc');
+  failures.push('API_CONTRACT_FAILURE');
+}
+
+// ============================================================================
+// 9. OPENAPI CONTRACT CHECKS
+// ============================================================================
+section('9. Verifying OpenAPI Contract');
+
+try {
+  log(colors.cyan, 'Running: node scripts/openapi-contract-check.js --silent');
+  execSync('node scripts/openapi-contract-check.js --silent', { stdio: 'inherit', cwd: repoRoot });
+  checkPass('OpenAPI spec syntax and path/method parity are valid');
+} catch (e) {
+  checkFail('OpenAPI contract validation failed - run: node scripts/openapi-contract-check.js');
+  failures.push('OPENAPI_CONTRACT_FAILURE');
+}
+
+// ============================================================================
+// 10. REPO HYGIENE CHECKS
+// ============================================================================
+section('10. Verifying Repo Hygiene');
+
+try {
+  log(colors.cyan, 'Running: node scripts/repo-hygiene-check.js');
+  execSync('node scripts/repo-hygiene-check.js', { stdio: 'inherit', cwd: repoRoot });
+  checkPass('Repo hygiene checks passed');
+} catch (e) {
+  checkFail('Repo hygiene check failed - run: node scripts/repo-hygiene-check.js');
+  failures.push('REPO_HYGIENE_FAILURE');
+}
+
+// ============================================================================
+// 11. SUMMARY AND EXIT
 // ============================================================================
 section('Pre-Deployment Check Summary');
 

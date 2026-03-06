@@ -12,7 +12,7 @@ Create a pre-deploy snapshot covering all user automation data and define an exa
 The app stores automation/user state under `users/{uid}`:
 
 - root user document fields (including `automationEnabled`)
-- `config/*` (including `main`, `tesla`)
+- `config/*` (including `main`)
 - `automation/state`
 - `rules/*`
 - `quickControl/state`

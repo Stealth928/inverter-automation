@@ -128,6 +128,7 @@
             flex-direction: column;
             align-items: center;
             gap: 8px;
+            text-align: center;
         }
 
         .progress-step .step-dot {
@@ -156,10 +157,13 @@
         }
 
         .progress-step .step-label {
+            display: block;
+            width: 100%;
             font-size: 11px;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.3px;
+            line-height: 1.25;
             transition: color 0.3s ease;
         }
 
@@ -496,7 +500,6 @@
                 <a href="/control.html" class="nav-link">🎮 Controls</a>
                 <a href="/settings.html" class="nav-link">⚙️ Settings</a>
                 <a href="/curtailment-discovery.html" class="nav-link" id="topologyNavLink" style="display: none;">🔬 WIP - Topology Discovery</a>
-                <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
                 <a href="/admin.html" class="nav-link" id="adminNavLink" style="display: none;">🛡️ Admin</a>
             </div>
             <div class="nav-right">
@@ -595,7 +598,7 @@
                             <span>FoxESS API Token</span>
                             <span class="required-indicator">*</span>
                         </label>
-                        <div class="hint">Generate from FoxESS Cloud (v1) → User Settings → API Management</div>
+                        <div class="hint">Generate from <a href="https://www.foxesscloud.com/login" target="_blank" rel="noopener noreferrer">FoxESS Cloud (v1)</a> → User Settings → API Management</div>
                         <div class="input-wrapper">
                             <input 
                                 type="password" 
@@ -1119,13 +1122,11 @@
             group.classList.remove('error', 'success');
         }
 
-        // WIP Pages visibility - Tesla & Topology Discovery (admin only)
+        // WIP Pages visibility - Topology Discovery (admin only)
         if (typeof window.auth !== 'undefined' && window.auth) {
             window.auth.onAuthStateChanged((user) => {
                 if (user && user.email === 'sardanapalos928@hotmail.com') {
-                    const teslaLink = document.getElementById('teslaNavLink');
                     const topologyLink = document.getElementById('topologyNavLink');
-                    if (teslaLink) teslaLink.style.display = '';
                     if (topologyLink) topologyLink.style.display = '';
                 }
             });

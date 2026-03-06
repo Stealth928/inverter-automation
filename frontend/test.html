@@ -661,7 +661,6 @@
             <a href="/rules-library.html" class="nav-link">📚 Rules Library</a>
             <a href="/settings.html" class="nav-link">⚙️ Settings</a>
             <a href="/curtailment-discovery.html" class="nav-link" id="topologyNavLink" style="display: none;">🔬 WIP - Topology Discovery</a>
-            <a href="/tesla-integration.html" class="nav-link" id="teslaNavLink" style="display: none;">⚡ WIP - Tesla Integration</a>
             <a href="/admin.html" class="nav-link" id="adminNavLink" style="display: none;">🛡️ Admin</a>
         </div>
         <div class="nav-right">
@@ -2622,13 +2621,11 @@
 
         // AppShell handles auth lifecycle; no additional bootstrap required here.
 
-        // WIP Pages visibility - Tesla & Topology Discovery (admin only)
+        // WIP Pages visibility - Topology Discovery (admin only)
         if (typeof window.auth !== 'undefined' && window.auth) {
             window.auth.onAuthStateChanged((user) => {
                 if (user && user.email === 'sardanapalos928@hotmail.com') {
-                    const teslaLink = document.getElementById('teslaNavLink');
                     const topologyLink = document.getElementById('topologyNavLink');
-                    if (teslaLink) teslaLink.style.display = '';
                     if (topologyLink) topologyLink.style.display = '';
                 }
             });
