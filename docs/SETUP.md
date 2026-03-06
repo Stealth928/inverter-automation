@@ -228,6 +228,8 @@ This section documents the current Firestore model used by backend code.
 | `users/{uid}` | User profile and top-level flags (`email`, `displayName`, `role`, `automationEnabled`, timestamps). |
 | `shared/serverConfig` | Legacy shared setup config used by selected pre-auth setup flows. |
 | `metrics/{YYYY-MM-DD}` | Platform-wide daily API usage counters. |
+| `metrics/automationScheduler/runs/{runId}` | Per-run scheduler orchestration metrics snapshots. |
+| `metrics/automationScheduler/daily/{YYYY-MM-DD}` | Daily scheduler orchestration aggregate metrics for admin dashboards. |
 | `admin_audit/{docId}` | Admin action audit trail (role changes, impersonation, deletion events). |
 
 ### User-scoped collections (`users/{uid}/...`)

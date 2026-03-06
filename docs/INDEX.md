@@ -23,6 +23,7 @@ Purpose: Canonical index of actively maintained project documentation.
 ## Refactor and Governance Track
 - [REFACTORING_IMPLEMENTATION_PLAN_MAR26.md](REFACTORING_IMPLEMENTATION_PLAN_MAR26.md): Main execution tracker.
 - [P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md](P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md): P1 architecture/contracts.
+- [P1_G1_CLOSEOUT_EVIDENCE_MAR26.md](P1_G1_CLOSEOUT_EVIDENCE_MAR26.md): P1/G1 closeout evidence package.
 - [P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md](P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md): P2 extraction sequencing.
 - [P2_G2_CLOSEOUT_EVIDENCE_MAR26.md](P2_G2_CLOSEOUT_EVIDENCE_MAR26.md): G2 evidence package.
 - [PHASE_GATE_DASHBOARD.md](PHASE_GATE_DASHBOARD.md): Phase gate board conventions.

@@ -1,8 +1,9 @@
 # P1 Architecture and Contract Specification (March 2026)
 
-Status: Draft for implementation review  
-Last Updated: 2026-03-05  
+Status: Final - approved for implementation and G1 closeout  
+Last Updated: 2026-03-06  
 Related Plan: `docs/REFACTORING_IMPLEMENTATION_PLAN_MAR26.md` (Phase P1)  
+Approval Record: 2026-03-06 (Approver: Stealth928)  
 Related ADRs:
 - `docs/adr/ADR-001-target-architecture-boundaries.md`
 - `docs/adr/ADR-002-v2-data-model-and-migration-strategy.md`

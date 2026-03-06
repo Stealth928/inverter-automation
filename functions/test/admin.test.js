@@ -203,6 +203,33 @@ describe('Admin API', () => {
     });
   });
 
+  describe('GET /api/admin/scheduler-metrics', () => {
+    it('should return scheduler metrics read model for admin', async () => {
+      const res = await request(app)
+        .get('/api/admin/scheduler-metrics?days=14&includeRuns=1&runLimit=5')
+        .set(authHeaders('mock-admin-token'));
+
+      expect(res.status).toBe(200);
+      expect(res.body.errno).toBe(0);
+      expect(res.body.result).toHaveProperty('summary');
+      expect(res.body.result).toHaveProperty('daily');
+      expect(res.body.result).toHaveProperty('recentRuns');
+      expect(Array.isArray(res.body.result.daily)).toBe(true);
+      expect(Array.isArray(res.body.result.recentRuns)).toBe(true);
+      expect(res.body.result.includeRuns).toBe(true);
+      expect(res.body.result.runLimit).toBe(5);
+    });
+
+    it('should return 403 for non-admin', async () => {
+      const res = await request(app)
+        .get('/api/admin/scheduler-metrics')
+        .set(authHeaders('mock-user-token'));
+
+      expect(res.status).toBe(403);
+      expect(res.body.errno).toBe(403);
+    });
+  });
+
   describe('POST /api/admin/users/:uid/role', () => {
     beforeEach(() => {
       mockAuth.setCustomUserClaims.mockClear();

@@ -750,6 +750,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
           if (!lockHandle || lockHandle.acquired !== true) {
             logger.log(`[Scheduler] User ${userId}: skipped due to active lock`);
             return {
+              executed: false,
               success: true,
               skippedLocked: 1,
               skippedIdempotent: 0,
@@ -771,6 +772,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
           if (!shouldRun) {
             logger.log(`[Scheduler] User ${userId}: skipped due to idempotency key ${cycleKey}`);
             return {
+              executed: false,
               success: true,
               skippedLocked: 0,
               skippedIdempotent: 1,
@@ -816,6 +818,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
                 userId
             });
             return {
+              executed: true,
               success: false,
               skippedLocked: 0,
               skippedIdempotent: 0,
@@ -828,6 +831,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
           }
 
           return {
+            executed: true,
             success: true,
             skippedLocked: 0,
             skippedIdempotent: 0,
@@ -840,6 +844,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
         } catch (error) {
           logger.error(`[Scheduler] User ${userId}: Exception: ${error.message}`);
           return {
+            executed: false,
             success: false,
             skippedLocked: 0,
             skippedIdempotent: 0,
@@ -863,7 +868,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
         }
       });
 
-      cyclesRun = cycleResults.filter((entry) => entry.success).length;
+      cyclesRun = cycleResults.filter((entry) => entry.executed === true).length;
       errors = cycleResults.filter((entry) => !entry.success).length;
       skippedLocked = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.skippedLocked, 0), 0);
       skippedIdempotent = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.skippedIdempotent, 0), 0);

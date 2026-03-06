@@ -142,7 +142,7 @@ describe('automation scheduler service', () => {
     expect(metrics).toEqual(expect.objectContaining({
       totalEnabledUsers: 2,
       cycleCandidates: 2,
-      cyclesRun: 1,
+      cyclesRun: 2,
       deadLetters: 1,
       errors: 1
     }));
@@ -312,5 +312,129 @@ describe('automation scheduler service', () => {
     expect(
       logger.warn.mock.calls.some((call) => String(call[0]).includes('Failed to emit scheduler metrics'))
     ).toBe(true);
+  });
+
+  test('overlapping scheduler invocations serialize by lock and avoid duplicate cycle execution', async () => {
+    const lockAttempts = new Map();
+    const schedulerMetrics = [];
+    const emitSchedulerMetrics = jest.fn(async (metrics) => {
+      schedulerMetrics.push(metrics);
+    });
+    const automationCycleHandler = jest.fn(async (_req, res) => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      res.json({ errno: 0, result: { skipped: true, reason: 'No rules configured' } });
+    });
+    const acquireUserCycleLock = jest.fn(async ({ userId }) => {
+      const attemptCount = lockAttempts.get(userId) || 0;
+      lockAttempts.set(userId, attemptCount + 1);
+      if (attemptCount === 0) {
+        return { acquired: true, lockId: `lock-${userId}` };
+      }
+      return { acquired: false, lockId: null };
+    });
+    const releaseUserCycleLock = jest.fn(async () => undefined);
+    const shouldRunCycleKey = jest.fn(async () => true);
+
+    const sharedOverrides = {
+      acquireUserCycleLock,
+      automationCycleHandler,
+      emitSchedulerMetrics,
+      releaseUserCycleLock,
+      schedulerOptions: {
+        maxConcurrentUsers: 1,
+        retryAttempts: 1,
+        retryBaseDelayMs: 0,
+        retryJitterMs: 0
+      },
+      shouldRunCycleKey,
+      userIds: ['u-1']
+    };
+    const { deps: depsA } = buildSchedulerDeps(sharedOverrides);
+    const { deps: depsB } = buildSchedulerDeps(sharedOverrides);
+
+    await Promise.all([
+      runAutomationSchedulerCycle({}, depsA),
+      runAutomationSchedulerCycle({}, depsB)
+    ]);
+
+    expect(automationCycleHandler).toHaveBeenCalledTimes(1);
+    expect(acquireUserCycleLock).toHaveBeenCalledTimes(2);
+    expect(shouldRunCycleKey).toHaveBeenCalledTimes(1);
+    expect(emitSchedulerMetrics).toHaveBeenCalledTimes(2);
+
+    const totalCyclesRun = schedulerMetrics.reduce(
+      (sum, entry) => sum + Number(entry && entry.cyclesRun ? entry.cyclesRun : 0),
+      0
+    );
+    const totalLockedSkips = schedulerMetrics.reduce(
+      (sum, entry) => sum + Number(entry && entry.skipped && entry.skipped.locked ? entry.skipped.locked : 0),
+      0
+    );
+    expect(totalCyclesRun).toBe(1);
+    expect(totalLockedSkips).toBe(1);
+  });
+
+  test('overlapping scheduler invocations suppress duplicate cycle via idempotency key', async () => {
+    const seenCycleKeys = new Set();
+    const schedulerMetrics = [];
+    const emitSchedulerMetrics = jest.fn(async (metrics) => {
+      schedulerMetrics.push(metrics);
+    });
+    const automationCycleHandler = jest.fn(async (_req, res) => {
+      res.json({ errno: 0, result: { skipped: true, reason: 'No rules configured' } });
+    });
+    const acquireUserCycleLock = jest.fn(async ({ userId }) => ({
+      acquired: true,
+      lockId: `lock-${userId}-${Math.random().toString(36).slice(2, 7)}`
+    }));
+    const shouldRunCycleKey = jest.fn(async ({ userId, cycleKey }) => {
+      const key = `${userId}:${cycleKey}`;
+      if (seenCycleKeys.has(key)) {
+        return false;
+      }
+      seenCycleKeys.add(key);
+      return true;
+    });
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1710000000000);
+
+    try {
+      const sharedOverrides = {
+        acquireUserCycleLock,
+        automationCycleHandler,
+        emitSchedulerMetrics,
+        schedulerOptions: {
+          maxConcurrentUsers: 1,
+          retryAttempts: 1,
+          retryBaseDelayMs: 0,
+          retryJitterMs: 0
+        },
+        shouldRunCycleKey,
+        userIds: ['u-1']
+      };
+      const { deps: depsA } = buildSchedulerDeps(sharedOverrides);
+      const { deps: depsB } = buildSchedulerDeps(sharedOverrides);
+
+      await Promise.all([
+        runAutomationSchedulerCycle({}, depsA),
+        runAutomationSchedulerCycle({}, depsB)
+      ]);
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(automationCycleHandler).toHaveBeenCalledTimes(1);
+    expect(shouldRunCycleKey).toHaveBeenCalledTimes(2);
+    expect(emitSchedulerMetrics).toHaveBeenCalledTimes(2);
+
+    const totalCyclesRun = schedulerMetrics.reduce(
+      (sum, entry) => sum + Number(entry && entry.cyclesRun ? entry.cyclesRun : 0),
+      0
+    );
+    const totalIdempotentSkips = schedulerMetrics.reduce(
+      (sum, entry) => sum + Number(entry && entry.skipped && entry.skipped.idempotent ? entry.skipped.idempotent : 0),
+      0
+    );
+    expect(totalCyclesRun).toBe(1);
+    expect(totalIdempotentSkips).toBe(1);
   });
 });

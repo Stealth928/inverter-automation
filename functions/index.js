@@ -51,6 +51,7 @@ const { registerSchedulerMutationRoutes } = require('./api/routes/scheduler-muta
 const { registerAutomationMutationRoutes } = require('./api/routes/automation-mutations');
 const { registerAutomationCycleRoute } = require('./api/routes/automation-cycle');
 const { runAutomationSchedulerCycle } = require('./lib/services/automation-scheduler-service');
+const { createAutomationSchedulerMetricsSink } = require('./lib/services/automation-scheduler-metrics-sink');
 const { createApiMetricsService } = require('./lib/services/api-metrics-service');
 const { createAutomationRuleActionService } = require('./lib/services/automation-rule-action-service');
 const { createAutomationRuleEvaluationService } = require('./lib/services/automation-rule-evaluation-service');
@@ -323,6 +324,14 @@ const {
   getUserConfig,
   logger,
   saveQuickControlState,
+  serverTimestamp
+});
+
+const {
+  emitSchedulerMetrics
+} = createAutomationSchedulerMetricsSink({
+  db,
+  logger,
   serverTimestamp
 });
 
@@ -889,6 +898,7 @@ async function runAutomationHandler(context) {
   return runAutomationSchedulerCycle(context, {
     automationCycleHandler,
     db,
+    emitSchedulerMetrics,
     getConfig,
     getTimeInTimezone,
     getUserAutomationState,

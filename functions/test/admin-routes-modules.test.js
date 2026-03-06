@@ -115,6 +115,225 @@ describe('admin route module', () => {
     });
   });
 
+  test('scheduler-metrics returns aggregate daily view with optional recent runs', async () => {
+    const buildSnapshot = (docs) => ({
+      size: docs.length,
+      docs,
+      forEach: (fn) => docs.forEach(fn)
+    });
+
+    const dailyDocs = [
+      {
+        id: '2026-03-06',
+        data: () => ({
+          dayKey: '2026-03-06',
+          runs: 3,
+          totalEnabledUsers: 9,
+          cycleCandidates: 7,
+          cyclesRun: 5,
+          deadLetters: 1,
+          errors: 1,
+          retries: 2,
+          maxQueueLagMs: 120,
+          maxCycleDurationMs: 400,
+          skipped: {
+            disabledOrBlackout: 1,
+            idempotent: 1,
+            locked: 1,
+            tooSoon: 2
+          },
+          failureByType: { api_rate_limit: 1 }
+        })
+      },
+      {
+        id: '2026-03-05',
+        data: () => ({
+          dayKey: '2026-03-05',
+          runs: 2,
+          totalEnabledUsers: 8,
+          cycleCandidates: 6,
+          cyclesRun: 4,
+          deadLetters: 0,
+          errors: 0,
+          retries: 1,
+          maxQueueLagMs: 100,
+          maxCycleDurationMs: 300,
+          skipped: {
+            disabledOrBlackout: 0,
+            idempotent: 0,
+            locked: 0,
+            tooSoon: 2
+          },
+          failureByType: { api_timeout: 2 }
+        })
+      }
+    ];
+
+    const runDocs = [
+      {
+        id: 'run-1',
+        data: () => ({
+          runId: 'run-1',
+          schedulerId: 'sched-1',
+          dayKey: '2026-03-06',
+          startedAtMs: 1000,
+          completedAtMs: 1200,
+          durationMs: 200,
+          totalEnabledUsers: 3,
+          cycleCandidates: 3,
+          cyclesRun: 2,
+          deadLetters: 0,
+          errors: 0,
+          retries: 1,
+          skipped: { disabledOrBlackout: 0, idempotent: 1, locked: 0, tooSoon: 0 },
+          failureByType: { api_timeout: 1 },
+          queueLagMs: { avgMs: 10, count: 3, maxMs: 20, minMs: 1 },
+          cycleDurationMs: { avgMs: 40, count: 3, maxMs: 80, minMs: 10 }
+        })
+      }
+    ];
+
+    const dailyGet = jest.fn(async () => buildSnapshot(dailyDocs));
+    const runsGet = jest.fn(async () => buildSnapshot(runDocs));
+
+    const deps = createDeps({
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'metrics') {
+            throw new Error(`Unexpected collection: ${name}`);
+          }
+          return {
+            doc: jest.fn((docId) => {
+              if (docId !== 'automationScheduler') {
+                throw new Error(`Unexpected metrics doc: ${docId}`);
+              }
+              return {
+                collection: jest.fn((subName) => {
+                  if (subName === 'daily') {
+                    return {
+                      orderBy: jest.fn(() => ({
+                        limit: jest.fn(() => ({
+                          get: dailyGet
+                        }))
+                      }))
+                    };
+                  }
+                  if (subName === 'runs') {
+                    return {
+                      orderBy: jest.fn(() => ({
+                        limit: jest.fn(() => ({
+                          get: runsGet
+                        }))
+                      }))
+                    };
+                  }
+                  throw new Error(`Unexpected scheduler metrics collection: ${subName}`);
+                })
+              };
+            })
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/scheduler-metrics?days=14&includeRuns=1&runLimit=10')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.summary).toEqual(expect.objectContaining({
+      runs: 5,
+      cyclesRun: 9,
+      deadLetters: 1,
+      errors: 1,
+      retries: 3,
+      maxQueueLagMs: 120,
+      maxCycleDurationMs: 400,
+      errorRatePct: 11.11
+    }));
+    expect(response.body.result.summary.skipped).toEqual({
+      disabledOrBlackout: 1,
+      idempotent: 1,
+      locked: 1,
+      tooSoon: 4
+    });
+    expect(response.body.result.summary.failureByType).toEqual({
+      api_rate_limit: 1,
+      api_timeout: 2
+    });
+    expect(response.body.result.daily.map((entry) => entry.dayKey)).toEqual(['2026-03-05', '2026-03-06']);
+    expect(response.body.result.includeRuns).toBe(true);
+    expect(response.body.result.runLimit).toBe(10);
+    expect(response.body.result.recentRuns).toHaveLength(1);
+    expect(response.body.result.recentRuns[0]).toEqual(expect.objectContaining({
+      runId: 'run-1',
+      schedulerId: 'sched-1'
+    }));
+    expect(dailyGet).toHaveBeenCalledTimes(1);
+    expect(runsGet).toHaveBeenCalledTimes(1);
+  });
+
+  test('scheduler-metrics skips runs query when includeRuns is not enabled', async () => {
+    const buildSnapshot = (docs) => ({
+      size: docs.length,
+      docs,
+      forEach: (fn) => docs.forEach(fn)
+    });
+
+    const dailyGet = jest.fn(async () => buildSnapshot([]));
+    const runsGet = jest.fn(async () => buildSnapshot([]));
+
+    const deps = createDeps({
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'metrics') {
+            throw new Error(`Unexpected collection: ${name}`);
+          }
+          return {
+            doc: jest.fn(() => ({
+              collection: jest.fn((subName) => {
+                if (subName === 'daily') {
+                  return {
+                    orderBy: jest.fn(() => ({
+                      limit: jest.fn(() => ({
+                        get: dailyGet
+                      }))
+                    }))
+                  };
+                }
+                if (subName === 'runs') {
+                  return {
+                    orderBy: jest.fn(() => ({
+                      limit: jest.fn(() => ({
+                        get: runsGet
+                      }))
+                    }))
+                  };
+                }
+                throw new Error(`Unexpected scheduler metrics collection: ${subName}`);
+              })
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/scheduler-metrics')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.includeRuns).toBe(false);
+    expect(response.body.result.runLimit).toBe(0);
+    expect(response.body.result.recentRuns).toEqual([]);
+    expect(dailyGet).toHaveBeenCalledTimes(1);
+    expect(runsGet).not.toHaveBeenCalled();
+  });
+
   test('role update validates allowed roles', async () => {
     const deps = createDeps();
     const app = buildApp(deps);

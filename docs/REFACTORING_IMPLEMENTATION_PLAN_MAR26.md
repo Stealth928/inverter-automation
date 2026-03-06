@@ -1,6 +1,6 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Active execution - Sprint 1 complete, P1 closeout pending, P2/G2 closed, and P3/G3 execution in progress (scheduler service-runner decoupling complete; bounded-concurrency + per-user lock/idempotency/retry/dead-letter orchestration controls are implemented, and scheduler observability metrics are now emitted from the orchestration service).
+Status: Active execution - Sprint 1 complete, P1/G1 closed, P2/G2 closed, and P3/G3 execution in progress (scheduler service-runner decoupling complete; bounded-concurrency + per-user lock/idempotency/retry/dead-letter orchestration controls are implemented, scheduler observability metrics are emitted/persisted, and admin read-model access for scheduler metrics is now integrated).
 Scope: Planning + execution progress tracking  
 Last Updated: 2026-03-06  
 Primary Branch: `RefactoringMar26`
@@ -19,10 +19,10 @@ Primary Branch: `RefactoringMar26`
 
 | Phase | Gate | Status | Progress | Next Focus |
 |---|---|---|---|---|
-| P0 | G0 | Complete | 100% | - |
-| P1 | G1 | In Progress | 10/10 tasks implemented; formal gate close pending | Capture closeout evidence + sign-off |
-| P2 | G2 | Complete | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence finalized, all G2 criteria marked met, `index.js` measured at 918 lines (89.8% reduction), inline routes reduced to 0, scheduler route-stack coupling removed, and repo-hygiene gating integrated into pre-deploy | Transition to P3/G3 orchestration hardening planning and execution |
-| P3 | G3 | In Progress | Scheduler orchestration hardening is active in `automation-scheduler-service`: bounded concurrency, per-user lock/idempotency, retry + dead-letter, and emitted observability metrics (queue lag, cycle duration, retry + failure-type counters), validated by focused scheduler tests and full gate (`71/71` suites; `756` passing) | Continue P3 with lock-contention/overlap stress-path coverage and metrics sink/dashboard integration |
+| P0 | G0 | ✅ Complete | 100% | - |
+| P1 | G1 | ✅ Complete | 10/10 tasks implemented; formal closeout evidence finalized and gate approved (`docs/P1_G1_CLOSEOUT_EVIDENCE_MAR26.md`) | Continue P3/G3 orchestration hardening execution |
+| P2 | G2 | ✅ Complete | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence finalized, all G2 criteria marked met, `index.js` measured at 918 lines (89.8% reduction), inline routes reduced to 0, scheduler route-stack coupling removed, and repo-hygiene gating integrated into pre-deploy | Transition to P3/G3 orchestration hardening planning and execution |
+| P3 | G3 | In Progress | Scheduler orchestration hardening is active in `automation-scheduler-service`: bounded concurrency, per-user lock/idempotency, retry + dead-letter, emitted observability metrics, persisted run/daily scheduler metrics sink wiring, overlap lock/idempotency stress-path coverage, and admin scheduler-metrics read-model endpoint integration; validated by focused scheduler/admin tests and full gate (`72/72` suites; `764` passing) | Continue P3 with longer-run overlap/lock-contention soak coverage and frontend dashboard consumption of scheduler metrics |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -1411,6 +1411,76 @@ Tracker hygiene rule: update this section at the end of every completed executio
   - `node scripts/pre-deploy-check.js` (full gate pass: **71/71** suites, **756** passing, **44** todo).
 - Next target chunk: implement P3 overlap/lock-contention stress-path tests and tighten dead-letter/lock observability for gate evidence.
 
+### 2026-03-06 - Chunk 66 (P1/G1 formal closeout evidence and governance finalization)
+
+- Finalized P1 gate-close governance artifacts:
+  - created `docs/P1_G1_CLOSEOUT_EVIDENCE_MAR26.md` with objective gate evidence and recommendation.
+  - updated `docs/P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md` status from draft to approved/final.
+  - updated `docs/PHASE_GATE_DASHBOARD.md` to mark `P1/G1` completed.
+  - updated tracker/index references (`docs/REFACTORING_IMPLEMENTATION_PLAN_MAR26.md`, `docs/INDEX.md`) so P1 no longer appears as open/pending.
+- Validation passed:
+  - `npm run openapi:check`
+  - `npm run api:contract:check`
+  - `npm --prefix functions test -- test/payment-adapter-contract.test.js test/billing-entitlements.test.js test/billing-webhook-idempotency.test.js test/device-telemetry.test.js --runInBand`
+  - `node scripts/pre-deploy-check.js` (full gate pass: **71/71** suites, **756** passing, **44** todo)
+- Outcome:
+  - P1/G1 is now formally closed with explicit approval records and evidence package in-repo.
+- Next target chunk: continue P3/G3 lock-contention/overlap stress-path hardening and metrics sink/dashboard integration.
+
+### 2026-03-06 - Chunk 67 (P3/G3 overlap stress-path hardening + metrics sink persistence integration)
+
+- Continued P3 orchestration hardening in scheduler domain:
+  - added concrete scheduler metrics sink service:
+    - `functions/lib/services/automation-scheduler-metrics-sink.js`
+    - persists per-run metrics docs and daily aggregate rollups at:
+      - `metrics/automationScheduler/runs/{runId}`
+      - `metrics/automationScheduler/daily/{YYYY-MM-DD}`
+  - wired scheduler metrics sink into composition root:
+    - `functions/index.js` now initializes `createAutomationSchedulerMetricsSink(...)` and passes `emitSchedulerMetrics` into `runAutomationSchedulerCycle(...)`.
+  - tightened scheduler execution accounting in `functions/lib/services/automation-scheduler-service.js`:
+    - lock/idempotency skips now explicitly track `executed: false`.
+    - `cyclesRun` now counts only truly executed user cycles (`executed === true`) rather than all non-error candidate outcomes.
+- Expanded scheduler test coverage:
+  - `functions/test/automation-scheduler-service.test.js`
+    - overlapping invocation stress path: lock-contention serialization prevents duplicate user-cycle execution.
+    - overlapping invocation stress path: idempotency suppression prevents duplicate cycle execution within same cycle window.
+  - `functions/test/automation-scheduler-metrics-sink.test.js`
+    - validates sink persistence of run-level metrics and daily aggregate/failure-tally rollups.
+- Validation passed:
+  - `npm --prefix functions run lint`
+  - `npm --prefix functions test -- test/automation-scheduler-service.test.js test/automation-scheduler-metrics-sink.test.js --runInBand`
+  - `node scripts/pre-deploy-check.js` (full gate pass: **72/72** suites, **760** passing, **44** todo)
+- Next target chunk: continue P3 with scheduler metrics dashboard/read-model consumption and longer-run overlap/lock-contention soak-path validation evidence.
+
+### 2026-03-06 - Chunk 68 (P3/G3 scheduler metrics dashboard read-model endpoint integration)
+
+- Implemented admin-facing scheduler metrics read-model endpoint:
+  - added `GET /api/admin/scheduler-metrics` in `functions/api/routes/admin.js`.
+  - supports:
+    - `days` windowed daily aggregate view (`metrics/automationScheduler/daily/{YYYY-MM-DD}`)
+    - optional recent run feed via `includeRuns=1` + `runLimit` (`metrics/automationScheduler/runs/{runId}`)
+  - returns:
+    - summary rollups (runs, cycles, retries, dead-letters, error rate, max lag/duration, failure-type tallies, skipped breakdown)
+    - daily trend rows suitable for dashboard graphing
+    - optional recent run details for drilldown panels
+- Added endpoint coverage:
+  - `functions/test/admin-routes-modules.test.js`
+    - validates aggregate/daily/recent-runs payload shape and summary math.
+    - validates `includeRuns` gating (runs query skipped unless requested).
+  - `functions/test/admin.test.js`
+    - validates integrated auth/admin behavior for scheduler-metrics endpoint in app composition.
+- Documentation/model sync:
+  - updated `docs/SETUP.md` Firestore schema table to include:
+    - `metrics/automationScheduler/runs/{runId}`
+    - `metrics/automationScheduler/daily/{YYYY-MM-DD}`
+- Validation passed:
+  - `npm run api:contract:check` (backend routes: `74`, APIClient mismatches: `0`)
+  - `npm run openapi:check` (backend routes: `74`, OpenAPI-declared operations: `4`, incremental gap: `70`)
+  - `npm --prefix functions test -- test/admin-routes-modules.test.js test/admin.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js` (full gate pass: **72/72** suites, **764** passing, **44** todo)
+- Next target chunk: continue P3 with longer-run overlap/lock-contention soak execution evidence and frontend dashboard consumption of scheduler metrics endpoint.
+
 ---
 
 ## 1. Purpose
@@ -2132,8 +2202,9 @@ The following tasks have no cross-phase dependencies and can run in parallel wit
 | Date | Phase/Gate | Status | Approver | Notes |
 |---|---|---|---|---|
 | 2026-03-04 | P0 / G0 execution start | Missing formal sign-off record | TBD | Sprint 1 execution began and completed; approval evidence needs explicit in-repo entry. |
-| 2026-03-04 | G1 prerequisite governance update | In progress | RefactoringMar26 owner | Formal named approver + date must be recorded before G1 close. |
+| 2026-03-04 | G1 prerequisite governance update | Completed | RefactoringMar26 owner | Governance prerequisite captured and superseded by formal G1 closeout approval record below. |
 | 2026-03-05 | P1 / G1 execution continuation | Approved (recorded) | Stealth928 | User-directed continuation of implementation work recorded in chat; used as explicit execution approval evidence. |
+| 2026-03-06 | P1 / G1 formal closeout | Approved (gate closed) | Stealth928 | Final closeout evidence captured in `docs/P1_G1_CLOSEOUT_EVIDENCE_MAR26.md`; tracker/dashboard statuses set to complete. |
 
 ---
 
@@ -2263,6 +2334,9 @@ When execution is approved, run phases in order:
 | 2026-03-06 | Finalized G2 closeout governance by updating `docs/P2_G2_CLOSEOUT_EVIDENCE_MAR26.md` to final `Go` state (all criteria met), marking `P2/G2` as completed in `docs/PHASE_GATE_DASHBOARD.md`, syncing tracker status in this plan, and re-validating `node scripts/pre-deploy-check.js` (`71/71` suites, `750` passing, `44` todo). | Codex |
 | 2026-03-06 | Started P3/G3 orchestration hardening by upgrading `functions/lib/services/automation-scheduler-service.js` with bounded concurrency, per-user lock + idempotency controls, retry-with-jitter, and dead-letter handling; expanded `functions/test/automation-scheduler-service.test.js` for concurrency/retry/lock/idempotency coverage; and re-validated lint + full pre-deploy checks (`71/71` suites, `754` passing, `44` todo). | Codex |
 | 2026-03-06 | Continued P3/G3 by surfacing scheduler observability metrics in `functions/lib/services/automation-scheduler-service.js` (failure-type classification, queue-lag/cycle-duration stats, failure tallies, optional `emitSchedulerMetrics(...)` hook with non-blocking warning fallback), expanded scheduler tests for metric emission + sink failure handling, and re-validated lint + full pre-deploy checks (`71/71` suites, `756` passing, `44` todo). | Codex |
+| 2026-03-06 | Finalized P1/G1 closeout by publishing `docs/P1_G1_CLOSEOUT_EVIDENCE_MAR26.md`, updating `docs/P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md` status to final approved, marking `P1/G1` completed in `docs/PHASE_GATE_DASHBOARD.md`, syncing tracker/index references, and re-validating contract checks plus full pre-deploy gates (`71/71` suites, `756` passing, `44` todo). | Codex |
+| 2026-03-06 | Continued P3/G3 by integrating a concrete Firestore scheduler metrics sink (`functions/lib/services/automation-scheduler-metrics-sink.js`) with composition-root wiring in `functions/index.js`, tightening scheduler executed-cycle accounting (`cyclesRun` now excludes lock/idempotency skips), adding overlap lock-contention/idempotency stress-path coverage in `functions/test/automation-scheduler-service.test.js`, adding sink persistence/rollup coverage in `functions/test/automation-scheduler-metrics-sink.test.js`, and re-validating lint + full pre-deploy gates (`72/72` suites, `760` passing, `44` todo). | Codex |
+| 2026-03-06 | Continued P3/G3 by implementing admin scheduler-metrics read-model endpoint (`GET /api/admin/scheduler-metrics`) in `functions/api/routes/admin.js` backed by persisted scheduler metrics (`metrics/automationScheduler/daily` + optional `runs`), adding focused module/integration coverage in `functions/test/admin-routes-modules.test.js` and `functions/test/admin.test.js`, updating schema docs in `docs/SETUP.md`, and re-validating lint + full pre-deploy gates (`72/72` suites, `764` passing, `44` todo). | Codex |
 
 ---
 
