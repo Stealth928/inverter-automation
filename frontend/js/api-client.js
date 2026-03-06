@@ -536,6 +536,10 @@ class APIClient {
     return this.get('/api/admin/platform-stats', { days });
   }
 
+  async getAdminSchedulerMetrics(days = 14, includeRuns = true, runLimit = 20) {
+    return this.get('/api/admin/scheduler-metrics', { days, includeRuns, runLimit });
+  }
+
   async getAdminUserStats(uid) {
     return this.get(`/api/admin/users/${encodeURIComponent(uid)}/stats`);
   }

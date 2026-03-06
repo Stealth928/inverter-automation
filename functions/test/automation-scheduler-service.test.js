@@ -437,4 +437,140 @@ describe('automation scheduler service', () => {
     expect(totalCyclesRun).toBe(1);
     expect(totalIdempotentSkips).toBe(1);
   });
+
+  test('soak overlap: shared lock/idempotency allows at most one execution per user across concurrent scheduler runs', async () => {
+    const userIds = ['u-1', 'u-2', 'u-3', 'u-4', 'u-5', 'u-6', 'u-7', 'u-8'];
+    const concurrentSchedulerRuns = 6;
+    const activeLocks = new Map();
+    const seenCycleKeys = new Set();
+    const runMetrics = [];
+    const executionCountByUser = new Map();
+
+    const automationCycleHandler = jest.fn(async (req, res) => {
+      const userId = req?.user?.uid;
+      executionCountByUser.set(userId, (executionCountByUser.get(userId) || 0) + 1);
+      await new Promise((resolve) => setTimeout(resolve, 8));
+      res.json({ errno: 0, result: { skipped: true, reason: 'No rules configured' } });
+    });
+
+    const acquireUserCycleLock = jest.fn(async ({ lockLeaseMs, schedulerId, userId }) => {
+      const nowMs = Date.now();
+      const existing = activeLocks.get(userId);
+      if (existing && existing.expiresAt > nowMs) {
+        return { acquired: false, lockId: null };
+      }
+
+      const lockId = `${schedulerId}_${userId}_${Math.random().toString(36).slice(2, 7)}`;
+      activeLocks.set(userId, {
+        lockId,
+        expiresAt: nowMs + Number(lockLeaseMs || 60000)
+      });
+      return { acquired: true, lockId };
+    });
+
+    const releaseUserCycleLock = jest.fn(async ({ lockHandle, userId }) => {
+      if (!lockHandle || lockHandle.acquired !== true || !lockHandle.lockId) {
+        return;
+      }
+      const existing = activeLocks.get(userId);
+      if (existing && existing.lockId === lockHandle.lockId) {
+        activeLocks.delete(userId);
+      }
+    });
+
+    const shouldRunCycleKey = jest.fn(async ({ cycleKey, userId }) => {
+      const dedupeKey = `${userId}:${cycleKey}`;
+      if (seenCycleKeys.has(dedupeKey)) {
+        return false;
+      }
+      seenCycleKeys.add(dedupeKey);
+      return true;
+    });
+
+    const emitSchedulerMetrics = jest.fn(async (metrics) => {
+      runMetrics.push(metrics);
+    });
+
+    const sharedOverrides = {
+      acquireUserCycleLock,
+      automationCycleHandler,
+      emitSchedulerMetrics,
+      getUserConfig: jest.fn(async (userId) => ({
+        deviceSn: `SN-${userId}`,
+        timezone: 'UTC',
+        automation: { intervalMs: 3600000 }
+      })),
+      releaseUserCycleLock,
+      schedulerOptions: {
+        maxConcurrentUsers: 4,
+        retryAttempts: 1,
+        retryBaseDelayMs: 0,
+        retryJitterMs: 0,
+        lockLeaseMs: 60000,
+        idempotencyTtlMs: 300000
+      },
+      shouldRunCycleKey,
+      userIds
+    };
+
+    const schedulerPromises = Array.from({ length: concurrentSchedulerRuns }, () => {
+      const { deps } = buildSchedulerDeps(sharedOverrides);
+      return runAutomationSchedulerCycle({}, deps);
+    });
+
+    await Promise.all(schedulerPromises);
+
+    expect(automationCycleHandler).toHaveBeenCalledTimes(userIds.length);
+    for (const userId of userIds) {
+      expect(executionCountByUser.get(userId)).toBe(1);
+    }
+
+    expect(emitSchedulerMetrics).toHaveBeenCalledTimes(concurrentSchedulerRuns);
+
+    const totals = runMetrics.reduce((acc, entry) => ({
+      cycleCandidates: acc.cycleCandidates + Number(entry?.cycleCandidates || 0),
+      cyclesRun: acc.cyclesRun + Number(entry?.cyclesRun || 0),
+      deadLetters: acc.deadLetters + Number(entry?.deadLetters || 0),
+      errors: acc.errors + Number(entry?.errors || 0),
+      idempotentSkips: acc.idempotentSkips + Number(entry?.skipped?.idempotent || 0),
+      lockedSkips: acc.lockedSkips + Number(entry?.skipped?.locked || 0)
+    }), {
+      cycleCandidates: 0,
+      cyclesRun: 0,
+      deadLetters: 0,
+      errors: 0,
+      idempotentSkips: 0,
+      lockedSkips: 0
+    });
+
+    expect(totals.cycleCandidates).toBe(userIds.length * concurrentSchedulerRuns);
+    expect(totals.cyclesRun).toBe(userIds.length);
+    expect(totals.errors).toBe(0);
+    expect(totals.deadLetters).toBe(0);
+    expect(totals.lockedSkips + totals.idempotentSkips).toBe(
+      totals.cycleCandidates - totals.cyclesRun
+    );
+  });
+
+  test('warns when lock release fails but still completes scheduler run', async () => {
+    const automationCycleHandler = jest.fn(async (_req, res) => {
+      res.json({ errno: 0, result: { skipped: true, reason: 'No rules configured' } });
+    });
+    const releaseUserCycleLock = jest.fn(async () => {
+      throw new Error('release lock write failed');
+    });
+    const { deps, logger } = buildSchedulerDeps({
+      automationCycleHandler,
+      releaseUserCycleLock,
+      userIds: ['u-1']
+    });
+
+    await runAutomationSchedulerCycle({}, deps);
+
+    expect(automationCycleHandler).toHaveBeenCalledTimes(1);
+    expect(releaseUserCycleLock).toHaveBeenCalledTimes(1);
+    expect(
+      logger.warn.mock.calls.some((call) => String(call[0]).includes('failed to release lock'))
+    ).toBe(true);
+  });
 });

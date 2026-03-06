@@ -395,6 +395,126 @@
             margin-top: 6px;
         }
 
+        .scheduler-metrics-card {
+            margin-bottom: 20px;
+        }
+        .scheduler-kpis {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .scheduler-kpi {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            padding: 8px 10px;
+        }
+        .scheduler-kpi .label {
+            font-size: 10px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 4px;
+        }
+        .scheduler-kpi .value {
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1;
+            color: var(--text-primary);
+        }
+        .scheduler-kpi .value.small {
+            font-size: 15px;
+        }
+        .scheduler-chart-wrap {
+            position: relative;
+            height: 220px;
+            margin-top: 6px;
+        }
+        .scheduler-updated {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        .scheduler-warning {
+            font-size: 11px;
+            color: var(--color-warning);
+            margin-top: 6px;
+        }
+        .scheduler-slo-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .scheduler-slo-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            padding: 8px 10px;
+        }
+        .scheduler-slo-item.good {
+            border-color: color-mix(in srgb, var(--color-success) 55%, var(--border-primary));
+        }
+        .scheduler-slo-item.warn {
+            border-color: color-mix(in srgb, var(--color-warning) 55%, var(--border-primary));
+        }
+        .scheduler-slo-item.bad {
+            border-color: color-mix(in srgb, var(--color-danger) 55%, var(--border-primary));
+        }
+        .scheduler-slo-item .slo-title {
+            font-size: 10px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.35px;
+            margin-bottom: 4px;
+        }
+        .scheduler-slo-item .slo-status {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.2;
+        }
+        .scheduler-slo-item .slo-value {
+            margin-top: 2px;
+            font-size: 10px;
+            color: var(--text-secondary);
+        }
+        .scheduler-recent-wrap {
+            margin-top: 10px;
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+        .scheduler-recent-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        .scheduler-recent-table th,
+        .scheduler-recent-table td {
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border-primary);
+        }
+        .scheduler-recent-table th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.35px;
+            font-size: 10px;
+            background: color-mix(in srgb, var(--bg-tertiary) 60%, transparent);
+        }
+        .scheduler-recent-table tr:last-child td {
+            border-bottom: none;
+        }
+        .scheduler-recent-empty {
+            padding: 10px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            display: none;
+        }
+
         /* Metrics mini-chart */
         .metrics-day {
             display: flex;
@@ -485,6 +605,12 @@
             .actions-cell { flex-direction: column; }
             .chart-wrap { height: 200px; }
             .firestore-kpis {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .scheduler-kpis {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .scheduler-slo-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
@@ -613,6 +739,94 @@
             </div>
         </div>
 
+        <div class="card scheduler-metrics-card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">Scheduler</span> Orchestration Metrics (14d)</div>
+                <button class="action-btn" onclick="loadSchedulerMetrics()" id="refreshSchedulerBtn">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div class="scheduler-updated" id="schedulerMetricsUpdated">Loading scheduler metrics...</div>
+                <div class="scheduler-slo-grid">
+                    <div class="scheduler-slo-item" id="schedulerSloErrorRate">
+                        <div class="slo-title">SLO: Error Rate</div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">Target <= 1.00%</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="schedulerSloDeadLetterRate">
+                        <div class="slo-title">SLO: Dead Letter Rate</div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">Target <= 0.20%</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="schedulerSloQueueLag">
+                        <div class="slo-title">SLO: Queue Lag</div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">Target <= 2m 0s</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="schedulerSloCycleDuration">
+                        <div class="slo-title">SLO: Cycle Duration</div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">Target <= 1m 0s</div>
+                    </div>
+                </div>
+                <div class="scheduler-kpis">
+                    <div class="scheduler-kpi">
+                        <div class="label">Runs</div>
+                        <div class="value" id="schedulerRuns">-</div>
+                    </div>
+                    <div class="scheduler-kpi">
+                        <div class="label">Cycles Run</div>
+                        <div class="value" id="schedulerCyclesRun">-</div>
+                    </div>
+                    <div class="scheduler-kpi">
+                        <div class="label">Errors</div>
+                        <div class="value" id="schedulerErrors">-</div>
+                    </div>
+                    <div class="scheduler-kpi">
+                        <div class="label">Error Rate</div>
+                        <div class="value small" id="schedulerErrorRate">-</div>
+                    </div>
+                    <div class="scheduler-kpi">
+                        <div class="label">Retries / Dead letters</div>
+                        <div class="value small" id="schedulerRetriesDeadLetters">-</div>
+                    </div>
+                    <div class="scheduler-kpi">
+                        <div class="label">Lock / Idempotent Skips</div>
+                        <div class="value small" id="schedulerLockIdempotentSkips">-</div>
+                    </div>
+                    <div class="scheduler-kpi">
+                        <div class="label">Max Queue Lag</div>
+                        <div class="value small" id="schedulerMaxQueueLag">-</div>
+                    </div>
+                    <div class="scheduler-kpi">
+                        <div class="label">Max Cycle Duration</div>
+                        <div class="value small" id="schedulerMaxCycleDuration">-</div>
+                    </div>
+                </div>
+                <div class="scheduler-chart-wrap">
+                    <canvas id="schedulerMetricsChart"></canvas>
+                </div>
+                <div class="scheduler-recent-wrap">
+                    <table class="scheduler-recent-table">
+                        <thead>
+                            <tr>
+                                <th>Started</th>
+                                <th>Scheduler</th>
+                                <th>Candidates</th>
+                                <th>Cycles</th>
+                                <th>Errors</th>
+                                <th>Dead</th>
+                                <th>Locked</th>
+                                <th>Idempotent</th>
+                            </tr>
+                        </thead>
+                        <tbody id="schedulerRecentRunsBody"></tbody>
+                    </table>
+                    <div class="scheduler-recent-empty" id="schedulerRecentRunsEmpty">No recent runs in window.</div>
+                </div>
+                <div class="scheduler-warning" id="schedulerMetricsWarning" style="display: none;"></div>
+            </div>
+        </div>
+
         <!-- User Management Card -->
         <div class="card" style="margin-bottom: 20px;">
             <div class="card-header">
@@ -662,6 +876,7 @@
     let currentSort = { key: 'lastSignedInAt', direction: 'desc' };
     let platformTrendChart = null;
     let firestoreMetricsChart = null;
+    let schedulerMetricsChart = null;
 
     function showMessage(type, msg, duration = 5000) {
         const area = document.getElementById('messageArea');
@@ -774,6 +989,7 @@
                 loadPlatformStats();
                 loadUsers();
                 loadFirestoreCostMetrics();
+                loadSchedulerMetrics();
             } else {
                 document.getElementById('adminContent').style.display = 'none';
                 document.getElementById('accessDenied').style.display = '';
@@ -813,6 +1029,7 @@
         loadPlatformStats();
         loadUsers();
         loadFirestoreCostMetrics();
+        loadSchedulerMetrics();
     }
 
     async function loadPlatformStats() {
@@ -1217,6 +1434,251 @@
             warningEl.style.display = '';
             warningEl.textContent = e.message || String(e);
             showMessage('warning', `⚠️ Firestore metrics unavailable: ${e.message || e}`);
+        } finally {
+            if (refreshBtn) refreshBtn.disabled = false;
+        }
+    }
+
+    function formatDurationMs(durationMs) {
+        const ms = Number(durationMs || 0);
+        if (!Number.isFinite(ms) || ms <= 0) return '0ms';
+        if (ms < 1000) return `${Math.round(ms)}ms`;
+        const seconds = ms / 1000;
+        if (seconds < 60) return `${seconds.toFixed(1)}s`;
+        const minutes = Math.floor(seconds / 60);
+        const remSeconds = Math.round(seconds % 60);
+        return `${minutes}m ${remSeconds}s`;
+    }
+
+    function classifySchedulerSloLevel(value, target) {
+        const measured = Number(value || 0);
+        const threshold = Number(target || 0);
+        if (!Number.isFinite(measured) || !Number.isFinite(threshold) || threshold <= 0) {
+            return { level: 'warn', label: 'No data' };
+        }
+        if (measured <= threshold) {
+            return { level: 'good', label: 'Healthy' };
+        }
+        if (measured <= threshold * 2) {
+            return { level: 'warn', label: 'Watch' };
+        }
+        return { level: 'bad', label: 'Breach' };
+    }
+
+    function renderSchedulerSloCards(summary) {
+        const cyclesRun = Number(summary?.cyclesRun || 0);
+        const deadLetters = Number(summary?.deadLetters || 0);
+        const errorRatePct = Number(summary?.errorRatePct || 0);
+        const deadLetterRatePct = cyclesRun > 0 ? (deadLetters / cyclesRun) * 100 : 0;
+        const maxQueueLagMs = Number(summary?.maxQueueLagMs || 0);
+        const maxCycleDurationMs = Number(summary?.maxCycleDurationMs || 0);
+
+        const cards = [
+            {
+                id: 'schedulerSloErrorRate',
+                value: errorRatePct,
+                target: 1.0,
+                display: `${errorRatePct.toFixed(2)}%`
+            },
+            {
+                id: 'schedulerSloDeadLetterRate',
+                value: deadLetterRatePct,
+                target: 0.2,
+                display: `${deadLetterRatePct.toFixed(2)}%`
+            },
+            {
+                id: 'schedulerSloQueueLag',
+                value: maxQueueLagMs,
+                target: 120000,
+                display: formatDurationMs(maxQueueLagMs)
+            },
+            {
+                id: 'schedulerSloCycleDuration',
+                value: maxCycleDurationMs,
+                target: 60000,
+                display: formatDurationMs(maxCycleDurationMs)
+            }
+        ];
+
+        cards.forEach((card) => {
+            const cardEl = document.getElementById(card.id);
+            if (!cardEl) return;
+
+            const statusEl = cardEl.querySelector('.slo-status');
+            const { level, label } = classifySchedulerSloLevel(card.value, card.target);
+            cardEl.classList.remove('good', 'warn', 'bad');
+            cardEl.classList.add(level);
+            if (statusEl) {
+                statusEl.textContent = `${label} - ${card.display}`;
+            }
+        });
+    }
+
+    function renderSchedulerMetricsChart(dailyRows) {
+        const canvas = document.getElementById('schedulerMetricsChart');
+        if (!canvas || typeof Chart === 'undefined') return;
+
+        const daily = Array.isArray(dailyRows) ? dailyRows : [];
+        const labels = daily.map((point) => {
+            const d = new Date(`${point.dayKey}T00:00:00Z`);
+            return d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+        });
+        const cycles = daily.map((point) => Number(point.cyclesRun || 0));
+        const errors = daily.map((point) => Number(point.errors || 0));
+        const retries = daily.map((point) => Number(point.retries || 0));
+
+        if (schedulerMetricsChart) {
+            schedulerMetricsChart.destroy();
+            schedulerMetricsChart = null;
+        }
+
+        schedulerMetricsChart = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        type: 'bar',
+                        label: 'Cycles Run',
+                        data: cycles,
+                        backgroundColor: 'rgba(88, 166, 255, 0.26)',
+                        borderColor: 'rgba(88, 166, 255, 0.7)',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    },
+                    {
+                        type: 'line',
+                        label: 'Errors',
+                        data: errors,
+                        borderColor: 'rgba(248, 113, 113, 0.95)',
+                        backgroundColor: 'rgba(248, 113, 113, 0.16)',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        tension: 0.2
+                    },
+                    {
+                        type: 'line',
+                        label: 'Retries',
+                        data: retries,
+                        borderColor: 'rgba(240, 136, 62, 0.95)',
+                        backgroundColor: 'rgba(240, 136, 62, 0.16)',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        tension: 0.2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: cssVar('--text-secondary'),
+                            boxWidth: 12,
+                            usePointStyle: true,
+                            pointStyle: 'rectRounded'
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: cssVar('--text-secondary'), maxTicksLimit: 12 },
+                        grid: { color: cssVar('--border-secondary') }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: cssVar('--text-secondary'), precision: 0 },
+                        grid: { color: cssVar('--border-secondary') }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderSchedulerRecentRuns(recentRuns) {
+        const body = document.getElementById('schedulerRecentRunsBody');
+        const empty = document.getElementById('schedulerRecentRunsEmpty');
+        if (!body || !empty) return;
+
+        const runs = Array.isArray(recentRuns) ? recentRuns : [];
+        if (!runs.length) {
+            body.innerHTML = '';
+            empty.style.display = '';
+            return;
+        }
+
+        empty.style.display = 'none';
+        body.innerHTML = runs.map((run) => {
+            const startedAt = run.startedAtMs ? new Date(Number(run.startedAtMs)).toLocaleString('en-AU') : '-';
+            const schedulerId = run.schedulerId || '-';
+            const candidates = Number(run.cycleCandidates || 0);
+            const cyclesRun = Number(run.cyclesRun || 0);
+            const errors = Number(run.errors || 0);
+            const deadLetters = Number(run.deadLetters || 0);
+            const locked = Number(run.skipped?.locked || 0);
+            const idempotent = Number(run.skipped?.idempotent || 0);
+            return `<tr>
+                <td>${startedAt}</td>
+                <td title="${schedulerId}">${schedulerId}</td>
+                <td>${candidates}</td>
+                <td>${cyclesRun}</td>
+                <td>${errors}</td>
+                <td>${deadLetters}</td>
+                <td>${locked}</td>
+                <td>${idempotent}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    async function loadSchedulerMetrics() {
+        const updatedEl = document.getElementById('schedulerMetricsUpdated');
+        const warningEl = document.getElementById('schedulerMetricsWarning');
+        const refreshBtn = document.getElementById('refreshSchedulerBtn');
+        if (!adminApiClient || !updatedEl || !warningEl) return;
+
+        if (refreshBtn) refreshBtn.disabled = true;
+        updatedEl.textContent = 'Loading scheduler metrics...';
+        warningEl.style.display = 'none';
+        warningEl.textContent = '';
+
+        try {
+            const data = await adminApiClient.getAdminSchedulerMetrics(14, true, 20);
+            if (!data || data.errno !== 0) throw new Error(data?.error || 'Failed to load scheduler metrics');
+
+            const result = data.result || {};
+            const summary = result.summary || {};
+            const daily = Array.isArray(result.daily) ? result.daily : [];
+            const recentRuns = Array.isArray(result.recentRuns) ? result.recentRuns : [];
+
+            document.getElementById('schedulerRuns').textContent = formatCompactNumber(summary.runs || 0);
+            document.getElementById('schedulerCyclesRun').textContent = formatCompactNumber(summary.cyclesRun || 0);
+            document.getElementById('schedulerErrors').textContent = formatCompactNumber(summary.errors || 0);
+            document.getElementById('schedulerErrorRate').textContent = `${Number(summary.errorRatePct || 0).toFixed(2)}%`;
+            document.getElementById('schedulerRetriesDeadLetters').textContent =
+                `${formatCompactNumber(summary.retries || 0)} / ${formatCompactNumber(summary.deadLetters || 0)}`;
+            document.getElementById('schedulerLockIdempotentSkips').textContent =
+                `${formatCompactNumber(summary.skipped?.locked || 0)} / ${formatCompactNumber(summary.skipped?.idempotent || 0)}`;
+            document.getElementById('schedulerMaxQueueLag').textContent = formatDurationMs(summary.maxQueueLagMs || 0);
+            document.getElementById('schedulerMaxCycleDuration').textContent = formatDurationMs(summary.maxCycleDurationMs || 0);
+            renderSchedulerSloCards(summary);
+
+            renderSchedulerMetricsChart(daily);
+            renderSchedulerRecentRuns(recentRuns);
+
+            const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
+            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} - ${daily.length} day(s)`;
+        } catch (e) {
+            updatedEl.textContent = 'Unable to load scheduler metrics';
+            warningEl.style.display = '';
+            warningEl.textContent = e.message || String(e);
+            renderSchedulerSloCards(null);
+            renderSchedulerRecentRuns([]);
+            showMessage('warning', `Failed to load scheduler metrics: ${e.message || e}`);
         } finally {
             if (refreshBtn) refreshBtn.disabled = false;
         }
