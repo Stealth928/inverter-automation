@@ -1724,7 +1724,13 @@
         warningEl.textContent = '';
 
         try {
-            const data = await adminApiClient.getAdminSchedulerMetrics(14, true, 20);
+            let data;
+            if (typeof adminApiClient.getAdminSchedulerMetrics === 'function') {
+                data = await adminApiClient.getAdminSchedulerMetrics(14, true, 20);
+            } else {
+                const resp = await adminApiClient.fetch('/api/admin/scheduler-metrics?days=14&includeRuns=1&runLimit=20');
+                data = await resp.json();
+            }
             if (!data || data.errno !== 0) throw new Error(data?.error || 'Failed to load scheduler metrics');
 
             const result = data.result || {};
