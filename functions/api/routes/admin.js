@@ -638,6 +638,38 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       return out;
     };
 
+    const sanitizeSloSnapshot = (value) => {
+      const source = value && typeof value === 'object' ? value : {};
+      const statusRaw = String(source.status || '').trim().toLowerCase();
+      const status = ['healthy', 'watch', 'breach'].includes(statusRaw) ? statusRaw : 'healthy';
+      const sanitizeMetricList = (listValue) => (
+        Array.isArray(listValue)
+          ? listValue.map((entry) => String(entry || '').trim()).filter(Boolean)
+          : []
+      );
+      return {
+        status,
+        monitoredAtMs: toFiniteNumber(source.monitoredAtMs, 0),
+        thresholds: {
+          errorRatePct: toFiniteNumber(source.thresholds?.errorRatePct, 0),
+          deadLetterRatePct: toFiniteNumber(source.thresholds?.deadLetterRatePct, 0),
+          maxQueueLagMs: toFiniteNumber(source.thresholds?.maxQueueLagMs, 0),
+          maxCycleDurationMs: toFiniteNumber(source.thresholds?.maxCycleDurationMs, 0)
+        },
+        measurements: {
+          cyclesRun: toFiniteNumber(source.measurements?.cyclesRun, 0),
+          errors: toFiniteNumber(source.measurements?.errors, 0),
+          deadLetters: toFiniteNumber(source.measurements?.deadLetters, 0),
+          errorRatePct: toFiniteNumber(source.measurements?.errorRatePct, 0),
+          deadLetterRatePct: toFiniteNumber(source.measurements?.deadLetterRatePct, 0),
+          maxQueueLagMs: toFiniteNumber(source.measurements?.maxQueueLagMs, 0),
+          maxCycleDurationMs: toFiniteNumber(source.measurements?.maxCycleDurationMs, 0)
+        },
+        breachedMetrics: sanitizeMetricList(source.breachedMetrics),
+        watchMetrics: sanitizeMetricList(source.watchMetrics)
+      };
+    };
+
     const mergeFailureByType = (target, source) => {
       const merged = { ...(target && typeof target === 'object' ? target : {}) };
       for (const [key, count] of Object.entries(source || {})) {
@@ -679,6 +711,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           tooSoon: toFiniteNumber(data.skipped?.tooSoon, 0)
         },
         failureByType: sanitizeFailureByType(data.failureByType),
+        slo: sanitizeSloSnapshot(data.slo),
         updatedAtMs: toFiniteNumber(data.lastRunAtMs, 0)
       });
     });
@@ -765,9 +798,48 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
             locked: toFiniteNumber(data.skipped?.locked, 0),
             tooSoon: toFiniteNumber(data.skipped?.tooSoon, 0)
           },
-          failureByType: sanitizeFailureByType(data.failureByType)
+          failureByType: sanitizeFailureByType(data.failureByType),
+          slo: sanitizeSloSnapshot(data.slo)
         });
       });
+    }
+
+    let currentAlert = null;
+    try {
+      const currentAlertSnapshot = await metricsRootRef.collection('alerts').doc('current').get();
+      if (currentAlertSnapshot.exists) {
+        const alertData = currentAlertSnapshot.data() || {};
+        currentAlert = {
+          dayKey: alertData.dayKey || null,
+          runId: alertData.runId || null,
+          schedulerId: alertData.schedulerId || null,
+          status: sanitizeSloSnapshot({ status: alertData.status }).status,
+          breachedMetrics: Array.isArray(alertData.breachedMetrics)
+            ? alertData.breachedMetrics.map((entry) => String(entry || '').trim()).filter(Boolean)
+            : [],
+          watchMetrics: Array.isArray(alertData.watchMetrics)
+            ? alertData.watchMetrics.map((entry) => String(entry || '').trim()).filter(Boolean)
+            : [],
+          monitoredAtMs: toFiniteNumber(alertData.monitoredAtMs, 0),
+          thresholds: {
+            errorRatePct: toFiniteNumber(alertData.thresholds?.errorRatePct, 0),
+            deadLetterRatePct: toFiniteNumber(alertData.thresholds?.deadLetterRatePct, 0),
+            maxQueueLagMs: toFiniteNumber(alertData.thresholds?.maxQueueLagMs, 0),
+            maxCycleDurationMs: toFiniteNumber(alertData.thresholds?.maxCycleDurationMs, 0)
+          },
+          measurements: {
+            cyclesRun: toFiniteNumber(alertData.measurements?.cyclesRun, 0),
+            errors: toFiniteNumber(alertData.measurements?.errors, 0),
+            deadLetters: toFiniteNumber(alertData.measurements?.deadLetters, 0),
+            errorRatePct: toFiniteNumber(alertData.measurements?.errorRatePct, 0),
+            deadLetterRatePct: toFiniteNumber(alertData.measurements?.deadLetterRatePct, 0),
+            maxQueueLagMs: toFiniteNumber(alertData.measurements?.maxQueueLagMs, 0),
+            maxCycleDurationMs: toFiniteNumber(alertData.measurements?.maxCycleDurationMs, 0)
+          }
+        };
+      }
+    } catch (alertError) {
+      console.warn('[Admin] scheduler-metrics current alert lookup failed:', alertError.message || alertError);
     }
 
     res.json({
@@ -782,6 +854,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         },
         daily: dailyDesc.slice().reverse(),
         recentRuns,
+        currentAlert,
         updatedAt: new Date().toISOString()
       }
     });

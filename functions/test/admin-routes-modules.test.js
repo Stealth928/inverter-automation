@@ -195,6 +195,33 @@ describe('admin route module', () => {
 
     const dailyGet = jest.fn(async () => buildSnapshot(dailyDocs));
     const runsGet = jest.fn(async () => buildSnapshot(runDocs));
+    const currentAlertGet = jest.fn(async () => ({
+      exists: true,
+      data: () => ({
+        dayKey: '2026-03-06',
+        runId: 'run-1',
+        schedulerId: 'sched-1',
+        status: 'breach',
+        breachedMetrics: ['errorRatePct'],
+        watchMetrics: [],
+        monitoredAtMs: 1234,
+        thresholds: {
+          errorRatePct: 1,
+          deadLetterRatePct: 0.2,
+          maxQueueLagMs: 120000,
+          maxCycleDurationMs: 60000
+        },
+        measurements: {
+          cyclesRun: 9,
+          errors: 1,
+          deadLetters: 1,
+          errorRatePct: 11.11,
+          deadLetterRatePct: 11.11,
+          maxQueueLagMs: 120,
+          maxCycleDurationMs: 400
+        }
+      })
+    }));
 
     const deps = createDeps({
       db: {
@@ -225,6 +252,18 @@ describe('admin route module', () => {
                           get: runsGet
                         }))
                       }))
+                    };
+                  }
+                  if (subName === 'alerts') {
+                    return {
+                      doc: jest.fn((alertDocId) => {
+                        if (alertDocId !== 'current') {
+                          throw new Error(`Unexpected scheduler metrics alert doc: ${alertDocId}`);
+                        }
+                        return {
+                          get: currentAlertGet
+                        };
+                      })
                     };
                   }
                   throw new Error(`Unexpected scheduler metrics collection: ${subName}`);
@@ -271,8 +310,15 @@ describe('admin route module', () => {
       runId: 'run-1',
       schedulerId: 'sched-1'
     }));
+    expect(response.body.result.currentAlert).toEqual(expect.objectContaining({
+      status: 'breach',
+      runId: 'run-1',
+      schedulerId: 'sched-1',
+      breachedMetrics: ['errorRatePct']
+    }));
     expect(dailyGet).toHaveBeenCalledTimes(1);
     expect(runsGet).toHaveBeenCalledTimes(1);
+    expect(currentAlertGet).toHaveBeenCalledTimes(1);
   });
 
   test('scheduler-metrics skips runs query when includeRuns is not enabled', async () => {
@@ -308,6 +354,16 @@ describe('admin route module', () => {
                     orderBy: jest.fn(() => ({
                       limit: jest.fn(() => ({
                         get: runsGet
+                      }))
+                    }))
+                  };
+                }
+                if (subName === 'alerts') {
+                  return {
+                    doc: jest.fn(() => ({
+                      get: jest.fn(async () => ({
+                        exists: false,
+                        data: () => ({})
                       }))
                     }))
                   };

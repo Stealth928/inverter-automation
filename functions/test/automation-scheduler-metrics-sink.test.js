@@ -124,17 +124,28 @@ describe('automation scheduler metrics sink', () => {
     const runPathA = 'metrics/automationScheduler/runs/1710000000000_sched-a';
     const runPathB = 'metrics/automationScheduler/runs/1710000000500_sched-b';
     const dailyPath = `metrics/automationScheduler/daily/${dayKey}`;
+    const currentAlertPath = 'metrics/automationScheduler/alerts/current';
+    const dayAlertPath = `metrics/automationScheduler/alerts/${dayKey}`;
 
-    expect(listDocPaths()).toEqual(expect.arrayContaining([runPathA, runPathB, dailyPath]));
+    expect(listDocPaths()).toEqual(expect.arrayContaining([
+      runPathA,
+      runPathB,
+      dailyPath,
+      currentAlertPath,
+      dayAlertPath
+    ]));
     expect(getDoc(runPathA)).toEqual(expect.objectContaining({
       schedulerId: 'sched-a',
       cyclesRun: 3,
-      runId: '1710000000000_sched-a'
+      runId: '1710000000000_sched-a',
+      slo: expect.objectContaining({
+        status: 'breach',
+        breachedMetrics: expect.arrayContaining(['errorRatePct', 'deadLetterRatePct'])
+      })
     }));
     expect(getDoc(runPathB)).toEqual(expect.objectContaining({
       schedulerId: 'sched-b',
-      cyclesRun: 2,
-      runId: '1710000000500_sched-b'
+      cyclesRun: 2
     }));
 
     expect(getDoc(dailyPath)).toEqual(expect.objectContaining({
@@ -156,7 +167,71 @@ describe('automation scheduler metrics sink', () => {
       failureByType: {
         api_rate_limit: 2,
         api_timeout: 2
-      }
+      },
+      slo: expect.objectContaining({
+        status: 'breach',
+        breachedMetrics: expect.arrayContaining(['errorRatePct', 'deadLetterRatePct'])
+      })
+    }));
+    expect(getDoc(currentAlertPath)).toEqual(expect.objectContaining({
+      dayKey,
+      runId: '1710000000500_sched-b',
+      schedulerId: 'sched-b',
+      status: 'breach',
+      breachedMetrics: expect.arrayContaining(['errorRatePct', 'deadLetterRatePct'])
+    }));
+    expect(getDoc(dayAlertPath)).toEqual(expect.objectContaining({
+      dayKey,
+      status: 'breach',
+      alertStatus: 'breach'
+    }));
+  });
+
+  test('emits optional SLO alert callback when daily status is non-healthy', async () => {
+    const { db } = createInMemoryDb();
+    const onSloAlert = jest.fn(async () => undefined);
+    const sink = createAutomationSchedulerMetricsSink({
+      db,
+      now: () => 1710000010000,
+      serverTimestamp: () => 'server-ts',
+      timezone: 'UTC',
+      sloThresholds: {
+        errorRatePct: 0.5,
+        deadLetterRatePct: 0.1,
+        maxQueueLagMs: 10,
+        maxCycleDurationMs: 10
+      },
+      onSloAlert
+    });
+
+    await sink.emitSchedulerMetrics({
+      schedulerId: 'sched-breach',
+      startedAtMs: 1710000010000,
+      completedAtMs: 1710000011000,
+      durationMs: 1000,
+      totalEnabledUsers: 3,
+      cycleCandidates: 3,
+      cyclesRun: 2,
+      deadLetters: 1,
+      errors: 1,
+      retries: 0,
+      queueLagMs: { avgMs: 5, count: 3, maxMs: 20, minMs: 1 },
+      cycleDurationMs: { avgMs: 20, count: 3, maxMs: 30, minMs: 5 },
+      skipped: { disabledOrBlackout: 0, idempotent: 0, locked: 0, tooSoon: 1 },
+      failureByType: { api_timeout: 1 }
+    });
+
+    expect(onSloAlert).toHaveBeenCalledTimes(1);
+    expect(onSloAlert).toHaveBeenCalledWith(expect.objectContaining({
+      dayKey: sink.getDateKey(1710000010000),
+      status: 'breach',
+      alertStatus: 'breach',
+      breachedMetrics: expect.arrayContaining([
+        'errorRatePct',
+        'deadLetterRatePct',
+        'maxCycleDurationMs'
+      ]),
+      watchMetrics: expect.arrayContaining(['maxQueueLagMs'])
     }));
   });
 });

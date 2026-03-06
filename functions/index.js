@@ -327,11 +327,26 @@ const {
   serverTimestamp
 });
 
+const schedulerSloThresholdConfig = getConfig()?.automation?.scheduler?.slo || {};
 const {
   emitSchedulerMetrics
 } = createAutomationSchedulerMetricsSink({
   db,
   logger,
+  sloThresholds: {
+    errorRatePct:
+      schedulerSloThresholdConfig.errorRatePct ||
+      process.env.AUTOMATION_SCHEDULER_SLO_ERROR_RATE_PCT,
+    deadLetterRatePct:
+      schedulerSloThresholdConfig.deadLetterRatePct ||
+      process.env.AUTOMATION_SCHEDULER_SLO_DEAD_LETTER_RATE_PCT,
+    maxQueueLagMs:
+      schedulerSloThresholdConfig.maxQueueLagMs ||
+      process.env.AUTOMATION_SCHEDULER_SLO_MAX_QUEUE_LAG_MS,
+    maxCycleDurationMs:
+      schedulerSloThresholdConfig.maxCycleDurationMs ||
+      process.env.AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS
+  },
   serverTimestamp
 });
 

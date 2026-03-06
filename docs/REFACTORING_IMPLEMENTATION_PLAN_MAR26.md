@@ -1,6 +1,6 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Active execution - Sprint 1 complete, P1/G1 closed, P2/G2 closed, and P3/G3 execution in progress (scheduler service-runner decoupling complete; bounded-concurrency + per-user lock/idempotency/retry/dead-letter orchestration controls are implemented, scheduler observability metrics are emitted/persisted, admin read-model + frontend dashboard consumption/SLO thresholds are integrated, overlap soak-coverage is expanded, and OpenAPI admin surface coverage was extended).
+Status: Active execution - Sprint 1 complete, P1/G1 closed, P2/G2 closed, and P3/G3 execution in progress (scheduler service-runner decoupling complete; bounded-concurrency + per-user lock/idempotency/retry/dead-letter orchestration controls are implemented, scheduler observability metrics are emitted/persisted, admin read-model + frontend dashboard consumption/SLO thresholds are integrated, overlap soak-coverage is expanded, OpenAPI admin surface coverage was extended, and production scheduler SLO alert persistence/callback wiring is now active).
 Scope: Planning + execution progress tracking  
 Last Updated: 2026-03-06  
 Primary Branch: `RefactoringMar26`
@@ -22,7 +22,7 @@ Primary Branch: `RefactoringMar26`
 | P0 | G0 | ✅ Complete | 100% | - |
 | P1 | G1 | ✅ Complete | 10/10 tasks implemented; formal closeout evidence finalized and gate approved (`docs/P1_G1_CLOSEOUT_EVIDENCE_MAR26.md`) | Continue P3/G3 orchestration hardening execution |
 | P2 | G2 | ✅ Complete | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence finalized, all G2 criteria marked met, `index.js` measured at 918 lines (89.8% reduction), inline routes reduced to 0, scheduler route-stack coupling removed, and repo-hygiene gating integrated into pre-deploy | Transition to P3/G3 orchestration hardening planning and execution |
-| P3 | G3 | In Progress | Scheduler orchestration hardening is active in `automation-scheduler-service`: bounded concurrency, per-user lock/idempotency, retry + dead-letter, emitted observability metrics, persisted run/daily scheduler metrics sink wiring, overlap lock/idempotency stress-path + soak coverage, admin scheduler-metrics endpoint + frontend dashboard consumption/SLO threshold surfacing, and incremental OpenAPI expansion for admin scheduler/platform routes; validated by focused scheduler/admin tests and full gate (`72/72` suites; `766` passing) | Continue P3 with production SLO alert wiring and longer-duration scheduler soak evidence |
+| P3 | G3 | In Progress | Scheduler orchestration hardening is active in `automation-scheduler-service`: bounded concurrency, per-user lock/idempotency, retry + dead-letter, emitted observability metrics, persisted run/daily scheduler metrics sink wiring, overlap lock/idempotency stress-path + soak coverage, admin scheduler-metrics endpoint + frontend dashboard consumption/SLO threshold surfacing, incremental OpenAPI expansion for admin scheduler/platform routes, and production SLO alert persistence/callback wiring (`metrics/automationScheduler/alerts/*`); validated by focused scheduler/admin tests and full gate (`72/72` suites; `767` passing) | Continue P3 with longer-duration scheduler soak evidence and operational responder runbook/notification channel integration |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -1533,6 +1533,37 @@ Tracker hygiene rule: update this section at the end of every completed executio
   - `node scripts/pre-deploy-check.js` (full gate pass: **72/72** suites, **766** passing, **44** todo)
 - Next target chunk: continue P3 with production SLO alert wiring and longer-duration scheduler soak evidence.
 
+### 2026-03-06 - Chunk 72 (P3/G3 production scheduler SLO alert wiring)
+
+- Continued P3 by wiring backend SLO alerts into persisted scheduler telemetry and admin read model:
+  - upgraded scheduler metrics sink in `functions/lib/services/automation-scheduler-metrics-sink.js`:
+    - added canonical SLO threshold model (error-rate, dead-letter-rate, queue-lag, cycle-duration).
+    - added run-level and daily-level SLO classification (`healthy` / `watch` / `breach`) persisted into run/daily metrics docs.
+    - added persisted alert snapshots:
+      - `metrics/automationScheduler/alerts/current`
+      - `metrics/automationScheduler/alerts/{YYYY-MM-DD}` (watch/breach follow-up trail)
+    - added optional `onSloAlert(...)` callback hook and warning logging on non-healthy status.
+  - wired production threshold overrides in composition root `functions/index.js` via config/env:
+    - `AUTOMATION_SCHEDULER_SLO_ERROR_RATE_PCT`
+    - `AUTOMATION_SCHEDULER_SLO_DEAD_LETTER_RATE_PCT`
+    - `AUTOMATION_SCHEDULER_SLO_MAX_QUEUE_LAG_MS`
+    - `AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS`
+  - updated admin scheduler read-model endpoint `functions/api/routes/admin.js`:
+    - includes per-row `slo` snapshots for `daily` and `recentRuns`.
+    - includes `currentAlert` payload from `alerts/current` for dashboard/ops consumption.
+  - updated frontend admin dashboard `frontend/admin.html`:
+    - consumes backend `currentAlert` and surfaces live SLO watch/breach banner with measured values.
+  - updated schema docs `docs/SETUP.md` and OpenAPI model (`docs/openapi/openapi.v1.yaml`) for alert/read-model fields.
+  - expanded focused test coverage:
+    - `functions/test/automation-scheduler-metrics-sink.test.js`
+    - `functions/test/admin-routes-modules.test.js`
+- Validation passed:
+  - `npm --prefix functions test -- test/automation-scheduler-metrics-sink.test.js test/admin-routes-modules.test.js test/admin.test.js --runInBand`
+  - `npm run openapi:check` (backend routes: `74`, OpenAPI-declared operations: `7`, incremental gap: `67`)
+  - `npm run api:contract:check` (backend routes: `74`, APIClient entries: `61`, inline endpoint gaps: `0`, mismatches: `0`)
+  - `node scripts/pre-deploy-check.js` (full gate pass: **72/72** suites, **767** passing, **44** todo)
+- Next target chunk: continue P3 with longer-duration scheduler soak evidence and operational responder runbook/notification channel integration.
+
 ---
 
 ## 1. Purpose
@@ -2392,6 +2423,7 @@ When execution is approved, run phases in order:
 | 2026-03-06 | Continued P3/G3 by wiring frontend admin dashboard consumption of scheduler metrics (`frontend/admin.html`) via new API client method `getAdminSchedulerMetrics(...)` (`frontend/js/api-client.js`), adding scheduler KPI/graph/recent-runs rendering and refresh integration, preserving API-contract hygiene (`APIClient entries: 61`, `inline endpoint gaps: 0`), and re-validating contract checks plus focused admin backend suites. | Codex |
 | 2026-03-06 | Continued P3/G3 by expanding scheduler overlap soak coverage with concurrent multi-user lock/idempotency stress tests plus lock-release failure resilience checks (`functions/test/automation-scheduler-service.test.js`), and by adding scheduler SLO threshold cards (`Healthy`/`Watch`/`Breach`) to admin dashboard metrics rendering in `frontend/admin.html`; re-validated focused scheduler tests, contract checks, OpenAPI check, and full pre-deploy gate (`72/72` suites, `766` passing, `44` todo). | Codex |
 | 2026-03-06 | Continued P3/G3 by incrementally expanding OpenAPI admin surface coverage in `docs/openapi/openapi.v1.yaml` (`GET /api/admin/check`, `GET /api/admin/platform-stats`, `GET /api/admin/scheduler-metrics` plus response schemas), reducing the parity gap (`OpenAPI operations 7`, incremental gap `67`), and re-validating contract checks plus full pre-deploy gates (`72/72` suites, `766` passing, `44` todo). | Codex |
+| 2026-03-06 | Continued P3/G3 by wiring production scheduler SLO alert persistence/callback flow in `functions/lib/services/automation-scheduler-metrics-sink.js` (run/daily SLO classification + `metrics/automationScheduler/alerts/current` + per-day watch/breach snapshots), adding threshold override wiring in `functions/index.js`, surfacing `currentAlert`/`slo` in `GET /api/admin/scheduler-metrics` (`functions/api/routes/admin.js`) with frontend banner consumption (`frontend/admin.html`), updating schema/docs (`docs/openapi/openapi.v1.yaml`, `docs/SETUP.md`), and re-validating focused tests plus full pre-deploy gates (`72/72` suites, `767` passing, `44` todo). | Codex |
 
 ---
 

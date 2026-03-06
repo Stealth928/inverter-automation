@@ -259,6 +259,9 @@ components:
                   type: array
                   items:
                     type: object
+                currentAlert:
+                  nullable: true
+                  type: object
                 updatedAt:
                   type: string
                   format: date-time

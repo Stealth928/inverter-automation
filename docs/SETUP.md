@@ -230,6 +230,8 @@ This section documents the current Firestore model used by backend code.
 | `metrics/{YYYY-MM-DD}` | Platform-wide daily API usage counters. |
 | `metrics/automationScheduler/runs/{runId}` | Per-run scheduler orchestration metrics snapshots. |
 | `metrics/automationScheduler/daily/{YYYY-MM-DD}` | Daily scheduler orchestration aggregate metrics for admin dashboards. |
+| `metrics/automationScheduler/alerts/current` | Latest scheduler SLO alert snapshot (healthy/watch/breach status + measured/threshold metrics). |
+| `metrics/automationScheduler/alerts/{YYYY-MM-DD}` | Daily scheduler SLO watch/breach alert snapshots for operational follow-up. |
 | `admin_audit/{docId}` | Admin action audit trail (role changes, impersonation, deletion events). |
 
 ### User-scoped collections (`users/{uid}/...`)

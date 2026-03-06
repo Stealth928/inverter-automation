@@ -1635,6 +1635,22 @@
         }).join('');
     }
 
+    function formatSchedulerAlertMessage(currentAlert) {
+        const alert = currentAlert && typeof currentAlert === 'object' ? currentAlert : null;
+        if (!alert) return '';
+        const status = String(alert.status || '').toLowerCase();
+        const severity = status === 'breach' ? 'BREACH' : 'WATCH';
+        const measuredErrorRate = Number(alert.measurements?.errorRatePct || 0).toFixed(2);
+        const measuredDeadRate = Number(alert.measurements?.deadLetterRatePct || 0).toFixed(2);
+        const queueLag = formatDurationMs(alert.measurements?.maxQueueLagMs || 0);
+        const cycleDuration = formatDurationMs(alert.measurements?.maxCycleDurationMs || 0);
+        const breached = Array.isArray(alert.breachedMetrics) ? alert.breachedMetrics : [];
+        const watched = Array.isArray(alert.watchMetrics) ? alert.watchMetrics : [];
+        const metricList = [...breached, ...watched];
+        const metricHint = metricList.length ? ` [${metricList.join(', ')}]` : '';
+        return `Scheduler SLO ${severity}${metricHint}: error=${measuredErrorRate}%, dead=${measuredDeadRate}%, queue=${queueLag}, cycle=${cycleDuration}`;
+    }
+
     async function loadSchedulerMetrics() {
         const updatedEl = document.getElementById('schedulerMetricsUpdated');
         const warningEl = document.getElementById('schedulerMetricsWarning');
@@ -1654,6 +1670,9 @@
             const summary = result.summary || {};
             const daily = Array.isArray(result.daily) ? result.daily : [];
             const recentRuns = Array.isArray(result.recentRuns) ? result.recentRuns : [];
+            const currentAlert = result.currentAlert && typeof result.currentAlert === 'object'
+                ? result.currentAlert
+                : null;
 
             document.getElementById('schedulerRuns').textContent = formatCompactNumber(summary.runs || 0);
             document.getElementById('schedulerCyclesRun').textContent = formatCompactNumber(summary.cyclesRun || 0);
@@ -1672,6 +1691,11 @@
 
             const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
             updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} - ${daily.length} day(s)`;
+
+            if (currentAlert && ['watch', 'breach'].includes(String(currentAlert.status || '').toLowerCase())) {
+                warningEl.style.display = '';
+                warningEl.textContent = formatSchedulerAlertMessage(currentAlert);
+            }
         } catch (e) {
             updatedEl.textContent = 'Unable to load scheduler metrics';
             warningEl.style.display = '';
