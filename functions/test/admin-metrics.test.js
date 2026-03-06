@@ -11,12 +11,30 @@ const {
 
 describe('admin-metrics module', () => {
   test('getRuntimeProjectId resolves from admin app options', () => {
+    const previousGcloudProject = process.env.GCLOUD_PROJECT;
+    const previousGcpProject = process.env.GCP_PROJECT;
+    delete process.env.GCLOUD_PROJECT;
+    delete process.env.GCP_PROJECT;
+
     const admin = {
       app: jest.fn(() => ({ options: { projectId: 'proj-123' } }))
     };
 
-    const result = getRuntimeProjectId(admin);
-    expect(result).toBe('proj-123');
+    try {
+      const result = getRuntimeProjectId(admin);
+      expect(result).toBe('proj-123');
+    } finally {
+      if (previousGcloudProject == null) {
+        delete process.env.GCLOUD_PROJECT;
+      } else {
+        process.env.GCLOUD_PROJECT = previousGcloudProject;
+      }
+      if (previousGcpProject == null) {
+        delete process.env.GCP_PROJECT;
+      } else {
+        process.env.GCP_PROJECT = previousGcpProject;
+      }
+    }
   });
 
   test('listMonitoringTimeSeries aggregates across pages and series', async () => {
