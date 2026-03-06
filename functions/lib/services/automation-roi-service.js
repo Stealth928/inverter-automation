@@ -109,7 +109,53 @@ function extractHouseLoadWatts(inverterData, logger = console) {
   };
 }
 
+function calculateRoiEstimate(options = {}) {
+  const action = options.action && typeof options.action === 'object' ? options.action : {};
+  const result = options.result && typeof options.result === 'object' ? options.result : {};
+  const houseLoadW = options.houseLoadW === null || options.houseLoadW === undefined
+    ? null
+    : Number(options.houseLoadW);
+
+  const fdPwr = Number(action.fdPwr || 0);
+  const workMode = action.workMode || 'SelfUse';
+  const durationMinutes = Number(action.durationMinutes || 30);
+  const durationHours = durationMinutes / 60;
+  const feedInPrice = result.feedInPrice ?? 0;
+  const buyPrice = result.buyPrice ?? 0;
+
+  const isChargeRule = workMode === 'ForceCharge';
+  const isDischargeRule = workMode === 'ForceDischarge' || workMode === 'Feedin';
+
+  let estimatedGridExportW = null;
+  let estimatedRevenue = 0;
+
+  if (isChargeRule) {
+    const gridDrawW = houseLoadW !== null && Number.isFinite(houseLoadW)
+      ? fdPwr + houseLoadW
+      : fdPwr;
+    const pricePerKwh = buyPrice / 100;
+    estimatedRevenue = -(gridDrawW * pricePerKwh * durationHours);
+  } else if (isDischargeRule) {
+    estimatedGridExportW = houseLoadW !== null && Number.isFinite(houseLoadW)
+      ? Math.max(0, fdPwr - houseLoadW)
+      : fdPwr;
+    const pricePerKwh = feedInPrice / 100;
+    estimatedRevenue = estimatedGridExportW * pricePerKwh * durationHours;
+  }
+
+  return {
+    buyPrice,
+    durationMinutes,
+    estimatedGridExportW,
+    estimatedRevenue,
+    fdPwr,
+    feedInPrice,
+    workMode
+  };
+}
+
 module.exports = {
+  calculateRoiEstimate,
   extractHouseLoadWatts,
   findValue,
   normalizeInverterDatas

@@ -1,7 +1,10 @@
 'use strict';
 
 const { buildAllRuleEvaluationsForAudit } = require('../../lib/services/automation-audit-service');
-const { extractHouseLoadWatts } = require('../../lib/services/automation-roi-service');
+const {
+  calculateRoiEstimate,
+  extractHouseLoadWatts
+} = require('../../lib/services/automation-roi-service');
 const { clearSchedulerSegments } = require('../../lib/services/scheduler-segment-service');
 
 function registerAutomationCycleRoute(app, deps = {}) {
@@ -765,50 +768,11 @@ app.post('/api/automation/cycle', async (req, res) => {
           const allRulesForAudit = buildAllRuleEvaluationsForAudit(evaluationResults, sortedRules);
 
           const { houseLoadW } = extractHouseLoadWatts(inverterData, console);
-
-          const fdPwr = rule.action?.fdPwr || 0;
-          const workMode = rule.action?.workMode || 'SelfUse';
-          const isChargeRule = workMode === 'ForceCharge';
-          const isDischargeRule = workMode === 'ForceDischarge' || workMode === 'Feedin';
-          
-          // BUG FIX: result from evaluateRule() has prices at TOP level, not inside 'details'
-          // evaluateRule returns: { triggered, results, feedInPrice, buyPrice }
-          const feedInPrice = result.feedInPrice ?? 0; // In cents/kWh from Amber API
-          const buyPrice = result.buyPrice ?? 0; // In cents/kWh from Amber API
-          
-          // DEBUG: Validate price format
-          
-          const durationHours = (rule.action?.durationMinutes || 30) / 60;
-          
-          // Calculate profit/cost based on rule type
-          let estimatedGridExportW = null;
-          let estimatedRevenue = 0;
-          
-          if (isChargeRule) {
-            // CHARGE RULE: Drawing power FROM the grid
-            // - Positive buyPrice: You PAY to consume = NEGATIVE profit (cost)
-            // - Negative buyPrice: You get PAID to consume = POSITIVE profit (revenue)
-            // Formula: revenue = -(power * price) where price can be negative
-            // Power drawn from grid = fdPwr (charge power) + house load
-            const gridDrawW = houseLoadW !== null ? (fdPwr + houseLoadW) : fdPwr;
-            const pricePerKwh = buyPrice / 100; // Convert cents to dollars
-            
-            // When buyPrice is negative (e.g., -20¢), pricePerKwh is -0.20
-            // revenue = -(gridDrawW * -0.20 * hours) = positive (you earn money)
-            // When buyPrice is positive (e.g., +30¢), pricePerKwh is +0.30
-            // revenue = -(gridDrawW * 0.30 * hours) = negative (you pay money)
-            estimatedRevenue = -(gridDrawW * pricePerKwh * durationHours);
-          } else if (isDischargeRule) {
-            // DISCHARGE RULE: Exporting power TO the grid
-            // - Positive feedInPrice: You get PAID for export = POSITIVE profit (revenue)  
-            // - Negative feedInPrice: You PAY to export = NEGATIVE profit (cost) - rare but possible
-            // Power exported = fdPwr (discharge power) - house load
-            estimatedGridExportW = houseLoadW !== null ? Math.max(0, fdPwr - houseLoadW) : fdPwr;
-            const pricePerKwh = feedInPrice / 100; // Convert cents to dollars
-            estimatedRevenue = estimatedGridExportW * pricePerKwh * durationHours;
-          } else {
-            // Other modes (SelfUse, Backup, etc) - no grid transaction
-          }
+          const roiEstimate = calculateRoiEstimate({
+            action: rule.action,
+            houseLoadW,
+            result
+          });
           
           await addAutomationAuditEntry(userId, {
             cycleId: `cycle_${cycleStartTime}`,
@@ -827,12 +791,12 @@ app.post('/api/automation/cycle', async (req, res) => {
             // ⭐ Store ROI data with house load snapshot (null if not found)
             roiSnapshot: {
               houseLoadW: houseLoadW,
-              estimatedGridExportW: estimatedGridExportW,
-              feedInPrice: feedInPrice,
-              buyPrice: buyPrice,
-              workMode: workMode,
-              durationMinutes: rule.action?.durationMinutes || 30,
-              estimatedRevenue: estimatedRevenue
+              estimatedGridExportW: roiEstimate.estimatedGridExportW,
+              feedInPrice: roiEstimate.feedInPrice,
+              buyPrice: roiEstimate.buyPrice,
+              workMode: roiEstimate.workMode,
+              durationMinutes: roiEstimate.durationMinutes,
+              estimatedRevenue: roiEstimate.estimatedRevenue
             },
             activeRuleBefore: state.activeRule,
             activeRuleAfter: ruleId,

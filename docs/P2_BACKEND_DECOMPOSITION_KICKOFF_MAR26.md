@@ -69,6 +69,7 @@ Validation for Wave 2:
    - ✅ shared scheduler segment-clear flow centralized in `functions/lib/services/scheduler-segment-service.js` via `clearSchedulerSegments(...)`
    - ✅ shared automation audit-evaluation mapping centralized in `functions/lib/services/automation-audit-service.js` via `buildAllRuleEvaluationsForAudit(...)`
    - ✅ shared ROI house-load extraction centralized in `functions/lib/services/automation-roi-service.js` via `extractHouseLoadWatts(...)`
+   - ✅ shared ROI charge/discharge revenue estimation centralized in `functions/lib/services/automation-roi-service.js` via `calculateRoiEstimate(...)`
    - in progress: migrate remaining repeated automation helpers into service modules (`lib/services/*`) with no behavior changes
 
 Validation for Wave 3:
