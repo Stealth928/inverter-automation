@@ -1,6 +1,7 @@
 'use strict';
 
 const {
+  buildRoiSnapshot,
   calculateRoiEstimate,
   extractHouseLoadWatts,
   findValue,
@@ -142,5 +143,58 @@ describe('automation roi service', () => {
       estimatedRevenue: 0,
       workMode: 'SelfUse'
     }));
+  });
+
+  test('buildRoiSnapshot assembles ROI fields for discharge rule', () => {
+    const inverterData = {
+      errno: 0,
+      result: [
+        { datas: [{ variable: 'loadsPower', value: 1.2 }] }
+      ]
+    };
+
+    const { roiSnapshot } = buildRoiSnapshot({
+      action: { durationMinutes: 30, fdPwr: 3000, workMode: 'ForceDischarge' },
+      inverterData,
+      result: { feedInPrice: 20 }
+    });
+
+    expect(roiSnapshot).toEqual({
+      houseLoadW: 1200,
+      estimatedGridExportW: 1800,
+      feedInPrice: 20,
+      buyPrice: 0,
+      workMode: 'ForceDischarge',
+      durationMinutes: 30,
+      estimatedRevenue: 180
+    });
+  });
+
+  test('buildRoiSnapshot tolerates missing house load datapoints', () => {
+    const logger = { error: jest.fn(), warn: jest.fn() };
+    const inverterData = {
+      errno: 0,
+      result: [
+        { datas: [{ variable: 'pvPower', value: 2500 }] }
+      ]
+    };
+
+    const { roiSnapshot } = buildRoiSnapshot({
+      action: { durationMinutes: 60, fdPwr: 2500, workMode: 'ForceCharge' },
+      inverterData,
+      logger,
+      result: { buyPrice: 15 }
+    });
+
+    expect(roiSnapshot).toEqual({
+      houseLoadW: null,
+      estimatedGridExportW: null,
+      feedInPrice: 0,
+      buyPrice: 15,
+      workMode: 'ForceCharge',
+      durationMinutes: 60,
+      estimatedRevenue: -375
+    });
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('FAILED to extract house load'));
   });
 });

@@ -154,7 +154,34 @@ function calculateRoiEstimate(options = {}) {
   };
 }
 
+function buildRoiSnapshot(options = {}) {
+  const action = options.action && typeof options.action === 'object' ? options.action : {};
+  const result = options.result && typeof options.result === 'object' ? options.result : {};
+  const inverterData = options.inverterData || null;
+  const logger = options.logger || console;
+
+  const { houseLoadW } = extractHouseLoadWatts(inverterData, logger);
+  const roiEstimate = calculateRoiEstimate({
+    action,
+    houseLoadW,
+    result
+  });
+
+  return {
+    roiSnapshot: {
+      houseLoadW,
+      estimatedGridExportW: roiEstimate.estimatedGridExportW,
+      feedInPrice: roiEstimate.feedInPrice,
+      buyPrice: roiEstimate.buyPrice,
+      workMode: roiEstimate.workMode,
+      durationMinutes: roiEstimate.durationMinutes,
+      estimatedRevenue: roiEstimate.estimatedRevenue
+    }
+  };
+}
+
 module.exports = {
+  buildRoiSnapshot,
   calculateRoiEstimate,
   extractHouseLoadWatts,
   findValue,

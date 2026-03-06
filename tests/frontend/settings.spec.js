@@ -28,22 +28,22 @@ test.describe('Settings Page', () => {
   });
 
   test('should display API configuration section', async ({ page }) => {
-    const hasAPISection = await page.getByText(/api|foxess|amber|key|token/i).count() > 0;
+    const hasAPISection = await page.getByText(/api|inverter|pricing|key|token/i).count() > 0;
     expect(hasAPISection).toBeTruthy();
   });
 
-  test('should have FoxESS configuration fields', async ({ page }) => {
-    const hasFoxESS = await page.getByText(/foxess|device|serial/i).count() > 0;
-    const hasFoxESSInput = await page.locator('input[name*="foxess"], input[id*="foxess"]').count() > 0;
+  test('should have inverter configuration fields', async ({ page }) => {
+    const hasInverter = await page.getByText(/inverter|device|serial/i).count() > 0;
+    const hasInverterInput = await page.locator('input[name*="foxess"], input[id*="foxess"]').count() > 0;
     
-    expect(hasFoxESS || hasFoxESSInput).toBeTruthy();
+    expect(hasInverter || hasInverterInput).toBeTruthy();
   });
 
-  test('should have Amber configuration fields', async ({ page }) => {
-    const hasAmber = await page.getByText(/amber|site|electric/i).count() > 0;
-    const hasAmberInput = await page.locator('input[name*="amber"], input[id*="amber"]').count() > 0;
+  test('should have pricing configuration fields', async ({ page }) => {
+    const hasPricing = await page.getByText(/pricing|electric|market/i).count() > 0;
+    const hasPricingInput = await page.locator('input[name*="amber"], input[id*="amber"]').count() > 0;
     
-    expect(hasAmber || hasAmberInput).toBeTruthy();
+    expect(hasPricing || hasPricingInput).toBeTruthy();
   });
 
   test('should mask API keys/tokens by default', async ({ page }) => {
@@ -290,7 +290,7 @@ test.describe('Settings Page - Change Detection', () => {
       const initialValue = await intervalInput.inputValue();
       
       // Change the value
-      await intervalInput.fill('90000');
+      await intervalInput.fill('90');
       
       // Check for "Modified" indicator
       const automationBadge = page.locator('#automationBadge, .automation-badge');
@@ -308,7 +308,7 @@ test.describe('Settings Page - Change Detection', () => {
       const initialValue = await amberCache.inputValue();
       
       // Change the value
-      await amberCache.fill('120000');
+      await amberCache.fill('120');
       
       // Check for "Modified" indicator
       const cacheBadge = page.locator('#automationBadge, #cacheBadge, .cache-badge');
@@ -408,7 +408,7 @@ test.describe('Settings Page - Change Detection', () => {
     // Make a change
     const intervalInput = page.locator('#automation_intervalMs');
     if (await intervalInput.count() > 0) {
-      await intervalInput.fill('90000');
+      await intervalInput.fill('90');
       
       // Reload from server button
       const reloadBtn = page.locator('button:has-text("Reload")').first();
@@ -433,13 +433,13 @@ test.describe('Settings Page - Change Detection', () => {
       const cacheInput = document.getElementById('cache_amber');
       let changed = false;
       if (automationInput) {
-        automationInput.value = '90000';
+        automationInput.value = '90';
         automationInput.dispatchEvent(new Event('input', { bubbles: true }));
         automationInput.dispatchEvent(new Event('change', { bubbles: true }));
         changed = true;
       }
       if (cacheInput) {
-        cacheInput.value = '120000';
+        cacheInput.value = '120';
         cacheInput.dispatchEvent(new Event('input', { bubbles: true }));
         cacheInput.dispatchEvent(new Event('change', { bubbles: true }));
         changed = true;
@@ -457,8 +457,8 @@ test.describe('Settings Page - Change Detection', () => {
     const statusText = (await page.locator('#configStatus').first().textContent().catch(() => '') || '').toLowerCase();
     const automationBadgeText = (await page.locator('#automationBadge').first().textContent().catch(() => '') || '').toLowerCase();
     const cacheBadgeText = (await page.locator('#automationBadge, #cacheBadge').first().textContent().catch(() => '') || '').toLowerCase();
-    const hasIntervalValueChanged = ((await page.locator('#automation_intervalMs').first().inputValue().catch(() => '')) === '90000');
-    const hasCacheValueChanged = ((await page.locator('#cache_amber').first().inputValue().catch(() => '')) === '120000');
+    const hasIntervalValueChanged = ((await page.locator('#automation_intervalMs').first().inputValue().catch(() => '')) === '90');
+    const hasCacheValueChanged = ((await page.locator('#cache_amber').first().inputValue().catch(() => '')) === '120');
 
     const hasUnsavedStatus = statusText.includes('unsaved');
     const hasModifiedBadges = automationBadgeText.includes('modif') || cacheBadgeText.includes('modif');
@@ -487,7 +487,7 @@ test.describe('Settings Page - Change Detection', () => {
     if (await intervalInput.count() > 0) {
       // Change the default value
       const initialValue = await intervalInput.inputValue();
-      await intervalInput.fill('75000');
+      await intervalInput.fill('75');
       
       // Should detect change
       const automationBadge = page.locator('#automationBadge, .automation-badge');

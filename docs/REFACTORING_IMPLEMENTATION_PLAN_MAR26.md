@@ -21,7 +21,7 @@ Primary Branch: `RefactoringMar26`
 |---|---|---|---:|
 | P0 | G0 | ✅ Complete | 100% |
 | P1 | G1 | ⏳ In Progress | 10/10 tasks drafted, key contract artifacts implemented, formal gate close pending |
-| P2 | G2 | ⏳ In Progress | Wave 1 complete (3/3), Wave 2 read-route extraction complete, Wave 3 step 1 complete (scheduler + config + automation mutation routes + automation cycle route extracted); Wave 3 step 2 in progress (shared scheduler segment-clear + audit-evaluation + ROI house-load + ROI revenue-estimation services extracted, remaining automation helper service decomposition pending) |
+| P2 | G2 | ⏳ In Progress | Wave 1 complete (3/3), Wave 2 read-route extraction complete, Wave 3 step 1 complete (scheduler + config + automation mutation routes + automation cycle route extracted); Wave 3 step 2 in progress (shared scheduler segment-clear + audit-evaluation + ROI house-load + ROI revenue-estimation + ROI snapshot-assembly + inverter/Amber data-fetch + blackout-window + weather-fetch-plan services extracted, remaining automation helper service decomposition pending). Frontend settings timing UX aligned to seconds with explicit ms API translation, 1-decimal minute display precision, and regression coverage, and UTF-8 text/icon rendering repaired. |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -785,6 +785,92 @@ Tracker hygiene rule: update this section at the end of every completed executio
 - Updated Wave 3 tracker artifact to reflect service extraction progress:
   - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
 - Next target chunk: continue Wave 3 step 2 by extracting any remaining ROI snapshot assembly/parsing helpers into dedicated service modules while preserving current API behavior.
+
+### ✅ 2026-03-06 - Chunk 36 (P2 Wave 3 step 2: automation ROI snapshot-assembly extraction)
+
+- Extended shared automation ROI service module:
+  - `functions/lib/services/automation-roi-service.js`
+  - added helper:
+    - `buildRoiSnapshot({ action, inverterData, logger, result })`
+- Rewired automation cycle route to use shared ROI snapshot assembly helper:
+  - `functions/api/routes/automation-cycle.js`
+- Added focused unit coverage for extracted ROI snapshot assembly:
+  - `functions/test/automation-roi-service.test.js`
+  - added checks for:
+    - discharge-mode snapshot assembly with parsed house load
+    - missing-house-load fallback behavior
+- Validation passed:
+  - `npm --prefix functions test -- automation-roi-service.test.js automation-cycle-route-module.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/api-contract-baseline.js --silent`
+  - `node scripts/openapi-contract-check.js --silent`
+  - `node scripts/pre-deploy-check.js`
+- Updated Wave 3 tracker artifact to reflect service extraction progress:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: continue Wave 3 step 2 by extracting automation-cycle data-fetch helpers (inverter + Amber) into shared service modules while preserving current API behavior.
+
+### ✅ 2026-03-06 - Chunk 37 (P2 Wave 3 step 2: automation-cycle data-fetch service extraction)
+
+- Introduced shared automation-cycle data-fetch service module:
+  - `functions/lib/services/automation-cycle-data-service.js`
+  - added helpers:
+    - `fetchAutomationInverterData({ userId, deviceSN, userConfig, getCachedInverterData, getCachedInverterRealtimeData, logger })`
+    - `fetchAutomationAmberData({ userId, userConfig, amberAPI, amberPricesInFlight, logger })`
+- Rewired automation cycle route to use shared inverter/Amber data-fetch helpers:
+  - `functions/api/routes/automation-cycle.js`
+- Added focused unit coverage for new service:
+  - `functions/test/automation-cycle-data-service.test.js`
+  - added checks for:
+    - inverter cache primary-hit and realtime-fallback behavior
+    - Amber cache-miss fetch/caching behavior
+    - Amber in-flight de-dup success and retry-on-failure behavior
+- Validation passed:
+  - `npm --prefix functions test -- automation-cycle-data-service.test.js automation-cycle-route-module.test.js automation-roi-service.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- Updated Wave 3 tracker artifact to reflect service extraction progress:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: continue Wave 3 step 2 by extracting remaining blackout-window and weather look-ahead helper blocks into dedicated service modules while preserving current API behavior.
+
+### ✅ 2026-03-06 - Chunk 38 (P2 Wave 3 step 2: blackout-window + weather-fetch-plan service extraction)
+
+- Introduced shared automation-cycle rule-evaluation helper service module:
+  - `functions/lib/services/automation-cycle-rule-service.js`
+  - added helpers:
+    - `evaluateBlackoutWindow(blackoutWindows, currentMinutes)`
+    - `hasWeatherDependentRules(enabledRules, isForecastTemperatureType)`
+    - `buildWeatherFetchPlan({ enabledRules, isForecastTemperatureType, automationForecastDays })`
+- Rewired automation cycle route to use shared blackout and weather planning helpers:
+  - `functions/api/routes/automation-cycle.js`
+- Added focused unit coverage for new service:
+  - `functions/test/automation-cycle-rule-service.test.js`
+  - added checks for:
+    - same-day and midnight-wrapping blackout windows
+    - disabled blackout-window handling
+    - weather-dependent rule detection
+    - weather look-ahead day calculation and clamp behavior
+- Validation passed:
+  - `npm --prefix functions test -- automation-cycle-rule-service.test.js automation-cycle-route-module.test.js automation-cycle-data-service.test.js automation-roi-service.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- Updated Wave 3 tracker artifact to reflect service extraction progress:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: continue Wave 3 step 2 by extracting remaining rule-loop lifecycle/cooldown helper blocks from `automation-cycle` into service modules while preserving current API behavior.
+
+### ✅ 2026-03-06 - Chunk 39 (Frontend settings timing UI: 1-decimal minute display precision)
+
+- Updated settings timing display formatting so minute translations render with one decimal:
+  - `frontend/settings.html`
+  - `formatMs(ms)` minute branch now uses `toFixed(1)` (for example `1.0m`, `5.0m`, `30.0m`)
+- Aligned initial timing badges with runtime formatter output:
+  - automation/amber/inverter/weather timing cards now initialize to `1.0m` / `5.0m` / `30.0m` style display
+- Added explicit frontend regression assertion for minute badge precision:
+  - `tests/frontend/settings-persistence.spec.js`
+  - verifies `#automation_intervalMs_display`, `#cache_amber_display`, `#cache_inverter_display`, `#cache_weather_display`
+- Validation passed:
+  - `npx playwright test tests/frontend/settings.spec.js tests/frontend/settings-persistence.spec.js --project=chromium`
+  - `npx playwright test tests/frontend/settings-persistence.spec.js --project=chromium`
+- Next target chunk: continue Wave 3 step 2 backend extraction by decomposing remaining rule-loop lifecycle/cooldown helper blocks from `automation-cycle`.
 ---
 
 ## 1. Purpose
@@ -1601,6 +1687,13 @@ When execution is approved, run phases in order:
 | 2026-03-06 | Continued P2 Wave 3 step 2 by introducing shared audit-evaluation service `functions/lib/services/automation-audit-service.js`, rewiring `functions/api/routes/automation-cycle.js` to consume it, adding focused service coverage in `functions/test/automation-audit-service.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
 | 2026-03-06 | Continued P2 Wave 3 step 2 by introducing shared ROI house-load service `functions/lib/services/automation-roi-service.js`, rewiring `functions/api/routes/automation-cycle.js` to consume it, adding focused service coverage in `functions/test/automation-roi-service.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
 | 2026-03-06 | Continued P2 Wave 3 step 2 by extracting ROI charge/discharge revenue estimation into shared helper `calculateRoiEstimate(...)` in `functions/lib/services/automation-roi-service.js`, rewiring `functions/api/routes/automation-cycle.js`, expanding `functions/test/automation-roi-service.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
+| 2026-03-06 | Continued P2 Wave 3 step 2 by extracting ROI snapshot assembly into shared helper `buildRoiSnapshot(...)` in `functions/lib/services/automation-roi-service.js`, rewiring `functions/api/routes/automation-cycle.js`, expanding `functions/test/automation-roi-service.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
+| 2026-03-06 | Continued P2 Wave 3 step 2 by introducing shared automation-cycle data-fetch service `functions/lib/services/automation-cycle-data-service.js` (inverter cache + realtime fallback, Amber sites/current-price fetch with in-flight de-dup), rewiring `functions/api/routes/automation-cycle.js`, adding focused service coverage in `functions/test/automation-cycle-data-service.test.js`, and re-validating lint + pre-deploy gates. | Codex |
+| 2026-03-06 | Continued P2 Wave 3 step 2 by introducing shared automation-cycle blackout/weather helper service `functions/lib/services/automation-cycle-rule-service.js` (blackout-window evaluation + weather fetch planning), rewiring `functions/api/routes/automation-cycle.js`, adding focused coverage in `functions/test/automation-cycle-rule-service.test.js`, and re-validating lint + pre-deploy gates. | Codex |
+| 2026-03-06 | Updated `frontend/settings.html` automation/cache timing controls to seconds-based UX (`sec` units), implemented explicit UI-seconds↔API-milliseconds conversion helpers for load/change/save/reset paths, aligned automation FAQ wording with the new units, and expanded frontend persistence tests to assert ms payload translation plus unit/FAQ consistency (`tests/frontend/settings-persistence.spec.js`, `tests/frontend/settings.spec.js`). | Codex |
+| 2026-03-06 | Fixed credentials save flow in `frontend/settings.html` to handle masked hidden tokens safely: when token is unchanged-but-hidden and no in-memory actual value exists, avoid posting placeholder characters to `/api/config/validate-keys`; persist editable credential fields via authenticated `/api/config` merge and refresh badge/status from server state. | Codex |
+| 2026-03-06 | Repaired UTF-8 text/icon rendering in `frontend/settings.html` after mojibake corruption (navigation labels, section headers, FAQ icons, status/action glyphs), then re-ran frontend settings Playwright suites (`tests/frontend/settings.spec.js`, `tests/frontend/settings-persistence.spec.js`) to confirm rendering and persistence behavior remained stable. | Codex |
+| 2026-03-06 | Updated settings timing minute conversion display to one-decimal precision in `frontend/settings.html` (`formatMs` minute branch now `toFixed(1)`), aligned initial timing badges (`1.0m`/`5.0m`/`30.0m`), and expanded `tests/frontend/settings-persistence.spec.js` with explicit minute-display assertions. | Codex |
 
 ---
 

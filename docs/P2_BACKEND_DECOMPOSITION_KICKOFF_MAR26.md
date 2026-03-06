@@ -70,7 +70,11 @@ Validation for Wave 2:
    - ✅ shared automation audit-evaluation mapping centralized in `functions/lib/services/automation-audit-service.js` via `buildAllRuleEvaluationsForAudit(...)`
    - ✅ shared ROI house-load extraction centralized in `functions/lib/services/automation-roi-service.js` via `extractHouseLoadWatts(...)`
    - ✅ shared ROI charge/discharge revenue estimation centralized in `functions/lib/services/automation-roi-service.js` via `calculateRoiEstimate(...)`
-   - in progress: migrate remaining repeated automation helpers into service modules (`lib/services/*`) with no behavior changes
+   - ✅ shared ROI snapshot assembly centralized in `functions/lib/services/automation-roi-service.js` via `buildRoiSnapshot(...)`
+   - ✅ shared automation-cycle inverter/Amber data fetch centralized in `functions/lib/services/automation-cycle-data-service.js` via `fetchAutomationInverterData(...)` and `fetchAutomationAmberData(...)`
+   - ✅ shared blackout-window evaluation centralized in `functions/lib/services/automation-cycle-rule-service.js` via `evaluateBlackoutWindow(...)`
+   - ✅ shared weather dependency/look-ahead planning centralized in `functions/lib/services/automation-cycle-rule-service.js` via `hasWeatherDependentRules(...)` and `buildWeatherFetchPlan(...)`
+   - in progress: migrate remaining repeated rule-loop lifecycle/cooldown helper blocks into service modules (`lib/services/*`) with no behavior changes
 
 Validation for Wave 3:
 - Regression suite for automation cycle, rule CRUD, scheduler endpoints.

@@ -2,8 +2,15 @@
 
 const { buildAllRuleEvaluationsForAudit } = require('../../lib/services/automation-audit-service');
 const {
-  calculateRoiEstimate,
-  extractHouseLoadWatts
+  fetchAutomationAmberData,
+  fetchAutomationInverterData
+} = require('../../lib/services/automation-cycle-data-service');
+const {
+  buildWeatherFetchPlan,
+  evaluateBlackoutWindow
+} = require('../../lib/services/automation-cycle-rule-service');
+const {
+  buildRoiSnapshot
 } = require('../../lib/services/automation-roi-service');
 const { clearSchedulerSegments } = require('../../lib/services/scheduler-segment-service');
 
@@ -238,32 +245,10 @@ app.post('/api/automation/cycle', async (req, res) => {
     const currentMinutes = userTime.hour * 60 + userTime.minute;
     
     
-    let inBlackout = false;
-    let currentBlackoutWindow = null;
-    for (const window of blackoutWindows) {
-      // Treat windows without explicit enabled property as enabled by default
-      // (the user explicitly added them, so they should be active unless explicitly disabled)
-      if (window.enabled === false) continue;
-      const [startH, startM] = (window.start || '00:00').split(':').map(Number);
-      const [endH, endM] = (window.end || '00:00').split(':').map(Number);
-      const startMins = startH * 60 + startM;
-      const endMins = endH * 60 + endM;
-      
-      // Handle windows that cross midnight
-      if (startMins <= endMins) {
-        if (currentMinutes >= startMins && currentMinutes < endMins) {
-          inBlackout = true;
-          currentBlackoutWindow = window;
-          break;
-        }
-      } else {
-        if (currentMinutes >= startMins || currentMinutes < endMins) {
-          inBlackout = true;
-          currentBlackoutWindow = window;
-          break;
-        }
-      }
-    }
+    const { inBlackout, currentBlackoutWindow } = evaluateBlackoutWindow(
+      blackoutWindows,
+      currentMinutes
+    );
     
     if (inBlackout) {
       await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: true, currentBlackoutWindow });
@@ -343,95 +328,23 @@ app.post('/api/automation/cycle', async (req, res) => {
     let inverterData = null;
     let amberData = null;
     const cycleStartTime = Date.now();
-    
-    // Fetch inverter data (with per-user cache TTL)
-    if (deviceSN) {
-      try {
-        inverterData = await getCachedInverterData(userId, deviceSN, userConfig, false);
-        // If automation cache doesn't have valid datas structure (e.g. stale failed response),
-        // fall back to the realtime cache which the dashboard may have just refreshed.
-        if (!inverterData?.result?.[0]?.datas) {
-          console.warn('[Automation] Automation inverter cache missing datas structure (errno=%s), falling back to realtime cache', inverterData?.errno);
-          try {
-            const realtimeData = await getCachedInverterRealtimeData(userId, deviceSN, userConfig, false);
-            if (realtimeData?.result?.[0]?.datas) {
-              inverterData = realtimeData;
-              console.log('[Automation] Realtime cache fallback succeeded - SoC data now available');
-            }
-          } catch (fe) {
-            console.warn('[Automation] Realtime cache fallback also failed:', fe.message);
-          }
-        }
-      } catch (e) {
-        console.warn('[Automation] Failed to get inverter data:', e.message);
-      }
-    }
-    
-    // Fetch Amber data (with forecast for next 288 intervals = 24 hours, Amber provides up to ~48hrs)
-    if (userConfig?.amberApiKey) {
-      try {
-        // Try cache first to avoid duplicate API call
-        let sites = await amberAPI.getCachedAmberSites(userId);
-        if (!sites) {
-          sites = await amberAPI.callAmberAPI('/sites', {}, userConfig, userId);
-          if (Array.isArray(sites) && sites.length > 0) {
-            await amberAPI.cacheAmberSites(userId, sites);
-          }
-        }
-        
-        if (Array.isArray(sites) && sites.length > 0) {
-          const siteId = userConfig.amberSiteId || sites[0].id;
-          
-          // Try cache first for current prices
-          amberData = await amberAPI.getCachedAmberPricesCurrent(siteId, userId, userConfig);
-          if (!amberData) {
-            const inflightKey = `${userId}:${siteId}`;
-            
-            // Check if another request is already fetching this data
-            if (amberPricesInFlight.has(inflightKey)) {
-              try {
-                amberData = await amberPricesInFlight.get(inflightKey);
-              } catch (err) {
-                console.warn(`[Automation] In-flight request failed for ${userId}, will retry:`, err.message);
-              }
-            }
-            
-            // If still no data (first request or in-flight failed), fetch it
-            if (!amberData) {
-              const fetchPromise = amberAPI.callAmberAPI(`/sites/${encodeURIComponent(siteId)}/prices/current`, { next: 288 }, userConfig, userId)
-                .then(async (data) => {
-                  if (Array.isArray(data) && data.length > 0) {
-                    await amberAPI.cacheAmberPricesCurrent(siteId, data, userId, userConfig);
-                  }
-                  return data;
-                })
-                .finally(() => {
-                  amberPricesInFlight.delete(inflightKey);
-                });
-              
-              amberPricesInFlight.set(inflightKey, fetchPromise);
-              amberData = await fetchPromise;
-            }
-          }
-          
-          if (amberData) {
-            const generalForecasts = amberData.filter(p => p.type === 'ForecastInterval' && p.channelType === 'general');
-            const feedInForecasts = amberData.filter(p => p.type === 'ForecastInterval' && p.channelType === 'feedIn');
-            if (generalForecasts.length > 0) {
-              const generalPrices = generalForecasts.map(f => f.perKwh);
-              console.log(`[Automation] General forecast: ${generalForecasts.length} intervals, max ${Math.max(...generalPrices).toFixed(2)}¢/kWh`);
-            }
-            if (feedInForecasts.length > 0) {
-              const feedInPrices = feedInForecasts.map(f => -f.perKwh);
-              console.log(`[Automation] Feed-in forecast: ${feedInForecasts.length} intervals, max ${Math.max(...feedInPrices).toFixed(2)}¢/kWh`);
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('[Automation] Failed to get Amber data:', e.message);
-      }
-    }
-    
+    inverterData = await fetchAutomationInverterData({
+      deviceSN,
+      getCachedInverterData,
+      getCachedInverterRealtimeData,
+      logger: console,
+      userConfig,
+      userId
+    });
+
+    amberData = await fetchAutomationAmberData({
+      amberAPI,
+      amberPricesInFlight,
+      logger: console,
+      userConfig,
+      userId
+    });
+
     // Build cache object for rule evaluation
     const cache = { amber: amberData, weather: null };
     
@@ -443,61 +356,19 @@ app.post('/api/automation/cycle', async (req, res) => {
       return res.json({ errno: 0, result: { skipped: true, reason: 'No rules enabled', totalRules } });
     }
     
-    // Check if any enabled rule uses weather-dependent conditions.
-    const needsWeatherData = enabledRules.some(([_, rule]) => {
-      const cond = rule.conditions || {};
-      const tempCond = cond.temp || cond.temperature;
-      return (
-        cond.solarRadiation?.enabled ||
-        cond.cloudCover?.enabled ||
-        cond.uvIndex?.enabled ||
-        (tempCond?.enabled && isForecastTemperatureType(tempCond.type))
-      );
+    const weatherFetchPlan = buildWeatherFetchPlan({
+      enabledRules,
+      isForecastTemperatureType
     });
     
     // Only fetch weather if a rule actually needs it
     let weatherData = null;
-    if (needsWeatherData) {
+    if (weatherFetchPlan.needsWeatherData) {
       try {
         const place = userConfig?.location || 'Sydney';
-        
-        // Calculate maximum lookAhead days needed across all enabled rules
-        let maxDaysNeeded = 1;
-        for (const [, rule] of enabledRules) {
-          const cond = rule.conditions || {};
-          
-          // Check solar radiation lookAhead
-          if (cond.solarRadiation?.enabled) {
-            const unit = cond.solarRadiation.lookAheadUnit || 'hours';
-            const value = cond.solarRadiation.lookAhead || 6;
-            const days = unit === 'days' ? value : Math.ceil(value / 24);
-            maxDaysNeeded = Math.max(maxDaysNeeded, days);
-          }
-          
-          // Check cloud cover lookAhead
-          if (cond.cloudCover?.enabled) {
-            const unit = cond.cloudCover.lookAheadUnit || 'hours';
-            const value = cond.cloudCover.lookAhead || 6;
-            const days = unit === 'days' ? value : Math.ceil(value / 24);
-            maxDaysNeeded = Math.max(maxDaysNeeded, days);
-          }
 
-          // Check forecast daily temperature offset
-          const tempCond = cond.temp || cond.temperature;
-          if (tempCond?.enabled && isForecastTemperatureType(tempCond.type)) {
-            const dayOffset = Number.isInteger(tempCond.dayOffset)
-              ? tempCond.dayOffset
-              : Number.parseInt(tempCond.dayOffset, 10) || 0;
-            maxDaysNeeded = Math.max(maxDaysNeeded, dayOffset + 1);
-          }
-        }
-        
-        // Support forecast temperature look-ahead up to day +10 (11 days including today)
-        const automationForecastDays = 11;
-        maxDaysNeeded = Math.min(maxDaysNeeded, automationForecastDays);
-        
         // Always fetch a stable forecast window to maximize cache reuse across rules
-        const daysToFetch = automationForecastDays;
+        const daysToFetch = weatherFetchPlan.daysToFetch;
         weatherData = await getCachedWeatherData(userId, place, daysToFetch);
         cache.weather = weatherData.result || weatherData;
       } catch (e) {
@@ -767,10 +638,10 @@ app.post('/api/automation/cycle', async (req, res) => {
           // Include full evaluation context: ALL rules and their condition states
           const allRulesForAudit = buildAllRuleEvaluationsForAudit(evaluationResults, sortedRules);
 
-          const { houseLoadW } = extractHouseLoadWatts(inverterData, console);
-          const roiEstimate = calculateRoiEstimate({
+          const { roiSnapshot } = buildRoiSnapshot({
             action: rule.action,
-            houseLoadW,
+            inverterData,
+            logger: console,
             result
           });
           
@@ -789,15 +660,7 @@ app.post('/api/automation/cycle', async (req, res) => {
               minSocOnGrid: rule.action?.minSocOnGrid
             },
             // ⭐ Store ROI data with house load snapshot (null if not found)
-            roiSnapshot: {
-              houseLoadW: houseLoadW,
-              estimatedGridExportW: roiEstimate.estimatedGridExportW,
-              feedInPrice: roiEstimate.feedInPrice,
-              buyPrice: roiEstimate.buyPrice,
-              workMode: roiEstimate.workMode,
-              durationMinutes: roiEstimate.durationMinutes,
-              estimatedRevenue: roiEstimate.estimatedRevenue
-            },
+            roiSnapshot,
             activeRuleBefore: state.activeRule,
             activeRuleAfter: ruleId,
             rulesEvaluated: sortedRules.length,
@@ -974,3 +837,4 @@ app.post('/api/automation/cycle', async (req, res) => {
 module.exports = {
   registerAutomationCycleRoute
 };
+

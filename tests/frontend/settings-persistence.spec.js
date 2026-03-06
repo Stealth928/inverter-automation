@@ -52,8 +52,11 @@ test.describe('Settings Page - Data Persistence', () => {
       // Mock the fetch API to simulate backend
       window.originalFetch = window.fetch;
       window.fetch = async (url, options) => {
+        const requestUrl = new URL(url, window.location.origin);
+        const path = requestUrl.pathname;
+
         // GET /api/config - return current mock config
-        if (url === '/api/config' && (!options || options.method === 'GET' || options.method === 'get')) {
+        if (path === '/api/config' && (!options || options.method === 'GET' || options.method === 'get')) {
           return new Response(JSON.stringify({
             errno: 0,
             result: JSON.parse(JSON.stringify(window.mockServerConfig))  // Return clone of current state
@@ -61,9 +64,10 @@ test.describe('Settings Page - Data Persistence', () => {
         }
         
         // POST /api/config - update mock config with new data
-        if (url === '/api/config' && options && (options.method === 'POST' || options.method === 'post')) {
+        if (path === '/api/config' && options && (options.method === 'POST' || options.method === 'post')) {
           try {
             const body = JSON.parse(options.body);
+            window.lastConfigPostBody = JSON.parse(JSON.stringify(body));
             
             // Simulate backend normalization: sync location and preferences.weatherPlace
             const locationValue = body.location || body.preferences?.weatherPlace;
@@ -154,7 +158,7 @@ test.describe('Settings Page - Data Persistence', () => {
     
     const intervalInput = page.locator('#automation_intervalMs');
     if (await intervalInput.count() > 0) {
-      const newValue = '90000';
+      const newValue = '90';
       await intervalInput.fill(newValue);
       
       // Save
@@ -165,9 +169,64 @@ test.describe('Settings Page - Data Persistence', () => {
         
         // Verify backend
         const serverConfig = await page.evaluate(() => window.mockServerConfig);
-        expect(serverConfig.automation?.intervalMs).toBe(parseInt(newValue));
+        expect(serverConfig.automation?.intervalMs).toBe(parseInt(newValue, 10) * 1000);
       }
     }
+  });
+
+  test('should render API millisecond timing values as seconds in UI', async ({ page }) => {
+    await page.waitForTimeout(500);
+    const intervalInput = page.locator('#automation_intervalMs');
+    if (await intervalInput.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+    await expect(intervalInput).toHaveValue('60');
+    await expect(page.locator('#cache_amber')).toHaveValue('60');
+    await expect(page.locator('#cache_inverter')).toHaveValue('300');
+    await expect(page.locator('#cache_weather')).toHaveValue('1800');
+    await expect(page.locator('#automation_intervalMs_display')).toHaveText('= 1.0m');
+    await expect(page.locator('#cache_amber_display')).toHaveText('= 1.0m');
+    await expect(page.locator('#cache_inverter_display')).toHaveText('= 5.0m');
+    await expect(page.locator('#cache_weather_display')).toHaveText('= 30.0m');
+  });
+
+  test('should translate seconds input values to milliseconds in API payload', async ({ page }) => {
+    await page.waitForTimeout(500);
+    const intervalInput = page.locator('#automation_intervalMs');
+    if (await intervalInput.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await intervalInput.fill('42');
+    await page.locator('#cache_amber').fill('11');
+    await page.locator('#cache_inverter').fill('77');
+    await page.locator('#cache_weather').fill('333');
+
+    const saveBtn = page.locator('button:has-text("Save")').first();
+    await saveBtn.click();
+    await page.waitForTimeout(1500);
+
+    const lastPost = await page.evaluate(() => window.lastConfigPostBody);
+    expect(lastPost.automation?.intervalMs).toBe(42000);
+    expect(lastPost.cache?.amber).toBe(11000);
+    expect(lastPost.cache?.inverter).toBe(77000);
+    expect(lastPost.cache?.weather).toBe(333000);
+  });
+
+  test('should keep automation FAQ and units aligned to seconds UI', async ({ page }) => {
+    await page.waitForTimeout(500);
+    const faqToggle = page.locator('#automationSection .faq-toggle').first();
+    if (await faqToggle.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+    await faqToggle.click();
+
+    const secUnitCount = await page.locator('#automationSection .setting-input .unit:has-text("sec")').count();
+    expect(secUnitCount).toBe(4);
+    await expect(page.locator('#automationSection .faq-content')).toContainText('Inputs on this page are in seconds; values are converted to milliseconds when saved to the API.');
   });
 
   test('should survive reload after automation interval change', async ({ page }) => {
@@ -175,7 +234,7 @@ test.describe('Settings Page - Data Persistence', () => {
     
     const intervalInput = page.locator('#automation_intervalMs');
     if (await intervalInput.count() > 0) {
-      const newValue = '75000';
+      const newValue = '75';
       await intervalInput.fill(newValue);
       
       // Save
@@ -191,7 +250,7 @@ test.describe('Settings Page - Data Persistence', () => {
         
         // Verify value persisted
         const reloadedValue = await page.locator('#automation_intervalMs').inputValue();
-        expect(parseInt(reloadedValue)).toBe(parseInt(newValue));
+        expect(parseInt(reloadedValue, 10)).toBe(parseInt(newValue, 10));
       }
     }
   });
@@ -201,7 +260,7 @@ test.describe('Settings Page - Data Persistence', () => {
     
     const amberCache = page.locator('#cache_amber');
     if (await amberCache.count() > 0) {
-      const newValue = '120000';
+      const newValue = '120';
       await amberCache.fill(newValue);
       
       // Save
@@ -212,7 +271,7 @@ test.describe('Settings Page - Data Persistence', () => {
         
         // Verify backend
         const serverConfig = await page.evaluate(() => window.mockServerConfig);
-        expect(serverConfig.cache?.amber).toBe(parseInt(newValue));
+        expect(serverConfig.cache?.amber).toBe(parseInt(newValue, 10) * 1000);
       }
     }
   });
@@ -250,7 +309,7 @@ test.describe('Settings Page - Data Persistence', () => {
     // Change interval
     const intervalInput = page.locator('#automation_intervalMs');
     if (await intervalInput.count() > 0) {
-      await intervalInput.fill('85000');
+      await intervalInput.fill('85');
     }
     
     // Change forecast days
@@ -280,7 +339,7 @@ test.describe('Settings Page - Data Persistence', () => {
     // Make multiple changes
     const changes = {
       location: 'Tokyo, Japan',
-      interval: '95000',
+      interval: '95',
       forecast: '8'
     };
     
@@ -316,8 +375,8 @@ test.describe('Settings Page - Data Persistence', () => {
       const forecastValue = await page.locator('#preferences_forecastDays').inputValue();
       
       expect(locationValue).toBe(changes.location);
-      expect(parseInt(intervalValue)).toBe(parseInt(changes.interval));
-      expect(parseInt(forecastValue)).toBe(parseInt(changes.forecast));
+      expect(parseInt(intervalValue, 10)).toBe(parseInt(changes.interval, 10));
+      expect(parseInt(forecastValue, 10)).toBe(parseInt(changes.forecast, 10));
     }
   });
 
