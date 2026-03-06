@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Firebase Cloud Functions for Inverter App
  * Version: 2.3.0 - Timezone Support (Auto-detect from weather location)
  * 
@@ -14,7 +14,6 @@ const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const express = require('express');
 const cors = require('cors');
-const fetch = require('node-fetch');
 const {
   evaluateTemperatureCondition,
   evaluateTimeCondition,
@@ -22,6 +21,15 @@ const {
   isForecastTemperatureType,
   normalizeWeekdays
 } = require('./lib/automation-conditions');
+const { createAdminAccess } = require('./lib/admin-access');
+const {
+  estimateFirestoreCostFromUsage,
+  fetchCloudBillingCost,
+  getRuntimeProjectId,
+  listMonitoringTimeSeries,
+  normalizeMetricErrorMessage,
+  sumSeriesValues
+} = require('./lib/admin-metrics');
 const {
   applySegmentToGroups,
   buildAutomationSchedulerSegment,
@@ -36,6 +44,8 @@ const { registerInverterReadRoutes } = require('./api/routes/inverter-read');
 const { registerInverterHistoryRoutes } = require('./api/routes/inverter-history');
 const { registerConfigMutationRoutes } = require('./api/routes/config-mutations');
 const { registerConfigReadStatusRoutes } = require('./api/routes/config-read-status');
+const { registerHealthRoutes } = require('./api/routes/health');
+const { registerAdminRoutes } = require('./api/routes/admin');
 const { registerAuthLifecycleRoutes } = require('./api/routes/auth-lifecycle');
 const { registerAutomationHistoryRoutes } = require('./api/routes/automation-history');
 const { registerDeviceMutationRoutes } = require('./api/routes/device-mutations');
@@ -47,6 +57,8 @@ const { registerSchedulerMutationRoutes } = require('./api/routes/scheduler-muta
 const { registerAutomationMutationRoutes } = require('./api/routes/automation-mutations');
 const { registerAutomationCycleRoute } = require('./api/routes/automation-cycle');
 const { runAutomationSchedulerCycle } = require('./lib/services/automation-scheduler-service');
+const { createApiMetricsService } = require('./lib/services/api-metrics-service');
+const { createWeatherService } = require('./lib/services/weather-service');
 const { parseAutomationTelemetry } = require('./lib/device-telemetry');
 const { getCurrentAmberPrices } = require('./lib/pricing-normalization');
 const { createUserAutomationRepository } = require('./lib/repositories/user-automation-repository');
@@ -219,6 +231,28 @@ const userAutomationRepository = createUserAutomationRepository({
   serverTimestamp
 });
 
+const {
+  getAusDateKey,
+  incrementApiCount
+} = createApiMetricsService({
+  admin,
+  db,
+  defaultTimezone: DEFAULT_TIMEZONE,
+  logger,
+  serverTimestamp
+});
+
+const {
+  callWeatherAPI,
+  getCachedWeatherData
+} = createWeatherService({
+  db,
+  getConfig,
+  incrementApiCount,
+  logger: console,
+  setUserConfig
+});
+
 // ==================== CACHED INVERTER DATA HELPER ====================
 /**
  * Get inverter data with per-user Firestore cache.
@@ -343,7 +377,7 @@ async function addAutomationAuditEntry(userId, cycleData) {
       actionTaken: cycleData.actionTaken || null,
       segmentApplied: cycleData.segmentApplied || null,
       
-      // ⭐ NEW: ROI snapshot with house load
+      // â­ NEW: ROI snapshot with house load
       roiSnapshot: cycleData.roiSnapshot || null,
       
       // Cache info
@@ -429,77 +463,15 @@ const authenticateUser = (req, res, next) => authAPI.authenticateUser(req, res, 
 const tryAttachUser = (req) => authAPI.tryAttachUser(req);
 
 // ==================== ADMIN ROLE SYSTEM ====================
-// Seed admin: sardanapalos928@hotmail.com is always treated as admin.
-// Additional admins can be promoted via the admin panel (stored in Firestore).
-const SEED_ADMIN_EMAIL = 'sardanapalos928@hotmail.com';
+const {
+  isAdmin,
+  requireAdmin,
+  SEED_ADMIN_EMAIL
+} = createAdminAccess({ db, logger: console });
 
-/**
- * Check whether the authenticated user is an admin.
- * Admin status is determined by:
- *   1. Matching the seed admin email, OR
- *   2. Having role: 'admin' in users/{uid} Firestore doc
- * Results are cached on req._isAdmin for the duration of the request.
- */
-async function isAdmin(req) {
-  if (req._isAdmin !== undefined) return req._isAdmin;
-  if (!req.user) { req._isAdmin = false; return false; }
-  const email = (req.user.email || '').toLowerCase();
-  if (email === SEED_ADMIN_EMAIL) { req._isAdmin = true; return true; }
-  try {
-    const userDoc = await db.collection('users').doc(req.user.uid).get();
-    const data = userDoc.exists ? userDoc.data() : {};
-    req._isAdmin = data.role === 'admin';
-  } catch (e) {
-    console.warn('[Admin] Error checking admin role:', e.message);
-    req._isAdmin = false;
-  }
-  return req._isAdmin;
-}
-
-/**
- * Middleware: require admin role. Must be used AFTER authenticateUser.
- */
-const requireAdmin = async (req, res, next) => {
-  const admin = await isAdmin(req);
-  if (!admin) {
-    return res.status(403).json({ errno: 403, error: 'Admin access required' });
-  }
-  next();
-};
-
-// Health check (no auth required)
-app.get('/api/health', async (req, res) => {
-  try {
-    await tryAttachUser(req);
-    const userId = req.user?.uid;
-    
-    // Check if user is authenticated and has tokens saved
-    let foxessTokenPresent = false;
-    let amberApiKeyPresent = false;
-    
-    if (userId) {
-      try {
-        const config = (await getUserConfig(userId)) || {};
-        foxessTokenPresent = !!config.foxessToken;
-        amberApiKeyPresent = !!config.amberApiKey;
-      } catch (e) {
-        console.warn('[Health] Failed to check config:', e.message);
-      }
-    }
-    
-    res.json({ 
-      ok: true,
-      FOXESS_TOKEN: foxessTokenPresent,
-      AMBER_API_KEY: amberApiKeyPresent
-    });
-  } catch (error) {
-    console.error('[Health] Error:', error);
-    res.json({ 
-      ok: true,
-      FOXESS_TOKEN: false,
-      AMBER_API_KEY: false
-    });
-  }
+registerHealthRoutes(app, {
+  getUserConfig,
+  tryAttachUser
 });
 
 registerSetupPublicRoutes(app, {
@@ -532,1188 +504,27 @@ registerMetricsRoutes(app, {
 // ==================== ADMIN API ENDPOINTS ====================
 // All admin routes use authenticateUser + requireAdmin explicitly so they
 // are registered before the catch-all app.use('/api', authenticateUser).
-
-function getRuntimeProjectId() {
-  try {
-    return process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || admin.app().options.projectId || null;
-  } catch (e) {
-    return process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || null;
-  }
-}
-
-function getPointNumericValue(point) {
-  if (!point || !point.value) return 0;
-  const value = point.value;
-  if (typeof value.doubleValue === 'number') return value.doubleValue;
-  if (typeof value.int64Value === 'string') return Number(value.int64Value) || 0;
-  if (typeof value.int64Value === 'number') return value.int64Value;
-  if (typeof value.distributionValue?.count === 'number') return value.distributionValue.count;
-  return 0;
-}
-
-async function listMonitoringTimeSeries({
-  monitoring,
-  projectId,
-  filter,
-  startTime,
-  endTime,
-  aligner = 'ALIGN_SUM',
-  alignmentPeriod = '3600s'
-}) {
-  const name = `projects/${projectId}`;
-  let pageToken = undefined;
-  const pointByTimestamp = new Map();
-
-  do {
-    const response = await monitoring.projects.timeSeries.list({
-      name,
-      filter,
-      'interval.startTime': startTime.toISOString(),
-      'interval.endTime': endTime.toISOString(),
-      'aggregation.alignmentPeriod': alignmentPeriod,
-      'aggregation.perSeriesAligner': aligner,
-      'aggregation.crossSeriesReducer': 'REDUCE_SUM',
-      'aggregation.groupByFields': [],
-      view: 'FULL',
-      pageSize: 1000,
-      pageToken
-    });
-
-    const timeSeries = response?.data?.timeSeries || [];
-    for (const series of timeSeries) {
-      const points = series?.points || [];
-      for (const point of points) {
-        const ts = point?.interval?.endTime || point?.interval?.startTime;
-        if (!ts) continue;
-        const current = pointByTimestamp.get(ts) || 0;
-        pointByTimestamp.set(ts, current + getPointNumericValue(point));
-      }
-    }
-
-    pageToken = response?.data?.nextPageToken || undefined;
-  } while (pageToken);
-
-  return Array.from(pointByTimestamp.entries())
-    .map(([timestamp, value]) => ({ timestamp, value }))
-    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-}
-
-function sumSeriesValues(series) {
-  return series.reduce((sum, point) => sum + (Number(point.value) || 0), 0);
-}
-
-function normalizeMetricErrorMessage(error) {
-  const raw = String(error?.message || error || 'metric unavailable');
-  const stripped = raw.split('If a metric was created recently')[0].trim();
-  return stripped.replace(/\s+/g, ' ');
-}
-
-async function getRuntimeServiceAccountEmail(projectId) {
-  const fallback = `${projectId || 'PROJECT_NUMBER'}-compute@developer.gserviceaccount.com`;
-  try {
-    const metadataResp = await fetch(
-      'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email',
-      {
-        headers: { 'Metadata-Flavor': 'Google' },
-        timeout: 1500
-      }
-    );
-    if (metadataResp.ok) {
-      const email = String(await metadataResp.text()).trim();
-      if (email) return email;
-    }
-  } catch (e) {
-    // local emulator / tests will not have metadata server
-  }
-
-  return fallback;
-}
-
-/**
- * Estimate Firestore MTD cost from usage counts using GCP published pricing.
- * Reads:   $0.06 / 100K  (50K/day free tier)
- * Writes:  $0.18 / 100K  (20K/day free tier)
- * Deletes: $0.02 / 100K  (20K/day free tier)
- * Does NOT include storage, Auth, Functions, egress, etc.
- * Returns { totalUsd, services: [{service, costUsd}], isEstimate: true }
- */
-function estimateFirestoreCostFromUsage(readsMtd, writesMtd, deletesMtd, nowDate) {
-  const dayOfMonth = Math.max(1, nowDate.getUTCDate());
-  const freeReads   = 50000 * dayOfMonth;
-  const freeWrites  = 20000 * dayOfMonth;
-  const freeDeletes = 20000 * dayOfMonth;
-
-  const billableReads   = Math.max(0, readsMtd   - freeReads);
-  const billableWrites  = Math.max(0, writesMtd  - freeWrites);
-  const billableDeletes = Math.max(0, deletesMtd - freeDeletes);
-
-  const readCost   = (billableReads   / 100000) * 0.06;
-  const writeCost  = (billableWrites  / 100000) * 0.18;
-  const deleteCost = (billableDeletes / 100000) * 0.02;
-
-  return {
-    totalUsd: readCost + writeCost + deleteCost,
-    isEstimate: true,
-    services: [
-      { service: 'Cloud Firestore reads',   costUsd: readCost },
-      { service: 'Cloud Firestore writes',  costUsd: writeCost },
-      { service: 'Cloud Firestore deletes', costUsd: deleteCost }
-    ]
-  };
-}
-
-/**
- * Fetch MTD cost per service from the Cloud Billing API.
- * Requires roles/billing.viewer on the billing account for the service account.
- * Throws with err.isBillingIamError = true on 403.
- * Returns { services: [{service, costUsd}], totalUsd, accountId }
- */
-async function fetchCloudBillingCost(projectId) {
-  if (!googleApis) throw new Error('googleapis not available');
-  const runtimeServiceAccount = await getRuntimeServiceAccountEmail(projectId);
-
-  const auth = new googleApis.auth.GoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/cloud-billing.readonly']
-  });
-  const client = await auth.getClient();
-  const tokenResp = await client.getAccessToken();
-  const token = tokenResp.token;
-
-  // Step 1: resolve billing account for this project
-  const billingInfoResp = await fetch(
-    `https://cloudbilling.googleapis.com/v1/projects/${projectId}/billingInfo`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (billingInfoResp.status === 403) {
-    const bodyText = await billingInfoResp.text().catch(() => '');
-    const disabledApi = /SERVICE_DISABLED|Cloud Billing API has not been used|cloudbilling\.googleapis\.com/i.test(bodyText);
-    if (disabledApi) {
-      const err = new Error(
-        'BILLING_API_DISABLED: Enable cloudbilling.googleapis.com for this project, then retry.'
-      );
-      err.isBillingApiDisabled = true;
-      throw err;
-    }
-    const err = new Error(
-      'BILLING_IAM: Grant roles/billing.viewer on the billing account to the Functions service account ' +
-      `(${runtimeServiceAccount}). ` +
-      'See GCP IAM → Billing Account → Add Principal.'
-    );
-    err.isBillingIamError = true;
-    throw err;
-  }
-  if (!billingInfoResp.ok) {
-    throw new Error(`billingInfo: ${billingInfoResp.status} ${billingInfoResp.statusText}`);
-  }
-  const billingInfo = await billingInfoResp.json();
-  if (!billingInfo.billingEnabled || !billingInfo.billingAccountName) {
-    throw new Error('No billing account is linked to this project');
-  }
-
-  const accountName = billingInfo.billingAccountName; // "billingAccounts/XXXXXX-XXXXXX-XXXXXX"
-  const accountId = accountName.replace('billingAccounts/', '');
-
-  // Step 2: get MTD cost per service from the Billing Reports API
-  const now = new Date();
-  const params = new URLSearchParams({
-    'dateRange.startDate.year': now.getUTCFullYear(),
-    'dateRange.startDate.month': now.getUTCMonth() + 1,
-    'dateRange.startDate.day': 1,
-    'dateRange.endDate.year': now.getUTCFullYear(),
-    'dateRange.endDate.month': now.getUTCMonth() + 1,
-    'dateRange.endDate.day': now.getUTCDate()
-  });
-
-  const reportsResp = await fetch(
-    `https://cloudbilling.googleapis.com/v1beta/${accountName}/reports?${params.toString()}`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (reportsResp.status === 403) {
-    const bodyText = await reportsResp.text().catch(() => '');
-    const disabledApi = /SERVICE_DISABLED|Cloud Billing API has not been used|cloudbilling\.googleapis\.com/i.test(bodyText);
-    if (disabledApi) {
-      const err = new Error(
-        'BILLING_API_DISABLED: Enable cloudbilling.googleapis.com for this project, then retry.'
-      );
-      err.isBillingApiDisabled = true;
-      throw err;
-    }
-    const err = new Error(
-      'BILLING_IAM: Grant roles/billing.viewer on the billing account to the Functions service account ' +
-      `(${runtimeServiceAccount}) to read cost reports.`
-    );
-    err.isBillingIamError = true;
-    throw err;
-  }
-  if (reportsResp.status === 404) {
-    const err = new Error('BILLING_REPORTS_UNAVAILABLE: Cloud Billing reports endpoint is not available for this billing account/project.');
-    err.isBillingReportsUnavailable = true;
-    throw err;
-  }
-  if (!reportsResp.ok) {
-    const body = await reportsResp.text().catch(() => '');
-    throw new Error(`billing reports: ${reportsResp.status} - ${body.substring(0, 300)}`);
-  }
-
-  const reportsJson = await reportsResp.json();
-  console.log('[Admin] Cloud Billing reports response keys:', Object.keys(reportsJson));
-
-  const toUsd = (value) => {
-    if (value === null || value === undefined) return null;
-    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-    if (typeof value === 'string') {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : null;
-    }
-    if (typeof value === 'object') {
-      if (value.amount !== undefined) return toUsd(value.amount);
-      if (value.value !== undefined) return toUsd(value.value);
-      if (value.doubleValue !== undefined) return toUsd(value.doubleValue);
-      if (value.units !== undefined || value.nanos !== undefined) {
-        const units = Number(value.units || 0);
-        const nanos = Number(value.nanos || 0);
-        const total = units + (nanos / 1e9);
-        return Number.isFinite(total) ? total : null;
-      }
-      if (value.currencyAmount !== undefined) return toUsd(value.currencyAmount);
-    }
-    return null;
-  };
-
-  const getServiceName = (obj) => {
-    if (!obj || typeof obj !== 'object') return '';
-    const explicit =
-      obj.serviceDisplayName ||
-      obj.serviceName ||
-      obj.service ||
-      obj.displayName ||
-      obj.cloudServiceId ||
-      '';
-    if (explicit && typeof explicit === 'string') return explicit;
-
-    if (Array.isArray(obj.dimensionValues)) {
-      const namedService = obj.dimensionValues.find((d) => {
-        const key = String(d?.dimension || d?.name || d?.key || '').toLowerCase();
-        return key.includes('service');
-      });
-      if (namedService) {
-        const v = namedService.value || namedService.stringValue || namedService.displayName;
-        if (typeof v === 'string' && v.trim()) return v.trim();
-      }
-      const firstString = obj.dimensionValues
-        .map((d) => d?.value || d?.stringValue || d?.displayName)
-        .find((v) => typeof v === 'string' && v.trim());
-      if (firstString) return firstString.trim();
-    }
-
-    if (Array.isArray(obj.cells) && obj.cells.length) {
-      const firstStringCell = obj.cells
-        .map((c) => c?.value || c?.stringValue || c?.displayName || c?.text)
-        .find((v) => typeof v === 'string' && v.trim());
-      if (firstStringCell) return firstStringCell.trim();
-    }
-
-    return '';
-  };
-
-  const getCostValue = (obj) => {
-    if (!obj || typeof obj !== 'object') return null;
-    const candidates = [
-      obj.cost,
-      obj.totalCost,
-      obj.aggregatedCost,
-      obj.totalCostAmount,
-      obj.costAmount,
-      obj.amount,
-      obj.metricValue,
-      obj.value
-    ];
-    for (const candidate of candidates) {
-      const parsed = toUsd(candidate);
-      if (parsed !== null) return parsed;
-    }
-
-    if (Array.isArray(obj.metricValues)) {
-      for (const metricValue of obj.metricValues) {
-        const parsed = toUsd(metricValue);
-        if (parsed !== null) return parsed;
-      }
-    }
-
-    if (Array.isArray(obj.cells)) {
-      for (const cell of obj.cells) {
-        const parsed = toUsd(cell);
-        if (parsed !== null) return parsed;
-      }
-    }
-
-    return null;
-  };
-
-  const serviceTotals = new Map();
-  const totalFallbacks = [];
-
-  const addServiceCost = (serviceName, amount) => {
-    if (!serviceName || !Number.isFinite(amount) || amount <= 0) return;
-    const current = serviceTotals.get(serviceName) || 0;
-    serviceTotals.set(serviceName, current + amount);
-  };
-
-  const walk = (node) => {
-    if (node === null || node === undefined) return;
-    if (Array.isArray(node)) {
-      for (const entry of node) walk(entry);
-      return;
-    }
-    if (typeof node !== 'object') return;
-
-    const serviceName = getServiceName(node);
-    const costValue = getCostValue(node);
-    if (serviceName && costValue !== null) {
-      addServiceCost(serviceName, costValue);
-    } else if (!serviceName && costValue !== null) {
-      totalFallbacks.push(costValue);
-    }
-
-    for (const [key, value] of Object.entries(node)) {
-      if (value && typeof value === 'object') {
-        walk(value);
-      } else if (typeof value !== 'object') {
-        const keyLower = key.toLowerCase();
-        if ((keyLower.includes('total') || keyLower.includes('cost')) && value !== null && value !== undefined) {
-          const parsed = toUsd(value);
-          if (parsed !== null) totalFallbacks.push(parsed);
-        }
-      }
-    }
-  };
-
-  walk(reportsJson);
-
-  const services = Array.from(serviceTotals.entries())
-    .map(([service, costUsd]) => ({ service, costUsd }))
-    .sort((a, b) => b.costUsd - a.costUsd);
-
-  let totalUsd = services.reduce((sum, entry) => sum + entry.costUsd, 0);
-  if ((!Number.isFinite(totalUsd) || totalUsd <= 0) && totalFallbacks.length) {
-    const bestTotal = Math.max(...totalFallbacks.filter((v) => Number.isFinite(v) && v > 0));
-    if (Number.isFinite(bestTotal) && bestTotal > 0) {
-      totalUsd = bestTotal;
-    }
-  }
-
-  if (!services.length && !totalUsd) {
-    console.log('[Admin] Cloud Billing reports raw JSON (unparsed):', JSON.stringify(reportsJson).substring(0, 1500));
-  }
-
-  return { services, totalUsd: Number.isFinite(totalUsd) && totalUsd > 0 ? totalUsd : null, accountId, raw: reportsJson };
-}
-
-/**
- * GET /api/admin/firestore-metrics - Pull Firestore usage + billing signals from GCP Monitoring
- * Query: ?hours=36 (default 36, min 6, max 168)
- */
-app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (req, res) => {
-  const warnings = [];
-  try {
-    if (!googleApis) {
-      return res.status(503).json({ errno: 503, error: 'googleapis dependency not available on server' });
-    }
-
-    const projectId = getRuntimeProjectId();
-    if (!projectId) {
-      return res.status(500).json({ errno: 500, error: 'Unable to resolve GCP project id' });
-    }
-
-    const hoursRaw = Number(req.query?.hours);
-    const hours = Number.isFinite(hoursRaw) ? Math.max(6, Math.min(168, Math.floor(hoursRaw))) : 36;
-
-    const now = new Date();
-    const start = new Date(now.getTime() - (hours * 60 * 60 * 1000));
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
-
-    const auth = new googleApis.auth.GoogleAuth({
-      scopes: ['https://www.googleapis.com/auth/monitoring.read']
-    });
-    const monitoring = googleApis.monitoring({ version: 'v3', auth });
-
-    const metricFilters = {
-      reads: 'metric.type="firestore.googleapis.com/document/read_count"',
-      writes: 'metric.type="firestore.googleapis.com/document/write_count"',
-      deletes: 'metric.type="firestore.googleapis.com/document/delete_count"',
-      storageCandidates: [
-        'metric.type="firestore.googleapis.com/storage/bytes_used"',
-        'metric.type="firestore.googleapis.com/database/storage/total_bytes"',
-        'metric.type="firestore.googleapis.com/storage/total_bytes"'
-      ],
-      billingCostCandidates: [
-        'metric.type="billing.googleapis.com/billing/account/total_cost"',
-        'metric.type="billing.googleapis.com/billing_account/cost"',
-        'metric.type="billing.googleapis.com/billing/account/cost"'
-      ]
-    };
-
-    const loadMetricSeriesSafe = async ({
-      label,
-      filters,
-      startTime,
-      endTime,
-      aligner,
-      alignmentPeriod
-    }) => {
-      const filterList = Array.isArray(filters) ? filters : [filters];
-      for (const filter of filterList) {
-        try {
-          const series = await listMonitoringTimeSeries({
-            monitoring,
-            projectId,
-            filter,
-            startTime,
-            endTime,
-            aligner,
-            alignmentPeriod
-          });
-          return series;
-        } catch (error) {
-          const msg = String(error?.message || error || 'unknown error');
-          const unavailable = msg.includes('Cannot find metric(s) that match type') || msg.includes('not found');
-          if (!unavailable) {
-            warnings.push(`${label} metric query failed: ${normalizeMetricErrorMessage(error)}`);
-            return [];
-          }
-        }
-      }
-      warnings.push(`${label} metric unavailable for this project/region`);
-      return [];
-    };
-
-    const [readsSeries, writesSeries, deletesSeries, readsMtdSeries, writesMtdSeries, deletesMtdSeries, storageSeries] = await Promise.all([
-      loadMetricSeriesSafe({
-        label: 'Firestore reads',
-        filters: metricFilters.reads,
-        startTime: start,
-        endTime: now,
-        aligner: 'ALIGN_DELTA',
-        alignmentPeriod: '3600s'
-      }),
-      loadMetricSeriesSafe({
-        label: 'Firestore writes',
-        filters: metricFilters.writes,
-        startTime: start,
-        endTime: now,
-        aligner: 'ALIGN_DELTA',
-        alignmentPeriod: '3600s'
-      }),
-      loadMetricSeriesSafe({
-        label: 'Firestore deletes',
-        filters: metricFilters.deletes,
-        startTime: start,
-        endTime: now,
-        aligner: 'ALIGN_DELTA',
-        alignmentPeriod: '3600s'
-      }),
-      loadMetricSeriesSafe({
-        label: 'Firestore reads (MTD)',
-        filters: metricFilters.reads,
-        startTime: monthStart,
-        endTime: now,
-        aligner: 'ALIGN_DELTA',
-        alignmentPeriod: '86400s'
-      }),
-      loadMetricSeriesSafe({
-        label: 'Firestore writes (MTD)',
-        filters: metricFilters.writes,
-        startTime: monthStart,
-        endTime: now,
-        aligner: 'ALIGN_DELTA',
-        alignmentPeriod: '86400s'
-      }),
-      loadMetricSeriesSafe({
-        label: 'Firestore deletes (MTD)',
-        filters: metricFilters.deletes,
-        startTime: monthStart,
-        endTime: now,
-        aligner: 'ALIGN_DELTA',
-        alignmentPeriod: '86400s'
-      }),
-      loadMetricSeriesSafe({
-        label: 'Firestore storage',
-        filters: metricFilters.storageCandidates,
-        startTime: start,
-        endTime: now,
-        aligner: 'ALIGN_MEAN',
-        alignmentPeriod: '3600s'
-      })
-    ]);
-
-    // Fetch real billing cost per service from Cloud Billing API
-    let billingData = null;
-    let usedMonitoringBillingFallback = false;
-    try {
-      billingData = await fetchCloudBillingCost(projectId);
-      console.log(`[Admin] Cloud Billing cost fetched: $${billingData.totalUsd.toFixed(2)} across ${billingData.services.length} services`);
-    } catch (billingErr) {
-      if (billingErr.isBillingIamError) {
-        warnings.push(billingErr.message);
-      } else if (billingErr.isBillingReportsUnavailable) {
-        // Fallback 1: Cloud Monitoring billing metrics
-        const billingMtdSeries = await loadMetricSeriesSafe({
-          label: 'Billing cost (Monitoring fallback)',
-          filters: metricFilters.billingCostCandidates,
-          startTime: monthStart,
-          endTime: now,
-          aligner: 'ALIGN_SUM',
-          alignmentPeriod: '86400s'
-        });
-
-        const fallbackTotal = billingMtdSeries.length ? sumSeriesValues(billingMtdSeries) : null;
-        if (Number.isFinite(fallbackTotal) && fallbackTotal > 0) {
-          billingData = {
-            services: null,
-            totalUsd: fallbackTotal,
-            accountId: null,
-            raw: null
-          };
-          usedMonitoringBillingFallback = true;
-          warnings.push('Billing service breakdown unavailable; using Monitoring total-cost fallback.');
-        } else {
-          // Fallback 2: estimate from Firestore read/write/delete usage counts we already fetched
-          const readsMtdVal   = Math.round(sumSeriesValues(readsMtdSeries));
-          const writesMtdVal  = Math.round(sumSeriesValues(writesMtdSeries));
-          const deletesMtdVal = Math.round(sumSeriesValues(deletesMtdSeries));
-          const estimate = estimateFirestoreCostFromUsage(readsMtdVal, writesMtdVal, deletesMtdVal, now);
-          billingData = {
-            services: estimate.services,
-            totalUsd: estimate.totalUsd,
-            accountId: null,
-            raw: null,
-            isEstimate: true
-          };
-          warnings.push(
-            'Est. MTD cost calculated from Firestore read/write/delete counts × GCP pricing ' +
-            '($0.06/100K reads, $0.18/100K writes, $0.02/100K deletes, minus daily free tier). ' +
-            'Does not include Cloud Functions, Auth, storage, or egress costs.'
-          );
-        }
-      } else {
-        warnings.push(`Billing cost unavailable: ${normalizeMetricErrorMessage(billingErr)}`);
-        console.warn('[Admin] fetchCloudBillingCost error:', billingErr.message);
-      }
-    }
-
-    const trendMap = new Map();
-    for (const point of readsSeries) {
-      const existing = trendMap.get(point.timestamp) || { timestamp: point.timestamp, reads: 0, writes: 0, deletes: 0 };
-      existing.reads = Number(point.value || 0);
-      trendMap.set(point.timestamp, existing);
-    }
-    for (const point of writesSeries) {
-      const existing = trendMap.get(point.timestamp) || { timestamp: point.timestamp, reads: 0, writes: 0, deletes: 0 };
-      existing.writes = Number(point.value || 0);
-      trendMap.set(point.timestamp, existing);
-    }
-    for (const point of deletesSeries) {
-      const existing = trendMap.get(point.timestamp) || { timestamp: point.timestamp, reads: 0, writes: 0, deletes: 0 };
-      existing.deletes = Number(point.value || 0);
-      trendMap.set(point.timestamp, existing);
-    }
-
-    const trend = Array.from(trendMap.values())
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-    const latestStorageBytes = storageSeries.length
-      ? Number(storageSeries[storageSeries.length - 1].value || 0)
-      : null;
-
-    res.json({
-      errno: 0,
-      result: {
-        source: (() => {
-          if (!billingData) return 'gcp-monitoring';
-          if (usedMonitoringBillingFallback) return 'gcp-monitoring+monitoring-billing-fallback';
-          if (billingData.isEstimate) return 'gcp-monitoring+usage-estimate';
-          return 'gcp-monitoring+cloud-billing';
-        })(),
-        projectId,
-        updatedAt: now.toISOString(),
-        windowHours: hours,
-        firestore: {
-          readsMtd: Math.round(sumSeriesValues(readsMtdSeries)),
-          writesMtd: Math.round(sumSeriesValues(writesMtdSeries)),
-          deletesMtd: Math.round(sumSeriesValues(deletesMtdSeries)),
-          storageGb: Number.isFinite(latestStorageBytes) ? (latestStorageBytes / (1024 * 1024 * 1024)) : null
-        },
-        billing: {
-          estimatedMtdCostUsd: billingData ? billingData.totalUsd : null,
-          services: billingData ? billingData.services : null,
-          billingAccountId: billingData ? billingData.accountId : null,
-          isEstimate: billingData ? (billingData.isEstimate === true) : false
-        },
-        trend,
-        warnings
-      }
-    });
-  } catch (error) {
-    console.error('[Admin] Error loading Firestore metrics:', error);
-    res.status(500).json({ errno: 500, error: error.message || String(error), result: { warnings } });
-  }
-});
-
-/**
- * GET /api/admin/users - List all registered users with basic info
- */
-app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => {
-  try {
-    const usersSnap = await db.collection('users').get();
-    const profileByUid = new Map();
-    usersSnap.docs.forEach((doc) => {
-      profileByUid.set(doc.id, doc.data() || {});
-    });
-
-    // Include users that authenticated but never completed onboarding/profile init.
-    // Those users exist in Firebase Auth but may be missing users/{uid} docs.
-    const authByUid = new Map();
-    try {
-      let pageToken;
-      do {
-        const page = await admin.auth().listUsers(1000, pageToken);
-        (page.users || []).forEach((userRecord) => {
-          authByUid.set(userRecord.uid, userRecord);
-        });
-        pageToken = page.pageToken;
-      } while (pageToken);
-    } catch (authListErr) {
-      console.warn('[Admin] listUsers failed; falling back to Firestore-only users:', authListErr.message || authListErr);
-    }
-
-    const allUids = new Set([...profileByUid.keys(), ...authByUid.keys()]);
-
-    const users = await Promise.all(Array.from(allUids).map(async (uid) => {
-      const data = profileByUid.get(uid) || {};
-      const authUser = authByUid.get(uid) || null;
-      const authMetadata = authUser && authUser.metadata ? authUser.metadata : null;
-
-      let rulesCount = 0;
-      let configMain = null;
-      try {
-        const [rulesSnap, configDoc] = await Promise.all([
-          db.collection('users').doc(uid).collection('rules').get(),
-          db.collection('users').doc(uid).collection('config').doc('main').get()
-        ]);
-        rulesCount = rulesSnap.size;
-        configMain = configDoc.exists ? (configDoc.data() || {}) : null;
-      } catch (e) {
-        // Ignore per-user failures and keep endpoint resilient
-      }
-
-      // Joined date: prefer Firebase Auth creation time (source of truth),
-      // then fall back to Firestore createdAt for backward compatibility.
-      const joinedAt = (authMetadata && authMetadata.creationTime) ? authMetadata.creationTime : (data.createdAt || null);
-      const email = data.email || (authUser && authUser.email ? authUser.email : '');
-      const emailLc = String(email || '').toLowerCase();
-      const isSeedAdmin = emailLc === SEED_ADMIN_EMAIL;
-
-      const hasDeviceSn = !!configMain?.deviceSn;
-      const hasFoxessToken = !!configMain?.foxessToken;
-      const hasAmberApiKey = !!configMain?.amberApiKey;
-      const configured = !!(configMain?.setupComplete === true || (hasDeviceSn && hasFoxessToken));
-
-      return {
-        uid,
-        email,
-        role: data.role || (isSeedAdmin ? 'admin' : 'user'),
-        configured,
-        hasDeviceSn,
-        hasFoxessToken,
-        hasAmberApiKey,
-        inverterCapacityW: Number.isFinite(Number(configMain?.inverterCapacityW)) ? Number(configMain.inverterCapacityW) : null,
-        batteryCapacityKWh: Number.isFinite(Number(configMain?.batteryCapacityKWh)) ? Number(configMain.batteryCapacityKWh) : null,
-        automationEnabled: !!data.automationEnabled,
-        createdAt: data.createdAt || null,
-        joinedAt,
-        lastSignedInAt: (authMetadata && authMetadata.lastSignInTime) ? authMetadata.lastSignInTime : null,
-        rulesCount,
-        profileInitialized: profileByUid.has(uid),
-        lastUpdated: data.lastUpdated || null
-      };
-    }));
-
-    res.json({ errno: 0, result: { users } });
-  } catch (error) {
-    console.error('[Admin] Error listing users:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-/**
- * GET /api/admin/platform-stats - Compact platform KPIs + trend data
- * Query: ?days=90 (default 90, min 7, max 365)
- */
-app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req, res) => {
-  try {
-    const daysRaw = Number(req.query?.days);
-    const days = Number.isFinite(daysRaw) ? Math.max(7, Math.min(365, Math.floor(daysRaw))) : 90;
-
-    const toMs = (value) => {
-      if (!value) return null;
-      if (typeof value === 'number') return value;
-      if (typeof value === 'string') {
-        const parsed = Date.parse(value);
-        return Number.isNaN(parsed) ? null : parsed;
-      }
-      if (typeof value.toDate === 'function') {
-        const d = value.toDate();
-        return d && d.getTime ? d.getTime() : null;
-      }
-      if (Number.isFinite(value._seconds)) return value._seconds * 1000;
-      if (Number.isFinite(value.seconds)) return value.seconds * 1000;
-      return null;
-    };
-
-    // Build date window in UTC date keys (YYYY-MM-DD)
-    const now = new Date();
-    const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const startUtc = todayUtc - (days - 1) * 24 * 60 * 60 * 1000;
-
-    const dateBuckets = [];
-    for (let i = 0; i < days; i++) {
-      const dayMs = startUtc + i * 24 * 60 * 60 * 1000;
-      const date = new Date(dayMs);
-      const key = date.toISOString().slice(0, 10);
-      dateBuckets.push({ key, dayStartMs: dayMs, dayEndMs: dayMs + (24 * 60 * 60 * 1000) - 1 });
-    }
-
-    // Load Firestore user profiles
-    const usersSnap = await db.collection('users').get();
-    const profileByUid = new Map();
-    usersSnap.docs.forEach((doc) => {
-      profileByUid.set(doc.id, doc.data() || {});
-    });
-
-    // Load Firebase Auth users (captures onboarding-only users)
-    const authByUid = new Map();
-    try {
-      let pageToken;
-      do {
-        const page = await admin.auth().listUsers(1000, pageToken);
-        (page.users || []).forEach((userRecord) => authByUid.set(userRecord.uid, userRecord));
-        pageToken = page.pageToken;
-      } while (pageToken);
-    } catch (authErr) {
-      console.warn('[Admin] platform-stats listUsers failed:', authErr.message || authErr);
-    }
-
-    const allUids = new Set([...profileByUid.keys(), ...authByUid.keys()]);
-
-    const users = await Promise.all(Array.from(allUids).map(async (uid) => {
-      const profile = profileByUid.get(uid) || {};
-      const authUser = authByUid.get(uid) || null;
-      const authMetadata = authUser && authUser.metadata ? authUser.metadata : null;
-
-      const email = profile.email || (authUser?.email || '');
-      const emailLc = String(email || '').toLowerCase();
-      const role = profile.role || (emailLc === SEED_ADMIN_EMAIL ? 'admin' : 'user');
-
-      const joinedAtMs = toMs(authMetadata?.creationTime) || toMs(profile.createdAt);
-      const lastSignInMs = toMs(authMetadata?.lastSignInTime) || null;
-
-      let configured = false;
-      let configuredAtMs = null;
-      let firstRuleAtMs = null;
-      let hasRules = false;
-      if (profileByUid.has(uid)) {
-        try {
-          const cfgDoc = await db.collection('users').doc(uid).collection('config').doc('main').get();
-          if (cfgDoc.exists) {
-            const cfg = cfgDoc.data() || {};
-            configured = !!(cfg.setupComplete || cfg.deviceSn || cfg.foxessToken || cfg.amberApiKey);
-            if (configured) {
-              configuredAtMs =
-                toMs(cfg.setupCompletedAt) ||
-                toMs(cfg.firstConfiguredAt) ||
-                toMs(cfg.updatedAt) ||
-                toMs(cfg.createdAt) ||
-                toMs(profile.lastUpdated) ||
-                joinedAtMs;
-            }
-          }
-        } catch (cfgErr) {
-          // Keep endpoint resilient for per-user errors
-        }
-
-        try {
-          let firstRuleSnap = await db.collection('users').doc(uid)
-            .collection('rules')
-            .orderBy('createdAt', 'asc')
-            .limit(1)
-            .get();
-
-          // Fallback for legacy rules missing createdAt
-          if (firstRuleSnap.empty) {
-            firstRuleSnap = await db.collection('users').doc(uid)
-              .collection('rules')
-              .limit(1)
-              .get();
-          }
-
-          if (!firstRuleSnap.empty) {
-            hasRules = true;
-            const firstRule = firstRuleSnap.docs[0].data() || {};
-            firstRuleAtMs =
-              toMs(firstRule.createdAt) ||
-              toMs(firstRule.updatedAt) ||
-              configuredAtMs ||
-              toMs(profile.lastUpdated) ||
-              joinedAtMs;
-          }
-        } catch (ruleErr) {
-          // Keep endpoint resilient for per-user errors
-        }
-      }
-
-      return {
-        uid,
-        role,
-        automationEnabled: !!profile.automationEnabled,
-        joinedAtMs,
-        lastSignInMs,
-        configured,
-        configuredAtMs,
-        hasRules,
-        firstRuleAtMs
-      };
-    }));
-
-    const joinedSeries = users
-      .map((u) => u.joinedAtMs)
-      .filter((ms) => Number.isFinite(ms))
-      .sort((a, b) => a - b);
-
-    const configuredSeries = users
-      .map((u) => u.configuredAtMs)
-      .filter((ms) => Number.isFinite(ms))
-      .sort((a, b) => a - b);
-
-    const rulesSeries = users
-      .map((u) => u.firstRuleAtMs)
-      .filter((ms) => Number.isFinite(ms))
-      .sort((a, b) => a - b);
-
-    let joinedIdx = 0;
-    let configuredIdx = 0;
-    let rulesIdx = 0;
-    let totalUsers = 0;
-    let configuredUsers = 0;
-    let usersWithRules = 0;
-
-    const trend = dateBuckets.map((bucket) => {
-      while (joinedIdx < joinedSeries.length && joinedSeries[joinedIdx] <= bucket.dayEndMs) {
-        totalUsers += 1;
-        joinedIdx += 1;
-      }
-      while (configuredIdx < configuredSeries.length && configuredSeries[configuredIdx] <= bucket.dayEndMs) {
-        configuredUsers += 1;
-        configuredIdx += 1;
-      }
-      while (rulesIdx < rulesSeries.length && rulesSeries[rulesIdx] <= bucket.dayEndMs) {
-        usersWithRules += 1;
-        rulesIdx += 1;
-      }
-      return {
-        date: bucket.key,
-        totalUsers,
-        configuredUsers,
-        usersWithRules
-      };
-    });
-
-    // MAU = users who signed in at least once in the current calendar month (UTC)
-    const monthStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
-    const summary = {
-      totalUsers: users.length,
-      configuredUsers: users.filter((u) => u.configured).length,
-      usersWithRules: users.filter((u) => u.hasRules).length,
-      admins: users.filter((u) => u.role === 'admin').length,
-      mau: users.filter((u) => u.lastSignInMs !== null && u.lastSignInMs >= monthStartMs).length,
-      automationActive: users.filter((u) => u.automationEnabled).length
-    };
-
-    res.json({ errno: 0, result: { summary, trend, days } });
-  } catch (error) {
-    console.error('[Admin] Error loading platform stats:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-/**
- * POST /api/admin/users/:uid/role - Update a user's role
- * Body: { role: 'admin' | 'user' }
- */
-app.post('/api/admin/users/:uid/role', authenticateUser, requireAdmin, async (req, res) => {
-  try {
-    const { uid } = req.params;
-    const { role } = req.body;
-    if (!uid) {
-      return res.status(400).json({ errno: 400, error: 'uid is required' });
-    }
-    if (!['admin', 'user'].includes(role)) {
-      return res.status(400).json({ errno: 400, error: 'Role must be "admin" or "user"' });
-    }
-    // Prevent removing your own admin role
-    if (uid === req.user.uid && role !== 'admin') {
-      return res.status(400).json({ errno: 400, error: 'Cannot remove your own admin role' });
-    }
-
-    let authUser;
-    try {
-      authUser = await admin.auth().getUser(uid);
-    } catch (authErr) {
-      if (authErr && authErr.code === 'auth/user-not-found') {
-        return res.status(404).json({ errno: 404, error: 'User not found' });
-      }
-      throw authErr;
-    }
-
-    const currentClaims = (authUser && authUser.customClaims && typeof authUser.customClaims === 'object')
-      ? authUser.customClaims
-      : {};
-    const updatedClaims = { ...currentClaims };
-    if (role === 'admin') {
-      updatedClaims.admin = true;
-    } else {
-      delete updatedClaims.admin;
-    }
-
-    await admin.auth().setCustomUserClaims(uid, updatedClaims);
-    try {
-      await db.collection('users').doc(uid).set({ role, lastUpdated: serverTimestamp() }, { merge: true });
-    } catch (firestoreErr) {
-      // Best-effort rollback: avoid leaving auth claims out of sync if Firestore update fails.
-      await admin.auth().setCustomUserClaims(uid, currentClaims).catch((rollbackErr) => {
-        console.error('[Admin] Failed to rollback custom claims after Firestore role update error:', rollbackErr);
-      });
-      throw firestoreErr;
-    }
-
-    res.json({ errno: 0, result: { uid, role, customClaimsUpdated: true } });
-  } catch (error) {
-    console.error('[Admin] Error setting role:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-/**
- * POST /api/admin/users/:uid/delete - Delete user account and all Firestore data
- * Body: { confirmText: 'DELETE' }
- */
-app.post('/api/admin/users/:uid/delete', authenticateUser, requireAdmin, async (req, res) => {
-  try {
-    const { uid } = req.params;
-    const confirmText = String(req.body?.confirmText || '').trim();
-
-    if (!uid) {
-      return res.status(400).json({ errno: 400, error: 'uid is required' });
-    }
-    if (confirmText !== 'DELETE') {
-      return res.status(400).json({ errno: 400, error: 'Confirmation text must be DELETE' });
-    }
-    if (uid === req.user.uid) {
-      return res.status(400).json({ errno: 400, error: 'Cannot delete your own admin account from this endpoint' });
-    }
-
-    let targetUser;
-    try {
-      targetUser = await admin.auth().getUser(uid);
-    } catch (e) {
-      return res.status(404).json({ errno: 404, error: 'User not found' });
-    }
-
-    await deleteUserDataTree(uid);
-
-    try {
-      await deleteCollectionDocs(db.collection('admin_audit').where('adminUid', '==', uid));
-      await deleteCollectionDocs(db.collection('admin_audit').where('targetUid', '==', uid));
-    } catch (auditError) {
-      console.warn('[AdminDelete] Failed to clean admin_audit references:', auditError.message || auditError);
-    }
-
-    try {
-      await admin.auth().deleteUser(uid);
-    } catch (authErr) {
-      if (!authErr || authErr.code !== 'auth/user-not-found') {
-        throw authErr;
-      }
-    }
-
-    await db.collection('admin_audit').add({
-      action: 'delete_user',
-      adminUid: req.user.uid,
-      adminEmail: req.user.email,
-      targetUid: uid,
-      targetEmail: targetUser.email || '',
-      timestamp: serverTimestamp()
-    });
-
-    res.json({ errno: 0, result: { deleted: true, uid, email: targetUser.email || '' } });
-  } catch (error) {
-    console.error('[Admin] Error deleting user:', error);
-    res.status(500).json({ errno: 500, error: error.message || String(error) });
-  }
-});
-
-/**
- * GET /api/admin/users/:uid/stats - Get utilization stats for a specific user
- * Returns last 30 days of per-user API metrics, automation state, rule count, and config summary
- */
-app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (req, res) => {
-  try {
-    const { uid } = req.params;
-    
-    // 1. Gather last 30 days of per-user API metrics
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const metricsSnap = await db.collection('users').doc(uid)
-      .collection('metrics').orderBy('updatedAt', 'desc').limit(30).get();
-    const metrics = {};
-    metricsSnap.forEach(doc => {
-      metrics[doc.id] = { foxess: doc.data().foxess || 0, amber: doc.data().amber || 0, weather: doc.data().weather || 0 };
-    });
-
-    // 2. Automation state
-    let automationState = null;
-    try {
-      const stateDoc = await db.collection('users').doc(uid).collection('automation').doc('state').get();
-      automationState = stateDoc.exists ? stateDoc.data() : null;
-    } catch (e) { /* ignore */ }
-
-    // 3. Rule count
-    let ruleCount = 0;
-    try {
-      const rulesSnap = await db.collection('users').doc(uid).collection('rules').get();
-      ruleCount = rulesSnap.size;
-    } catch (e) { /* ignore */ }
-
-    // 4. Config summary (no secrets)
-    let configSummary = {};
-    try {
-      const configDoc = await db.collection('users').doc(uid).collection('config').doc('main').get();
-      if (configDoc.exists) {
-        const c = configDoc.data();
-
-        const rawSystemTopology = c.systemTopology || c.topology || null;
-        let resolvedCoupling = normalizeCouplingValue(
-          rawSystemTopology?.coupling ||
-          c.coupling ||
-          c.systemCoupling ||
-          c.topologyCoupling
-        );
-
-        // Legacy compatibility: older payloads may only have boolean hints.
-        const legacyAcHint =
-          (typeof rawSystemTopology?.isLikelyAcCoupled === 'boolean')
-            ? rawSystemTopology.isLikelyAcCoupled
-            : ((typeof c.isLikelyAcCoupled === 'boolean') ? c.isLikelyAcCoupled : null);
-
-        if (resolvedCoupling === 'unknown' && legacyAcHint !== null) {
-          resolvedCoupling = legacyAcHint ? 'ac' : 'dc';
-        }
-
-        const normalizedSystemTopology = {
-          ...(rawSystemTopology || {}),
-          coupling: resolvedCoupling,
-          source: rawSystemTopology?.source || (legacyAcHint !== null ? 'legacy' : 'unknown')
-        };
-
-        configSummary = {
-          configured: !!(c.setupComplete === true || (c.deviceSn && c.foxessToken)),
-          hasDeviceSn: !!c.deviceSn,
-          hasFoxessToken: !!c.foxessToken,
-          hasAmberApiKey: !!c.amberApiKey,
-          inverterCapacityW: Number.isFinite(Number(c.inverterCapacityW)) ? Number(c.inverterCapacityW) : null,
-          batteryCapacityKWh: Number.isFinite(Number(c.batteryCapacityKWh)) ? Number(c.batteryCapacityKWh) : null,
-          location: c.location || null,
-          timezone: c.timezone || null,
-          systemTopology: normalizedSystemTopology
-        };
-      }
-    } catch (e) { /* ignore */ }
-
-    res.json({ errno: 0, result: { uid, metrics, automationState, ruleCount, configSummary } });
-  } catch (error) {
-    console.error('[Admin] Error getting user stats:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-/**
- * POST /api/admin/impersonate - Generate a custom token for the target user
- * Body: { uid: 'target-user-uid' }
- * Returns a custom Firebase Auth token the admin can use to sign in as that user.
- */
-app.post('/api/admin/impersonate', authenticateUser, requireAdmin, async (req, res) => {
-  try {
-    const { uid } = req.body;
-    if (!uid) {
-      return res.status(400).json({ errno: 400, error: 'uid is required' });
-    }
-    // Verify the target user exists
-    let targetUser;
-    try {
-      targetUser = await admin.auth().getUser(uid);
-    } catch (e) {
-      return res.status(404).json({ errno: 404, error: 'User not found' });
-    }
-    // Strict mode: only custom-token impersonation is allowed to ensure
-    // the UI/API experience matches the target user exactly.
-    let customToken = null;
-    const mode = 'customToken';
-    try {
-      customToken = await admin.auth().createCustomToken(uid, { impersonatedBy: req.user.uid });
-    } catch (tokenErr) {
-      const msg = tokenErr && tokenErr.message ? tokenErr.message : String(tokenErr);
-      const isSignBlobDenied = msg.includes('iam.serviceAccounts.signBlob') || msg.includes('Permission iam.serviceAccounts.signBlob denied');
-      if (isSignBlobDenied) {
-        return res.status(503).json({
-          errno: 503,
-          error: 'Impersonation is unavailable until IAM token signing is enabled. Grant roles/iam.serviceAccountTokenCreator to the Cloud Functions service account on the runtime service account.'
-        });
-      }
-      throw tokenErr;
-    }
-    
-    // Audit log
-    await db.collection('admin_audit').add({
-      action: 'impersonate',
-      mode,
-      adminUid: req.user.uid,
-      adminEmail: req.user.email,
-      targetUid: uid,
-      targetEmail: targetUser.email || '',
-      timestamp: serverTimestamp()
-    });
-
-    return res.json({
-      errno: 0,
-      result: {
-        mode,
-        customToken,
-        targetUid: uid,
-        targetEmail: targetUser.email || ''
-      }
-    });
-  } catch (error) {
-    console.error('[Admin] Error impersonating user:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-/**
- * GET /api/admin/check - Check if the current user is an admin
- * Used by the frontend to decide whether to show the admin nav link
- */
-app.get('/api/admin/check', authenticateUser, async (req, res) => {
-  const adminStatus = await isAdmin(req);
-  res.json({ errno: 0, result: { isAdmin: adminStatus } });
+const getRuntimeProjectIdForAdmin = () => getRuntimeProjectId(admin);
+const fetchCloudBillingCostForAdmin = (projectId) => fetchCloudBillingCost(projectId, { googleApis });
+
+registerAdminRoutes(app, {
+  admin,
+  authenticateUser,
+  db,
+  deleteCollectionDocs,
+  deleteUserDataTree,
+  estimateFirestoreCostFromUsage,
+  fetchCloudBillingCost: fetchCloudBillingCostForAdmin,
+  getRuntimeProjectId: getRuntimeProjectIdForAdmin,
+  googleApis,
+  isAdmin,
+  listMonitoringTimeSeries,
+  normalizeCouplingValue,
+  normalizeMetricErrorMessage,
+  requireAdmin,
+  SEED_ADMIN_EMAIL,
+  serverTimestamp,
+  sumSeriesValues
 });
 
 // Apply auth middleware to remaining API routes
@@ -1752,196 +563,6 @@ registerAuthLifecycleRoutes(app, {
 // All Amber-related functions have been extracted to api/amber.js
 // Functions are initialized at module load and reinit after dependencies are available (line ~4178)
 // Access via amberAPI.callAmberAPI(), amberAPI.getCachedAmberSites(), etc.
-
-/**
- * Call Weather API (Open-Meteo)
- * Fetches extended forecast with solar radiation, cloud cover, and other useful fields
- * Max forecast_days is 16 for Open-Meteo free tier
- */
-async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
-  // Track API call if userId provided
-  if (userId) {
-    incrementApiCount(userId, 'weather').catch(() => {});
-  }
-  
-  // Clamp days to Open-Meteo max of 16
-  const forecastDays = Math.min(Math.max(1, days), 16);
-  
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000); // Increased timeout for larger payload
-    
-    // Geocode place - request 5 results to handle ambiguous names across countries
-    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=5&language=en`;
-    const geoResp = await fetch(geoUrl, { signal: controller.signal });
-    const geoJson = await geoResp.json();
-    
-    let latitude, longitude, resolvedName, country, fallback = false, fallbackReason = '', fallbackResolvedName = '';
-    if (geoJson?.results?.length > 0) {
-      // Prioritize Australian locations to handle cases like "Narara" (AU vs Fiji)
-      const auResult = geoJson.results.find(r => r.country_code === 'AU');
-      const selectedResult = auResult || geoJson.results[0];
-      
-      latitude = selectedResult.latitude;
-      longitude = selectedResult.longitude;
-      resolvedName = selectedResult.name;
-      country = selectedResult.country;
-    } else {
-      // Fallback to Sydney when geocoding returns no results
-      fallback = true;
-      fallbackReason = 'location_not_found';
-      fallbackResolvedName = 'Sydney NSW';
-      latitude = -33.9215;
-      longitude = 151.0390;
-      resolvedName = place;
-      country = 'AU';
-    }
-    
-    // Extended hourly variables including solar radiation and cloud cover
-    const hourlyVars = [
-      'temperature_2m',
-      'precipitation',
-      'precipitation_probability',
-      'weathercode',
-      'shortwave_radiation',      // Solar irradiance W/m² - key for PV production
-      'direct_radiation',         // Direct solar radiation W/m²
-      'diffuse_radiation',        // Diffuse solar radiation W/m²
-      'cloudcover',               // Total cloud cover %
-      'windspeed_10m',
-      'relativehumidity_2m',
-      'uv_index'
-    ].join(',');
-    
-    // Extended daily variables including sunrise/sunset
-    const dailyVars = [
-      'temperature_2m_max',
-      'temperature_2m_min',
-      'precipitation_sum',
-      'weathercode',
-      'shortwave_radiation_sum',  // Total daily solar radiation MJ/m²
-      'uv_index_max',
-      'sunrise',
-      'sunset',
-      'precipitation_probability_max'
-    ].join(',');
-    
-    // Get forecast with extended variables
-    const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=${hourlyVars}&daily=${dailyVars}&current_weather=true&temperature_unit=celsius&timezone=auto&forecast_days=${forecastDays}`;
-    const forecastResp = await fetch(forecastUrl, { signal: controller.signal });
-    const forecastJson = await forecastResp.json();
-    clearTimeout(timeout);
-    
-    // Extract timezone from Open-Meteo response (e.g., "America/New_York", "Europe/London", "Australia/Sydney")
-    const detectedTimezone = forecastJson.timezone || 'Australia/Sydney';
-    
-    return {
-      errno: 0,
-      result: {
-        source: 'open-meteo',
-        place: {
-          query: place,
-          resolvedName,
-          country,
-          latitude,
-          longitude,
-          timezone: detectedTimezone,
-          fallback,
-          fallbackReason,
-          fallbackResolvedName
-        },
-        current: forecastJson.current_weather || null,
-        hourly: forecastJson.hourly || null,
-        daily: forecastJson.daily || null,
-        raw: forecastJson,
-        forecastDays: forecastDays
-      }
-    };
-  } catch (error) {
-    return { errno: 500, error: error.message };
-  }
-}
-
-/**
- * Cache weather data in Firestore (per-user)
- * TTL: 30 minutes
- */
-async function getCachedWeatherData(userId, place = 'Sydney', days = 16, forceRefresh = false) {
-  const config = getConfig();
-  const ttlMs = config.automation.cacheTtl.weather; // 30 minutes
-  
-  try {
-    // Skip cache check if forceRefresh is true
-    if (!forceRefresh) {
-      const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('weather').get();
-      
-      if (cacheDoc.exists) {
-        const { data, timestamp, cachedDays, cachedPlace } = cacheDoc.data();
-        const ageMs = Date.now() - timestamp;
-        const cachedDayCount = data?.result?.daily?.time?.length || 0;
-        
-        // Compare places case-insensitively and handle undefined/null
-        const placesMatch = (cachedPlace || '').toLowerCase().trim() === (place || '').toLowerCase().trim();
-        
-        // Validate cache is still fresh AND has enough days AND is for the same place
-        // Use cache if it has >= requested days (e.g., cached 7 days can serve a request for 6 days)
-        // IMPORTANT: Force cache MISS if location changed - this allows timezone to update
-        if (!placesMatch) {
-          // Fall through to fetch fresh data
-        } else if (ageMs < ttlMs && cachedDays >= days && cachedDayCount >= days) {
-          return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
-        }
-      }
-    }
-    
-    // Fetch fresh data from Open-Meteo
-    const data = await callWeatherAPI(place, days, userId);
-    
-    // If weather fetch succeeded and returned a timezone, update user config with detected timezone
-    if (data?.errno === 0 && data?.result?.place?.timezone && userId) {
-      const detectedTimezone = data.result.place.timezone;
-      try {
-        await setUserConfig(userId, {
-          timezone: detectedTimezone
-        }, {
-          merge: true
-        });
-      } catch (tzErr) {
-        console.warn(`[Weather] Failed to update user timezone: ${tzErr.message}`);
-      }
-    }
-    
-    // Store in cache if successful
-    // NOTE: Only store the daily data and metadata, not full hourly (reduces Firestore document size)
-    if (data?.errno === 0) {
-      const cacheData = {
-        errno: data.errno,
-        result: {
-          source: data.result?.source,
-          place: data.result?.place,
-          current: data.result?.current,
-          daily: data.result?.daily,  // Include daily forecast
-          hourly: data.result?.hourly,  // Include hourly forecast
-          forecastDays: data.result?.forecastDays
-        }
-      };
-      await db.collection('users').doc(userId).collection('cache').doc('weather').set({
-        data: cacheData,
-        timestamp: Date.now(),
-        ttlMs,
-        cachedPlace: place,  // Store the place parameter exactly as received for comparison
-        cachedDays: days,  // Store requested days for cache validation
-        ttl: Math.floor(Date.now() / 1000) + Math.floor(ttlMs / 1000) // Firestore TTL in seconds
-      }, { merge: true }).catch(cacheErr => {
-        console.warn(`[Cache] Failed to store weather cache: ${cacheErr.message}`);
-      });
-    }
-    
-    return { ...data, __cacheHit: false, __cacheAgeMs: 0, __cacheTtlMs: ttlMs };
-  } catch (err) {
-    console.error(`[Cache] Error in getCachedWeatherData: ${err.message}`);
-    return { errno: 500, error: err.message };
-  }
-}
 
 /**
  * Validate timezone string is a valid IANA timezone
@@ -2196,7 +817,7 @@ async function cleanupExpiredQuickControl(userId, quickState) {
  *   - curtailment.enabled {boolean} - Is curtailment feature enabled?
  *   - curtailment.priceThreshold {number} - Price threshold in cents/kWh (range: -999 to +999)
  *     When feed-in price drops below this, curtailment activates
- *     Default: 0 (curtail when price ≤ 0, useful for avoiding negative pricing)
+ *     Default: 0 (curtail when price â‰¤ 0, useful for avoiding negative pricing)
  * @param {Object} amberData - Current Amber electricity price data with currentPrice in cents/kWh
  * @returns {Promise<Object>} Curtailment state and action taken
  */
@@ -2280,7 +901,7 @@ async function checkAndApplyCurtailment(userId, userConfig, amberData) {
     // Only take action if state has changed (avoid redundant API calls)
     if (shouldCurtail && !curtailmentState.active) {
       // Activate curtailment: set ExportLimit to 0
-      console.log(`[Curtailment] Activating (price ${result.currentPrice.toFixed(2)}¢ < ${result.priceThreshold}¢)`);
+      console.log(`[Curtailment] Activating (price ${result.currentPrice.toFixed(2)}Â¢ < ${result.priceThreshold}Â¢)`);
       
       if (!userConfig?.deviceSn) {
         result.error = 'No device SN configured';
@@ -2308,7 +929,7 @@ async function checkAndApplyCurtailment(userId, userConfig, amberData) {
 
     } else if (!shouldCurtail && curtailmentState.active) {
       // Deactivate curtailment: restore ExportLimit to 12000
-      console.log(`[Curtailment] Deactivating (price ${result.currentPrice.toFixed(2)}¢ >= ${result.priceThreshold}¢)`);
+      console.log(`[Curtailment] Deactivating (price ${result.currentPrice.toFixed(2)}Â¢ >= ${result.priceThreshold}Â¢)`);
       
       if (!userConfig?.deviceSn) {
         result.error = 'No device SN configured';
@@ -2653,55 +1274,6 @@ registerSchedulerMutationRoutes(app, {
   logger
 });
 
-// ==================== API METRICS (USER-SPECIFIC) ====================
-
-/**
- * Increment API call count for a user
- */
-// Helper: returns YYYY-MM-DD for specified timezone local date (handles DST)
-function getDateKey(date = new Date(), timezone) {
-  timezone = timezone || DEFAULT_TIMEZONE;
-  return date.toLocaleDateString('en-CA', { timeZone: timezone }); // YYYY-MM-DD
-}
-
-// Backward compatibility: getAusDateKey uses configured default timezone
-function getAusDateKey(date = new Date()) {
-  return getDateKey(date, DEFAULT_TIMEZONE);
-}
-
-async function incrementApiCount(userId, apiType) {
-  // NOTE: Metrics date keys are computed using DEFAULT_TIMEZONE. If the server's default timezone
-  // is changed, new metrics will be stored under different date keys. This is expected behavior.
-  // Historical metrics from previous timezone settings will not be included in new rollover.
-  const today = getAusDateKey(); // YYYY-MM-DD (DEFAULT_TIMEZONE)
-
-  // Only update per-user metrics when we have a valid userId
-  if (userId) {
-    logger.debug('Metrics', `Incrementing ${apiType} counter for user ${userId} on ${today}`);
-    const docRef = db.collection('users').doc(userId).collection('metrics').doc(today);
-    try {
-      await db.runTransaction(async (transaction) => {
-        const doc = await transaction.get(docRef);
-        const data = doc.exists ? doc.data() : { foxess: 0, amber: 0, weather: 0 };
-        data[apiType] = (data[apiType] || 0) + 1;
-        data.updatedAt = serverTimestamp();
-        transaction.set(docRef, data, { merge: true });
-        console.log(`[Metrics] ✓ Incremented ${apiType} to ${data[apiType]}`);
-      });
-    } catch (error) {
-      console.error('Error incrementing API count:', error);
-    }
-  }
-  
-  // Also maintain an aggregated global daily metric so the UI (and non-authenticated callers)
-  // can show platform-level API usage (mirrors backend `api_call_counts.json`).
-  try {
-    await incrementGlobalApiCount(apiType);
-  } catch (e) {
-    console.error('[Metrics] incrementGlobalApiCount error:', e && e.message ? e.message : e);
-  }
-}
-
 // ==================== REINITIALIZE API MODULES ====================
 // Now that all dependencies (logger, getConfig, incrementApiCount) are defined,
 // reinitialize the API modules with proper dependencies
@@ -2723,24 +1295,6 @@ Object.assign(authAPI, authModule.init({
   admin,
   logger
 }));
-
-/**
- * Increment the global daily counters (top-level `metrics` collection)
- * This keeps a platform-wide view of API usage similar to the backend file-based counters.
- */
-async function incrementGlobalApiCount(apiType) {
-  try {
-    const today = getAusDateKey(); // YYYY-MM-DD (Australia/Sydney)
-    const docRef = db.collection('metrics').doc(today);
-
-    await docRef.set({
-      [apiType]: admin.firestore.FieldValue.increment(1),
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-  } catch (error) {
-    console.error('[Metrics] Failed to increment global count:', error && error.message ? error.message : error);
-  }
-}
 
 
 
@@ -2789,7 +1343,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
   // Parse Amber prices
   const { feedInPrice, buyPrice } = getCurrentAmberPrices(cache.amber);
   
-  logger.debug('Automation', `Evaluating rule '${rule.name}' - Live data: SoC=${soc}%, BatTemp=${batTemp}°C, FeedIn=${feedInPrice?.toFixed(1)}¢, Buy=${buyPrice?.toFixed(1)}¢`);
+  logger.debug('Automation', `Evaluating rule '${rule.name}' - Live data: SoC=${soc}%, BatTemp=${batTemp}Â°C, FeedIn=${feedInPrice?.toFixed(1)}Â¢, Buy=${buyPrice?.toFixed(1)}Â¢`);
   
   // Check SoC condition (support both 'op' and 'operator' field names)
   if (conditions.soc?.enabled) {
@@ -3016,7 +1570,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
       const lookAheadValue = conditions.solarRadiation.lookAhead || 6;
       const lookAheadHours = lookAheadUnit === 'days' ? lookAheadValue * 24 : lookAheadValue;
       
-      const threshold = conditions.solarRadiation.value || 200; // W/m² default
+      const threshold = conditions.solarRadiation.value || 200; // W/mÂ² default
       const operator = conditions.solarRadiation.operator || '>';
       const checkType = conditions.solarRadiation.checkType || 'average';
       
@@ -3058,7 +1612,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           actual: (actualValue !== undefined && actualValue !== null) ? actualValue.toFixed(0) : '0', 
           operator,
           target: threshold,
-          unit: 'W/m²',
+          unit: 'W/mÂ²',
           lookAhead: lookAheadDisplay,
           checkType,
           hoursChecked: radiationValues.length,
@@ -3066,7 +1620,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           incomplete: hasIncompleteData
         });
         if (!met) {
-          logger.debug('Automation', `Rule '${rule.name}' - Solar radiation NOT met: ${checkType} ${actualValue?.toFixed(0)} W/m² ${operator} ${threshold} W/m²`);
+          logger.debug('Automation', `Rule '${rule.name}' - Solar radiation NOT met: ${checkType} ${actualValue?.toFixed(0)} W/mÂ² ${operator} ${threshold} W/mÂ²`);
         }
       } else {
         results.push({ condition: 'solarRadiation', met: false, reason: 'No radiation data for timeframe' });
@@ -3187,7 +1741,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
             else actualValue = radiationValues.reduce((a, b) => a + b, 0) / radiationValues.length;
             
             const met = compareValue(actualValue, operator, threshold);
-            results.push({ condition: 'weather', met, type: 'radiation', actual: actualValue?.toFixed(0), operator, target: threshold, unit: 'W/m²', legacy: true });
+            results.push({ condition: 'weather', met, type: 'radiation', actual: actualValue?.toFixed(0), operator, target: threshold, unit: 'W/mÂ²', legacy: true });
           } else {
             results.push({ condition: 'weather', met: false, reason: 'No radiation data' });
           }
@@ -3296,7 +1850,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
         const lastTime = new Date(forecasts[forecasts.length - 1].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
         console.log(`[ForecastPrice] Available data time range: ${firstTime} to ${lastTime}`);
         // Show first 5 prices to see what we're working with
-        const firstPrices = forecasts.slice(0, 5).map(f => `${new Date(f.startTime).toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Australia/Sydney'})}=${(priceType === 'feedIn' ? -f.perKwh : f.perKwh).toFixed(1)}¢`);
+        const firstPrices = forecasts.slice(0, 5).map(f => `${new Date(f.startTime).toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Australia/Sydney'})}=${(priceType === 'feedIn' ? -f.perKwh : f.perKwh).toFixed(1)}Â¢`);
         console.log(`[ForecastPrice] First 5 prices (all data): ${firstPrices.join(', ')}`);
       }
       if (relevantForecasts.length > 0) {
@@ -3332,7 +1886,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           actualValue = prices.reduce((a, b) => a + b, 0) / prices.length; // average
         }
         
-        console.log(`[ForecastPrice] Calculated ${checkType}: ${actualValue?.toFixed(1)}¢ (comparing ${conditions.forecastPrice.operator} ${conditions.forecastPrice.value}¢)`);
+        console.log(`[ForecastPrice] Calculated ${checkType}: ${actualValue?.toFixed(1)}Â¢ (comparing ${conditions.forecastPrice.operator} ${conditions.forecastPrice.value}Â¢)`);
 
         
         const operator = conditions.forecastPrice.operator;
@@ -3366,7 +1920,7 @@ async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfi
           incomplete: hasIncompleteData
         });
         if (!met) {
-          logger.debug('Automation', `Rule '${rule.name}' - Forecast ${priceType} condition NOT met: ${checkType} ${actualValue?.toFixed(1)}¢ ${operator} ${value}¢ (${lookAheadDisplay})`);
+          logger.debug('Automation', `Rule '${rule.name}' - Forecast ${priceType} condition NOT met: ${checkType} ${actualValue?.toFixed(1)}Â¢ ${operator} ${value}Â¢ (${lookAheadDisplay})`);
         }
       } else {
         results.push({ condition: 'forecastPrice', met: false, reason: 'No forecast data' });
@@ -3413,9 +1967,9 @@ function compareValue(actual, operator, target, target2) {
     case '!=': return actual != target;
     case 'between':
       // Support multiple calling conventions:
-      // 1. compareValue(actual, 'between', min, max)  — preferred
-      // 2. compareValue(actual, 'between', [min, max]) — legacy array
-      // 3. compareValue(actual, 'between', {min, max}) — legacy object
+      // 1. compareValue(actual, 'between', min, max)  â€” preferred
+      // 2. compareValue(actual, 'between', [min, max]) â€” legacy array
+      // 3. compareValue(actual, 'between', {min, max}) â€” legacy object
       if (target2 != null) return actual >= Math.min(target, target2) && actual <= Math.max(target, target2);
       if (Array.isArray(target)) return actual >= target[0] && actual <= target[1];
       if (target && typeof target === 'object') return actual >= (target.min || 0) && actual <= (target.max || 100);
@@ -3477,16 +2031,16 @@ async function applyRuleAction(userId, rule, userConfig) {
   const deviceSN = userConfig?.deviceSn;
   
   if (!deviceSN) {
-    console.error(`[SegmentSend] ❌ CRITICAL: No deviceSN configured for user ${userId}`);
+    console.error(`[SegmentSend] âŒ CRITICAL: No deviceSN configured for user ${userId}`);
     return { errno: -1, msg: 'No device SN configured' };
   }
   
-  console.log(`[SegmentSend] 🎯 Target device: ${deviceSN}`);
-  console.log(`[SegmentSend] 📋 Action config:`, JSON.stringify(action, null, 2));
+  console.log(`[SegmentSend] ðŸŽ¯ Target device: ${deviceSN}`);
+  console.log(`[SegmentSend] ðŸ“‹ Action config:`, JSON.stringify(action, null, 2));
 
   const actionValidationError = validateRuleActionForUser(action, userConfig);
   if (actionValidationError) {
-    console.error(`[SegmentSend] ❌ Invalid rule action for '${rule.name}': ${actionValidationError}`);
+    console.error(`[SegmentSend] âŒ Invalid rule action for '${rule.name}': ${actionValidationError}`);
     return {
       errno: 400,
       msg: actionValidationError,
@@ -3520,11 +2074,11 @@ async function applyRuleAction(userId, rule, userConfig) {
   
   if (endTotalMins <= startTotalMins) {
     // Segment would cross midnight - cap at 23:59 instead
-    console.warn(`[SegmentSend] � ️ MIDNIGHT CROSSING DETECTED: Original end time ${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} would cross midnight`);
+    console.warn(`[SegmentSend] ï¿½ ï¸ MIDNIGHT CROSSING DETECTED: Original end time ${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} would cross midnight`);
     endHour = 23;
     endMinute = 59;
     const actualDuration = (endHour * 60 + endMinute) - startTotalMins;
-    console.warn(`[SegmentSend] 🔧 CAPPED at 23:59 - Reduced duration from ${durationMins}min to ${actualDuration}min to respect FoxESS constraint`);
+    console.warn(`[SegmentSend] ðŸ”§ CAPPED at 23:59 - Reduced duration from ${durationMins}min to ${actualDuration}min to respect FoxESS constraint`);
   }
   
   logger.debug('Automation', `Creating segment: ${String(startHour).padStart(2,'0')}:${String(startMinute).padStart(2,'0')} - ${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} (${durationMins}min requested)`);
@@ -3554,7 +2108,7 @@ async function applyRuleAction(userId, rule, userConfig) {
   const startTotalMinsCheck = startHour * 60 + startMinute;
   const endTotalMinsCheck = endHour * 60 + endMinute;
   if (endTotalMinsCheck <= startTotalMinsCheck) {
-    console.error(`[SegmentSend] ❌ CRITICAL: Final validation failed - end time ${endHour}:${String(endMinute).padStart(2,'0')} is not after start time ${startHour}:${String(startMinute).padStart(2,'0')}`);
+    console.error(`[SegmentSend] âŒ CRITICAL: Final validation failed - end time ${endHour}:${String(endMinute).padStart(2,'0')} is not after start time ${startHour}:${String(startMinute).padStart(2,'0')}`);
     throw new Error(`Invalid segment: end time must be after start time (no midnight crossing allowed by FoxESS)`);
   }
   
@@ -3568,40 +2122,40 @@ async function applyRuleAction(userId, rule, userConfig) {
   
   // Always use Group 1 (index 0) for automation - clean slate approach
   currentGroups = applySegmentToGroups(currentGroups, segment, 0);
-  console.log(`[SegmentSend] 📦 Final segment prepared for Group 1:`, JSON.stringify(segment, null, 2));
-  console.log(`[SegmentSend] 📊 Total groups to send: ${currentGroups.length}`);
+  console.log(`[SegmentSend] ðŸ“¦ Final segment prepared for Group 1:`, JSON.stringify(segment, null, 2));
+  console.log(`[SegmentSend] ðŸ“Š Total groups to send: ${currentGroups.length}`);
   
-  console.log(`[SegmentSend] 🚀 Sending segment: ${String(startHour).padStart(2,'0')}:${String(startMinute).padStart(2,'0')}-${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} ${segment.workMode} fdSoc=${segment.fdSoc}`);
+  console.log(`[SegmentSend] ðŸš€ Sending segment: ${String(startHour).padStart(2,'0')}:${String(startMinute).padStart(2,'0')}-${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')} ${segment.workMode} fdSoc=${segment.fdSoc}`);
   
   // Send to device via v1 API with retry logic (up to 3 attempts)
   let applyAttempt = 0;
   let result = null;
-  console.log(`[SegmentSend] 🔄 Starting API call with up to 3 retry attempts...`);
+  console.log(`[SegmentSend] ðŸ”„ Starting API call with up to 3 retry attempts...`);
   while (applyAttempt < 3) {
     applyAttempt++;
-    console.log(`[SegmentSend] 📡 Attempt ${applyAttempt}/3: Calling FoxESS /op/v1/device/scheduler/enable...`);
+    console.log(`[SegmentSend] ðŸ“¡ Attempt ${applyAttempt}/3: Calling FoxESS /op/v1/device/scheduler/enable...`);
     const callStart = Date.now();
     result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: currentGroups }, userConfig, userId);
     const callDuration = Date.now() - callStart;
-    console.log(`[SegmentSend] ⏱️ API call completed in ${callDuration}ms`);
-    console.log(`[SegmentSend] 📥 Response: errno=${result?.errno}, msg=${result?.msg}`);
+    console.log(`[SegmentSend] â±ï¸ API call completed in ${callDuration}ms`);
+    console.log(`[SegmentSend] ðŸ“¥ Response: errno=${result?.errno}, msg=${result?.msg}`);
     
     if (result?.errno === 0) {
-      console.log(`[SegmentSend] ✅ Segment sent successfully (attempt ${applyAttempt})`);
+      console.log(`[SegmentSend] âœ… Segment sent successfully (attempt ${applyAttempt})`);
       break;
     } else {
-      console.error(`[SegmentSend] ❌ Attempt ${applyAttempt} FAILED: errno=${result?.errno}, msg=${result?.msg}`);
+      console.error(`[SegmentSend] âŒ Attempt ${applyAttempt} FAILED: errno=${result?.errno}, msg=${result?.msg}`);
       if (applyAttempt < 3) {
-        console.log(`[SegmentSend] ⏳ Waiting 1200ms before retry...`);
+        console.log(`[SegmentSend] â³ Waiting 1200ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, 1200));
       }
     }
   }
   
   if (result?.errno !== 0) {
-    console.error(`[SegmentSend] 🚨 CRITICAL FAILURE: Segment failed after 3 attempts`);
-    console.error(`[SegmentSend] 💥 Final error: errno=${result?.errno}, msg=${result?.msg}`);
-    console.error(`[SegmentSend] 📦 Failed segment details:`, JSON.stringify(segment, null, 2));
+    console.error(`[SegmentSend] ðŸš¨ CRITICAL FAILURE: Segment failed after 3 attempts`);
+    console.error(`[SegmentSend] ðŸ’¥ Final error: errno=${result?.errno}, msg=${result?.msg}`);
+    console.error(`[SegmentSend] ðŸ“¦ Failed segment details:`, JSON.stringify(segment, null, 2));
     console.log(`[SegmentSend] ========== END applyRuleAction (FAILED) ==========`);
     return {
       errno: result?.errno || -1,
@@ -3614,23 +2168,23 @@ async function applyRuleAction(userId, rule, userConfig) {
   }
   
   // Set the scheduler flag to enabled (required for FoxESS app to show schedule)
-  console.log(`[SegmentSend] 🚩 Setting scheduler flag to ENABLED...`);
+  console.log(`[SegmentSend] ðŸš© Setting scheduler flag to ENABLED...`);
   let flagResult = null;
   let flagAttempt = 0;
   while (flagAttempt < 2) {
     flagAttempt++;
     try {
-      console.log(`[SegmentSend] 📡 Flag attempt ${flagAttempt}/2: Calling /op/v1/device/scheduler/set/flag...`);
+      console.log(`[SegmentSend] ðŸ“¡ Flag attempt ${flagAttempt}/2: Calling /op/v1/device/scheduler/set/flag...`);
       flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 1 }, userConfig, userId);
-      console.log(`[SegmentSend] 📥 Flag response: errno=${flagResult?.errno}, msg=${flagResult?.msg}`);
+      console.log(`[SegmentSend] ðŸ“¥ Flag response: errno=${flagResult?.errno}, msg=${flagResult?.msg}`);
       if (flagResult?.errno === 0) {
-        console.log(`[SegmentSend] ✅ Scheduler flag set successfully (attempt ${flagAttempt})`);
+        console.log(`[SegmentSend] âœ… Scheduler flag set successfully (attempt ${flagAttempt})`);
         break;
       } else {
-        console.error(`[SegmentSend] ❌ Flag set attempt ${flagAttempt} failed: errno=${flagResult?.errno}`);
+        console.error(`[SegmentSend] âŒ Flag set attempt ${flagAttempt} failed: errno=${flagResult?.errno}`);
       }
     } catch (flagErr) {
-      console.error(`[SegmentSend] ❌ Flag set exception:`, flagErr && flagErr.message ? flagErr.message : flagErr);
+      console.error(`[SegmentSend] âŒ Flag set exception:`, flagErr && flagErr.message ? flagErr.message : flagErr);
     }
     if (flagAttempt < 2) {
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -3639,30 +2193,30 @@ async function applyRuleAction(userId, rule, userConfig) {
   
   // Wait 3 seconds for FoxESS to process the request before verification
   // Extended from 2s to 3s for better reliability
-  console.log(`[SegmentSend] ⏳ Waiting 3000ms for FoxESS device to process segment...`);
+  console.log(`[SegmentSend] â³ Waiting 3000ms for FoxESS device to process segment...`);
   await new Promise(resolve => setTimeout(resolve, 3000));
   
   // Verification read to confirm device accepted the segment (with retry)
-  console.log(`[SegmentSend] 🔍 Starting verification read to confirm segment on device...`);
+  console.log(`[SegmentSend] ðŸ” Starting verification read to confirm segment on device...`);
   let verify = null;
   let verifyAttempt = 0;
   while (verifyAttempt < 2) {
     verifyAttempt++;
     try {
-      console.log(`[SegmentSend] 📡 Verify attempt ${verifyAttempt}/2: Calling /op/v1/device/scheduler/get...`);
+      console.log(`[SegmentSend] ðŸ“¡ Verify attempt ${verifyAttempt}/2: Calling /op/v1/device/scheduler/get...`);
       verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
-      console.log(`[SegmentSend] 📥 Verify response: errno=${verify?.errno}, groups=${verify?.result?.groups?.length || 0}`);
+      console.log(`[SegmentSend] ðŸ“¥ Verify response: errno=${verify?.errno}, groups=${verify?.result?.groups?.length || 0}`);
       if (verify?.errno === 0) {
-        console.log(`[SegmentSend] ✅ Verification read successful (attempt ${verifyAttempt})`);
+        console.log(`[SegmentSend] âœ… Verification read successful (attempt ${verifyAttempt})`);
         if (verify?.result?.groups?.[0]) {
-          console.log(`[SegmentSend] 📊 Group 0 on device:`, JSON.stringify(verify.result.groups[0], null, 2));
+          console.log(`[SegmentSend] ðŸ“Š Group 0 on device:`, JSON.stringify(verify.result.groups[0], null, 2));
         }
         break;
       } else {
-        console.error(`[SegmentSend] ❌ Verification read attempt ${verifyAttempt} failed: errno=${verify?.errno}`);
+        console.error(`[SegmentSend] âŒ Verification read attempt ${verifyAttempt} failed: errno=${verify?.errno}`);
       }
     } catch (verifyErr) {
-      console.error(`[SegmentSend] ❌ Verification read exception:`, verifyErr.message);
+      console.error(`[SegmentSend] âŒ Verification read exception:`, verifyErr.message);
     }
     if (verifyAttempt < 2) {
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -3672,16 +2226,16 @@ async function applyRuleAction(userId, rule, userConfig) {
   if (verify?.result?.groups?.[0]) {
     const deviceSegment = verify.result.groups[0];
     if (deviceSegment.enable === 1) {
-      console.log(`[SegmentSend] ✅ Segment CONFIRMED ENABLED on device!`);
-      console.log(`[SegmentSend] 🎉 Device segment: ${deviceSegment.startHour}:${deviceSegment.startMinute}-${deviceSegment.endHour}:${deviceSegment.endMinute} ${deviceSegment.workMode}`);
+      console.log(`[SegmentSend] âœ… Segment CONFIRMED ENABLED on device!`);
+      console.log(`[SegmentSend] ðŸŽ‰ Device segment: ${deviceSegment.startHour}:${deviceSegment.startMinute}-${deviceSegment.endHour}:${deviceSegment.endMinute} ${deviceSegment.workMode}`);
     } else {
-      console.warn(`[SegmentSend] � ️ Segment on device but DISABLED (enable=${deviceSegment.enable})`);
+      console.warn(`[SegmentSend] ï¿½ ï¸ Segment on device but DISABLED (enable=${deviceSegment.enable})`);
     }
   } else {
-    console.warn(`[SegmentSend] � ️ No verification data available for Group 0`);
+    console.warn(`[SegmentSend] ï¿½ ï¸ No verification data available for Group 0`);
   }
   console.log(`[SegmentSend] ========== END applyRuleAction (SUCCESS) ==========`);
-  console.log(`[SegmentSend] 🏁 Final result: errno=0, segment sent and verified`);
+  console.log(`[SegmentSend] ðŸ Final result: errno=0, segment sent and verified`);
   
   // Log to user history
   try {
@@ -3725,13 +2279,13 @@ app.use((req, res) => {
  * Cloud Scheduler trigger: Orchestrates background automation for all users.
  * 
  * RESPECTS ALL BACKEND CONFIGURATION:
- * ✅ Uses getConfig().automation.intervalMs for cycle frequency (default 60000ms)
- * ✅ Uses getConfig().automation.cacheTtl for all API cache TTL
- * ✅ Respects per-user config: automation.intervalMs, automation.inverterCacheTtlMs
- * ✅ Checks lastCheck timestamp - only runs cycle if enough time elapsed
- * ✅ Uses existing cache functions: getCachedInverterData, getCachedWeatherData, callAmberAPI
- * ✅ Reuses POST /api/automation/cycle endpoint logic - zero duplication
- * ✅ Respects blackout windows, enabled state, all rule conditions
+ * âœ… Uses getConfig().automation.intervalMs for cycle frequency (default 60000ms)
+ * âœ… Uses getConfig().automation.cacheTtl for all API cache TTL
+ * âœ… Respects per-user config: automation.intervalMs, automation.inverterCacheTtlMs
+ * âœ… Checks lastCheck timestamp - only runs cycle if enough time elapsed
+ * âœ… Uses existing cache functions: getCachedInverterData, getCachedWeatherData, callAmberAPI
+ * âœ… Reuses POST /api/automation/cycle endpoint logic - zero duplication
+ * âœ… Respects blackout windows, enabled state, all rule conditions
  * 
  * HOW IT WORKS:
  * 1. Runs every 1 minute (Cloud Scheduler frequency - can be more frequent than user cycles)
@@ -3768,5 +2322,6 @@ exports.runAutomation = onSchedule(
   },
   runAutomationHandler
 );
+
 
 

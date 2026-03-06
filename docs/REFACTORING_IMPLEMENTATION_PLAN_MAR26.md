@@ -1,6 +1,6 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 3 step 2 complete with closeout evidence drafted, scheduler service-runner decoupling complete, and index.js reduction continuing (G2 blockers remain; latest config/status + user-self extraction landed)
+Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 3 step 2 complete with closeout evidence drafted, scheduler service-runner decoupling complete, and index.js reduction continuing (G2 blockers narrowing; admin + health route extraction landed, admin access + billing/monitoring + weather/cache helpers extracted, API metrics service extraction landed)
 Scope: Planning + execution progress tracking  
 Last Updated: 2026-03-06  
 Primary Branch: `RefactoringMar26`
@@ -21,7 +21,7 @@ Primary Branch: `RefactoringMar26`
 |---|---|---|---|---|
 | P0 | G0 | ✅ Complete | 100% | - |
 | P1 | G1 | ⏳ In Progress | 10/10 tasks implemented; formal gate close pending | Capture closeout evidence + sign-off |
-| P2 | G2 | In Progress | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence refreshed with verified metrics, config/status + user-self route domains extracted, `index.js` at 3,772 lines (58.2% reduction), and inline routes reduced to 9 | Continue G2 blocker closure: extract remaining admin route domain + residual helper/test-harness normalization toward <1,500 line target |
+| P2 | G2 | In Progress | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence refreshed with verified metrics, admin + health route domains extracted, admin access + billing/monitoring + weather/cache + API metrics helper domains extracted, `index.js` at 2,327 lines (74.2% reduction), and inline routes reduced to 0 | Continue G2 blocker closure: complete remaining helper/service decomposition + test-harness normalization toward <1,500 line target |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -1119,6 +1119,126 @@ Tracker hygiene rule: update this section at the end of every completed executio
 - Inline route declarations remaining in `functions/index.js`: **9** (`app.get/post/put/delete/patch` registrations).
 - Next target chunk: continue remaining G2 blockers by extracting the inline admin route domain and final residual helpers.
 
+### 2026-03-06 - Chunk 52 (G2 blocker execution: admin route domain extraction)
+
+- Continued `functions/index.js` reduction by extracting the remaining inline admin route domain into a dedicated route module:
+  - `functions/api/routes/admin.js`
+  - moved:
+    - `GET /api/admin/firestore-metrics`
+    - `GET /api/admin/users`
+    - `GET /api/admin/platform-stats`
+    - `POST /api/admin/users/:uid/role`
+    - `POST /api/admin/users/:uid/delete`
+    - `GET /api/admin/users/:uid/stats`
+    - `POST /api/admin/impersonate`
+    - `GET /api/admin/check`
+- Rewired composition in `functions/index.js`:
+  - added `registerAdminRoutes(...)` import and registration.
+  - removed the full inline admin handler block while preserving auth/admin guards, metrics/billing fallbacks, and audit semantics.
+- Added focused regression coverage for extracted module:
+  - `functions/test/admin-routes-modules.test.js`
+  - covers dependency guardrails, admin-check auth and response envelope, googleapis-unavailable guard, role validation, and delete confirmation validation.
+- Validation passed:
+  - `npm --prefix functions test -- admin-routes-modules.test.js admin.test.js routes-integration.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- `functions/index.js` current size after this chunk: **2,987 lines** (from 9,019 baseline, ~66.9% reduction).
+- Inline route declarations remaining in `functions/index.js`: **1** (`GET /api/health`).
+- Next target chunk: continue G2 blocker closure by decomposing remaining large helper/service domains from `index.js` (billing/monitoring helpers, weather/cache helpers, and residual repository utility duplication).
+
+### 2026-03-06 - Chunk 53 (G2 blocker execution: health route extraction)
+
+- Completed route-domain extraction by moving the final inline health endpoint into a dedicated route module:
+  - `functions/api/routes/health.js`
+  - moved:
+    - `GET /api/health`
+- Rewired composition in `functions/index.js`:
+  - added `registerHealthRoutes(...)` import and registration.
+  - removed final inline route declaration while preserving token-presence envelope behavior and unauthenticated-safe response semantics.
+- Added focused regression coverage for extracted module:
+  - `functions/test/health-routes-modules.test.js`
+  - covers dependency guardrails, unauthenticated health envelope, and attached-user token-presence reporting.
+- Validation passed:
+  - `npm --prefix functions test -- health-routes-modules.test.js routes-integration.test.js credential-masking.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- `functions/index.js` current size after this chunk: **2,958 lines** (from 9,019 baseline, ~67.2% reduction).
+- Inline route declarations remaining in `functions/index.js`: **0** (`app.get/post/put/delete/patch` registrations).
+- Next target chunk: continue G2 blocker closure by decomposing remaining large helper/service domains from `index.js` (billing/monitoring helpers, weather/cache helpers, and residual repository utility duplication) toward the <1,500 target.
+
+### 2026-03-06 - Chunk 54 (G2 blocker execution: admin helper-domain extraction)
+
+- Continued `functions/index.js` reduction by extracting residual admin helper domains into shared `lib` modules:
+  - `functions/lib/admin-access.js`
+    - moved admin-role lookup + middleware composition (`isAdmin`, `requireAdmin`, `SEED_ADMIN_EMAIL`).
+  - `functions/lib/admin-metrics.js`
+    - moved admin monitoring/billing helper stack:
+      - runtime project-id resolution
+      - monitoring time-series pagination + aggregation
+      - metric error normalization
+      - Firestore usage-based MTD cost estimation
+      - Cloud Billing API fetch/parsing and fallback helper primitives
+- Rewired composition in `functions/index.js`:
+  - replaced inline admin access/middleware block with `createAdminAccess({ db, logger: console })`.
+  - removed inline billing/monitoring helper implementations and injected extracted module functions into `registerAdminRoutes(...)` via project-id/billing wrappers.
+- Added focused regression coverage for new helper modules:
+  - `functions/test/admin-access.test.js`
+  - `functions/test/admin-metrics.test.js`
+  - covers dependency guardrails, admin seed/firestore role resolution and middleware enforcement, monitoring series aggregation behavior, metric error normalization, pricing estimate math, and missing-googleapis failure handling.
+- Validation passed:
+  - `npm --prefix functions test -- admin-access.test.js admin-metrics.test.js admin-routes-modules.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- `functions/index.js` current size after this chunk: **2,561 lines** (from 9,019 baseline, ~71.6% reduction).
+- Inline route declarations remaining in `functions/index.js`: **0** (`app.get/post/put/delete/patch` registrations).
+- Next target chunk: continue G2 blocker closure by decomposing remaining non-route helper domains (weather/cache + repository/utilities + automation condition/action residuals) toward the <1,500 target.
+
+### 2026-03-06 - Chunk 55 (G2 blocker execution: weather/cache helper extraction)
+
+- Continued `functions/index.js` reduction by extracting the weather/cache helper domain into a shared service module:
+  - `functions/lib/services/weather-service.js`
+  - moved:
+    - `callWeatherAPI(...)`
+    - `getCachedWeatherData(...)`
+- Rewired composition in `functions/index.js`:
+  - added `createWeatherService(...)` import.
+  - initialized extracted weather service with existing dependencies (`db`, `getConfig`, `incrementApiCount`, `setUserConfig`) and removed inline weather/cache helper bodies.
+  - preserved existing route/service call signatures so downstream route modules required no API contract changes.
+- Added focused regression coverage for the extracted service:
+  - `functions/test/weather-service.test.js`
+  - covers dependency guardrails, AU-prioritized geocoding selection, fallback-to-Sydney behavior, cache-hit short-circuit behavior, cache refresh on location change, and timezone persistence updates.
+- Validation passed:
+  - `npm --prefix functions test -- weather-service.test.js config-mutation-routes-modules.test.js automation-cycle-route-module.test.js read-only-routes-modules.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- `functions/index.js` current size after this chunk: **2,382 lines** (from 9,019 baseline, ~73.6% reduction).
+- Inline route declarations remaining in `functions/index.js`: **0** (`app.get/post/put/delete/patch` registrations).
+- Next target chunk: continue G2 blocker closure by extracting residual repository/state/time helper domains from `functions/index.js` toward the <1,500 target.
+
+### 2026-03-06 - Chunk 56 (G2 blocker execution: API metrics helper extraction)
+
+- Continued `functions/index.js` reduction by extracting API metrics/date-key helper domain into a shared service module:
+  - `functions/lib/services/api-metrics-service.js`
+  - moved:
+    - `getDateKey(...)`
+    - `getAusDateKey(...)`
+    - `incrementApiCount(...)`
+    - `incrementGlobalApiCount(...)`
+- Rewired composition in `functions/index.js`:
+  - added `createApiMetricsService(...)` import.
+  - initialized extracted metrics service with existing dependencies (`admin`, `db`, `DEFAULT_TIMEZONE`, `serverTimestamp`, `logger`) and removed inline API metrics/date-key helper bodies.
+  - preserved existing downstream call signatures for route modules and external API adapters.
+- Added focused regression coverage for extracted service:
+  - `functions/test/api-metrics-service.test.js`
+  - covers dependency guardrails, date-key generation, per-user transaction increments, global metric increments, userId-null global-only updates, and `FieldValue.increment` fallback behavior.
+- Validation passed:
+  - `npm --prefix functions test -- api-metrics-service.test.js read-only-routes-modules.test.js routes-integration.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- `functions/index.js` current size after this chunk: **2,327 lines** (from 9,019 baseline, ~74.2% reduction).
+- Inline route declarations remaining in `functions/index.js`: **0** (`app.get/post/put/delete/patch` registrations).
+- Next target chunk: continue G2 blocker closure by extracting residual repository/state/time helper domains from `functions/index.js` toward the <1,500 target.
+
 ---
 
 ## 1. Purpose
@@ -1147,6 +1267,7 @@ This section captures the actual state of the codebase as of 2026-03-04, measure
 - Route handlers directly call Firestore, external APIs, and each other. Zero separation of concerns between HTTP transport, business logic, and persistence.
 - ✅ **P2 update (2026-03-05):** `functions/index.js` reduced to **7,194 lines** (~20% reduction). **47 routes remain inline**; 8 read-only route modules extracted to `functions/api/routes/` (2,328 lines total). `functions/lib/` expanded to 8 modules (1,114 lines total) covering automation-actions, device-telemetry, pricing-normalization, repositories, billing, and adapters.
 - ✅ **P2 update (2026-03-06, verified):** `functions/index.js` reduced to **4,053 lines** (55% reduction from 9,019 baseline). **9 routes remain inline** (admin domain + health); **19 route modules** extracted to `functions/api/routes/` (4,990 lines total). `functions/lib/` expanded to **14 modules** across services/repositories/adapters/billing (2,157 lines total). **9 service modules** in `functions/lib/services/` (1,031 lines). Test suite: **57 suites, 682 tests passing**. Coverage: **50.3% statements, 42.6% branches, 62.4% functions, 51.3% lines**.
+- ✅ **P2 update (2026-03-06, latest):** `functions/index.js` reduced to **2,327 lines** (74.2% reduction from 9,019 baseline). **0 inline routes remain**; **21 route modules** extracted to `functions/api/routes/`. `functions/lib/` now contains **21 JS modules** (including **11 services**), with admin access, monitoring/billing, weather/cache, and API metrics helper domains extracted. Full gate validation currently passes with **65 test suites** and **766 tests** (`44` marked `todo`).
 
 ### 1A.2 Frontend Monolith
 
@@ -1955,6 +2076,11 @@ When execution is approved, run phases in order:
 | 2026-03-06 | Continued G2 blocker execution by extracting automation history/audit endpoints (`/api/automation/history`, `/api/automation/audit`) into `functions/api/routes/automation-history.js`, wiring `registerAutomationHistoryRoutes(...)` in `functions/index.js`, adding focused module coverage in `functions/test/automation-history-routes-modules.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
 | 2026-03-06 | Continued G2 blocker execution by extracting device mutation endpoints (`/api/device/battery/soc/set`, `/api/device/setting/set`, `/api/device/battery/forceChargeTime/set`, `/api/device/workmode/set`) into `functions/api/routes/device-mutations.js`, wiring `registerDeviceMutationRoutes(...)` in `functions/index.js`, adding focused module coverage in `functions/test/device-mutation-routes-modules.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
 | 2026-03-06 | Continued G2 blocker execution by extracting config/status read endpoints (`/api/config`, `/api/config/system-topology`, `/api/config/tour-status`, `/api/automation/status`) into `functions/api/routes/config-read-status.js` and self-service user endpoints (`/api/user/init-profile`, `/api/user/delete-account`) into `functions/api/routes/user-self.js`, wiring both registrations in `functions/index.js`, adding focused module coverage in `functions/test/config-read-status-routes-modules.test.js` and `functions/test/user-self-routes-modules.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by extracting the full admin route domain (`/api/admin/firestore-metrics`, `/api/admin/users`, `/api/admin/platform-stats`, `/api/admin/users/:uid/role`, `/api/admin/users/:uid/delete`, `/api/admin/users/:uid/stats`, `/api/admin/impersonate`, `/api/admin/check`) into `functions/api/routes/admin.js`, wiring `registerAdminRoutes(...)` in `functions/index.js`, adding focused module coverage in `functions/test/admin-routes-modules.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by extracting `GET /api/health` into `functions/api/routes/health.js`, wiring `registerHealthRoutes(...)` in `functions/index.js`, adding focused module coverage in `functions/test/health-routes-modules.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by extracting residual admin helper domains into `functions/lib/admin-access.js` and `functions/lib/admin-metrics.js`, rewiring `functions/index.js` to compose admin middleware + billing/monitoring helpers via shared modules, adding focused helper coverage in `functions/test/admin-access.test.js` and `functions/test/admin-metrics.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by extracting weather/cache helpers into `functions/lib/services/weather-service.js`, rewiring `functions/index.js` to compose `callWeatherAPI(...)` and `getCachedWeatherData(...)` via `createWeatherService(...)`, adding focused coverage in `functions/test/weather-service.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by extracting API metrics/date helpers into `functions/lib/services/api-metrics-service.js`, rewiring `functions/index.js` to compose `getDateKey(...)`, `getAusDateKey(...)`, `incrementApiCount(...)`, and `incrementGlobalApiCount(...)` via `createApiMetricsService(...)`, adding focused coverage in `functions/test/api-metrics-service.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
 
 ---
 
