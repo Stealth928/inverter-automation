@@ -67,6 +67,7 @@ Validation for Wave 2:
 2. ⏳ [IN PROGRESS 2026-03-06] Introduce service modules (`lib/services/*`) only after route extraction is stable.
    - ✅ shared scheduler-group builder centralized in `functions/lib/automation-actions.js` via `buildClearedSchedulerGroups()`
    - ✅ shared scheduler segment-clear flow centralized in `functions/lib/services/scheduler-segment-service.js` via `clearSchedulerSegments(...)`
+   - ✅ shared automation audit-evaluation mapping centralized in `functions/lib/services/automation-audit-service.js` via `buildAllRuleEvaluationsForAudit(...)`
    - in progress: migrate remaining repeated automation helpers into service modules (`lib/services/*`) with no behavior changes
 
 Validation for Wave 3:

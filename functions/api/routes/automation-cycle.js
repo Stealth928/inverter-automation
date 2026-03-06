@@ -1,5 +1,6 @@
 'use strict';
 
+const { buildAllRuleEvaluationsForAudit } = require('../../lib/services/automation-audit-service');
 const { clearSchedulerSegments } = require('../../lib/services/scheduler-segment-service');
 
 function registerAutomationCycleRoute(app, deps = {}) {
@@ -760,25 +761,7 @@ app.post('/api/automation/cycle', async (req, res) => {
           
           // Log to audit trail - Rule turned ON
           // Include full evaluation context: ALL rules and their condition states
-          // Transform evaluationResults to frontend-friendly format
-          const allRulesForAudit = evaluationResults.map(evalResult => {
-            const ruleData = sortedRules.find(([_id, r]) => r.name === evalResult.rule);
-            const [evalRuleId] = ruleData || [null];
-            
-            return {
-              name: evalResult.rule,
-              ruleId: evalRuleId || evalResult.rule,
-              triggered: evalResult.result === 'triggered' || evalResult.result === 'continuing',
-              feedInPrice: evalResult.details?.feedInPrice !== undefined && evalResult.details?.feedInPrice !== null ? evalResult.details.feedInPrice : null,
-              buyPrice: evalResult.details?.buyPrice !== undefined && evalResult.details?.buyPrice !== null ? evalResult.details.buyPrice : null,
-              conditions: evalResult.details?.results?.map(cond => ({
-                name: cond.condition,
-                met: cond.met,
-                value: cond.actual !== undefined ? String(cond.actual) : (cond.reason || 'N/A'),
-                rule: `${cond.condition} ${cond.operator || ''} ${cond.target || ''}`
-              })) || []
-            };
-          });
+          const allRulesForAudit = buildAllRuleEvaluationsForAudit(evaluationResults, sortedRules);
           
           // ⭐ Extract house load at trigger time (for accurate ROI calculation)
           // Use the SAME logic as index.html which successfully extracts house load (showing 1.68kW)
@@ -1021,25 +1004,7 @@ app.post('/api/automation/cycle', async (req, res) => {
             
             // Log to audit trail - Rule turned OFF
             // Include full evaluation context showing why conditions failed
-            // Transform evaluationResults to frontend-friendly format
-            const allRulesForAudit = evaluationResults.map(evalResult => {
-              const ruleData = sortedRules.find(([_id, r]) => r.name === evalResult.rule);
-              const [evalRuleId] = ruleData || [null];
-              
-              return {
-                name: evalResult.rule,
-                ruleId: evalRuleId || evalResult.rule,
-                triggered: evalResult.result === 'triggered' || evalResult.result === 'continuing',
-                feedInPrice: evalResult.details?.feedInPrice !== undefined && evalResult.details?.feedInPrice !== null ? evalResult.details.feedInPrice : null,
-                buyPrice: evalResult.details?.buyPrice !== undefined && evalResult.details?.buyPrice !== null ? evalResult.details.buyPrice : null,
-                conditions: evalResult.details?.results?.map(cond => ({
-                  name: cond.condition,
-                  met: cond.met,
-                  value: cond.actual !== undefined ? String(cond.actual) : (cond.reason || 'N/A'),
-                  rule: `${cond.condition} ${cond.operator || ''} ${cond.target || ''}`
-                })) || []
-              };
-            });
+            const allRulesForAudit = buildAllRuleEvaluationsForAudit(evaluationResults, sortedRules);
             
             await addAutomationAuditEntry(userId, {
               cycleId: `cycle_${cycleStartTime}`,

@@ -21,7 +21,7 @@ Primary Branch: `RefactoringMar26`
 |---|---|---|---:|
 | P0 | G0 | ✅ Complete | 100% |
 | P1 | G1 | ⏳ In Progress | 10/10 tasks drafted, key contract artifacts implemented, formal gate close pending |
-| P2 | G2 | ⏳ In Progress | Wave 1 complete (3/3), Wave 2 read-route extraction complete, Wave 3 step 1 complete (scheduler + config + automation mutation routes + automation cycle route extracted); Wave 3 step 2 in progress (shared scheduler segment-clear service extracted, remaining automation helper service decomposition pending) |
+| P2 | G2 | ⏳ In Progress | Wave 1 complete (3/3), Wave 2 read-route extraction complete, Wave 3 step 1 complete (scheduler + config + automation mutation routes + automation cycle route extracted); Wave 3 step 2 in progress (shared scheduler segment-clear + audit-evaluation services extracted, remaining automation helper service decomposition pending) |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -721,6 +721,26 @@ Tracker hygiene rule: update this section at the end of every completed executio
 - Updated Wave 3 tracker artifact to reflect service extraction progress:
   - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
 - Next target chunk: continue Wave 3 step 2 by extracting remaining repeated automation-cycle helper blocks into dedicated service modules while preserving current API behavior.
+
+### ✅ 2026-03-06 - Chunk 33 (P2 Wave 3 step 2: automation audit-evaluation service extraction)
+
+- Introduced shared automation audit-evaluation service module:
+  - `functions/lib/services/automation-audit-service.js`
+  - added helper:
+    - `buildAllRuleEvaluationsForAudit(evaluationResults, sortedRules)`
+- Rewired automation cycle route to use shared audit-evaluation mapper:
+  - `functions/api/routes/automation-cycle.js`
+- Added focused unit coverage for new service:
+  - `functions/test/automation-audit-service.test.js`
+- Validation passed:
+  - `npm --prefix functions test -- automation-audit-service.test.js automation-cycle-route-module.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/api-contract-baseline.js --silent`
+  - `node scripts/openapi-contract-check.js --silent`
+  - `node scripts/pre-deploy-check.js`
+- Updated Wave 3 tracker artifact to reflect service extraction progress:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: continue Wave 3 step 2 by extracting remaining automation-cycle helper blocks (for example house-load extraction/normalization) into dedicated service modules while preserving current API behavior.
 
 ---
 
@@ -1535,6 +1555,7 @@ When execution is approved, run phases in order:
 | 2026-03-06 | Continued P2 Wave 3 step 1 by extracting automation mutation routes into `functions/api/routes/automation-mutations.js` (toggle/enable/trigger/reset/cancel/rule CRUD/test), wiring module registration in `functions/index.js`, adding focused supertest coverage in `functions/test/automation-mutation-routes-modules.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
 | 2026-03-06 | Completed P2 Wave 3 step 1 by extracting `POST /api/automation/cycle` into `functions/api/routes/automation-cycle.js`, wiring `registerAutomationCycleRoute(...)` in `functions/index.js`, adding focused route-module tests in `functions/test/automation-cycle-route-module.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
 | 2026-03-06 | Continued P2 Wave 3 step 2 by introducing shared scheduler segment-clear service `functions/lib/services/scheduler-segment-service.js`, rewiring automation/scheduler mutation and cycle routes to use it, adding focused service coverage in `functions/test/scheduler-segment-service.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
+| 2026-03-06 | Continued P2 Wave 3 step 2 by introducing shared audit-evaluation service `functions/lib/services/automation-audit-service.js`, rewiring `functions/api/routes/automation-cycle.js` to consume it, adding focused service coverage in `functions/test/automation-audit-service.test.js`, and re-validating lint + contract + pre-deploy gates. | Codex |
 
 ---
 
