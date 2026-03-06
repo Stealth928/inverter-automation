@@ -1,6 +1,7 @@
 'use strict';
 
 const { buildClearedSchedulerGroups } = require('../../lib/automation-actions');
+const { clearSchedulerSegments } = require('../../lib/services/scheduler-segment-service');
 
 function registerSchedulerMutationRoutes(app, deps = {}) {
   const addHistoryEntry = deps.addHistoryEntry;
@@ -98,10 +99,13 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
 
       logger.debug('Scheduler', `CLEAR-ALL request for device ${deviceSN}`);
 
-      const emptyGroups = buildClearedSchedulerGroups();
-
       // Send to device via v1 API (primary - this is what works in server.js)
-      const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: emptyGroups }, userConfig, userId);
+      const result = await clearSchedulerSegments({
+        deviceSN,
+        foxessAPI,
+        userConfig,
+        userId
+      });
 
       // Disable the scheduler flag
       let flagResult = null;

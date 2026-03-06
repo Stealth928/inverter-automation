@@ -66,6 +66,7 @@ Validation for Wave 2:
    - ✅ `automation-cycle.js` (`POST /api/automation/cycle`)
 2. ⏳ [IN PROGRESS 2026-03-06] Introduce service modules (`lib/services/*`) only after route extraction is stable.
    - ✅ shared scheduler-group builder centralized in `functions/lib/automation-actions.js` via `buildClearedSchedulerGroups()`
+   - ✅ shared scheduler segment-clear flow centralized in `functions/lib/services/scheduler-segment-service.js` via `clearSchedulerSegments(...)`
    - in progress: migrate remaining repeated automation helpers into service modules (`lib/services/*`) with no behavior changes
 
 Validation for Wave 3:

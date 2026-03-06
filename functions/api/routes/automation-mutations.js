@@ -1,6 +1,6 @@
 'use strict';
 
-const { buildClearedSchedulerGroups } = require('../../lib/automation-actions');
+const { clearSchedulerSegments } = require('../../lib/services/scheduler-segment-service');
 
 function registerAutomationMutationRoutes(app, deps = {}) {
   const addAutomationAuditEntry = deps.addAutomationAuditEntry;
@@ -274,11 +274,13 @@ app.post('/api/automation/cancel', async (req, res) => {
     
     logger.debug('Automation', `Cancel request for user ${userId}, device ${deviceSN}`);
 
-    // Create 8 empty/disabled segments (matching device's actual group count)
-    const emptyGroups = buildClearedSchedulerGroups();
-    
     // Send to device via v1 API
-    const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: emptyGroups }, userConfig, userId);
+    const result = await clearSchedulerSegments({
+      deviceSN,
+      foxessAPI,
+      userConfig,
+      userId
+    });
     logger.debug('Automation', `Cancel v1 result: errno=${result.errno}`);
     
     // Disable the scheduler flag
@@ -530,8 +532,12 @@ app.post('/api/automation/rule/update', async (req, res) => {
         // Clear scheduler segments immediately
         if (deviceSN) {
           try {
-            const clearedGroups = buildClearedSchedulerGroups();
-            const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, req.user.uid);
+            const clearResult = await clearSchedulerSegments({
+              deviceSN,
+              foxessAPI,
+              userConfig,
+              userId: req.user.uid
+            });
             if (clearResult?.errno === 0) {
               console.log(`[Rule Update] ✓ Segments cleared successfully`);
             } else {
@@ -615,8 +621,12 @@ app.post('/api/automation/rule/delete', async (req, res) => {
       // Clear scheduler segments immediately
       if (deviceSN) {
         try {
-          const clearedGroups = buildClearedSchedulerGroups();
-          const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, req.user.uid);
+          const clearResult = await clearSchedulerSegments({
+            deviceSN,
+            foxessAPI,
+            userConfig,
+            userId: req.user.uid
+          });
           if (clearResult?.errno === 0) {
             console.log(`[Rule Delete] ✓ Segments cleared successfully`);
           } else {

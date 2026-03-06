@@ -1,6 +1,6 @@
 'use strict';
 
-const { buildClearedSchedulerGroups } = require('../../lib/automation-actions');
+const { clearSchedulerSegments } = require('../../lib/services/scheduler-segment-service');
 
 function registerAutomationCycleRoute(app, deps = {}) {
   const addAutomationAuditEntry = deps.addAutomationAuditEntry;
@@ -120,9 +120,13 @@ app.post('/api/automation/cycle', async (req, res) => {
           const userConfig = await getUserConfig(userId);
           const deviceSN = userConfig?.deviceSn;
           if (deviceSN) {
-            const clearedGroups = buildClearedSchedulerGroups();
             // Real API call - counted in metrics for accurate quota tracking
-            const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+            const clearResult = await clearSchedulerSegments({
+              deviceSN,
+              foxessAPI,
+              userConfig,
+              userId
+            });
             if (clearResult?.errno === 0) {
               // Mark segments as cleared so we don't do this again every cycle
               await saveUserAutomationState(userId, { segmentsCleared: true });
@@ -275,9 +279,13 @@ app.post('/api/automation/cycle', async (req, res) => {
       try {
         const deviceSN = userConfig?.deviceSn;
         if (deviceSN) {
-          const clearedGroups = buildClearedSchedulerGroups();
           // Real API call - counted in metrics for accurate quota tracking
-          const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+          const clearResult = await clearSchedulerSegments({
+            deviceSN,
+            foxessAPI,
+            userConfig,
+            userId
+          });
           if (clearResult?.errno !== 0) {
             console.warn(`[Cycle] � ️ Failed to clear segments due to rule disable flag: errno=${clearResult?.errno}`);
           }
@@ -300,9 +308,13 @@ app.post('/api/automation/cycle', async (req, res) => {
       try {
         const deviceSN = userConfig?.deviceSn;
         if (deviceSN) {
-          const clearedGroups = buildClearedSchedulerGroups();
           // Real API call - counted in metrics for accurate quota tracking
-          const clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+          const clearResult = await clearSchedulerSegments({
+            deviceSN,
+            foxessAPI,
+            userConfig,
+            userId
+          });
           if (clearResult?.errno !== 0) {
             console.warn(`[Automation] � ️ Failed to clear segments: errno=${clearResult?.errno}`);
           }
@@ -680,9 +692,13 @@ app.post('/api/automation/cycle', async (req, res) => {
               try {
                 const deviceSN = userConfig?.deviceSn;
                 if (deviceSN) {
-                  const clearedGroups = buildClearedSchedulerGroups();
                   // Real API call - counted in metrics for accurate quota tracking
-                  await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+                  await clearSchedulerSegments({
+                    deviceSN,
+                    foxessAPI,
+                    userConfig,
+                    userId
+                  });
                   await new Promise(resolve => setTimeout(resolve, 2500)); // Wait for inverter to process
                 }
               } catch (err) {
@@ -948,14 +964,17 @@ app.post('/api/automation/cycle', async (req, res) => {
             // Clear all scheduler segments
             const deviceSN = userConfig?.deviceSn;
             if (deviceSN) {
-              const clearedGroups = buildClearedSchedulerGroups();
-              
               // Retry logic for segment clearing (up to 3 attempts)
               let clearAttempt = 0;
               let clearResult = null;
               while (clearAttempt < 3 && !segmentClearSuccess) {
                 clearAttempt++;
-                clearResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', { deviceSN, groups: clearedGroups }, userConfig, userId);
+                clearResult = await clearSchedulerSegments({
+                  deviceSN,
+                  foxessAPI,
+                  userConfig,
+                  userId
+                });
                 
                 if (clearResult?.errno === 0) {
                   segmentClearSuccess = true;
