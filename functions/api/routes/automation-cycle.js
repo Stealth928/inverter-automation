@@ -2,9 +2,20 @@
 
 const { buildAllRuleEvaluationsForAudit } = require('../../lib/services/automation-audit-service');
 const {
+  applyTriggeredRuleAction,
+  persistTriggeredRuleState
+} = require('../../lib/services/automation-cycle-action-service');
+const {
   fetchAutomationAmberData,
   fetchAutomationInverterData
 } = require('../../lib/services/automation-cycle-data-service');
+const {
+  buildClearedActiveRuleState,
+  buildContinuingEvaluationResult,
+  buildCooldownEvaluationResult,
+  buildTriggeredRuleSummary,
+  evaluateRuleCooldown
+} = require('../../lib/services/automation-cycle-lifecycle-service');
 const {
   buildWeatherFetchPlan,
   evaluateBlackoutWindow
@@ -12,7 +23,10 @@ const {
 const {
   buildRoiSnapshot
 } = require('../../lib/services/automation-roi-service');
-const { clearSchedulerSegments } = require('../../lib/services/scheduler-segment-service');
+const {
+  clearSchedulerSegmentsOneShot,
+  clearSchedulerSegmentsWithRetry
+} = require('../../lib/services/scheduler-segment-service');
 
 function registerAutomationCycleRoute(app, deps = {}) {
   const addAutomationAuditEntry = deps.addAutomationAuditEntry;
@@ -105,9 +119,9 @@ function registerAutomationCycleRoute(app, deps = {}) {
     throw new Error('registerAutomationCycleRoute requires setUserRule()');
   }
 
-// Run automation cycle - evaluates all rules and triggers if conditions met
-// This is called by the frontend timer every 60 seconds
-app.post('/api/automation/cycle', async (req, res) => {
+  // Run automation cycle - evaluates all rules and triggers if conditions met
+  // This is called by the frontend timer every 60 seconds
+  const automationCycleHandler = async (req, res) => {
   try {
     const userId = req.user.uid;
     
@@ -117,13 +131,12 @@ app.post('/api/automation/cycle', async (req, res) => {
     if (state && state.enabled === false) {
       
       // Always update lastCheck timestamp to prevent scheduler from calling cycle repeatedly
-      await saveUserAutomationState(userId, { 
-        lastCheck: Date.now(), 
-        activeRule: null,
-        activeRuleName: null,
-        activeSegment: null,
-        activeSegmentEnabled: false
-      });
+      await saveUserAutomationState(
+        userId,
+        buildClearedActiveRuleState({
+          lastCheckMs: Date.now()
+        })
+      );
       
       // Only clear segments if they haven't been cleared already for this disabled state
       // Track with a flag in the state to avoid redundant API calls on every cycle
@@ -133,16 +146,17 @@ app.post('/api/automation/cycle', async (req, res) => {
           const deviceSN = userConfig?.deviceSn;
           if (deviceSN) {
             // Real API call - counted in metrics for accurate quota tracking
-            const clearResult = await clearSchedulerSegments({
+            const clearOutcome = await clearSchedulerSegmentsOneShot({
               deviceSN,
               foxessAPI,
               userConfig,
               userId
             });
-            if (clearResult?.errno === 0) {
+            if (clearOutcome.success === true) {
               // Mark segments as cleared so we don't do this again every cycle
               await saveUserAutomationState(userId, { segmentsCleared: true });
             } else {
+              const clearResult = clearOutcome.clearResult;
               console.warn(`[Automation] � ️ Segment clear returned errno=${clearResult?.errno}`);
             }
           } else {
@@ -270,12 +284,13 @@ app.post('/api/automation/cycle', async (req, res) => {
         const deviceSN = userConfig?.deviceSn;
         if (deviceSN) {
           // Real API call - counted in metrics for accurate quota tracking
-          const clearResult = await clearSchedulerSegments({
+          const clearOutcome = await clearSchedulerSegmentsOneShot({
             deviceSN,
             foxessAPI,
             userConfig,
             userId
           });
+          const clearResult = clearOutcome.clearResult;
           if (clearResult?.errno !== 0) {
             console.warn(`[Cycle] � ️ Failed to clear segments due to rule disable flag: errno=${clearResult?.errno}`);
           }
@@ -299,12 +314,13 @@ app.post('/api/automation/cycle', async (req, res) => {
         const deviceSN = userConfig?.deviceSn;
         if (deviceSN) {
           // Real API call - counted in metrics for accurate quota tracking
-          const clearResult = await clearSchedulerSegments({
+          const clearOutcome = await clearSchedulerSegmentsOneShot({
             deviceSN,
             foxessAPI,
             userConfig,
             userId
           });
+          const clearResult = clearOutcome.clearResult;
           if (clearResult?.errno !== 0) {
             console.warn(`[Automation] � ️ Failed to clear segments: errno=${clearResult?.errno}`);
           }
@@ -314,12 +330,12 @@ app.post('/api/automation/cycle', async (req, res) => {
       }
       
       // Clear automation state (but DON'T update lastCheck - let scheduler timer continue)
-      await saveUserAutomationState(userId, {
-        activeRule: null,
-        activeRuleName: null,
-        activeSegment: null,
-        activeSegmentEnabled: false
-      });
+      await saveUserAutomationState(
+        userId,
+        buildClearedActiveRuleState({
+          includeLastCheck: false
+        })
+      );
       return res.json({ errno: 0, result: { skipped: true, reason: 'Active rule was disabled', segmentsCleared: true } });
     }
     
@@ -388,19 +404,18 @@ app.post('/api/automation/cycle', async (req, res) => {
       // Be resilient to older state docs that may not have activeRule but have the name persisted
       const isActiveRule = state.activeRule === ruleId || state.activeRuleName === rule.name;
       
-      // Only apply cooldown check to INACTIVE rules (new rule searches)
-      // Active rules bypass cooldown check because they need continuous condition monitoring
-      const lastTriggered = rule.lastTriggered;
-      const cooldownMs = (rule.cooldownMinutes || 5) * 60 * 1000;
-      if (!isActiveRule && lastTriggered) {
-        const lastTriggeredMs = typeof lastTriggered === 'object' 
-          ? (lastTriggered._seconds || lastTriggered.seconds || 0) * 1000 
-          : lastTriggered;
-        if (Date.now() - lastTriggeredMs < cooldownMs) {
-          const remaining = Math.round((cooldownMs - (Date.now() - lastTriggeredMs)) / 1000);
-          evaluationResults.push({ rule: rule.name, result: 'cooldown', remaining });
-          continue;
-        }
+      const nowMs = Date.now();
+      const cooldownState = evaluateRuleCooldown({
+        cooldownMinutes: rule.cooldownMinutes,
+        isActiveRule,
+        lastTriggered: rule.lastTriggered,
+        nowMs
+      });
+      if (cooldownState.shouldSkipForCooldown) {
+        evaluationResults.push(
+          buildCooldownEvaluationResult(rule.name, cooldownState.cooldownRemainingSeconds)
+        );
+        continue;
       }
       
       // Always evaluate active rules even if in cooldown, to detect when conditions no longer hold
@@ -412,12 +427,8 @@ app.post('/api/automation/cycle', async (req, res) => {
         if (isActiveRule) {
           logger.debug('Automation', `🔄 Rule '${rule.name}' is ACTIVE (continuing) - checking segment status...`);
           // Active rule continues - conditions still hold
-          // Calculate how long rule has been active
-          const lastTriggeredMs = typeof lastTriggered === 'object' 
-            ? (lastTriggered._seconds || lastTriggered.seconds || 0) * 1000 
-            : (lastTriggered || Date.now());
-          const activeForSec = Math.round((Date.now() - lastTriggeredMs) / 1000);
-          const cooldownRemaining = Math.max(0, Math.round((cooldownMs - (Date.now() - lastTriggeredMs)) / 1000));
+          const activeForSec = cooldownState.activeForSeconds;
+          const cooldownRemaining = cooldownState.cooldownRemainingSeconds;
           logger.debug('Automation', `⏱️ Active for ${activeForSec}s, cooldown remaining: ${cooldownRemaining}s`);
           logger.debug('Automation', `📊 Current segment status: activeSegmentEnabled=${state.activeSegmentEnabled}`);
           
@@ -452,7 +463,7 @@ app.post('/api/automation/cycle', async (req, res) => {
           }
           
           // Check if cooldown has EXPIRED - if so, reset and re-trigger in SAME cycle
-          if (Date.now() - lastTriggeredMs >= cooldownMs) {
+          if (cooldownState.isCooldownExpired) {
             
             try {
               // Reset lastTriggered to allow immediate re-trigger
@@ -461,14 +472,13 @@ app.post('/api/automation/cycle', async (req, res) => {
               }, { merge: true });
               
               // Clear active rule state so the rule can re-trigger as NEW in this same cycle
-              await saveUserAutomationState(userId, { 
-                lastCheck: Date.now(), 
-                inBlackout: false, 
-                activeRule: null,
-                activeRuleName: null,
-                activeSegment: null,
-                activeSegmentEnabled: false
-              });
+              await saveUserAutomationState(
+                userId,
+                buildClearedActiveRuleState({
+                  inBlackout: false,
+                  lastCheckMs: Date.now()
+                })
+              );
               
             } catch (err) {
               console.error(`[Automation] Error resetting rule after cooldown expiry:`, err.message);
@@ -488,36 +498,28 @@ app.post('/api/automation/cycle', async (req, res) => {
             
             // Apply the rule action with NEW timestamps
             const isNewTrigger = true; // Treat as new trigger
-            triggeredRule = { ruleId, ...rule, isNewTrigger, status: 'new_trigger' };
+            triggeredRule = buildTriggeredRuleSummary({ isNewTrigger, rule, ruleId });
             
-            let actionResult = null;
-            try {
-              const applyStart = Date.now();
-              actionResult = await applyRuleAction(userId, rule, userConfig);
-              const _applyDuration = Date.now() - applyStart;
-              if (actionResult?.retrysFailed) {
-                console.warn(`[Automation] � ️ Some retries failed during atomic segment update`);
-              }
-            } catch (actionError) {
-              console.error(`[Automation] ❌ Action failed:`, actionError);
-              actionResult = { errno: -1, msg: actionError.message || 'Action failed' };
-            }
-            
-            // Update rule's lastTriggered (new trigger)
-            await setUserRule(userId, ruleId, {
-              lastTriggered: serverTimestamp()
-            }, { merge: true });
-            
-            // Update automation state with NEW active rule
-            await saveUserAutomationState(userId, {
-              lastCheck: Date.now(),
-              lastTriggered: Date.now(),
-              activeRule: ruleId,
-              activeRuleName: rule.name,
-              activeSegment: actionResult?.segment || null,
-              activeSegmentEnabled: actionResult?.errno === 0,
-              inBlackout: false,
-              lastActionResult: actionResult
+            const { actionResult } = await applyTriggeredRuleAction({
+              applyRuleAction,
+              errorLogLabel: '[Automation] Action failed:',
+              logger: console,
+              rule,
+              userConfig,
+              userId,
+              warnOnPartialRetryFailure: true
+            });
+
+            await persistTriggeredRuleState({
+              actionResult,
+              lastCheckMs: Date.now(),
+              lastTriggeredMs: Date.now(),
+              ruleId,
+              ruleName: rule.name,
+              saveUserAutomationState,
+              serverTimestamp,
+              setUserRule,
+              userId
             });
             
             triggeredRule.actionResult = actionResult;
@@ -526,18 +528,23 @@ app.post('/api/automation/cycle', async (req, res) => {
             // Cooldown still active - rule continues
             
             // Mark as 'continuing' in evaluation results with cooldown info
-            evaluationResults.push({ 
-              rule: rule.name, 
-              result: 'continuing', 
-              activeFor: activeForSec,
-              cooldownRemaining,
-              details: result 
-            });
+            evaluationResults.push(
+              buildContinuingEvaluationResult({
+                cooldownRemainingSeconds: cooldownRemaining,
+                details: result,
+                activeForSeconds: activeForSec,
+                ruleName: rule.name
+              })
+            );
             
             logger.debug('Automation', `✅ Rule '${rule.name}' continuing (cooldown ${cooldownRemaining}s remaining) - segment already sent`);
             logger.debug('Automation', `📊 Preserving segment state: activeSegmentEnabled=${state.activeSegmentEnabled}`);
             // Mark this as the triggered rule for response (continuing state)
-            triggeredRule = { ruleId, ...rule, isNewTrigger: false, status: 'continuing' };
+            triggeredRule = buildTriggeredRuleSummary({
+              isNewTrigger: false,
+              rule,
+              ruleId
+            });
             
             // Update check timestamp only, don't re-apply segment
             // CRITICAL: Preserve activeSegmentEnabled from previous state - if the segment failed to send,
@@ -569,13 +576,13 @@ app.post('/api/automation/cycle', async (req, res) => {
                 const deviceSN = userConfig?.deviceSn;
                 if (deviceSN) {
                   // Real API call - counted in metrics for accurate quota tracking
-                  await clearSchedulerSegments({
+                  await clearSchedulerSegmentsOneShot({
                     deviceSN,
                     foxessAPI,
+                    settleDelayMs: 2500,
                     userConfig,
                     userId
                   });
-                  await new Promise(resolve => setTimeout(resolve, 2500)); // Wait for inverter to process
                 }
               } catch (err) {
                 console.error(`[Automation] ❌ Error clearing active rule segment:`, err.message);
@@ -590,43 +597,34 @@ app.post('/api/automation/cycle', async (req, res) => {
         }
         // Mark whether this is a new trigger or a continuing active rule
         const isNewTrigger = !isActiveRule;
-        triggeredRule = { ruleId, ...rule, isNewTrigger, status: isNewTrigger ? 'new_trigger' : 'continuing' };
+        triggeredRule = buildTriggeredRuleSummary({ isNewTrigger, rule, ruleId });
         
         // Only apply the rule action if this is a NEW rule (not the active one continuing)
         if (!isActiveRule) {
           logger.debug('Automation', `🚀 Applying NEW rule action for '${rule.name}'...`);
           logger.debug('Automation', `🎬 Calling applyRuleAction(userId=${userId}, rule=${rule.name})`);
           // Actually apply the rule action (create scheduler segment)
-          let actionResult = null;
-          try {
-            const applyStart = Date.now();
-            actionResult = await applyRuleAction(userId, rule, userConfig);
-            const applyDuration = Date.now() - applyStart;
-            logger.debug('Automation', `📤 applyRuleAction completed in ${applyDuration}ms: errno=${actionResult?.errno}`);
-            console.log(`[Automation] 📋 Action result details:`, JSON.stringify({errno: actionResult?.errno, msg: actionResult?.msg, segment: actionResult?.segment ? 'present' : 'missing'}, null, 2));
-          } catch (actionError) {
-            console.error(`[Automation] ❌ Action exception:`, actionError);
-            actionResult = { errno: -1, msg: actionError.message || 'Action failed' };
-          }
+          const { actionResult, applyDurationMs } = await applyTriggeredRuleAction({
+            applyRuleAction,
+            errorLogLabel: '[Automation] Action exception:',
+            logger: console,
+            rule,
+            userConfig,
+            userId
+          });
+          logger.debug('Automation', `applyRuleAction completed in ${applyDurationMs}ms: errno=${actionResult?.errno}`);
+          console.log('[Automation] Action result details:', JSON.stringify({errno: actionResult?.errno, msg: actionResult?.msg, segment: actionResult?.segment ? 'present' : 'missing'}, null, 2));
           
-          // Update rule's lastTriggered (new rule triggered)
-          await setUserRule(userId, ruleId, {
-            lastTriggered: serverTimestamp()
-          }, { merge: true });
-          
-          logger.debug('Automation', `💾 Saving automation state for new rule...`);
-          logger.debug('Automation', `📊 State to save: activeRule=${ruleId}, activeSegmentEnabled=${actionResult?.errno === 0}`);
-          // Update automation state
-          // IMPORTANT: Save ruleId (doc key) not rule.name so UI can match activeRule with rule keys
-          await saveUserAutomationState(userId, {
-            lastCheck: Date.now(),
-            lastTriggered: Date.now(),
-            activeRule: ruleId,
-            activeRuleName: rule.name, // Keep display name for reference
-            activeSegment: actionResult?.segment || null, // Store segment details for verification
-            activeSegmentEnabled: actionResult?.errno === 0,
-            inBlackout: false,
-            lastActionResult: actionResult
+          await persistTriggeredRuleState({
+            actionResult,
+            lastCheckMs: Date.now(),
+            lastTriggeredMs: Date.now(),
+            ruleId,
+            ruleName: rule.name,
+            saveUserAutomationState,
+            serverTimestamp,
+            setUserRule,
+            userId
           });
           logger.debug('Automation', `✅ State saved successfully - activeRule is now '${rule.name}'`);
           logger.debug('Automation', `🔍 Final segment status: ${actionResult?.errno === 0 ? 'ENABLED ✅' : 'FAILED ❌'}`);
@@ -695,36 +693,23 @@ app.post('/api/automation/cycle', async (req, res) => {
             const deviceSN = userConfig?.deviceSn;
             if (deviceSN) {
               // Retry logic for segment clearing (up to 3 attempts)
-              let clearAttempt = 0;
-              let clearResult = null;
-              while (clearAttempt < 3 && !segmentClearSuccess) {
-                clearAttempt++;
-                clearResult = await clearSchedulerSegments({
-                  deviceSN,
-                  foxessAPI,
-                  userConfig,
-                  userId
-                });
-                
-                if (clearResult?.errno === 0) {
-                  segmentClearSuccess = true;
-                } else {
-                  console.warn(`[Automation] Segment clear attempt ${clearAttempt} failed: errno=${clearResult?.errno}, msg=${clearResult?.msg}`);
-                  if (clearAttempt < 3) {
-                    await new Promise(resolve => setTimeout(resolve, 1200));
-                  }
-                }
-              }
+              const clearOutcome = await clearSchedulerSegmentsWithRetry({
+                deviceSN,
+                foxessAPI,
+                logger: console,
+                maxAttempts: 3,
+                retryDelayMs: 1200,
+                settleDelayMs: 2500,
+                userConfig,
+                userId
+              });
+              segmentClearSuccess = clearOutcome.success === true;
               
               if (!segmentClearSuccess) {
                 console.error(`[Automation] ❌ Failed to clear segments after 3 attempts - aborting replacement rule evaluation for safety`);
                 // Break out of rule loop if we can't clear - too risky to apply new segment
                 break;
               }
-              
-              // Wait for inverter to process segment clearing before continuing evaluation
-              // Extended delay to ensure hardware is ready (2.5s total wait)
-              await new Promise(resolve => setTimeout(resolve, 2500));
             }
             // Clear lastTriggered when rule is canceled (conditions failed)
             // This allows the rule to re-trigger immediately if conditions become valid again
@@ -740,14 +725,13 @@ app.post('/api/automation/cycle', async (req, res) => {
           
           // Only proceed if segment clear was successful
           if (segmentClearSuccess) {
-            await saveUserAutomationState(userId, { 
-              lastCheck: Date.now(), 
-              inBlackout: false, 
-              activeRule: null,
-              activeRuleName: null,
-              activeSegment: null,
-              activeSegmentEnabled: false
-            });
+            await saveUserAutomationState(
+              userId,
+              buildClearedActiveRuleState({
+                inBlackout: false,
+                lastCheckMs: Date.now()
+              })
+            );
             
             // Log to audit trail - Rule turned OFF
             // Include full evaluation context showing why conditions failed
@@ -830,7 +814,10 @@ app.post('/api/automation/cycle', async (req, res) => {
     } catch (e) { /* ignore */ }
     res.status(500).json({ errno: 500, error: error.message });
   }
-});
+};
+
+  app.post('/api/automation/cycle', automationCycleHandler);
+  return automationCycleHandler;
 
 }
 

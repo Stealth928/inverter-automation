@@ -945,13 +945,14 @@
                 button.type = 'button';
                 button.style.display = 'none';
 
-                // Place in document flow at end of main-content (below scheduler),
-                // falling back to body if main-content is not present on this page.
+                // Place in document flow at end of main-content (below scheduler).
+                // On setup page, mount in setup footer to avoid becoming a flex-row sibling of the form.
                 const wrapper = document.createElement('div');
                 wrapper.className = 'pwa-install-wrapper';
                 wrapper.appendChild(button);
-                const mainContent = document.querySelector('.main-content') || document.querySelector('.left-panel') || document.body;
-                mainContent.appendChild(wrapper);
+                const setupFooter = document.querySelector('.setup-footer');
+                const mountTarget = setupFooter || document.querySelector('.main-content') || document.querySelector('.left-panel') || document.body;
+                mountTarget.appendChild(wrapper);
             }
             return button;
         };

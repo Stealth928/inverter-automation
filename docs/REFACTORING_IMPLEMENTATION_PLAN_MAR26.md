@@ -1,6 +1,6 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 3 step 2 in progress  
+Status: Active execution - Sprint 1 complete, P1 closeout pending, P2 Wave 3 step 2 complete with closeout evidence drafted, scheduler service-runner decoupling complete, and index.js reduction continuing (G2 blockers remain)
 Scope: Planning + execution progress tracking  
 Last Updated: 2026-03-06  
 Primary Branch: `RefactoringMar26`
@@ -17,11 +17,11 @@ Primary Branch: `RefactoringMar26`
 | Parallel Frontend Prep | 20-21 | ✅ Done | 2/2 |
 | **Sprint 1 Total** | **1-21** | **✅ Done** | **21/21 (100%)** |
 
-| Phase | Gate | Status | Progress |
-|---|---|---|---:|
-| P0 | G0 | ✅ Complete | 100% |
-| P1 | G1 | ⏳ In Progress | 10/10 tasks drafted, key contract artifacts implemented, formal gate close pending |
-| P2 | G2 | ⏳ In Progress | Wave 1 complete (3/3), Wave 2 read-route extraction complete, Wave 3 step 1 complete (scheduler + config + automation mutation routes + automation cycle route extracted); Wave 3 step 2 in progress (shared scheduler segment-clear + audit-evaluation + ROI house-load + ROI revenue-estimation + ROI snapshot-assembly + inverter/Amber data-fetch + blackout-window + weather-fetch-plan services extracted, remaining automation helper service decomposition pending). Frontend settings timing UX aligned to seconds with explicit ms API translation, 1-decimal minute display precision, and regression coverage, and UTF-8 text/icon rendering repaired. |
+| Phase | Gate | Status | Progress | Next Focus |
+|---|---|---|---|---|
+| P0 | G0 | ✅ Complete | 100% | - |
+| P1 | G1 | ⏳ In Progress | 10/10 tasks implemented; formal gate close pending | Capture closeout evidence + sign-off |
+| P2 | G2 | In Progress | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence drafted, residual helper dedupe continued (`number-utils`), scheduler route-stack coupling removed, pure scheduler service runner landed, and public setup/auth routes extracted from `index.js` | Execute remaining G2 blocker closure (index.js size reduction + utility/test-harness normalization) |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -871,6 +871,144 @@ Tracker hygiene rule: update this section at the end of every completed executio
   - `npx playwright test tests/frontend/settings.spec.js tests/frontend/settings-persistence.spec.js --project=chromium`
   - `npx playwright test tests/frontend/settings-persistence.spec.js --project=chromium`
 - Next target chunk: continue Wave 3 step 2 backend extraction by decomposing remaining rule-loop lifecycle/cooldown helper blocks from `automation-cycle`.
+
+### ✅ 2026-03-06 - Chunk 40 (P2 Wave 3 step 2: rule-loop lifecycle/cooldown service extraction)
+
+- Introduced shared automation-cycle lifecycle helper service module:
+  - `functions/lib/services/automation-cycle-lifecycle-service.js`
+  - added helpers:
+    - `evaluateRuleCooldown({ isActiveRule, lastTriggered, cooldownMinutes, nowMs })`
+    - `buildCooldownEvaluationResult(ruleName, cooldownRemainingSeconds)`
+    - `buildContinuingEvaluationResult({ ruleName, activeForSeconds, cooldownRemainingSeconds, details })`
+    - `buildClearedActiveRuleState({ includeLastCheck, lastCheckMs, inBlackout })`
+    - `buildTriggeredRuleState({ ruleId, ruleName, actionResult, lastCheckMs, lastTriggeredMs })`
+    - `buildTriggeredRuleSummary({ ruleId, rule, isNewTrigger })`
+- Rewired automation-cycle route to consume shared lifecycle/cooldown helpers:
+  - `functions/api/routes/automation-cycle.js`
+  - moved repeated cooldown calculation and active-rule state object assembly behind `lib/services/*` while preserving API behavior.
+- Added focused unit coverage for the new lifecycle service:
+  - `functions/test/automation-cycle-lifecycle-service.test.js`
+- Validation passed:
+  - `npm --prefix functions test -- automation-cycle-lifecycle-service.test.js automation-cycle-route-module.test.js automation-cycle-rule-service.test.js automation-cycle-data-service.test.js automation-roi-service.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- Updated Wave 3 tracker artifact to reflect service extraction progress:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: continue Wave 3 step 2 by extracting remaining segment-clear retry/cancellation helper blocks from `automation-cycle` into `lib/services/*` with no behavior changes.
+
+### ✅ 2026-03-06 - Chunk 41 (P2 Wave 3 step 2: segment-clear retry/cancellation service extraction)
+
+- Extended shared scheduler segment service with retry/cancellation helper:
+  - `functions/lib/services/scheduler-segment-service.js`
+  - added `clearSchedulerSegmentsWithRetry({ deviceSN, foxessAPI, userConfig, userId, maxAttempts, retryDelayMs, settleDelayMs, logger })`.
+- Rewired automation-cycle cancellation path to use shared retry flow:
+  - `functions/api/routes/automation-cycle.js`
+  - replaced inline segment-clear retry loop/delay block under active-rule cancellation with `clearSchedulerSegmentsWithRetry(...)` while preserving existing behavior (`3` attempts, `1200ms` retry delay, `2500ms` settle delay, abort-on-failure semantics).
+- Added focused retry behavior coverage:
+  - `functions/test/scheduler-segment-service.test.js`
+  - new assertions cover retry-until-success, fail-after-max-attempts, and throw propagation.
+- Validation passed:
+  - `npm --prefix functions run lint`
+  - `npm --prefix functions test -- scheduler-segment-service.test.js automation-cycle-route-module.test.js automation-cycle-lifecycle-service.test.js --runInBand`
+  - `node scripts/pre-deploy-check.js`
+- Updated Wave 3 tracker artifact to reflect service extraction progress:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: continue Wave 3 step 2 by normalizing remaining one-shot segment-clear/pacing call sites in `automation-cycle` into shared helpers with no behavior changes.
+
+### ✅ 2026-03-06 - Chunk 42 (P2 Wave 3 step 2: one-shot segment-clear/pacing helper normalization)
+
+- Extended shared scheduler segment service with one-shot helper:
+  - `functions/lib/services/scheduler-segment-service.js`
+  - added `clearSchedulerSegmentsOneShot({ deviceSN, foxessAPI, userConfig, userId, settleDelayMs })`.
+- Rewired automation-cycle one-shot clear call sites to use shared helper:
+  - `functions/api/routes/automation-cycle.js`
+  - migrated disable-path and disable-flag segment-clear branches to `clearSchedulerSegmentsOneShot(...)`.
+  - migrated higher-priority preemption clear + pacing path to `clearSchedulerSegmentsOneShot(..., settleDelayMs: 2500)`.
+- Added focused regression coverage:
+  - `functions/test/scheduler-segment-service.test.js`
+  - new assertions cover one-shot success and failure envelopes.
+  - `functions/test/automation-cycle-route-module.test.js`
+  - added clearSegmentsOnNextCycle branch coverage to confirm route behavior and FoxESS clear call wiring.
+- Validation passed:
+  - `npm --prefix functions test -- scheduler-segment-service.test.js automation-cycle-route-module.test.js --runInBand`
+  - `npm --prefix functions run lint`
+- Updated Wave 3 tracker artifact to reflect helper extraction completion:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: prepare G2 closeout evidence and run a residual inline-helper scan for any remaining extraction candidates.
+
+### 2026-03-06 - Chunk 43 (P2 Wave 3 step 2: trigger action/persist helper extraction)
+
+- Completed residual inline-helper scan and extracted repeated trigger action/persist flow from `automation-cycle` into shared service module:
+  - `functions/lib/services/automation-cycle-action-service.js`
+  - added `applyTriggeredRuleAction(...)` and `persistTriggeredRuleState(...)` to centralize apply + state persistence behavior.
+- Rewired automation-cycle route call sites to use shared helper flow with no API envelope changes:
+  - `functions/api/routes/automation-cycle.js`
+  - replaced duplicated trigger-action + save-state blocks in both cooldown-expiry re-trigger and new-trigger branches.
+- Added focused unit coverage for new shared service:
+  - `functions/test/automation-cycle-action-service.test.js`
+- Validation passed:
+  - `npm --prefix functions test -- automation-cycle-action-service.test.js automation-cycle-route-module.test.js automation-cycle-lifecycle-service.test.js scheduler-segment-service.test.js --runInBand`
+  - `npm --prefix functions run lint`
+- Updated Wave 3 tracker artifact to reflect residual extraction completion:
+  - `docs/P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md`
+- Next target chunk: prepare G2 closeout evidence package and finalize sign-off checklist.
+
+### 2026-03-06 - Chunk 44 (P2/G2 closeout evidence draft + residual utility dedupe)
+
+- Prepared dedicated G2 closeout evidence package with objective gate-by-gate status:
+  - `docs/P2_G2_CLOSEOUT_EVIDENCE_MAR26.md`
+  - captured contract/lint/pre-deploy verification, decomposition footprint metrics, and explicit G2 blocker list.
+- Updated phase-gate tracker references to reflect active G2 closeout drafting:
+  - `docs/PHASE_GATE_DASHBOARD.md`
+  - `docs/INDEX.md`
+- Reduced residual helper duplication found during closeout scan:
+  - added shared numeric utility `functions/lib/services/number-utils.js` via `toFiniteNumber(...)`.
+  - rewired `functions/lib/services/automation-cycle-lifecycle-service.js` and `functions/lib/services/automation-cycle-action-service.js` to consume shared utility.
+  - added focused coverage in `functions/test/number-utils.test.js`.
+- Validation passed:
+  - `npm run api:contract:check`
+  - `npm run openapi:check`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+  - `npm --prefix functions test -- number-utils.test.js automation-cycle-lifecycle-service.test.js automation-cycle-action-service.test.js automation-cycle-route-module.test.js --runInBand`
+- Next target chunk: execute G2 blockers with implementation changes (scheduler decoupling from Express internals, `functions/index.js` reduction toward <1500 lines, and shared test-harness adoption normalization).
+
+### 2026-03-06 - Chunk 45 (G2 blocker execution: scheduler route-stack decoupling)
+
+- Removed scheduler dependency on Express internal route stack traversal:
+  - `functions/api/routes/automation-cycle.js`
+    - `registerAutomationCycleRoute(...)` now returns the registered `automationCycleHandler`.
+  - `functions/index.js`
+    - captured handler reference at registration time (`const automationCycleHandler = registerAutomationCycleRoute(...)`).
+    - replaced `app._router.stack.find(...)` route lookup in `runAutomationHandler(...)` with direct `automationCycleHandler(mockReq, mockRes)` invocation.
+- Updated G2 closeout evidence to reflect this blocker progress:
+  - `docs/P2_G2_CLOSEOUT_EVIDENCE_MAR26.md`
+  - criterion 1 moved from "Not Met" to "Partially Met" (route-stack coupling removed; pure service-runner decoupling still pending).
+- Validation passed:
+  - `npm --prefix functions test -- routes-integration.test.js automation-cycle-route-module.test.js automation-cycle-action-service.test.js automation-cycle-lifecycle-service.test.js number-utils.test.js --runInBand`
+  - `npm --prefix functions run lint`
+- Next target chunk: execute remaining G2 blockers (continue `functions/index.js` reduction toward <1500 lines and utility/test-harness normalization).
+
+### 2026-03-06 - Chunk 46 (G2 blocker execution: public setup/auth route extraction)
+
+- Continued `functions/index.js` reduction by extracting public setup/auth handlers into a dedicated route module:
+  - `functions/api/routes/setup-public.js`
+  - moved:
+    - `POST /api/auth/forgot-password`
+    - `POST /api/config/validate-keys`
+    - `GET /api/config/setup-status`
+- Rewired composition in `functions/index.js`:
+  - added `registerSetupPublicRoutes(...)` import and registration.
+  - removed duplicated inline handler bodies while preserving API envelopes and validation behavior.
+- Added focused regression coverage for extracted route module:
+  - `functions/test/setup-public-routes-modules.test.js`
+  - covers dependency guardrails, forgot-password validation, validate-keys error/success paths, emulator shortcut behavior, authenticated config persistence, and setup-status user envelope behavior.
+- Validation passed:
+  - `npm --prefix functions test -- setup-public-routes-modules.test.js routes-integration.test.js cleanup-user.test.js --runInBand`
+  - `npm --prefix functions run lint`
+  - `node scripts/pre-deploy-check.js`
+- Next target chunk: continue remaining G2 blockers (additional `index.js` route-domain extraction and shared test-harness normalization).
+
 ---
 
 ## 1. Purpose
@@ -1694,6 +1832,13 @@ When execution is approved, run phases in order:
 | 2026-03-06 | Fixed credentials save flow in `frontend/settings.html` to handle masked hidden tokens safely: when token is unchanged-but-hidden and no in-memory actual value exists, avoid posting placeholder characters to `/api/config/validate-keys`; persist editable credential fields via authenticated `/api/config` merge and refresh badge/status from server state. | Codex |
 | 2026-03-06 | Repaired UTF-8 text/icon rendering in `frontend/settings.html` after mojibake corruption (navigation labels, section headers, FAQ icons, status/action glyphs), then re-ran frontend settings Playwright suites (`tests/frontend/settings.spec.js`, `tests/frontend/settings-persistence.spec.js`) to confirm rendering and persistence behavior remained stable. | Codex |
 | 2026-03-06 | Updated settings timing minute conversion display to one-decimal precision in `frontend/settings.html` (`formatMs` minute branch now `toFixed(1)`), aligned initial timing badges (`1.0m`/`5.0m`/`30.0m`), and expanded `tests/frontend/settings-persistence.spec.js` with explicit minute-display assertions. | Codex |
+| 2026-03-06 | Continued P2 Wave 3 step 2 by introducing shared rule-loop lifecycle/cooldown helpers in `functions/lib/services/automation-cycle-lifecycle-service.js`, rewiring `functions/api/routes/automation-cycle.js` to use the shared cooldown/state builders, adding focused coverage in `functions/test/automation-cycle-lifecycle-service.test.js`, and re-validating lint + pre-deploy gates. | Codex |
+| 2026-03-06 | Continued P2 Wave 3 step 2 by introducing shared segment-clear retry/cancellation helper `clearSchedulerSegmentsWithRetry(...)` in `functions/lib/services/scheduler-segment-service.js`, rewiring the active-rule cancellation path in `functions/api/routes/automation-cycle.js`, extending `functions/test/scheduler-segment-service.test.js`, and re-validating lint + pre-deploy gates. | Codex |
+| 2026-03-06 | Continued P2 Wave 3 step 2 by introducing shared one-shot segment-clear/pacing helper `clearSchedulerSegmentsOneShot(...)` in `functions/lib/services/scheduler-segment-service.js`, rewiring disable/disable-flag + preemption clear paths in `functions/api/routes/automation-cycle.js`, extending `functions/test/scheduler-segment-service.test.js`, adding clear-flag branch coverage in `functions/test/automation-cycle-route-module.test.js`, and re-validating lint + targeted backend tests. | Codex |
+| 2026-03-06 | Continued P2 Wave 3 step 2 residual helper extraction by introducing shared action/persist helpers `applyTriggeredRuleAction(...)` and `persistTriggeredRuleState(...)` in `functions/lib/services/automation-cycle-action-service.js`, rewiring duplicated trigger branches in `functions/api/routes/automation-cycle.js`, adding focused coverage in `functions/test/automation-cycle-action-service.test.js`, and re-validating lint + targeted backend tests. | Codex |
+| 2026-03-06 | Continued implementation by drafting P2/G2 closeout evidence in `docs/P2_G2_CLOSEOUT_EVIDENCE_MAR26.md`, updating phase-gate/index tracker references, running contract/lint/pre-deploy validations, and reducing residual helper duplication by extracting shared `toFiniteNumber(...)` utility to `functions/lib/services/number-utils.js` with focused coverage in `functions/test/number-utils.test.js`. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by removing scheduler route-stack coupling: `registerAutomationCycleRoute(...)` now returns `automationCycleHandler` (`functions/api/routes/automation-cycle.js`) and `runAutomationHandler(...)` now invokes that handler reference directly instead of traversing `app._router.stack` (`functions/index.js`), with targeted route/integration regression coverage and lint validation. | Codex |
+| 2026-03-06 | Continued G2 blocker execution by extracting public setup/auth endpoints (`/api/auth/forgot-password`, `/api/config/validate-keys`, `/api/config/setup-status`) into `functions/api/routes/setup-public.js`, wiring `registerSetupPublicRoutes(...)` in `functions/index.js`, adding focused module coverage in `functions/test/setup-public-routes-modules.test.js`, and re-validating targeted tests, lint, and full pre-deploy checks. | Codex |
 
 ---
 

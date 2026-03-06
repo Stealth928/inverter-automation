@@ -50,6 +50,14 @@ function buildDeps(overrides = {}) {
 }
 
 describe('automation cycle route module', () => {
+  test('registerAutomationCycleRoute returns handler reference for scheduler reuse', () => {
+    const app = express();
+    const deps = buildDeps();
+
+    const handler = registerAutomationCycleRoute(app, deps);
+    expect(typeof handler).toBe('function');
+  });
+
   test('returns automation-disabled skip response when state.enabled is false', async () => {
     const deps = buildDeps({
       getUserAutomationState: jest.fn(async () => ({
@@ -163,6 +171,53 @@ describe('automation cycle route module', () => {
         inBlackout: false,
         lastCheck: expect.any(Number)
       })
+    );
+  });
+
+  test('clears segments and exits when clearSegmentsOnNextCycle flag is set', async () => {
+    const deps = buildDeps({
+      getQuickControlState: jest.fn(async () => null),
+      getUserAutomationState: jest.fn(async () => ({ clearSegmentsOnNextCycle: true, enabled: true })),
+      getUserConfig: jest.fn(async () => ({ automation: { blackoutWindows: [] }, deviceSn: 'SN-FLAG-1' })),
+      getUserRules: jest.fn(async () => ({
+        ruleA: { enabled: true, name: 'Rule A', priority: 1 }
+      }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-cycle-clear-flag' };
+        next();
+      });
+      registerAutomationCycleRoute(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/automation/cycle')
+      .send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      result: {
+        skipped: true,
+        reason: 'Rule was disabled - segments cleared',
+        segmentsCleared: true
+      }
+    });
+    expect(deps.foxessAPI.callFoxESSAPI).toHaveBeenCalledWith(
+      '/op/v1/device/scheduler/enable',
+      'POST',
+      expect.objectContaining({
+        deviceSN: 'SN-FLAG-1',
+        groups: expect.any(Array)
+      }),
+      expect.objectContaining({ deviceSn: 'SN-FLAG-1' }),
+      'u-cycle-clear-flag'
+    );
+    expect(deps.saveUserAutomationState).toHaveBeenCalledWith(
+      'u-cycle-clear-flag',
+      { clearSegmentsOnNextCycle: false }
     );
   });
 });

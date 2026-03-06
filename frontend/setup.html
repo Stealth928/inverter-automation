@@ -128,6 +128,7 @@
             flex-direction: column;
             align-items: center;
             gap: 8px;
+            text-align: center;
         }
 
         .progress-step .step-dot {
@@ -156,10 +157,13 @@
         }
 
         .progress-step .step-label {
+            display: block;
+            width: 100%;
             font-size: 11px;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.3px;
+            line-height: 1.25;
             transition: color 0.3s ease;
         }
 
@@ -594,7 +598,7 @@
                             <span>FoxESS API Token</span>
                             <span class="required-indicator">*</span>
                         </label>
-                        <div class="hint">Generate from FoxESS Cloud (v1) → User Settings → API Management</div>
+                        <div class="hint">Generate from <a href="https://www.foxesscloud.com/login" target="_blank" rel="noopener noreferrer">FoxESS Cloud (v1)</a> → User Settings → API Management</div>
                         <div class="input-wrapper">
                             <input 
                                 type="password" 

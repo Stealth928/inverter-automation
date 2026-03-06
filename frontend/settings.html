@@ -616,7 +616,7 @@
                 </div>
                 <div class="setting-item">
                     <div class="setting-label">Inverter Data Cache</div>
-                    <div class="setting-hint">Inverter API data refresh interval (respect rate limits)</div>
+                    <div class="setting-hint">Inverter API data refresh interval</div>
                     <div class="setting-input">
                         <input type="number" id="cache_inverter" data-section="cache" data-key="inverter" min="60" max="600" step="1" value="300">
                         <span class="unit">sec</span>
@@ -1362,15 +1362,22 @@
                     // Initialize originalCredentials to reflect what we just loaded so the
                     // UI doesn't consider the credentials section "modified" by default.
                     originalCredentials.deviceSn = currentConfig.deviceSn || '';
-                    originalCredentials.deviceSn = currentConfig.deviceSn || '';
                     // For credentials, store masked dots in originalCredentials to match the display
                     // The actual values are stored in the dataset for Show/Hide functionality
                     
                     // Clear credential input fields before reloading to ensure fresh state
                     const foxessInput = document.getElementById('credentials_foxessToken');
                     const amberInput = document.getElementById('credentials_amberKey');
-                    if (foxessInput) foxessInput.value = '';
-                    if (amberInput) amberInput.value = '';
+                    if (foxessInput) {
+                        foxessInput.value = '';
+                        delete foxessInput.dataset.actualValue;
+                        setSavedCredentialFlag(foxessInput, false);
+                    }
+                    if (amberInput) {
+                        amberInput.value = '';
+                        delete amberInput.dataset.actualValue;
+                        setSavedCredentialFlag(amberInput, false);
+                    }
                     
                     // Store actual credentials in a data attribute for Show/Hide functionality
                     if (foxessInput && currentConfig.foxessToken) {
@@ -1395,18 +1402,28 @@
                             if (foxessInput) {
                                 foxessInput.value = '••••••••';
                                 originalCredentials.foxessToken = '••••••••';  // Match the display
+                                setSavedCredentialFlag(foxessInput, true);
                             }
                         } else {
                             originalCredentials.foxessToken = '';
+                            if (foxessInput) {
+                                delete foxessInput.dataset.actualValue;
+                                setSavedCredentialFlag(foxessInput, false);
+                            }
                         }
                         
                         if (hasAmber) {
                             if (amberInput) {
                                 amberInput.value = '••••••••';
                                 originalCredentials.amberKey = '••••••••';  // Match the display
+                                setSavedCredentialFlag(amberInput, true);
                             }
                         } else {
                             originalCredentials.amberKey = '';
+                            if (amberInput) {
+                                delete amberInput.dataset.actualValue;
+                                setSavedCredentialFlag(amberInput, false);
+                            }
                         }
                         
                         if (hasFoxess && hasAmber) {
@@ -2212,15 +2229,36 @@
             }
         }
 
+        function setSavedCredentialFlag(input, isPresent) {
+            if (!input) return;
+            if (isPresent) {
+                input.dataset.hasSavedCredential = '1';
+            } else {
+                delete input.dataset.hasSavedCredential;
+            }
+        }
+
+        function isMaskedCredentialValue(value) {
+            if (!value) return false;
+            return /^[•*]+$/.test(value.trim());
+        }
+
         // Load only credentials status (reload deviceSn and token presence)
         function checkCredentialsChanged() {
             const deviceSn = (document.getElementById('credentials_deviceSn')?.value || '').trim();
-            const foxessToken = (document.getElementById('credentials_foxessToken')?.value || '').trim();
-            const amberKey = (document.getElementById('credentials_amberKey')?.value || '').trim();
-            
-            const changed = (deviceSn !== originalCredentials.deviceSn) || 
-                           (foxessToken !== (originalCredentials.foxessToken || '')) || 
-                           (amberKey !== (originalCredentials.amberKey || ''));
+            const foxessInput = document.getElementById('credentials_foxessToken');
+            const amberInput = document.getElementById('credentials_amberKey');
+            const foxessToken = (foxessInput?.value || '').trim();
+            const amberKey = (amberInput?.value || '').trim();
+
+            const foxessMatchesOriginal = foxessToken === (originalCredentials.foxessToken || '');
+            const amberMatchesOriginal = amberKey === (originalCredentials.amberKey || '');
+            const foxessMaskedSaved = isMaskedCredentialValue(foxessToken) && foxessInput?.dataset.hasSavedCredential === '1';
+            const amberMaskedSaved = isMaskedCredentialValue(amberKey) && amberInput?.dataset.hasSavedCredential === '1';
+            const credentialsChanged = !(foxessMatchesOriginal || foxessMaskedSaved) ||
+                !(amberMatchesOriginal || amberMaskedSaved);
+
+            const changed = (deviceSn !== originalCredentials.deviceSn) || credentialsChanged;
             
             const badge = document.getElementById('credentialsBadge');
             if (badge) {
@@ -2259,25 +2297,46 @@
                 const foxessInput = document.getElementById('credentials_foxessToken');
                 const amberInput = document.getElementById('credentials_amberKey');
                 
-                // Show masked credentials if they exist, but store actual values for Show/Hide
-                if (foxessPresent && actualFoxess) {
+                // Show masked credentials if they exist, and keep actual values for Show/Hide when available.
+                // Always reset input type to password so the masked display is properly hidden after reload.
+                if (foxessPresent) {
                     foxessInput.value = '••••••••';
-                    foxessInput.dataset.actualValue = actualFoxess;
+                    foxessInput.type = 'password';
+                    const tFox = document.getElementById('credentials_toggleFoxess');
+                    if (tFox) tFox.textContent = 'Show';
+                    if (actualFoxess) {
+                        foxessInput.dataset.actualValue = actualFoxess;
+                    }
                     originalCredentials.foxessToken = '••••••••';
+                    setSavedCredentialFlag(foxessInput, true);
                 } else {
                     foxessInput.value = '';
+                    foxessInput.type = 'password';
+                    const tFox = document.getElementById('credentials_toggleFoxess');
+                    if (tFox) tFox.textContent = 'Show';
                     delete foxessInput.dataset.actualValue;
                     originalCredentials.foxessToken = '';
+                    setSavedCredentialFlag(foxessInput, false);
                 }
                 
-                if (amberPresent && actualAmber) {
+                if (amberPresent) {
                     amberInput.value = '••••••••';
-                    amberInput.dataset.actualValue = actualAmber;
+                    amberInput.type = 'password';
+                    const tAmber = document.getElementById('credentials_toggleAmber');
+                    if (tAmber) tAmber.textContent = 'Show';
+                    if (actualAmber) {
+                        amberInput.dataset.actualValue = actualAmber;
+                    }
                     originalCredentials.amberKey = '••••••••';
+                    setSavedCredentialFlag(amberInput, true);
                 } else {
                     amberInput.value = '';
+                    amberInput.type = 'password';
+                    const tAmber = document.getElementById('credentials_toggleAmber');
+                    if (tAmber) tAmber.textContent = 'Show';
                     delete amberInput.dataset.actualValue;
                     originalCredentials.amberKey = '';
+                    setSavedCredentialFlag(amberInput, false);
                 }
                 
                 const credStatusEl = document.getElementById('credentialsStatus');
@@ -2311,13 +2370,36 @@
             const amberDisplayed = (amberInput?.value || '').trim();
             const originalFoxess = (originalCredentials.foxessToken || '').trim();
             const originalAmber = (originalCredentials.amberKey || '').trim();
+            const foxessHasSavedFlag = foxessInput?.dataset.hasSavedCredential === '1';
+            const amberHasSavedFlag = amberInput?.dataset.hasSavedCredential === '1';
+            // Defensive fallback: infer saved credential state from masked/original/dataset values
+            // so validation is not forced when UI flags are temporarily out of sync.
+            const foxessHasExistingCredential = foxessHasSavedFlag ||
+                !!foxessInput?.dataset.actualValue ||
+                isMaskedCredentialValue(originalFoxess) ||
+                isMaskedCredentialValue(foxessDisplayed);
+            const amberHasExistingCredential = amberHasSavedFlag ||
+                !!amberInput?.dataset.actualValue ||
+                isMaskedCredentialValue(originalAmber) ||
+                isMaskedCredentialValue(amberDisplayed);
 
-            // If the field still contains the masked placeholder and no real value is present in-memory,
-            // treat it as an unchanged hidden credential, not a literal token value.
-            const foxessUnchangedHidden = !!foxessDisplayed && !!originalFoxess &&
-                foxessDisplayed === originalFoxess && !foxessInput?.dataset.actualValue;
-            const amberUnchangedHidden = !!amberDisplayed && !!originalAmber &&
-                amberDisplayed === originalAmber && !amberInput?.dataset.actualValue;
+            // Treat masked placeholders as unchanged when we know a saved credential exists.
+            // This avoids re-validating existing hidden credentials on every save.
+            const foxessUnchangedHidden = isMaskedCredentialValue(foxessDisplayed) &&
+                foxessHasExistingCredential;
+            const amberUnchangedHidden = isMaskedCredentialValue(amberDisplayed) &&
+                amberHasExistingCredential;
+
+            // Also treat "shown then unchanged" as unchanged if the value matches in-memory actual value.
+            const foxessShownUnchanged = !!foxessInput?.dataset.actualValue &&
+                foxessDisplayed === foxessInput.dataset.actualValue &&
+                (isMaskedCredentialValue(originalFoxess) || foxessHasExistingCredential);
+            const amberShownUnchanged = !!amberInput?.dataset.actualValue &&
+                amberDisplayed === amberInput.dataset.actualValue &&
+                (isMaskedCredentialValue(originalAmber) || amberHasExistingCredential);
+
+            const foxessUnchanged = foxessUnchangedHidden || foxessShownUnchanged;
+            const amberUnchanged = amberUnchangedHidden || amberShownUnchanged;
 
             // Resolve actual values when dataset.actualValue is available.
             const foxessToken = (foxessDisplayed === originalFoxess && foxessInput?.dataset.actualValue)
@@ -2327,11 +2409,40 @@
                 ? amberInput.dataset.actualValue
                 : amberDisplayed;
 
-            const tokenToSend = foxessUnchangedHidden ? null : (foxessToken || null);
-            const amberToSend = amberUnchangedHidden ? null : (amberKey || null);
+            const tokenToSend = foxessUnchanged ? null : (foxessToken || null);
+            const amberToSend = amberUnchanged ? null : (amberKey || null);
+
+            // Safety guard: never send the masked placeholder (•••••••• or ****) to validate-keys.
+            // If a masked value somehow slips through the unchanged-detection above, recover the
+            // actual stored value from dataset or treat the token as unchanged.
+            if (tokenToSend && isMaskedCredentialValue(tokenToSend)) {
+                const recoveredToken = foxessInput?.dataset.actualValue || null;
+                if (!recoveredToken) {
+                    // Can't recover — treat as unchanged to avoid sending garbage to FoxESS
+                    showMessage('warning', 'Enter a new token or keep the existing hidden token unchanged.');
+                    return;
+                }
+                // Use the in-memory actual value instead and skip re-validation
+                const patchPayload = { deviceSn };
+                if (!amberUnchanged && amberToSend) patchPayload.amberApiKey = amberToSend;
+                const pr = await authenticatedFetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(patchPayload)
+                });
+                const pd = await pr.json();
+                if (!pr.ok || pd.errno !== 0) throw new Error(pd?.msg || pd?.error || `HTTP ${pr.status}`);
+                await loadCredentials();
+                showMessage('success', 'Credential changes saved.');
+                return;
+            }
 
             if (!deviceSn) {
                 showMessage('warning', 'Device Serial Number is required');
+                return;
+            }
+            if (!foxessUnchanged && !tokenToSend) {
+                showMessage('warning', 'Inverter API Token is required (enter a token or keep the saved hidden token unchanged).');
                 return;
             }
 
@@ -2343,9 +2454,9 @@
             try {
                 // Existing token is hidden and unchanged in this session.
                 // Avoid sending placeholder characters to validate-keys; just persist editable fields.
-                if (foxessUnchangedHidden) {
+                if (foxessUnchanged) {
                     const patchPayload = { deviceSn };
-                    if (!amberUnchangedHidden) {
+                    if (!amberUnchanged) {
                         patchPayload.amberApiKey = amberToSend || '';
                     }
 

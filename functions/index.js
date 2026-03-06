@@ -35,10 +35,12 @@ const { registerDiagnosticsReadRoutes } = require('./api/routes/diagnostics-read
 const { registerInverterReadRoutes } = require('./api/routes/inverter-read');
 const { registerInverterHistoryRoutes } = require('./api/routes/inverter-history');
 const { registerConfigMutationRoutes } = require('./api/routes/config-mutations');
+const { registerSetupPublicRoutes } = require('./api/routes/setup-public');
 const { registerSchedulerReadRoutes } = require('./api/routes/scheduler-read');
 const { registerSchedulerMutationRoutes } = require('./api/routes/scheduler-mutations');
 const { registerAutomationMutationRoutes } = require('./api/routes/automation-mutations');
 const { registerAutomationCycleRoute } = require('./api/routes/automation-cycle');
+const { runAutomationSchedulerCycle } = require('./lib/services/automation-scheduler-service');
 const { parseAutomationTelemetry } = require('./lib/device-telemetry');
 const { getCurrentAmberPrices } = require('./lib/pricing-normalization');
 const { createUserAutomationRepository } = require('./lib/repositories/user-automation-repository');
@@ -494,221 +496,15 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Password reset (no auth required)
-app.post('/api/auth/forgot-password', async (req, res) => {
-  try {
-    const { email } = req.body;
-    
-    if (!email || !email.trim()) {
-      return res.status(400).json({ errno: 400, error: 'Email is required' });
-    }
-    
-    logger.info('Auth', `Password reset requested for: ${email}`, true);
-    res.json({ 
-      errno: 0, 
-      msg: 'If this email exists, a password reset link has been sent. Please check your email.' 
-    });
-  } catch (error) {
-    console.error('[Auth] Password reset error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Validate API credentials during setup (no auth required for initial validation)
-app.post('/api/config/validate-keys', async (req, res) => {
-  try {
-    await tryAttachUser(req);
-    const { device_sn, foxess_token, amber_api_key, weather_place } = req.body;
-    const errors = {};
-    const failed_keys = [];
-    
-    // For unauthenticated setup, just validate the FoxESS token without saving
-    // Once user is authenticated, they can complete setup via authenticated endpoint
-    if (foxess_token && device_sn) {
-      logger.info('Validation', `Testing FoxESS token`, true);
-      const testConfig = { foxessToken: foxess_token, deviceSn: device_sn };
-      const foxResult = await foxessAPI.callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, testConfig, null);
-      
-      // Log only status, not full response (may contain sensitive device data)
-      logger.info('Validation', `FoxESS API response: errno=${foxResult?.errno}, devices=${foxResult?.result?.data?.length || 0}`, true);
-      
-      if (!foxResult || foxResult.errno !== 0) {
-        failed_keys.push('foxess_token');
-        // Map known FoxESS Cloud errno codes and cryptic messages to friendly text
-        const rawMsg = foxResult?.msg || foxResult?.error || '';
-        const rawLower = rawMsg.toLowerCase();
-        let tokenErr;
-        if (rawLower.includes('error token') || rawLower.includes('invalid') || foxResult?.errno === 40401) {
-          tokenErr = 'Invalid or expired API token. Re-copy it from FoxESS Cloud → User Settings → API Management.';
-        } else if (rawLower.includes('illegal parameter') || rawLower.includes('not bound')) {
-          tokenErr = 'API token not authorised for third-party access. In FoxESS Cloud, go to User Settings → API Management and generate a new token.';
-        } else if (rawLower.includes('frequency') || foxResult?.errno === 40402) {
-          tokenErr = 'FoxESS rate limit reached. Wait 60 seconds and try again.';
-        } else if (rawMsg) {
-          tokenErr = rawMsg;
-        } else {
-          tokenErr = 'Could not verify your FoxESS token. Check it matches exactly what FoxESS Cloud shows.';
-        }
-        errors.foxess_token = tokenErr;
-      } else {
-        // Check if device SN exists in the response
-        const devices = foxResult.result?.data || [];
-        const deviceFound = devices.some(d => d.deviceSN === device_sn);
-        if (!deviceFound && devices.length > 0) {
-          failed_keys.push('device_sn');
-          errors.device_sn = `Serial number not found in your account. Your registered device(s): ${devices.map(d => d.deviceSN).join(', ')} — check the spelling carefully.`;
-        } else if (!deviceFound && devices.length === 0) {
-          // No devices returned - might be a token issue
-          failed_keys.push('foxess_token');
-          errors.foxess_token = 'No inverters found on this account. Make sure this token is from the FoxESS account where your inverter is registered.';
-        }
-      }
-    } else {
-      if (!device_sn) {
-        failed_keys.push('device_sn');
-        errors.device_sn = 'Device Serial Number is required';
-      }
-      if (!foxess_token) {
-        failed_keys.push('foxess_token');
-        errors.foxess_token = 'FoxESS API Token is required';
-      }
-    }
-    
-    // If validation passed, persist config.
-    // - If the caller is authenticated, save under their user document.
-    // - If unauthenticated (setup flow), save to a shared server config doc so hosting deployments
-    //   can persist runtime credentials across requests (useful for single-instance installs).
-    if (failed_keys.length === 0) {
-      const configData = {
-        deviceSn: device_sn,
-        foxessToken: foxess_token,
-        amberApiKey: amber_api_key || '',
-        location: weather_place || 'Sydney',  // Save location for timezone detection
-        inverterCapacityW: (typeof req.body.inverter_capacity_w === 'number' && req.body.inverter_capacity_w > 0) ? Math.round(req.body.inverter_capacity_w) : 10000,
-        batteryCapacityKWh: (typeof req.body.battery_capacity_kwh === 'number' && req.body.battery_capacity_kwh > 0) ? req.body.battery_capacity_kwh : 41.93,
-        setupComplete: true,
-        updatedAt: serverTimestamp()
-      };
-
-      if (req.user?.uid) {
-        await setUserConfig(req.user.uid, configData, { merge: true });
-        logger.info('Validation', `Config saved successfully for user ${req.user.uid}`, true);
-      } else {
-        // Persist to shared server config so the setup flow completes for unauthenticated users
-        await db.collection('shared').doc('serverConfig').set(configData, { merge: true });
-        logger.info('Validation', 'Config saved to shared serverConfig (unauthenticated setup flow)', true);
-      }
-    }
-    
-    if (failed_keys.length > 0) {
-      return res.status(400).json({
-        errno: 1,
-        msg: `Validation failed for: ${failed_keys.join(', ')}`,
-        failed_keys,
-        errors
-      });
-    }
-    
-    res.json({ errno: 0, msg: 'Credentials validated successfully', result: { deviceSn: device_sn } });
-  } catch (error) {
-    console.error('[Validation] Error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
-});
-
-// Check if user setup is complete (no auth required for initial check during setup flow)
-app.get('/api/config/setup-status', async (req, res) => {
-  try {
-    await tryAttachUser(req);
-    
-    const serverConfig = getConfig();
-    
-    // If user is authenticated (has ID token), check their Firestore config
-    if (req.user?.uid) {
-      const userConfig = await getUserConfig(req.user.uid);
-      
-      // Treat setupComplete as true if explicitly set OR if both critical fields are present
-      const setupComplete = !!((userConfig?.setupComplete === true) || (userConfig?.deviceSn && userConfig?.foxessToken));
-      
-      // Include cache TTL configuration for frontend
-      const config = {
-        automation: {
-          intervalMs: (userConfig?.automation?.intervalMs) || serverConfig.automation.intervalMs
-        },
-        cache: {
-          amber: (userConfig?.cache?.amber) || serverConfig.automation.cacheTtl.amber,
-          inverter: (userConfig?.automation?.inverterCacheTtlMs) || serverConfig.automation.cacheTtl.inverter,
-          weather: (userConfig?.cache?.weather) || serverConfig.automation.cacheTtl.weather
-        },
-        defaults: {
-          cooldownMinutes: (userConfig?.defaults?.cooldownMinutes) || 5,
-          durationMinutes: (userConfig?.defaults?.durationMinutes) || 30
-        }
-      };
-      
-      return res.json({ 
-        errno: 0, 
-        result: { 
-          setupComplete, 
-          hasDeviceSn: !!userConfig?.deviceSn, 
-          hasFoxessToken: !!userConfig?.foxessToken, 
-          hasAmberKey: !!userConfig?.amberApiKey, 
-          source: userConfig?._source || 'user',
-          config  // Include user-specific config with TTLs
-        } 
-      });
-    }
-    
-    // Unauthenticated user - fall back to shared server config (if present)
-    try {
-      const sharedDoc = await db.collection('shared').doc('serverConfig').get();
-      if (sharedDoc.exists) {
-        const cfg = sharedDoc.data() || {};
-        const setupComplete = !!(cfg.setupComplete && cfg.deviceSn && cfg.foxessToken);
-        
-        // Include server default config
-        const config = {
-          automation: { intervalMs: serverConfig.automation.intervalMs },
-          cache: serverConfig.automation.cacheTtl,
-          defaults: { cooldownMinutes: 5, durationMinutes: 30 }
-        };
-        
-        return res.json({ 
-          errno: 0, 
-          result: { 
-            setupComplete, 
-            hasDeviceSn: !!cfg.deviceSn, 
-            hasFoxessToken: !!cfg.foxessToken, 
-            hasAmberKey: !!cfg.amberApiKey, 
-            source: 'shared',
-            config  // Include server config with TTLs
-          } 
-        });
-      }
-    } catch (e) {
-      console.warn('[Setup Status] Error reading shared server config:', e.message || e);
-    }
-
-    // No shared config found - setup not complete, but include server defaults
-    const config = {
-      automation: { intervalMs: serverConfig.automation.intervalMs },
-      cache: serverConfig.automation.cacheTtl,
-      defaults: { cooldownMinutes: 5, durationMinutes: 30 }
-    };
-    res.json({ 
-      errno: 0, 
-      result: { 
-        setupComplete: false, 
-        hasDeviceSn: false, 
-        hasFoxessToken: false, 
-        hasAmberKey: false,
-        config  // Include server defaults
-      } 
-    });
-  } catch (error) {
-    console.error('[Setup Status] Error:', error);
-    res.status(500).json({ errno: 500, error: error.message });
-  }
+registerSetupPublicRoutes(app, {
+  db,
+  foxessAPI,
+  getConfig,
+  getUserConfig,
+  logger,
+  serverTimestamp,
+  setUserConfig,
+  tryAttachUser
 });
 
 registerPricingRoutes(app, {
@@ -3035,7 +2831,7 @@ registerAutomationMutationRoutes(app, {
   validateRuleActionForUser
 });
 
-registerAutomationCycleRoute(app, {
+const automationCycleHandler = registerAutomationCycleRoute(app, {
   addAutomationAuditEntry,
   amberAPI,
   amberPricesInFlight,
@@ -4953,197 +4749,18 @@ app.use((req, res) => {
  */
 // Run automation handler logic as a standalone function so tests and different
 // firebase-functions versions can wire it up appropriately.
-async function runAutomationHandler(_context) {
-  const schedulerStartTime = Date.now();
-  const schedId = `${schedulerStartTime}_${Math.random().toString(36).substr(2, 9)}`;
-  
-  console.log(`[Scheduler] ========== Background check ${schedId} START ==========`);
-  
-  try {
-    // Get server config for default interval
-    const serverConfig = getConfig();
-    const defaultIntervalMs = serverConfig.automation.intervalMs; // Respects backend config!
-    
-    // OPTIMIZATION: Query only users with automation enabled (pre-filtered via automationEnabled flag)
-    // This avoids loading state+config for every registered user on each scheduler tick
-    let usersSnapshot = await db.collection('users').where('automationEnabled', '==', true).get();
-    
-    if (usersSnapshot.size === 0) {
-      // SELF-HEALING MIGRATION: Scan all users for automation state that hasn't been synced
-      // This handles existing users who had automation enabled before the pre-filtering flag was added
-      console.log(`[Scheduler] No pre-filtered users found — running migration scan...`);
-      const allUsersSnapshot = await db.collection('users').get();
-      let migratedCount = 0;
-      
-      const migrationChecks = allUsersSnapshot.docs.map(async (userDoc) => {
-        try {
-          const stateDoc = await db.collection('users').doc(userDoc.id)
-            .collection('automation').doc('state').get();
-          if (stateDoc.exists && stateDoc.data()?.enabled === true) {
-            // Found a user with automation enabled but missing the parent flag — migrate them
-            await db.collection('users').doc(userDoc.id).set(
-              { automationEnabled: true },
-              { merge: true }
-            );
-            console.log(`[Scheduler] Migrated user ${userDoc.id}: set automationEnabled=true`);
-            migratedCount++;
-          }
-        } catch (err) {
-          console.error(`[Scheduler] Migration check failed for ${userDoc.id}:`, err.message);
-        }
-      });
-      await Promise.all(migrationChecks);
-      
-      if (migratedCount === 0) {
-        console.log(`[Scheduler] Migration scan complete — no enabled users found, skipping`);
-        return null;
-      }
-      
-      console.log(`[Scheduler] Migration complete — ${migratedCount} user(s) migrated, re-querying...`);
-      // Re-query to get the now-migrated users
-      usersSnapshot = await db.collection('users').where('automationEnabled', '==', true).get();
-    }
-    
-    const totalEnabled = usersSnapshot.size;
-    
-    // Load state and config for enabled users in parallel
-    const userPromises = usersSnapshot.docs.map(async (userDoc) => {
-      const userId = userDoc.id;
-      try {
-        const state = await getUserAutomationState(userId);
-        const userConfig = await getUserConfig(userId);
-        
-        return {
-          userId,
-          state,
-          userConfig,
-          ready: state && state.enabled === true && userConfig?.deviceSn
-        };
-      } catch (err) {
-        return { userId, error: err.message, ready: false };
-      }
-    });
-
-    const userDataAll = await Promise.all(userPromises);
-    
-    // Filter candidates that need cycles (have device, interval elapsed)
-    const cycleCandidates = [];
-    let skippedDisabled = 0;
-    let skippedTooSoon = 0;
-
-    const now = Date.now();
-    for (const userData of userDataAll) {
-      if (!userData.ready) {
-        skippedDisabled++;
-        continue;
-      }
-
-      const { userId, state, userConfig } = userData;
-      const userIntervalMs = userConfig?.automation?.intervalMs || defaultIntervalMs;
-      const lastCheck = state?.lastCheck || 0;
-      const elapsed = now - lastCheck;
-
-      if (elapsed < userIntervalMs) {
-        skippedTooSoon++;
-        continue;
-      }
-
-      // OPTIMIZATION: Check blackout window EARLY (before expensive cycle call)
-      const userRules = await getUserRules(userId);
-      const blackoutWindows = userRules?.blackoutWindows || [];
-      
-      // Check if currently in blackout
-      let inBlackout = false;
-      if (blackoutWindows && blackoutWindows.length > 0) {
-        const userTz = userConfig?.timezone || 'UTC';
-        const userNow = getTimeInTimezone(userTz);
-        const dayOfWeek = userNow.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
-        const currentTime = userNow.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-
-        for (const window of blackoutWindows) {
-          if (window.enabled === false) continue; // Skip explicitly disabled windows
-          
-          const applicableDays = window.days || [];
-          if (applicableDays.length === 0 || applicableDays.includes(dayOfWeek)) {
-            if (isTimeInRange(currentTime, window.start, window.end)) {
-              inBlackout = true;
-              break;
-            }
-          }
-        }
-      }
-
-      if (inBlackout) {
-        skippedDisabled++; // Count as skipped (though technically in blackout)
-        continue;
-      }
-
-      cycleCandidates.push({ userId, state, userConfig });
-    }
-
-    // OPTIMIZATION: Run all candidate cycles in parallel (Promise.all)
-    let cyclesRun = 0;
-    let errors = 0;
-
-    if (cycleCandidates.length > 0) {
-      const cyclePromises = cycleCandidates.map(async (candidate) => {
-        const { userId } = candidate;
-        const userStartTime = Date.now();
-
-        try {
-          // Trigger cycle via existing route handler
-          const mockReq = { user: { uid: userId }, body: {}, headers: {}, get: () => null };
-          let cycleResult = null;
-          const mockRes = { json: (data) => { cycleResult = data; return mockRes; }, status: () => mockRes, send: () => mockRes };
-
-          const route = app._router.stack.find(layer => layer.route && layer.route.path === '/api/automation/cycle' && layer.route.methods.post);
-          if (route && route.route.stack[0]) {
-            await route.route.stack[0].handle(mockReq, mockRes);
-            
-            const userDuration = Date.now() - userStartTime;
-            
-            if (cycleResult) {
-              if (cycleResult.errno === 0) {
-                const r = cycleResult.result;
-                if (r?.triggered) {
-                  console.log(`[Scheduler] User ${userId}: ✅ Rule '${r.rule?.name}' triggered (${userDuration}ms)`);
-                  return { success: true };
-                } else if (r?.skipped) {
-                  console.log(`[Scheduler] User ${userId}: ⏭️ Skipped: ${r.reason} (${userDuration}ms)`);
-                  return { success: true };
-                }
-              } else {
-                console.error(`[Scheduler] User ${userId}: ❌ Error: ${cycleResult.error} (${userDuration}ms)`);
-                return { success: false };
-              }
-            }
-          } else {
-            console.error(`[Scheduler] User ${userId}: ❌ No route found`);
-            return { success: false };
-          }
-
-          return { success: true };
-        } catch (userErr) {
-          console.error(`[Scheduler] User ${userId}: Exception: ${userErr.message}`);
-          return { success: false };
-        }
-      });
-
-      const cycleResults = await Promise.all(cyclePromises);
-      cyclesRun = cycleResults.filter(r => r.success).length;
-      errors = cycleResults.filter(r => !r.success).length;
-    }
-
-    const duration = Date.now() - schedulerStartTime;
-    console.log(`[Scheduler] ========== Background check ${schedId} COMPLETE ==========`);
-    console.log(`[Scheduler] ${totalEnabled} enabled users: ${cyclesRun} cycles, ${skippedTooSoon} too soon, ${skippedDisabled} skipped, ${errors} errors (${duration}ms)`);
-
-    return null;
-
-  } catch (fatal) {
-    console.error(`[Scheduler] FATAL:`, fatal);
-    throw fatal;
-  }
+async function runAutomationHandler(context) {
+  return runAutomationSchedulerCycle(context, {
+    automationCycleHandler,
+    db,
+    getConfig,
+    getTimeInTimezone,
+    getUserAutomationState,
+    getUserConfig,
+    getUserRules,
+    isTimeInRange,
+    logger: console
+  });
 }
 
 // ==================== EXPORT CLOUD SCHEDULER FUNCTION ====================

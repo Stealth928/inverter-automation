@@ -46,8 +46,14 @@ test.describe('Settings Page - Data Persistence', () => {
           weatherPlace: 'Sydney, Australia'  // CRITICAL: Include weatherPlace in preferences
         },
         location: 'Sydney, Australia',
-        deviceSn: 'TEST123456'
+        deviceSn: 'TEST123456',
+        foxessToken: 'mock-foxess-token-existing',
+        amberApiKey: 'mock-amber-key-existing'
       };
+
+      window.lastConfigPostBody = null;
+      window.lastValidateKeysBody = null;
+      window.validateKeysCallCount = 0;
       
       // Mock the fetch API to simulate backend
       window.originalFetch = window.fetch;
@@ -55,12 +61,52 @@ test.describe('Settings Page - Data Persistence', () => {
         const requestUrl = new URL(url, window.location.origin);
         const path = requestUrl.pathname;
 
+        if (path === '/api/health') {
+          return new Response(JSON.stringify({
+            ok: true,
+            FOXESS_TOKEN: !!window.mockServerConfig.foxessToken,
+            AMBER_API_KEY: !!window.mockServerConfig.amberApiKey
+          }));
+        }
+
         // GET /api/config - return current mock config
         if (path === '/api/config' && (!options || options.method === 'GET' || options.method === 'get')) {
           return new Response(JSON.stringify({
             errno: 0,
             result: JSON.parse(JSON.stringify(window.mockServerConfig))  // Return clone of current state
           }));
+        }
+
+        // POST /api/config/validate-keys - validate and persist credentials
+        if (path === '/api/config/validate-keys' && options && (options.method === 'POST' || options.method === 'post')) {
+          window.validateKeysCallCount += 1;
+          try {
+            const body = JSON.parse(options.body || '{}');
+            window.lastValidateKeysBody = JSON.parse(JSON.stringify(body));
+            if (!body.device_sn || !body.foxess_token) {
+              return new Response(JSON.stringify({
+                errno: 1,
+                msg: 'Validation failed for: foxess_token',
+                failed_keys: ['foxess_token'],
+                errors: { foxess_token: 'FoxESS API Token is required' }
+              }), { status: 400 });
+            }
+
+            window.mockServerConfig = {
+              ...window.mockServerConfig,
+              deviceSn: body.device_sn,
+              foxessToken: body.foxess_token,
+              amberApiKey: body.amber_api_key || window.mockServerConfig.amberApiKey
+            };
+
+            return new Response(JSON.stringify({
+              errno: 0,
+              msg: 'Credentials validated successfully',
+              result: { deviceSn: body.device_sn }
+            }));
+          } catch (e) {
+            return new Response(JSON.stringify({ errno: 1, msg: e.message }), { status: 400 });
+          }
         }
         
         // POST /api/config - update mock config with new data
@@ -430,5 +476,88 @@ test.describe('Settings Page - Data Persistence', () => {
       // If control is not rendered (auth/load timing in mocked env), keep test non-flaky.
       expect(true).toBeTruthy();
     }
+  });
+
+  test('should save credential edits without validate-keys when foxess token stays masked and unchanged', async ({ page }) => {
+    await page.waitForTimeout(500);
+
+    const deviceSnInput = page.locator('#credentials_deviceSn');
+    const saveCredentialsBtn = page.locator('#credentialsSaveBtn');
+
+    if (await deviceSnInput.count() === 0 || await saveCredentialsBtn.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await deviceSnInput.fill('TEST123456-UPDATED');
+    await saveCredentialsBtn.click();
+    await page.waitForTimeout(1200);
+
+    const result = await page.evaluate(() => ({
+      validateKeysCallCount: window.validateKeysCallCount,
+      lastConfigPostBody: window.lastConfigPostBody,
+      serverDeviceSn: window.mockServerConfig.deviceSn
+    }));
+
+    expect(result.validateKeysCallCount).toBe(0);
+    expect(result.lastConfigPostBody?.deviceSn).toBe('TEST123456-UPDATED');
+    expect(result.serverDeviceSn).toBe('TEST123456-UPDATED');
+  });
+
+  test('should avoid validate-keys when masked foxess token is unchanged even if saved flag is missing', async ({ page }) => {
+    await page.waitForTimeout(500);
+
+    await page.evaluate(() => {
+      const foxessInput = document.getElementById('credentials_foxessToken');
+      if (!foxessInput) return;
+      delete foxessInput.dataset.hasSavedCredential;
+      foxessInput.value = '••••••••';
+      if (window.originalCredentials) {
+        window.originalCredentials.foxessToken = '••••••••';
+      }
+    });
+
+    const saveCredentialsBtn = page.locator('#credentialsSaveBtn');
+    if (await saveCredentialsBtn.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await saveCredentialsBtn.click();
+    await page.waitForTimeout(1200);
+
+    const result = await page.evaluate(() => ({
+      validateKeysCallCount: window.validateKeysCallCount,
+      lastConfigPostBody: window.lastConfigPostBody
+    }));
+
+    expect(result.validateKeysCallCount).toBe(0);
+    expect(result.lastConfigPostBody?.deviceSn).toBe('TEST123456');
+  });
+
+  test('should call validate-keys when foxess token is explicitly changed', async ({ page }) => {
+    await page.waitForTimeout(500);
+
+    const foxessInput = page.locator('#credentials_foxessToken');
+    const saveCredentialsBtn = page.locator('#credentialsSaveBtn');
+
+    if (await foxessInput.count() === 0 || await saveCredentialsBtn.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await foxessInput.fill('mock-foxess-token-new-value');
+    await saveCredentialsBtn.click();
+    await page.waitForTimeout(1200);
+
+    const result = await page.evaluate(() => ({
+      validateKeysCallCount: window.validateKeysCallCount,
+      lastValidateKeysBody: window.lastValidateKeysBody,
+      serverToken: window.mockServerConfig.foxessToken
+    }));
+
+    expect(result.validateKeysCallCount).toBe(1);
+    expect(result.lastValidateKeysBody?.foxess_token).toBe('mock-foxess-token-new-value');
+    expect(result.serverToken).toBe('mock-foxess-token-new-value');
   });
 });

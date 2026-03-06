@@ -1,75 +1,90 @@
 <!-- Copilot / AI agent guidance for the Inverter Automation repo -->
 # Repo Overview
 
-- **Purpose:** Serverless inverter automation: Firebase Hosting (frontend), Firebase Cloud Functions (API & automation), and Firestore for per-user state. See `README.md` and `docs/SETUP.md` for full context.
-- **Primary code areas:** `functions/` (Cloud Functions / Express API), `frontend/` (static UI), `firebase.json` (hosting + rewrites), `docs/` (automation & API docs).
+- Purpose: serverless inverter automation on Firebase Hosting + Cloud Functions + Firestore.
+- Main code areas:
+  - `functions/`: backend API and scheduler
+  - `frontend/`: static UI pages and shared JS
+  - `scripts/`: repo-level quality gates, emulator tooling, and contract checks
+  - `docs/`: architecture, API, setup, refactoring plan
 
-# High-level architecture (quick)
+# Architecture Snapshot
 
-- Frontend served from `frontend/` via Firebase Hosting. Requests to `/api/**` are rewritten to the functions code (see `firebase.json` rewrites).
-- `functions/index.js` implements an Express app exported as the `api` Cloud Function and the scheduled automation (`runAutomation`) via PubSub schedule (every 1 minute).
-- Firestore collections: user configs at `users/{uid}/config/main`, automation rules at `users/{uid}/rules`, and runtime state/history at `users/{uid}/history` (see `docs/SETUP.md`).
+- Hosting rewrites `/api/**` to the `api` Cloud Function in `firebase.json`.
+- Backend exports in `functions/index.js`:
+  - `exports.api = functions.https.onRequest(app)`
+  - `exports.runAutomation = onSchedule({ schedule: 'every 1 minutes', timeZone: 'UTC' }, ...)`
+- `functions/index.js` is still the composition root, but major route/service decomposition is in progress:
+  - route modules under `functions/api/routes/` now include read and mutation domains
+  - services and repositories under `functions/lib/services/` and `functions/lib/repositories/`
 
-# What matters when editing code
+# API and Auth Rules
 
-- Follow the existing API envelope pattern: responses commonly use `{ errno, result, error }` where `errno: 0` means success. Keep this for compatibility with the frontend.
-- Use `tryAttachUser(req)` for endpoints that accept optional authentication and `authenticateUser` for required auth paths (see `functions/index.js` middleware).
-- Preserve caching & rate-limit behavior for external APIs (Amber, FoxESS, Weather). TTLs and retry settings are centralized in `functions/index.js` — reuse those constants rather than hard-coding new timing.
-- Exported function names and rewrites matter: the hosting rewrite maps `/api/**` → function name `api` (defined in `functions/index.js`). Avoid renaming that export without updating `firebase.json`.
+- Preserve API envelope compatibility: success/error responses should stay consistent with `{ errno, result, error, msg }` patterns used by frontend.
+- Use `authenticateUser` for required-auth routes.
+- Use `tryAttachUser(req)` for optional-auth routes that should still return safe responses when unauthenticated.
+- Do not rename `api` export or change `/api/**` rewrite behavior without updating `firebase.json`.
 
-# Local dev & test workflows (explicit commands)
+# Setup/Credential Flow Notes
 
-- Install dependencies for functions: `cd functions && npm install`.
-- Start local functions emulator: `npm --prefix functions run serve` (runs `firebase emulators:start --only functions`).
-- Run unit tests for functions: `npm --prefix functions test` (Jest).
-- Run linter: `npm --prefix functions run lint`.
-- Frontend quick-serve (separate terminal): `cd frontend && python -m http.server 8000` → open `http://localhost:8000`.
-- Cross-platform emulator reset: `npm run emu:reset` (kills stale processes, restarts emulator, seeds data, verifies readiness).
+- `POST /api/config/validate-keys` lives in `functions/api/routes/setup-public.js`.
+- In emulator mode (`FUNCTIONS_EMULATOR` or `FIRESTORE_EMULATOR_HOST`), FoxESS live validation is intentionally bypassed for local setup.
+- On successful validation:
+  - authenticated users write to `users/{uid}/config/main`
+  - unauthenticated setup writes to `shared/serverConfig`
 
-# Secrets & config
+# Local Dev and Verification Commands
 
-- Secrets can come from `functions.config()` (Firebase Functions config) or environment variables used in code. Common names:
-  - `foxess.token` / `FOXESS_TOKEN`
-  - `amber.api_key` / `AMBER_API_KEY`
-  - `FOXESS_BASE_URL`, `AMBER_BASE_URL`
-- Client-side Firebase config lives in `frontend/js/firebase-config.js` and `.firebaserc` maps the project id. Do not hardcode or commit API keys.
+- Install deps:
+  - `npm ci`
+  - `npm --prefix functions ci`
+- Emulator workflows (root scripts):
+  - `npm run emu:reset` (recommended clean restart + reseed + health checks)
+  - `npm run emu:start`
+  - `npm run emu:status`
+  - `npm run emu:stop`
+- Backend checks:
+  - `npm --prefix functions run lint`
+  - `npm --prefix functions test -- --runInBand`
+  - `node scripts/pre-deploy-check.js`
+- Contract/OpenAPI checks:
+  - `npm run api:contract:check`
+  - `npm run openapi:check`
+- Frontend E2E:
+  - `npm run test:e2e:frontend`
 
-# Patterns and examples (copyable)
+# CI Reality (from `.github/workflows/qa-checks.yml`)
 
-- Optional-auth endpoint pattern: use `tryAttachUser(req)` to attach user if ID token present, but return safe empty results when unauthenticated (see `/api/amber/prices` and `/api/amber/sites`).
-- Validation/setup flow: `/api/config/validate-keys` validates FoxESS and Amber credentials and saves to `users/{uid}/config/main` or `shared/serverConfig` for unauthenticated setups.
-- Rule format examples are authoritative in `docs/AUTOMATION.md` — follow those JSON shapes when modifying rule creation or evaluation logic.
+- CI runs Node `22.x`.
+- Required jobs:
+  - quality assurance (`pre-deploy-check`, tests, coverage)
+  - lint
+  - security (`npm audit`)
+  - Playwright frontend E2E
 
-# Debugging & logs
+# Coding Conventions
 
-- Functions logs: `firebase functions:log` or `npm --prefix functions run logs` (package.json `logs` script).
-- When debugging locally, use the emulator UI (default at `http://localhost:4000`) and check emulator console for errors. The project includes verbose request logging in `functions/index.js` to help trace requests.
+- Runtime target is Node 22 (`functions/package.json` + `firebase.json` runtime).
+- Prefer extracting new logic into route/service/repository modules instead of growing `functions/index.js`.
+- Preserve rate-limit and cache behavior when touching FoxESS/Amber/Weather paths.
+- If API shapes change, update docs (`docs/API.md`, `docs/openapi/openapi.v1.yaml`) and related tests in the same PR.
 
-# Code conventions & notes for PRs
+# High-Value Files
 
-- Node runtime: `node 22` (see `functions/package.json` engines). Prefer modern syntax but maintain compatibility with the deployed runtime.
-- Avoid changing public API shapes or the `{ errno, result }` envelope unless you update both frontend and API docs.
-- Run `npm --prefix functions test` and `npm --prefix functions run lint` before opening PRs touching `functions/`.
+- `functions/index.js`: backend composition root and exports
+- `functions/api/routes/`: extracted route registration modules
+- `functions/lib/services/`: extracted domain services
+- `functions/lib/repositories/`: Firestore access helpers
+- `functions/api/{amber,foxess,auth}.js`: integration/auth modules
+- `scripts/pre-deploy-check.js`: gate script used locally and in CI
+- `firebase.json`: rewrites/runtime/emulator config
+- `docs/REFACTORING_IMPLEMENTATION_PLAN_MAR26.md`: active decomposition tracker
 
-# Files to reference while coding
+# AI Agent Checklist
 
-- `functions/index.js` — main API composition, auth middleware, caching, automation scheduler.
-- `functions/api/routes/` — extracted read-only route modules (pricing, weather, metrics, inverter, device, diagnostics, scheduler).
-- `functions/lib/` — extracted domain logic (automation-actions, automation-conditions, device-telemetry, pricing-normalization, billing, adapters, repositories).
-- `functions/api/amber.js`, `functions/api/foxess.js`, `functions/api/auth.js` — external API integration modules.
-- `functions/package.json` — scripts and dependency versions.
-- `firebase.json` — hosting rewrites and headers (important if you change URLs).
-- `docs/SETUP.md`, `docs/AUTOMATION.md`, `docs/API.md` — deployment, rule formats, and API contract.
-- `docs/REFACTORING_IMPLEMENTATION_PLAN_MAR26.md` — active refactoring plan and progress tracker.
-
-# If you are an AI agent: checklist
-
-1. Search `functions/index.js` and `functions/api/routes/` for the endpoint you will change; follow existing middleware and response envelope.
-2. Run `npm --prefix functions install` and `npm --prefix functions run lint` locally before tests.
-3. Run `npm --prefix functions test` to validate unit tests pass.
-4. Validate behavior with `npm --prefix functions run serve` + serving frontend locally.
-5. Update `docs/` (API.md or AUTOMATION.md) if you change request/response shapes.
-6. Keep changes small and test with the emulator; note any required Firebase config changes in the PR description.
-
----
-If anything here is unclear or you want me to expand a section (examples, test commands, or code snippets), tell me which part to improve.
+1. Locate the endpoint/service in `functions/index.js`, `functions/api/routes/`, and `functions/lib/services/` before editing.
+2. Keep response envelopes and auth behavior backward compatible.
+3. Add or update focused tests for changed behavior.
+4. Run `npm --prefix functions run lint` and relevant tests before finishing.
+5. For larger backend changes, run `node scripts/pre-deploy-check.js`.
+6. Update docs when contracts, endpoints, or operational workflows change.

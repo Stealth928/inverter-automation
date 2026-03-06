@@ -1,6 +1,6 @@
 # P2 Backend Decomposition Kickoff (March 2026)
 
-Status: Active execution - Wave 3 step 1 complete, step 2 in progress  
+Status: Active execution - Wave 3 step 1 complete, step 2 complete with residual helper scan complete
 Phase: P2 (Backend Decomposition) execution  
 Owner: RefactoringMar26
 
@@ -64,7 +64,7 @@ Validation for Wave 2:
    - ✅ `config-mutations.js` (`POST /api/config/system-topology`, `POST /api/config`, `POST /api/config/clear-credentials`, `POST /api/config/tour-status`)
    - ✅ `automation-mutations.js` (`POST /api/automation/toggle`, `/enable`, `/trigger`, `/reset`, `/cancel`, `/rule/end`, `/rule/create`, `/rule/update`, `/rule/delete`, `/test`)
    - ✅ `automation-cycle.js` (`POST /api/automation/cycle`)
-2. ⏳ [IN PROGRESS 2026-03-06] Introduce service modules (`lib/services/*`) only after route extraction is stable.
+2. ✅ [DONE 2026-03-06] Introduce service modules (`lib/services/*`) only after route extraction is stable.
    - ✅ shared scheduler-group builder centralized in `functions/lib/automation-actions.js` via `buildClearedSchedulerGroups()`
    - ✅ shared scheduler segment-clear flow centralized in `functions/lib/services/scheduler-segment-service.js` via `clearSchedulerSegments(...)`
    - ✅ shared automation audit-evaluation mapping centralized in `functions/lib/services/automation-audit-service.js` via `buildAllRuleEvaluationsForAudit(...)`
@@ -74,7 +74,12 @@ Validation for Wave 2:
    - ✅ shared automation-cycle inverter/Amber data fetch centralized in `functions/lib/services/automation-cycle-data-service.js` via `fetchAutomationInverterData(...)` and `fetchAutomationAmberData(...)`
    - ✅ shared blackout-window evaluation centralized in `functions/lib/services/automation-cycle-rule-service.js` via `evaluateBlackoutWindow(...)`
    - ✅ shared weather dependency/look-ahead planning centralized in `functions/lib/services/automation-cycle-rule-service.js` via `hasWeatherDependentRules(...)` and `buildWeatherFetchPlan(...)`
-   - in progress: migrate remaining repeated rule-loop lifecycle/cooldown helper blocks into service modules (`lib/services/*`) with no behavior changes
+   - ✅ shared rule-loop lifecycle/cooldown helpers centralized in `functions/lib/services/automation-cycle-lifecycle-service.js` via `evaluateRuleCooldown(...)`, `buildClearedActiveRuleState(...)`, `buildTriggeredRuleState(...)`, and supporting evaluation/result builders
+   - ✅ shared segment-clear retry/cancellation flow centralized in `functions/lib/services/scheduler-segment-service.js` via `clearSchedulerSegmentsWithRetry(...)`
+   - ✅ one-shot segment-clear/pacing call sites normalized in `automation-cycle` (preemption/disable-flag paths) via shared `clearSchedulerSegmentsOneShot(...)` helper with no behavior changes
+   - ✅ residual trigger action/persist helper extraction completed via `functions/lib/services/automation-cycle-action-service.js` (`applyTriggeredRuleAction(...)`, `persistTriggeredRuleState(...)`) and `automation-cycle` call-site rewiring
+   - ✅ residual numeric coercion helper duplication removed via shared `functions/lib/services/number-utils.js` (`toFiniteNumber(...)`) consumed by lifecycle/action services
+   - ✅ scheduler invocation no longer traverses `app._router.stack`; `runAutomationHandler(...)` now invokes returned `automationCycleHandler` directly
 
 Validation for Wave 3:
 - Regression suite for automation cycle, rule CRUD, scheduler endpoints.

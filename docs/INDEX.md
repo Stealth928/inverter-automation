@@ -1,6 +1,6 @@
 # Documentation Index
 
-**Last Updated:** March 5, 2026  
+**Last Updated:** March 6, 2026  
 **Purpose:** Central index for all project documentation
 
 ---
@@ -41,9 +41,10 @@
 23. **[P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md](P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md)** - P1 bounded contexts, adapter contracts, and error taxonomy
 24. **[openapi/openapi.v1.yaml](openapi/openapi.v1.yaml)** - OpenAPI v1 source-of-truth baseline (P1 kickoff)
 25. **[P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md](P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md)** - Locked extraction sequence for P2 backend decomposition kickoff
+26. **[P2_G2_CLOSEOUT_EVIDENCE_MAR26.md](P2_G2_CLOSEOUT_EVIDENCE_MAR26.md)** - P2/G2 exit gate evidence, pass/fail assessment, and remaining blockers
 
 ### Archived Documentation
-26. **[archive/](archive/)** - Historical docs (completed milestones, bugfixes, analyses)
+27. **[archive/](archive/)** - Historical docs (completed milestones, bugfixes, analyses)
 
 ---
 
@@ -97,6 +98,7 @@ Cost and coverage analysis:
 | [P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md](P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md) | P1 architecture + contracts implementation spec | During P1/G1 |
 | [openapi/openapi.v1.yaml](openapi/openapi.v1.yaml) | OpenAPI source-of-truth baseline | Per API contract change |
 | [P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md](P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md) | P2 backend extraction sequencing and rollout guardrails | At P2 kickoff and weekly |
+| [P2_G2_CLOSEOUT_EVIDENCE_MAR26.md](P2_G2_CLOSEOUT_EVIDENCE_MAR26.md) | P2/G2 gate-close evidence package and blocker checklist | At each G2 review checkpoint |
 
 ---
 
@@ -228,6 +230,7 @@ All docs should include:
 | 2026-03-04 | Added execution-ready refactoring implementation plan | REFACTORING_IMPLEMENTATION_PLAN_MAR26.md |
 | 2026-03-04 | Added governance artifacts (ADRs, migration/rollback checklists, phase gate dashboard) | ADR-001, ADR-002, MIGRATION_SAFETY_CHECKLIST.md, ROLLBACK_CHECKLIST.md, PHASE_GATE_DASHBOARD.md |
 | 2026-03-04 | Added P1 architecture contract spec and OpenAPI baseline skeleton | P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md, openapi/openapi.v1.yaml |
+| 2026-03-06 | Added P2/G2 closeout evidence package | P2_G2_CLOSEOUT_EVIDENCE_MAR26.md |
 
 ---
 
