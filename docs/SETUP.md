@@ -103,6 +103,22 @@ Users configure their own API keys in the Settings page after login.
 3. Generate API token
 4. Copy the token (shown once)
 
+### Scheduler SLO Alert Channel (Optional but Recommended)
+
+Configure environment variables for operational alerting and threshold overrides:
+
+```bash
+AUTOMATION_SCHEDULER_SLO_ERROR_RATE_PCT=1.0
+AUTOMATION_SCHEDULER_SLO_DEAD_LETTER_RATE_PCT=0.2
+AUTOMATION_SCHEDULER_SLO_MAX_QUEUE_LAG_MS=120000
+AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS=60000
+AUTOMATION_SCHEDULER_SLO_ALERT_WEBHOOK_URL=https://your-alert-endpoint.example.com
+AUTOMATION_SCHEDULER_SLO_ALERT_COOLDOWN_MS=300000
+```
+
+Operational response playbook:
+- `docs/SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md`
+
 ---
 
 ## Local Development

@@ -57,6 +57,7 @@ const { createAutomationRuleActionService } = require('./lib/services/automation
 const { createAutomationRuleEvaluationService } = require('./lib/services/automation-rule-evaluation-service');
 const { createCurtailmentService } = require('./lib/services/curtailment-service');
 const { createQuickControlService } = require('./lib/services/quick-control-service');
+const { createSchedulerSloAlertNotifier } = require('./lib/services/scheduler-slo-alert-notifier');
 const { createWeatherService } = require('./lib/services/weather-service');
 const { parseAutomationTelemetry } = require('./lib/device-telemetry');
 const { getCurrentAmberPrices } = require('./lib/pricing-normalization');
@@ -327,12 +328,21 @@ const {
   serverTimestamp
 });
 
+const {
+  notifySchedulerSloAlert
+} = createSchedulerSloAlertNotifier({
+  cooldownMs: process.env.AUTOMATION_SCHEDULER_SLO_ALERT_COOLDOWN_MS,
+  logger: console,
+  webhookUrl: process.env.AUTOMATION_SCHEDULER_SLO_ALERT_WEBHOOK_URL
+});
+
 const schedulerSloThresholdConfig = getConfig()?.automation?.scheduler?.slo || {};
 const {
   emitSchedulerMetrics
 } = createAutomationSchedulerMetricsSink({
   db,
   logger,
+  onSloAlert: notifySchedulerSloAlert,
   sloThresholds: {
     errorRatePct:
       schedulerSloThresholdConfig.errorRatePct ||

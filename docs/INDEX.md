@@ -14,6 +14,7 @@ Purpose: Canonical index of actively maintained project documentation.
 - [LOCAL_DEV_KNOWN_ISSUES.md](LOCAL_DEV_KNOWN_ISSUES.md): Emulator and local-dev runbook.
 - [PROD_BACKUP_ROLLBACK_RUNBOOK.md](PROD_BACKUP_ROLLBACK_RUNBOOK.md): Backup and rollback flow.
 - [BACKGROUND_AUTOMATION.md](BACKGROUND_AUTOMATION.md): Scheduler/runtime behavior.
+- [SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md](SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md): Scheduler SLO alert response and escalation flow.
 - [LOGGING_GUIDE.md](LOGGING_GUIDE.md): Canonical runtime logging policy and cost hygiene.
 
 ## Product and Testing Guides
