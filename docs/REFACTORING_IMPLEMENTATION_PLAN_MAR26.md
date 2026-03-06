@@ -1,6 +1,6 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Active execution - Sprint 1 complete, P1 closeout pending, P2/G2 closed, scheduler service-runner decoupling complete, and backend decomposition validated in gate evidence (admin + health route extraction landed, admin access + billing/monitoring + weather/cache + API metrics helper extraction landed, repository/state/time + curtailment + rule-action + rule-evaluation + quick-control service extraction landed, thin repository-wrapper duplication in index composition root removed, index.js remains below the <1,500 line gate target, and repo hygiene checks are enforced in pre-deploy)
+Status: Active execution - Sprint 1 complete, P1 closeout pending, P2/G2 closed, and P3/G3 execution started (scheduler service-runner decoupling complete; bounded-concurrency + per-user lock/idempotency/retry/dead-letter orchestration controls now implemented in scheduler service and validated in pre-deploy gates).
 Scope: Planning + execution progress tracking  
 Last Updated: 2026-03-06  
 Primary Branch: `RefactoringMar26`
@@ -19,9 +19,10 @@ Primary Branch: `RefactoringMar26`
 
 | Phase | Gate | Status | Progress | Next Focus |
 |---|---|---|---|---|
-| P0 | G0 | ✅ Complete | 100% | - |
-| P1 | G1 | ⏳ In Progress | 10/10 tasks implemented; formal gate close pending | Capture closeout evidence + sign-off |
-| P2 | G2 | ✅ Complete | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence finalized, all G2 criteria marked met, `index.js` measured at 918 lines (89.8% reduction), inline routes reduced to 0, scheduler route-stack coupling removed, and repo-hygiene gating integrated into pre-deploy | Transition to P3/G3 orchestration hardening planning and execution |
+| P0 | G0 | Complete | 100% | - |
+| P1 | G1 | In Progress | 10/10 tasks implemented; formal gate close pending | Capture closeout evidence + sign-off |
+| P2 | G2 | Complete | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence finalized, all G2 criteria marked met, `index.js` measured at 918 lines (89.8% reduction), inline routes reduced to 0, scheduler route-stack coupling removed, and repo-hygiene gating integrated into pre-deploy | Transition to P3/G3 orchestration hardening planning and execution |
+| P3 | G3 | In Progress | P3 kickoff chunk landed in `automation-scheduler-service`: bounded concurrency executor, per-user lock semantics, cycle-window idempotency markers, retry with jitter, and dead-letter capture, with focused unit coverage and full pre-deploy pass (`71/71` suites; `754` passing) | Continue P3 orchestration hardening with lock contention + overlap stress-path coverage and scheduler observability metrics |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -1373,6 +1374,25 @@ Tracker hygiene rule: update this section at the end of every completed executio
 - Validation passed:
   - `node scripts/pre-deploy-check.js` (full gate pass: **71/71** suites, **750** passing, **44** todo).
 - Next target chunk: begin P3/G3 orchestration hardening execution planning.
+### 2026-03-06 - Chunk 64 (P3/G3 kickoff: scheduler orchestration hardening)
+
+- Started Phase `P3/G3` by hardening scheduler orchestration internals in `functions/lib/services/automation-scheduler-service.js`:
+  - replaced unbounded `Promise.all` user-cycle fanout with bounded-concurrency execution (`maxConcurrentUsers`).
+  - added per-user scheduler lock acquisition/release flow (`users/{uid}/automation/lock`) with lease semantics.
+  - added cycle-window idempotency markers (`users/{uid}/automation/idempotency_*`) to suppress duplicate cycle execution.
+  - added retry policy with exponential backoff + jitter for transient failures.
+  - added dead-letter persistence on retry exhaustion (`users/{uid}/automation_dead_letters/*`).
+  - expanded scheduler summary logging to include locked/idempotent skips, retries, and dead-letter counts.
+- Added focused orchestration regression coverage in `functions/test/automation-scheduler-service.test.js`:
+  - bounded concurrency enforcement
+  - transient retry success path
+  - retry exhaustion dead-letter path
+  - lock-skip and idempotency-skip behavior
+- Validation passed:
+  - `npm --prefix functions run lint`
+  - `npm --prefix functions test -- test/automation-scheduler-service.test.js --runInBand`
+  - `node scripts/pre-deploy-check.js` (full gate pass: **71/71** suites, **754** passing, **44** todo).
+- Next target chunk: continue P3 with lock-contention stress tests and scheduler observability metric surfacing.
 
 ---
 
@@ -1402,7 +1422,7 @@ This section captures the actual state of the codebase as of 2026-03-04, measure
 - Route handlers directly call Firestore, external APIs, and each other. Zero separation of concerns between HTTP transport, business logic, and persistence.
 - ✅ **P2 update (2026-03-05):** `functions/index.js` reduced to **7,194 lines** (~20% reduction). **47 routes remain inline**; 8 read-only route modules extracted to `functions/api/routes/` (2,328 lines total). `functions/lib/` expanded to 8 modules (1,114 lines total) covering automation-actions, device-telemetry, pricing-normalization, repositories, billing, and adapters.
 - ✅ **P2 update (2026-03-06, verified):** `functions/index.js` reduced to **4,053 lines** (55% reduction from 9,019 baseline). **9 routes remain inline** (admin domain + health); **19 route modules** extracted to `functions/api/routes/` (4,990 lines total). `functions/lib/` expanded to **14 modules** across services/repositories/adapters/billing (2,157 lines total). **9 service modules** in `functions/lib/services/` (1,031 lines). Test suite: **57 suites, 682 tests passing**. Coverage: **50.3% statements, 42.6% branches, 62.4% functions, 51.3% lines**.
-- ✅ **P2 update (2026-03-06, latest):** `functions/index.js` reduced to **918 lines** (89.8% reduction from 9,019 baseline). **0 inline routes remain**; **21 route modules** extracted to `functions/api/routes/`. `functions/lib/` now includes shared admin access/metrics, weather/cache, API metrics, automation state/time utilities, curtailment, rule-action, rule-evaluation, and quick-control cleanup service domains, and thin repository-wrapper duplication in `index.js` has been removed. Full gate validation currently passes with **71 test suites** and **794 tests** (`44` marked `todo`), and **P2/G2 is closed**.
+- ✅ **P2 update (2026-03-06, latest):** `functions/index.js` reduced to **918 lines** (89.8% reduction from 9,019 baseline). **0 inline routes remain**; **21 route modules** extracted to `functions/api/routes/`. `functions/lib/` now includes shared admin access/metrics, weather/cache, API metrics, automation state/time utilities, curtailment, rule-action, rule-evaluation, and quick-control cleanup service domains, and thin repository-wrapper duplication in `index.js` has been removed. Full gate validation currently passes with **71 test suites** and **798 tests** (`44` marked `todo`), and **P2/G2 is closed**.
 
 ### 1A.2 Frontend Monolith
 
@@ -2224,6 +2244,7 @@ When execution is approved, run phases in order:
 | 2026-03-06 | Continued G2 blocker execution by removing thin `user-automation-repository` passthrough wrappers from `functions/index.js`, wiring repository methods directly in the composition root (including `getHistoryEntries` aliasing to `getUserHistoryEntries`), and re-validating via lint, focused route-module regression suites, and full pre-deploy checks (`functions/index.js` now 895 lines). | Codex |
 | 2026-03-06 | Continued G2 blocker execution by extracting quick-control expired-state cleanup into `functions/lib/services/quick-control-service.js`, rewiring `functions/index.js` to compose `cleanupExpiredQuickControl(...)` via `createQuickControlService(...)`, adding focused coverage in `functions/test/quick-control-service.test.js`, and re-validating lint, focused route-module regression suites, and full pre-deploy gates (`functions/index.js` now 918 lines; full suite `71/71` passed). | Codex |
 | 2026-03-06 | Finalized G2 closeout governance by updating `docs/P2_G2_CLOSEOUT_EVIDENCE_MAR26.md` to final `Go` state (all criteria met), marking `P2/G2` as completed in `docs/PHASE_GATE_DASHBOARD.md`, syncing tracker status in this plan, and re-validating `node scripts/pre-deploy-check.js` (`71/71` suites, `750` passing, `44` todo). | Codex |
+| 2026-03-06 | Started P3/G3 orchestration hardening by upgrading `functions/lib/services/automation-scheduler-service.js` with bounded concurrency, per-user lock + idempotency controls, retry-with-jitter, and dead-letter handling; expanded `functions/test/automation-scheduler-service.test.js` for concurrency/retry/lock/idempotency coverage; and re-validated lint + full pre-deploy checks (`71/71` suites, `754` passing, `44` todo). | Codex |
 
 ---
 
@@ -2296,5 +2317,8 @@ functions/
 **Revised total:** 22-27 weeks (vs original 20 weeks). Recommend planning for 24 weeks with 2-week buffer.
 
 **Critical path mitigation:** Start frontend inline JS extraction during P2 (parallel). Start feature-flag infrastructure during P2. Start EV research/prototyping during P3-P4.
+
+
+
 
 
