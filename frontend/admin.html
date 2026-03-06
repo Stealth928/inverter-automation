@@ -613,7 +613,41 @@
             .scheduler-slo-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
+            .admin-tab-nav { gap: 0; }
+            .tab-btn { padding: 8px 14px; font-size: 13px; }
         }
+
+        /* Admin Tabs */
+        .admin-tab-nav {
+            display: flex;
+            gap: 2px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-primary);
+        }
+        .tab-btn {
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            padding: 9px 22px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s, background 0.15s;
+            border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+        }
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: color-mix(in srgb, var(--accent-blue) 6%, transparent);
+        }
+        .tab-btn.active {
+            color: var(--accent-blue);
+            border-bottom-color: var(--accent-blue);
+            font-weight: 600;
+        }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
     </style>
 </head>
 <body>
@@ -666,6 +700,13 @@
 
         <div id="messageArea"></div>
 
+        <nav class="admin-tab-nav" role="tablist">
+            <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">📈 Overview</button>
+            <button class="tab-btn" data-tab="scheduler" onclick="switchTab('scheduler')">⚙️ Scheduler</button>
+            <button class="tab-btn" data-tab="users" onclick="switchTab('users')">👥 Users</button>
+        </nav>
+
+        <div id="tab-overview" class="tab-panel active">
         <!-- Platform Overview (compact top row + trends) -->
         <div class="platform-top">
             <div class="platform-kpis-wrap">
@@ -738,7 +779,9 @@
                 <div class="firestore-warning" id="firestoreMetricsWarning" style="display: none;"></div>
             </div>
         </div>
+        </div><!-- /tab-overview -->
 
+        <div id="tab-scheduler" class="tab-panel">
         <div class="card scheduler-metrics-card">
             <div class="card-header">
                 <div class="card-title"><span class="icon">Scheduler</span> Orchestration Metrics (14d)</div>
@@ -826,7 +869,9 @@
                 <div class="scheduler-warning" id="schedulerMetricsWarning" style="display: none;"></div>
             </div>
         </div>
+        </div><!-- /tab-scheduler -->
 
+        <div id="tab-users" class="tab-panel">
         <!-- User Management Card -->
         <div class="card" style="margin-bottom: 20px;">
             <div class="card-header">
@@ -851,6 +896,7 @@
                 </div>
             </div>
         </div>
+        </div><!-- /tab-users -->
     </div>
 
     <!-- Stats Drawer -->
@@ -877,6 +923,8 @@
     let platformTrendChart = null;
     let firestoreMetricsChart = null;
     let schedulerMetricsChart = null;
+    let activeTab = 'overview';
+    let tabsLoaded = { overview: false, scheduler: false, users: false };
 
     function showMessage(type, msg, duration = 5000) {
         const area = document.getElementById('messageArea');
@@ -978,6 +1026,24 @@
         return currentSort.direction === 'asc' ? '↑' : '↓';
     }
 
+    // ==================== Tab Switching ====================
+    function switchTab(name) {
+        activeTab = name;
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === name));
+        document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.id === `tab-${name}`));
+        if (!tabsLoaded[name]) {
+            tabsLoaded[name] = true;
+            if (name === 'overview') {
+                loadPlatformStats();
+                loadFirestoreCostMetrics();
+            } else if (name === 'scheduler') {
+                loadSchedulerMetrics();
+            } else if (name === 'users') {
+                loadUsers();
+            }
+        }
+    }
+
     // ==================== Admin Check ====================
     async function checkAdminAccess() {
         try {
@@ -986,10 +1052,7 @@
             if (data.errno === 0 && data.result?.isAdmin) {
                 document.getElementById('adminContent').style.display = '';
                 document.getElementById('accessDenied').style.display = 'none';
-                loadPlatformStats();
-                loadUsers();
-                loadFirestoreCostMetrics();
-                loadSchedulerMetrics();
+                switchTab('overview');
             } else {
                 document.getElementById('adminContent').style.display = 'none';
                 document.getElementById('accessDenied').style.display = '';
@@ -1026,10 +1089,8 @@
     }
 
     function refreshAdminData() {
-        loadPlatformStats();
-        loadUsers();
-        loadFirestoreCostMetrics();
-        loadSchedulerMetrics();
+        tabsLoaded[activeTab] = false;
+        switchTab(activeTab);
     }
 
     async function loadPlatformStats() {

@@ -1138,15 +1138,51 @@
         // Initialize time to now
         document.getElementById('simTime').value = new Date().toTimeString().slice(0,5);
 
-        // Presets
+        // Presets aligned to rule-library templates:
+        // highFeedIn -> price_high_feedin_export
+        // cheapBuy   -> price_cheap_import_charge
+        // spike      -> price_spike_response
+        // lowSoc     -> battery_low_soc_guard
+        // hotBattery -> battery_high_temp_limit
+        // cloudyDay  -> solar_cloudy_precharge
+        // sunnyPeak  -> solar_sunny_peak_headroom
         const presets = {
-            highFeedIn: { feedIn: 40, buy: 25, soc: 85, batteryTemp: 28, ambientTemp: 22, inverterTemp: 35, solarRadiation: 600, cloudCover: 20, forecastBuy1D: 35, forecastFeedIn1D: 48, forecastSolar1D: 580, forecastCloudCover1D: 25 },
-            cheapBuy: { feedIn: -6, buy: 5, soc: 30, batteryTemp: 25, ambientTemp: 20, inverterTemp: 32, solarRadiation: 300, cloudCover: 40, forecastBuy1D: 10, forecastFeedIn1D: 9, forecastSolar1D: 320, forecastCloudCover1D: 45 },
-            spike: { feedIn: 150, buy: 180, soc: 70, batteryTemp: 32, ambientTemp: 25, inverterTemp: 38, solarRadiation: 500, cloudCover: 30, forecastBuy1D: 200, forecastFeedIn1D: 165, forecastSolar1D: 520, forecastCloudCover1D: 28 },
-            lowSoc: { feedIn: 15, buy: 35, soc: 18, batteryTemp: 26, ambientTemp: 22, inverterTemp: 34, solarRadiation: 400, cloudCover: 35, forecastBuy1D: 42, forecastFeedIn1D: 18, forecastSolar1D: 420, forecastCloudCover1D: 32 },
-            hotBattery: { feedIn: 20, buy: 30, soc: 60, batteryTemp: 68, ambientTemp: 75, inverterTemp: 82, solarRadiation: 800, cloudCover: 10, forecastBuy1D: 35, forecastFeedIn1D: 24, forecastSolar1D: 820, forecastCloudCover1D: 8 },
-            cloudyDay: { feedIn: 5, buy: 25, soc: 45, batteryTemp: 22, ambientTemp: 18, inverterTemp: 28, solarRadiation: 80, cloudCover: 95, forecastBuy1D: 30, forecastFeedIn1D: 6, forecastSolar1D: 75, forecastCloudCover1D: 92 },
-            sunnyPeak: { feedIn: 5, buy: 20, soc: 90, batteryTemp: 30, ambientTemp: 28, inverterTemp: 40, solarRadiation: 950, cloudCover: 5, forecastBuy1D: 25, forecastFeedIn1D: 42, forecastSolar1D: 1080, forecastCloudCover1D: 3 }
+            highFeedIn: {
+                ruleId: 'price_high_feedin_export',
+                feedIn: 36, buy: 22, soc: 70, batteryTemp: 29, ambientTemp: 24, inverterTemp: 36,
+                solarRadiation: 620, cloudCover: 25, forecastBuy1D: 24, forecastFeedIn1D: 34, forecastSolar1D: 640, forecastCloudCover1D: 30
+            },
+            cheapBuy: {
+                ruleId: 'price_cheap_import_charge',
+                feedIn: 3, buy: 3, soc: 45, batteryTemp: 24, ambientTemp: 19, inverterTemp: 31,
+                solarRadiation: 180, cloudCover: 55, forecastBuy1D: 6, forecastFeedIn1D: 5, forecastSolar1D: 220, forecastCloudCover1D: 58
+            },
+            spike: {
+                ruleId: 'price_spike_response',
+                feedIn: 65, buy: 85, soc: 62, batteryTemp: 31, ambientTemp: 26, inverterTemp: 39,
+                solarRadiation: 520, cloudCover: 20, forecastBuy1D: 70, forecastFeedIn1D: 58, forecastSolar1D: 540, forecastCloudCover1D: 22
+            },
+            lowSoc: {
+                ruleId: 'battery_low_soc_guard',
+                feedIn: 12, buy: 28, soc: 12, batteryTemp: 26, ambientTemp: 22, inverterTemp: 33,
+                solarRadiation: 350, cloudCover: 40, forecastBuy1D: 30, forecastFeedIn1D: 14, forecastSolar1D: 360, forecastCloudCover1D: 38
+            },
+            hotBattery: {
+                ruleId: 'battery_high_temp_limit',
+                feedIn: 16, buy: 26, soc: 58, batteryTemp: 43, ambientTemp: 36, inverterTemp: 48,
+                solarRadiation: 760, cloudCover: 12, forecastBuy1D: 28, forecastFeedIn1D: 18, forecastSolar1D: 780, forecastCloudCover1D: 14
+            },
+            cloudyDay: {
+                ruleId: 'solar_cloudy_precharge',
+                time: '02:30',
+                feedIn: 4, buy: 12, soc: 44, batteryTemp: 23, ambientTemp: 16, inverterTemp: 29,
+                solarRadiation: 120, cloudCover: 90, forecastBuy1D: 14, forecastFeedIn1D: 4, forecastSolar1D: 140, forecastCloudCover1D: 92
+            },
+            sunnyPeak: {
+                ruleId: 'solar_sunny_peak_headroom',
+                feedIn: 8, buy: 24, soc: 88, batteryTemp: 30, ambientTemp: 27, inverterTemp: 41,
+                solarRadiation: 760, cloudCover: 6, forecastBuy1D: 22, forecastFeedIn1D: 10, forecastSolar1D: 880, forecastCloudCover1D: 8
+            }
         };
 
         function loadPreset(name) {
@@ -1164,7 +1200,11 @@
             document.getElementById('simForecastFeedIn1D').value = p.forecastFeedIn1D;
             document.getElementById('simForecastSolar1D').value = p.forecastSolar1D;
             document.getElementById('simForecastCloudCover1D').value = p.forecastCloudCover1D;
-            log('info', `Loaded preset: ${name}`);
+            if (p.time) {
+                document.getElementById('simTime').value = p.time;
+            }
+            const ruleText = p.ruleId ? ` (${p.ruleId})` : '';
+            log('info', `Loaded preset: ${name}${ruleText}`);
         }
 
         async function fetchRealConditions() {

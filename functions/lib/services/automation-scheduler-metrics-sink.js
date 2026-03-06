@@ -212,12 +212,14 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       maxQueueLagMs: normalizedMetrics.queueLagMs.maxMs
     }, sloThresholds, recordedAtMs);
 
+    const RUN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
     await runRef.set({
       ...normalizedMetrics,
       dayKey,
       runId,
       slo: runSlo,
       recordedAtMs,
+      expireAt: new Date(startedAtMs + RUN_TTL_MS),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     }, { merge: true });

@@ -17,5 +17,14 @@
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "runs",
+      "fieldPath": "expireAt",
+      "ttlPolicy": {
+        "state": "ACTIVE"
+      },
+      "indexes": []
+    }
+  ]
 }

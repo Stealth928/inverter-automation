@@ -138,6 +138,7 @@ describe('automation scheduler metrics sink', () => {
       schedulerId: 'sched-a',
       cyclesRun: 3,
       runId: '1710000000000_sched-a',
+      expireAt: new Date(1710000000000 + 30 * 24 * 60 * 60 * 1000),
       slo: expect.objectContaining({
         status: 'breach',
         breachedMetrics: expect.arrayContaining(['errorRatePct', 'deadLetterRatePct'])
