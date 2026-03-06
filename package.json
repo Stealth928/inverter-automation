@@ -7,6 +7,7 @@
     "emu:status": "node scripts/emulator-cli.js status",
     "api:contract:check": "node scripts/api-contract-baseline.js",
     "api:contract:refresh": "node scripts/api-contract-baseline.js --write-doc",
+    "hygiene:check": "node scripts/repo-hygiene-check.js",
     "openapi:check": "node scripts/openapi-contract-check.js",
     "test:e2e:frontend": "playwright test"
   },

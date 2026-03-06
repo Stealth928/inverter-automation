@@ -1,6 +1,6 @@
 # P2 Backend Decomposition Kickoff (March 2026)
 
-Status: Active execution - Wave 3 step 1 complete, step 2 complete with residual helper scan complete
+Status: Active execution - Wave 3 step 1 complete, step 2 complete with residual helper scan complete, and curtailment + rule-action helper extraction landed
 Phase: P2 (Backend Decomposition) execution  
 Owner: RefactoringMar26
 
@@ -80,6 +80,8 @@ Validation for Wave 2:
    - ✅ residual trigger action/persist helper extraction completed via `functions/lib/services/automation-cycle-action-service.js` (`applyTriggeredRuleAction(...)`, `persistTriggeredRuleState(...)`) and `automation-cycle` call-site rewiring
    - ✅ residual numeric coercion helper duplication removed via shared `functions/lib/services/number-utils.js` (`toFiniteNumber(...)`) consumed by lifecycle/action services
    - ✅ scheduler invocation no longer traverses `app._router.stack`; `runAutomationHandler(...)` now invokes returned `automationCycleHandler` directly
+   - ✅ shared curtailment evaluation/export-limit mutation flow centralized in `functions/lib/services/curtailment-service.js` via `checkAndApplyCurtailment(...)`
+   - ✅ shared rule-action validation/dispatch flow centralized in `functions/lib/services/automation-rule-action-service.js` via `applyRuleAction(...)` and `validateRuleActionForUser(...)`
 
 Validation for Wave 3:
 - Regression suite for automation cycle, rule CRUD, scheduler endpoints.

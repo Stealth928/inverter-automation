@@ -300,7 +300,21 @@ try {
 }
 
 // ============================================================================
-// 10. SUMMARY AND EXIT
+// 10. REPO HYGIENE CHECKS
+// ============================================================================
+section('10. Verifying Repo Hygiene');
+
+try {
+  log(colors.cyan, 'Running: node scripts/repo-hygiene-check.js');
+  execSync('node scripts/repo-hygiene-check.js', { stdio: 'inherit', cwd: repoRoot });
+  checkPass('Repo hygiene checks passed');
+} catch (e) {
+  checkFail('Repo hygiene check failed - run: node scripts/repo-hygiene-check.js');
+  failures.push('REPO_HYGIENE_FAILURE');
+}
+
+// ============================================================================
+// 11. SUMMARY AND EXIT
 // ============================================================================
 section('Pre-Deployment Check Summary');
 

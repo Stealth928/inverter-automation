@@ -467,7 +467,7 @@ FoxESS API **reorders scheduler groups** after saving. This is undocumented beha
 
 **Our solution**: Match segments by content (time, mode), not by position.
 
-See `FOXESS_SCHEDULER_REORDERING.md` for details.
+See `BACKGROUND_AUTOMATION.md` for scheduler/runtime details.
 
 ### Scheduler Limits
 - **8 groups maximum** per device
@@ -687,3 +687,4 @@ Discharge before predicted high prices.
 - Debug display now uses flexible layout with wrapping badges instead of stacked containers
 - Form validation runs before server submission to prevent invalid rule creation
 - All validations provide specific, actionable error messages to guide users
+

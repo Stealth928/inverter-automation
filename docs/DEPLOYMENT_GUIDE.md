@@ -23,6 +23,9 @@ This script verifies:
 - ✓ All critical routes are defined
 - ✓ No common refactoring mistakes (missing module prefixes, missing imports)
 - ✓ `firebase.json` rewrites are configured correctly
+- ✓ API contract baseline parity (`scripts/api-contract-baseline.js`)
+- ✓ OpenAPI contract parity (`scripts/openapi-contract-check.js`)
+- ✓ Repo hygiene policy (`scripts/repo-hygiene-check.js`)
 
 **Script will exit with code 1 if ANY check fails. Do not deploy if this fails.**
 
@@ -32,7 +35,7 @@ npm --prefix functions test
 ```
 
 Requires:
-- All Jest tests passing (see TESTING_GUIDE.md for current counts)
+- All Jest tests passing (see guides/TESTING_GUIDE.md for current counts)
 - No test errors or failures
 - Coverage reports generated as needed
 
@@ -132,7 +135,7 @@ Visit your production app and verify:
 ### What Each Check Does
 
 #### 1. Test Suite (Jest)
-- Runs the full Jest suite across all modules (see TESTING_GUIDE.md for current counts)
+- Runs the full Jest suite across all modules (see guides/TESTING_GUIDE.md for current counts)
 - Validates API endpoints with supertest
 - Tests automation logic, timezone handling, caching
 - Catches: logic errors, broken routes, middleware issues
@@ -176,7 +179,7 @@ Visit your production app and verify:
 
 Every push to `main` branch automatically runs:
 
-1. **Unit Tests** - All Jest tests must pass (current count in TESTING_GUIDE.md)
+1. **Unit Tests** - All Jest tests must pass (current count in guides/TESTING_GUIDE.md)
 2. **Linting** - Code quality checks
 3. **Module Verification** - Exports/imports validated
 4. **Security Audit** - npm audit for vulnerabilities
@@ -396,3 +399,5 @@ For deployment issues or process improvements:
 4. Consult team members
 
 **Last Updated:** 2025-12-22
+
+

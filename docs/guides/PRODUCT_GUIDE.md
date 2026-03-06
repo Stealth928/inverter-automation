@@ -962,7 +962,7 @@ Your energy future is automated, optimized, and under your control.
 - Technical API Reference: `docs/API.md`
 - Automation Rules Deep Dive: `docs/AUTOMATION.md`
 - Setup Instructions: `docs/SETUP.md`
-- Testing Guide: `TESTING_GUIDE.md`
+- Testing Guide: `docs/guides/TESTING_GUIDE.md`
 
 **Community:**
 - GitHub Issues: Report bugs and request features
@@ -980,3 +980,4 @@ Your energy future is automated, optimized, and under your control.
 **Document Type:** Product Guide & User Manual
 
 *Built with ❤️ for smart energy management*
+
