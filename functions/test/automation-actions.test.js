@@ -106,13 +106,13 @@ describe('automation action helpers', () => {
     expect(segment.minSocOnGrid).toBe(20);
   });
 
-  test('buildAutomationSchedulerSegment does not clamp SelfUse fdSoc below minSocOnGrid', () => {
+  test('buildAutomationSchedulerSegment clamps SelfUse fdSoc to minSocOnGrid floor', () => {
     const segment = buildAutomationSchedulerSegment(
       { workMode: 'SelfUse', fdPwr: 0, fdSoc: 0, minSocOnGrid: 30 },
       { startHour: 0, startMinute: 0, endHour: 0, endMinute: 0 }
     );
 
-    expect(segment.fdSoc).toBe(0);
+    expect(segment.fdSoc).toBe(30);
     expect(segment.minSocOnGrid).toBe(30);
   });
 

@@ -86,8 +86,8 @@ function buildAutomationSchedulerSegment(action, timeWindow) {
   const minSocOnGrid = safeAction.minSocOnGrid ?? 20;
   let fdSoc = safeAction.fdSoc ?? 35;
 
-  // Safety: for ForceDischarge, stop SoC must not be below min on-grid SoC
-  if (workMode === 'ForceDischarge' && fdSoc < minSocOnGrid) {
+  // Safety: stop SoC must never be below min on-grid SoC regardless of mode
+  if (fdSoc < minSocOnGrid) {
     fdSoc = minSocOnGrid;
   }
 

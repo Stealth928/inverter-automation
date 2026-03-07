@@ -261,7 +261,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 30,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 30,
         minSocOnGrid: 30,
         maxSoc: 100
       }
@@ -298,7 +298,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 120,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 100
       }
@@ -332,7 +332,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 60,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 80
       }
@@ -366,7 +366,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 1440,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 90
       }
@@ -400,7 +400,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 180,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 30,
         minSocOnGrid: 30,
         maxSoc: 100
       }
@@ -506,7 +506,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 120,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 25,
         minSocOnGrid: 25,
         maxSoc: 100
       }
@@ -577,7 +577,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 240,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 30,
         minSocOnGrid: 30,
         maxSoc: 100
       }
@@ -683,7 +683,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 240,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 80
       }
@@ -717,7 +717,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 180,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 30,
         minSocOnGrid: 30,
         maxSoc: 100
       }
@@ -751,7 +751,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 360,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 30,
         minSocOnGrid: 30,
         maxSoc: 100
       }
@@ -822,7 +822,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 300,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 40,
         minSocOnGrid: 40,
         maxSoc: 100
       }
@@ -856,7 +856,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 120,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 85
       }
@@ -997,7 +997,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 30,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 90
       }
