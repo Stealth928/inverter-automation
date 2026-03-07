@@ -86,9 +86,24 @@ async function fetchAutomationAmberData(options = {}) {
   const logger = getLogger(options.logger);
   const userConfig = options.userConfig;
   const userId = options.userId;
+  const amberTariffAdapter = options.amberTariffAdapter || null;
 
   if (!userConfig?.amberApiKey) {
     return null;
+  }
+
+  // Prefer the adapter path when available — it owns its own caching strategy
+  if (amberTariffAdapter && typeof amberTariffAdapter.getCurrentPriceData === 'function') {
+    try {
+      const adapterResult = await amberTariffAdapter.getCurrentPriceData({ userConfig, userId });
+      // Result may be { data: [...] } or a plain array
+      return (adapterResult && adapterResult.data !== undefined) ? adapterResult.data : adapterResult;
+    } catch (adapterErr) {
+      logger.warn(
+        `[Automation] Amber adapter fetch failed, falling back to legacy path: ${adapterErr.message}`,
+        adapterErr.message
+      );
+    }
   }
 
   if (

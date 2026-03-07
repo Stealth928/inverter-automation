@@ -154,4 +154,23 @@ test.describe('History Page', () => {
     
     expect(typeof hasLoading).toBe('number');
   });
+
+  test('window.sharedUtils.getStoredAmberSiteId is accessible (regression: was bare global)', async ({ page }) => {
+    // Regression: history.js called getStoredAmberSiteId() without the window.sharedUtils prefix.
+    // This silently returned '' due to the typeof guard, causing Amber site selection to always
+    // ignore the user's stored preference on the History page.
+    const available = await page.evaluate(() => {
+      return typeof window.sharedUtils?.getStoredAmberSiteId === 'function';
+    });
+    expect(available).toBe(true);
+  });
+
+  test('no ReferenceError for getStoredAmberSiteId on history page load', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (err) => errors.push(err.message));
+    await page.reload();
+    await page.waitForTimeout(500);
+    const refErrors = errors.filter(e => /getStoredAmberSiteId|setStoredAmberSiteId/i.test(e));
+    expect(refErrors).toHaveLength(0);
+  });
 });
