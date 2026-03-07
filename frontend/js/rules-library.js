@@ -223,6 +223,7 @@
                         <div class="card-action-meta">
                             <span class="action-meta">${escHtml(actionPower)}</span>
                             <span class="action-meta">${tmpl.rule.action.durationMinutes} min</span>
+                            <span class="action-meta">🔋 Stop ${tmpl.rule.action.fdSoc != null ? tmpl.rule.action.fdSoc : '—'}%</span>
                         </div>
                     </div>
                 `;
