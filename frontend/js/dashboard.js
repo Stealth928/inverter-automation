@@ -6435,8 +6435,8 @@
             const workMode = document.getElementById('newRuleWorkMode').value;
             const durationMinutes = parseInt(document.getElementById('newRuleDuration').value) || 30;
             const fdPwr = parseInt(document.getElementById('newRuleFdPwr').value) || 0;
-            const fdSoc = parseInt(document.getElementById('newRuleFdSoc').value) || 10;
-            const minSocOnGrid = parseInt(document.getElementById('newRuleMinSoc').value) || 10;
+            const minSocOnGrid = parseInt(document.getElementById('newRuleMinSoc').value) || 20;
+            const fdSoc = Math.max(parseInt(document.getElementById('newRuleFdSoc').value) || minSocOnGrid, minSocOnGrid);
             const maxSoc = parseInt(document.getElementById('newRuleMaxSoc').value) || 100;
             
             // Collect conditions - use modal scoping to avoid duplicate ID conflicts with old modal
@@ -6656,8 +6656,10 @@
                 document.getElementById('newRuleWorkMode').value = action.workMode || 'SelfUse';
                 document.getElementById('newRuleDuration').value = action.durationMinutes || 30;
                 document.getElementById('newRuleFdPwr').value = action.fdPwr || 0;
-                document.getElementById('newRuleFdSoc').value = action.fdSoc || 10;
-                document.getElementById('newRuleMinSoc').value = action.minSocOnGrid || 10;
+                const editMinSoc = action.minSocOnGrid || 20;
+                const editFdSoc = Math.max(action.fdSoc || editMinSoc, editMinSoc);
+                document.getElementById('newRuleFdSoc').value = editFdSoc;
+                document.getElementById('newRuleMinSoc').value = editMinSoc;
                 document.getElementById('newRuleMaxSoc').value = action.maxSoc || 100;
                 updateRuleMinSocFloorWarning();
                 updateRulePlainEnglishSummary(modal);
