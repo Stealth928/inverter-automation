@@ -9,6 +9,9 @@
     "api:contract:refresh": "node scripts/api-contract-baseline.js --write-doc",
     "hygiene:check": "node scripts/repo-hygiene-check.js",
     "openapi:check": "node scripts/openapi-contract-check.js",
+    "scheduler:soak:capture": "node scripts/scheduler-soak-evidence-capture.js",
+    "scheduler:soak:status": "node scripts/scheduler-soak-evidence-status.js",
+    "scheduler:soak:ready": "node scripts/scheduler-soak-evidence-status.js --require-ready",
     "test:e2e:frontend": "playwright test"
   },
   "devDependencies": {

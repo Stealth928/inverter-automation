@@ -251,6 +251,8 @@ components:
                   type: integer
                 summary:
                   type: object
+                soak:
+                  type: object
                 daily:
                   type: array
                   items:

@@ -201,7 +201,8 @@
             width: min(480px, 100vw);
             background: var(--bg-secondary);
             border-left: 1px solid var(--border-primary);
-            z-index: var(--z-modal);
+            /* Keep drawer above fixed top nav so close control is always accessible on mobile */
+            z-index: calc(var(--z-nav) + 20);
             overflow-y: auto;
             box-shadow: var(--shadow-xl);
             animation: slideIn 0.25s ease;
@@ -244,7 +245,7 @@
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0,0,0,0.5);
-            z-index: calc(var(--z-modal) - 1);
+            z-index: calc(var(--z-nav) + 10);
         }
         .stats-backdrop.open { display: block; }
 
@@ -416,6 +417,74 @@
             text-transform: uppercase;
             letter-spacing: 0.4px;
             margin-bottom: 4px;
+        }
+        .label-row {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .info-tip {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            border: 1px solid var(--border-primary);
+            border-radius: 50%;
+            color: var(--text-secondary);
+            font-size: 9px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: help;
+            user-select: none;
+            background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+        }
+        .info-tip::after {
+            content: attr(data-tip);
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 8px);
+            transform: translateX(-50%);
+            width: min(260px, 60vw);
+            padding: 8px 9px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-primary);
+            background: color-mix(in srgb, var(--bg-primary) 95%, black 5%);
+            color: var(--text-primary);
+            font-size: 11px;
+            font-weight: 400;
+            line-height: 1.4;
+            letter-spacing: 0;
+            text-transform: none;
+            white-space: normal;
+            box-shadow: var(--shadow-lg);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 60;
+            transition: opacity 0.12s ease;
+        }
+        .info-tip::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 3px);
+            transform: translateX(-50%) rotate(45deg);
+            width: 8px;
+            height: 8px;
+            background: color-mix(in srgb, var(--bg-primary) 95%, black 5%);
+            border-right: 1px solid var(--border-primary);
+            border-bottom: 1px solid var(--border-primary);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 59;
+            transition: opacity 0.12s ease;
+        }
+        .info-tip:hover::after,
+        .info-tip:hover::before,
+        .info-tip:focus-visible::after,
+        .info-tip:focus-visible::before {
+            opacity: 1;
         }
         .scheduler-kpi .value {
             font-size: 20px;
@@ -791,58 +860,90 @@
                 <div class="scheduler-updated" id="schedulerMetricsUpdated">Loading scheduler metrics...</div>
                 <div class="scheduler-slo-grid">
                     <div class="scheduler-slo-item" id="schedulerSloErrorRate">
-                        <div class="slo-title">SLO: Error Rate</div>
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Error Rate
+                                <span class="info-tip" tabindex="0" data-tip="Share of executed user cycles that ended in an error for the selected day window. Healthy when <= 1.00%.">i</span>
+                            </span>
+                        </div>
                         <div class="slo-status">-</div>
                         <div class="slo-value">Target <= 1.00%</div>
                     </div>
                     <div class="scheduler-slo-item" id="schedulerSloDeadLetterRate">
-                        <div class="slo-title">SLO: Dead Letter Rate</div>
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Dead Letter Rate
+                                <span class="info-tip" tabindex="0" data-tip="Share of executed user cycles that exhausted retries and were written to dead letters in the selected day window. Healthy when <= 0.20%.">i</span>
+                            </span>
+                        </div>
                         <div class="slo-status">-</div>
                         <div class="slo-value">Target <= 0.20%</div>
                     </div>
                     <div class="scheduler-slo-item" id="schedulerSloQueueLag">
-                        <div class="slo-title">SLO: Queue Lag</div>
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Queue Lag
+                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 2m 0s).">i</span>
+                            </span>
+                        </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target <= 2m 0s</div>
+                        <div class="slo-value">Target avg <= 2m 0s, max <= 2m 0s</div>
                     </div>
                     <div class="scheduler-slo-item" id="schedulerSloCycleDuration">
-                        <div class="slo-title">SLO: Cycle Duration</div>
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Cycle Duration
+                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 1m 0s).">i</span>
+                            </span>
+                        </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target <= 1m 0s</div>
+                        <div class="slo-value">Target avg <= 1m 0s, max <= 1m 0s</div>
                     </div>
                 </div>
                 <div class="scheduler-kpis">
                     <div class="scheduler-kpi">
-                        <div class="label">Runs</div>
+                        <div class="label">
+                            <span class="label-row">Runs
+                                <span class="info-tip" tabindex="0" data-tip="Total scheduler invocations in the selected day window (default 14 days).">i</span>
+                            </span>
+                        </div>
                         <div class="value" id="schedulerRuns">-</div>
                     </div>
                     <div class="scheduler-kpi">
-                        <div class="label">Cycles Run</div>
+                        <div class="label">
+                            <span class="label-row">Cycles Run
+                                <span class="info-tip" tabindex="0" data-tip="Total user automation cycles actually executed (excludes lock/idempotent skips) in the selected day window.">i</span>
+                            </span>
+                        </div>
                         <div class="value" id="schedulerCyclesRun">-</div>
                     </div>
                     <div class="scheduler-kpi">
-                        <div class="label">Errors</div>
+                        <div class="label">
+                            <span class="label-row">Errors
+                                <span class="info-tip" tabindex="0" data-tip="Count of executed user cycles that ended with failure in the selected day window.">i</span>
+                            </span>
+                        </div>
                         <div class="value" id="schedulerErrors">-</div>
                     </div>
                     <div class="scheduler-kpi">
-                        <div class="label">Error Rate</div>
+                        <div class="label">
+                            <span class="label-row">Error Rate
+                                <span class="info-tip" tabindex="0" data-tip="Errors divided by Cycles Run for the selected day window.">i</span>
+                            </span>
+                        </div>
                         <div class="value small" id="schedulerErrorRate">-</div>
                     </div>
                     <div class="scheduler-kpi">
-                        <div class="label">Retries / Dead letters</div>
+                        <div class="label">
+                            <span class="label-row">Retries / Dead letters
+                                <span class="info-tip" tabindex="0" data-tip="Retries are extra attempts after first failure; dead letters are cycles that still failed after retries, in the selected day window.">i</span>
+                            </span>
+                        </div>
                         <div class="value small" id="schedulerRetriesDeadLetters">-</div>
                     </div>
                     <div class="scheduler-kpi">
-                        <div class="label">Lock / Idempotent Skips</div>
+                        <div class="label">
+                            <span class="label-row">Lock / Idempotent Skips
+                                <span class="info-tip" tabindex="0" data-tip="Lock skip: another scheduler run already owns the user lock. Idempotent skip: duplicate cycle key already processed.">i</span>
+                            </span>
+                        </div>
                         <div class="value small" id="schedulerLockIdempotentSkips">-</div>
-                    </div>
-                    <div class="scheduler-kpi">
-                        <div class="label">Max Queue Lag</div>
-                        <div class="value small" id="schedulerMaxQueueLag">-</div>
-                    </div>
-                    <div class="scheduler-kpi">
-                        <div class="label">Max Cycle Duration</div>
-                        <div class="value small" id="schedulerMaxCycleDuration">-</div>
                     </div>
                 </div>
                 <div class="scheduler-chart-wrap">
@@ -1511,6 +1612,27 @@
         return `${minutes}m ${remSeconds}s`;
     }
 
+    function computeWeightedRunAverageMs(runs, statsKey) {
+        const list = Array.isArray(runs) ? runs : [];
+        let weightedTotalMs = 0;
+        let totalSamples = 0;
+        list.forEach((run) => {
+            const stats = run && typeof run === 'object' ? run[statsKey] : null;
+            const avgMs = Number(stats?.avgMs || 0);
+            const count = Number(stats?.count || 0);
+            if (!Number.isFinite(avgMs) || !Number.isFinite(count) || avgMs < 0 || count <= 0) return;
+            weightedTotalMs += avgMs * count;
+            totalSamples += count;
+        });
+        if (totalSamples <= 0) {
+            return { avgMs: 0, sampleCount: 0 };
+        }
+        return {
+            avgMs: weightedTotalMs / totalSamples,
+            sampleCount: totalSamples
+        };
+    }
+
     function classifySchedulerSloLevel(value, target) {
         const measured = Number(value || 0);
         const threshold = Number(target || 0);
@@ -1526,38 +1648,44 @@
         return { level: 'bad', label: 'Breach' };
     }
 
-    function renderSchedulerSloCards(summary) {
+    function renderSchedulerSloCards(summary, options = {}) {
         const cyclesRun = Number(summary?.cyclesRun || 0);
         const deadLetters = Number(summary?.deadLetters || 0);
         const errorRatePct = Number(summary?.errorRatePct || 0);
         const deadLetterRatePct = cyclesRun > 0 ? (deadLetters / cyclesRun) * 100 : 0;
         const maxQueueLagMs = Number(summary?.maxQueueLagMs || 0);
         const maxCycleDurationMs = Number(summary?.maxCycleDurationMs || 0);
+        const avgQueueLagMs = Number(options?.avgQueueLagMs || 0);
+        const avgCycleDurationMs = Number(options?.avgCycleDurationMs || 0);
 
         const cards = [
             {
                 id: 'schedulerSloErrorRate',
                 value: errorRatePct,
                 target: 1.0,
-                display: `${errorRatePct.toFixed(2)}%`
+                display: `${errorRatePct.toFixed(2)}%`,
+                targetDisplay: 'Target <= 1.00%'
             },
             {
                 id: 'schedulerSloDeadLetterRate',
                 value: deadLetterRatePct,
                 target: 0.2,
-                display: `${deadLetterRatePct.toFixed(2)}%`
+                display: `${deadLetterRatePct.toFixed(2)}%`,
+                targetDisplay: 'Target <= 0.20%'
             },
             {
                 id: 'schedulerSloQueueLag',
                 value: maxQueueLagMs,
                 target: 120000,
-                display: formatDurationMs(maxQueueLagMs)
+                display: `${formatDurationMs(avgQueueLagMs)} avg / ${formatDurationMs(maxQueueLagMs)} max`,
+                targetDisplay: `Target avg <= ${formatDurationMs(120000)}, max <= ${formatDurationMs(120000)}`
             },
             {
                 id: 'schedulerSloCycleDuration',
                 value: maxCycleDurationMs,
                 target: 60000,
-                display: formatDurationMs(maxCycleDurationMs)
+                display: `${formatDurationMs(avgCycleDurationMs)} avg / ${formatDurationMs(maxCycleDurationMs)} max`,
+                targetDisplay: `Target avg <= ${formatDurationMs(60000)}, max <= ${formatDurationMs(60000)}`
             }
         ];
 
@@ -1566,11 +1694,15 @@
             if (!cardEl) return;
 
             const statusEl = cardEl.querySelector('.slo-status');
+            const targetEl = cardEl.querySelector('.slo-value');
             const { level, label } = classifySchedulerSloLevel(card.value, card.target);
             cardEl.classList.remove('good', 'warn', 'bad');
             cardEl.classList.add(level);
             if (statusEl) {
                 statusEl.textContent = `${label} - ${card.display}`;
+            }
+            if (targetEl && card.targetDisplay) {
+                targetEl.textContent = card.targetDisplay;
             }
         });
     }
@@ -1726,7 +1858,7 @@
         try {
             const days = 14;
             const includeRuns = true;
-            const runLimit = 20;
+            const runLimit = 100;
             let data;
             if (typeof adminApiClient.getAdminSchedulerMetrics === 'function') {
                 data = await adminApiClient.getAdminSchedulerMetrics(days, includeRuns, runLimit);
@@ -1756,6 +1888,8 @@
             const summary = result.summary || {};
             const daily = Array.isArray(result.daily) ? result.daily : [];
             const recentRuns = Array.isArray(result.recentRuns) ? result.recentRuns : [];
+            const queueLagAverage = computeWeightedRunAverageMs(recentRuns, 'queueLagMs');
+            const cycleDurationAverage = computeWeightedRunAverageMs(recentRuns, 'cycleDurationMs');
             const currentAlert = result.currentAlert && typeof result.currentAlert === 'object'
                 ? result.currentAlert
                 : null;
@@ -1768,12 +1902,13 @@
                 `${formatCompactNumber(summary.retries || 0)} / ${formatCompactNumber(summary.deadLetters || 0)}`;
             document.getElementById('schedulerLockIdempotentSkips').textContent =
                 `${formatCompactNumber(summary.skipped?.locked || 0)} / ${formatCompactNumber(summary.skipped?.idempotent || 0)}`;
-            document.getElementById('schedulerMaxQueueLag').textContent = formatDurationMs(summary.maxQueueLagMs || 0);
-            document.getElementById('schedulerMaxCycleDuration').textContent = formatDurationMs(summary.maxCycleDurationMs || 0);
-            renderSchedulerSloCards(summary);
+            renderSchedulerSloCards(summary, {
+                avgQueueLagMs: queueLagAverage.avgMs,
+                avgCycleDurationMs: cycleDurationAverage.avgMs
+            });
 
             renderSchedulerMetricsChart(daily);
-            renderSchedulerRecentRuns(recentRuns);
+            renderSchedulerRecentRuns(recentRuns.slice(0, 20));
 
             const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
             updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} - ${daily.length} day(s)`;

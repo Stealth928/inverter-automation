@@ -1,6 +1,7 @@
 ﻿'use strict';
 
 function registerAdminRoutes(app, deps = {}) {
+  const { buildSchedulerSoakSummary } = require('../../lib/services/scheduler-soak-summary');
   const authenticateUser = deps.authenticateUser;
   const requireAdmin = deps.requireAdmin;
   const googleApis = deps.googleApis;
@@ -752,6 +753,11 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       summary.failureByType = mergeFailureByType(summary.failureByType, day.failureByType);
     }
 
+    const soak = buildSchedulerSoakSummary({
+      dailyDesc,
+      daysRequested: days
+    });
+
     const errorRatePct = summary.cyclesRun > 0
       ? Number(((summary.errors / summary.cyclesRun) * 100).toFixed(2))
       : 0;
@@ -852,6 +858,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           ...summary,
           errorRatePct
         },
+        soak,
         daily: dailyDesc.slice().reverse(),
         recentRuns,
         currentAlert,

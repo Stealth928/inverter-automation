@@ -142,7 +142,10 @@ describe('admin route module', () => {
             locked: 1,
             tooSoon: 2
           },
-          failureByType: { api_rate_limit: 1 }
+          failureByType: { api_rate_limit: 1 },
+          slo: {
+            status: 'breach'
+          }
         })
       },
       {
@@ -164,7 +167,10 @@ describe('admin route module', () => {
             locked: 0,
             tooSoon: 2
           },
-          failureByType: { api_timeout: 2 }
+          failureByType: { api_timeout: 2 },
+          slo: {
+            status: 'healthy'
+          }
         })
       }
     ];
@@ -302,6 +308,22 @@ describe('admin route module', () => {
       api_rate_limit: 1,
       api_timeout: 2
     });
+    expect(response.body.result.soak).toEqual(expect.objectContaining({
+      daysRequested: 14,
+      daysWithData: 2,
+      healthyDays: 1,
+      watchDays: 0,
+      breachDays: 1,
+      latestDayKey: '2026-03-06',
+      latestStatus: 'breach',
+      status: 'breach'
+    }));
+    expect(response.body.result.soak.readiness).toEqual(expect.objectContaining({
+      hasMinimumDays: false,
+      hasNoBreachDays: false,
+      latestStatusIsHealthy: false,
+      readyForCloseout: false
+    }));
     expect(response.body.result.daily.map((entry) => entry.dayKey)).toEqual(['2026-03-05', '2026-03-06']);
     expect(response.body.result.includeRuns).toBe(true);
     expect(response.body.result.runLimit).toBe(10);
@@ -386,6 +408,12 @@ describe('admin route module', () => {
     expect(response.body.result.includeRuns).toBe(false);
     expect(response.body.result.runLimit).toBe(0);
     expect(response.body.result.recentRuns).toEqual([]);
+    expect(response.body.result.soak).toEqual(expect.objectContaining({
+      daysRequested: 14,
+      daysWithData: 0,
+      status: 'insufficient_data'
+    }));
+    expect(response.body.result.soak.readiness.readyForCloseout).toBe(false);
     expect(dailyGet).toHaveBeenCalledTimes(1);
     expect(runsGet).not.toHaveBeenCalled();
   });

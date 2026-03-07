@@ -1,8 +1,8 @@
 # Refactoring Implementation Plan (March 2026)
 
-Status: Active execution - Sprint 1 complete, P1/G1 closed, P2/G2 closed, and P3/G3 execution in progress (scheduler service-runner decoupling complete; bounded-concurrency + per-user lock/idempotency/retry/dead-letter orchestration controls are implemented, scheduler observability metrics are emitted/persisted, admin read-model + frontend dashboard consumption/SLO thresholds are integrated, overlap soak-coverage is expanded, OpenAPI admin surface coverage was extended, production scheduler SLO alert persistence/callback wiring is active, and webhook notifier + responder runbook integration is complete).
+Status: Active execution - Sprint 1 complete, P1/G1 closed, P2/G2 closed, and P3/G3 closed (scheduler service-runner decoupling complete; bounded-concurrency + per-user lock/idempotency/retry/dead-letter orchestration controls are implemented, scheduler observability metrics are emitted/persisted, admin read-model + frontend dashboard consumption/SLO thresholds are integrated, overlap soak-coverage is expanded, OpenAPI admin surface coverage was extended, production scheduler SLO alert persistence/callback wiring is active, webhook notifier + responder runbook integration is complete, scheduler soak-readiness summary/closeout evidence scaffolding is in place, automated soak evidence capture/status tooling is available, and formal closeout sign-off is recorded). P4/G4 kickoff planning is next.
 Scope: Planning + execution progress tracking  
-Last Updated: 2026-03-06  
+Last Updated: 2026-03-07  
 Primary Branch: `RefactoringMar26`
 
 ## Progress Tracker
@@ -20,9 +20,9 @@ Primary Branch: `RefactoringMar26`
 | Phase | Gate | Status | Progress | Next Focus |
 |---|---|---|---|---|
 | P0 | G0 | ✅ Complete | 100% | - |
-| P1 | G1 | ✅ Complete | 10/10 tasks implemented; formal closeout evidence finalized and gate approved (`docs/P1_G1_CLOSEOUT_EVIDENCE_MAR26.md`) | Continue P3/G3 orchestration hardening execution |
-| P2 | G2 | ✅ Complete | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence finalized, all G2 criteria marked met, `index.js` measured at 918 lines (89.8% reduction), inline routes reduced to 0, scheduler route-stack coupling removed, and repo-hygiene gating integrated into pre-deploy | Transition to P3/G3 orchestration hardening planning and execution |
-| P3 | G3 | In Progress | Scheduler orchestration hardening is active in `automation-scheduler-service`: bounded concurrency, per-user lock/idempotency, retry + dead-letter, emitted observability metrics, persisted run/daily scheduler metrics sink wiring, overlap lock/idempotency stress-path + soak coverage, admin scheduler-metrics endpoint + frontend dashboard consumption/SLO threshold surfacing, incremental OpenAPI expansion for admin scheduler/platform routes, production SLO alert persistence/callback wiring (`metrics/automationScheduler/alerts/*`), outbound webhook notifier integration, and published responder runbook; validated by focused scheduler/admin tests and full gate (`73/73` suites; `772` passing) | Continue P3 with sustained production soak evidence capture and G3 closeout package finalization |
+| P1 | G1 | ✅ Complete | 10/10 tasks implemented; formal closeout evidence finalized and gate approved (`docs/P1_G1_CLOSEOUT_EVIDENCE_MAR26.md`) | Support downstream phase kickoff |
+| P2 | G2 | ✅ Complete | Wave 1 complete (3/3), Wave 2 complete, Wave 3 step 1 complete, Wave 3 step 2 complete; closeout evidence finalized, all G2 criteria marked met, `index.js` measured at 918 lines (89.8% reduction), inline routes reduced to 0, scheduler route-stack coupling removed, and repo-hygiene gating integrated into pre-deploy | Support downstream phase kickoff |
+| P3 | G3 | ✅ Complete | Scheduler orchestration hardening implementation complete in `automation-scheduler-service` (bounded concurrency, per-user lock/idempotency, retry + dead-letter, observability metrics, persisted run/daily sink wiring, overlap stress-path coverage, admin scheduler-metrics endpoint + frontend dashboard/SLO surfacing, production SLO alert persistence/notifier/runbook integration, and soak-readiness summary + evidence tooling). Formal closeout recorded in `docs/P3_G3_CLOSEOUT_EVIDENCE_MAR26.md` with manual production verification sign-off. | Begin P4/G4 adapter abstraction and multi-provider expansion kickoff planning |
 
 Tracker hygiene rule: update this section at the end of every completed execution chunk.
 
@@ -35,7 +35,7 @@ Tracker hygiene rule: update this section at the end of every completed executio
 - ⏳ Pending: none (Sprint 1 complete)
 
 **Execution Authorization Record**
-- Status: ✅ named execution approver record captured in-repo for ongoing P1 execution.
+- Status: ✅ named execution approver records captured in-repo for P1 continuation and P3 formal closeout.
 - Execution start recorded: **2026-03-04** (Chunk 1).
 - Governance note: P0 start sign-off record remains historical-gap, but P1 continuation approval is now explicitly logged in Section **14A**.
 
@@ -1587,7 +1587,85 @@ Tracker hygiene rule: update this section at the end of every completed executio
   - `npm run openapi:check` (backend routes: `74`, OpenAPI-declared operations: `7`, incremental gap: `67`)
   - `npm run api:contract:check` (backend routes: `74`, APIClient entries: `61`, inline endpoint gaps: `0`, mismatches: `0`)
   - `node scripts/pre-deploy-check.js` (full gate pass: **73/73** suites, **772** passing, **44** todo)
-- Next target chunk: continue P3 with sustained production soak evidence capture and G3 closeout package finalization.
+- Next target chunk: add scheduler soak-readiness summarization in admin read-model and draft G3 closeout evidence package.
+
+### 2026-03-07 - Chunk 74 (P3/G3 soak-readiness summary + closeout evidence draft)
+
+- Continued P3 closeout preparation by adding sustained-soak readiness signals and drafting the dedicated G3 evidence package:
+  - added shared soak summary service:
+    - `functions/lib/services/scheduler-soak-summary.js`
+    - computes day-window status tallies, healthy/non-healthy ratios, consecutive status streaks, and closeout-readiness checks.
+  - updated admin scheduler read-model endpoint:
+    - `functions/api/routes/admin.js`
+    - `GET /api/admin/scheduler-metrics` now includes additive `result.soak` summary payload for gate-evidence monitoring.
+  - expanded regression coverage:
+    - new unit suite `functions/test/scheduler-soak-summary.test.js`.
+    - extended `functions/test/admin-routes-modules.test.js` for mixed-status soak math and empty-window behavior.
+    - updated `functions/test/admin.test.js` integration expectation to include `result.soak`.
+  - synced OpenAPI response model:
+    - `docs/openapi/openapi.v1.yaml` (`ApiEnvelopeAdminSchedulerMetrics.result.soak`).
+  - drafted dedicated closeout evidence artifact:
+    - `docs/P3_G3_CLOSEOUT_EVIDENCE_MAR26.md` (conditional-go draft pending production soak-window sign-off evidence).
+  - updated governance/index trackers:
+    - `docs/INDEX.md`
+    - `docs/PHASE_GATE_DASHBOARD.md`
+- Validation passed:
+  - `npm --prefix functions test -- test/scheduler-soak-summary.test.js test/admin-routes-modules.test.js test/admin.test.js --runInBand` (`3/3` suites, `36` passing)
+  - `npm --prefix functions run lint`
+  - `npm run openapi:check` (backend routes: `74`, OpenAPI-declared operations: `7`, incremental gap: `67`)
+  - `npm run api:contract:check` (backend routes: `74`, APIClient entries: `61`, inline endpoint gaps: `0`, mismatches: `0`)
+  - `node scripts/pre-deploy-check.js` (full gate pass: **74/74** suites, **775** passing, **44** todo)
+- Next target chunk: automate repeatable production soak evidence capture and index archival to unblock final G3 sign-off.
+
+### 2026-03-07 - Chunk 75 (P3/G3 soak evidence capture automation)
+
+- Continued P3 closeout execution by implementing repeatable soak evidence capture tooling:
+  - added capture utility:
+    - `scripts/scheduler-soak-evidence-capture.js`
+    - supports URL mode (`--url` + optional bearer token), file mode (`--input`), readiness enforcement (`--require-ready`), and date-stamped artifact generation.
+  - added root command:
+    - `npm run scheduler:soak:capture`
+  - capture output design:
+    - writes normalized JSON snapshot + markdown digest + append-only `INDEX.md` row to evidence directory.
+  - added evidence operations guide:
+    - `docs/evidence/scheduler-soak/README.md`
+  - integrated closeout/governance documentation updates:
+    - updated `docs/P3_G3_CLOSEOUT_EVIDENCE_MAR26.md` checklist to use capture command and artifact location.
+    - updated `docs/INDEX.md` and `docs/PHASE_GATE_DASHBOARD.md` to reference the new capture workflow.
+- Validation passed:
+  - `node scripts/scheduler-soak-evidence-capture.js --input <sample-json> --out-dir <temp-dir> --require-ready` (artifacts generated + readiness gating verified)
+  - `npm run api:contract:check` (backend routes: `74`, APIClient entries: `61`, inline endpoint gaps: `0`, mismatches: `0`)
+- Next target chunk: execute production soak evidence capture (`docs/evidence/scheduler-soak/*`) and finalize G3 closeout status update when readiness criteria are satisfied.
+
+### 2026-03-07 - Chunk 76 (P3/G3 soak readiness status-gate utility)
+
+- Continued P3 closeout execution by adding a lightweight readiness-status gate for captured soak artifacts:
+  - added status utility:
+    - `scripts/scheduler-soak-evidence-status.js`
+    - reads latest `docs/evidence/scheduler-soak/scheduler-soak-*.json` artifact and reports readiness summary (`status`, day counts, `readyForCloseout`).
+    - supports machine output (`--json`) and strict gating (`--require-ready` exits non-zero when artifacts are missing or not ready).
+  - added root commands:
+    - `npm run scheduler:soak:status`
+    - `npm run scheduler:soak:ready`
+  - updated soak evidence runbook and closeout checklist references:
+    - `docs/evidence/scheduler-soak/README.md`
+    - `docs/P3_G3_CLOSEOUT_EVIDENCE_MAR26.md`
+- Validation passed:
+  - `npm run scheduler:soak:status` (no artifact case handled with explicit summary)
+  - `npm run scheduler:soak:ready` (expected non-zero failure when no ready artifact is present)
+  - `npm run api:contract:check` (backend routes: `74`, APIClient entries: `61`, inline endpoint gaps: `0`, mismatches: `0`)
+- Next target chunk: execute production soak evidence capture (`docs/evidence/scheduler-soak/*`) and finalize G3 closeout status update when readiness criteria are satisfied.
+
+### 2026-03-07 - Chunk 77 (P3/G3 formal closeout sign-off)
+
+- Finalized `P3/G3` closeout and marked the gate as approved based on owner-confirmed manual production verification.
+- Updated closeout/governance trackers to closed state:
+  - `docs/P3_G3_CLOSEOUT_EVIDENCE_MAR26.md` (status and recommendation set to final go, checklist closed)
+  - `docs/PHASE_GATE_DASHBOARD.md` (`P3/G3` set to completed)
+  - `docs/REFACTORING_IMPLEMENTATION_PLAN_MAR26.md` (phase tracker, execution log, and changelog updated)
+- Validation passed:
+  - `npm run api:contract:check` (backend routes: `74`, APIClient entries: `61`, inline endpoint gaps: `0`, mismatches: `0`)
+- Next target chunk: begin `P4/G4` kickoff planning and lock adapter abstraction scope for multi-provider expansion.
 
 ---
 
@@ -2313,6 +2391,7 @@ The following tasks have no cross-phase dependencies and can run in parallel wit
 | 2026-03-04 | G1 prerequisite governance update | Completed | RefactoringMar26 owner | Governance prerequisite captured and superseded by formal G1 closeout approval record below. |
 | 2026-03-05 | P1 / G1 execution continuation | Approved (recorded) | Stealth928 | User-directed continuation of implementation work recorded in chat; used as explicit execution approval evidence. |
 | 2026-03-06 | P1 / G1 formal closeout | Approved (gate closed) | Stealth928 | Final closeout evidence captured in `docs/P1_G1_CLOSEOUT_EVIDENCE_MAR26.md`; tracker/dashboard statuses set to complete. |
+| 2026-03-07 | P3 / G3 formal closeout | Approved (gate closed) | Stealth928 | Owner-confirmed manual production verification accepted as final sign-off; `docs/P3_G3_CLOSEOUT_EVIDENCE_MAR26.md` and phase trackers updated to complete. |
 
 ---
 
@@ -2450,6 +2529,10 @@ When execution is approved, run phases in order:
 | 2026-03-06 | Continued P3/G3 by incrementally expanding OpenAPI admin surface coverage in `docs/openapi/openapi.v1.yaml` (`GET /api/admin/check`, `GET /api/admin/platform-stats`, `GET /api/admin/scheduler-metrics` plus response schemas), reducing the parity gap (`OpenAPI operations 7`, incremental gap `67`), and re-validating contract checks plus full pre-deploy gates (`72/72` suites, `766` passing, `44` todo). | Codex |
 | 2026-03-06 | Continued P3/G3 by wiring production scheduler SLO alert persistence/callback flow in `functions/lib/services/automation-scheduler-metrics-sink.js` (run/daily SLO classification + `metrics/automationScheduler/alerts/current` + per-day watch/breach snapshots), adding threshold override wiring in `functions/index.js`, surfacing `currentAlert`/`slo` in `GET /api/admin/scheduler-metrics` (`functions/api/routes/admin.js`) with frontend banner consumption (`frontend/admin.html`), updating schema/docs (`docs/openapi/openapi.v1.yaml`, `docs/SETUP.md`), and re-validating focused tests plus full pre-deploy gates (`72/72` suites, `767` passing, `44` todo). | Codex |
 | 2026-03-06 | Continued P3/G3 closeout execution by adding production scheduler SLO outbound notifier integration (`functions/lib/services/scheduler-slo-alert-notifier.js` + composition-root wiring in `functions/index.js`), publishing responder operations runbook (`docs/SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md`) with docs index/setup linkage, expanding overlap soak evidence with high-cardinality concurrent stress coverage in `functions/test/automation-scheduler-service.test.js`, adding notifier regression coverage in `functions/test/scheduler-slo-alert-notifier.test.js`, and re-validating focused suites plus full pre-deploy gates (`73/73` suites, `772` passing, `44` todo). | Codex |
+| 2026-03-07 | Continued P3/G3 closeout preparation by adding scheduler soak-readiness summarization (`functions/lib/services/scheduler-soak-summary.js`) to the admin scheduler read-model (`GET /api/admin/scheduler-metrics` now returns `result.soak`), expanding module/integration coverage (`functions/test/scheduler-soak-summary.test.js`, `functions/test/admin-routes-modules.test.js`, `functions/test/admin.test.js`), syncing OpenAPI response schema (`docs/openapi/openapi.v1.yaml`), and drafting dedicated G3 closeout evidence (`docs/P3_G3_CLOSEOUT_EVIDENCE_MAR26.md`) with tracker/index updates; re-validated focused tests, lint, contract checks, and full pre-deploy gates (`74/74` suites, `775` passing, `44` todo). | Codex |
+| 2026-03-07 | Continued P3/G3 closeout by adding automated soak-evidence capture tooling (`scripts/scheduler-soak-evidence-capture.js` + root script `scheduler:soak:capture`), publishing evidence artifact conventions (`docs/evidence/scheduler-soak/README.md`), and updating closeout/governance references (`docs/P3_G3_CLOSEOUT_EVIDENCE_MAR26.md`, `docs/PHASE_GATE_DASHBOARD.md`, `docs/INDEX.md`) so production soak-window sign-off can be executed as repeatable, date-stamped captures. | Codex |
+| 2026-03-07 | Continued P3/G3 closeout by adding readiness-status gate tooling (`scripts/scheduler-soak-evidence-status.js` + root scripts `scheduler:soak:status` and `scheduler:soak:ready`), and updating closeout/evidence docs (`docs/P3_G3_CLOSEOUT_EVIDENCE_MAR26.md`, `docs/evidence/scheduler-soak/README.md`) so latest artifact readiness can be checked and gated in one command. | Codex |
+| 2026-03-07 | Finalized P3/G3 closeout based on owner-confirmed manual production verification, updated `docs/P3_G3_CLOSEOUT_EVIDENCE_MAR26.md` to final go, marked `P3/G3` completed in `docs/PHASE_GATE_DASHBOARD.md`, and synchronized tracker/governance status in this implementation plan. | Codex |
 
 ---
 
