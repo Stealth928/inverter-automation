@@ -1847,8 +1847,35 @@
         let amberConfiguredSiteId = '';
         let amberLastPersistedSiteId = '';
 
-        // getAmberUserStorageId / getAmberSiteStorageKey / getStoredAmberSiteId / setStoredAmberSiteId
-        // are defined in shared-utils.js and available globally.
+        // Prefer shared-utils helpers, but keep a local fallback for stale cached bundles.
+        function getStoredAmberSiteIdSafe() {
+            try {
+                if (window.sharedUtils && typeof window.sharedUtils.getStoredAmberSiteId === 'function') {
+                    return String(window.sharedUtils.getStoredAmberSiteId() || '').trim();
+                }
+            } catch (e) { /* ignore and fallback */ }
+            try {
+                return String(localStorage.getItem('amberSiteId') || '').trim();
+            } catch (e) {
+                return '';
+            }
+        }
+
+        function setStoredAmberSiteIdSafe(siteId) {
+            const normalized = String(siteId || '').trim();
+            if (!normalized) return;
+
+            try {
+                if (window.sharedUtils && typeof window.sharedUtils.setStoredAmberSiteId === 'function') {
+                    window.sharedUtils.setStoredAmberSiteId(normalized);
+                    return;
+                }
+            } catch (e) { /* ignore and fallback */ }
+
+            try {
+                localStorage.setItem('amberSiteId', normalized);
+            } catch (e) { /* ignore */ }
+        }
 
         async function persistAmberSiteSelection(siteId) {
             const normalized = String(siteId || '').trim();
@@ -1890,7 +1917,7 @@
                 select.addEventListener('change', () => {
                     const selectedSiteId = String(select.value || '').trim();
                     if (!selectedSiteId) return;
-                    window.sharedUtils.setStoredAmberSiteId(selectedSiteId);
+                    setStoredAmberSiteIdSafe(selectedSiteId);
                     persistAmberSiteSelection(selectedSiteId);
                     getAmberCurrent(true);
                 });
@@ -1900,7 +1927,7 @@
                 const sites = getMockAmberSites();
                 amberSites = sites;
                 select.innerHTML = sites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
-                const storedSiteId = window.sharedUtils.getStoredAmberSiteId();
+                const storedSiteId = getStoredAmberSiteIdSafe();
                 // localStorage (user's last manual pick) takes priority over backend config
                 const preferredSiteId = storedSiteId || amberConfiguredSiteId;
                 const preferredExists = preferredSiteId && sites.some(s => String(s.id) === String(preferredSiteId));
@@ -1911,7 +1938,7 @@
                 }
                 const selectedSiteId = String(select.value || '').trim();
                 if (selectedSiteId) {
-                    window.sharedUtils.setStoredAmberSiteId(selectedSiteId);
+                    setStoredAmberSiteIdSafe(selectedSiteId);
                 }
                 card.innerHTML = '<div style="color:var(--color-success)">Mock sites loaded (local mode)</div>';
                 setTimeout(() => getAmberCurrent(forceRefresh), 80);
@@ -1939,7 +1966,7 @@
                 if (sites.length > 0) {
                     amberSites = sites;
                     select.innerHTML = sites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
-                    const storedSiteId = window.sharedUtils.getStoredAmberSiteId();
+                    const storedSiteId = getStoredAmberSiteIdSafe();
                     // localStorage (user's last manual pick) takes priority over backend config
                     const preferredSiteId = storedSiteId || amberConfiguredSiteId;
                     const preferredExists = preferredSiteId && sites.some(s => String(s.id) === String(preferredSiteId));
@@ -1950,7 +1977,7 @@
                     }
                     const selectedSiteId = String(select.value || '').trim();
                     if (selectedSiteId) {
-                        window.sharedUtils.setStoredAmberSiteId(selectedSiteId);
+                        setStoredAmberSiteIdSafe(selectedSiteId);
                         if (preferredExists) {
                             // Found and applied the user's saved preference
                             if (!amberConfiguredSiteId || amberConfiguredSiteId !== selectedSiteId) {
@@ -1992,7 +2019,7 @@
                 }
             }
             if (!siteId) { document.getElementById('amberCard').innerHTML = '<div style="color:var(--color-warning)">Select a site</div>'; return; }
-            window.sharedUtils.setStoredAmberSiteId(siteId);
+            setStoredAmberSiteIdSafe(siteId);
             
             // Check if cached data is still fresh (TTL from backend config)
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
@@ -2785,6 +2812,11 @@
             // Load initial status
             refreshQuickControlStatus();
         });
+
+        function isNotAuthenticatedError(error) {
+            const msg = String(error?.message || error || '').toLowerCase();
+            return msg.includes('not authenticated') || msg.includes('401');
+        }
         
         async function refreshQuickControlStatus(showFeedback = false) {
             if (showFeedback) {
@@ -2814,6 +2846,14 @@
                     }
                 }
             } catch (error) {
+                if (isNotAuthenticatedError(error)) {
+                    if (showFeedback) {
+                        const messageEl = document.getElementById('quickControlMessage');
+                        if (messageEl) messageEl.style.display = 'none';
+                    }
+                    return;
+                }
+
                 console.warn('[QuickControl] Failed to fetch status:', error);
                 
                 if (showFeedback) {
@@ -2841,7 +2881,9 @@
                     warningDiv.style.display = 'none';
                 }
             } catch (error) {
-                console.warn('[QuickControl] Failed to check automation status:', error);
+                if (!isNotAuthenticatedError(error)) {
+                    console.warn('[QuickControl] Failed to check automation status:', error);
+                }
                 warningDiv.style.display = 'none';
             }
         }
@@ -4728,8 +4770,8 @@
                     // Only seed localStorage from backend when it is empty (e.g. new browser / first login).
                     // Do NOT overwrite when localStorage already has a value — the user's last manual
                     // selection lives there and must take priority over the backend's cached value.
-                    if (configuredAmberSite && !window.sharedUtils.getStoredAmberSiteId()) {
-                        window.sharedUtils.setStoredAmberSiteId(configuredAmberSite);
+                    if (configuredAmberSite && !getStoredAmberSiteIdSafe()) {
+                        setStoredAmberSiteIdSafe(configuredAmberSite);
                     }
 
                     // Apply backend-configured refresh intervals so the UI honors settings
