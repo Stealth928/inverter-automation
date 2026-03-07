@@ -577,6 +577,36 @@ class APIClient {
   async healthCheck() {
     return this.get('/api/health');
   }
+
+  // ==================== EV ====================
+
+  async listEVVehicles() {
+    return this.get('/api/ev/vehicles');
+  }
+
+  async registerEVVehicle(vehicleId, provider, displayName, region) {
+    return this.post('/api/ev/vehicles', { vehicleId, provider, displayName, region });
+  }
+
+  async deleteEVVehicle(vehicleId) {
+    return this.delete(`/api/ev/vehicles/${encodeURIComponent(vehicleId)}`);
+  }
+
+  async getEVVehicleStatus(vehicleId, live = false) {
+    return this.get(`/api/ev/vehicles/${encodeURIComponent(vehicleId)}/status`, { live: live ? '1' : undefined });
+  }
+
+  async issueEVCommand(vehicleId, command, targetSocPct, commandId) {
+    return this.post(`/api/ev/vehicles/${encodeURIComponent(vehicleId)}/command`, { command, targetSocPct, commandId });
+  }
+
+  async getEVOAuthStartUrl(clientId, redirectUri, codeChallenge, region) {
+    return this.get('/api/ev/oauth/start', { clientId, redirectUri, codeChallenge, region });
+  }
+
+  async exchangeEVOAuthCode(vehicleId, clientId, clientSecret, redirectUri, code, region) {
+    return this.post('/api/ev/oauth/callback', { vehicleId, clientId, clientSecret, redirectUri, code, region });
+  }
 }
 
 // Export singleton instance (will be initialized after Firebase Auth)
