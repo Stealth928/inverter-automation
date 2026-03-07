@@ -214,18 +214,7 @@
                     const data = await resp.json();
                     const row = tbody.insertRow();
 
-                    // 🔍 AGGRESSIVE DEBUG LOGGING
-                    console.group(`%c🔍 DEBUG: ${key}`, 'color: #58a6ff; font-weight: bold; font-size: 12px;');
-                    console.log('Full Response:', data);
-                    console.log('Response errno:', data.errno);
-                    console.log('Response result:', data.result);
-                    console.log('result.data:', data.result?.data);
-                    console.log('result.value:', data.result?.value);
-                    console.log('data.data:', data.data);
-                    console.log('data.value:', data.value);
-                    console.log('Status HTTP:', resp.status, resp.statusText);
-                    console.groupEnd();
-                    addLog(`[DEBUG] Full response for ${key}: ${JSON.stringify(data)}`, 'info');
+                    addLog(`Response for ${key}: errno=${data.errno}`, 'info');
 
                     if (data.errno === 0) {
                         const resultIsEmpty = data.result && Object.keys(data.result).length === 0;
@@ -233,7 +222,6 @@
                         
                         if (resultIsEmpty) {
                             // Empty result means setting not available on this device
-                            console.log(`%c⚠️ ${key} - Key exists but not available on device (empty result)`, 'color: #d29922; font-weight: bold;');
                             row.innerHTML = `
                                 <td><strong>${key}</strong></td>
                                 <td><span style="color: var(--color-warning);">⚠ Not Available</span></td>
@@ -245,7 +233,6 @@
                         } else {
                             // Value available
                             const numValue = typeof value === 'string' && !isNaN(value) ? parseFloat(value) : value;
-                            console.log(`%c✓ Extracted value for ${key}: ${numValue}`, 'color: #7ee787; font-weight: bold;');
                             row.innerHTML = `
                                 <td><strong>${key}</strong></td>
                                 <td><span style="color: var(--color-success);">✓ Available</span></td>
@@ -322,22 +309,6 @@
 
                         const data = await resp.json();
                         
-                        // 🔍 AGGRESSIVE DEBUG LOGGING FOR SETTINGS READ
-                        console.group(`%c🔍 DEBUG: readCurrentSettings - ${key}`, 'color: #d29922; font-weight: bold; font-size: 12px;');
-                        console.log('Full Response:', data);
-                        console.log('HTTP Status:', resp.status, resp.statusText);
-                        console.log('errno:', data.errno);
-                        console.log('data.result:', data.result);
-                        console.log('data.result?.data:', data.result?.data);
-                        console.log('data.result?.value:', data.result?.value);
-                        console.log('data.data?.value:', data.data?.value);
-                        console.log('All keys in response:', Object.keys(data));
-                        if (data.result) console.log('All keys in result:', Object.keys(data.result));
-                        if (data.result?.data) console.log('All keys in result.data:', Object.keys(data.result.data));
-                        console.groupEnd();
-                        
-                        console.log(`%c[${key}] Full JSON: ${JSON.stringify(data, null, 2)}`, 'color: #79c0ff; font-family: monospace;');
-                        
                         if (data.errno === 0) {
                             // Try multiple paths for the value
                             let value = data.result?.data?.value ?? data.result?.value ?? data.data?.value ?? null;
@@ -345,26 +316,21 @@
                             // Check if result is empty (means setting not available on device)
                             const resultIsEmpty = data.result && Object.keys(data.result).length === 0;
                             if (resultIsEmpty) {
-                                console.log(`%c⚠️ ${key} - Not available on this device (empty result)`, 'color: #d29922; font-weight: bold;');
                                 settings[key] = null;
                                 addLog(`⚠️ ${key}: Not available on this device`, 'warning');
                             } else if (value !== null && value !== undefined) {
                                 // Convert string numbers to actual numbers
                                 const numValue = typeof value === 'string' ? parseFloat(value) : value;
-                                console.log(`%c✓ ${key} - Extracted value: ${numValue} (original type: ${typeof value}, converted to: ${typeof numValue})`, 'color: #7ee787; font-weight: bold;');
                                 settings[key] = numValue;
                                 addLog(`✓ ${key}: ${numValue}`, 'success');
                             } else {
-                                console.log(`%c⚠️ ${key} - No value in result`, 'color: #d29922; font-weight: bold;');
                                 settings[key] = null;
                                 addLog(`⚠️ ${key}: No value available`, 'warning');
                             }
                         } else {
-                            console.log(`%c✗ ${key} - API Error: errno=${data.errno} msg=${data.msg}`, 'color: #f85149; font-weight: bold;');
                             addLog(`✗ ${key}: API error ${data.errno} - ${data.msg}`, 'error');
                         }
                     } catch (err) {
-                        console.error(`%c✗ Exception for ${key}: ${err.message}`, 'color: #f85149; font-weight: bold;', err);
                         addLog(`✗ ${key}: ${err.message}`, 'error');
                     }
                 }
