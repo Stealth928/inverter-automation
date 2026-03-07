@@ -82,15 +82,24 @@ function buildAutomationSchedulerSegment(action, timeWindow) {
   const window = timeWindow && typeof timeWindow === 'object' ? timeWindow : {};
   const normalizedFdPwr = Number(safeAction.fdPwr ?? 0);
 
+  const workMode = safeAction.workMode || 'SelfUse';
+  const minSocOnGrid = safeAction.minSocOnGrid ?? 20;
+  let fdSoc = safeAction.fdSoc ?? 35;
+
+  // Safety: for ForceDischarge, stop SoC must not be below min on-grid SoC
+  if (workMode === 'ForceDischarge' && fdSoc < minSocOnGrid) {
+    fdSoc = minSocOnGrid;
+  }
+
   return {
     enable: 1,
-    workMode: safeAction.workMode || 'SelfUse',
+    workMode,
     startHour: Number(window.startHour || 0),
     startMinute: Number(window.startMinute || 0),
     endHour: Number(window.endHour || 0),
     endMinute: Number(window.endMinute || 0),
-    minSocOnGrid: safeAction.minSocOnGrid ?? 20,
-    fdSoc: safeAction.fdSoc ?? 35,
+    minSocOnGrid,
+    fdSoc,
     fdPwr: Number.isFinite(normalizedFdPwr) ? normalizedFdPwr : 0,
     maxSoc: safeAction.maxSoc ?? 90
   };

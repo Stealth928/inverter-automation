@@ -6338,6 +6338,13 @@
                 // Warning but not error - Stop SoC much higher than Min might be intentional
             }
 
+            // For ForceDischarge, stop SoC must be >= min on-grid SoC
+            const workModeVal = document.getElementById('newRuleWorkMode')?.value;
+            if (workModeVal === 'ForceDischarge' && !isNaN(fdSoc) && !isNaN(minSoc) && fdSoc < minSoc) {
+                setFieldError('newRuleFdSoc', '🔋 Stop SoC must be ≥ Min SoC (Grid) for Force Discharge — battery cannot discharge below its own floor');
+                setFieldError('newRuleMinSoc', '🔋 Min SoC (Grid) is higher than Stop SoC — reduce Min SoC or raise Stop SoC');
+            }
+
             // Re-apply non-blocking warning styling after validation pass
             updateRuleMinSocFloorWarning();
             
