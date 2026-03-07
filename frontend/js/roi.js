@@ -233,7 +233,7 @@
             try {
                 const sitesResp = await apiClient.getAmberSites();
                 if (sitesResp && sitesResp.errno === 0 && sitesResp.result && sitesResp.result.length > 0) {
-                    const storedSiteId = typeof getStoredAmberSiteId === 'function' ? getStoredAmberSiteId() : '';
+                    const storedSiteId = (window.sharedUtils && window.sharedUtils.getStoredAmberSiteId) ? window.sharedUtils.getStoredAmberSiteId() : '';
                     const siteId = (storedSiteId && sitesResp.result.some(s => String(s.id) === storedSiteId))
                         ? storedSiteId
                         : sitesResp.result[0].id;

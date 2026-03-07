@@ -1271,7 +1271,7 @@
                     throw new Error('No Amber sites available. Please configure your Amber API key in Settings → Integrations → Amber API.');
                 }
                 
-                const storedSiteId = typeof getStoredAmberSiteId === 'function' ? getStoredAmberSiteId() : '';
+                const storedSiteId = (window.sharedUtils && window.sharedUtils.getStoredAmberSiteId) ? window.sharedUtils.getStoredAmberSiteId() : '';
                 const siteId = (storedSiteId && sites.some(s => String(s.id) === storedSiteId))
                     ? storedSiteId
                     : sites[0].id;

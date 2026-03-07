@@ -1890,7 +1890,7 @@
                 select.addEventListener('change', () => {
                     const selectedSiteId = String(select.value || '').trim();
                     if (!selectedSiteId) return;
-                    setStoredAmberSiteId(selectedSiteId);
+                    window.sharedUtils.setStoredAmberSiteId(selectedSiteId);
                     persistAmberSiteSelection(selectedSiteId);
                     getAmberCurrent(true);
                 });
@@ -1900,7 +1900,7 @@
                 const sites = getMockAmberSites();
                 amberSites = sites;
                 select.innerHTML = sites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
-                const storedSiteId = getStoredAmberSiteId();
+                const storedSiteId = window.sharedUtils.getStoredAmberSiteId();
                 // localStorage (user's last manual pick) takes priority over backend config
                 const preferredSiteId = storedSiteId || amberConfiguredSiteId;
                 const preferredExists = preferredSiteId && sites.some(s => String(s.id) === String(preferredSiteId));
@@ -1911,7 +1911,7 @@
                 }
                 const selectedSiteId = String(select.value || '').trim();
                 if (selectedSiteId) {
-                    setStoredAmberSiteId(selectedSiteId);
+                    window.sharedUtils.setStoredAmberSiteId(selectedSiteId);
                 }
                 card.innerHTML = '<div style="color:var(--color-success)">Mock sites loaded (local mode)</div>';
                 setTimeout(() => getAmberCurrent(forceRefresh), 80);
@@ -1939,7 +1939,7 @@
                 if (sites.length > 0) {
                     amberSites = sites;
                     select.innerHTML = sites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
-                    const storedSiteId = getStoredAmberSiteId();
+                    const storedSiteId = window.sharedUtils.getStoredAmberSiteId();
                     // localStorage (user's last manual pick) takes priority over backend config
                     const preferredSiteId = storedSiteId || amberConfiguredSiteId;
                     const preferredExists = preferredSiteId && sites.some(s => String(s.id) === String(preferredSiteId));
@@ -1950,7 +1950,7 @@
                     }
                     const selectedSiteId = String(select.value || '').trim();
                     if (selectedSiteId) {
-                        setStoredAmberSiteId(selectedSiteId);
+                        window.sharedUtils.setStoredAmberSiteId(selectedSiteId);
                         if (preferredExists) {
                             // Found and applied the user's saved preference
                             if (!amberConfiguredSiteId || amberConfiguredSiteId !== selectedSiteId) {
@@ -1992,7 +1992,7 @@
                 }
             }
             if (!siteId) { document.getElementById('amberCard').innerHTML = '<div style="color:var(--color-warning)">Select a site</div>'; return; }
-            setStoredAmberSiteId(siteId);
+            window.sharedUtils.setStoredAmberSiteId(siteId);
             
             // Check if cached data is still fresh (TTL from backend config)
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
@@ -4728,8 +4728,8 @@
                     // Only seed localStorage from backend when it is empty (e.g. new browser / first login).
                     // Do NOT overwrite when localStorage already has a value — the user's last manual
                     // selection lives there and must take priority over the backend's cached value.
-                    if (configuredAmberSite && !getStoredAmberSiteId()) {
-                        setStoredAmberSiteId(configuredAmberSite);
+                    if (configuredAmberSite && !window.sharedUtils.getStoredAmberSiteId()) {
+                        window.sharedUtils.setStoredAmberSiteId(configuredAmberSite);
                     }
 
                     // Apply backend-configured refresh intervals so the UI honors settings
