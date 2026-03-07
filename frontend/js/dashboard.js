@@ -5134,7 +5134,10 @@
                                 <span style="color:var(--text-secondary)">⚡</span> <span style="color:var(--text-primary)">${ruleAction.fdPwr || 0}W</span>
                             </div>
                             <div style="background:var(--bg-secondary);padding:4px 8px;border-radius:4px">
-                                <span style="color:var(--text-secondary)">🔄</span> <span style="color:var(--text-primary)">${rule.cooldownMinutes || 5}min CD</span>
+                                <span style="color:var(--text-secondary)">� Stop</span> <span style="color:var(--text-primary)">${ruleAction.fdSoc != null ? ruleAction.fdSoc : '—'}%</span>
+                            </div>
+                            <div style="background:var(--bg-secondary);padding:4px 8px;border-radius:4px">
+                                <span style="color:var(--text-secondary)">�🔄</span> <span style="color:var(--text-primary)">${rule.cooldownMinutes || 5}min CD</span>
                             </div>
                         </div>
                         ${rule.lastTriggered ? `<div style="margin-top:8px;font-size:10px;color:var(--color-orange)">⏱️ Last: ${formatDate(rule.lastTriggered, true)}</div>` : ''}
