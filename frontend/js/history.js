@@ -354,7 +354,7 @@
             btn.disabled = true;
             btn.innerHTML = '⏳ Loading...';
             status.className = 'status loading';
-            status.textContent = 'Fetching history data from FoxESS...';
+            status.textContent = 'Fetching history data from inverter...';
             
             try {
                 const hours = parseInt(document.getElementById('historyRange').value);
@@ -665,7 +665,7 @@
             btn.disabled = true;
             btn.innerHTML = '⏳ Loading...';
             status.className = 'status loading';
-            status.textContent = 'Fetching report data from FoxESS...';
+            status.textContent = 'Fetching report data from inverter...';
             
             try {
                 const dimension = document.getElementById('reportDimension').value;
@@ -701,7 +701,7 @@
                             console.warn('[Report] AC fallback generation from meterPower2 failed:', fallbackErr);
                         }
                     } else if (dimension === 'year') {
-                        reportOptions.note = 'AC-coupled detected: yearly generation remains from FoxESS report API (meterPower2 remap currently applied to daily/monthly view).';
+                        reportOptions.note = 'AC-coupled detected: yearly generation remains from report API (meterPower2 remap currently applied to daily/monthly view).';
                     }
                 }
                 
@@ -927,7 +927,7 @@
             btn.disabled = true;
             btn.innerHTML = '⏳ Loading...';
             status.className = 'status loading';
-            status.textContent = 'Fetching generation data from FoxESS...';
+            status.textContent = 'Fetching generation data from inverter...';
             
             try {
                 const acContext = await detectAcCoupledContext();
@@ -1021,7 +1021,7 @@
             if (options.sourceLabel) {
                 html += `
                     <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:${cssVar('--accent-blue-bg')};border:1px solid ${cssVar('--border-primary')};color:${cssVar('--accent-blue')};font-size:12px;">
-                        Source: <strong>${options.sourceLabel}</strong>. Year and lifetime values remain from FoxESS generation API.
+                        Source: <strong>${options.sourceLabel}</strong>. Year and lifetime values are from the inverter generation API.
                     </div>
                 `;
             }

@@ -11,6 +11,7 @@
  */
 
 const functions = require('firebase-functions');
+const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const express = require('express');
 const cors = require('cors');
@@ -157,6 +158,20 @@ const foxessAPI = foxessModule.init({
   incrementApiCount: null // Will be defined below
 });
 
+const sungrowModule = require('./api/sungrow');
+const sungrowAPI = sungrowModule.init({
+  db,
+  logger: null, // Will be defined below
+  getConfig: null, // Will be defined below
+  incrementApiCount: null // Will be defined below
+});
+
+const { createAdapterRegistry } = require('./lib/adapters/adapter-registry');
+const { createFoxessDeviceAdapter } = require('./lib/adapters/foxess-adapter');
+const { createSungrowDeviceAdapter } = require('./lib/adapters/sungrow-adapter');
+// adapterRegistry populated once all deps (logger, getConfig) are reinitialized
+const adapterRegistry = createAdapterRegistry();
+
 const authModule = require('./api/auth');
 const authAPI = authModule.init({
   admin,
@@ -169,26 +184,29 @@ if (typeof functions.pubsub === 'undefined' || typeof functions.pubsub.schedule 
   console.warn('[Init] Firebase pubsub not available in current environment, using fallback');
 }
 
-// ==================== CONFIGURATION ====================
-// Secrets are stored in Firebase Functions config or Secret Manager
-// Set via: firebase functions:config:set foxess.token="xxx" amber.api_key="xxx"
-const getConfig = () => {
-  let ffConfig = {};
-  try {
-    ffConfig = functions.config() || {};
-  } catch (e) {
-    // functions.config() may not be available in 2nd gen runtimes.
-    ffConfig = {};
-  }
+// ==================== SECRETS (Firebase Secret Manager) ====================
+// Declared here so Firebase mounts them as process.env.* at function runtime.
+// Set via: firebase functions:secrets:set SUNGROW_APP_KEY
+const _secretSungrowAppKey    = defineSecret('SUNGROW_APP_KEY');
+const _secretSungrowAppSecret = defineSecret('SUNGROW_APP_SECRET');
 
+// ==================== CONFIGURATION ====================
+// Reads from environment variables (populated from Secret Manager at runtime,
+// or from .env.local for the local emulator).
+const getConfig = () => {
   return {
     foxess: {
-      token: (ffConfig.foxess && ffConfig.foxess.token) || process.env.FOXESS_TOKEN || '',
-      baseUrl: (ffConfig.foxess && ffConfig.foxess.base_url) || process.env.FOXESS_BASE_URL || 'https://www.foxesscloud.com'
+      token:   process.env.FOXESS_TOKEN   || '',
+      baseUrl: process.env.FOXESS_BASE_URL || 'https://www.foxesscloud.com'
     },
     amber: {
-      apiKey: (ffConfig.amber && ffConfig.amber.api_key) || process.env.AMBER_API_KEY || '',
-      baseUrl: (ffConfig.amber && ffConfig.amber.base_url) || process.env.AMBER_BASE_URL || 'https://api.amber.com.au/v1'
+      apiKey:  process.env.AMBER_API_KEY  || '',
+      baseUrl: process.env.AMBER_BASE_URL || 'https://api.amber.com.au/v1'
+    },
+    sungrow: {
+      appKey:    process.env.SUNGROW_APP_KEY    || '',
+      appSecret: process.env.SUNGROW_APP_SECRET || '',
+      baseUrl:   process.env.SUNGROW_BASE_URL   || 'https://augateway.isolarcloud.com'
     },
     automation: {
       intervalMs: 60000,
@@ -295,6 +313,7 @@ const {
   applyRuleAction,
   validateRuleActionForUser
 } = createAutomationRuleActionService({
+  adapterRegistry,
   addHistoryEntry,
   addMinutes,
   foxessAPI,
@@ -320,6 +339,7 @@ const {
 const {
   cleanupExpiredQuickControl
 } = createQuickControlService({
+  adapterRegistry,
   addHistoryEntry,
   foxessAPI,
   getUserConfig,
@@ -589,6 +609,7 @@ registerSetupPublicRoutes(app, {
   logger,
   serverTimestamp,
   setUserConfig,
+  sungrowAPI,
   tryAttachUser
 });
 
@@ -796,6 +817,7 @@ registerInverterReadRoutes(app, {
   foxessAPI,
   getCachedInverterRealtimeData,
   getUserConfig,
+  adapterRegistry,
   logger
 });
 
@@ -827,12 +849,14 @@ registerWeatherRoutes(app, {
 });
 
 registerSchedulerReadRoutes(app, {
+  adapterRegistry,
   foxessAPI,
   getUserConfig,
   tryAttachUser
 });
 
 registerSchedulerMutationRoutes(app, {
+  adapterRegistry,
   addHistoryEntry,
   authenticateUser,
   foxessAPI,
@@ -857,6 +881,17 @@ Object.assign(foxessAPI, foxessModule.init({
   incrementApiCount
 }));
 
+Object.assign(sungrowAPI, sungrowModule.init({
+  db,
+  logger,
+  getConfig,
+  incrementApiCount
+}));
+
+// Register device adapters now that foxessAPI and sungrowAPI are fully initialised
+adapterRegistry.registerDeviceProvider('foxess', createFoxessDeviceAdapter({ foxessAPI, logger }));
+adapterRegistry.registerDeviceProvider('sungrow', createSungrowDeviceAdapter({ sungrowAPI, logger }));
+
 Object.assign(authAPI, authModule.init({
   admin,
   logger
@@ -870,6 +905,8 @@ Object.assign(authAPI, authModule.init({
 
 // ==================== EXPORT EXPRESS APP AS CLOUD FUNCTION ====================
 // Use the broadly-compatible onRequest export to avoid depending on newer SDK features
+// NOTE: secrets are bound on the v2 onSchedule export below; api export will need
+// migration to v2 onRequest when secrets binding is required for Gen 1 → Gen 2 move.
 exports.api = functions.https.onRequest(app);
 
 // Export for testing
@@ -890,6 +927,7 @@ registerInverterHistoryRoutes(app, {
   db,
   foxessAPI,
   getUserConfig,
+  adapterRegistry,
   logger
 });
 
@@ -943,7 +981,8 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 exports.runAutomation = onSchedule(
   {
     schedule: 'every 1 minutes',
-    timeZone: 'UTC'
+    timeZone: 'UTC',
+    secrets: [_secretSungrowAppKey, _secretSungrowAppSecret]
   },
   runAutomationHandler
 );

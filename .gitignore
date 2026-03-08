@@ -5,6 +5,7 @@ functions/node_modules/
 
 # Local env and runtime secrets
 *.env
+*.env.*
 backend/.env
 functions/.runtimeconfig.env
 

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 90" role="img" aria-label="FoxESS">
+  <title>FoxESS</title>
+  <!-- Bold FOX text in navy -->
+  <text x="6" y="62"
+    font-family="'Arial Black','Helvetica Neue',Arial,sans-serif"
+    font-weight="900" font-size="57" fill="#002868">FOX</text>
+  <!-- ESS subtitle -->
+  <text x="36" y="79"
+    font-family="Arial,Helvetica,sans-serif"
+    font-weight="700" font-size="15" fill="#002868"
+    letter-spacing="5">ESS</text>
+  <!-- Colorful circular icon — six equal 60° sectors with white inner ellipse -->
+  <g transform="translate(193,45)">
+    <!-- Clockwise from top: indigo → teal → green → lime → orange → red -->
+    <path d="M0,0 L0,-40 A40,40 0 0,1 34.64,-20 Z"  fill="#3A4DBB"/>
+    <path d="M0,0 L34.64,-20 A40,40 0 0,1 34.64,20 Z" fill="#00A3B4"/>
+    <path d="M0,0 L34.64,20 A40,40 0 0,1 0,40 Z"     fill="#4BAD35"/>
+    <path d="M0,0 L0,40 A40,40 0 0,1 -34.64,20 Z"    fill="#A8CA00"/>
+    <path d="M0,0 L-34.64,20 A40,40 0 0,1 -34.64,-20 Z" fill="#F57A00"/>
+    <path d="M0,0 L-34.64,-20 A40,40 0 0,1 0,-40 Z"  fill="#D82020"/>
+    <!-- White hollow centre, slightly offset like the real logo -->
+    <ellipse cx="4" cy="-1" rx="22" ry="23" fill="white"/>
+  </g>
+</svg>

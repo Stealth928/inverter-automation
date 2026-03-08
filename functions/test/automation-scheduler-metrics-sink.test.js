@@ -159,6 +159,8 @@ describe('automation scheduler metrics sink', () => {
       retries: 3,
       maxQueueLagMs: 80,
       maxCycleDurationMs: 140,
+      avgCycleDurationTotalMs: 420,
+      avgCycleDurationSamples: 9,
       skipped: {
         disabledOrBlackout: 2,
         idempotent: 1,

@@ -1071,6 +1071,12 @@
                     togglePasswordField('credentials_amberKey', tAmber);
                 });
             }
+            const tSungrowPass = document.getElementById('credentials_toggleSungrowPassword');
+            if (tSungrowPass) {
+                tSungrowPass.addEventListener('click', () => {
+                    togglePasswordField('credentials_sungrowPassword', tSungrowPass);
+                });
+            }
         });
 
         function togglePasswordField(inputId, btn) {
@@ -1110,20 +1116,37 @@
 
         // Load only credentials status (reload deviceSn and token presence)
         function checkCredentialsChanged() {
-            const deviceSn = (document.getElementById('credentials_deviceSn')?.value || '').trim();
-            const foxessInput = document.getElementById('credentials_foxessToken');
+            const isSungrow = document.getElementById('sungrowCredentialsSection')?.style.display !== 'none';
             const amberInput = document.getElementById('credentials_amberKey');
-            const foxessToken = (foxessInput?.value || '').trim();
             const amberKey = (amberInput?.value || '').trim();
-
-            const foxessMatchesOriginal = foxessToken === (originalCredentials.foxessToken || '');
             const amberMatchesOriginal = amberKey === (originalCredentials.amberKey || '');
-            const foxessMaskedSaved = isMaskedCredentialValue(foxessToken) && foxessInput?.dataset.hasSavedCredential === '1';
             const amberMaskedSaved = isMaskedCredentialValue(amberKey) && amberInput?.dataset.hasSavedCredential === '1';
-            const credentialsChanged = !(foxessMatchesOriginal || foxessMaskedSaved) ||
-                !(amberMatchesOriginal || amberMaskedSaved);
 
-            const changed = (deviceSn !== originalCredentials.deviceSn) || credentialsChanged;
+            let changed;
+            if (isSungrow) {
+                const sgSnInput = document.getElementById('credentials_sungrowDeviceSn');
+                const sgUserInput = document.getElementById('credentials_sungrowUsername');
+                const sgPassInput = document.getElementById('credentials_sungrowPassword');
+                const sgSn = (sgSnInput?.value || '').trim();
+                const sgUser = (sgUserInput?.value || '').trim();
+                const sgPass = (sgPassInput?.value || '').trim();
+                const sgSnChanged = sgSn !== (originalCredentials.sungrowDeviceSn || '');
+                const sgUserChanged = !(sgUser === (originalCredentials.sungrowUsername || '') ||
+                    (isMaskedCredentialValue(sgUser) && sgUserInput?.dataset.hasSavedCredential === '1'));
+                const sgPassChanged = !(sgPass === (originalCredentials.sungrowPassword || '') ||
+                    (isMaskedCredentialValue(sgPass) && sgPassInput?.dataset.hasSavedCredential === '1'));
+                changed = sgSnChanged || sgUserChanged || sgPassChanged ||
+                    !(amberMatchesOriginal || amberMaskedSaved);
+            } else {
+                const deviceSn = (document.getElementById('credentials_deviceSn')?.value || '').trim();
+                const foxessInput = document.getElementById('credentials_foxessToken');
+                const foxessToken = (foxessInput?.value || '').trim();
+                const foxessMatchesOriginal = foxessToken === (originalCredentials.foxessToken || '');
+                const foxessMaskedSaved = isMaskedCredentialValue(foxessToken) && foxessInput?.dataset.hasSavedCredential === '1';
+                const credentialsChanged = !(foxessMatchesOriginal || foxessMaskedSaved) ||
+                    !(amberMatchesOriginal || amberMaskedSaved);
+                changed = (deviceSn !== originalCredentials.deviceSn) || credentialsChanged;
+            }
             
             const badge = document.getElementById('credentialsBadge');
             if (badge) {
@@ -1140,28 +1163,53 @@
         
         async function loadCredentials() {
             try {
-                const resp = await authenticatedFetch('/api/config?t=' + Date.now());
-                const data = await resp.json();
-                if (data.errno === 0 && data.result) {
-                    const deviceSn = data.result.deviceSn || '';
-                    document.getElementById('credentials_deviceSn').value = deviceSn;
-                    originalCredentials.deviceSn = deviceSn;
-                }
-                
-                // Clear token inputs on reload (for security - tokens aren't returned by API)
-                // But show masked dots if credentials exist, with actual values stored for Show/Hide
-                const healthResp = await authenticatedFetch('/api/health');
+                const [configResp, healthResp, statusResp] = await Promise.all([
+                    authenticatedFetch('/api/config?t=' + Date.now()),
+                    authenticatedFetch('/api/health'),
+                    authenticatedFetch('/api/config/setup-status').catch(() => null)
+                ]);
+                const data = await configResp.json();
                 const health = await healthResp.json();
-                const foxessPresent = health && health.FOXESS_TOKEN;
+                const statusData = statusResp ? await statusResp.json().catch(() => null) : null;
+
+                const deviceProvider = statusData?.result?.deviceProvider || 'foxess';
+                const hasSungrowUsername = statusData?.result?.hasSungrowUsername || false;
+                const hasSungrowDeviceSn = statusData?.result?.hasSungrowDeviceSn || false;
+
+                // Show/hide provider-specific credential sections
+                const foxessSec = document.getElementById('foxessCredentialsSection');
+                const foxessTokenSec = document.getElementById('foxessTokenSection');
+                const sungrowSec = document.getElementById('sungrowCredentialsSection');
+                const isSungrow = deviceProvider === 'sungrow';
+                if (foxessSec) foxessSec.style.display = isSungrow ? 'none' : '';
+                if (foxessTokenSec) foxessTokenSec.style.display = isSungrow ? 'none' : '';
+                if (sungrowSec) sungrowSec.style.display = isSungrow ? '' : 'none';
+
+                if (data.errno === 0 && data.result) {
+                    if (isSungrow) {
+                        const sgSnInput = document.getElementById('credentials_sungrowDeviceSn');
+                        const snVal = data.result.sungrowDeviceSn || '';
+                        if (sgSnInput) {
+                            sgSnInput.value = snVal;
+                            originalCredentials.sungrowDeviceSn = snVal;
+                        }
+                    } else {
+                        const deviceSn = data.result.deviceSn || '';
+                        document.getElementById('credentials_deviceSn').value = deviceSn;
+                        originalCredentials.deviceSn = deviceSn;
+                    }
+                }
+
+                const foxessPresent = !isSungrow && health && health.FOXESS_TOKEN;
                 const amberPresent = health && health.AMBER_API_KEY;
-                
-                // Get actual credential values from config
+
+                // Get actual credential values from config (only available for foxess path)
                 const actualFoxess = data.result?.foxessToken || '';
                 const actualAmber = data.result?.amberApiKey || '';
-                
+
                 const foxessInput = document.getElementById('credentials_foxessToken');
                 const amberInput = document.getElementById('credentials_amberKey');
-                
+
                 // Show masked credentials if they exist, and keep actual values for Show/Hide when available.
                 // Always reset input type to password so the masked display is properly hidden after reload.
                 if (foxessPresent) {
@@ -1183,7 +1231,7 @@
                     originalCredentials.foxessToken = '';
                     setSavedCredentialFlag(foxessInput, false);
                 }
-                
+
                 if (amberPresent) {
                     amberInput.value = '••••••••';
                     amberInput.type = 'password';
@@ -1203,19 +1251,61 @@
                     originalCredentials.amberKey = '';
                     setSavedCredentialFlag(amberInput, false);
                 }
-                
-                const credStatusEl = document.getElementById('credentialsStatus');
-                
-                if (foxessPresent && amberPresent) {
-                  credStatusEl.textContent = 'Inverter token and pricing API key are present (hidden)';
-                } else if (foxessPresent) {
-                  credStatusEl.textContent = 'Inverter token is present (hidden) — pricing API key not set';
-                } else if (amberPresent) {
-                  credStatusEl.textContent = 'Pricing API key is present (hidden) — inverter token not set';
-                } else {
-                  credStatusEl.textContent = 'No credentials detected';
+
+                // Sungrow: show masked presence indicators for username/password
+                if (isSungrow) {
+                    const sgUserInput = document.getElementById('credentials_sungrowUsername');
+                    const sgPassInput = document.getElementById('credentials_sungrowPassword');
+                    if (sgUserInput) {
+                        if (hasSungrowUsername) {
+                            sgUserInput.value = '••••••••';
+                            setSavedCredentialFlag(sgUserInput, true);
+                            originalCredentials.sungrowUsername = '••••••••';
+                        } else {
+                            sgUserInput.value = '';
+                            setSavedCredentialFlag(sgUserInput, false);
+                            originalCredentials.sungrowUsername = '';
+                        }
+                    }
+                    if (sgPassInput) {
+                        sgPassInput.type = 'password';
+                        const tSg = document.getElementById('credentials_toggleSungrowPassword');
+                        if (tSg) tSg.textContent = 'Show';
+                        if (hasSungrowUsername) {
+                            sgPassInput.value = '••••••••';
+                            setSavedCredentialFlag(sgPassInput, true);
+                            originalCredentials.sungrowPassword = '••••••••';
+                        } else {
+                            sgPassInput.value = '';
+                            setSavedCredentialFlag(sgPassInput, false);
+                            originalCredentials.sungrowPassword = '';
+                        }
+                    }
                 }
-                
+
+                const credStatusEl = document.getElementById('credentialsStatus');
+
+                if (isSungrow) {
+                    if (hasSungrowUsername && hasSungrowDeviceSn) {
+                        credStatusEl.textContent = 'Sungrow device SN and iSolarCloud credentials are present (hidden)';
+                    } else if (hasSungrowUsername) {
+                        credStatusEl.textContent = 'iSolarCloud credentials present — device serial number not set';
+                    } else {
+                        credStatusEl.textContent = 'No Sungrow credentials detected';
+                    }
+                    if (amberPresent) {
+                        credStatusEl.textContent += ' · pricing API key present';
+                    }
+                } else if (foxessPresent && amberPresent) {
+                    credStatusEl.textContent = 'Inverter token and pricing API key are present (hidden)';
+                } else if (foxessPresent) {
+                    credStatusEl.textContent = 'Inverter token is present (hidden) — pricing API key not set';
+                } else if (amberPresent) {
+                    credStatusEl.textContent = 'Pricing API key is present (hidden) — inverter token not set';
+                } else {
+                    credStatusEl.textContent = 'No credentials detected';
+                }
+
                 // Update badge after reload
                 checkCredentialsChanged();
                 updateStatus();
@@ -1226,68 +1316,58 @@
 
         // Save credentials by calling validate-keys endpoint which also sets them on server when valid
         async function saveCredentials() {
-            const deviceSn = (document.getElementById('credentials_deviceSn')?.value || '').trim();
-            const foxessInput = document.getElementById('credentials_foxessToken');
             const amberInput = document.getElementById('credentials_amberKey');
-
-            // Get the displayed value (either masked dots or actual)
-            const foxessDisplayed = (foxessInput?.value || '').trim();
             const amberDisplayed = (amberInput?.value || '').trim();
-            const originalFoxess = (originalCredentials.foxessToken || '').trim();
             const originalAmber = (originalCredentials.amberKey || '').trim();
-            const foxessHasSavedFlag = foxessInput?.dataset.hasSavedCredential === '1';
             const amberHasSavedFlag = amberInput?.dataset.hasSavedCredential === '1';
-            // Defensive fallback: infer saved credential state from masked/original/dataset values
-            // so validation is not forced when UI flags are temporarily out of sync.
-            const foxessHasExistingCredential = foxessHasSavedFlag ||
-                !!foxessInput?.dataset.actualValue ||
-                isMaskedCredentialValue(originalFoxess) ||
-                isMaskedCredentialValue(foxessDisplayed);
             const amberHasExistingCredential = amberHasSavedFlag ||
                 !!amberInput?.dataset.actualValue ||
                 isMaskedCredentialValue(originalAmber) ||
                 isMaskedCredentialValue(amberDisplayed);
-
-            // Treat masked placeholders as unchanged when we know a saved credential exists.
-            // This avoids re-validating existing hidden credentials on every save.
-            const foxessUnchangedHidden = isMaskedCredentialValue(foxessDisplayed) &&
-                foxessHasExistingCredential;
-            const amberUnchangedHidden = isMaskedCredentialValue(amberDisplayed) &&
-                amberHasExistingCredential;
-
-            // Also treat "shown then unchanged" as unchanged if the value matches in-memory actual value.
-            const foxessShownUnchanged = !!foxessInput?.dataset.actualValue &&
-                foxessDisplayed === foxessInput.dataset.actualValue &&
-                (isMaskedCredentialValue(originalFoxess) || foxessHasExistingCredential);
+            const amberUnchangedHidden = isMaskedCredentialValue(amberDisplayed) && amberHasExistingCredential;
             const amberShownUnchanged = !!amberInput?.dataset.actualValue &&
                 amberDisplayed === amberInput.dataset.actualValue &&
                 (isMaskedCredentialValue(originalAmber) || amberHasExistingCredential);
-
-            const foxessUnchanged = foxessUnchangedHidden || foxessShownUnchanged;
             const amberUnchanged = amberUnchangedHidden || amberShownUnchanged;
-
-            // Resolve actual values when dataset.actualValue is available.
-            const foxessToken = (foxessDisplayed === originalFoxess && foxessInput?.dataset.actualValue)
-                ? foxessInput.dataset.actualValue
-                : foxessDisplayed;
             const amberKey = (amberDisplayed === originalAmber && amberInput?.dataset.actualValue)
                 ? amberInput.dataset.actualValue
                 : amberDisplayed;
-
-            const tokenToSend = foxessUnchanged ? null : (foxessToken || null);
             const amberToSend = amberUnchanged ? null : (amberKey || null);
 
-            // Safety guard: never send the masked placeholder (•••••••• or ****) to validate-keys.
-            // If a masked value somehow slips through the unchanged-detection above, recover the
-            // actual stored value from dataset or treat the token as unchanged.
+            // Detect current provider from visible section
+            const isSungrow = document.getElementById('sungrowCredentialsSection')?.style.display !== 'none';
+
+            if (isSungrow) {
+                return saveSungrowCredentials(amberToSend, amberUnchanged);
+            }
+
+            // --- FoxESS path ---
+            const deviceSn = (document.getElementById('credentials_deviceSn')?.value || '').trim();
+            const foxessInput = document.getElementById('credentials_foxessToken');
+            const foxessDisplayed = (foxessInput?.value || '').trim();
+            const originalFoxess = (originalCredentials.foxessToken || '').trim();
+            const foxessHasSavedFlag = foxessInput?.dataset.hasSavedCredential === '1';
+            const foxessHasExistingCredential = foxessHasSavedFlag ||
+                !!foxessInput?.dataset.actualValue ||
+                isMaskedCredentialValue(originalFoxess) ||
+                isMaskedCredentialValue(foxessDisplayed);
+            const foxessUnchangedHidden = isMaskedCredentialValue(foxessDisplayed) && foxessHasExistingCredential;
+            const foxessShownUnchanged = !!foxessInput?.dataset.actualValue &&
+                foxessDisplayed === foxessInput.dataset.actualValue &&
+                (isMaskedCredentialValue(originalFoxess) || foxessHasExistingCredential);
+            const foxessUnchanged = foxessUnchangedHidden || foxessShownUnchanged;
+            const foxessToken = (foxessDisplayed === originalFoxess && foxessInput?.dataset.actualValue)
+                ? foxessInput.dataset.actualValue
+                : foxessDisplayed;
+            const tokenToSend = foxessUnchanged ? null : (foxessToken || null);
+
+            // Safety guard: never send the masked placeholder to validate-keys.
             if (tokenToSend && isMaskedCredentialValue(tokenToSend)) {
                 const recoveredToken = foxessInput?.dataset.actualValue || null;
                 if (!recoveredToken) {
-                    // Can't recover — treat as unchanged to avoid sending garbage to FoxESS
                     showMessage('warning', 'Enter a new token or keep the existing hidden token unchanged.');
                     return;
                 }
-                // Use the in-memory actual value instead and skip re-validation
                 const patchPayload = { deviceSn };
                 if (!amberUnchanged && amberToSend) patchPayload.amberApiKey = amberToSend;
                 const pr = await authenticatedFetch('/api/config', {
@@ -1317,14 +1397,11 @@
             saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
 
             try {
-                // Existing token is hidden and unchanged in this session.
-                // Avoid sending placeholder characters to validate-keys; just persist editable fields.
                 if (foxessUnchanged) {
                     const patchPayload = { deviceSn };
                     if (!amberUnchanged) {
                         patchPayload.amberApiKey = amberToSend || '';
                     }
-
                     const patchResp = await authenticatedFetch('/api/config', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1334,7 +1411,6 @@
                     if (!patchResp.ok || patchData.errno !== 0) {
                         throw new Error(patchData?.msg || patchData?.error || `HTTP ${patchResp.status}`);
                     }
-
                     await loadCredentials();
                     showMessage('success', 'Credential changes saved. Existing inverter token was kept unchanged.');
                     return;
@@ -1348,17 +1424,102 @@
                 const data = await resp.json();
                 if (data.errno !== 0) {
                     console.warn('validate-keys errors', data);
-                    // Surface first error message
                     const first = (data.errors && (data.errors.foxess_token || data.errors.device_sn || data.msg)) || 'Validation failed';
                     showMessage('warning', first);
                     return;
                 }
 
-                // Success - reload credentials to reset display
                 await loadCredentials();
                 showMessage('success', 'Credentials validated and stored on server');
             } catch (e) {
                 console.error('saveCredentials error', e);
+                showMessage('warning', 'Failed to save credentials: ' + (e.message || e));
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = prevText;
+                updateStatus();
+            }
+        }
+
+        async function saveSungrowCredentials(amberToSend, amberUnchanged) {
+            const deviceSnInput = document.getElementById('credentials_sungrowDeviceSn');
+            const usernameInput = document.getElementById('credentials_sungrowUsername');
+            const passwordInput = document.getElementById('credentials_sungrowPassword');
+
+            const deviceSn = (deviceSnInput?.value || '').trim();
+            const usernameDisplayed = (usernameInput?.value || '').trim();
+            const passwordDisplayed = (passwordInput?.value || '').trim();
+
+            const usernameUnchanged = isMaskedCredentialValue(usernameDisplayed) &&
+                usernameInput?.dataset.hasSavedCredential === '1';
+            const passwordUnchanged = isMaskedCredentialValue(passwordDisplayed) &&
+                passwordInput?.dataset.hasSavedCredential === '1';
+            const credsUnchanged = usernameUnchanged && passwordUnchanged;
+
+            if (!deviceSn) {
+                showMessage('warning', 'Sungrow Device Serial Number is required');
+                return;
+            }
+            if (!credsUnchanged && (!usernameDisplayed || isMaskedCredentialValue(usernameDisplayed))) {
+                showMessage('warning', 'iSolarCloud email is required (or keep existing credentials unchanged)');
+                return;
+            }
+            if (!credsUnchanged && (!passwordDisplayed || isMaskedCredentialValue(passwordDisplayed))) {
+                showMessage('warning', 'iSolarCloud password is required (or keep existing credentials unchanged)');
+                return;
+            }
+
+            const saveBtn = document.getElementById('credentialsSaveBtn');
+            const prevText = saveBtn.innerHTML;
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
+
+            try {
+                if (credsUnchanged) {
+                    // Only device SN (and optionally amber key) changed
+                    const patchPayload = { sungrowDeviceSn: deviceSn };
+                    if (!amberUnchanged) patchPayload.amberApiKey = amberToSend || '';
+                    const patchResp = await authenticatedFetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(patchPayload)
+                    });
+                    const patchData = await patchResp.json();
+                    if (!patchResp.ok || patchData.errno !== 0) {
+                        throw new Error(patchData?.msg || patchData?.error || `HTTP ${patchResp.status}`);
+                    }
+                    await loadCredentials();
+                    showMessage('success', 'Credential changes saved.');
+                    return;
+                }
+
+                const payload = {
+                    sungrow_device_sn: deviceSn,
+                    sungrow_username: usernameDisplayed,
+                    sungrow_password: passwordDisplayed
+                };
+                if (!amberUnchanged) payload.amber_api_key = amberToSend || null;
+
+                const resp = await authenticatedFetch('/api/config/validate-keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (data.errno !== 0) {
+                    console.warn('validate-keys errors (sungrow)', data);
+                    const first = (data.errors && (
+                        data.errors.sungrow_username || data.errors.sungrow_password ||
+                        data.errors.sungrow_device_sn || data.msg
+                    )) || 'Sungrow validation failed';
+                    showMessage('warning', first);
+                    return;
+                }
+
+                await loadCredentials();
+                showMessage('success', 'Sungrow credentials validated and stored on server');
+            } catch (e) {
+                console.error('saveSungrowCredentials error', e);
                 showMessage('warning', 'Failed to save credentials: ' + (e.message || e));
             } finally {
                 saveBtn.disabled = false;

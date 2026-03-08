@@ -16,7 +16,8 @@
 
 const PROVIDER_TYPES = Object.freeze({
   AMBER: 'amber',
-  FOXESS: 'foxess'
+  FOXESS: 'foxess',
+  SUNGROW: 'sungrow'
 });
 
 function toSafeString(value) {
@@ -30,6 +31,10 @@ function deriveAmberAccountId() {
 
 function deriveFoxessAccountId() {
   return 'foxess_default';
+}
+
+function deriveSungrowAccountId() {
+  return 'sungrow_default';
 }
 
 /**
@@ -61,6 +66,22 @@ function buildLegacyFoxessAccount(userConfig) {
     providerType: PROVIDER_TYPES.FOXESS,
     credentials: { token: foxessToken },
     defaultDeviceSn: deviceSn || null,
+    _source: 'legacy-config'
+  };
+}
+
+/**
+ * Build a virtual sungrow providerAccount document from legacy flat config fields.
+ * Used for users who configured Sungrow before the v2 providerAccounts model was adopted.
+ */
+function buildLegacySungrowAccount(userConfig) {
+  const username = toSafeString(userConfig?.sungrowUsername);
+  if (!username) return null;
+  return {
+    id: deriveSungrowAccountId(),
+    providerType: PROVIDER_TYPES.SUNGROW,
+    credentials: { username },
+    defaultDeviceSn: toSafeString(userConfig?.sungrowDeviceSn) || null,
     _source: 'legacy-config'
   };
 }
@@ -245,6 +266,8 @@ function createProviderAccountsRepository(deps = {}) {
     if (amberAccount) legacyAccounts.push(amberAccount);
     const foxessAccount = buildLegacyFoxessAccount(userConfig);
     if (foxessAccount) legacyAccounts.push(foxessAccount);
+    const sungrowAccount = buildLegacySungrowAccount(userConfig);
+    if (sungrowAccount) legacyAccounts.push(sungrowAccount);
     return legacyAccounts;
   }
 
@@ -328,5 +351,6 @@ module.exports = {
   PROVIDER_TYPES,
   buildLegacyAmberAccount,
   buildLegacyFoxessAccount,
+  buildLegacySungrowAccount,
   createProviderAccountsRepository
 };

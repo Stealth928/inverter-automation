@@ -130,6 +130,35 @@ class DeviceAdapter {
       error: error && error.message ? error.message : 'Device provider error'
     };
   }
+
+  // ── Optional reporting/history methods ──────────────────────────────────
+  // These return null by default to signal "not supported by this provider".
+  // Routes check for null and fall back to the FoxESS path unchanged.
+
+  /**
+   * Get time-series power history for a date range.
+   * @returns {Promise<Object|null>} FoxESS-shaped response or null (not supported)
+   */
+  async getHistory(_context, _begin, _end, _variables) {
+    return null;
+  }
+
+  /**
+   * Get energy report (daily or monthly totals) for a period.
+   * @param {string} _dimension - 'month' (day-by-day) or 'year' (month-by-month)
+   * @returns {Promise<Object|null>} FoxESS-shaped response or null (not supported)
+   */
+  async getReport(_context, _dimension, _year, _month) {
+    return null;
+  }
+
+  /**
+   * Get lifetime/period generation summary (today, month, year, cumulative).
+   * @returns {Promise<Object|null>} FoxESS-shaped response or null (not supported)
+   */
+  async getGeneration(_context) {
+    return null;
+  }
 }
 
 module.exports = {

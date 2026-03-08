@@ -632,19 +632,29 @@
 
         /* ── Info callout about inactive rules ── */
         .inactive-info {
-            background: var(--bg-overlay);
-            border: 1px solid var(--border);
+            background: color-mix(in srgb, var(--accent-blue) 8%, var(--bg-card) 92%);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent);
             border-radius: 10px;
             padding: 14px 18px;
             font-size: 13px;
-            color: var(--text-muted);
+            color: var(--text-secondary);
             margin-bottom: 24px;
             display: flex;
             gap: 10px;
             align-items: flex-start;
-            line-height: 1.5;
+            line-height: 1.6;
         }
-        .inactive-info .info-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+        .inactive-info strong { color: var(--text-primary); }
+        .inactive-info a { color: var(--accent-blue); text-decoration: underline; text-underline-offset: 2px; }
+        .inactive-info a:hover { opacity: 0.8; }
+        .inactive-info .info-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 2px; }
+        [data-theme="light"] .inactive-info {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #374151;
+        }
+        [data-theme="light"] .inactive-info strong { color: #111827; }
+        [data-theme="light"] .inactive-info a { color: #1d4ed8; }
 
         /* ── Responsive ── */
         @media (max-width: 600px) {

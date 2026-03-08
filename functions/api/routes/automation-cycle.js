@@ -341,56 +341,57 @@ function registerAutomationCycleRoute(app, deps = {}) {
     
     // Get live data for evaluation
     const deviceSN = userConfig?.deviceSn;
-    let inverterData = null;
-    let amberData = null;
     const cycleStartTime = Date.now();
-    inverterData = await fetchAutomationInverterData({
-      deviceSN,
-      getCachedInverterData,
-      getCachedInverterRealtimeData,
-      logger: console,
-      userConfig,
-      userId
-    });
 
-    amberData = await fetchAutomationAmberData({
-      amberAPI,
-      amberPricesInFlight,
-      logger: console,
-      userConfig,
-      userId
-    });
-
-    // Build cache object for rule evaluation
-    const cache = { amber: amberData, weather: null };
-    
-    // Evaluate rules (sorted by priority - lower number = higher priority)
+    // Evaluate which rules are enabled before fetching data so we can early-exit and
+    // determine whether weather data is needed before launching fetches.
     const enabledRules = Object.entries(rules).filter(([_, rule]) => rule.enabled);
-    
+
     if (enabledRules.length === 0) {
       await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
       return res.json({ errno: 0, result: { skipped: true, reason: 'No rules enabled', totalRules } });
     }
-    
+
     const weatherFetchPlan = buildWeatherFetchPlan({
       enabledRules,
       isForecastTemperatureType
     });
-    
-    // Only fetch weather if a rule actually needs it
-    let weatherData = null;
-    if (weatherFetchPlan.needsWeatherData) {
-      try {
-        const place = userConfig?.location || 'Sydney';
 
-        // Always fetch a stable forecast window to maximize cache reuse across rules
-        const daysToFetch = weatherFetchPlan.daysToFetch;
-        weatherData = await getCachedWeatherData(userId, place, daysToFetch);
-        cache.weather = weatherData.result || weatherData;
-      } catch (e) {
-        console.warn('[Automation] Failed to get weather data:', e.message);
-      }
-    }
+    // Run independent external data fetches in parallel to minimise cycle latency.
+    // Sequential worst-case (FoxESS 10s + Amber sites 10s + Amber prices 10s) can reach ~30s;
+    // parallel execution bounds it to the slowest single dependency.
+    const weatherFetchPromise = weatherFetchPlan.needsWeatherData
+      ? getCachedWeatherData(userId, userConfig?.location || 'Sydney', weatherFetchPlan.daysToFetch)
+          .catch((e) => {
+            console.warn('[Automation] Failed to get weather data:', e.message);
+            return null;
+          })
+      : Promise.resolve(null);
+
+    const [inverterData, amberData, weatherDataRaw] = await Promise.all([
+      fetchAutomationInverterData({
+        deviceSN,
+        getCachedInverterData,
+        getCachedInverterRealtimeData,
+        logger: console,
+        userConfig,
+        userId
+      }),
+      fetchAutomationAmberData({
+        amberAPI,
+        amberPricesInFlight,
+        logger: console,
+        userConfig,
+        userId
+      }),
+      weatherFetchPromise
+    ]);
+
+    // Build cache object for rule evaluation
+    const cache = {
+      amber: amberData,
+      weather: weatherDataRaw ? (weatherDataRaw.result || weatherDataRaw) : null
+    };
     
     const sortedRules = enabledRules.sort((a, b) => (a[1].priority || 99) - (b[1].priority || 99));
     
