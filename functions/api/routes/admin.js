@@ -558,12 +558,29 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
       .filter((ms) => Number.isFinite(ms))
       .sort((a, b) => a - b);
 
+    // Load deletion timestamps from admin_audit
+    const deletionSeries = [];
+    try {
+      const auditSnap = await db.collection('admin_audit')
+        .where('action', '==', 'delete_user')
+        .get();
+      auditSnap.forEach((doc) => {
+        const ts = toMs(doc.data().timestamp);
+        if (Number.isFinite(ts)) deletionSeries.push(ts);
+      });
+      deletionSeries.sort((a, b) => a - b);
+    } catch (auditErr) {
+      console.warn('[Admin] platform-stats: could not load deletion audit log:', auditErr.message || auditErr);
+    }
+
     let joinedIdx = 0;
     let configuredIdx = 0;
     let rulesIdx = 0;
+    let deletionIdx = 0;
     let totalUsers = 0;
     let configuredUsers = 0;
     let usersWithRules = 0;
+    let deletedUsers = 0;
 
     const trend = dateBuckets.map((bucket) => {
       while (joinedIdx < joinedSeries.length && joinedSeries[joinedIdx] <= bucket.dayEndMs) {
@@ -578,11 +595,16 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
         usersWithRules += 1;
         rulesIdx += 1;
       }
+      while (deletionIdx < deletionSeries.length && deletionSeries[deletionIdx] <= bucket.dayEndMs) {
+        deletedUsers += 1;
+        deletionIdx += 1;
+      }
       return {
         date: bucket.key,
         totalUsers,
         configuredUsers,
-        usersWithRules
+        usersWithRules,
+        deletedUsers
       };
     });
 

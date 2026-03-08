@@ -212,6 +212,7 @@
         const totalUsers = trend.map(point => Number(point.totalUsers || 0));
         const configuredUsers = trend.map(point => Number(point.configuredUsers || 0));
         const usersWithRules = trend.map(point => Number(point.usersWithRules || 0));
+        const deletedUsers = trend.map(point => Number(point.deletedUsers || 0));
 
         if (platformTrendChart) {
             platformTrendChart.destroy();
@@ -254,6 +255,19 @@
                         data: usersWithRules,
                         borderColor: 'rgba(240, 136, 62, 0.95)',
                         backgroundColor: 'rgba(240, 136, 62, 0.18)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 3,
+                        tension: 0.25,
+                        fill: false,
+                        order: 0
+                    },
+                    {
+                        type: 'line',
+                        label: 'Deleted Users',
+                        data: deletedUsers,
+                        borderColor: 'rgba(248, 81, 73, 0.95)',
+                        backgroundColor: 'rgba(248, 81, 73, 0.15)',
                         borderWidth: 2,
                         pointRadius: 0,
                         pointHoverRadius: 3,

@@ -29,13 +29,22 @@ function showMessage(type, message, duration = 5000) {
     if (!messageArea) {
         messageArea = document.createElement('div');
         messageArea.id = 'messageArea';
-        messageArea.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:10001;max-width:500px;width:90%;';
+        messageArea.style.cssText = [
+            'position:fixed',
+            'bottom:24px',
+            'left:50%',
+            'transform:translateX(-50%)',
+            'z-index:10001',
+            'max-width:480px',
+            'width:90%',
+            'pointer-events:none'
+        ].join(';');
         document.body.appendChild(messageArea);
     }
-    
+
     const alertClass = type === 'error' ? 'alert-danger' : `alert-${type}`;
-    messageArea.innerHTML = `<div class="alert ${alertClass}" style="animation:fadeIn 0.3s ease">${icon} ${message}</div>`;
-    
+    messageArea.innerHTML = `<div class="alert ${alertClass} toast-notification" style="animation:slideUpFadeIn 0.25s ease">${icon} ${message}</div>`;
+
     if (duration > 0) {
         setTimeout(() => {
             if (messageArea) messageArea.innerHTML = '';
