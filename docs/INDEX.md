@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last Updated: March 6, 2026
+Last Updated: March 7, 2026
 Purpose: Canonical index of actively maintained project documentation.
 
 ## Core Docs
@@ -27,6 +27,12 @@ Purpose: Canonical index of actively maintained project documentation.
 - [P1_G1_CLOSEOUT_EVIDENCE_MAR26.md](P1_G1_CLOSEOUT_EVIDENCE_MAR26.md): P1/G1 closeout evidence package.
 - [P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md](P2_BACKEND_DECOMPOSITION_KICKOFF_MAR26.md): P2 extraction sequencing.
 - [P2_G2_CLOSEOUT_EVIDENCE_MAR26.md](P2_G2_CLOSEOUT_EVIDENCE_MAR26.md): G2 evidence package.
+- [P3_G3_CLOSEOUT_EVIDENCE_MAR26.md](P3_G3_CLOSEOUT_EVIDENCE_MAR26.md): P3/G3 closeout evidence package.
+- [P4_G4_CLOSEOUT_EVIDENCE_MAR26.md](P4_G4_CLOSEOUT_EVIDENCE_MAR26.md): P4/G4 multi-provider/device closeout evidence.
+- [P5_G5_CLOSEOUT_EVIDENCE_MAR26.md](P5_G5_CLOSEOUT_EVIDENCE_MAR26.md): P5/G5 EV integration closeout evidence.
+- [P6_G6_CLOSEOUT_EVIDENCE_MAR26.md](P6_G6_CLOSEOUT_EVIDENCE_MAR26.md): P6/G6 frontend consolidation closeout evidence.
+- [RELEASE_READINESS_CHECKLIST.md](RELEASE_READINESS_CHECKLIST.md): Pre-deployment release readiness checklist.
+- [evidence/scheduler-soak/README.md](evidence/scheduler-soak/README.md): Scheduler soak evidence capture and artifact conventions.
 - [PHASE_GATE_DASHBOARD.md](PHASE_GATE_DASHBOARD.md): Phase gate board conventions.
 - [API_CONTRACT_BASELINE_MAR26.md](API_CONTRACT_BASELINE_MAR26.md): API drift baseline.
 - [openapi/openapi.v1.yaml](openapi/openapi.v1.yaml): OpenAPI source of truth.

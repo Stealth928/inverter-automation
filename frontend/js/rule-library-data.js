@@ -261,7 +261,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 30,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 30,
         minSocOnGrid: 30,
         maxSoc: 100
       }
@@ -298,7 +298,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 120,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 100
       }
@@ -332,7 +332,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 60,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 80
       }
@@ -366,7 +366,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 1440,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 90
       }
@@ -400,7 +400,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 180,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 30,
         minSocOnGrid: 30,
         maxSoc: 100
       }
@@ -506,7 +506,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 120,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 25,
         minSocOnGrid: 25,
         maxSoc: 100
       }
@@ -577,7 +577,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 240,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 30,
         minSocOnGrid: 30,
         maxSoc: 100
       }
@@ -663,8 +663,8 @@ window.RULE_LIBRARY = [
     categoryLabel: '🌦️ Seasonal & Weather',
     difficulty: 'Intermediate',
     description: 'Limits battery charging and keeps SoC lower during hot ambient conditions, reducing heat stress on battery cells during peak summer temperatures.',
-    whyUseIt: 'Great for summer months in hot climates (above 35°C). Ambient heat combined with charging heat generation accelerates cell degradation.',
-    conditionSummary: ['Ambient temperature ≥ 35°C', 'Limits max SoC to 80%'],
+    whyUseIt: 'Great for summer months in hot climates (above 45°C). Ambient heat combined with charging heat generation accelerates cell degradation.',
+    conditionSummary: ['Ambient temperature ≥ 45°C', 'Limits max SoC to 80%'],
     rule: {
       enabled: false,
       priority: 2,
@@ -673,7 +673,7 @@ window.RULE_LIBRARY = [
         feedInPrice: { enabled: false },
         buyPrice:    { enabled: false },
         soc:         { enabled: false },
-        temperature: { enabled: true, type: 'ambient', operator: '>=', value: 35 },
+        temperature: { enabled: true, type: 'ambient', operator: '>=', value: 45 },
         solarRadiation: { enabled: false },
         cloudCover:     { enabled: false },
         forecastPrice:  { enabled: false },
@@ -683,7 +683,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 240,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 80
       }
@@ -717,7 +717,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 180,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 30,
         minSocOnGrid: 30,
         maxSoc: 100
       }
@@ -751,7 +751,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 360,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 30,
         minSocOnGrid: 30,
         maxSoc: 100
       }
@@ -822,7 +822,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 300,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 40,
         minSocOnGrid: 40,
         maxSoc: 100
       }
@@ -856,7 +856,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 120,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 85
       }
@@ -997,7 +997,7 @@ window.RULE_LIBRARY = [
         workMode: 'SelfUse',
         durationMinutes: 30,
         fdPwr: 0,
-        fdSoc: 0,
+        fdSoc: 20,
         minSocOnGrid: 20,
         maxSoc: 90
       }

@@ -1,6 +1,6 @@
 # Phase Gate Dashboard
 
-- Status: Active tracker
+- Status: ✅ All phases complete (P0–P6 / G0–G6 closed 2026-03-07)
 - Owner: RefactoringMar26
 - Related Plan: `docs/REFACTORING_IMPLEMENTATION_PLAN_MAR26.md` (Sprint 1 item 19)
 
@@ -43,10 +43,10 @@ Shared label:
 | P0 | G0 | RefactoringMar26 | [Create P0/G0 tracker](https://github.com/Stealth928/inverter-automation/issues/new?template=phase-gate-tracker.md&title=P0%20-%20G0%20Tracker&labels=phase-gate,P0,G0) | Completed | 2026-03-04 |
 | P1 | G1 | RefactoringMar26 | [Create P1/G1 tracker](https://github.com/Stealth928/inverter-automation/issues/new?template=phase-gate-tracker.md&title=P1%20-%20G1%20Tracker&labels=phase-gate,P1,G1) | Completed (closeout evidence finalized; gate approved) | 2026-03-06 |
 | P2 | G2 | RefactoringMar26 | [Create P2/G2 tracker](https://github.com/Stealth928/inverter-automation/issues/new?template=phase-gate-tracker.md&title=P2%20-%20G2%20Tracker&labels=phase-gate,P2,G2) | Completed (closeout evidence finalized; gate approved) | 2026-03-06 |
-| P3 | G3 | RefactoringMar26 | [Create P3/G3 tracker](https://github.com/Stealth928/inverter-automation/issues/new?template=phase-gate-tracker.md&title=P3%20-%20G3%20Tracker&labels=phase-gate,P3,G3) | In Progress (scheduler hardening active; overlap lock/idempotency stress + soak coverage expanded; Firestore scheduler-metrics sink + admin read-model + frontend dashboard consumption/SLO thresholding integrated; OpenAPI admin surface incrementally expanded; production scheduler SLO alert persistence/callback wiring active; outbound webhook notifier and responder runbook integration completed) | 2026-03-06 |
-| P4 | G4 | TBD | - | Pending | - |
-| P5 | G5 | TBD | - | Pending | - |
-| P6 | G6 | TBD | - | Pending | - |
+| P3 | G3 | RefactoringMar26 | [Create P3/G3 tracker](https://github.com/Stealth928/inverter-automation/issues/new?template=phase-gate-tracker.md&title=P3%20-%20G3%20Tracker&labels=phase-gate,P3,G3) | Completed (scheduler hardening implementation complete; closeout evidence finalized in `docs/P3_G3_CLOSEOUT_EVIDENCE_MAR26.md`; owner-confirmed manual production verification accepted; gate approved) | 2026-03-07 |
+| P4 | G4 | RefactoringMar26 | - | Completed (adapter abstraction layer implemented; EV adapter interface defined) | 2026-03-07 |
+| P5 | G5 | RefactoringMar26 | - | Completed (EV integration: 7 API routes, EV conditions, test suite; pre-existing ev-conditions failures are known baseline) | 2026-03-07 |
+| P6 | G6 | RefactoringMar26 | - | Completed (frontend consolidation: 16,297+ lines extracted; all 6 G6 criteria met; release readiness checklist created; closeout evidence in `docs/P6_G6_CLOSEOUT_EVIDENCE_MAR26.md`) | 2026-03-07 |
 
 ## Usage Notes
 

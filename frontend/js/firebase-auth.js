@@ -557,7 +557,14 @@ class FirebaseAuth {
 const firebaseAuth = new FirebaseAuth();
 
 // Helper function for authenticated API calls (for module imports)
+// Prefers AppShell.authFetch (handles 401 redirect) → apiClient.fetch → firebaseAuth fallback
 async function authenticatedFetch(url, options = {}) {
+  if (typeof window !== 'undefined' && window.AppShell && typeof window.AppShell.authFetch === 'function') {
+    return window.AppShell.authFetch(url, options);
+  }
+  if (typeof window !== 'undefined' && window.apiClient) {
+    return window.apiClient.fetch(url, options);
+  }
   return firebaseAuth.fetchWithAuth(url, options);
 }
 

@@ -125,7 +125,10 @@ async function main() {
       action: {
         workMode: 'ForceDischarge',
         durationMinutes: 30,
-        fdPwr: 5000
+        fdPwr: 5000,
+        fdSoc: 20,
+        minSocOnGrid: 20,
+        maxSoc: 100
       },
       createdAt: ts,
       updatedAt: ts

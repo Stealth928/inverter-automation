@@ -215,4 +215,34 @@ test.describe('Dashboard Page', () => {
     });
     expect(persistedAfterReload).toBeTruthy();
   });
+
+  test('window.sharedUtils exposes getStoredAmberSiteId and setStoredAmberSiteId', async ({ page }) => {
+    // Regression: during P6 refactor these helpers were moved into shared-utils.js but
+    // call sites in dashboard.js, roi.js, history.js were left using bare globals.
+    // They must be accessible via window.sharedUtils.
+    const available = await page.evaluate(() => {
+      return (
+        typeof window.sharedUtils?.getStoredAmberSiteId === 'function' &&
+        typeof window.sharedUtils?.setStoredAmberSiteId === 'function'
+      );
+    });
+    expect(available).toBe(true);
+  });
+
+  test('getStoredAmberSiteId round-trips through setStoredAmberSiteId', async ({ page }) => {
+    const siteId = await page.evaluate(() => {
+      window.sharedUtils.setStoredAmberSiteId('test-site-abc');
+      return window.sharedUtils.getStoredAmberSiteId();
+    });
+    expect(siteId).toBe('test-site-abc');
+  });
+
+  test('no ReferenceError for getStoredAmberSiteId on page load', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (err) => errors.push(err.message));
+    await page.reload();
+    await page.waitForTimeout(500);
+    const refErrors = errors.filter(e => /getStoredAmberSiteId|setStoredAmberSiteId/i.test(e));
+    expect(refErrors).toHaveLength(0);
+  });
 });

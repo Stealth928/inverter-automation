@@ -212,6 +212,7 @@ describe('Admin API', () => {
       expect(res.status).toBe(200);
       expect(res.body.errno).toBe(0);
       expect(res.body.result).toHaveProperty('summary');
+      expect(res.body.result).toHaveProperty('soak');
       expect(res.body.result).toHaveProperty('daily');
       expect(res.body.result).toHaveProperty('recentRuns');
       expect(Array.isArray(res.body.result.daily)).toBe(true);

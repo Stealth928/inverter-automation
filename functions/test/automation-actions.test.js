@@ -96,6 +96,26 @@ describe('automation action helpers', () => {
     expect(groups[0]).toEqual(segment);
   });
 
+  test('buildAutomationSchedulerSegment clamps ForceDischarge fdSoc to minSocOnGrid floor', () => {
+    const segment = buildAutomationSchedulerSegment(
+      { workMode: 'ForceDischarge', fdPwr: 3000, fdSoc: 15, minSocOnGrid: 20 },
+      { startHour: 8, startMinute: 0, endHour: 10, endMinute: 0 }
+    );
+
+    expect(segment.fdSoc).toBe(20);
+    expect(segment.minSocOnGrid).toBe(20);
+  });
+
+  test('buildAutomationSchedulerSegment clamps SelfUse fdSoc to minSocOnGrid floor', () => {
+    const segment = buildAutomationSchedulerSegment(
+      { workMode: 'SelfUse', fdPwr: 0, fdSoc: 0, minSocOnGrid: 30 },
+      { startHour: 0, startMinute: 0, endHour: 0, endMinute: 0 }
+    );
+
+    expect(segment.fdSoc).toBe(30);
+    expect(segment.minSocOnGrid).toBe(30);
+  });
+
   test('buildClearedSchedulerGroups returns requested count of default groups', () => {
     const groups = buildClearedSchedulerGroups(8);
     expect(groups).toHaveLength(8);

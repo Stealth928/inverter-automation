@@ -1,5 +1,11 @@
 'use strict';
 
+const {
+  evaluateEVSoCCondition,
+  evaluateEVLocationCondition,
+  evaluateEVChargingStateCondition
+} = require('../ev-conditions');
+
 function createAutomationRuleEvaluationService(deps = {}) {
   const evaluateTemperatureCondition = deps.evaluateTemperatureCondition;
   const evaluateTimeCondition = deps.evaluateTimeCondition;
@@ -8,6 +14,7 @@ function createAutomationRuleEvaluationService(deps = {}) {
   const logger = deps.logger || { debug: () => {} };
   const parseAutomationTelemetry = deps.parseAutomationTelemetry;
   const resolveAutomationTimezone = deps.resolveAutomationTimezone;
+  const getEVVehicleStatusMap = deps.getEVVehicleStatusMap || null; // optional
 
   if (typeof evaluateTemperatureCondition !== 'function') {
     throw new Error('createAutomationRuleEvaluationService requires evaluateTemperatureCondition()');
@@ -635,7 +642,41 @@ function createAutomationRuleEvaluationService(deps = {}) {
         logger.debug('Automation', `Rule '${rule.name}' - Forecast price condition NOT met: No Amber data available`);
       }
     }
-    
+
+    // Check EV conditions (evVehicleSoC, evVehicleLocation, evChargingState)
+    const hasEvCondition = conditions.evVehicleSoC?.enabled ||
+      conditions.evVehicleLocation?.enabled ||
+      conditions.evChargingState?.enabled;
+
+    if (hasEvCondition) {
+      // Populate EV status map from cache or by fetching
+      let evVehicleStatusMap = cache.evVehicleStatusMap || null;
+      if (!evVehicleStatusMap && typeof getEVVehicleStatusMap === 'function') {
+        try {
+          evVehicleStatusMap = await getEVVehicleStatusMap(userId);
+        } catch (evErr) {
+          logger.debug('Automation', `Rule '${rule.name}' - Failed to fetch EV status: ${evErr.message}`);
+        }
+      }
+      const evCtx = { evVehicleStatusMap: evVehicleStatusMap || {} };
+
+      if (conditions.evVehicleSoC?.enabled) {
+        enabledConditions.push('evVehicleSoC');
+        const r = evaluateEVSoCCondition(conditions.evVehicleSoC, evCtx);
+        results.push({ condition: 'evVehicleSoC', ...r });
+      }
+      if (conditions.evVehicleLocation?.enabled) {
+        enabledConditions.push('evVehicleLocation');
+        const r = evaluateEVLocationCondition(conditions.evVehicleLocation, evCtx);
+        results.push({ condition: 'evVehicleLocation', ...r });
+      }
+      if (conditions.evChargingState?.enabled) {
+        enabledConditions.push('evChargingState');
+        const r = evaluateEVChargingStateCondition(conditions.evChargingState, evCtx);
+        results.push({ condition: 'evChargingState', ...r });
+      }
+    }
+
     // Determine if all conditions are met
     const allMet = results.length > 0 && results.every(r => r.met);
     

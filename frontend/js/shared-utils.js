@@ -29,13 +29,22 @@ function showMessage(type, message, duration = 5000) {
     if (!messageArea) {
         messageArea = document.createElement('div');
         messageArea.id = 'messageArea';
-        messageArea.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:10001;max-width:500px;width:90%;';
+        messageArea.style.cssText = [
+            'position:fixed',
+            'bottom:24px',
+            'left:50%',
+            'transform:translateX(-50%)',
+            'z-index:10001',
+            'max-width:480px',
+            'width:90%',
+            'pointer-events:none'
+        ].join(';');
         document.body.appendChild(messageArea);
     }
-    
+
     const alertClass = type === 'error' ? 'alert-danger' : `alert-${type}`;
-    messageArea.innerHTML = `<div class="alert ${alertClass}" style="animation:fadeIn 0.3s ease">${icon} ${message}</div>`;
-    
+    messageArea.innerHTML = `<div class="alert ${alertClass} toast-notification" style="animation:slideUpFadeIn 0.25s ease">${icon} ${message}</div>`;
+
     if (duration > 0) {
         setTimeout(() => {
             if (messageArea) messageArea.innerHTML = '';
@@ -87,10 +96,8 @@ async function loadApiMetrics(days = 1) {
         const apiUrl = `/api/metrics/api-calls?days=${encodeURIComponent(days)}&scope=user`;
         if (typeof apiClient !== 'undefined' && apiClient) {
             resp = await apiClient.fetch(apiUrl);
-        } else if (typeof firebaseAuth !== 'undefined' && firebaseAuth.isSignedIn()) {
-            resp = await firebaseAuth.fetchWithAuth(apiUrl);
         } else {
-            resp = await fetch(apiUrl);
+            resp = await firebaseAuth.fetchWithAuth(apiUrl);
         }
         
         let data;
@@ -459,6 +466,53 @@ function throttle(func, limit = 300) {
 }
 
 /* ============================================
+   AMBER SITE SELECTION — shared across pages
+   ============================================ */
+
+/** Returns the localStorage key to scope site selection per-user. */
+function getAmberUserStorageId() {
+    try {
+        const mode = localStorage.getItem('adminImpersonationMode') || '';
+        const uid = localStorage.getItem('adminImpersonationUid') || '';
+        if (mode === 'header' && uid) return uid;
+    } catch (e) { /* ignore */ }
+    try {
+        if (window.AppShell && typeof window.AppShell.getUser === 'function') {
+            const uid = window.AppShell.getUser()?.uid;
+            if (uid) return uid;
+        }
+    } catch (e) { /* ignore */ }
+    return 'guest';
+}
+
+function getAmberSiteStorageKey() {
+    return `amberSiteSelection:${getAmberUserStorageId()}`;
+}
+
+/** Returns the user's stored Amber site ID (scoped per-user, legacy fallback). */
+function getStoredAmberSiteId() {
+    try {
+        const scoped = localStorage.getItem(getAmberSiteStorageKey());
+        if (scoped) return String(scoped).trim();
+    } catch (e) { /* continue to legacy fallback */ }
+    try {
+        const legacy = localStorage.getItem('amberSiteId');
+        if (legacy) return String(legacy).trim();
+    } catch (e) { /* ignore */ }
+    return '';
+}
+
+/** Persists the selected Amber site ID to localStorage (scoped + legacy key). */
+function setStoredAmberSiteId(siteId) {
+    const normalized = String(siteId || '').trim();
+    if (!normalized) return;
+    try {
+        localStorage.setItem(getAmberSiteStorageKey(), normalized);
+        localStorage.setItem('amberSiteId', normalized);
+    } catch (e) { /* ignore */ }
+}
+
+/* ============================================
    EXPORT FOR MODULE SYSTEMS
    ============================================ */
 if (typeof module !== 'undefined' && module.exports) {
@@ -486,7 +540,12 @@ if (typeof module !== 'undefined' && module.exports) {
         throttle,
         // Pricing/format helpers
         feedDisplayValue,
-        getFeedColour
+        getFeedColour,
+        // Amber site selection helpers
+        getAmberUserStorageId,
+        getAmberSiteStorageKey,
+        getStoredAmberSiteId,
+        setStoredAmberSiteId
     };
 }
 
@@ -498,6 +557,8 @@ if (typeof window !== 'undefined') {
         getFeedColour,
         formatValue,
         formatDate,
-        formatTimeAgo
+        formatTimeAgo,
+        getStoredAmberSiteId,
+        setStoredAmberSiteId
     });
 }
