@@ -727,6 +727,9 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         retries: toFiniteNumber(data.retries, 0),
         maxQueueLagMs: toFiniteNumber(data.maxQueueLagMs, 0),
         maxCycleDurationMs: toFiniteNumber(data.maxCycleDurationMs, 0),
+        avgCycleDurationMs: data.avgCycleDurationSamples > 0
+          ? toFiniteNumber(data.avgCycleDurationTotalMs, 0) / toFiniteNumber(data.avgCycleDurationSamples, 1)
+          : 0,
         skipped: {
           disabledOrBlackout: toFiniteNumber(data.skipped?.disabledOrBlackout, 0),
           idempotent: toFiniteNumber(data.skipped?.idempotent, 0),

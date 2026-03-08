@@ -719,6 +719,10 @@
         const cycles = daily.map((point) => Number(point.cyclesRun || 0));
         const errors = daily.map((point) => Number(point.errors || 0));
         const retries = daily.map((point) => Number(point.retries || 0));
+        const avgCycleSec = daily.map((point) => {
+            const ms = Number(point.avgCycleDurationMs || 0);
+            return ms > 0 ? Math.round(ms / 100) / 10 : null;
+        });
 
         if (schedulerMetricsChart) {
             schedulerMetricsChart.destroy();
@@ -758,6 +762,19 @@
                         borderWidth: 2,
                         pointRadius: 2,
                         tension: 0.2
+                    },
+                    {
+                        type: 'line',
+                        label: 'Avg Cycle (s)',
+                        data: avgCycleSec,
+                        yAxisID: 'y1',
+                        borderColor: 'rgba(163, 230, 53, 0.85)',
+                        backgroundColor: 'rgba(163, 230, 53, 0.12)',
+                        borderWidth: 2,
+                        borderDash: [4, 3],
+                        pointRadius: 2,
+                        tension: 0.3,
+                        spanGaps: true
                     }
                 ]
             },
@@ -787,6 +804,15 @@
                         beginAtZero: true,
                         ticks: { color: cssVar('--text-secondary'), precision: 0 },
                         grid: { color: cssVar('--border-secondary') }
+                    },
+                    y1: {
+                        beginAtZero: true,
+                        position: 'right',
+                        ticks: {
+                            color: 'rgba(163, 230, 53, 0.7)',
+                            callback: (v) => `${v}s`
+                        },
+                        grid: { drawOnChartArea: false }
                     }
                 }
             }

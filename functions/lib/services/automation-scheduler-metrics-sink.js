@@ -234,6 +234,14 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       const previousMaxCycleDuration = toFiniteNumber(existingData.maxCycleDurationMs, 0);
       const nextMaxQueueLagMs = Math.max(previousMaxQueueLag, normalizedMetrics.queueLagMs.maxMs);
       const nextMaxCycleDurationMs = Math.max(previousMaxCycleDuration, normalizedMetrics.cycleDurationMs.maxMs);
+      // Weighted-average accumulation: store total weighted sum + sample count so the
+      // daily average can be derived without re-reading every individual run.
+      const nextAvgCycleDurationTotalMs =
+        toFiniteNumber(existingData.avgCycleDurationTotalMs, 0) +
+        normalizedMetrics.cycleDurationMs.avgMs * normalizedMetrics.cycleDurationMs.count;
+      const nextAvgCycleDurationSamples =
+        toFiniteNumber(existingData.avgCycleDurationSamples, 0) +
+        normalizedMetrics.cycleDurationMs.count;
       const nextCyclesRun = toFiniteNumber(existingData.cyclesRun, 0) + normalizedMetrics.cyclesRun;
       const nextDeadLetters = toFiniteNumber(existingData.deadLetters, 0) + normalizedMetrics.deadLetters;
       const nextErrors = toFiniteNumber(existingData.errors, 0) + normalizedMetrics.errors;
@@ -265,6 +273,8 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
         },
         maxQueueLagMs: nextMaxQueueLagMs,
         maxCycleDurationMs: nextMaxCycleDurationMs,
+        avgCycleDurationTotalMs: nextAvgCycleDurationTotalMs,
+        avgCycleDurationSamples: nextAvgCycleDurationSamples,
         failureByType,
         slo: dailySlo,
         lastSchedulerId: schedulerId,

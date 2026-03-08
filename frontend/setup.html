@@ -496,6 +496,7 @@
         }
         .provider-option {
             flex: 1;
+            position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -504,26 +505,69 @@
             border: 2px solid var(--border-secondary);
             border-radius: 12px;
             cursor: pointer;
-            transition: border-color 0.15s, box-shadow 0.15s;
+            transition: border-color 0.18s, box-shadow 0.18s, background 0.18s, opacity 0.18s;
             background: #ffffff;
+            opacity: 0.55;
         }
+        .provider-option:hover { opacity: 0.8; }
         .provider-option input[type="radio"] { display: none; }
         .provider-option--selected,
         .provider-option:has(input:checked) {
             border-color: var(--accent-blue);
-            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 20%, transparent);
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-blue) 35%, transparent);
+            opacity: 1;
+        }
+        /* Checkmark badge on selected card */
+        .provider-option--selected::after,
+        .provider-option:has(input:checked)::after {
+            content: '✓';
+            position: absolute;
+            top: 7px;
+            right: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            color: #fff;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .provider-logo-img {
             max-height: 50px;
             max-width: 160px;
             width: 100%;
             object-fit: contain;
-            filter: grayscale(50%) opacity(0.6);
-            transition: filter 0.15s;
+            filter: grayscale(60%) opacity(0.55);
+            transition: filter 0.18s;
         }
         .provider-option--selected .provider-logo-img,
         .provider-option:has(input:checked) .provider-logo-img {
             filter: none;
+        }
+        /* Coming soon — locked/unclickable card */
+        .provider-option--coming-soon {
+            pointer-events: none;
+            opacity: 0.4;
+            cursor: default;
+        }
+        .provider-option--coming-soon::after {
+            content: 'Coming soon';
+            position: absolute;
+            top: 7px;
+            right: 8px;
+            font-size: 10px;
+            font-weight: 600;
+            line-height: 1;
+            color: var(--text-muted);
+            background: var(--bg-tertiary, #2a2a3a);
+            border: 1px solid var(--border-secondary);
+            border-radius: 10px;
+            padding: 3px 7px;
+            white-space: nowrap;
         }
 
         /* Form section headers */
@@ -658,8 +702,8 @@
                                 <input type="radio" name="provider" value="foxess" checked id="providerFoxess">
                                 <img src="icons/logo-foxess.svg" alt="FoxESS" class="provider-logo-img">
                             </label>
-                            <label class="provider-option" id="providerSungrowOption">
-                                <input type="radio" name="provider" value="sungrow" id="providerSungrow">
+                            <label class="provider-option provider-option--coming-soon" id="providerSungrowOption">
+                                <input type="radio" name="provider" value="sungrow" id="providerSungrow" disabled>
                                 <img src="icons/logo-sungrow.svg" alt="Sungrow" class="provider-logo-img">
                             </label>
                         </div>

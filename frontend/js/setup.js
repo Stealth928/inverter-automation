@@ -30,9 +30,7 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            updateProgress();
-        });
+        updateProgress();
 
         AppShell.init({
             pageName: 'setup',
@@ -248,7 +246,13 @@
             } catch (error) {
                 console.error('Validation error:', error);
                 const firstField = provider === 'sungrow' ? 'sungrowDeviceSn' : 'deviceSn';
-                setFieldError(firstField, error.message || 'Unknown error');
+                // Only expose the message if it looks like a user-facing API/network error,
+                // not an internal TypeError or similar programming error.
+                const isInternalError = error instanceof TypeError || error instanceof ReferenceError;
+                const displayMsg = isInternalError
+                    ? 'Something went wrong — please refresh and try again.'
+                    : (error.message || 'Unknown error');
+                setFieldError(firstField, displayMsg);
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<span class="btn-text">Validate & Continue</span><span>→</span>';
             }
@@ -317,7 +321,9 @@
 
         function setFieldError(fieldId, rawMessage) {
             const message = friendlyError(fieldId, rawMessage);
-            const group = document.getElementById(fieldId).closest('.form-group');
+            const el = document.getElementById(fieldId);
+            const group = el ? el.closest('.form-group') : null;
+            if (!group) return;
             group.classList.remove('success');
             group.classList.add('error');
             const msgEl = group.querySelector('.error-message .message-text');
@@ -326,7 +332,9 @@
         }
 
         function setFieldSuccess(fieldId) {
-            const group = document.getElementById(fieldId).closest('.form-group');
+            const el = document.getElementById(fieldId);
+            const group = el ? el.closest('.form-group') : null;
+            if (!group) return;
             group.classList.remove('error');
             group.classList.add('success');
             updateProgress();
@@ -341,23 +349,23 @@
                 const sgSn   = document.getElementById('sungrowDeviceSn');
                 const sgUser = document.getElementById('sungrowUsername');
                 const sgPass = document.getElementById('sungrowPassword');
-                inverterValid = !!(sgSn?.value.trim()   && !sgSn.closest('.form-group').classList.contains('error') &&
-                                   sgUser?.value.trim() && !sgUser.closest('.form-group').classList.contains('error') &&
-                                   sgPass?.value.trim() && !sgPass.closest('.form-group').classList.contains('error'));
+                inverterValid = !!(sgSn?.value.trim()   && !sgSn.closest('.form-group')?.classList.contains('error') &&
+                                   sgUser?.value.trim() && !sgUser.closest('.form-group')?.classList.contains('error') &&
+                                   sgPass?.value.trim() && !sgPass.closest('.form-group')?.classList.contains('error'));
             } else {
                 const deviceSn    = document.getElementById('deviceSn');
                 const foxessToken = document.getElementById('foxessToken');
-                inverterValid = !!(deviceSn?.value.trim()    && !deviceSn.closest('.form-group').classList.contains('error') &&
-                                   foxessToken?.value.trim() && !foxessToken.closest('.form-group').classList.contains('error'));
+                inverterValid = !!(deviceSn?.value.trim()    && !deviceSn.closest('.form-group')?.classList.contains('error') &&
+                                   foxessToken?.value.trim() && !foxessToken.closest('.form-group')?.classList.contains('error'));
             }
 
             // Step 2: Location
             const weatherPlace = document.getElementById('weatherPlace');
-            const weatherValid = !!(weatherPlace?.value.trim() && !weatherPlace.closest('.form-group').classList.contains('error'));
+            const weatherValid = !!(weatherPlace?.value.trim() && !weatherPlace.closest('.form-group')?.classList.contains('error'));
 
             // Step 3: Amber (optional — ticks once entered without error, or once hardware is filled)
             const amberApiKey  = document.getElementById('amberApiKey');
-            const amberEntered = !!(amberApiKey?.value.trim() && !amberApiKey.closest('.form-group').classList.contains('error'));
+            const amberEntered = !!(amberApiKey?.value.trim() && !amberApiKey.closest('.form-group')?.classList.contains('error'));
             const inverterAhead = parseFloat(document.getElementById('inverterCapacityKw')?.value) > 0;
             const batteryAhead  = parseFloat(document.getElementById('batteryCapacityKwh')?.value) > 0;
             const amberValid = amberEntered || (inverterAhead && batteryAhead);
@@ -376,12 +384,13 @@
             stepEls.forEach((el, i) => {
                 if (!el) return;
                 el.classList.remove('current', 'complete');
+                const dot = el.querySelector('.step-dot');
                 if (states[i]) {
                     el.classList.add('complete');
-                    el.querySelector('.step-dot').textContent = '✓';
+                    if (dot) dot.textContent = '✓';
                 } else {
                     if (i === firstIncomplete) el.classList.add('current');
-                    el.querySelector('.step-dot').textContent = nums[i];
+                    if (dot) dot.textContent = nums[i];
                 }
             });
 
@@ -423,8 +432,9 @@
         document.getElementById('batteryCapacityKwh').addEventListener('input', updateProgress);
 
         function clearFieldState(fieldId) {
-            const group = document.getElementById(fieldId).closest('.form-group');
-            group.classList.remove('error', 'success');
+            const el = document.getElementById(fieldId);
+            const group = el ? el.closest('.form-group') : null;
+            if (group) group.classList.remove('error', 'success');
         }
 
         // WIP Pages visibility - Topology Discovery (admin only)
