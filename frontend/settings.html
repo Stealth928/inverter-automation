@@ -856,21 +856,52 @@
                 Configure your inverter device serial number, inverter API token, and pricing API key. Tokens are not shown by default for security — enter them when you want to update them.
             </div>
             <div class="settings-grid">
-                <div class="setting-item">
-                    <div class="setting-label">Inverter Device Serial Number</div>
-                    <div class="setting-hint">The serial number of your inverter (visible in your inverter provider portal)</div>
-                    <div class="setting-input">
-                        <input type="text" id="credentials_deviceSn" placeholder="e.g., AFTWXK7A123456">
+                <!-- FoxESS-specific credentials (shown when deviceProvider=foxess) -->
+                <div id="foxessCredentialsSection">
+                    <div class="setting-item">
+                        <div class="setting-label">Inverter Device Serial Number</div>
+                        <div class="setting-hint">The serial number of your inverter (visible in your inverter provider portal)</div>
+                        <div class="setting-input">
+                            <input type="text" id="credentials_deviceSn" placeholder="e.g., AFTWXK7A123456">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sungrow-specific credentials (shown when deviceProvider=sungrow) -->
+                <div id="sungrowCredentialsSection" style="display:none">
+                    <div class="setting-item">
+                        <div class="setting-label">Sungrow Device Serial Number</div>
+                        <div class="setting-hint">Your Sungrow inverter serial number (from iSolarCloud or inverter label)</div>
+                        <div class="setting-input">
+                            <input type="text" id="credentials_sungrowDeviceSn" placeholder="e.g., A2350012345" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">iSolarCloud Account Email</div>
+                        <div class="setting-hint">Email used to log in to au.isolarcloud.com (leave blank to keep current)</div>
+                        <div class="setting-input">
+                            <input type="email" id="credentials_sungrowUsername" placeholder="•••••••• (leave blank to keep current)" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">iSolarCloud Password</div>
+                        <div class="setting-hint">Your iSolarCloud password (stored encrypted, leave blank to keep current)</div>
+                        <div class="setting-input">
+                            <input type="password" id="credentials_sungrowPassword" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
+                            <button type="button" class="btn-secondary" id="credentials_toggleSungrowPassword">Show</button>
+                        </div>
                     </div>
                 </div>
 
                 <form id="credentials-form">
-                    <div class="setting-item">
-                        <div class="setting-label">Inverter API Token</div>
-                        <div class="setting-hint">Enter an inverter API token to allow the server to read inverter data (kept hidden)</div>
-                        <div class="setting-input">
-                            <input type="password" id="credentials_foxessToken" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
-                            <button type="button" class="btn-secondary" id="credentials_toggleFoxess">Show</button>
+                    <div id="foxessTokenSection">
+                        <div class="setting-item">
+                            <div class="setting-label">Inverter API Token</div>
+                            <div class="setting-hint">Enter an inverter API token to allow the server to read inverter data (kept hidden)</div>
+                            <div class="setting-input">
+                                <input type="password" id="credentials_foxessToken" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
+                                <button type="button" class="btn-secondary" id="credentials_toggleFoxess">Show</button>
+                            </div>
                         </div>
                     </div>
 

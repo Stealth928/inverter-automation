@@ -487,6 +487,88 @@
                 padding: 16px 20px 20px;
             }
         }
+
+        /* Provider selector */
+        .provider-selector {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .provider-option {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 18px 20px;
+            min-height: 86px;
+            border: 2px solid var(--border-secondary);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            background: #ffffff;
+        }
+        .provider-option input[type="radio"] { display: none; }
+        .provider-option--selected,
+        .provider-option:has(input:checked) {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 20%, transparent);
+        }
+        .provider-logo-img {
+            max-height: 50px;
+            max-width: 160px;
+            width: 100%;
+            object-fit: contain;
+            filter: grayscale(50%) opacity(0.6);
+            transition: filter 0.15s;
+        }
+        .provider-option--selected .provider-logo-img,
+        .provider-option:has(input:checked) .provider-logo-img {
+            filter: none;
+        }
+
+        /* Form section headers */
+        .form-section-header {
+            margin: 34px 0 18px;
+        }
+        .form-section-header--first {
+            margin-top: 4px;
+        }
+        .form-section-title-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 5px;
+        }
+        .form-section-title-row::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-secondary);
+        }
+        .form-section-icon { font-size: 15px; line-height: 1; flex-shrink: 0; }
+        .form-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        .form-section-badge {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 20px;
+            background: color-mix(in srgb, #f59e0b 15%, transparent);
+            color: #f59e0b;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .form-section-subtitle {
+            font-size: 12px;
+            color: var(--text-secondary);
+            opacity: 0.75;
+        }
     </style>
     </head>
     <body class="setup-page">
@@ -526,7 +608,7 @@
             <div class="setup-header">
                 <div class="logo">⚡</div>
                 <h1>Welcome! Let's get started</h1>
-                <p class="setup-tagline">One page, five fields &mdash; you&rsquo;ll be ready in 1 minute!</p>
+                <p class="setup-tagline">One page, four sections &mdash; you&rsquo;ll be ready in 1 minute!</p>
             </div>
 
             <div class="setup-body">
@@ -538,21 +620,16 @@
                     <div class="progress-line" id="line1"></div>
                     <div class="progress-step" id="step2">
                         <div class="step-dot">2</div>
-                        <span class="step-label">API Token</span>
+                        <span class="step-label">Location</span>
                     </div>
                     <div class="progress-line" id="line2"></div>
                     <div class="progress-step" id="step3">
                         <div class="step-dot">3</div>
-                        <span class="step-label">Location</span>
+                        <span class="step-label">Amber</span>
                     </div>
                     <div class="progress-line" id="line3"></div>
                     <div class="progress-step" id="step4">
                         <div class="step-dot">4</div>
-                        <span class="step-label">Amber</span>
-                    </div>
-                    <div class="progress-line" id="line4"></div>
-                    <div class="progress-step" id="step5">
-                        <div class="step-dot">5</div>
                         <span class="step-label">Hardware</span>
                     </div>
                 </div>
@@ -563,63 +640,165 @@
                         <div>Everything&rsquo;s on this single page &mdash; no multi-page wizard. Fill in each section as you scroll and hit <strong>Validate &amp; Continue</strong> when done.</div>
                     </div>
 
-                    <!-- Device Serial Number -->
-                    <div class="form-group" id="deviceSnGroup">
-                        <label for="deviceSn">
-                            <span>Device Serial Number</span>
-                            <span class="required-indicator">*</span>
-                        </label>
-                        <div class="hint">Found on your inverter label or in the FoxESS Cloud app under Device Info</div>
-                        <div class="input-wrapper">
-                            <input 
-                                type="text" 
-                                id="deviceSn" 
-                                name="deviceSn" 
-                                placeholder="e.g., 60KB10305AKA064" 
-                                required
-                                autocomplete="off"
-                                spellcheck="false"
-                            >
-                            <span class="input-icon">🔌</span>
+                    <!-- ═══ Section: Inverter Connection ═══ -->
+                    <div class="form-section-header form-section-header--first">
+                        <div class="form-section-title-row">
+                            <span class="form-section-icon">🔌</span>
+                            <span class="form-section-title">Inverter Connection</span>
                         </div>
-                        <div class="field-message error-message">
-                            <span>⚠️</span>
-                            <span class="message-text"></span>
-                        </div>
-                        <div class="field-message success-message">
-                            <span>✓</span>
-                            <span class="message-text">Valid</span>
+                        <div class="form-section-subtitle">Your inverter brand, device serial number, and API credentials</div>
+                    </div>
+
+                    <!-- Provider Selector -->
+                    <div class="form-group" id="providerGroup">
+                        <label><span>Inverter Brand</span><span class="required-indicator">*</span></label>
+                        <div class="hint">Select the manufacturer of your hybrid inverter / battery system</div>
+                        <div class="provider-selector" id="providerSelector">
+                            <label class="provider-option provider-option--selected" id="providerFoxessOption">
+                                <input type="radio" name="provider" value="foxess" checked id="providerFoxess">
+                                <img src="icons/logo-foxess.svg" alt="FoxESS" class="provider-logo-img">
+                            </label>
+                            <label class="provider-option" id="providerSungrowOption">
+                                <input type="radio" name="provider" value="sungrow" id="providerSungrow">
+                                <img src="icons/logo-sungrow.svg" alt="Sungrow" class="provider-logo-img">
+                            </label>
                         </div>
                     </div>
 
-                    <!-- FoxESS Token -->
-                    <div class="form-group" id="foxessTokenGroup">
-                        <label for="foxessToken">
-                            <span>FoxESS API Token</span>
-                            <span class="required-indicator">*</span>
-                        </label>
-                        <div class="hint">Generate from <a href="https://www.foxesscloud.com/login" target="_blank" rel="noopener noreferrer">FoxESS Cloud (v1)</a> → User Settings → API Management</div>
-                        <div class="input-wrapper">
-                            <input 
-                                type="password" 
-                                id="foxessToken" 
-                                name="foxessToken" 
-                                placeholder="Your FoxESS API token" 
-                                required
-                                autocomplete="off"
-                                spellcheck="false"
-                            >
-                            <span class="input-icon">🔑</span>
-                            <button type="button" class="password-toggle" data-target="foxessToken" aria-label="Toggle visibility">👁️</button>
+                    <!-- ═══ FoxESS Fields ═══ -->
+                    <div id="foxessFields">
+                        <!-- Device Serial Number -->
+                        <div class="form-group" id="deviceSnGroup">
+                            <label for="deviceSn">
+                                <span>Device Serial Number</span>
+                                <span class="required-indicator">*</span>
+                            </label>
+                            <div class="hint">Found on your inverter label or in the FoxESS Cloud app under Device Info</div>
+                            <div class="input-wrapper">
+                                <input 
+                                    type="text" 
+                                    id="deviceSn" 
+                                    name="deviceSn" 
+                                    placeholder="e.g., 60KB10305AKA064" 
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                >
+                                <span class="input-icon">🔌</span>
+                            </div>
+                            <div class="field-message error-message">
+                                <span>⚠️</span>
+                                <span class="message-text"></span>
+                            </div>
+                            <div class="field-message success-message">
+                                <span>✓</span>
+                                <span class="message-text">Valid</span>
+                            </div>
                         </div>
-                        <div class="field-message error-message">
-                            <span>⚠️</span>
-                            <span class="message-text"></span>
+
+                        <!-- FoxESS Token -->
+                        <div class="form-group" id="foxessTokenGroup">
+                            <label for="foxessToken">
+                                <span>FoxESS API Token</span>
+                                <span class="required-indicator">*</span>
+                            </label>
+                            <div class="hint">Generate from <a href="https://www.foxesscloud.com/login" target="_blank" rel="noopener noreferrer">FoxESS Cloud (v1)</a> → User Settings → API Management</div>
+                            <div class="input-wrapper">
+                                <input 
+                                    type="password" 
+                                    id="foxessToken" 
+                                    name="foxessToken" 
+                                    placeholder="Your FoxESS API token" 
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                >
+                                <span class="input-icon">🔑</span>
+                                <button type="button" class="password-toggle" data-target="foxessToken" aria-label="Toggle visibility">👁️</button>
+                            </div>
+                            <div class="field-message error-message">
+                                <span>⚠️</span>
+                                <span class="message-text"></span>
+                            </div>
+                            <div class="field-message success-message">
+                                <span>✓</span>
+                                <span class="message-text">Valid</span>
+                            </div>
                         </div>
-                        <div class="field-message success-message">
-                            <span>✓</span>
-                            <span class="message-text">Valid</span>
+                    </div><!-- /#foxessFields -->
+
+                    <!-- ═══ Sungrow Fields ═══ -->
+                    <div id="sungrowFields" style="display:none">
+                        <div class="form-group" id="sungrowDeviceSnGroup">
+                            <label for="sungrowDeviceSn">
+                                <span>Inverter Serial Number</span>
+                                <span class="required-indicator">*</span>
+                            </label>
+                            <div class="hint">Found on your Sungrow inverter label or in the iSolarCloud app under Device Details</div>
+                            <div class="input-wrapper">
+                                <input
+                                    type="text"
+                                    id="sungrowDeviceSn"
+                                    name="sungrowDeviceSn"
+                                    placeholder="e.g., A2350012345"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                >
+                                <span class="input-icon">🔌</span>
+                            </div>
+                            <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
+                            <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
                         </div>
+
+                        <div class="form-group" id="sungrowUsernameGroup">
+                            <label for="sungrowUsername">
+                                <span>iSolarCloud Account Email</span>
+                                <span class="required-indicator">*</span>
+                            </label>
+                            <div class="hint">The email address you use to log in to the <a href="https://isolarcloud.com.au" target="_blank" rel="noopener noreferrer">iSolarCloud</a> app or portal</div>
+                            <div class="input-wrapper">
+                                <input
+                                    type="email"
+                                    id="sungrowUsername"
+                                    name="sungrowUsername"
+                                    placeholder="you@example.com"
+                                    autocomplete="email"
+                                    spellcheck="false"
+                                >
+                                <span class="input-icon">📧</span>
+                            </div>
+                            <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
+                            <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
+                        </div>
+
+                        <div class="form-group" id="sungrowPasswordGroup">
+                            <label for="sungrowPassword">
+                                <span>iSolarCloud Password</span>
+                                <span class="required-indicator">*</span>
+                            </label>
+                            <div class="hint">Your iSolarCloud account password (stored encrypted, used only to refresh API sessions)</div>
+                            <div class="input-wrapper">
+                                <input
+                                    type="password"
+                                    id="sungrowPassword"
+                                    name="sungrowPassword"
+                                    placeholder="iSolarCloud password"
+                                    autocomplete="current-password"
+                                    spellcheck="false"
+                                >
+                                <span class="input-icon">🔑</span>
+                                <button type="button" class="password-toggle" data-target="sungrowPassword" aria-label="Toggle visibility">👁️</button>
+                            </div>
+                            <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
+                            <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
+                        </div>
+                    </div><!-- /#sungrowFields -->
+
+                    <!-- ═══ Section: Location & Weather ═══ -->
+                    <div class="form-section-header">
+                        <div class="form-section-title-row">
+                            <span class="form-section-icon">🌤️</span>
+                            <span class="form-section-title">Location &amp; Weather</span>
+                        </div>
+                        <div class="form-section-subtitle">Used for solar forecasts, sunrise/sunset times, and timezone-aware scheduling</div>
                     </div>
 
                     <!-- Weather Location (Required) -->
@@ -651,8 +830,14 @@
                         </div>
                     </div>
 
-                    <div class="divider">
-                        <span class="divider-text">Optional</span>
+                    <!-- ═══ Section: Electricity Pricing ═══ -->
+                    <div class="form-section-header">
+                        <div class="form-section-title-row">
+                            <span class="form-section-icon">⚡</span>
+                            <span class="form-section-title">Electricity Pricing</span>
+                            <span class="form-section-badge">Optional</span>
+                        </div>
+                        <div class="form-section-subtitle">Connect Amber Electric to enable price-aware automated charging and discharging</div>
                     </div>
 
                     <!-- Amber API Key (Optional) -->
@@ -684,8 +869,13 @@
                         </div>
                     </div>
 
-                    <div class="divider">
-                        <span class="divider-text">System Hardware</span>
+                    <!-- ═══ Section: System Hardware ═══ -->
+                    <div class="form-section-header">
+                        <div class="form-section-title-row">
+                            <span class="form-section-icon">🔧</span>
+                            <span class="form-section-title">System Hardware</span>
+                        </div>
+                        <div class="form-section-subtitle">Your inverter and battery capacity figures used for automation calculations</div>
                     </div>
 
                     <!-- Inverter Capacity -->

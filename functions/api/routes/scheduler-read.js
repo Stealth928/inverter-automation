@@ -17,6 +17,8 @@ function buildDefaultSchedulerGroups() {
 
 function registerSchedulerReadRoutes(app, deps = {}) {
   const foxessAPI = deps.foxessAPI;
+  // adapterRegistry is optional — used for non-FoxESS providers
+  const adapterRegistry = deps.adapterRegistry || null;
   const getUserConfig = deps.getUserConfig;
   const tryAttachUser = deps.tryAttachUser;
 
@@ -34,26 +36,28 @@ function registerSchedulerReadRoutes(app, deps = {}) {
   }
 
   // Scheduler endpoints
-  // IMPORTANT: Always fetch from the live FoxESS device to ensure UI matches actual device state
-  // (not from Firestore cache, which caused segments to appear saved but not sync to manufacturer app)
+  // IMPORTANT: Always fetch from the live device to ensure UI matches actual device state
   app.get('/api/scheduler/v1/get', async (req, res) => {
     try {
       await tryAttachUser(req);
       const userConfig = await getUserConfig(req.user?.uid);
-      const sn = req.query.sn || userConfig?.deviceSn;
+      const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
+      const deviceAdapter = adapterRegistry ? adapterRegistry.getDeviceProvider(provider) : null;
+      const sn = req.query.sn || userConfig?.sungrowDeviceSn || userConfig?.deviceSn;
 
       if (!sn) {
         return res.json({ errno: 0, result: { groups: buildDefaultSchedulerGroups(), enable: false }, source: 'defaults' });
       }
 
-      // Always fetch live data from the device (this is what the manufacturer app sees)
-      const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN: sn }, userConfig, req.user?.uid);
-
-      // Tag the source so debugging is easier
-      if (result && result.errno === 0) {
-        result.source = 'device';
+      if (deviceAdapter && provider !== 'foxess') {
+        const result = await deviceAdapter.getSchedule({ deviceSN: sn, userConfig, userId: req.user?.uid });
+        if (result && result.errno === 0) result.source = 'device';
+        return res.json(result);
       }
 
+      // FoxESS path — always fetch live from device
+      const result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN: sn }, userConfig, req.user?.uid);
+      if (result && result.errno === 0) result.source = 'device';
       res.json(result);
     } catch (error) {
       console.error('[Scheduler] GET error:', error.message);

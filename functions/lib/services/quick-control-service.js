@@ -3,6 +3,8 @@
 function createQuickControlService(deps = {}) {
   const addHistoryEntry = deps.addHistoryEntry;
   const foxessAPI = deps.foxessAPI;
+  // adapterRegistry is optional — enables multi-provider dispatch (e.g. Sungrow)
+  const adapterRegistry = deps.adapterRegistry || null;
   const getUserConfig = deps.getUserConfig;
   const logger = deps.logger || console;
   const saveQuickControlState = deps.saveQuickControlState;
@@ -58,8 +60,19 @@ function createQuickControlService(deps = {}) {
 
     try {
       const userConfig = await getUserConfig(userId);
-      const deviceSN = userConfig?.deviceSn;
-      if (deviceSN) {
+      const deviceSN = userConfig?.sungrowDeviceSn || userConfig?.deviceSn;
+      const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
+      const deviceAdapter = adapterRegistry ? adapterRegistry.getDeviceProvider(provider) : null;
+
+      if (deviceSN && deviceAdapter && provider !== 'foxess') {
+        // Adapter-based cleanup for non-FoxESS providers
+        try {
+          await deviceAdapter.clearSchedule({ deviceSN, userConfig, userId });
+          logger.debug('QuickControl', 'Auto-cleanup (adapter) cleared segments successfully');
+        } catch (e) {
+          console.warn(`[QuickControl] Adapter cleanup failed: ${e.message}`);
+        }
+      } else if (deviceSN) {
         const clearResult = await foxessAPI.callFoxESSAPI(
           '/op/v1/device/scheduler/enable',
           'POST',
@@ -84,7 +97,7 @@ function createQuickControlService(deps = {}) {
         } catch (flagErr) {
           console.warn('[QuickControl] Auto-cleanup flag disable failed:', flagErr?.message || flagErr);
         }
-      }
+      } // end FoxESS path
     } catch (err) {
       console.error('[QuickControl] Auto-cleanup error:', err.message);
     }

@@ -171,23 +171,34 @@ Persists coupling hint in `users/{uid}/config/main.systemTopology`.
 ### Validate API Keys
 ```
 POST /api/config/validate-keys
-Authorization: Bearer <token>
+Authorization: Bearer <token>  (optional — unauthenticated writes to shared/serverConfig)
 Content-Type: application/json
+```
 
+**FoxESS provider fields:**
+```json
 {
-  "foxessToken": "xxx",
-  "amberApiKey": "xxx"
+  "device_sn": "AFTWXK7A123456",
+  "foxess_token": "xxx",
+  "amber_api_key": "xxx"
 }
 ```
-Tests API credentials without saving.
+
+**Sungrow provider fields:**
+```json
+{
+  "sungrow_device_sn": "A2350012345",
+  "sungrow_username": "user@example.com",
+  "sungrow_password": "secret",
+  "amber_api_key": "xxx"
+}
+```
+
+Validates credentials (and for Sungrow, performs an iSolarCloud login). On success saves config with `deviceProvider` set to the detected provider.
 
 **Response:**
 ```json
-{
-  "errno": 0,
-  "foxess": { "valid": true, "devices": 1 },
-  "amber": { "valid": true, "sites": 1 }
-}
+{ "errno": 0, "result": { "saved": true } }
 ```
 
 ### Setup Status
@@ -195,7 +206,7 @@ Tests API credentials without saving.
 GET /api/config/setup-status
 Authorization: Bearer <token>
 ```
-Checks if user has completed initial setup.
+Checks if user has completed initial setup, and returns the active device provider.
 
 **Response:**
 ```json
@@ -205,7 +216,10 @@ Checks if user has completed initial setup.
     "hasConfig": true,
     "hasDevice": true,
     "hasAmber": true,
-    "setupComplete": true
+    "setupComplete": true,
+    "deviceProvider": "foxess",
+    "hasSungrowUsername": false,
+    "hasSungrowDeviceSn": false
   }
 }
 ```

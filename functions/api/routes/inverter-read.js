@@ -5,6 +5,7 @@ function registerInverterReadRoutes(app, deps = {}) {
   const getUserConfig = deps.getUserConfig;
   const getCachedInverterRealtimeData = deps.getCachedInverterRealtimeData;
   const authenticateUser = deps.authenticateUser;
+  const adapterRegistry = deps.adapterRegistry || null;
   const logger = deps.logger || console;
 
   if (!app || typeof app.get !== 'function') {
@@ -21,6 +22,13 @@ function registerInverterReadRoutes(app, deps = {}) {
   }
   if (typeof authenticateUser !== 'function') {
     throw new Error('registerInverterReadRoutes requires authenticateUser middleware');
+  }
+
+  /** Return the device adapter for a user's configured provider, or null for FoxESS (default path). */
+  function getProviderAdapter(userConfig) {
+    const provider = userConfig?.deviceProvider || 'foxess';
+    if (provider === 'foxess' || !adapterRegistry) return null;
+    return adapterRegistry.getDeviceProvider(provider) || null;
   }
 
   // Inverter endpoints (proxy to FoxESS)
@@ -96,6 +104,16 @@ function registerInverterReadRoutes(app, deps = {}) {
       const year = parseInt(req.query.year, 10) || new Date().getFullYear();
       const month = parseInt(req.query.month, 10) || (new Date().getMonth() + 1);
 
+      // Provider dispatch — try Sungrow adapter first; fall through to FoxESS on null
+      const adapter = getProviderAdapter(userConfig);
+      if (adapter && typeof adapter.getReport === 'function') {
+        const adapterResult = await adapter.getReport(
+          { deviceSN: sn, userConfig, userId: req.user.uid },
+          dimension, year, month
+        );
+        if (adapterResult !== null) return res.json(adapterResult);
+      }
+
       // FoxESS API dimensions:
       // 'year' = monthly data for the year (needs: year)
       // 'month' = daily data for the month (needs: year, month)
@@ -127,6 +145,15 @@ function registerInverterReadRoutes(app, deps = {}) {
       const userConfig = await getUserConfig(req.user.uid);
       const sn = req.query.sn || userConfig?.deviceSn;
       if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+
+      // Provider dispatch — try Sungrow adapter first; fall through to FoxESS on null
+      const adapter = getProviderAdapter(userConfig);
+      if (adapter && typeof adapter.getGeneration === 'function') {
+        const adapterResult = await adapter.getGeneration(
+          { deviceSN: sn, userConfig, userId: req.user.uid }
+        );
+        if (adapterResult !== null) return res.json(adapterResult);
+      }
 
       // Get point-in-time generation data (today, month, cumulative)
       const genResult = await foxessAPI.callFoxESSAPI(`/op/v0/device/generation?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);

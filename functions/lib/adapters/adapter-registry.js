@@ -99,7 +99,25 @@ function createAdapterRegistry(options = {}) {
   };
 }
 
+/**
+ * Resolve the device adapter for a given user based on their config.
+ *
+ * Falls back to 'foxess' when userConfig.deviceProvider is absent (backward compatibility).
+ *
+ * @param {Object} adapterRegistry - Registry created by createAdapterRegistry()
+ * @param {Object} userConfig      - User configuration document
+ * @returns {Object|null} The resolved DeviceAdapter, or null if not registered
+ */
+function resolveDeviceAdapter(adapterRegistry, userConfig) {
+  if (!adapterRegistry || typeof adapterRegistry.getDeviceProvider !== 'function') {
+    return null;
+  }
+  const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
+  return adapterRegistry.getDeviceProvider(provider) || null;
+}
+
 module.exports = {
   createAdapterRegistry,
-  normalizeAdapterKey
+  normalizeAdapterKey,
+  resolveDeviceAdapter
 };

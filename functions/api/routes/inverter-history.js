@@ -5,6 +5,7 @@ function registerInverterHistoryRoutes(app, deps = {}) {
   const db = deps.db;
   const foxessAPI = deps.foxessAPI;
   const getUserConfig = deps.getUserConfig;
+  const adapterRegistry = deps.adapterRegistry || null;
   const logger = deps.logger || console;
 
   if (!app || typeof app.get !== 'function') {
@@ -23,6 +24,13 @@ function registerInverterHistoryRoutes(app, deps = {}) {
     throw new Error('registerInverterHistoryRoutes requires getUserConfig()');
   }
 
+  /** Return the device adapter for a user's configured provider, or null for FoxESS (default path). */
+  function getProviderAdapter(userConfig) {
+    const provider = userConfig?.deviceProvider || 'foxess';
+    if (provider === 'foxess' || !adapterRegistry) return null;
+    return adapterRegistry.getDeviceProvider(provider) || null;
+  }
+
   async function withTimeout(promise, timeoutMs) {
     let timeoutId = null;
     const timeoutPromise = new Promise((_, reject) => {
@@ -37,9 +45,11 @@ function registerInverterHistoryRoutes(app, deps = {}) {
   }
 
   /**
-   * Get inverter history data from FoxESS API
-   * Handles large date ranges by splitting into 24-hour chunks
-   * Caches results in Firestore to reduce API calls
+   * Get inverter history data.
+   * For Sungrow users: delegates to the device adapter (no chunking/caching needed here —
+   *   the adapter handles pagination internally via iSolarCloud).
+   * For FoxESS users: handles large date ranges by splitting into 24-hour chunks
+   *   and caches results in Firestore to reduce API calls.
    */
   app.get('/api/inverter/history', authenticateUser, async (req, res) => {
     try {
@@ -65,6 +75,24 @@ function registerInverterHistoryRoutes(app, deps = {}) {
 
       begin = Math.floor(begin);
       end = Math.floor(end);
+
+      // Provider dispatch — Sungrow adapter handles its own chunking/pagination
+      const adapter = getProviderAdapter(userConfig);
+      if (adapter && typeof adapter.getHistory === 'function') {
+        try {
+          const adapterResult = await withTimeout(
+            adapter.getHistory(
+              { deviceSN: sn, userConfig, userId },
+              begin, end
+            ),
+            9000
+          );
+          if (adapterResult !== null) return res.json(adapterResult);
+        } catch (adapterError) {
+          logger.warn(`[History] Adapter error: ${adapterError.message}`);
+          return res.status(500).json({ errno: 500, msg: `Device API error: ${adapterError.message}` });
+        }
+      }
 
       try {
         const MAX_RANGE_MS = 24 * 60 * 60 * 1000; // 24 hours per FoxESS request
