@@ -131,6 +131,10 @@ function buildRepositoryFixture(options = {}) {
       if (subCollectionName === 'config') return configCollection;
       if (subCollectionName === 'rules') return rulesCollection;
       if (subCollectionName === 'history') return historyCollection;
+      if (subCollectionName === 'secrets') {
+        // Secrets subcollection: return an empty non-existent doc by default
+        return { doc: () => ({ get: async () => ({ exists: false, data: () => ({}) }) }) };
+      }
       throw new Error(`Unexpected subcollection: ${subCollectionName}`);
     },
     get: async () => ({

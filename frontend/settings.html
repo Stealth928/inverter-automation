@@ -893,6 +893,37 @@
                     </div>
                 </div>
 
+                <!-- SigenEnergy-specific credentials (shown when deviceProvider=sigenergy) -->
+                <div id="sigenenergyCredentialsSection" style="display:none">
+                    <div class="setting-item">
+                        <div class="setting-label">SigenEnergy Account Email</div>
+                        <div class="setting-hint">Email used to log in to the SigenEnergy app (leave blank to keep current)</div>
+                        <div class="setting-input">
+                            <input type="email" id="credentials_sigenenergyUsername" placeholder="•••••••• (leave blank to keep current)" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">SigenEnergy Password</div>
+                        <div class="setting-hint">Your SigenEnergy account password (stored encrypted, leave blank to keep current)</div>
+                        <div class="setting-input">
+                            <input type="password" id="credentials_sigenenergyPassword" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
+                            <button type="button" class="btn-secondary" id="credentials_toggleSigenenergyPassword">Show</button>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">Region</div>
+                        <div class="setting-hint">Your geographic region for the SigenEnergy cloud API</div>
+                        <div class="setting-input">
+                            <select id="credentials_sigenenergyRegion">
+                                <option value="apac">APAC (Australia / Asia-Pacific)</option>
+                                <option value="eu">Europe</option>
+                                <option value="us">North America</option>
+                                <option value="cn">China</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 <form id="credentials-form">
                     <div id="foxessTokenSection">
                         <div class="setting-item">

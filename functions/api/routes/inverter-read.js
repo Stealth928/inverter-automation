@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
+
 function registerInverterReadRoutes(app, deps = {}) {
   const foxessAPI = deps.foxessAPI;
   const getUserConfig = deps.getUserConfig;
@@ -31,10 +33,21 @@ function registerInverterReadRoutes(app, deps = {}) {
     return adapterRegistry.getDeviceProvider(provider) || null;
   }
 
+  /** Returns true (and sends 400) when the user's provider is not FoxESS. */
+  function foxessGuard(res, userConfig) {
+    const provider = (userConfig?.deviceProvider || 'foxess').toLowerCase();
+    if (provider !== 'foxess') {
+      res.status(400).json({ errno: 400, error: `Not supported for provider: ${provider}` });
+      return true;
+    }
+    return false;
+  }
+
   // Inverter endpoints (proxy to FoxESS)
   app.get('/api/inverter/list', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const result = await foxessAPI.callFoxESSAPI('/op/v0/device/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
       res.json(result);
     } catch (error) {
@@ -45,7 +58,8 @@ function registerInverterReadRoutes(app, deps = {}) {
   app.get('/api/inverter/real-time', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
-      const sn = req.query.sn || userConfig?.deviceSn;
+      if (foxessGuard(res, userConfig)) return;
+      const sn = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
 
       if (!sn) {
         return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
@@ -67,7 +81,8 @@ function registerInverterReadRoutes(app, deps = {}) {
   app.get('/api/inverter/settings', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
-      const sn = req.query.sn || userConfig?.deviceSn;
+      if (foxessGuard(res, userConfig)) return;
+      const sn = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
       const key = req.query.key;
       if (!key) return res.status(400).json({ errno: 400, error: 'Missing required parameter: key' });
       const result = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/get', 'POST', { sn, key }, userConfig, req.user.uid);
@@ -82,7 +97,8 @@ function registerInverterReadRoutes(app, deps = {}) {
   app.get('/api/inverter/temps', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
-      const sn = req.query.sn || userConfig?.deviceSn;
+      if (foxessGuard(res, userConfig)) return;
+      const sn = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
       if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
       const variables = ['batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation'];
       const result = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', { sn, variables }, userConfig, req.user.uid);
@@ -97,7 +113,7 @@ function registerInverterReadRoutes(app, deps = {}) {
   app.get('/api/inverter/report', authenticateUser, async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
-      const sn = req.query.sn || userConfig?.deviceSn;
+      const sn = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
       if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
 
       const dimension = req.query.dimension || 'month';
@@ -113,6 +129,8 @@ function registerInverterReadRoutes(app, deps = {}) {
         );
         if (adapterResult !== null) return res.json(adapterResult);
       }
+      // Adapter returned null — operation not supported by this provider's adapter
+      if (foxessGuard(res, userConfig)) return;
 
       // FoxESS API dimensions:
       // 'year' = monthly data for the year (needs: year)
@@ -143,7 +161,7 @@ function registerInverterReadRoutes(app, deps = {}) {
   app.get('/api/inverter/generation', authenticateUser, async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
-      const sn = req.query.sn || userConfig?.deviceSn;
+      const sn = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
       if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
 
       // Provider dispatch — try Sungrow adapter first; fall through to FoxESS on null
@@ -154,6 +172,8 @@ function registerInverterReadRoutes(app, deps = {}) {
         );
         if (adapterResult !== null) return res.json(adapterResult);
       }
+      // Adapter returned null — operation not supported by this provider's adapter
+      if (foxessGuard(res, userConfig)) return;
 
       // Get point-in-time generation data (today, month, cumulative)
       const genResult = await foxessAPI.callFoxESSAPI(`/op/v0/device/generation?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
@@ -206,6 +226,7 @@ function registerInverterReadRoutes(app, deps = {}) {
   app.get('/api/inverter/discover-variables', authenticateUser, async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const deviceSN = req.query.sn || userConfig?.deviceSn;
       if (!deviceSN) {
         return res.status(400).json({ errno: 400, error: 'Device SN not configured' });

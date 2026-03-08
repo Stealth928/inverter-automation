@@ -194,7 +194,19 @@ Content-Type: application/json
 }
 ```
 
-Validates credentials (and for Sungrow, performs an iSolarCloud login). On success saves config with `deviceProvider` set to the detected provider.
+**SigenEnergy provider fields:**
+```json
+{
+  "sigenergy_username": "user@example.com",
+  "sigenergy_password": "secret",
+  "sigenergy_region": "apac",
+  "amber_api_key": "xxx"
+}
+```
+
+- `sigenergy_region`: one of `apac` (Asia-Pacific), `eu` (Europe), `cn` (China), `us` (North America). Defaults to `apac`.
+
+Validates credentials (and for Sungrow/SigenEnergy, performs a live login). On success saves config with `deviceProvider` set to the detected provider. Passwords are stored separately in a write-only secrets subcollection — they cannot be read back via the API.
 
 **Response:**
 ```json
@@ -219,10 +231,17 @@ Checks if user has completed initial setup, and returns the active device provid
     "setupComplete": true,
     "deviceProvider": "foxess",
     "hasSungrowUsername": false,
-    "hasSungrowDeviceSn": false
+    "hasSungrowDeviceSn": false,
+    "hasSigenUsername": false,
+    "hasSigenDeviceSn": false,
+    "sigenRegion": null
   }
 }
 ```
+
+- `deviceProvider`: one of `foxess`, `sungrow`, `sigenergy`
+- `hasSungrowUsername` / `hasSungrowDeviceSn`: credential presence flags for Sungrow
+- `hasSigenUsername` / `hasSigenDeviceSn` / `sigenRegion`: credential presence flags for SigenEnergy
 
 ---
 
@@ -461,7 +480,9 @@ Content-Type: application/json
 
 ---
 
-## Inverter Endpoints (FoxESS)
+## Inverter Endpoints (FoxESS only)
+
+> **Provider restriction**: The endpoints in this section proxy directly to the FoxESS Open API and only work when `deviceProvider` is `foxess`. Requests from Sungrow or SigenEnergy users will receive `400 { errno: 400, error: "Not supported for provider: <provider>" }`.
 
 ### List Devices
 ```
@@ -748,7 +769,15 @@ Authorization: Bearer <token>
 | 404 | Not found |
 | 500 | Internal server error |
 | 41808 | FoxESS rate limit exceeded |
+### Provider-Specific Error Ranges
 
+| Range | Provider | Notes |
+|-------|----------|-------|
+| 3200–3299 | FoxESS | FoxESS API errors (mirrors upstream errno) |
+| 3300–3399 | Sungrow | iSolarCloud API errors |
+| 3400–3499 | SigenEnergy | SigenEnergy cloud API errors |
+
+FoxESS, Sungrow, and SigenEnergy upstream errors are proxied in the `errno` field with the provider's original code. The `error` field contains a human-readable description.
 ---
 
 ## Rate Limits

@@ -19,6 +19,7 @@ function buildDeps(overrides = {}) {
     callWeatherAPI: jest.fn(async () => ({})),
     deepMerge: jest.fn((target, source) => Object.assign({}, target || {}, source || {})),
     deleteField: jest.fn(() => '__DELETE__'),
+    db: null,
     getUserConfig: jest.fn(async () => ({})),
     isValidTimezone: jest.fn((tz) => typeof tz === 'string' && tz.startsWith('Australia/')),
     normalizeCouplingValue: jest.fn((value) => String(value || '').toLowerCase()),
@@ -213,11 +214,55 @@ describe('config mutation route module', () => {
     expect(response.body).toEqual({ errno: 0, msg: 'Credentials cleared successfully' });
     expect(deps.updateUserConfig).toHaveBeenCalledWith('u-config', {
       amberApiKey: '__DELETE__',
+      deviceProvider: 'foxess',
       deviceSn: '__DELETE__',
       foxessToken: '__DELETE__',
+      sigenAccessToken: '__DELETE__',
+      sigenDeviceSn: '__DELETE__',
+      sigenPassword: '__DELETE__',
+      sigenRefreshToken: '__DELETE__',
+      sigenStationId: '__DELETE__',
+      sigenTokenExpiry: '__DELETE__',
+      sigenUsername: '__DELETE__',
       setupComplete: false,
+      sungrowDeviceSn: '__DELETE__',
+      sungrowPassword: '__DELETE__',
+      sungrowToken: '__DELETE__',
+      sungrowUid: '__DELETE__',
+      sungrowUsername: '__DELETE__',
       updatedAt: '__TS__'
     });
+  });
+
+  test('clear credentials route deletes user secrets credentials doc when db is provided', async () => {
+    const deleteCredentialsDoc = jest.fn(async () => undefined);
+    const db = {
+      collection: jest.fn(() => ({
+        doc: jest.fn(() => ({
+          collection: jest.fn(() => ({
+            doc: jest.fn(() => ({ delete: deleteCredentialsDoc }))
+          }))
+        }))
+      }))
+    };
+    const deps = buildDeps({
+      db,
+      authenticateUser: (req, _res, next) => {
+        req.user = { uid: 'u-config' };
+        next();
+      }
+    });
+
+    const app = buildApp((instance) => {
+      registerConfigMutationRoutes(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/config/clear-credentials')
+      .send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(deleteCredentialsDoc).toHaveBeenCalledTimes(1);
   });
 
   test('tour status route rejects empty update payload', async () => {

@@ -11,15 +11,53 @@ function hasNestedDatasFrame(payload) {
   return !!payload?.result?.[0]?.datas;
 }
 
+function toAutomationTelemetryFrame(status = {}) {
+  const datas = [];
+
+  if (status.socPct !== undefined && status.socPct !== null) {
+    datas.push({ variable: 'SoC', value: Number(status.socPct) });
+  }
+  if (status.batteryTempC !== undefined && status.batteryTempC !== null) {
+    datas.push({ variable: 'batTemperature', value: Number(status.batteryTempC) });
+  }
+  if (status.ambientTempC !== undefined && status.ambientTempC !== null) {
+    datas.push({ variable: 'ambientTemperation', value: Number(status.ambientTempC) });
+  }
+
+  return {
+    errno: 0,
+    result: [{ datas }],
+    __cacheHit: false,
+    __providerAdapter: true
+  };
+}
+
 async function fetchAutomationInverterData(options = {}) {
+  const deviceAdapter = options.deviceAdapter || null;
   const deviceSN = options.deviceSN;
   const getCachedInverterData = options.getCachedInverterData;
   const getCachedInverterRealtimeData = options.getCachedInverterRealtimeData;
   const logger = getLogger(options.logger);
+  const provider = String(options.provider || 'foxess').toLowerCase().trim();
   const userConfig = options.userConfig;
   const userId = options.userId;
 
-  if (!deviceSN || typeof getCachedInverterData !== 'function') {
+  if (!deviceSN) {
+    return { errno: 400, error: 'Device identifier not configured' };
+  }
+
+  // Non-FoxESS providers should source status directly from the device adapter.
+  if (provider !== 'foxess' && deviceAdapter && typeof deviceAdapter.getStatus === 'function') {
+    try {
+      const status = await deviceAdapter.getStatus({ deviceSN, userConfig, userId });
+      return toAutomationTelemetryFrame(status);
+    } catch (error) {
+      logger.warn(`[Automation] Failed to fetch ${provider} status: ${error?.message || error}`);
+      return { errno: 500, error: error?.message || String(error) };
+    }
+  }
+
+  if (typeof getCachedInverterData !== 'function') {
     return null;
   }
 
@@ -188,5 +226,6 @@ module.exports = {
   fetchAutomationAmberData,
   fetchAutomationInverterData,
   hasNestedDatasFrame,
-  logAmberForecastSummary
+  logAmberForecastSummary,
+  toAutomationTelemetryFrame
 };

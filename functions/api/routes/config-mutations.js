@@ -5,6 +5,7 @@ function registerConfigMutationRoutes(app, deps = {}) {
   const callWeatherAPI = deps.callWeatherAPI;
   const deepMerge = deps.deepMerge;
   const deleteField = deps.deleteField;
+  const db = deps.db;
   const isValidTimezone = deps.isValidTimezone;
   const normalizeCouplingValue = deps.normalizeCouplingValue;
   const serverTimestamp = deps.serverTimestamp;
@@ -158,19 +159,38 @@ function registerConfigMutationRoutes(app, deps = {}) {
     }
   });
 
-  // Clear credentials (clear deviceSN, foxessToken, amberApiKey from user config)
+  // Clear credentials and provider-specific identity fields from user config.
   app.post('/api/config/clear-credentials', authenticateUser, async (req, res) => {
     try {
       const updates = {
         deviceSn: deleteField(),
         foxessToken: deleteField(),
+        sungrowUsername: deleteField(),
+        sungrowPassword: deleteField(),
+        sungrowToken: deleteField(),
+        sungrowUid: deleteField(),
+        sungrowDeviceSn: deleteField(),
+        sigenUsername: deleteField(),
+        sigenPassword: deleteField(),
+        sigenAccessToken: deleteField(),
+        sigenRefreshToken: deleteField(),
+        sigenTokenExpiry: deleteField(),
+        sigenStationId: deleteField(),
+        sigenDeviceSn: deleteField(),
+        deviceProvider: 'foxess',
         amberApiKey: deleteField(),
         setupComplete: false,
         updatedAt: serverTimestamp()
       };
 
       // Update the user's config/main document to clear these fields
-      await updateUserConfig(req.user.uid, updates);
+      const userId = req.user.uid;
+      await updateUserConfig(userId, updates);
+
+      // Clear write-only credentials doc used by setup flows.
+      if (db && typeof db.collection === 'function') {
+        await db.collection('users').doc(userId).collection('secrets').doc('credentials').delete().catch(() => {});
+      }
 
       res.json({ errno: 0, msg: 'Credentials cleared successfully' });
     } catch (error) {

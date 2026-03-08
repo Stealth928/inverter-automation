@@ -4,6 +4,7 @@ function registerDeviceMutationRoutes(app, deps = {}) {
   const authenticateUser = deps.authenticateUser;
   const foxessAPI = deps.foxessAPI;
   const getUserConfig = deps.getUserConfig;
+  const adapterRegistry = deps.adapterRegistry || null;
 
   if (!app || typeof app.post !== 'function') {
     throw new Error('registerDeviceMutationRoutes requires an Express app');
@@ -18,10 +19,21 @@ function registerDeviceMutationRoutes(app, deps = {}) {
     throw new Error('registerDeviceMutationRoutes requires getUserConfig()');
   }
 
+  /** Returns true (and sends 400) when the user's provider is not FoxESS. */
+  function foxessGuard(res, userConfig) {
+    const provider = (userConfig?.deviceProvider || 'foxess').toLowerCase();
+    if (provider !== 'foxess') {
+      res.status(400).json({ errno: 400, error: `Not supported for provider: ${provider}` });
+      return true;
+    }
+    return false;
+  }
+
   // Battery SoC set
   app.post('/api/device/battery/soc/set', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const sn = req.body.sn || userConfig?.deviceSn;
       const { minSoc, minSocOnGrid, maxSoc } = req.body;
 
@@ -64,6 +76,7 @@ function registerDeviceMutationRoutes(app, deps = {}) {
     let key; let value;
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const sn = req.body.sn || userConfig?.deviceSn;
       key = req.body.key;
       value = req.body.value;
@@ -110,6 +123,7 @@ function registerDeviceMutationRoutes(app, deps = {}) {
   app.post('/api/device/battery/forceChargeTime/set', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const sn = req.body.sn || userConfig?.deviceSn;
       const body = Object.assign({ sn }, req.body);
       const result = await foxessAPI.callFoxESSAPI(
@@ -130,12 +144,26 @@ function registerDeviceMutationRoutes(app, deps = {}) {
   app.post('/api/device/workmode/set', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
-      const sn = req.body.sn || userConfig?.deviceSn;
       const { workMode } = req.body;
-      if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
       if (!workMode) {
         return res.status(400).json({ errno: 400, error: 'workMode is required (SelfUse, Feedin, Backup)' });
       }
+
+      // Dispatch to adapter for non-FoxESS providers
+      if (adapterRegistry) {
+        const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
+        if (provider !== 'foxess') {
+          const adapter = adapterRegistry.getDeviceProvider(provider);
+          if (adapter && typeof adapter.setWorkMode === 'function') {
+            const sn = req.body.sn || userConfig?.sigenStationId || userConfig?.sungrowDeviceSn;
+            const adapterResult = await adapter.setWorkMode({ deviceSN: sn, userConfig, userId: req.user.uid }, workMode);
+            return res.json(adapterResult);
+          }
+        }
+      }
+
+      const sn = req.body.sn || userConfig?.deviceSn;
+      if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
 
       const workModeMap = {
         SelfUse: 0,

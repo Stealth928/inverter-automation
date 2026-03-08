@@ -4,6 +4,7 @@ function registerDeviceReadRoutes(app, deps = {}) {
   const authenticateUser = deps.authenticateUser;
   const foxessAPI = deps.foxessAPI;
   const getUserConfig = deps.getUserConfig;
+  const adapterRegistry = deps.adapterRegistry || null;
 
   if (!app || typeof app.get !== 'function' || typeof app.post !== 'function') {
     throw new Error('registerDeviceReadRoutes requires an Express app');
@@ -18,10 +19,21 @@ function registerDeviceReadRoutes(app, deps = {}) {
     throw new Error('registerDeviceReadRoutes requires getUserConfig()');
   }
 
+  /** Returns true (and sends 400) when the user's provider is not FoxESS. */
+  function foxessGuard(res, userConfig) {
+    const provider = (userConfig?.deviceProvider || 'foxess').toLowerCase();
+    if (provider !== 'foxess') {
+      res.status(400).json({ errno: 400, error: `Not supported for provider: ${provider}` });
+      return true;
+    }
+    return false;
+  }
+
   // Battery SoC read endpoint used by control UI
   app.get('/api/device/battery/soc/get', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const sn = req.query.sn || userConfig?.deviceSn;
       if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
       const result = await foxessAPI.callFoxESSAPI(`/op/v0/device/battery/soc/get?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
@@ -36,6 +48,7 @@ function registerDeviceReadRoutes(app, deps = {}) {
   app.get('/api/device/status/check', authenticateUser, async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const sn = req.query.sn || userConfig?.deviceSn;
 
       if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
@@ -99,6 +112,7 @@ function registerDeviceReadRoutes(app, deps = {}) {
   app.get('/api/device/battery/forceChargeTime/get', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const sn = req.query.sn || userConfig?.deviceSn;
       if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
       const result = await foxessAPI.callFoxESSAPI(`/op/v0/device/battery/forceChargeTime/get?sn=${encodeURIComponent(sn)}`, 'GET', null, userConfig, req.user.uid);
@@ -113,6 +127,7 @@ function registerDeviceReadRoutes(app, deps = {}) {
   app.post('/api/device/getMeterReader', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const sn = req.body.sn || userConfig?.deviceSn;
       if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
       const body = Object.assign({ sn }, req.body);
@@ -128,6 +143,7 @@ function registerDeviceReadRoutes(app, deps = {}) {
   app.get('/api/ems/list', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const result = await foxessAPI.callFoxESSAPI('/op/v0/ems/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
       res.json(result);
     } catch (error) {
@@ -140,6 +156,7 @@ function registerDeviceReadRoutes(app, deps = {}) {
   app.get('/api/module/list', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const result = await foxessAPI.callFoxESSAPI('/op/v0/module/list', 'POST', { currentPage: 1, pageSize: 10, sn: userConfig?.deviceSn }, userConfig, req.user.uid);
       res.json(result);
     } catch (error) {
@@ -152,6 +169,7 @@ function registerDeviceReadRoutes(app, deps = {}) {
   app.get('/api/module/signal', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const moduleSN = req.query.moduleSN;
 
       if (!moduleSN) {
@@ -170,6 +188,7 @@ function registerDeviceReadRoutes(app, deps = {}) {
   app.get('/api/meter/list', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      if (foxessGuard(res, userConfig)) return;
       const result = await foxessAPI.callFoxESSAPI('/op/v0/gw/list', 'POST', { currentPage: 1, pageSize: 10 }, userConfig, req.user.uid);
       res.json(result);
     } catch (error) {
@@ -182,6 +201,28 @@ function registerDeviceReadRoutes(app, deps = {}) {
   app.get('/api/device/workmode/get', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+
+      // Dispatch to adapter for non-FoxESS providers
+      if (adapterRegistry) {
+        const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
+        if (provider !== 'foxess') {
+          const adapter = adapterRegistry.getDeviceProvider(provider);
+          if (adapter && typeof adapter.getWorkMode === 'function') {
+            const sn = req.query.sn || userConfig?.sigenStationId || userConfig?.sungrowDeviceSn;
+            const adapterResult = await adapter.getWorkMode({ deviceSN: sn, userConfig, userId: req.user.uid });
+            // Add numeric `value` field so the frontend (which expects result.result.value) keeps working
+            if (adapterResult.errno === 0 && adapterResult.result?.workMode !== undefined) {
+              const strToNum = { SelfUse: 0, Feedin: 1, FeedinFirst: 1, Backup: 2, PeakShaving: 3, VPP: 3 };
+              return res.json({
+                ...adapterResult,
+                result: { ...adapterResult.result, value: strToNum[adapterResult.result.workMode] ?? 0 }
+              });
+            }
+            return res.json(adapterResult);
+          }
+        }
+      }
+
       const sn = req.query.sn || userConfig?.deviceSn;
       if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
 

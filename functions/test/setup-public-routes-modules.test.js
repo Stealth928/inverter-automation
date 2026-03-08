@@ -188,4 +188,181 @@ describe('setup public route module', () => {
       defaults: { cooldownMinutes: 3, durationMinutes: 12 }
     });
   });
+
+  // ── Sungrow / SigenEnergy tests ──────────────────────────────────────────
+
+  /**
+   * Builds a flexible db mock that handles all provider credential paths:
+   *   shared/serverConfig, shared/serverCredentials,
+   *   users/{uid}/secrets/credentials
+   */
+  function buildFlexibleDb() {
+    const makeDoc = () => ({
+      get: jest.fn(async () => ({ exists: false, data: () => ({}) })),
+      set: jest.fn(async () => undefined)
+    });
+
+    const serverConfigDoc = makeDoc();
+    const serverCredentialsDoc = makeDoc();
+    const userCredentialsDoc = makeDoc();
+
+    const db = {
+      collection: jest.fn((collName) => ({
+        doc: jest.fn((docId) => {
+          if (collName === 'shared' && docId === 'serverConfig') return serverConfigDoc;
+          if (collName === 'shared' && docId === 'serverCredentials') return serverCredentialsDoc;
+          // users/{uid}
+          return {
+            collection: jest.fn((subColl) => ({
+              doc: jest.fn((subDocId) => {
+                if (subColl === 'secrets' && subDocId === 'credentials') return userCredentialsDoc;
+                return makeDoc();
+              })
+            }))
+          };
+        })
+      }))
+    };
+
+    return { db, serverConfigDoc, serverCredentialsDoc, userCredentialsDoc };
+  }
+
+  test('validate-keys: Sungrow unauthenticated emulator saves non-sensitive config + password separately', async () => {
+    process.env.FUNCTIONS_EMULATOR = 'true';
+
+    const { db, serverConfigDoc, serverCredentialsDoc } = buildFlexibleDb();
+    const deps = buildDeps({ db });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/config/validate-keys')
+      .send({
+        sungrow_username: 'sg@example.com',
+        sungrow_password: 'sg-secret',
+        sungrow_device_sn: 'SN-SG-001'
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      msg: 'Sungrow credentials validated successfully',
+      result: { deviceSn: 'SN-SG-001', provider: 'sungrow' }
+    });
+
+    // Non-sensitive config saved without password
+    expect(serverConfigDoc.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sungrowUsername: 'sg@example.com',
+        sungrowDeviceSn: 'SN-SG-001',
+        deviceProvider: 'sungrow'
+      }),
+      { merge: true }
+    );
+    expect(serverConfigDoc.set).not.toHaveBeenCalledWith(
+      expect.objectContaining({ sungrowPassword: expect.anything() }),
+      expect.anything()
+    );
+
+    // Password stored in dedicated credentials doc
+    expect(serverCredentialsDoc.set).toHaveBeenCalledWith(
+      expect.objectContaining({ sungrowPassword: 'sg-secret' }),
+      { merge: true }
+    );
+  });
+
+  test('validate-keys: Sungrow authenticated emulator saves to setUserConfig + user secrets', async () => {
+    process.env.FUNCTIONS_EMULATOR = 'true';
+
+    const { db, userCredentialsDoc } = buildFlexibleDb();
+    const setUserConfig = jest.fn(async () => undefined);
+    const deps = buildDeps({
+      db,
+      setUserConfig,
+      tryAttachUser: jest.fn(async (req) => { req.user = { uid: 'user-sg-1' }; })
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/config/validate-keys')
+      .send({
+        sungrow_username: 'sg@example.com',
+        sungrow_password: 'sg-secret',
+        sungrow_device_sn: 'SN-SG-001'
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+
+    // Non-sensitive fields saved via setUserConfig without password
+    expect(setUserConfig).toHaveBeenCalledWith(
+      'user-sg-1',
+      expect.objectContaining({ sungrowUsername: 'sg@example.com', deviceProvider: 'sungrow' }),
+      { merge: true }
+    );
+    const savedConfig = setUserConfig.mock.calls[0][1];
+    expect(savedConfig).not.toHaveProperty('sungrowPassword');
+
+    // Password saved to secrets subcollection
+    expect(userCredentialsDoc.set).toHaveBeenCalledWith(
+      expect.objectContaining({ sungrowPassword: 'sg-secret' }),
+      { merge: true }
+    );
+  });
+
+  test('validate-keys: SigenEnergy returns 400 when password is missing', async () => {
+    const { db } = buildFlexibleDb();
+    const deps = buildDeps({ db });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/config/validate-keys')
+      .send({ sigenergy_username: 'sig@example.com' }); // missing sigenergy_password
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body.errno).toBe(1);
+    expect(response.body.failed_keys).toContain('sigenergy_password');
+  });
+
+  test('validate-keys: SigenEnergy unauthenticated emulator saves non-sensitive config + password separately', async () => {
+    process.env.FUNCTIONS_EMULATOR = 'true';
+
+    const { db, serverConfigDoc, serverCredentialsDoc } = buildFlexibleDb();
+    const deps = buildDeps({ db });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/config/validate-keys')
+      .send({
+        sigenergy_username: 'sig@example.com',
+        sigenergy_password: 'sig-secret',
+        sigenergy_region: 'apac'
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      msg: 'SigenEnergy credentials validated successfully',
+      result: { region: 'apac', provider: 'sigenergy' }
+    });
+
+    // Non-sensitive config saved without password
+    expect(serverConfigDoc.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sigenUsername: 'sig@example.com',
+        sigenRegion: 'apac',
+        deviceProvider: 'sigenergy'
+      }),
+      { merge: true }
+    );
+    expect(serverConfigDoc.set).not.toHaveBeenCalledWith(
+      expect.objectContaining({ sigenPassword: expect.anything() }),
+      expect.anything()
+    );
+
+    // Password stored in dedicated credentials doc
+    expect(serverCredentialsDoc.set).toHaveBeenCalledWith(
+      expect.objectContaining({ sigenPassword: 'sig-secret' }),
+      { merge: true }
+    );
+  });
 });

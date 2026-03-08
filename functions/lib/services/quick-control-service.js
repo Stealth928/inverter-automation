@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveProviderDeviceId } = require('../provider-device-id');
+
 function createQuickControlService(deps = {}) {
   const addHistoryEntry = deps.addHistoryEntry;
   const foxessAPI = deps.foxessAPI;
@@ -60,8 +62,8 @@ function createQuickControlService(deps = {}) {
 
     try {
       const userConfig = await getUserConfig(userId);
-      const deviceSN = userConfig?.sungrowDeviceSn || userConfig?.deviceSn;
-      const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
+      const { provider, deviceId } = resolveProviderDeviceId(userConfig);
+      const deviceSN = deviceId;
       const deviceAdapter = adapterRegistry ? adapterRegistry.getDeviceProvider(provider) : null;
 
       if (deviceSN && deviceAdapter && provider !== 'foxess') {

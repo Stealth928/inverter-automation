@@ -5,6 +5,8 @@ function registerSetupPublicRoutes(app, deps = {}) {
   const foxessAPI = deps.foxessAPI;
   // sungrowAPI is optional — only required when Sungrow credentials are submitted
   const sungrowAPI = deps.sungrowAPI || null;
+  // sigenEnergyAPI is optional — only required when SigenEnergy credentials are submitted
+  const sigenEnergyAPI = deps.sigenEnergyAPI || null;
   const getConfig = deps.getConfig;
   const getUserConfig = deps.getUserConfig;
   const logger = deps.logger;
@@ -67,7 +69,9 @@ function registerSetupPublicRoutes(app, deps = {}) {
       const {
         device_sn, foxess_token, amber_api_key, weather_place,
         // Sungrow credentials (mutually exclusive with foxess_token / device_sn)
-        sungrow_username, sungrow_password, sungrow_device_sn
+        sungrow_username, sungrow_password, sungrow_device_sn,
+        // SigenEnergy credentials
+        sigenergy_username, sigenergy_password, sigenergy_region
       } = req.body;
       const errors = {};
       const failed_keys = [];
@@ -77,6 +81,85 @@ function registerSetupPublicRoutes(app, deps = {}) {
         process.env.FUNCTIONS_EMULATOR ||
         process.env.FIRESTORE_EMULATOR_HOST
       );
+
+      // ── SigenEnergy credential validation ──────────────────────────────────
+      const isSigenEnergySetup = !!(sigenergy_username || sigenergy_password);
+
+      if (isSigenEnergySetup) {
+        if (!sigenergy_username) { failed_keys.push('sigenergy_username'); errors.sigenergy_username = 'SigenEnergy account email is required'; }
+        if (!sigenergy_password) { failed_keys.push('sigenergy_password'); errors.sigenergy_password = 'SigenEnergy account password is required'; }
+
+        let sigenLoginResult = null; // captures live login result for stationId/deviceSn extraction
+        if (failed_keys.length === 0 && sigenEnergyAPI) {
+          if (isEmulator) {
+            logger.info('Validation', 'Emulator mode: skipping live SigenEnergy API check', true);
+          } else {
+            logger.info('Validation', 'Testing SigenEnergy credentials', true);
+            const region = sigenergy_region || 'apac';
+            const testConfig = { sigenUsername: sigenergy_username, sigenPassword: sigenergy_password, sigenRegion: region };
+            sigenLoginResult = await sigenEnergyAPI.loginSigenergy(testConfig, null, null);
+
+            if (sigenLoginResult.errno !== 0) {
+              failed_keys.push('sigenergy_username');
+              const msg = sigenLoginResult.error || '';
+              if (sigenLoginResult.errno === 3402) {
+                errors.sigenergy_username = 'Invalid SigenEnergy username or password. Check your credentials at the SigenEnergy app.';
+              } else {
+                errors.sigenergy_username = `SigenEnergy login failed: ${msg || 'unknown error'}`;
+              }
+            }
+          }
+        }
+
+        if (failed_keys.length === 0) {
+          const region = sigenergy_region || 'apac';
+          const stationIdRaw = sigenLoginResult?.result?.stationId;
+          const stationId = stationIdRaw === null || stationIdRaw === undefined
+            ? ''
+            : String(stationIdRaw).trim();
+          const sigenDeviceSn = String(
+            sigenLoginResult?.result?.dcSnList?.[0] || sigenLoginResult?.result?.acSnList?.[0] || ''
+          ).trim();
+          // Non-sensitive config — stored in the readable config doc
+          const configData = {
+            sigenUsername:  sigenergy_username,
+            sigenRegion:    region,
+            sigenStationId: stationId,
+            sigenDeviceSn,
+            deviceProvider: 'sigenergy',
+            amberApiKey:    amber_api_key || '',
+            location:       weather_place || 'Sydney',
+            inverterCapacityW: (typeof req.body.inverter_capacity_w === 'number' && req.body.inverter_capacity_w > 0)
+              ? Math.round(req.body.inverter_capacity_w)
+              : 5000,
+            batteryCapacityKWh: (typeof req.body.battery_capacity_kwh === 'number' && req.body.battery_capacity_kwh > 0)
+              ? req.body.battery_capacity_kwh
+              : 9.6,
+            setupComplete: true,
+            updatedAt: serverTimestamp()
+          };
+          // Password stored separately — clients can write but never read back (Firestore rules)
+          const credentialsData = { sigenPassword: sigenergy_password, updatedAt: serverTimestamp() };
+          if (req.user?.uid) {
+            await Promise.all([
+              setUserConfig(req.user.uid, configData, { merge: true }),
+              db.collection('users').doc(req.user.uid).collection('secrets').doc('credentials')
+                .set(credentialsData, { merge: true })
+            ]);
+            logger.info('Validation', `SigenEnergy config saved for user ${req.user.uid}`, true);
+          } else {
+            await Promise.all([
+              db.collection('shared').doc('serverConfig').set(configData, { merge: true }),
+              db.collection('shared').doc('serverCredentials').set(credentialsData, { merge: true })
+            ]);
+          }
+        }
+
+        if (failed_keys.length > 0) {
+          return res.status(400).json({ errno: 1, msg: `Validation failed for: ${failed_keys.join(', ')}`, failed_keys, errors });
+        }
+        return res.json({ errno: 0, msg: 'SigenEnergy credentials validated successfully', result: { region: sigenergy_region || 'apac', provider: 'sigenergy' } });
+      }
 
       // ── Sungrow credential validation ─────────────────────────────────────
       const isSungrowSetup = !!(sungrow_username || sungrow_password || sungrow_device_sn);
@@ -127,9 +210,9 @@ function registerSetupPublicRoutes(app, deps = {}) {
         }
 
         if (failed_keys.length === 0) {
+          // Non-sensitive config — stored in the readable config doc
           const configData = {
             sungrowUsername: sungrow_username,
-            sungrowPassword: sungrow_password,
             sungrowDeviceSn: sungrow_device_sn,
             deviceProvider: 'sungrow',
             amberApiKey: amber_api_key || '',
@@ -143,11 +226,20 @@ function registerSetupPublicRoutes(app, deps = {}) {
             setupComplete: true,
             updatedAt: serverTimestamp()
           };
+          // Password stored separately — clients can write but never read back (Firestore rules)
+          const credentialsData = { sungrowPassword: sungrow_password, updatedAt: serverTimestamp() };
           if (req.user?.uid) {
-            await setUserConfig(req.user.uid, configData, { merge: true });
+            await Promise.all([
+              setUserConfig(req.user.uid, configData, { merge: true }),
+              db.collection('users').doc(req.user.uid).collection('secrets').doc('credentials')
+                .set(credentialsData, { merge: true })
+            ]);
             logger.info('Validation', `Sungrow config saved for user ${req.user.uid}`, true);
           } else {
-            await db.collection('shared').doc('serverConfig').set(configData, { merge: true });
+            await Promise.all([
+              db.collection('shared').doc('serverConfig').set(configData, { merge: true }),
+              db.collection('shared').doc('serverCredentials').set(credentialsData, { merge: true })
+            ]);
           }
         }
 
@@ -270,7 +362,8 @@ function registerSetupPublicRoutes(app, deps = {}) {
         const setupComplete = !!(
           (userConfig?.setupComplete === true) ||
           (userConfig?.deviceSn && userConfig?.foxessToken) ||
-          (userConfig?.sungrowDeviceSn && userConfig?.sungrowUsername)
+          (userConfig?.sungrowDeviceSn && userConfig?.sungrowUsername) ||
+          (userConfig?.sigenUsername)
         );
 
         const config = {
@@ -297,6 +390,8 @@ function registerSetupPublicRoutes(app, deps = {}) {
             hasFoxessToken: !!userConfig?.foxessToken,
             hasSungrowUsername: !!userConfig?.sungrowUsername,
             hasSungrowDeviceSn: !!userConfig?.sungrowDeviceSn,
+            hasSigenUsername: !!userConfig?.sigenUsername,
+            hasSigenDeviceSn: !!userConfig?.sigenDeviceSn,
             hasAmberKey: !!userConfig?.amberApiKey,
             source: userConfig?._source || 'user',
             config
@@ -310,7 +405,8 @@ function registerSetupPublicRoutes(app, deps = {}) {
           const cfg = sharedDoc.data() || {};
           const setupComplete = !!(
             (cfg.setupComplete && cfg.deviceSn && cfg.foxessToken) ||
-            (cfg.setupComplete && cfg.sungrowDeviceSn && cfg.sungrowUsername)
+            (cfg.setupComplete && cfg.sungrowDeviceSn && cfg.sungrowUsername) ||
+            (cfg.setupComplete && cfg.sigenUsername)
           );
           const config = {
             automation: { intervalMs: serverConfig.automation.intervalMs },
@@ -327,6 +423,8 @@ function registerSetupPublicRoutes(app, deps = {}) {
               hasFoxessToken: !!cfg.foxessToken,
               hasSungrowUsername: !!cfg.sungrowUsername,
               hasSungrowDeviceSn: !!cfg.sungrowDeviceSn,
+              hasSigenUsername: !!cfg.sigenUsername,
+              hasSigenDeviceSn: !!cfg.sigenDeviceSn,
               hasAmberKey: !!cfg.amberApiKey,
               source: 'shared',
               config
@@ -352,6 +450,8 @@ function registerSetupPublicRoutes(app, deps = {}) {
           hasFoxessToken: false,
           hasSungrowUsername: false,
           hasSungrowDeviceSn: false,
+          hasSigenUsername: false,
+          hasSigenDeviceSn: false,
           hasAmberKey: false,
           config
         }

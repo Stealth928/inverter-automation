@@ -108,7 +108,11 @@ function createAutomationRuleActionService(deps = {}) {
   async function applyRuleActionViaAdapter(userId, rule, userConfig, deviceAdapter) {
     console.log(`[SegmentSend] START applyRuleAction (adapter) for '${rule.name}'`);
     const action = rule.action || {};
-    const deviceSN = userConfig?.sungrowDeviceSn || userConfig?.deviceSn;
+    // Resolve device identifier across all supported providers:
+    //   FoxESS/generic → deviceSn
+    //   Sungrow         → sungrowDeviceSn
+    //   SigenEnergy     → sigenStationId (stationId is the scheduling key, not a device SN)
+    const deviceSN = userConfig?.sungrowDeviceSn || userConfig?.sigenStationId || userConfig?.deviceSn;
 
     if (!deviceSN) {
       console.error(`[SegmentSend] No deviceSN configured for user ${userId}`);

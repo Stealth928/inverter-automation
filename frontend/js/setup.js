@@ -57,19 +57,32 @@
         }
 
         function applyProviderSelection(provider) {
-            const foxessFields = document.getElementById('foxessFields');
-            const sungrowFields = document.getElementById('sungrowFields');
-            const foxessOption = document.getElementById('providerFoxessOption');
-            const sungrowOption = document.getElementById('providerSungrowOption');
+            const foxessFields    = document.getElementById('foxessFields');
+            const sungrowFields   = document.getElementById('sungrowFields');
+            const sigenenergyFields = document.getElementById('sigenenergyFields');
+            const foxessOption    = document.getElementById('providerFoxessOption');
+            const sungrowOption   = document.getElementById('providerSungrowOption');
+            const sigenenergyOption = document.getElementById('providerSigenEnergyOption');
             if (provider === 'sungrow') {
-                foxessFields.style.display = 'none';
-                sungrowFields.style.display = '';
+                foxessFields.style.display    = 'none';
+                sungrowFields.style.display   = '';
+                sigenenergyFields.style.display = 'none';
                 foxessOption.classList.remove('provider-option--selected');
                 sungrowOption.classList.add('provider-option--selected');
-            } else {
-                foxessFields.style.display = '';
-                sungrowFields.style.display = 'none';
+                if (sigenenergyOption) sigenenergyOption.classList.remove('provider-option--selected');
+            } else if (provider === 'sigenergy') {
+                foxessFields.style.display    = 'none';
+                sungrowFields.style.display   = 'none';
+                sigenenergyFields.style.display = '';
+                foxessOption.classList.remove('provider-option--selected');
                 sungrowOption.classList.remove('provider-option--selected');
+                if (sigenenergyOption) sigenenergyOption.classList.add('provider-option--selected');
+            } else {
+                foxessFields.style.display    = '';
+                sungrowFields.style.display   = 'none';
+                sigenenergyFields.style.display = 'none';
+                sungrowOption.classList.remove('provider-option--selected');
+                if (sigenenergyOption) sigenenergyOption.classList.remove('provider-option--selected');
                 foxessOption.classList.add('provider-option--selected');
             }
             updateProgress();
@@ -108,7 +121,25 @@
 
             // Provider-specific credential validation
             let requestBody = {};
-            if (provider === 'sungrow') {
+            if (provider === 'sigenergy') {
+                const sigenenergyUsername = sanitizeInput(document.getElementById('sigenenergyUsername').value);
+                const sigenenergyPassword = sanitizeInput(document.getElementById('sigenenergyPassword').value);
+                const sigenenergyRegion   = document.getElementById('sigenenergyRegion').value || 'apac';
+
+                if (!sigenenergyUsername) {
+                    setFieldError('sigenenergyUsername', 'SigenEnergy account email is required');
+                    return;
+                }
+                if (!sigenenergyPassword) {
+                    setFieldError('sigenenergyPassword', 'SigenEnergy password is required');
+                    return;
+                }
+                requestBody = {
+                    sigenergy_username: sigenenergyUsername,
+                    sigenergy_password: sigenenergyPassword,
+                    sigenergy_region:   sigenenergyRegion
+                };
+            } else if (provider === 'sungrow') {
                 const sungrowDeviceSn  = sanitizeInput(document.getElementById('sungrowDeviceSn').value);
                 const sungrowUsername  = sanitizeInput(document.getElementById('sungrowUsername').value);
                 const sungrowPassword  = sanitizeInput(document.getElementById('sungrowPassword').value);
@@ -186,12 +217,14 @@
                     if (Array.isArray(failedKeys) && failedKeys.length) {
                         failedKeys.forEach(key => {
                             const fieldMap = {
-                                'device_sn':       'deviceSn',
-                                'foxess_token':    'foxessToken',
-                                'amber_api_key':   'amberApiKey',
-                                'sungrow_device_sn': 'sungrowDeviceSn',
-                                'sungrow_username':  'sungrowUsername',
-                                'sungrow_password':  'sungrowPassword'
+                                'device_sn':           'deviceSn',
+                                'foxess_token':        'foxessToken',
+                                'amber_api_key':       'amberApiKey',
+                                'sungrow_device_sn':   'sungrowDeviceSn',
+                                'sungrow_username':    'sungrowUsername',
+                                'sungrow_password':    'sungrowPassword',
+                                'sigenergy_username':  'sigenenergyUsername',
+                                'sigenergy_password':  'sigenenergyPassword'
                             };
                             const fieldId = fieldMap[key];
                             if (fieldId) {
@@ -209,7 +242,10 @@
                 }
 
                 // Success - mark credential fields as valid
-                if (provider === 'sungrow') {
+                if (provider === 'sigenergy') {
+                    setFieldSuccess('sigenenergyUsername');
+                    setFieldSuccess('sigenenergyPassword');
+                } else if (provider === 'sungrow') {
                     setFieldSuccess('sungrowDeviceSn');
                     setFieldSuccess('sungrowUsername');
                     setFieldSuccess('sungrowPassword');
@@ -224,7 +260,10 @@
                 submitBtn.style.background = 'var(--gradient-success)';
 
                 // Store device SN in localStorage for UX
-                if (provider === 'sungrow') {
+                if (provider === 'sigenergy') {
+                    const username = sanitizeInput(document.getElementById('sigenenergyUsername').value);
+                    localStorage.setItem('sigenergy_setup_username', username);
+                } else if (provider === 'sungrow') {
                     const sn = sanitizeInput(document.getElementById('sungrowDeviceSn').value);
                     localStorage.setItem('sungrow_setup_device_sn', sn);
                 } else {
@@ -245,7 +284,7 @@
 
             } catch (error) {
                 console.error('Validation error:', error);
-                const firstField = provider === 'sungrow' ? 'sungrowDeviceSn' : 'deviceSn';
+                const firstField = provider === 'sigenergy' ? 'sigenenergyUsername' : (provider === 'sungrow' ? 'sungrowDeviceSn' : 'deviceSn');
                 // Only expose the message if it looks like a user-facing API/network error,
                 // not an internal TypeError or similar programming error.
                 const isInternalError = error instanceof TypeError || error instanceof ReferenceError;
