@@ -17,7 +17,7 @@
                         }
                         const confirmData = await confirmResp.json();
                         if (confirmData?.result?.setupComplete) {
-                            safeRedirect('/index.html');
+                            safeRedirect('/app.html');
                         } else {
                             console.log('[Setup] Status changed during double-check; staying on setup');
                         }
@@ -279,7 +279,7 @@
 
                 // Redirect to dashboard after brief delay
                 setTimeout(() => {
-                    safeRedirect('/index.html');
+                    safeRedirect('/app.html');
                 }, 1000);
 
             } catch (error) {

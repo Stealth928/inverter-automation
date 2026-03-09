@@ -529,7 +529,7 @@ body.has-fixed-nav {
 
 /* Nav link order - ensures consistent positioning */
 .nav-link[href="/"],
-.nav-link[href="/index.html"] {
+.nav-link[href="/app.html"] {
     order: 1 !important;
 }
 

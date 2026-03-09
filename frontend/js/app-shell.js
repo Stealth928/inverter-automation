@@ -299,12 +299,12 @@
         if (!links.length) return;
         const normalizePath = (path) => {
             const cleaned = (path || '').replace(/\/$/, '');
-            if (cleaned === '' || cleaned === '/' || cleaned === '/index') return '/index.html';
+            if (cleaned === '' || cleaned === '/' || cleaned === '/index') return '/app.html';
             return cleaned;
         };
 
         const currentPath = normalizePath(window.location.pathname);
-        const homeAliases = new Set(['/index.html']);
+        const homeAliases = new Set(['/app.html']);
         let matched = false;
 
         links.forEach(link => {
@@ -326,7 +326,7 @@
 
         // Fallback: ensure Overview is active on home route even if URL parsing differs.
         if (!matched && homeAliases.has(currentPath)) {
-            const overviewLink = document.querySelector('.nav-link[href="/"]') || document.querySelector('.nav-link[href="/index.html"]');
+            const overviewLink = document.querySelector('.nav-link[href="/"]') || document.querySelector('.nav-link[href="/app.html"]');
             if (overviewLink) {
                 overviewLink.classList.add('active');
                 overviewLink.setAttribute('aria-current', 'page');
@@ -409,9 +409,9 @@
                         sessionStorage.setItem('tourStepAt', String(Date.now()));
                     } catch (e) {}
                     if (typeof safeRedirect === 'function') {
-                        safeRedirect('/index.html');
+                        safeRedirect('/app.html');
                     } else {
-                        window.location.href = '/index.html';
+                        window.location.href = '/app.html';
                     }
                 }
             });
@@ -578,6 +578,11 @@
             signOutBtn.addEventListener('click', async () => {
                 clearImpersonation();
                 await signOut();
+                if (typeof safeRedirect === 'function') {
+                    safeRedirect('/login.html?signedOut=1&tab=signin');
+                } else {
+                    window.location.href = '/login.html?signedOut=1&tab=signin';
+                }
             });
         }
     }

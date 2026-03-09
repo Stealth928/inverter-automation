@@ -35,7 +35,7 @@ test.describe('Dashboard Page', () => {
       window.location.assign = function (url) { console.log('[Test] suppressed location.assign to', url); };
     });
 
-    await page.goto('/index.html');
+    await page.goto('/app.html');
   });
 
   test('should load dashboard page', async ({ page }) => {

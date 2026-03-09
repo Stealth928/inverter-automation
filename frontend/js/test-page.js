@@ -1730,12 +1730,12 @@
         }
 
         async function editRule(ruleName) {
-            alert('📌 Rule editing is only available in the main automation page (index.html).\n\nPlease navigate there to edit rules.');
+            alert('📌 Rule editing is only available in the main automation page (app.html).\n\nPlease navigate there to edit rules.');
             return;
         }
 
         async function deleteRule(ruleName) {
-            alert('🗑️ Rule deletion is only available in the main automation page (index.html).\n\nPlease navigate there to delete rules.');
+            alert('🗑️ Rule deletion is only available in the main automation page (app.html).\n\nPlease navigate there to delete rules.');
             return;
         }
 

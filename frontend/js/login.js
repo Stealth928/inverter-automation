@@ -3,8 +3,24 @@
             if (typeof firebaseAuth === 'undefined') return;
             firebaseAuth.onAuthStateChanged(async (user) => {
                 if (!user) return;
+                try {
+                    const params = new URLSearchParams(window.location.search);
+                    if (params.get('signedOut') === '1') return;
+                } catch (e) { /* ignore */ }
                 await redirectAfterLogin();
             });
+        }
+
+        function activateTab(tab) {
+            const target = (tab === 'signup') ? 'signup' : 'signin';
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            const targetBtn = document.querySelector(`.tab-btn[data-tab="${target}"]`);
+            if (targetBtn) targetBtn.classList.add('active');
+
+            document.querySelectorAll('.form-section').forEach(s => s.classList.remove('active'));
+            const targetForm = document.getElementById(`${target}Form`);
+            if (targetForm) targetForm.classList.add('active');
+            hideMessages();
         }
 
         async function redirectAfterLogin() {
@@ -43,7 +59,7 @@
                 } catch (e) {}
 
                 if (data && data.errno === 0 && data.result?.setupComplete) {
-                    safeRedirect(returnTo || '/index.html');
+                    safeRedirect(returnTo || '/app.html');
                 } else {
                     safeRedirect('/setup.html');
                 }
@@ -75,20 +91,18 @@
         // Tab switching
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                const tab = btn.dataset.tab;
-                
-                // Update active tab
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                
-                // Show corresponding form
-                document.querySelectorAll('.form-section').forEach(s => s.classList.remove('active'));
-                document.getElementById(`${tab}Form`).classList.add('active');
-                
-                // Clear messages
-                hideMessages();
+                activateTab(btn.dataset.tab);
             });
         });
+
+        // Landing CTAs can deep-link directly to Sign Up via /login.html?tab=signup
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const requestedTab = params.get('tab');
+            if (requestedTab === 'signup' || requestedTab === 'signin') {
+                activateTab(requestedTab);
+            }
+        } catch (e) { /* ignore */ }
 
         // Forgot password link
         document.getElementById('forgotPasswordLink').addEventListener('click', (e) => {
