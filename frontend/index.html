@@ -101,132 +101,251 @@
         </div>
 
         <div class="hero-preview__body">
+          <div class="product-grid">
 
-          <div class="hero-preview__metrics">
-            <div class="metric-card metric-card--green">
-              <div class="metric-card__label">Battery SoC</div>
-              <div class="metric-card__value" id="heroSoc">76%</div>
-              <div class="metric-card__trend"><span id="heroPowerState">&#8593; Charging</span> &middot; <span id="heroChargeW">2.4</span> kW</div>
-            </div>
-            <div class="metric-card metric-card--blue">
-              <div class="metric-card__label">Import Price</div>
-              <div class="metric-card__value" id="heroPrice">8.2¢</div>
-              <div class="metric-card__trend">Off-peak window</div>
-            </div>
-            <div class="metric-card metric-card--amber">
-              <div class="metric-card__label">Active Rule</div>
-              <div class="metric-card__value metric-card__value--rule" id="heroRule">&#9889; Force Charge</div>
-              <div class="metric-card__trend"><span id="heroRuleReason">Cheap window matched</span> &middot; Next eval <span id="heroCountdown">58</span>s</div>
-            </div>
-            <div class="metric-card metric-card--purple">
-              <div class="metric-card__label">Today's Saving</div>
-              <div class="metric-card__value" id="heroSaving">$2.60</div>
-              <div class="metric-card__trend">vs. no automation</div>
-            </div>
-          </div>
+            <article class="product-card product-card--status">
+              <header class="product-card__head">
+                <h3>&#9889; Inverter Status</h3>
+                <div class="product-card__meta">
+                  <span class="product-badge product-badge--live">LIVE</span>
+                  <span class="product-card__age">3m ago</span>
+                </div>
+              </header>
 
-          <div class="hero-control-strip" aria-hidden="true">
-            <div class="hero-control-strip__item">
-              <span class="hero-control-strip__label">Mode</span>
-              <span class="hero-control-strip__value" id="heroControlMode">Price-first auto</span>
-            </div>
-            <div class="hero-control-strip__item">
-              <span class="hero-control-strip__label">Override</span>
-              <span class="hero-control-strip__value" id="heroControlOverride">Ready in 1 tap</span>
-            </div>
-            <div class="hero-control-strip__item">
-              <span class="hero-control-strip__label">Safety</span>
-              <span class="hero-control-strip__value" id="heroControlBounds">Min SoC 25% &middot; Max import 15&cent;</span>
-            </div>
-            <div class="hero-control-strip__item hero-control-strip__item--status">
-              <span class="hero-control-strip__label">Checks</span>
-              <span class="hero-control-strip__value" id="heroControlRules">2/3 matched</span>
-            </div>
-          </div>
-
-          <div class="hero-rule-decisions" aria-hidden="true">
-            <div class="rule-decision is-match" id="heroDecisionPrice">
-              <span class="rule-decision__name">Import &lt; 8.5&cent;</span>
-              <span class="rule-decision__state">Matched</span>
-            </div>
-            <div class="rule-decision is-match" id="heroDecisionSoc">
-              <span class="rule-decision__name">Battery SoC &lt; 82%</span>
-              <span class="rule-decision__state">Matched</span>
-            </div>
-            <div class="rule-decision is-skip" id="heroDecisionSolar">
-              <span class="rule-decision__name">Solar forecast &lt; 1.2kW</span>
-              <span class="rule-decision__state">Skipped</span>
-            </div>
-          </div>
-
-          <div class="hero-preview__chart">
-            <div class="chart-head">
-              <div class="chart-title">24h Import Price &nbsp;<span class="chart-live-dot"></span></div>
-              <div class="chart-kpis">
-                <span class="chart-kpi"><em>Now</em><strong id="heroChartNowPrice">8.2&cent;</strong></span>
-                <span class="chart-kpi"><em>Charge below</em><strong>8.5&cent;</strong></span>
-                <span class="chart-kpi"><em>Peak ahead</em><strong id="heroChartPeak">12.4&cent; @ 6pm</strong></span>
+              <div class="status-flow">
+                <div class="status-flow__tile">
+                  <span class="status-flow__icon">&#9728;</span>
+                  <strong id="heroSolarKw">0.40 kW</strong>
+                  <small>Solar Production</small>
+                </div>
+                <div class="status-flow__tile">
+                  <span class="status-flow__icon">&#127968;</span>
+                  <strong id="heroLoadKw">0.52 kW</strong>
+                  <small>House Load</small>
+                </div>
+                <div class="status-flow__tile">
+                  <span class="status-flow__icon">&#128268;</span>
+                  <strong id="heroGridKw">2.52 kW</strong>
+                  <small id="heroGridLabel">Grid Import</small>
+                </div>
               </div>
-            </div>
-            <div class="chart-shell">
-              <svg viewBox="0 0 720 240" preserveAspectRatio="xMidYMid meet" class="price-sparkline" aria-hidden="true">
-                <rect x="0" y="0" width="720" height="240" fill="url(#chartBgGrad)"/>
-                <defs>
-                  <linearGradient id="chartBgGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="rgba(88,166,255,.08)"/>
-                    <stop offset="100%" stop-color="rgba(13,17,23,0)"/>
-                  </linearGradient>
-                  <linearGradient id="chartAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="rgba(88,166,255,.33)"/>
-                    <stop offset="100%" stop-color="rgba(88,166,255,0)"/>
-                  </linearGradient>
-                </defs>
-                <line x1="24" y1="48" x2="696" y2="48" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
-                <line x1="24" y1="112" x2="696" y2="112" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
-                <line x1="24" y1="176" x2="696" y2="176" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
-                <line id="heroThresholdLine" x1="24" y1="140" x2="696" y2="140" stroke="rgba(126,231,135,.75)" stroke-width="2" stroke-dasharray="5 6"/>
-                <text id="heroThresholdLabel" x="690" y="134" text-anchor="end">Charge line 8.5&cent;</text>
-                <rect x="118" y="112" width="138" height="95" fill="rgba(46,160,67,.18)"/>
-                <rect x="490" y="70" width="190" height="137" fill="rgba(248,81,73,.14)"/>
-                <text x="126" y="122">Auto-charge window</text>
-                <text x="500" y="80">Peak risk window</text>
-                <path id="heroPriceArea" fill="url(#chartAreaGrad)" d=""/>
-                <polyline id="heroPriceLine" points="" fill="none" stroke="#58a6ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-                <g id="heroChargeMarkers"></g>
-                <circle id="heroPeakDot" cx="348" cy="136" r="6" fill="#f85149" stroke="#0d1117" stroke-width="2"/>
-                <line id="heroNowLine" x1="348" y1="24" x2="348" y2="207" stroke="rgba(255,255,255,.35)" stroke-width="2" stroke-dasharray="6 6"/>
-                <circle id="heroNowDot" cx="348" cy="136" r="7" fill="#58a6ff" stroke="#0d1117" stroke-width="3"/>
-                <rect id="heroChartHit" x="24" y="24" width="672" height="183" fill="transparent"/>
-                <g class="chart-x-axis" aria-hidden="true">
-                  <text x="24" y="228">12am</text>
-                  <text x="188" y="228">6am</text>
-                  <text x="352" y="228">12pm</text>
-                  <text x="516" y="228">6pm</text>
-                  <text x="696" y="228" text-anchor="end">12am</text>
-                </g>
-              </svg>
-              <div class="chart-tooltip" id="heroChartTooltip" hidden>
-                <strong id="heroTooltipTime">10am</strong>
-                <span id="heroTooltipPrice">8.2&cent;/kWh</span>
-                <small id="heroTooltipAction">Recommended: Charge</small>
-              </div>
-            </div>
-            <div class="chart-legend">
-              <span><span class="legend-dot legend-dot--green"></span>Auto-charged</span>
-              <span><span class="legend-dot legend-dot--blue"></span>Now (<span id="heroNowLabel">10am</span>)</span>
-              <span><span class="legend-line legend-line--threshold"></span>Charge threshold</span>
-              <span><span class="legend-dot legend-dot--red"></span>Peak ahead</span>
-            </div>
-          </div>
 
+              <div class="status-battery">
+                <div class="status-battery__main">
+                  <span class="status-battery__icon" aria-hidden="true">&#128267;</span>
+                  <div class="status-battery__numbers">
+                    <div class="status-battery__power"><span id="heroChargeW">2.5</span> kW <small id="heroPowerState">&#8593; Charging</small></div>
+                    <div class="status-battery__soc" id="heroSoc">76%</div>
+                    <div class="status-battery__energy"><span id="heroBatteryKwh">23.9</span> kWh available</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="status-temp-row">
+                <div class="status-temp">
+                  <span>Battery Temp</span>
+                  <strong>29.1&deg;C</strong>
+                </div>
+                <div class="status-temp">
+                  <span>Ambient Temp</span>
+                  <strong>35.5&deg;C</strong>
+                </div>
+                <div class="status-temp">
+                  <span>Inverter Temp</span>
+                  <strong>28.1&deg;C</strong>
+                </div>
+              </div>
+            </article>
+
+            <article class="product-card product-card--prices">
+              <header class="product-card__head">
+                <h3>&#128176; Electricity Prices</h3>
+                <div class="product-card__meta">
+                  <span class="product-badge product-badge--amber">AMBER</span>
+                  <span class="product-card__age">18s ago</span>
+                </div>
+              </header>
+
+              <div class="price-summary">
+                <div class="price-kpi">
+                  <span>Buy now</span>
+                  <strong id="heroPrice">8.2&cent;</strong>
+                </div>
+                <div class="price-kpi">
+                  <span>Feed-in</span>
+                  <strong id="heroFeedInPrice">10.0&cent;</strong>
+                </div>
+                <div class="price-kpi">
+                  <span>Today saved</span>
+                  <strong id="heroSaving">$2.60</strong>
+                </div>
+              </div>
+
+              <div class="price-forecast-row" aria-hidden="true">
+                <span>21&cent;</span>
+                <span>21&cent;</span>
+                <span>20&cent;</span>
+                <span>19&cent;</span>
+                <span>20&cent;</span>
+                <span>19&cent;</span>
+              </div>
+
+              <div class="chart-shell">
+                <svg viewBox="0 0 720 240" preserveAspectRatio="xMidYMid meet" class="price-sparkline" aria-hidden="true">
+                  <rect x="0" y="0" width="720" height="240" fill="url(#chartBgGrad)"/>
+                  <defs>
+                    <linearGradient id="chartBgGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="rgba(88,166,255,.12)"/>
+                      <stop offset="100%" stop-color="rgba(13,17,23,0)"/>
+                    </linearGradient>
+                    <linearGradient id="chartAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="rgba(88,166,255,.34)"/>
+                      <stop offset="100%" stop-color="rgba(88,166,255,0)"/>
+                    </linearGradient>
+                  </defs>
+                  <line x1="24" y1="48" x2="696" y2="48" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
+                  <line x1="24" y1="112" x2="696" y2="112" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
+                  <line x1="24" y1="176" x2="696" y2="176" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
+                  <line id="heroThresholdLine" x1="24" y1="140" x2="696" y2="140" stroke="rgba(126,231,135,.75)" stroke-width="2" stroke-dasharray="5 6"/>
+                  <text id="heroThresholdLabel" x="690" y="134" text-anchor="end">Charge line 8.5&cent;</text>
+                  <path id="heroPriceArea" fill="url(#chartAreaGrad)" d=""/>
+                  <polyline id="heroPriceLine" points="" fill="none" stroke="#58a6ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                  <g id="heroChargeMarkers"></g>
+                  <circle id="heroPeakDot" cx="348" cy="136" r="6" fill="#f85149" stroke="#0d1117" stroke-width="2"/>
+                  <line id="heroNowLine" x1="348" y1="24" x2="348" y2="207" stroke="rgba(255,255,255,.35)" stroke-width="2" stroke-dasharray="6 6"/>
+                  <circle id="heroNowDot" cx="348" cy="136" r="7" fill="#58a6ff" stroke="#0d1117" stroke-width="3"/>
+                  <rect id="heroChartHit" x="24" y="24" width="672" height="183" fill="transparent"/>
+                  <g class="chart-x-axis" aria-hidden="true">
+                    <text x="24" y="228">21:25</text>
+                    <text x="246" y="228">21:55</text>
+                    <text x="470" y="228">22:30</text>
+                    <text x="696" y="228" text-anchor="end">00:00</text>
+                  </g>
+                </svg>
+                <div class="chart-tooltip" id="heroChartTooltip" hidden>
+                  <strong id="heroTooltipTime">10am</strong>
+                  <span id="heroTooltipPrice">8.2&cent;/kWh</span>
+                  <small id="heroTooltipAction">Recommended: Charge</small>
+                </div>
+              </div>
+
+              <div class="price-footer">
+                <span>Now <strong id="heroChartNowPrice">8.2&cent;</strong> (<span id="heroNowLabel">10am</span>)</span>
+                <span>Peak <strong id="heroChartPeak">12.4&cent; @ 6pm</strong></span>
+              </div>
+            </article>
+
+            <article class="product-card product-card--weather">
+              <header class="product-card__head">
+                <h3>&#9925; Weather Forecast</h3>
+                <div class="product-card__meta">
+                  <span class="product-card__age">43s ago</span>
+                </div>
+              </header>
+
+              <div class="weather-toolbar">
+                <div class="weather-location-pill">
+                  <span class="weather-location-pill__pin">&#128205;</span>
+                  <span>Sydney</span>
+                </div>
+                <div class="weather-range">
+                  <span>1d</span>
+                  <span class="weather-range__track"><i></i></span>
+                  <span>6d</span>
+                </div>
+              </div>
+
+              <div class="weather-now">
+                <strong>20.5&deg;C</strong>
+                <span>Sydney &middot; Showers &middot; Now (21:15)</span>
+                <div class="weather-now__meta">
+                  <span>Rain: 3.6 mm</span>
+                  <span>Wind: 5.5 km/h SSE</span>
+                  <span>Sun: 0 W/m&sup2;</span>
+                  <span>Humidity: 55%</span>
+                </div>
+              </div>
+
+              <div class="weather-cards">
+                <div class="weather-card">
+                  <h4>Mon 9/3</h4>
+                  <p>Showers</p>
+                  <small>High 22.8&deg; / Low 18.6&deg;</small>
+                  <div class="weather-card__stats">
+                    <span>Rain 3.6 mm</span>
+                    <span>&#9728; 119 &nbsp; &#9729; 81%</span>
+                  </div>
+                </div>
+                <div class="weather-card">
+                  <h4>Tue 10/3</h4>
+                  <p>Showers</p>
+                  <small>High 25.0&deg; / Low 19.5&deg;</small>
+                  <div class="weather-card__stats">
+                    <span>Rain 1.6 mm</span>
+                    <span>&#9728; 164 &nbsp; &#9729; 73%</span>
+                  </div>
+                </div>
+                <div class="weather-card">
+                  <h4>Wed 11/3</h4>
+                  <p>Partly Cloudy</p>
+                  <small>High 29.8&deg; / Low 18.9&deg;</small>
+                  <div class="weather-card__stats">
+                    <span>Rain 0.0 mm</span>
+                    <span>&#9728; 282 &nbsp; &#9729; 24%</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="product-card product-card--automation">
+              <header class="product-card__head product-card__head--automation">
+                <h3>&#9889; Active Automation</h3>
+                <div class="automation-head-controls">
+                  <div class="automation-cycle">
+                    <span>Next cycle</span>
+                    <strong><span id="heroCountdown">58</span>s</strong>
+                  </div>
+                  <div class="automation-master" aria-label="Master automation active">
+                    <span class="automation-master__label">Master</span>
+                    <span class="automation-master__switch is-on" aria-hidden="true"><i></i></span>
+                    <strong class="automation-master__state">Active</strong>
+                  </div>
+                </div>
+              </header>
+
+              <div class="automation-rule-list">
+                <div class="automation-rule automation-rule--active">
+                  <span class="rule-priority" id="heroRulePriority">P5</span>
+                  <div class="automation-rule__content">
+                    <strong id="heroRule">&#9889; Overnight Solar Planning Charge</strong>
+                    <p id="heroRuleReason">Weak solar forecast tomorrow, topping up overnight reserve</p>
+                    <div class="automation-tags">
+                      <span class="rule-decision is-match" id="heroDecisionPrice">
+                        <span class="rule-decision__name">Time 00:00-06:00</span>
+                        <span class="rule-decision__state">Matched</span>
+                      </span>
+                      <span class="rule-decision is-match" id="heroDecisionSoc">
+                        <span class="rule-decision__name">Battery SoC &le; 80%</span>
+                        <span class="rule-decision__state">Matched</span>
+                      </span>
+                      <span class="rule-decision is-match" id="heroDecisionSolar">
+                        <span class="rule-decision__name">Cloud cover avg &ge; 70% (24h)</span>
+                        <span class="rule-decision__state">Matched</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
         </div><!-- /.hero-preview__body -->
 
-        <!-- Toast notification — appears inside the mock window -->
+        <!-- Toast notification - appears inside the mock window -->
         <div class="hero-toast" id="heroToast" hidden>
           <span class="hero-toast__icon">&#9889;</span>
           <div class="hero-toast__text">
             <strong id="heroToastStrong">Automation ran</strong>
-            <span id="heroToastSub">Force Charge &middot; 8.2¢/kWh &middot; SoC 76%</span>
+            <span id="heroToastSub">Force Charge &middot; 8.2&cent;/kWh &middot; SoC 76%</span>
           </div>
           <span class="hero-toast__check">&#10003;</span>
         </div>
@@ -733,19 +852,24 @@
     var soc = 76;
     var prices = [8.6, 8.2, 7.9, 7.6, 7.8, 8.1, 8.5, 9.4, 11.2, 12.4, 11.0, 9.6, 8.8, 8.2];
     var solarKw = [0.5, 0.4, 0.3, 0.2, 0.3, 0.6, 1.0, 1.8, 2.4, 2.1, 1.4, 1.0, 0.7, 0.5];
+    var houseLoadKw = [0.54, 0.52, 0.51, 0.49, 0.50, 0.55, 0.59, 0.64, 0.69, 0.74, 0.71, 0.66, 0.61, 0.57];
+    var feedInPriceKw = [10.0, 9.8, 9.4, 9.3, 9.7, 10.2, 11.6, 14.2, 18.4, 22.1, 16.8, 10.6, 9.6, 9.2];
+    var forecastSolarWm2 = [210, 190, 175, 220, 300, 420, 520, 610, 700, 640, 480, 320, 230, 200];
+    var forecastCloudPct = [82, 79, 76, 70, 62, 54, 40, 28, 22, 30, 44, 58, 72, 80];
+    var forecastFeedInMax4h = [18, 20, 24, 28, 36, 52, 61, 58, 44, 30, 22, 18, 16, 15];
+    var batteryCapacityKwh = 31.5;
     var priceIdx = 0;
     var savings = 2.60;
     var countdown = 58;
     var heroRuntime = {
-      activeRule: 'Force Charge',
-      ruleReason: 'Cheap window matched',
+      activeRule: 'Overnight Solar Planning Charge',
+      ruleReason: 'Weak solar forecast tomorrow, topping up overnight reserve',
       price: prices[0],
       chargeKw: 2.4
     };
     var chargeThreshold = 8.5;
     var exportThreshold = 11.5;
     var minSocBound = 25;
-    var maxImportBound = 15.0;
     var targetSoc = 85;
     var exportReserveSoc = 38;
     var peakWindowStart = 8;
@@ -792,26 +916,16 @@
       return display + suffix;
     }
 
+    function formatKw(v) {
+      return Number(v).toFixed(2) + ' kW';
+    }
+
     function getPeakIndex() {
       var idx = 0;
       prices.forEach(function (price, i) {
         if (price > prices[idx]) idx = i;
       });
       return idx;
-    }
-
-    function setHeroControl(mode, overrideText, checksText) {
-      var el = document.getElementById('heroControlMode');
-      if (el) el.textContent = mode;
-
-      el = document.getElementById('heroControlOverride');
-      if (el) el.textContent = overrideText;
-
-      el = document.getElementById('heroControlBounds');
-      if (el) el.textContent = 'Min SoC ' + minSocBound + '% \u00b7 Max import ' + maxImportBound.toFixed(0) + '\u00a2';
-
-      el = document.getElementById('heroControlRules');
-      if (el) el.textContent = checksText;
     }
 
     function renderHeroChartSeries() {
@@ -937,82 +1051,80 @@
 
     function updateHero() {
       priceIdx = (priceIdx + 1) % prices.length;
-      countdown = countdown <= 3 ? 60 : countdown - 3;
 
       var currentPrice = prices[priceIdx];
+      var currentFeedIn = feedInPriceKw[priceIdx % feedInPriceKw.length];
       var currentSolar = solarKw[priceIdx];
-      var isCheap = currentPrice <= chargeThreshold;
-      var hasHeadroom = soc < (targetSoc - 1);
-      var lowSolar = currentSolar < 1.2;
-      var chargeReady = isCheap && hasHeadroom && lowSolar;
+      var currentLoad = houseLoadKw[priceIdx % houseLoadKw.length];
+      var nextDaySolar = forecastSolarWm2[priceIdx % forecastSolarWm2.length];
+      var nextDayCloud = forecastCloudPct[priceIdx % forecastCloudPct.length];
+      var next4hFeedInMax = forecastFeedInMax4h[priceIdx % forecastFeedInMax4h.length];
+      var hour = (priceIdx * 2) % 24;
 
-      var isExpensive = currentPrice >= exportThreshold;
-      var hasReserve = soc > exportReserveSoc;
-      var inPeakWindow = priceIdx >= peakWindowStart && priceIdx <= peakWindowEnd;
-      var exportReady = isExpensive && hasReserve && inPeakWindow;
+      var inOvernightWindow = hour >= 0 && hour < 6;
+      var inEveningWindow = hour >= 18 && hour <= 23;
+      var chargeReady = inOvernightWindow && soc <= 80 && nextDaySolar < 250 && nextDayCloud >= 70;
+      var exportReady = inEveningWindow && currentFeedIn >= 8 && soc > 50 && nextDaySolar > 150 && next4hFeedInMax <= 50;
+      var selfUseReady = inEveningWindow && currentFeedIn < 11 && soc >= minSocBound;
 
-      var activeRule = '\u267b\ufe0f Self Use';
-      var ruleReason = 'No higher-priority rule fully matched';
-      var powerState = '\u2195 Balancing';
-      var chargeKw = 0.3 + (Math.random() * 0.5);
-      var controlMode = 'Autonomous balance';
-      var controlOverride = 'Manual override ready';
-      var checksText = 'Fallback active';
-      var socDelta = (Math.random() - 0.5) * 0.3;
+      var activeRule = '\u267b\ufe0f Post-Spike Return to Self-Use';
+      var rulePriority = 'P8';
+      var ruleReason = 'Monitoring evening window while feed-in cools off';
+      var powerState = '\u2195 Monitoring';
+      var chargeKw = 0;
+      var batteryMode = 'idle';
+      var socDelta = (Math.random() - 0.5) * 0.18;
 
       if (chargeReady) {
-        activeRule = '\u26a1 Force Charge';
-        ruleReason = 'All charge conditions matched';
+        activeRule = '\u26a1 Overnight Solar Planning Charge';
+        rulePriority = 'P5';
+        ruleReason = 'Weak solar forecast tomorrow, topping up overnight reserve';
         powerState = '\u2191 Charging';
-        chargeKw = 2.3 + (Math.random() * 0.8);
-        controlMode = 'Price-first auto';
-        controlOverride = 'Charge segment running';
-        checksText = '3/3 matched';
-        socDelta = 0.9 + (Math.random() * 0.5);
+        batteryMode = 'charge';
+        chargeKw = 2.0 + (Math.random() * 0.8);
+        socDelta = 0.75 + (Math.random() * 0.35);
       } else if (exportReady) {
-        activeRule = '\u26a1 Peak Export';
-        ruleReason = 'Peak export window fully matched';
+        activeRule = '\u26a1 Evening Drain \u2014 Sunny Forecast Tomorrow';
+        rulePriority = 'P7';
+        ruleReason = 'Tomorrow looks sunny and no better spike is forecast';
         powerState = '\u2198 Exporting';
-        chargeKw = 1.6 + (Math.random() * 0.8);
-        controlMode = 'Peak capture mode';
-        controlOverride = 'Discharge segment running';
-        checksText = '3/3 matched';
-        socDelta = -(0.8 + (Math.random() * 0.5));
+        batteryMode = 'discharge';
+        chargeKw = 1.7 + (Math.random() * 0.9);
+        socDelta = -(0.65 + (Math.random() * 0.45));
       } else {
-        if (isCheap && !hasHeadroom) {
-          ruleReason = 'Charge blocked: SoC target reached';
-          powerState = '\u2195 Stabilising';
-          controlMode = 'Target-protect mode';
-          controlOverride = 'Charge lock active';
-        } else if (isCheap && !lowSolar) {
-          ruleReason = 'Charge held: strong solar forecast';
-          powerState = '\u23f8 Paused';
-          controlMode = 'Forecast-aware hold';
-          controlOverride = 'Charge 15m ready';
-        } else if (isExpensive && hasReserve && !inPeakWindow) {
-          ruleReason = 'Peak pricing detected, window not active';
-          powerState = '\u2195 Holding';
-          controlMode = 'Price shield mode';
-          controlOverride = 'Discharge 10m ready';
-        } else if (isExpensive && !hasReserve) {
-          ruleReason = 'Export blocked: reserve SoC protected';
-          powerState = '\u2195 Reserve protect';
-          controlMode = 'Reserve protect mode';
-          controlOverride = 'Discharge lock active';
-        } else {
-          ruleReason = 'Monitoring for next full rule match';
-        }
-
-        if (currentSolar > 1.6 && soc < (targetSoc - 3)) {
-          socDelta += 0.35;
+        if (selfUseReady) {
+          ruleReason = 'Feed-in is back below 11\u00a2, holding SelfUse';
+          powerState = '\u2195 Self-use hold';
+          batteryMode = 'idle';
+          chargeKw = 0;
+          socDelta -= 0.10 + (Math.random() * 0.12);
+        } else if (currentSolar > currentLoad + 0.25 && soc < (targetSoc - 3)) {
+          powerState = '\u2191 Balancing';
+          batteryMode = 'charge';
+          chargeKw = 0.35 + (Math.random() * 0.35);
+          socDelta += 0.22;
         } else if (currentPrice > 10.8 && soc > (exportReserveSoc + 5)) {
-          socDelta -= 0.25;
+          powerState = '\u2193 Balancing';
+          batteryMode = 'discharge';
+          chargeKw = 0.30 + (Math.random() * 0.35);
+          socDelta -= 0.18;
+        } else {
+          batteryMode = 'idle';
+          chargeKw = 0;
         }
       }
+
+      var batteryChargeKw = batteryMode === 'charge' ? chargeKw : 0;
+      var batteryDischargeKw = batteryMode === 'discharge' ? chargeKw : 0;
+      var netGridKw = currentLoad + batteryChargeKw - currentSolar - batteryDischargeKw;
+      var gridLabel = 'Grid Neutral';
+      if (netGridKw > 0.02) gridLabel = 'Grid Import';
+      if (netGridKw < -0.02) gridLabel = 'Grid Export';
 
       soc = Math.max(minSocBound, Math.min(targetSoc, soc + socDelta));
       soc = Math.round(soc * 10) / 10;
       var socDisplay = Math.round(soc);
+      var availableKwh = (soc * batteryCapacityKwh / 100).toFixed(1);
 
       var savingsDelta = 0;
       if (chargeReady) savingsDelta += 0.03;
@@ -1023,8 +1135,15 @@
       savings = Math.round((savings + savingsDelta) * 100) / 100;
 
       var el;
+      el = document.getElementById('heroSolarKw'); if (el) el.textContent = formatKw(currentSolar);
+      el = document.getElementById('heroLoadKw'); if (el) el.textContent = formatKw(currentLoad);
+      el = document.getElementById('heroGridKw'); if (el) el.textContent = formatKw(Math.abs(netGridKw));
+      el = document.getElementById('heroGridLabel'); if (el) el.textContent = gridLabel;
       el = document.getElementById('heroSoc'); if (el) el.textContent = socDisplay + '%';
+      el = document.getElementById('heroBatteryKwh'); if (el) el.textContent = availableKwh;
       el = document.getElementById('heroPrice'); if (el) el.textContent = currentPrice.toFixed(1) + '\u00a2';
+      el = document.getElementById('heroFeedInPrice'); if (el) el.textContent = currentFeedIn.toFixed(1) + '\u00a2';
+      el = document.getElementById('heroRulePriority'); if (el) el.textContent = rulePriority;
       el = document.getElementById('heroRule'); if (el) el.textContent = activeRule;
       el = document.getElementById('heroRuleReason'); if (el) el.textContent = ruleReason;
       el = document.getElementById('heroPowerState'); if (el) el.textContent = powerState;
@@ -1032,20 +1151,18 @@
       el = document.getElementById('heroCountdown'); if (el) el.textContent = countdown;
       el = document.getElementById('heroSaving'); if (el) el.textContent = '$' + savings.toFixed(2);
 
-      setHeroControl(controlMode, controlOverride, checksText);
-
       if (chargeReady) {
-        setHeroDecision('heroDecisionPrice', 'Import \u2264 ' + chargeThreshold.toFixed(1) + '\u00a2', isCheap);
-        setHeroDecision('heroDecisionSoc', 'Battery SoC < ' + targetSoc + '%', hasHeadroom);
-        setHeroDecision('heroDecisionSolar', 'Solar forecast < 1.2kW', lowSolar);
+        setHeroDecision('heroDecisionPrice', 'Time 00:00-06:00', inOvernightWindow);
+        setHeroDecision('heroDecisionSoc', 'Battery SoC \u2264 80%', socDisplay <= 80);
+        setHeroDecision('heroDecisionSolar', 'Cloud cover avg \u2265 70% (24h)', nextDayCloud >= 70);
       } else if (exportReady) {
-        setHeroDecision('heroDecisionPrice', 'Import \u2265 ' + exportThreshold.toFixed(1) + '\u00a2', isExpensive);
-        setHeroDecision('heroDecisionSoc', 'Battery SoC > ' + exportReserveSoc + '%', hasReserve);
-        setHeroDecision('heroDecisionSolar', 'Peak window active', inPeakWindow);
+        setHeroDecision('heroDecisionPrice', 'Time 18:00-23:59', inEveningWindow);
+        setHeroDecision('heroDecisionSoc', 'Feed-in \u2265 8\u00a2 now', currentFeedIn >= 8);
+        setHeroDecision('heroDecisionSolar', 'Solar avg > 150 W/m\u00b2 (24h)', nextDaySolar > 150);
       } else {
-        setHeroDecision('heroDecisionPrice', 'Charge rule full match', chargeReady);
-        setHeroDecision('heroDecisionSoc', 'Peak export full match', exportReady);
-        setHeroDecision('heroDecisionSolar', 'Safety bounds satisfied', socDisplay >= minSocBound && socDisplay <= targetSoc);
+        setHeroDecision('heroDecisionPrice', 'Time 17:00-23:59', inEveningWindow);
+        setHeroDecision('heroDecisionSoc', 'Feed-in < 11\u00a2 now', currentFeedIn < 11);
+        setHeroDecision('heroDecisionSolar', 'Cloud cover avg < 85% (24h)', nextDayCloud < 85);
       }
       updateHeroChartMarker(priceIdx);
 
@@ -1053,6 +1170,12 @@
       heroRuntime.ruleReason = ruleReason;
       heroRuntime.price = currentPrice;
       heroRuntime.chargeKw = chargeKw;
+    }
+
+    function tickHeroCountdown() {
+      countdown = countdown <= 1 ? 60 : countdown - 1;
+      var el = document.getElementById('heroCountdown');
+      if (el) el.textContent = countdown;
     }
 
     if (chartHitEl && chartShellEl) {
@@ -1074,6 +1197,7 @@
     }
 
     updateHero();
+    setInterval(tickHeroCountdown, 1000);
     setInterval(updateHero, 2800);
 
     /* ── Hero toast ──────────────────────────────────── */
@@ -1171,4 +1295,5 @@
 
 </body>
 </html>
+
 

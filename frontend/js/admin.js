@@ -1131,10 +1131,6 @@
                     <div class="stat-subsection-title">System Context</div>
                     <div class="stat-grid">
                         <div class="stat-item">
-                            <div class="label">Timezone</div>
-                            <div class="value small">${cfg.timezone || 'Not set'}</div>
-                        </div>
-                        <div class="stat-item">
                             <div class="label">Location</div>
                             <div class="value small">${locationLabel}</div>
                         </div>
