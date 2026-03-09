@@ -545,8 +545,8 @@
         <div class="pricing-card pricing-card--community reveal">
           <span class="pricing-badge pricing-badge--community">Community Edition</span>
           <div class="pricing-card__name">Free</div>
-          <div class="pricing-card__price pricing-card__price--free">$<span>0</span><span class="pricing-card__price-sub">always</span></div>
-          <p class="pricing-card__desc">Everything SoCrates has to offer &mdash; no feature limits, no hidden upgrade gates.</p>
+          <div class="pricing-card__price pricing-card__price--free">$<span>0</span></div>
+          <p class="pricing-card__desc">Full SoCrates access, no feature limits, no hidden upgrade gates.</p>
           <ul class="pricing-features">
             <li>Unlimited automation rules</li>
             <li>Full community rules library</li>
@@ -740,6 +740,12 @@
     var priceIdx = 0;
     var savings = 2.60;
     var countdown = 58;
+    var heroRuntime = {
+      activeRule: 'Force Charge',
+      ruleReason: 'Cheap window matched',
+      price: prices[0],
+      chargeKw: 2.4
+    };
     var chargeThreshold = 8.5;
     var minSocBound = 25;
     var maxImportBound = 15.0;
@@ -985,6 +991,11 @@
       setHeroDecision('heroDecisionSoc', hasHeadroom);
       setHeroDecision('heroDecisionSolar', lowSolar);
       updateHeroChartMarker(priceIdx);
+
+      heroRuntime.activeRule = String(activeRule || '').replace(/^[^A-Za-z]+/, '').trim() || 'Automation';
+      heroRuntime.ruleReason = ruleReason;
+      heroRuntime.price = currentPrice;
+      heroRuntime.chargeKw = chargeKw;
     }
 
     if (chartHitEl && chartShellEl) {
@@ -1020,18 +1031,27 @@
       setTimeout(function () { toast.hidden = true; }, 5100);
     }
 
-    setTimeout(function () {
-      showToast('Automation ran', 'Force Charge \u00b7 8.2\u00a2/kWh \u00b7 SoC 76%');
-    }, 1800);
-
-    setInterval(function () {
+    function emitHeroToast() {
+      var priceText = Number(heroRuntime.price || 0).toFixed(1) + '\u00a2/kWh';
+      var socText = soc + '%';
+      var kwText = Number(heroRuntime.chargeKw || 0).toFixed(1) + ' kW';
+      var ruleText = heroRuntime.activeRule || 'Automation';
+      var reasonText = heroRuntime.ruleReason || 'Rule conditions evaluated';
       var msgs = [
-        ['Automation ran',    'Force Charge \u00b7 ' + prices[priceIdx] + '\u00a2/kWh \u00b7 SoC ' + soc + '%'],
-        ['Rule matched',      'Off-peak charge \u00b7 SoC now ' + soc + '%'],
-        ['Inverter updated',  'Mode: Force Charge \u00b7 3.0 kW'],
+        ['Automation ran', ruleText + ' \u00b7 ' + priceText + ' \u00b7 SoC ' + socText],
+        ['Rule matched', reasonText + ' \u00b7 ' + ruleText],
+        ['Inverter updated', 'Mode: ' + ruleText + ' \u00b7 ' + kwText],
       ];
       var m = msgs[Math.floor(Math.random() * msgs.length)];
       showToast(m[0], m[1]);
+    }
+
+    setTimeout(function () {
+      emitHeroToast();
+    }, 1800);
+
+    setInterval(function () {
+      emitHeroToast();
     }, 14000);
 
     /* ── Screenshot carousel ─────────────────────────── */
