@@ -125,26 +125,22 @@
             </div>
           </div>
 
-          <div class="hero-control-grid" aria-hidden="true">
-            <div class="control-card control-card--mode">
-              <div class="control-card__label">Automation Mode</div>
-              <div class="control-card__value" id="heroControlMode">Price-first auto</div>
-              <div class="control-card__sub">Evaluates every 60s</div>
+          <div class="hero-control-strip" aria-hidden="true">
+            <div class="hero-control-strip__item">
+              <span class="hero-control-strip__label">Mode</span>
+              <span class="hero-control-strip__value" id="heroControlMode">Price-first auto</span>
             </div>
-            <div class="control-card">
-              <div class="control-card__label">Manual Override</div>
-              <div class="control-card__value" id="heroControlOverride">Ready in 1 tap</div>
-              <div class="control-card__sub">Charge/discharge window: 5-30 min</div>
+            <div class="hero-control-strip__item">
+              <span class="hero-control-strip__label">Override</span>
+              <span class="hero-control-strip__value" id="heroControlOverride">Ready in 1 tap</span>
             </div>
-            <div class="control-card">
-              <div class="control-card__label">Safety Bounds</div>
-              <div class="control-card__value" id="heroControlBounds">Min SoC 25% &middot; Max import 15&cent;</div>
-              <div class="control-card__sub">Hard limits always enforced</div>
+            <div class="hero-control-strip__item">
+              <span class="hero-control-strip__label">Safety</span>
+              <span class="hero-control-strip__value" id="heroControlBounds">Min SoC 25% &middot; Max import 15&cent;</span>
             </div>
-            <div class="control-card">
-              <div class="control-card__label">Rule Stack</div>
-              <div class="control-card__value" id="heroControlRules">5 active &middot; priority order</div>
-              <div class="control-card__sub">First matching rule executes</div>
+            <div class="hero-control-strip__item hero-control-strip__item--status">
+              <span class="hero-control-strip__label">Checks</span>
+              <span class="hero-control-strip__value" id="heroControlRules">2/3 matched</span>
             </div>
           </div>
 
@@ -747,8 +743,13 @@
       chargeKw: 2.4
     };
     var chargeThreshold = 8.5;
+    var exportThreshold = 11.5;
     var minSocBound = 25;
     var maxImportBound = 15.0;
+    var targetSoc = 85;
+    var exportReserveSoc = 38;
+    var peakWindowStart = 8;
+    var peakWindowEnd = 11;
 
     var chartMinX = 24;
     var chartMaxX = 696;
@@ -799,7 +800,7 @@
       return idx;
     }
 
-    function setHeroControl(mode, overrideText, matchedCount) {
+    function setHeroControl(mode, overrideText, checksText) {
       var el = document.getElementById('heroControlMode');
       if (el) el.textContent = mode;
 
@@ -810,7 +811,7 @@
       if (el) el.textContent = 'Min SoC ' + minSocBound + '% \u00b7 Max import ' + maxImportBound.toFixed(0) + '\u00a2';
 
       el = document.getElementById('heroControlRules');
-      if (el) el.textContent = '5 active \u00b7 ' + matchedCount + '/3 checks matched';
+      if (el) el.textContent = checksText;
     }
 
     function renderHeroChartSeries() {
@@ -897,20 +898,20 @@
     function setChartTooltip(index, clientX) {
       if (!chartTooltipEl || !chartShellEl) return;
       var safe = (index + prices.length) % prices.length;
-      var delta = prices[safe] - chargeThreshold;
-      var direction = delta <= 0 ? 'below' : 'above';
+      var deltaCharge = prices[safe] - chargeThreshold;
+      var direction = deltaCharge <= 0 ? 'below' : 'above';
       var recommendation = 'Recommended: Self use';
 
-      if (delta <= 0) {
+      if (prices[safe] <= chargeThreshold) {
         recommendation = 'Recommended: Force charge';
-      } else if (delta >= 2) {
-        recommendation = 'Recommended: Hold / discharge';
+      } else if (prices[safe] >= exportThreshold) {
+        recommendation = 'Recommended: Peak export';
       }
 
       if (tooltipTimeEl) tooltipTimeEl.textContent = formatHourForIndex(safe);
       if (tooltipPriceEl) {
         tooltipPriceEl.textContent = prices[safe].toFixed(1) + '\u00a2/kWh \u00b7 ' +
-          Math.abs(delta).toFixed(1) + '\u00a2 ' + direction + ' charge line';
+          Math.abs(deltaCharge).toFixed(1) + '\u00a2 ' + direction + ' charge line';
       }
       if (tooltipActionEl) tooltipActionEl.textContent = recommendation;
 
@@ -923,9 +924,11 @@
 
     renderHeroChartSeries();
 
-    function setHeroDecision(id, matched) {
+    function setHeroDecision(id, label, matched) {
       var node = document.getElementById(id);
       if (!node) return;
+      var name = node.querySelector('.rule-decision__name');
+      if (name && typeof label === 'string' && label) name.textContent = label;
       node.classList.toggle('is-match', matched);
       node.classList.toggle('is-skip', !matched);
       var state = node.querySelector('.rule-decision__state');
@@ -933,51 +936,94 @@
     }
 
     function updateHero() {
-      soc = Math.min(soc + (Math.random() > 0.35 ? 1 : 0), 85);
       priceIdx = (priceIdx + 1) % prices.length;
       countdown = countdown <= 3 ? 60 : countdown - 3;
-      if (countdown === 60) savings = Math.round((savings + 0.12) * 100) / 100;
 
       var currentPrice = prices[priceIdx];
       var currentSolar = solarKw[priceIdx];
       var isCheap = currentPrice <= chargeThreshold;
-      var hasHeadroom = soc < 82;
+      var hasHeadroom = soc < (targetSoc - 1);
       var lowSolar = currentSolar < 1.2;
+      var chargeReady = isCheap && hasHeadroom && lowSolar;
 
-      var activeRule = '\u26a1 Force Charge';
-      var ruleReason = 'All charge conditions matched';
-      var powerState = '\u2191 Charging';
-      var chargeKw = 2.2 + (Math.random() * 0.6);
-      var controlMode = 'Price-first auto';
-      var controlOverride = 'Ready in 1 tap';
+      var isExpensive = currentPrice >= exportThreshold;
+      var hasReserve = soc > exportReserveSoc;
+      var inPeakWindow = priceIdx >= peakWindowStart && priceIdx <= peakWindowEnd;
+      var exportReady = isExpensive && hasReserve && inPeakWindow;
 
-      if (!hasHeadroom) {
-        activeRule = '\u267b\ufe0f Self Use';
-        ruleReason = 'Charge target reached';
-        powerState = '\u2195 Stabilising';
-        chargeKw = 0.4 + (Math.random() * 0.3);
-        controlMode = 'Target-protect self use';
-        controlOverride = 'Charge locked: target met';
-      } else if (!isCheap) {
-        activeRule = '\u267b\ufe0f Self Use';
-        ruleReason = 'Import price above threshold';
-        powerState = '\u2195 Holding';
-        chargeKw = 0.3 + (Math.random() * 0.3);
-        controlMode = 'Price shield mode';
-        controlOverride = 'Override available: discharge 10m';
-      } else if (!lowSolar) {
-        activeRule = '\u23f8 Hold';
-        ruleReason = 'Solar forecast strong soon';
-        powerState = '\u23f8 Paused';
-        chargeKw = 0.1 + (Math.random() * 0.2);
-        controlMode = 'Forecast-aware hold';
-        controlOverride = 'Override available: charge 15m';
+      var activeRule = '\u267b\ufe0f Self Use';
+      var ruleReason = 'No higher-priority rule fully matched';
+      var powerState = '\u2195 Balancing';
+      var chargeKw = 0.3 + (Math.random() * 0.5);
+      var controlMode = 'Autonomous balance';
+      var controlOverride = 'Manual override ready';
+      var checksText = 'Fallback active';
+      var socDelta = (Math.random() - 0.5) * 0.3;
+
+      if (chargeReady) {
+        activeRule = '\u26a1 Force Charge';
+        ruleReason = 'All charge conditions matched';
+        powerState = '\u2191 Charging';
+        chargeKw = 2.3 + (Math.random() * 0.8);
+        controlMode = 'Price-first auto';
+        controlOverride = 'Charge segment running';
+        checksText = '3/3 matched';
+        socDelta = 0.9 + (Math.random() * 0.5);
+      } else if (exportReady) {
+        activeRule = '\u26a1 Peak Export';
+        ruleReason = 'Peak export window fully matched';
+        powerState = '\u2198 Exporting';
+        chargeKw = 1.6 + (Math.random() * 0.8);
+        controlMode = 'Peak capture mode';
+        controlOverride = 'Discharge segment running';
+        checksText = '3/3 matched';
+        socDelta = -(0.8 + (Math.random() * 0.5));
+      } else {
+        if (isCheap && !hasHeadroom) {
+          ruleReason = 'Charge blocked: SoC target reached';
+          powerState = '\u2195 Stabilising';
+          controlMode = 'Target-protect mode';
+          controlOverride = 'Charge lock active';
+        } else if (isCheap && !lowSolar) {
+          ruleReason = 'Charge held: strong solar forecast';
+          powerState = '\u23f8 Paused';
+          controlMode = 'Forecast-aware hold';
+          controlOverride = 'Charge 15m ready';
+        } else if (isExpensive && hasReserve && !inPeakWindow) {
+          ruleReason = 'Peak pricing detected, window not active';
+          powerState = '\u2195 Holding';
+          controlMode = 'Price shield mode';
+          controlOverride = 'Discharge 10m ready';
+        } else if (isExpensive && !hasReserve) {
+          ruleReason = 'Export blocked: reserve SoC protected';
+          powerState = '\u2195 Reserve protect';
+          controlMode = 'Reserve protect mode';
+          controlOverride = 'Discharge lock active';
+        } else {
+          ruleReason = 'Monitoring for next full rule match';
+        }
+
+        if (currentSolar > 1.6 && soc < (targetSoc - 3)) {
+          socDelta += 0.35;
+        } else if (currentPrice > 10.8 && soc > (exportReserveSoc + 5)) {
+          socDelta -= 0.25;
+        }
       }
 
-      var matchedCount = (isCheap ? 1 : 0) + (hasHeadroom ? 1 : 0) + (lowSolar ? 1 : 0);
+      soc = Math.max(minSocBound, Math.min(targetSoc, soc + socDelta));
+      soc = Math.round(soc * 10) / 10;
+      var socDisplay = Math.round(soc);
+
+      var savingsDelta = 0;
+      if (chargeReady) savingsDelta += 0.03;
+      if (exportReady) savingsDelta += 0.08;
+      if (!chargeReady && !exportReady && currentPrice > 10.2 && socDisplay > (exportReserveSoc + 2)) {
+        savingsDelta += 0.02;
+      }
+      savings = Math.round((savings + savingsDelta) * 100) / 100;
 
       var el;
-      el = document.getElementById('heroSoc'); if (el) el.textContent = soc + '%';
+      el = document.getElementById('heroSoc'); if (el) el.textContent = socDisplay + '%';
       el = document.getElementById('heroPrice'); if (el) el.textContent = currentPrice.toFixed(1) + '\u00a2';
       el = document.getElementById('heroRule'); if (el) el.textContent = activeRule;
       el = document.getElementById('heroRuleReason'); if (el) el.textContent = ruleReason;
@@ -986,10 +1032,21 @@
       el = document.getElementById('heroCountdown'); if (el) el.textContent = countdown;
       el = document.getElementById('heroSaving'); if (el) el.textContent = '$' + savings.toFixed(2);
 
-      setHeroControl(controlMode, controlOverride, matchedCount);
-      setHeroDecision('heroDecisionPrice', isCheap);
-      setHeroDecision('heroDecisionSoc', hasHeadroom);
-      setHeroDecision('heroDecisionSolar', lowSolar);
+      setHeroControl(controlMode, controlOverride, checksText);
+
+      if (chargeReady) {
+        setHeroDecision('heroDecisionPrice', 'Import \u2264 ' + chargeThreshold.toFixed(1) + '\u00a2', isCheap);
+        setHeroDecision('heroDecisionSoc', 'Battery SoC < ' + targetSoc + '%', hasHeadroom);
+        setHeroDecision('heroDecisionSolar', 'Solar forecast < 1.2kW', lowSolar);
+      } else if (exportReady) {
+        setHeroDecision('heroDecisionPrice', 'Import \u2265 ' + exportThreshold.toFixed(1) + '\u00a2', isExpensive);
+        setHeroDecision('heroDecisionSoc', 'Battery SoC > ' + exportReserveSoc + '%', hasReserve);
+        setHeroDecision('heroDecisionSolar', 'Peak window active', inPeakWindow);
+      } else {
+        setHeroDecision('heroDecisionPrice', 'Charge rule full match', chargeReady);
+        setHeroDecision('heroDecisionSoc', 'Peak export full match', exportReady);
+        setHeroDecision('heroDecisionSolar', 'Safety bounds satisfied', socDisplay >= minSocBound && socDisplay <= targetSoc);
+      }
       updateHeroChartMarker(priceIdx);
 
       heroRuntime.activeRule = String(activeRule || '').replace(/^[^A-Za-z]+/, '').trim() || 'Automation';
@@ -1033,7 +1090,7 @@
 
     function emitHeroToast() {
       var priceText = Number(heroRuntime.price || 0).toFixed(1) + '\u00a2/kWh';
-      var socText = soc + '%';
+      var socText = Math.round(Number(soc || 0)) + '%';
       var kwText = Number(heroRuntime.chargeKw || 0).toFixed(1) + ' kW';
       var ruleText = heroRuntime.activeRule || 'Automation';
       var reasonText = heroRuntime.ruleReason || 'Rule conditions evaluated';
