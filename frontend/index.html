@@ -33,7 +33,7 @@
         <li><a href="#features">Features</a></li>
         <li><a href="#screenshots">Screenshots</a></li>
         <li><a href="#community">Community</a></li>
-        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#pricing">FREE</a></li>
         <li><a href="#faq">FAQ</a></li>
         <li><a href="/login.html" class="btn btn-ghost" style="padding:7px 18px;font-size:0.88rem;">Sign In</a></li>
         <li><a href="/login.html?tab=signup" class="btn btn-primary" style="padding:7px 18px;font-size:0.88rem;">Claim your spot</a></li>
@@ -796,7 +796,7 @@
         <li><a href="#how-it-works">How it works</a></li>
         <li><a href="#features">Features</a></li>
         <li><a href="#community">Community</a></li>
-        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#pricing">FREE</a></li>
         <li><a href="#faq">FAQ</a></li>
         <li><a href="/login.html">Sign In</a></li>
         <li><a href="mailto:socrates.team.comms@gmail.com">Contact</a></li>
@@ -1290,6 +1290,28 @@
     scGoTo(0);
     if (scTotal > 1) scAuto = setInterval(scAdvance, 4500);
 
+  })();
+  </script>
+
+  <!-- Firebase auth check: redirect already-signed-in users straight to the app -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js" defer></script>
+  <script src="/js/firebase-config.js" defer></script>
+  <script>
+  (function () {
+    window.addEventListener('load', function () {
+      try {
+        if (typeof firebase === 'undefined' || !window.firebaseConfig) return;
+        var app = firebase.apps.length ? firebase.apps[0] : firebase.initializeApp(window.firebaseConfig);
+        var auth = firebase.auth(app);
+        var unsub = auth.onAuthStateChanged(function (user) {
+          unsub();
+          if (user) {
+            window.location.replace('/app.html');
+          }
+        });
+      } catch (e) { /* silently ignore — landing page must work without auth */ }
+    });
   })();
   </script>
 
