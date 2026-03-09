@@ -103,7 +103,7 @@ async function listDocuments(pathName, token, pageSize = 200) {
   const docs = [];
   let pageToken = null;
 
-  while (true) {
+  do {
     const qs = new URLSearchParams();
     qs.set('pageSize', String(pageSize));
     if (pageToken) qs.set('pageToken', pageToken);
@@ -111,8 +111,7 @@ async function listDocuments(pathName, token, pageSize = 200) {
     const data = await fetchJson(url, token);
     if (Array.isArray(data.documents)) docs.push(...data.documents);
     pageToken = data.nextPageToken;
-    if (!pageToken) break;
-  }
+  } while (pageToken);
 
   return docs;
 }
