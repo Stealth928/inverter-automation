@@ -92,8 +92,8 @@ async function restoreUserConfig(userEmail, restoredConfig) {
   }
 }
 
-// Configuration to restore for sardanapalos928@hotmail.com
-const USER_EMAIL = 'sardanapalos928@hotmail.com';
+// Configuration to restore for socrates.team.comms@gmail.com
+const USER_EMAIL = 'socrates.team.comms@gmail.com';
 const RESTORED_CONFIG = {
   blackoutWindows: [
     {

@@ -50,6 +50,12 @@
             return Math.round(numeric * 1000);
         }
 
+        function withMsFallback(value, fallbackMs) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric) || numeric <= 0) return fallbackMs;
+            return Math.round(numeric);
+        }
+
         // Helper to format milliseconds to human-readable
         function formatMs(ms) {
             if (ms === null || ms === undefined || isNaN(ms)) return '?';
@@ -110,12 +116,12 @@
         // Load current settings from server
         async function reloadFromServer() {
             try {
-                showMessage('Reloading settings from server...', 'info');
+                showMessage('info', 'Reloading settings from server...');
                 await loadSettings();
-                showMessage('Settings reloaded from server successfully', 'success');
+                showMessage('success', 'Settings reloaded from server successfully');
             } catch (err) {
                 console.error('Error reloading settings:', err);
-                showMessage('Error reloading settings: ' + err.message, 'error');
+                showMessage('warning', 'Error reloading settings: ' + err.message);
             }
         }
 
@@ -168,17 +174,16 @@
                 // Helper to safely set input value
                 const setInput = (id, value) => setInputValue(id, value);
                 
-                // Automation
-                if (currentConfig.automation) {
-                    setInput('automation_intervalMs', currentConfig.automation.intervalMs);
-                }
-                
-                // Cache
-                if (currentConfig.cache) {
-                    setInput('cache_amber', currentConfig.cache.amber);
-                    setInput('cache_inverter', currentConfig.cache.inverter);
-                    setInput('cache_weather', currentConfig.cache.weather);
-                }
+                // Automation and cache: always render from server values when present, otherwise defaults.
+                const automationIntervalMs = withMsFallback(currentConfig.automation?.intervalMs, 60000);
+                const cacheAmberMs = withMsFallback(currentConfig.cache?.amber, 60000);
+                const cacheInverterMs = withMsFallback(currentConfig.cache?.inverter, 300000);
+                const cacheWeatherMs = withMsFallback(currentConfig.cache?.weather, 1800000);
+
+                setInput('automation_intervalMs', automationIntervalMs);
+                setInput('cache_amber', cacheAmberMs);
+                setInput('cache_inverter', cacheInverterMs);
+                setInput('cache_weather', cacheWeatherMs);
                 
                 // Defaults
                 if (currentConfig.defaults) {
@@ -368,7 +373,7 @@
                 // Fill in missing values from displayed inputs if not in server response
                 // This ensures originalConfig matches what was actually displayed to the user
                 if (originalConfig.automation.intervalMs === undefined || originalConfig.automation.intervalMs === null) {
-                    originalConfig.automation.intervalMs = getInputValue('automation_intervalMs') || 60000;
+                    originalConfig.automation.intervalMs = automationIntervalMs;
                 }
                 if (originalConfig.automation.startDelayMs === undefined || originalConfig.automation.startDelayMs === null) {
                     originalConfig.automation.startDelayMs = currentConfig?.automation?.startDelayMs ?? 5000;
@@ -378,13 +383,13 @@
                 }
                 
                 if (originalConfig.cache.amber === undefined || originalConfig.cache.amber === null) {
-                    originalConfig.cache.amber = getInputValue('cache_amber') || 60000;
+                    originalConfig.cache.amber = cacheAmberMs;
                 }
                 if (originalConfig.cache.inverter === undefined || originalConfig.cache.inverter === null) {
-                    originalConfig.cache.inverter = getInputValue('cache_inverter') || 300000;
+                    originalConfig.cache.inverter = cacheInverterMs;
                 }
                 if (originalConfig.cache.weather === undefined || originalConfig.cache.weather === null) {
-                    originalConfig.cache.weather = getInputValue('cache_weather') || 1800000;
+                    originalConfig.cache.weather = cacheWeatherMs;
                 }
                 
                 if (originalConfig.defaults.cooldownMinutes === undefined || originalConfig.defaults.cooldownMinutes === null) {
@@ -435,6 +440,16 @@
             }
         }
 
+        function clearInputValidationState(input) {
+            if (!input) return;
+            input.style.borderColor = '';
+            if (input.dataset?.validationError === '1' || input.title === 'Invalid number') {
+                input.title = '';
+            }
+            if (input.dataset) delete input.dataset.validationError;
+            input.removeAttribute('aria-invalid');
+        }
+
         function setInputValue(id, value) {
             const input = document.getElementById(id);
             if (input) {
@@ -443,6 +458,7 @@
                 } else {
                     input.value = value !== undefined && value !== null ? value : '';
                 }
+                clearInputValidationState(input);
             }
         }
 
@@ -1014,18 +1030,26 @@
             if (isNaN(value)) {
                 input.style.borderColor = 'var(--color-danger)';
                 input.title = 'Invalid number';
+                input.dataset.validationError = '1';
+                input.setAttribute('aria-invalid', 'true');
                 return false;
             }
             
             if (value < rules.min || value > rules.max) {
                 input.style.borderColor = 'var(--color-danger)';
                 input.title = rules.errorMsg;
+                input.dataset.validationError = '1';
+                input.setAttribute('aria-invalid', 'true');
                 return false;
             }
             
             // Valid
             input.style.borderColor = '';
-            input.title = '';
+            if (input.dataset.validationError === '1' || input.title === 'Invalid number' || input.title === rules.errorMsg) {
+                input.title = '';
+            }
+            delete input.dataset.validationError;
+            input.removeAttribute('aria-invalid');
             return true;
         }
 
@@ -1721,7 +1745,7 @@
         // WIP Pages visibility - Topology Discovery (admin only)
         if (typeof window.auth !== 'undefined' && window.auth) {
             window.auth.onAuthStateChanged((user) => {
-                if (user && user.email === 'sardanapalos928@hotmail.com') {
+                if (user && user.email === 'socrates.team.comms@gmail.com') {
                     const topologyLink = document.getElementById('topologyNavLink');
                     if (topologyLink) topologyLink.style.display = '';
                 }

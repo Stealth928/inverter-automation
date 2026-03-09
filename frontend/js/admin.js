@@ -1089,6 +1089,10 @@
         const batteryLabel = Number.isFinite(batteryCapacityKWh) && batteryCapacityKWh > 0
             ? `${batteryCapacityKWh.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} kWh`
             : 'Not set';
+        const locationLabel = (typeof cfg.location === 'string' && cfg.location.trim())
+            ? cfg.location.trim()
+            : 'Not set';
+        const tourStatusLabel = cfg.tourComplete ? '✅ Watched' : '❌ Not watched';
 
         const topologyCouplingRaw = (cfg.systemTopology && cfg.systemTopology.coupling)
             ? String(cfg.systemTopology.coupling).toLowerCase()
@@ -1101,38 +1105,61 @@
         let configHtml = `
             <div class="stat-section">
                 <div class="stat-section-title">Configuration</div>
-                <div class="stat-grid">
-                    <div class="stat-item">
-                        <div class="label">Device SN</div>
-                        <div class="value small">${cfg.hasDeviceSn ? '✅ Configured' : '❌ Missing'}</div>
+                <div class="stat-subsection">
+                    <div class="stat-subsection-title">Access & Integrations</div>
+                    <div class="stat-grid">
+                        <div class="stat-item">
+                            <div class="label">Device SN</div>
+                            <div class="value small">${cfg.hasDeviceSn ? '✅ Configured' : '❌ Missing'}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">FoxESS Token</div>
+                            <div class="value small">${cfg.hasFoxessToken ? '✅ Set' : '❌ Missing'}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Amber API Key</div>
+                            <div class="value small">${cfg.hasAmberApiKey ? '✅ Set' : '❌ Missing'}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Rules</div>
+                            <div class="value">${stats.ruleCount}</div>
+                        </div>
                     </div>
-                    <div class="stat-item">
-                        <div class="label">FoxESS Token</div>
-                        <div class="value small">${cfg.hasFoxessToken ? '✅ Set' : '❌ Missing'}</div>
+                </div>
+
+                <div class="stat-subsection">
+                    <div class="stat-subsection-title">System Context</div>
+                    <div class="stat-grid">
+                        <div class="stat-item">
+                            <div class="label">Timezone</div>
+                            <div class="value small">${cfg.timezone || 'Not set'}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Location</div>
+                            <div class="value small">${locationLabel}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Tour</div>
+                            <div class="value small">${tourStatusLabel}</div>
+                        </div>
                     </div>
-                    <div class="stat-item">
-                        <div class="label">Amber API Key</div>
-                        <div class="value small">${cfg.hasAmberApiKey ? '✅ Set' : '❌ Missing'}</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="label">Timezone</div>
-                        <div class="value small">${cfg.timezone || 'Not set'}</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="label">Inverter Size</div>
-                        <div class="value small">${inverterLabel}</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="label">Battery Size</div>
-                        <div class="value small">${batteryLabel}</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="label">System Topology</div>
-                        <div class="value small">${topologyCouplingLabel}</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="label">Rules</div>
-                        <div class="value">${stats.ruleCount}</div>
+                </div>
+
+                <div class="stat-subsection">
+                    <div class="stat-subsection-title">Sizing & Topology</div>
+                    <div class="stat-grid">
+                        <div class="stat-item">
+                            <div class="label">Inverter Size</div>
+                            <div class="value small">${inverterLabel}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Battery Size</div>
+                            <div class="value small">${batteryLabel}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">System Topology</div>
+                            <div class="value small">${topologyCouplingLabel}</div>
+                        </div>
                     </div>
                 </div>
             </div>`;

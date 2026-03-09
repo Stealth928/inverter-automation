@@ -120,37 +120,15 @@ test.describe('Control Page', () => {
   });
 
   test('should display responsive layout', async ({ page }) => {
-    // Helper to safely evaluate document state with retry
-    const safeCheckReady = async (maxRetries = 3) => {
-      for (let i = 0; i < maxRetries; i++) {
-        try {
-          const ready = await page.evaluate(() => document.readyState);
-          return ready;
-        } catch (e) {
-          if (i < maxRetries - 1) {
-            await page.waitForTimeout(100);
-          } else {
-            throw e;
-          }
-        }
-      }
-    };
-
-    // Desktop - ensure page finishes loading after resize
+    // Desktop
     await page.setViewportSize({ width: 1920, height: 1080 });
     await page.waitForLoadState('networkidle');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(400);
-    const desktopReady = await safeCheckReady();
-    expect(['complete', 'interactive', 'loaded']).toContain(desktopReady);
+    await expect(page.locator('body')).toBeVisible();
 
-    // Mobile - ensure page finishes loading after resize
+    // Mobile
     await page.setViewportSize({ width: 375, height: 667 });
     await page.waitForLoadState('networkidle');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(400);
-    const mobileReady = await safeCheckReady();
-    expect(['complete', 'interactive', 'loaded']).toContain(mobileReady);
+    await expect(page.locator('body')).toBeVisible();
   });
 
   test('should have cancel button in forms', async ({ page }) => {

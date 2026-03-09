@@ -364,6 +364,151 @@ describe('read-only route modules', () => {
     );
   });
 
+  test('inverter real-time endpoint auto-persists inferred topology when missing', async () => {
+    const realtimePayload = {
+      errno: 0,
+      result: [
+        {
+          datas: [
+            { variable: 'pvPower', value: 0 },
+            { variable: 'meterPower2', value: 850 }
+          ]
+        }
+      ]
+    };
+    const getCachedInverterRealtimeData = jest.fn(async () => realtimePayload);
+    const setUserConfig = jest.fn(async () => undefined);
+    const serverTimestamp = jest.fn(() => ({ __serverTimestamp: true }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-inverter' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({ deviceSn: 'SN-2' })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig,
+        serverTimestamp
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(realtimePayload);
+    expect(setUserConfig).toHaveBeenCalledTimes(1);
+    expect(setUserConfig).toHaveBeenCalledWith(
+      'u-inverter',
+      expect.objectContaining({
+        systemTopology: expect.objectContaining({
+          coupling: 'ac',
+          source: 'auto',
+          confidence: expect.any(Number),
+          refreshAfterMs: 4 * 60 * 60 * 1000,
+          lastDetectedAt: expect.any(Number),
+          updatedAt: { __serverTimestamp: true },
+          evidence: expect.objectContaining({
+            heuristic: 'pvPower~0 && meterPower2>0',
+            pvPower: 0
+          })
+        })
+      }),
+      { merge: true }
+    );
+  });
+
+  test('inverter real-time endpoint does not overwrite manual topology selection', async () => {
+    const realtimePayload = {
+      errno: 0,
+      result: [
+        {
+          datas: [
+            { variable: 'pvPower', value: 0 },
+            { variable: 'meterPower2', value: 900 }
+          ]
+        }
+      ]
+    };
+    const getCachedInverterRealtimeData = jest.fn(async () => realtimePayload);
+    const setUserConfig = jest.fn(async () => undefined);
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-inverter' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({
+          deviceSn: 'SN-2',
+          systemTopology: {
+            coupling: 'dc',
+            source: 'manual',
+            refreshAfterMs: 4 * 60 * 60 * 1000,
+            lastDetectedAt: Date.now()
+          }
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig,
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+    expect(response.statusCode).toBe(200);
+    expect(setUserConfig).not.toHaveBeenCalled();
+  });
+
+  test('inverter real-time endpoint skips topology write when auto topology is fresh and unchanged', async () => {
+    const realtimePayload = {
+      errno: 0,
+      result: [
+        {
+          datas: [
+            { variable: 'pvPower', value: 0.01 },
+            { variable: 'meterPower2', value: 0.7 }
+          ]
+        }
+      ]
+    };
+    const getCachedInverterRealtimeData = jest.fn(async () => realtimePayload);
+    const setUserConfig = jest.fn(async () => undefined);
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-inverter' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({
+          deviceSn: 'SN-2',
+          systemTopology: {
+            coupling: 'ac',
+            source: 'auto',
+            refreshAfterMs: 4 * 60 * 60 * 1000,
+            lastDetectedAt: Date.now()
+          }
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig,
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+    expect(response.statusCode).toBe(200);
+    expect(setUserConfig).not.toHaveBeenCalled();
+  });
+
   test('inverter generation endpoint enriches yearly generation from report data', async () => {
     const foxessAPI = {
       callFoxESSAPI: jest.fn(async (path) => {

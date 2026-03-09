@@ -116,19 +116,14 @@ test.describe('History Page', () => {
 
   test('should display responsive layout', async ({ page }) => {
     // Desktop
-      // Desktop - ensure page finishes loading after resize
-      await page.setViewportSize({ width: 1920, height: 1080 });
-      await page.waitForLoadState('networkidle');
-      await page.waitForTimeout(300);
-      const desktopReady = await page.evaluate(() => document.readyState);
-      expect(['complete', 'interactive', 'loaded']).toContain(desktopReady);
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('body')).toBeVisible();
 
-      // Mobile - ensure page finishes loading after resize
-      await page.setViewportSize({ width: 375, height: 667 });
-      await page.waitForLoadState('networkidle');
-      await page.waitForTimeout(300);
-      const mobileReady = await page.evaluate(() => document.readyState);
-      expect(['complete', 'interactive', 'loaded']).toContain(mobileReady);
+    // Mobile
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('body')).toBeVisible();
   });
 
   test('should sort history entries', async ({ page }) => {

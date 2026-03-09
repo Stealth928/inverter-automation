@@ -4,7 +4,7 @@
  * Tests for:
  * 1. Automation disabled - segments clearing (once only, not every cycle)
  * 2. ROI page profit calculation from captured prices
- * 3. Access control for ROI page (sardanapalos928@hotmail.com only)
+ * 3. Access control for ROI page (socrates.team.comms@gmail.com only)
  * 4. Amber price caching behavior
  * 5. Automation interval respecting during disable cycles
  * 6. Segment clearing flag persistence
@@ -282,8 +282,8 @@ describe('Recent Features - Automation Disabled Segment Clearing', () => {
   describe('ROI Page - Access Control', () => {
     
     test('should restrict ROI page to authorized user only', () => {
-      const ALLOWED_EMAIL = 'sardanapalos928@hotmail.com';
-      const authorizedUser = 'sardanapalos928@hotmail.com';
+      const ALLOWED_EMAIL = 'socrates.team.comms@gmail.com';
+      const authorizedUser = 'socrates.team.comms@gmail.com';
       const unauthorizedUser = 'other-user@gmail.com';
       
       const isAuthorized = (userEmail) => userEmail === ALLOWED_EMAIL;
@@ -296,7 +296,7 @@ describe('Recent Features - Automation Disabled Segment Clearing', () => {
     });
 
     test('should show lock page for unauthorized users', () => {
-      const ALLOWED_EMAIL = 'sardanapalos928@hotmail.com';
+      const ALLOWED_EMAIL = 'socrates.team.comms@gmail.com';
       const userEmail = 'other-user@gmail.com';
       
       if (userEmail !== ALLOWED_EMAIL) {

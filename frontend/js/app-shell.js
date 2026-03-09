@@ -229,7 +229,7 @@
             return;
         }
 
-        const seedAdminEmail = 'sardanapalos928@hotmail.com';
+        const seedAdminEmail = 'socrates.team.comms@gmail.com';
         const byEmail = !!(user.email && String(user.email).toLowerCase() === seedAdminEmail);
 
         // Apply a fast local decision first to avoid visual delay/flicker.
@@ -377,7 +377,7 @@
 
         if (contactUsBtn) {
             contactUsBtn.addEventListener('click', () => {
-                window.location.href = 'mailto:sardanapalos928@hotmail.com';
+                window.location.href = 'mailto:socrates.team.comms@gmail.com';
             });
         }
 

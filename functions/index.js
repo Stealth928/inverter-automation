@@ -834,7 +834,11 @@ registerInverterReadRoutes(app, {
   getCachedInverterRealtimeData,
   getUserConfig,
   adapterRegistry,
-  logger
+  logger,
+  normalizeCouplingValue,
+  DEFAULT_TOPOLOGY_REFRESH_MS,
+  serverTimestamp,
+  setUserConfig
 });
 
 registerDeviceReadRoutes(app, {

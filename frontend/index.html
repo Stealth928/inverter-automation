@@ -30,6 +30,7 @@
 
       <ul class="land-nav__links" id="navLinks" role="list">
         <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="#features">Features</a></li>
         <li><a href="#screenshots">Screenshots</a></li>
         <li><a href="#community">Community</a></li>
         <li><a href="#pricing">Pricing</a></li>
@@ -58,9 +59,9 @@
       </h1>
 
       <p class="land-hero__sub">
-        SoCrates evaluates your custom rules every 60 seconds — charging when prices are cheap,
-        exporting at peaks, and switching modes automatically.
-        Built by solar enthusiasts, trusted by 100+ Australian households.
+        SoCrates runs your custom rules at a cadence you choose — charging when prices are cheap,
+        exporting at peaks, and switching modes automatically. You set the logic, limits, and
+        priorities; SoCrates handles execution. Trusted by 150+ Australian households.
       </p>
 
       <div class="land-hero__actions">
@@ -124,6 +125,29 @@
             </div>
           </div>
 
+          <div class="hero-control-grid" aria-hidden="true">
+            <div class="control-card control-card--mode">
+              <div class="control-card__label">Automation Mode</div>
+              <div class="control-card__value" id="heroControlMode">Price-first auto</div>
+              <div class="control-card__sub">Evaluates every 60s</div>
+            </div>
+            <div class="control-card">
+              <div class="control-card__label">Manual Override</div>
+              <div class="control-card__value" id="heroControlOverride">Ready in 1 tap</div>
+              <div class="control-card__sub">Charge/discharge window: 5-30 min</div>
+            </div>
+            <div class="control-card">
+              <div class="control-card__label">Safety Bounds</div>
+              <div class="control-card__value" id="heroControlBounds">Min SoC 25% &middot; Max import 15&cent;</div>
+              <div class="control-card__sub">Hard limits always enforced</div>
+            </div>
+            <div class="control-card">
+              <div class="control-card__label">Rule Stack</div>
+              <div class="control-card__value" id="heroControlRules">5 active &middot; priority order</div>
+              <div class="control-card__sub">First matching rule executes</div>
+            </div>
+          </div>
+
           <div class="hero-rule-decisions" aria-hidden="true">
             <div class="rule-decision is-match" id="heroDecisionPrice">
               <span class="rule-decision__name">Import &lt; 8.5&cent;</span>
@@ -140,7 +164,14 @@
           </div>
 
           <div class="hero-preview__chart">
-            <div class="chart-title">24h Import Price &nbsp;<span class="chart-live-dot"></span></div>
+            <div class="chart-head">
+              <div class="chart-title">24h Import Price &nbsp;<span class="chart-live-dot"></span></div>
+              <div class="chart-kpis">
+                <span class="chart-kpi"><em>Now</em><strong id="heroChartNowPrice">8.2&cent;</strong></span>
+                <span class="chart-kpi"><em>Charge below</em><strong>8.5&cent;</strong></span>
+                <span class="chart-kpi"><em>Peak ahead</em><strong id="heroChartPeak">12.4&cent; @ 6pm</strong></span>
+              </div>
+            </div>
             <div class="chart-shell">
               <svg viewBox="0 0 720 240" preserveAspectRatio="xMidYMid meet" class="price-sparkline" aria-hidden="true">
                 <rect x="0" y="0" width="720" height="240" fill="url(#chartBgGrad)"/>
@@ -157,23 +188,37 @@
                 <line x1="24" y1="48" x2="696" y2="48" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
                 <line x1="24" y1="112" x2="696" y2="112" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
                 <line x1="24" y1="176" x2="696" y2="176" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
+                <line id="heroThresholdLine" x1="24" y1="140" x2="696" y2="140" stroke="rgba(126,231,135,.75)" stroke-width="2" stroke-dasharray="5 6"/>
+                <text id="heroThresholdLabel" x="690" y="134" text-anchor="end">Charge line 8.5&cent;</text>
                 <rect x="118" y="112" width="138" height="95" fill="rgba(46,160,67,.18)"/>
                 <rect x="490" y="70" width="190" height="137" fill="rgba(248,81,73,.14)"/>
+                <text x="126" y="122">Auto-charge window</text>
+                <text x="500" y="80">Peak risk window</text>
                 <path id="heroPriceArea" fill="url(#chartAreaGrad)" d=""/>
                 <polyline id="heroPriceLine" points="" fill="none" stroke="#58a6ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
                 <g id="heroChargeMarkers"></g>
+                <circle id="heroPeakDot" cx="348" cy="136" r="6" fill="#f85149" stroke="#0d1117" stroke-width="2"/>
                 <line id="heroNowLine" x1="348" y1="24" x2="348" y2="207" stroke="rgba(255,255,255,.35)" stroke-width="2" stroke-dasharray="6 6"/>
                 <circle id="heroNowDot" cx="348" cy="136" r="7" fill="#58a6ff" stroke="#0d1117" stroke-width="3"/>
                 <rect id="heroChartHit" x="24" y="24" width="672" height="183" fill="transparent"/>
+                <g class="chart-x-axis" aria-hidden="true">
+                  <text x="24" y="228">12am</text>
+                  <text x="188" y="228">6am</text>
+                  <text x="352" y="228">12pm</text>
+                  <text x="516" y="228">6pm</text>
+                  <text x="696" y="228" text-anchor="end">12am</text>
+                </g>
               </svg>
               <div class="chart-tooltip" id="heroChartTooltip" hidden>
                 <strong id="heroTooltipTime">10am</strong>
                 <span id="heroTooltipPrice">8.2&cent;/kWh</span>
+                <small id="heroTooltipAction">Recommended: Charge</small>
               </div>
             </div>
             <div class="chart-legend">
               <span><span class="legend-dot legend-dot--green"></span>Auto-charged</span>
               <span><span class="legend-dot legend-dot--blue"></span>Now (<span id="heroNowLabel">10am</span>)</span>
+              <span><span class="legend-line legend-line--threshold"></span>Charge threshold</span>
               <span><span class="legend-dot legend-dot--red"></span>Peak ahead</span>
             </div>
           </div>
@@ -204,7 +249,7 @@
 
       <span class="section-label">How it works</span>
       <h2 class="section-title" id="howTitle">Up and running in 5 minutes</h2>
-      <p class="section-sub">No electrician, no hardware changes, no code — just three steps.</p>
+      <p class="section-sub">No coding, no hardware changes, no home servers — just three steps.</p>
 
       <div class="how-steps">
 
@@ -392,12 +437,12 @@
           <div class="stat-item__label">automation cycle time</div>
         </div>
         <div class="stat-item reveal">
-          <div class="stat-item__val">100+</div>
+          <div class="stat-item__val">150+</div>
           <div class="stat-item__label">households already automating</div>
         </div>
         <div class="stat-item reveal">
-          <div class="stat-item__val">3</div>
-          <div class="stat-item__label">inverter brands supported</div>
+          <div class="stat-item__val">30</div>
+          <div class="stat-item__label">Library rules ready to import</div>
         </div>
         <div class="stat-item reveal">
           <div class="stat-item__val">5 min</div>
@@ -521,7 +566,7 @@
               <span class="pricing-spots__count">First 500 &mdash; free</span>
             </div>
             <div class="pricing-spots__bar" aria-hidden="true">
-              <div class="pricing-spots__fill" style="width: 22%"></div>
+              <div class="pricing-spots__fill" style="width: 47%"></div>
             </div>
           </div>
 
@@ -548,14 +593,14 @@
 
       <span class="section-label">FAQ</span>
       <h2 class="section-title" id="faqTitle">Common questions</h2>
-      <p class="section-sub">Can't find an answer? <a href="mailto:sardanapalos928@hotmail.com">Send us a message</a>.</p>
+      <p class="section-sub">Can't find an answer? <a href="mailto:socrates.team.comms@gmail.com">Send us a message</a>.</p>
 
       <dl class="faq-list">
 
         <div class="faq-item">
           <details>
             <summary>Which inverter brands are supported?</summary>
-            <div class="faq-item__body"><strong>FoxESS</strong> is fully supported today. <strong>Sigenergy</strong> and <strong>SunGrow</strong> integration is in development and coming soon. More brands are on the roadmap — <a href="mailto:sardanapalos928@hotmail.com">let us know</a> which you'd like to see next.</div>
+            <div class="faq-item__body"><strong>FoxESS</strong> is fully supported today. <strong>Sigenergy</strong> and <strong>SunGrow</strong> integration is in development and coming soon. More brands are on the roadmap — <a href="mailto:socrates.team.comms@gmail.com">let us know</a> which you'd like to see next.</div>
           </details>
         </div>
 
@@ -614,7 +659,7 @@
       <span class="section-label" style="color:rgba(255,255,255,.5);">Claim your spot</span>
       <h2 class="section-title" id="ctaTitle">Join the community. Claim your free spot.</h2>
       <p class="section-sub" style="color:rgba(255,255,255,.65);">
-        100+ households are already running SoCrates. The first 500 sign-ups get full access free &mdash; no credit card, no catch, no expiry.
+        150+ households are already running SoCrates. The first 500 sign-ups get full access free &mdash; no credit card, no catch, no expiry.
       </p>
       <div class="land-cta__actions">
         <a href="/login.html?tab=signup" class="btn btn-primary btn-lg">Claim your free spot &#8594;</a>
@@ -639,7 +684,7 @@
         <li><a href="#pricing">Pricing</a></li>
         <li><a href="#faq">FAQ</a></li>
         <li><a href="/login.html">Sign In</a></li>
-        <li><a href="mailto:sardanapalos928@hotmail.com">Contact</a></li>
+        <li><a href="mailto:socrates.team.comms@gmail.com">Contact</a></li>
       </ul>
       <span>&copy; <span id="footerYear"></span> SoCrates. All rights reserved.</span>
     </div>
@@ -689,27 +734,35 @@
     }
 
     /* ── Hero live data ticker ───────────────────────── */
-    var soc      = 76;
-    var prices   = [8.6, 8.2, 7.9, 7.6, 7.8, 8.1, 8.5, 9.4, 11.2, 12.4, 11.0, 9.6, 8.8, 8.2];
-    var solarKw  = [0.5, 0.4, 0.3, 0.2, 0.3, 0.6, 1.0, 1.8, 2.4, 2.1, 1.4, 1.0, 0.7, 0.5];
+    var soc = 76;
+    var prices = [8.6, 8.2, 7.9, 7.6, 7.8, 8.1, 8.5, 9.4, 11.2, 12.4, 11.0, 9.6, 8.8, 8.2];
+    var solarKw = [0.5, 0.4, 0.3, 0.2, 0.3, 0.6, 1.0, 1.8, 2.4, 2.1, 1.4, 1.0, 0.7, 0.5];
     var priceIdx = 0;
-    var savings  = 2.60;
+    var savings = 2.60;
     var countdown = 58;
+    var chargeThreshold = 8.5;
+    var minSocBound = 25;
+    var maxImportBound = 15.0;
 
     var chartMinX = 24;
     var chartMaxX = 696;
     var chartMinY = 32;
     var chartMaxY = 192;
+    var chartSvgWidth = 720;
     var chartLineEl = document.getElementById('heroPriceLine');
     var chartAreaEl = document.getElementById('heroPriceArea');
     var chartNowLineEl = document.getElementById('heroNowLine');
     var chartNowDotEl = document.getElementById('heroNowDot');
+    var chartPeakDotEl = document.getElementById('heroPeakDot');
+    var chartThresholdLineEl = document.getElementById('heroThresholdLine');
+    var chartThresholdLabelEl = document.getElementById('heroThresholdLabel');
     var chartMarkersEl = document.getElementById('heroChargeMarkers');
     var chartHitEl = document.getElementById('heroChartHit');
     var chartShellEl = document.querySelector('.chart-shell');
     var chartTooltipEl = document.getElementById('heroChartTooltip');
     var tooltipTimeEl = document.getElementById('heroTooltipTime');
     var tooltipPriceEl = document.getElementById('heroTooltipPrice');
+    var tooltipActionEl = document.getElementById('heroTooltipAction');
 
     function chartXForIndex(i) {
       if (prices.length <= 1) return chartMinX;
@@ -717,8 +770,9 @@
     }
 
     function chartYForPrice(v) {
-      var minP = Math.min.apply(null, prices) - 0.4;
-      var maxP = Math.max.apply(null, prices) + 0.4;
+      var pricePool = prices.concat([chargeThreshold]);
+      var minP = Math.min.apply(null, pricePool) - 0.4;
+      var maxP = Math.max.apply(null, pricePool) + 0.4;
       var t = (v - minP) / (maxP - minP);
       return chartMaxY - (t * (chartMaxY - chartMinY));
     }
@@ -729,6 +783,28 @@
       var display = hour % 12;
       if (display === 0) display = 12;
       return display + suffix;
+    }
+
+    function getPeakIndex() {
+      var idx = 0;
+      prices.forEach(function (price, i) {
+        if (price > prices[idx]) idx = i;
+      });
+      return idx;
+    }
+
+    function setHeroControl(mode, overrideText, matchedCount) {
+      var el = document.getElementById('heroControlMode');
+      if (el) el.textContent = mode;
+
+      el = document.getElementById('heroControlOverride');
+      if (el) el.textContent = overrideText;
+
+      el = document.getElementById('heroControlBounds');
+      if (el) el.textContent = 'Min SoC ' + minSocBound + '% \u00b7 Max import ' + maxImportBound.toFixed(0) + '\u00a2';
+
+      el = document.getElementById('heroControlRules');
+      if (el) el.textContent = '5 active \u00b7 ' + matchedCount + '/3 checks matched';
     }
 
     function renderHeroChartSeries() {
@@ -750,12 +826,12 @@
 
       if (chartMarkersEl) {
         chartMarkersEl.innerHTML = '';
-        [2, 3, 4].forEach(function (idx) {
-          if (!pts[idx]) return;
+        pts.forEach(function (pt) {
+          if (pt.p > chargeThreshold) return;
           var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          c.setAttribute('cx', pts[idx].x.toFixed(2));
-          c.setAttribute('cy', pts[idx].y.toFixed(2));
-          c.setAttribute('r', '5');
+          c.setAttribute('cx', pt.x.toFixed(2));
+          c.setAttribute('cy', pt.y.toFixed(2));
+          c.setAttribute('r', '4.5');
           c.setAttribute('fill', '#7ee787');
           c.setAttribute('stroke', '#0d1117');
           c.setAttribute('stroke-width', '2');
@@ -764,32 +840,77 @@
       }
     }
 
+    function updateHeroChartContext(index) {
+      var safe = (index + prices.length) % prices.length;
+      var peakIdx = getPeakIndex();
+      var nowPrice = prices[safe];
+      var peakPrice = prices[peakIdx];
+      var thresholdY = chartYForPrice(chargeThreshold);
+
+      if (chartThresholdLineEl) {
+        chartThresholdLineEl.setAttribute('y1', thresholdY.toFixed(2));
+        chartThresholdLineEl.setAttribute('y2', thresholdY.toFixed(2));
+      }
+      if (chartThresholdLabelEl) {
+        var labelY = Math.max(20, Math.min(chartMaxY - 8, thresholdY - 6));
+        chartThresholdLabelEl.setAttribute('y', labelY.toFixed(2));
+        chartThresholdLabelEl.textContent = 'Charge line ' + chargeThreshold.toFixed(1) + '\u00a2';
+      }
+      if (chartPeakDotEl) {
+        chartPeakDotEl.setAttribute('cx', chartXForIndex(peakIdx).toFixed(2));
+        chartPeakDotEl.setAttribute('cy', chartYForPrice(peakPrice).toFixed(2));
+      }
+
+      var el = document.getElementById('heroChartNowPrice');
+      if (el) el.textContent = nowPrice.toFixed(1) + '\u00a2';
+
+      el = document.getElementById('heroChartPeak');
+      if (el) el.textContent = peakPrice.toFixed(1) + '\u00a2 @ ' + formatHourForIndex(peakIdx);
+    }
+
     function updateHeroChartMarker(index) {
       var safe = (index + prices.length) % prices.length;
       var x = chartXForIndex(safe);
       var y = chartYForPrice(prices[safe]);
 
       if (chartNowLineEl) {
-        chartNowLineEl.setAttribute('x1', String(x));
-        chartNowLineEl.setAttribute('x2', String(x));
+        chartNowLineEl.setAttribute('x1', x.toFixed(2));
+        chartNowLineEl.setAttribute('x2', x.toFixed(2));
       }
       if (chartNowDotEl) {
-        chartNowDotEl.setAttribute('cx', String(x));
-        chartNowDotEl.setAttribute('cy', String(y));
+        chartNowDotEl.setAttribute('cx', x.toFixed(2));
+        chartNowDotEl.setAttribute('cy', y.toFixed(2));
       }
 
       var nowEl = document.getElementById('heroNowLabel');
       if (nowEl) nowEl.textContent = formatHourForIndex(safe);
+
+      updateHeroChartContext(safe);
     }
 
     function setChartTooltip(index, clientX) {
       if (!chartTooltipEl || !chartShellEl) return;
       var safe = (index + prices.length) % prices.length;
+      var delta = prices[safe] - chargeThreshold;
+      var direction = delta <= 0 ? 'below' : 'above';
+      var recommendation = 'Recommended: Self use';
+
+      if (delta <= 0) {
+        recommendation = 'Recommended: Force charge';
+      } else if (delta >= 2) {
+        recommendation = 'Recommended: Hold / discharge';
+      }
+
       if (tooltipTimeEl) tooltipTimeEl.textContent = formatHourForIndex(safe);
-      if (tooltipPriceEl) tooltipPriceEl.textContent = prices[safe].toFixed(1) + '\u00a2/kWh';
+      if (tooltipPriceEl) {
+        tooltipPriceEl.textContent = prices[safe].toFixed(1) + '\u00a2/kWh \u00b7 ' +
+          Math.abs(delta).toFixed(1) + '\u00a2 ' + direction + ' charge line';
+      }
+      if (tooltipActionEl) tooltipActionEl.textContent = recommendation;
 
       var shellRect = chartShellEl.getBoundingClientRect();
-      var offsetX = Math.max(16, Math.min(shellRect.width - 92, clientX - shellRect.left));
+      var tooltipWidth = chartTooltipEl.offsetWidth || 170;
+      var offsetX = Math.max(16, Math.min(shellRect.width - tooltipWidth - 10, clientX - shellRect.left - (tooltipWidth / 2)));
       chartTooltipEl.style.left = offsetX + 'px';
       chartTooltipEl.hidden = false;
     }
@@ -813,54 +934,66 @@
 
       var currentPrice = prices[priceIdx];
       var currentSolar = solarKw[priceIdx];
-      var isCheap = currentPrice <= 8.5;
+      var isCheap = currentPrice <= chargeThreshold;
       var hasHeadroom = soc < 82;
       var lowSolar = currentSolar < 1.2;
 
       var activeRule = '\u26a1 Force Charge';
       var ruleReason = 'All charge conditions matched';
-        var powerState = '\u2191 Charging';
-        var chargeKw = 2.2 + (Math.random() * 0.6);
+      var powerState = '\u2191 Charging';
+      var chargeKw = 2.2 + (Math.random() * 0.6);
+      var controlMode = 'Price-first auto';
+      var controlOverride = 'Ready in 1 tap';
 
-        if (!hasHeadroom) {
-          activeRule = '\u267b\ufe0f Self Use';
-          ruleReason = 'Charge target reached';
-          powerState = '\u2195 Stabilising';
-          chargeKw = 0.4 + (Math.random() * 0.3);
-        } else if (!isCheap) {
-          activeRule = '\u267b\ufe0f Self Use';
-          ruleReason = 'Import price above threshold';
-          powerState = '\u2195 Holding';
-          chargeKw = 0.3 + (Math.random() * 0.3);
-        } else if (!lowSolar) {
-          activeRule = '\u23f8 Hold';
-          ruleReason = 'Solar forecast strong soon';
-          powerState = '\u23f8 Paused';
-          chargeKw = 0.1 + (Math.random() * 0.2);
-        }
+      if (!hasHeadroom) {
+        activeRule = '\u267b\ufe0f Self Use';
+        ruleReason = 'Charge target reached';
+        powerState = '\u2195 Stabilising';
+        chargeKw = 0.4 + (Math.random() * 0.3);
+        controlMode = 'Target-protect self use';
+        controlOverride = 'Charge locked: target met';
+      } else if (!isCheap) {
+        activeRule = '\u267b\ufe0f Self Use';
+        ruleReason = 'Import price above threshold';
+        powerState = '\u2195 Holding';
+        chargeKw = 0.3 + (Math.random() * 0.3);
+        controlMode = 'Price shield mode';
+        controlOverride = 'Override available: discharge 10m';
+      } else if (!lowSolar) {
+        activeRule = '\u23f8 Hold';
+        ruleReason = 'Solar forecast strong soon';
+        powerState = '\u23f8 Paused';
+        chargeKw = 0.1 + (Math.random() * 0.2);
+        controlMode = 'Forecast-aware hold';
+        controlOverride = 'Override available: charge 15m';
+      }
+
+      var matchedCount = (isCheap ? 1 : 0) + (hasHeadroom ? 1 : 0) + (lowSolar ? 1 : 0);
 
       var el;
-      el = document.getElementById('heroSoc');      if (el) el.textContent = soc + '%';
-      el = document.getElementById('heroPrice');    if (el) el.textContent = currentPrice.toFixed(1) + '\u00a2';
-      el = document.getElementById('heroRule');     if (el) el.textContent = activeRule;
+      el = document.getElementById('heroSoc'); if (el) el.textContent = soc + '%';
+      el = document.getElementById('heroPrice'); if (el) el.textContent = currentPrice.toFixed(1) + '\u00a2';
+      el = document.getElementById('heroRule'); if (el) el.textContent = activeRule;
       el = document.getElementById('heroRuleReason'); if (el) el.textContent = ruleReason;
       el = document.getElementById('heroPowerState'); if (el) el.textContent = powerState;
       el = document.getElementById('heroChargeW'); if (el) el.textContent = chargeKw.toFixed(1);
-      el = document.getElementById('heroCountdown');if (el) el.textContent = countdown;
-      el = document.getElementById('heroSaving');   if (el) el.textContent = '$' + savings.toFixed(2);
+      el = document.getElementById('heroCountdown'); if (el) el.textContent = countdown;
+      el = document.getElementById('heroSaving'); if (el) el.textContent = '$' + savings.toFixed(2);
 
+      setHeroControl(controlMode, controlOverride, matchedCount);
       setHeroDecision('heroDecisionPrice', isCheap);
       setHeroDecision('heroDecisionSoc', hasHeadroom);
       setHeroDecision('heroDecisionSolar', lowSolar);
-
       updateHeroChartMarker(priceIdx);
     }
 
     if (chartHitEl && chartShellEl) {
       chartHitEl.addEventListener('mousemove', function (e) {
         var rect = chartShellEl.getBoundingClientRect();
-        var relX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-        var t = rect.width === 0 ? 0 : relX / rect.width;
+        var contentStart = rect.width * (chartMinX / chartSvgWidth);
+        var contentEnd = rect.width * (chartMaxX / chartSvgWidth);
+        var relX = Math.max(contentStart, Math.min(contentEnd, e.clientX - rect.left));
+        var t = (relX - contentStart) / Math.max(1, (contentEnd - contentStart));
         var hoverIdx = Math.round(t * (prices.length - 1));
         updateHeroChartMarker(hoverIdx);
         setChartTooltip(hoverIdx, e.clientX);
@@ -961,3 +1094,4 @@
 
 </body>
 </html>
+
