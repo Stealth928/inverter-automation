@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
+
 function buildDefaultSchedulerGroups() {
   return Array.from({ length: 10 }).map(() => ({
     startHour: 0,
@@ -43,7 +45,7 @@ function registerSchedulerReadRoutes(app, deps = {}) {
       const userConfig = await getUserConfig(req.user?.uid);
       const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
       const deviceAdapter = adapterRegistry ? adapterRegistry.getDeviceProvider(provider) : null;
-      const sn = req.query.sn || userConfig?.sungrowDeviceSn || userConfig?.deviceSn;
+      const sn = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
 
       if (!sn) {
         return res.json({ errno: 0, result: { groups: buildDefaultSchedulerGroups(), enable: false }, source: 'defaults' });

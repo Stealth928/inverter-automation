@@ -647,8 +647,8 @@ function safeRedirect(target, maxBounceMs = 5000) {
     const key = 'lastRedirect';
     const normalize = (p) => {
       if (!p) return p;
-      // Normalize root to index.html to avoid mismatch between '/' and '/index.html'
-      if (p === '/' || p === '') return '/index.html';
+      // Normalize root to app.html to avoid mismatch between '/' and '/app.html'
+      if (p === '/' || p === '') return '/app.html';
       return p.replace(/\/$/, ''); // remove trailing slash
     };
     const raw = sessionStorage.getItem(key);

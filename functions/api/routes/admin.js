@@ -1083,6 +1083,8 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
           batteryCapacityKWh: Number.isFinite(Number(c.batteryCapacityKWh)) ? Number(c.batteryCapacityKWh) : null,
           location: c.location || null,
           timezone: c.timezone || null,
+          tourComplete: !!c.tourComplete,
+          tourCompletedAt: c.tourCompletedAt || null,
           systemTopology: normalizedSystemTopology
         };
       }

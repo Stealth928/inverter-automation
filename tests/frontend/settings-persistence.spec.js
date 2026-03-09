@@ -7,6 +7,19 @@ const { test, expect } = require('@playwright/test');
  * and survive page reloads (not just UI validation).
  */
 
+async function reloadSettingsPage(page) {
+  try {
+    await page.reload({ waitUntil: 'domcontentloaded' });
+  } catch (error) {
+    const message = String(error && error.message ? error.message : error);
+    const isReloadRace = /ERR_ABORTED|Execution context was destroyed|frame was detached|Target closed/i.test(message);
+    if (!isReloadRace) throw error;
+    await page.goto('/settings.html', { waitUntil: 'domcontentloaded' });
+  }
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(500);
+}
+
 test.describe('Settings Page - Data Persistence', () => {
   
   test.beforeEach(async ({ page }) => {
@@ -188,9 +201,7 @@ test.describe('Settings Page - Data Persistence', () => {
         await page.waitForTimeout(1500);
         
         // Reload the page
-        await page.reload();
-        await page.waitForLoadState('networkidle');
-        await page.waitForTimeout(500);
+        await reloadSettingsPage(page);
         
         // Check that the field still shows the new location
         const reloadedValue = await page.locator('#preferences_weatherPlace').inputValue();
@@ -290,9 +301,7 @@ test.describe('Settings Page - Data Persistence', () => {
         await page.waitForTimeout(1500);
         
         // Reload
-        await page.reload();
-        await page.waitForLoadState('networkidle');
-        await page.waitForTimeout(500);
+        await reloadSettingsPage(page);
         
         // Verify value persisted
         const reloadedValue = await page.locator('#automation_intervalMs').inputValue();
@@ -411,9 +420,7 @@ test.describe('Settings Page - Data Persistence', () => {
       await page.waitForTimeout(1500);
       
       // Reload
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      await page.waitForTimeout(500);
+      await reloadSettingsPage(page);
       
       // Verify all persisted
       const locationValue = await page.locator('#preferences_weatherPlace').inputValue();
@@ -462,9 +469,7 @@ test.describe('Settings Page - Data Persistence', () => {
     });
     
     // Reload to get fresh config
-    await page.reload();
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(500);
+    await reloadSettingsPage(page);
     
     // UI currently prioritizes top-level location over preferences.weatherPlace
     // (see settings page load logic comments).

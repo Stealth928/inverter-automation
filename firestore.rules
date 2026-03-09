@@ -42,6 +42,15 @@ service cloud.firestore {
     match /users/{userId}/config/{configId} {
       allow read, write: if isOwner(userId);
     }
+
+    // ==================== USER SECRETS ====================
+    // Per-user provider passwords: /users/{userId}/secrets/{secretId}
+    // Clients can WRITE (submit credentials) but NEVER READ them back.
+    // Cloud Functions use the Admin SDK which bypasses these rules.
+    match /users/{userId}/secrets/{secretId} {
+      allow write: if isOwner(userId);
+      allow read: if false; // Admin SDK only — prevents client-side credential exfiltration
+    }
     
     // ==================== USER AUTOMATION STATE ====================
     // Per-user automation state: /users/{userId}/automation/{docId}
@@ -145,8 +154,12 @@ service cloud.firestore {
     }
 
     // ==================== SHARED SERVER CONFIG ====================
-    // Shared collection holds only non-sensitive server configuration:
-    // - shared/serverConfig: FoxESS/Amber/Weather config from unauthenticated setup - admin only
+    // shared/serverConfig: non-sensitive config from unauthenticated setup (readable by authenticated users)
+    // shared/serverCredentials: provider passwords — Cloud Functions (Admin SDK) only, never from client
+    match /shared/serverCredentials {
+      allow read: if false;  // Admin SDK only — passwords are never returned to any client
+      allow write: if false; // Only Cloud Functions (Admin SDK) can write
+    }
     match /shared/{docId} {
       allow read: if isAuthenticated();
       allow write: if false; // Only Cloud Functions (Admin SDK) can write - NEVER from client

@@ -2,6 +2,7 @@
 
 const { buildClearedSchedulerGroups } = require('../../lib/automation-actions');
 const { clearSchedulerSegments } = require('../../lib/services/scheduler-segment-service');
+const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
 
 function registerSchedulerMutationRoutes(app, deps = {}) {
   const addHistoryEntry = deps.addHistoryEntry;
@@ -33,7 +34,8 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
       const userConfig = await getUserConfig(req.user.uid);
       const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
       const deviceAdapter = adapterRegistry ? adapterRegistry.getDeviceProvider(provider) : null;
-      const deviceSN = req.body.sn || req.body.deviceSN || userConfig?.sungrowDeviceSn || userConfig?.deviceSn;
+      const explicitDeviceId = req.body.sn || req.body.deviceSN;
+      const deviceSN = resolveProviderDeviceId(userConfig, explicitDeviceId).deviceId;
       const groups = req.body.groups || [];
 
       if (!deviceSN) {
@@ -83,7 +85,8 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
       const userConfig = await getUserConfig(userId);
       const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
       const deviceAdapter = adapterRegistry ? adapterRegistry.getDeviceProvider(provider) : null;
-      const deviceSN = req.body.sn || req.body.deviceSN || userConfig?.sungrowDeviceSn || userConfig?.deviceSn;
+      const explicitDeviceId = req.body.sn || req.body.deviceSN;
+      const deviceSN = resolveProviderDeviceId(userConfig, explicitDeviceId).deviceId;
 
       if (!deviceSN) {
         return res.status(400).json({ errno: 400, error: 'Device SN not configured' });

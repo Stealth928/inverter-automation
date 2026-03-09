@@ -7,8 +7,30 @@
       onReady: () => {
         try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch(e) {}
         // Work mode loading disabled - user can fetch manually via "Check Current" button
+        initProviderUI();
       }
     });
+
+    /** Hide FoxESS-only cards and options for non-FoxESS providers. */
+    async function initProviderUI() {
+      try {
+        const statusRes = await window.apiClient.getSetupStatus();
+        const provider = statusRes?.result?.deviceProvider || 'foxess';
+        if (provider !== 'foxess') {
+          const socCard = document.getElementById('card-battery-soc');
+          const fcCard = document.getElementById('card-force-charge');
+          if (socCard) socCard.style.display = 'none';
+          if (fcCard) fcCard.style.display = 'none';
+        }
+        if (provider === 'sigenergy') {
+          // SigenEnergy does not support Backup work mode
+          const backupOpt = document.querySelector('select[name="workMode"] option[data-foxess-sungrow-only]');
+          if (backupOpt) backupOpt.remove();
+        }
+      } catch (e) {
+        // Ignore errors — if setup status is unavailable, show all controls
+      }
+    }
 
     function showStatus(formId, message, type = 'info') {
       const statusEl = document.getElementById(`status-${formId}`);
@@ -466,7 +488,7 @@
     // WIP Pages visibility - Topology Discovery (admin only)
     if (typeof window.auth !== 'undefined' && window.auth) {
       window.auth.onAuthStateChanged((user) => {
-        if (user && user.email === 'sardanapalos928@hotmail.com') {
+        if (user && user.email === 'socrates.team.comms@gmail.com') {
           const topologyLink = document.getElementById('topologyNavLink');
           if (topologyLink) topologyLink.style.display = '';
         }

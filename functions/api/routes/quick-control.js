@@ -1,11 +1,14 @@
 'use strict';
 
+const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
+
 function registerQuickControlRoutes(app, deps = {}) {
   const addHistoryEntry = deps.addHistoryEntry;
   const addMinutes = deps.addMinutes;
   const authenticateUser = deps.authenticateUser;
   const cleanupExpiredQuickControl = deps.cleanupExpiredQuickControl;
   const foxessAPI = deps.foxessAPI;
+  const adapterRegistry = deps.adapterRegistry || null;
   const getAutomationTimezone = deps.getAutomationTimezone;
   const getQuickControlState = deps.getQuickControlState;
   const getUserConfig = deps.getUserConfig;
@@ -82,10 +85,15 @@ function registerQuickControlRoutes(app, deps = {}) {
       logger.debug('QuickControl', `Start requested: type=${type}, power=${power}W, duration=${durationMinutes}min, userId=${userId}`);
 
       const userConfig = await getUserConfig(userId);
-      if (!userConfig || !userConfig.deviceSn) {
+      const resolvedDevice = resolveProviderDeviceId(userConfig);
+      const provider = resolvedDevice.provider;
+      const deviceSN = resolvedDevice.deviceId;
+      if (!deviceSN) {
         return res.status(400).json({ errno: 400, error: 'Device serial number not configured' });
       }
-      const deviceSN = userConfig.deviceSn;
+      const deviceAdapter = provider !== 'foxess' && adapterRegistry
+        ? adapterRegistry.getDeviceProvider(provider)
+        : null;
 
       const userTimezone = getAutomationTimezone(userConfig);
       const userTime = getUserTime(userTimezone);
@@ -152,11 +160,19 @@ function registerQuickControlRoutes(app, deps = {}) {
       while (attempts < maxAttempts) {
         try {
           attempts++;
-          logger.debug('QuickControl', `Attempt ${attempts}/${maxAttempts}: Calling FoxESS API...`);
-          result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', {
-            deviceSN,
-            groups
-          }, userConfig, userId);
+          if (provider !== 'foxess') {
+            if (!deviceAdapter || typeof deviceAdapter.setSchedule !== 'function') {
+              return res.status(400).json({ errno: 400, error: `Not supported for provider: ${provider}` });
+            }
+            logger.debug('QuickControl', `Attempt ${attempts}/${maxAttempts}: Calling provider adapter...`);
+            result = await deviceAdapter.setSchedule({ deviceSN, userConfig, userId }, groups);
+          } else {
+            logger.debug('QuickControl', `Attempt ${attempts}/${maxAttempts}: Calling FoxESS API...`);
+            result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', {
+              deviceSN,
+              groups
+            }, userConfig, userId);
+          }
 
           logger.debug('QuickControl', `Attempt ${attempts} result: errno=${result?.errno}, msg=${result?.msg}`);
 
@@ -191,21 +207,27 @@ function registerQuickControlRoutes(app, deps = {}) {
       }
 
       let flagResult = null;
-      try {
-        flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', {
-          deviceSN,
-          enable: 1
-        }, userConfig, userId);
-        logger.debug('QuickControl', `Flag enable result: errno=${flagResult?.errno}`);
-      } catch (flagErr) {
-        console.warn('[QuickControl] Flag enable failed:', flagErr?.message || flagErr);
+      if (provider === 'foxess') {
+        try {
+          flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', {
+            deviceSN,
+            enable: 1
+          }, userConfig, userId);
+          logger.debug('QuickControl', `Flag enable result: errno=${flagResult?.errno}`);
+        } catch (flagErr) {
+          console.warn('[QuickControl] Flag enable failed:', flagErr?.message || flagErr);
+        }
       }
 
       await new Promise((resolve) => setTimeout(resolve, 3000));
 
       let verify = null;
       try {
-        verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+        if (provider !== 'foxess' && deviceAdapter && typeof deviceAdapter.getSchedule === 'function') {
+          verify = await deviceAdapter.getSchedule({ deviceSN, userConfig, userId });
+        } else {
+          verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+        }
       } catch (e) {
         console.warn('[QuickControl] Verify read failed:', e?.message || e);
       }
@@ -280,10 +302,15 @@ function registerQuickControlRoutes(app, deps = {}) {
       }
 
       const userConfig = await getUserConfig(userId);
-      if (!userConfig || !userConfig.deviceSn) {
+      const resolvedDevice = resolveProviderDeviceId(userConfig);
+      const provider = resolvedDevice.provider;
+      const deviceSN = resolvedDevice.deviceId;
+      if (!deviceSN) {
         return res.status(400).json({ errno: 400, error: 'Device serial number not configured' });
       }
-      const deviceSN = userConfig.deviceSn;
+      const deviceAdapter = provider !== 'foxess' && adapterRegistry
+        ? adapterRegistry.getDeviceProvider(provider)
+        : null;
 
       const groups = [];
       for (let i = 0; i < 8; i++) {
@@ -308,10 +335,17 @@ function registerQuickControlRoutes(app, deps = {}) {
       while (attempts < maxAttempts) {
         try {
           attempts++;
-          result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', {
-            deviceSN,
-            groups
-          }, userConfig, userId);
+          if (provider !== 'foxess') {
+            if (!deviceAdapter || typeof deviceAdapter.clearSchedule !== 'function') {
+              return res.status(400).json({ errno: 400, error: `Not supported for provider: ${provider}` });
+            }
+            result = await deviceAdapter.clearSchedule({ deviceSN, userConfig, userId });
+          } else {
+            result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', {
+              deviceSN,
+              groups
+            }, userConfig, userId);
+          }
 
           if (result && result.errno === 0) {
             logger.debug('QuickControl', `Segments cleared on attempt ${attempts}`);
@@ -337,19 +371,25 @@ function registerQuickControlRoutes(app, deps = {}) {
       }
 
       let flagResult = null;
-      try {
-        flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', {
-          deviceSN,
-          enable: 0
-        }, userConfig, userId);
-        logger.debug('QuickControl', `Flag disable result: errno=${flagResult?.errno}`);
-      } catch (flagErr) {
-        console.warn('[QuickControl] Flag disable failed:', flagErr?.message || flagErr);
+      if (provider === 'foxess') {
+        try {
+          flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', {
+            deviceSN,
+            enable: 0
+          }, userConfig, userId);
+          logger.debug('QuickControl', `Flag disable result: errno=${flagResult?.errno}`);
+        } catch (flagErr) {
+          console.warn('[QuickControl] Flag disable failed:', flagErr?.message || flagErr);
+        }
       }
 
       let verify = null;
       try {
-        verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+        if (provider !== 'foxess' && deviceAdapter && typeof deviceAdapter.getSchedule === 'function') {
+          verify = await deviceAdapter.getSchedule({ deviceSN, userConfig, userId });
+        } else {
+          verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+        }
       } catch (e) {
         console.warn('[QuickControl] Verify read failed:', e?.message || e);
       }

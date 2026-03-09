@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
+
 function registerInverterHistoryRoutes(app, deps = {}) {
   const authenticateUser = deps.authenticateUser;
   const db = deps.db;
@@ -55,7 +57,7 @@ function registerInverterHistoryRoutes(app, deps = {}) {
     try {
       const userId = req.user.uid;
       const userConfig = await getUserConfig(userId);
-      const sn = req.query.sn || userConfig?.deviceSn;
+      const sn = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
 
       if (!sn) {
         return res.status(400).json({ errno: 400, error: 'Device SN not configured' });

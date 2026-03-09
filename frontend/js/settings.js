@@ -50,6 +50,12 @@
             return Math.round(numeric * 1000);
         }
 
+        function withMsFallback(value, fallbackMs) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric) || numeric <= 0) return fallbackMs;
+            return Math.round(numeric);
+        }
+
         // Helper to format milliseconds to human-readable
         function formatMs(ms) {
             if (ms === null || ms === undefined || isNaN(ms)) return '?';
@@ -110,12 +116,12 @@
         // Load current settings from server
         async function reloadFromServer() {
             try {
-                showMessage('Reloading settings from server...', 'info');
+                showMessage('info', 'Reloading settings from server...');
                 await loadSettings();
-                showMessage('Settings reloaded from server successfully', 'success');
+                showMessage('success', 'Settings reloaded from server successfully');
             } catch (err) {
                 console.error('Error reloading settings:', err);
-                showMessage('Error reloading settings: ' + err.message, 'error');
+                showMessage('warning', 'Error reloading settings: ' + err.message);
             }
         }
 
@@ -168,17 +174,16 @@
                 // Helper to safely set input value
                 const setInput = (id, value) => setInputValue(id, value);
                 
-                // Automation
-                if (currentConfig.automation) {
-                    setInput('automation_intervalMs', currentConfig.automation.intervalMs);
-                }
-                
-                // Cache
-                if (currentConfig.cache) {
-                    setInput('cache_amber', currentConfig.cache.amber);
-                    setInput('cache_inverter', currentConfig.cache.inverter);
-                    setInput('cache_weather', currentConfig.cache.weather);
-                }
+                // Automation and cache: always render from server values when present, otherwise defaults.
+                const automationIntervalMs = withMsFallback(currentConfig.automation?.intervalMs, 60000);
+                const cacheAmberMs = withMsFallback(currentConfig.cache?.amber, 60000);
+                const cacheInverterMs = withMsFallback(currentConfig.cache?.inverter, 300000);
+                const cacheWeatherMs = withMsFallback(currentConfig.cache?.weather, 1800000);
+
+                setInput('automation_intervalMs', automationIntervalMs);
+                setInput('cache_amber', cacheAmberMs);
+                setInput('cache_inverter', cacheInverterMs);
+                setInput('cache_weather', cacheWeatherMs);
                 
                 // Defaults
                 if (currentConfig.defaults) {
@@ -368,7 +373,7 @@
                 // Fill in missing values from displayed inputs if not in server response
                 // This ensures originalConfig matches what was actually displayed to the user
                 if (originalConfig.automation.intervalMs === undefined || originalConfig.automation.intervalMs === null) {
-                    originalConfig.automation.intervalMs = getInputValue('automation_intervalMs') || 60000;
+                    originalConfig.automation.intervalMs = automationIntervalMs;
                 }
                 if (originalConfig.automation.startDelayMs === undefined || originalConfig.automation.startDelayMs === null) {
                     originalConfig.automation.startDelayMs = currentConfig?.automation?.startDelayMs ?? 5000;
@@ -378,13 +383,13 @@
                 }
                 
                 if (originalConfig.cache.amber === undefined || originalConfig.cache.amber === null) {
-                    originalConfig.cache.amber = getInputValue('cache_amber') || 60000;
+                    originalConfig.cache.amber = cacheAmberMs;
                 }
                 if (originalConfig.cache.inverter === undefined || originalConfig.cache.inverter === null) {
-                    originalConfig.cache.inverter = getInputValue('cache_inverter') || 300000;
+                    originalConfig.cache.inverter = cacheInverterMs;
                 }
                 if (originalConfig.cache.weather === undefined || originalConfig.cache.weather === null) {
-                    originalConfig.cache.weather = getInputValue('cache_weather') || 1800000;
+                    originalConfig.cache.weather = cacheWeatherMs;
                 }
                 
                 if (originalConfig.defaults.cooldownMinutes === undefined || originalConfig.defaults.cooldownMinutes === null) {
@@ -435,6 +440,16 @@
             }
         }
 
+        function clearInputValidationState(input) {
+            if (!input) return;
+            input.style.borderColor = '';
+            if (input.dataset?.validationError === '1' || input.title === 'Invalid number') {
+                input.title = '';
+            }
+            if (input.dataset) delete input.dataset.validationError;
+            input.removeAttribute('aria-invalid');
+        }
+
         function setInputValue(id, value) {
             const input = document.getElementById(id);
             if (input) {
@@ -443,6 +458,7 @@
                 } else {
                     input.value = value !== undefined && value !== null ? value : '';
                 }
+                clearInputValidationState(input);
             }
         }
 
@@ -1014,18 +1030,26 @@
             if (isNaN(value)) {
                 input.style.borderColor = 'var(--color-danger)';
                 input.title = 'Invalid number';
+                input.dataset.validationError = '1';
+                input.setAttribute('aria-invalid', 'true');
                 return false;
             }
             
             if (value < rules.min || value > rules.max) {
                 input.style.borderColor = 'var(--color-danger)';
                 input.title = rules.errorMsg;
+                input.dataset.validationError = '1';
+                input.setAttribute('aria-invalid', 'true');
                 return false;
             }
             
             // Valid
             input.style.borderColor = '';
-            input.title = '';
+            if (input.dataset.validationError === '1' || input.title === 'Invalid number' || input.title === rules.errorMsg) {
+                input.title = '';
+            }
+            delete input.dataset.validationError;
+            input.removeAttribute('aria-invalid');
             return true;
         }
 
@@ -1077,6 +1101,12 @@
                     togglePasswordField('credentials_sungrowPassword', tSungrowPass);
                 });
             }
+            const tSigenenergyPass = document.getElementById('credentials_toggleSigenenergyPassword');
+            if (tSigenenergyPass) {
+                tSigenenergyPass.addEventListener('click', () => {
+                    togglePasswordField('credentials_sigenenergyPassword', tSigenenergyPass);
+                });
+            }
         });
 
         function togglePasswordField(inputId, btn) {
@@ -1117,13 +1147,25 @@
         // Load only credentials status (reload deviceSn and token presence)
         function checkCredentialsChanged() {
             const isSungrow = document.getElementById('sungrowCredentialsSection')?.style.display !== 'none';
+            const isSigenEnergy = document.getElementById('sigenenergyCredentialsSection')?.style.display !== 'none';
             const amberInput = document.getElementById('credentials_amberKey');
             const amberKey = (amberInput?.value || '').trim();
             const amberMatchesOriginal = amberKey === (originalCredentials.amberKey || '');
             const amberMaskedSaved = isMaskedCredentialValue(amberKey) && amberInput?.dataset.hasSavedCredential === '1';
 
             let changed;
-            if (isSungrow) {
+            if (isSigenEnergy) {
+                const sgUserInput = document.getElementById('credentials_sigenenergyUsername');
+                const sgPassInput = document.getElementById('credentials_sigenenergyPassword');
+                const sgUser = (sgUserInput?.value || '').trim();
+                const sgPass = (sgPassInput?.value || '').trim();
+                const sgUserChanged = !(sgUser === (originalCredentials.sigenenergyUsername || '') ||
+                    (isMaskedCredentialValue(sgUser) && sgUserInput?.dataset.hasSavedCredential === '1'));
+                const sgPassChanged = !(sgPass === (originalCredentials.sigenenergyPassword || '') ||
+                    (isMaskedCredentialValue(sgPass) && sgPassInput?.dataset.hasSavedCredential === '1'));
+                changed = sgUserChanged || sgPassChanged ||
+                    !(amberMatchesOriginal || amberMaskedSaved);
+            } else if (isSungrow) {
                 const sgSnInput = document.getElementById('credentials_sungrowDeviceSn');
                 const sgUserInput = document.getElementById('credentials_sungrowUsername');
                 const sgPassInput = document.getElementById('credentials_sungrowPassword');
@@ -1175,18 +1217,25 @@
                 const deviceProvider = statusData?.result?.deviceProvider || 'foxess';
                 const hasSungrowUsername = statusData?.result?.hasSungrowUsername || false;
                 const hasSungrowDeviceSn = statusData?.result?.hasSungrowDeviceSn || false;
+                const hasSigenUsername = statusData?.result?.hasSigenUsername || false;
+                const hasSigenDeviceSn = statusData?.result?.hasSigenDeviceSn || false;
 
                 // Show/hide provider-specific credential sections
                 const foxessSec = document.getElementById('foxessCredentialsSection');
                 const foxessTokenSec = document.getElementById('foxessTokenSection');
                 const sungrowSec = document.getElementById('sungrowCredentialsSection');
+                const sigenergySec = document.getElementById('sigenenergyCredentialsSection');
                 const isSungrow = deviceProvider === 'sungrow';
-                if (foxessSec) foxessSec.style.display = isSungrow ? 'none' : '';
-                if (foxessTokenSec) foxessTokenSec.style.display = isSungrow ? 'none' : '';
+                const isSigenEnergy = deviceProvider === 'sigenergy';
+                if (foxessSec) foxessSec.style.display = (isSungrow || isSigenEnergy) ? 'none' : '';
+                if (foxessTokenSec) foxessTokenSec.style.display = (isSungrow || isSigenEnergy) ? 'none' : '';
                 if (sungrowSec) sungrowSec.style.display = isSungrow ? '' : 'none';
+                if (sigenergySec) sigenergySec.style.display = isSigenEnergy ? '' : 'none';
 
                 if (data.errno === 0 && data.result) {
-                    if (isSungrow) {
+                    if (isSigenEnergy) {
+                        // No non-credential config fields for SigenEnergy on this path
+                    } else if (isSungrow) {
                         const sgSnInput = document.getElementById('credentials_sungrowDeviceSn');
                         const snVal = data.result.sungrowDeviceSn || '';
                         if (sgSnInput) {
@@ -1283,9 +1332,51 @@
                     }
                 }
 
+                // SigenEnergy: show masked presence indicators for username/password
+                if (isSigenEnergy) {
+                    const sgUserInput = document.getElementById('credentials_sigenenergyUsername');
+                    const sgPassInput = document.getElementById('credentials_sigenenergyPassword');
+                    const sgRegionInput = document.getElementById('credentials_sigenenergyRegion');
+                    if (sgUserInput) {
+                        if (hasSigenUsername) {
+                            sgUserInput.value = '••••••••';
+                            setSavedCredentialFlag(sgUserInput, true);
+                            originalCredentials.sigenenergyUsername = '••••••••';
+                        } else {
+                            sgUserInput.value = '';
+                            setSavedCredentialFlag(sgUserInput, false);
+                            originalCredentials.sigenenergyUsername = '';
+                        }
+                    }
+                    if (sgPassInput) {
+                        sgPassInput.type = 'password';
+                        const tSg = document.getElementById('credentials_toggleSigenenergyPassword');
+                        if (tSg) tSg.textContent = 'Show';
+                        if (hasSigenUsername) {
+                            sgPassInput.value = '••••••••';
+                            setSavedCredentialFlag(sgPassInput, true);
+                            originalCredentials.sigenenergyPassword = '••••••••';
+                        } else {
+                            sgPassInput.value = '';
+                            setSavedCredentialFlag(sgPassInput, false);
+                            originalCredentials.sigenenergyPassword = '';
+                        }
+                    }
+                    if (sgRegionInput && data.result?.sigenRegion) {
+                        sgRegionInput.value = data.result.sigenRegion;
+                    }
+                }
+
                 const credStatusEl = document.getElementById('credentialsStatus');
 
-                if (isSungrow) {
+                if (isSigenEnergy) {
+                    if (hasSigenUsername) {
+                        credStatusEl.textContent = 'SigenEnergy credentials are present (hidden)';
+                    } else {
+                        credStatusEl.textContent = 'No SigenEnergy credentials detected';
+                    }
+                    if (amberPresent) credStatusEl.textContent += ' · pricing API key present';
+                } else if (isSungrow) {
                     if (hasSungrowUsername && hasSungrowDeviceSn) {
                         credStatusEl.textContent = 'Sungrow device SN and iSolarCloud credentials are present (hidden)';
                     } else if (hasSungrowUsername) {
@@ -1336,6 +1427,11 @@
 
             // Detect current provider from visible section
             const isSungrow = document.getElementById('sungrowCredentialsSection')?.style.display !== 'none';
+            const isSigenEnergy = document.getElementById('sigenenergyCredentialsSection')?.style.display !== 'none';
+
+            if (isSigenEnergy) {
+                return saveSigenEnergyCredentials(amberToSend, amberUnchanged);
+            }
 
             if (isSungrow) {
                 return saveSungrowCredentials(amberToSend, amberUnchanged);
@@ -1433,6 +1529,88 @@
                 showMessage('success', 'Credentials validated and stored on server');
             } catch (e) {
                 console.error('saveCredentials error', e);
+                showMessage('warning', 'Failed to save credentials: ' + (e.message || e));
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = prevText;
+                updateStatus();
+            }
+        }
+
+        async function saveSigenEnergyCredentials(amberToSend, amberUnchanged) {
+            const usernameInput = document.getElementById('credentials_sigenenergyUsername');
+            const passwordInput = document.getElementById('credentials_sigenenergyPassword');
+            const regionInput  = document.getElementById('credentials_sigenenergyRegion');
+
+            const usernameDisplayed = (usernameInput?.value || '').trim();
+            const passwordDisplayed = (passwordInput?.value || '').trim();
+            const region = (regionInput?.value || '').trim() || 'apac';
+
+            const usernameUnchanged = isMaskedCredentialValue(usernameDisplayed) &&
+                usernameInput?.dataset.hasSavedCredential === '1';
+            const passwordUnchanged = isMaskedCredentialValue(passwordDisplayed) &&
+                passwordInput?.dataset.hasSavedCredential === '1';
+            const credsUnchanged = usernameUnchanged && passwordUnchanged;
+
+            if (!credsUnchanged && (!usernameDisplayed || isMaskedCredentialValue(usernameDisplayed))) {
+                showMessage('warning', 'SigenEnergy account email is required (or keep existing credentials unchanged)');
+                return;
+            }
+            if (!credsUnchanged && (!passwordDisplayed || isMaskedCredentialValue(passwordDisplayed))) {
+                showMessage('warning', 'SigenEnergy password is required (or keep existing credentials unchanged)');
+                return;
+            }
+
+            const saveBtn = document.getElementById('credentialsSaveBtn');
+            const prevText = saveBtn.innerHTML;
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
+
+            try {
+                if (credsUnchanged) {
+                    // Only region (and optionally amber key) changed
+                    const patchPayload = { sigenRegion: region };
+                    if (!amberUnchanged) patchPayload.amberApiKey = amberToSend || '';
+                    const patchResp = await authenticatedFetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(patchPayload)
+                    });
+                    const patchData = await patchResp.json();
+                    if (!patchResp.ok || patchData.errno !== 0) {
+                        throw new Error(patchData?.msg || patchData?.error || `HTTP ${patchResp.status}`);
+                    }
+                    await loadCredentials();
+                    showMessage('success', 'Credential changes saved.');
+                    return;
+                }
+
+                const payload = {
+                    sigenergy_username: usernameDisplayed,
+                    sigenergy_password: passwordDisplayed,
+                    sigenergy_region:   region
+                };
+                if (!amberUnchanged) payload.amber_api_key = amberToSend || null;
+
+                const resp = await authenticatedFetch('/api/config/validate-keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (data.errno !== 0) {
+                    console.warn('validate-keys errors (sigenergy)', data);
+                    const first = (data.errors && (
+                        data.errors.sigenergy_username || data.errors.sigenergy_password || data.msg
+                    )) || 'SigenEnergy validation failed';
+                    showMessage('warning', first);
+                    return;
+                }
+
+                await loadCredentials();
+                showMessage('success', 'SigenEnergy credentials validated and stored on server');
+            } catch (e) {
+                console.error('saveSigenEnergyCredentials error', e);
                 showMessage('warning', 'Failed to save credentials: ' + (e.message || e));
             } finally {
                 saveBtn.disabled = false;
@@ -1567,7 +1745,7 @@
         // WIP Pages visibility - Topology Discovery (admin only)
         if (typeof window.auth !== 'undefined' && window.auth) {
             window.auth.onAuthStateChanged((user) => {
-                if (user && user.email === 'sardanapalos928@hotmail.com') {
+                if (user && user.email === 'socrates.team.comms@gmail.com') {
                     const topologyLink = document.getElementById('topologyNavLink');
                     if (topologyLink) topologyLink.style.display = '';
                 }

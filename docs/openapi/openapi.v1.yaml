@@ -106,6 +106,25 @@ paths:
                       type: string
                       nullable: true
                       description: Amber Electric API key (optional)
+                - title: SigenEnergy credentials
+                  type: object
+                  required: [sigenergy_username, sigenergy_password]
+                  properties:
+                    sigenergy_username:
+                      type: string
+                      description: SigenEnergy cloud account email
+                    sigenergy_password:
+                      type: string
+                      description: SigenEnergy cloud account password
+                    sigenergy_region:
+                      type: string
+                      enum: [apac, eu, cn, us]
+                      default: apac
+                      description: SigenEnergy API region (default apac for Australia)
+                    amber_api_key:
+                      type: string
+                      nullable: true
+                      description: Amber Electric API key (optional)
       responses:
         "200":
           description: Validation and save result
@@ -278,14 +297,25 @@ components:
                   type: boolean
                 deviceProvider:
                   type: string
-                  enum: [foxess, sungrow]
+                  enum: [foxess, sungrow, sigenergy]
                   description: Active inverter provider
                 hasSungrowUsername:
                   type: boolean
-                  description: Whether an iSolarCloud username/password is saved (Sungrow only)
+                  description: Whether an iSolarCloud username is saved (Sungrow only)
                 hasSungrowDeviceSn:
                   type: boolean
                   description: Whether a Sungrow device serial number is saved
+                hasSigenUsername:
+                  type: boolean
+                  description: Whether a SigenEnergy account username is saved
+                hasSigenDeviceSn:
+                  type: boolean
+                  description: Whether a SigenEnergy device serial number is saved
+                sigenRegion:
+                  type: string
+                  enum: [apac, eu, cn, us]
+                  nullable: true
+                  description: SigenEnergy API region (present when provider is sigenergy)
     ApiEnvelopeAutomationStatus:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeBase"

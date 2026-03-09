@@ -166,9 +166,18 @@ const sungrowAPI = sungrowModule.init({
   incrementApiCount: null // Will be defined below
 });
 
+const sigenEnergyModule = require('./api/sigenergy');
+const sigenEnergyAPI = sigenEnergyModule.init({
+  db,
+  logger: null, // Will be defined below
+  getConfig: null, // Will be defined below
+  incrementApiCount: null // Will be defined below
+});
+
 const { createAdapterRegistry } = require('./lib/adapters/adapter-registry');
 const { createFoxessDeviceAdapter } = require('./lib/adapters/foxess-adapter');
 const { createSungrowDeviceAdapter } = require('./lib/adapters/sungrow-adapter');
+const { createSigenEnergyDeviceAdapter } = require('./lib/adapters/sigenergy-adapter');
 // adapterRegistry populated once all deps (logger, getConfig) are reinitialized
 const adapterRegistry = createAdapterRegistry();
 
@@ -207,6 +216,9 @@ const getConfig = () => {
       appKey:    process.env.SUNGROW_APP_KEY    || '',
       appSecret: process.env.SUNGROW_APP_SECRET || '',
       baseUrl:   process.env.SUNGROW_BASE_URL   || 'https://augateway.isolarcloud.com'
+    },
+    sigenergy: {
+      defaultRegion: process.env.SIGENERGY_REGION || 'apac'
     },
     automation: {
       intervalMs: 60000,
@@ -609,6 +621,7 @@ registerSetupPublicRoutes(app, {
   logger,
   serverTimestamp,
   setUserConfig,
+  sigenEnergyAPI,
   sungrowAPI,
   tryAttachUser
 });
@@ -722,6 +735,7 @@ registerConfigReadStatusRoutes(app, {
 registerConfigMutationRoutes(app, {
   authenticateUser,
   callWeatherAPI,
+  db,
   deepMerge,
   deleteField,
   isValidTimezone,
@@ -771,6 +785,7 @@ const automationCycleHandler = registerAutomationCycleRoute(app, {
   addAutomationAuditEntry,
   amberAPI,
   amberPricesInFlight,
+  adapterRegistry,
   applyRuleAction,
   checkAndApplyCurtailment,
   cleanupExpiredQuickControl,
@@ -795,6 +810,7 @@ const automationCycleHandler = registerAutomationCycleRoute(app, {
 registerQuickControlRoutes(app, {
   addHistoryEntry,
   addMinutes,
+  adapterRegistry,
   authenticateUser,
   cleanupExpiredQuickControl,
   foxessAPI,
@@ -818,11 +834,16 @@ registerInverterReadRoutes(app, {
   getCachedInverterRealtimeData,
   getUserConfig,
   adapterRegistry,
-  logger
+  logger,
+  normalizeCouplingValue,
+  DEFAULT_TOPOLOGY_REFRESH_MS,
+  serverTimestamp,
+  setUserConfig
 });
 
 registerDeviceReadRoutes(app, {
   authenticateUser,
+  adapterRegistry,
   foxessAPI,
   getUserConfig,
   logger
@@ -836,6 +857,7 @@ registerDiagnosticsReadRoutes(app, {
 
 registerDeviceMutationRoutes(app, {
   authenticateUser,
+  adapterRegistry,
   foxessAPI,
   getUserConfig
 });
@@ -888,9 +910,17 @@ Object.assign(sungrowAPI, sungrowModule.init({
   incrementApiCount
 }));
 
-// Register device adapters now that foxessAPI and sungrowAPI are fully initialised
+Object.assign(sigenEnergyAPI, sigenEnergyModule.init({
+  db,
+  logger,
+  getConfig,
+  incrementApiCount
+}));
+
+// Register device adapters now that foxessAPI, sungrowAPI, and sigenEnergyAPI are fully initialised
 adapterRegistry.registerDeviceProvider('foxess', createFoxessDeviceAdapter({ foxessAPI, logger }));
 adapterRegistry.registerDeviceProvider('sungrow', createSungrowDeviceAdapter({ sungrowAPI, logger }));
+adapterRegistry.registerDeviceProvider('sigenergy', createSigenEnergyDeviceAdapter({ sigenEnergyAPI, logger }));
 
 Object.assign(authAPI, authModule.init({
   admin,

@@ -98,7 +98,7 @@ test.describe('Rule Modal Summaries', () => {
       window.alert = function () {};
     });
 
-    await page.goto('/index.html');
+    await page.goto('/app.html');
     await page.waitForLoadState('domcontentloaded');
   });
 

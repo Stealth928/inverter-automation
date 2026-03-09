@@ -1,2462 +1,1299 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SoCrates</title>
-    <link rel="manifest" href="/manifest.webmanifest">
-    <link rel="icon" href="/icons/favicon.ico" sizes="any">
-    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
-    <link rel="icon" href="/icons/icon-32.png" type="image/png" sizes="32x32">
-    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
-    <link rel="mask-icon" href="/icons/icon.svg" color="#34d399">
-    <meta name="theme-color" content="#0d1117">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="SoCrates">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics-compat.js"></script>
-    <!-- Firebase Auth Configuration -->
-    <script src="js/firebase-config.js"></script>
-    <script src="js/firebase-auth.js"></script>
-    <script src="js/api-client.js"></script>
-    <script src="js/shared-utils.js?v=12"></script>
-    <script src="js/app-shell.js?v=11"></script>
-    <script src="js/tour.js?v=29"></script>
-    <script src="js/theme-init.js"></script>
-    <link rel="stylesheet" href="css/shared-styles.css?v=7" />
-    <link rel="stylesheet" href="css/tour.css?v=3" />
-    <style>
-        
-        /* Header */
-        .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px 14px;
-            background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
-            border-bottom: 1px solid var(--border-secondary);
-            backdrop-filter: blur(8px);
-            margin: 6px 0 10px 0;
-        }
-        .header h1 {
-            font-size: 1.15rem;
-            font-weight: 600;
-            color: var(--accent-blue);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .header h1 .logo {
-            font-size: 1.25rem;
-        }
-
-        .auth-loading {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100dvh;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .auth-loading .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid color-mix(in srgb, var(--accent-blue) 20%, transparent);
-            border-top-color: var(--accent-blue);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Main Layout */
-        .main-layout {
-            display: flex;
-            height: calc(100dvh - 65px);
-        }
-        .left-panel {
-            flex: 1;
-            padding: 14px;
-            /* Allow child panels to manage their own scrolling. This prevents the
-               left-panel's scrollbar from capturing scroll events intended for the
-               automation panel's internal scroller (FAQ worked because it set its
-               inner card-body to scroll). */
-            overflow-y: visible;
-            transition: margin-right 0.3s ease;
-        }
-        .left-panel.panel-open {
-            margin-right: 0;
-        }
-
-        /* Priority Row - Weather, Prices, Inverter */
-        .priority-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 16px;
-            margin-bottom: 20px;
-        }
-        @media (max-width: 900px) {
-            .priority-row {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .dashboard-visibility-card {
-            margin-bottom: 10px;
-        }
-        .dashboard-visibility-card .card-header {
-            padding: 10px 14px;
-            gap: 10px;
-            flex-wrap: nowrap;
-            justify-content: flex-start;
-        }
-        .dashboard-visibility-inline {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-left: 8px;
-            flex: 1;
-            justify-content: space-evenly;
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            scrollbar-width: thin;
-        }
-        .card-visibility-toggle {
-            display: inline-flex;
-            align-items: center;
-            gap: 7px;
-            font-size: 12px;
-            color: var(--text-primary);
-            user-select: none;
-            white-space: nowrap;
-        }
-        .card-visibility-toggle input {
-            appearance: none;
-            -webkit-appearance: none;
-            width: 40px;
-            height: 22px;
-            border-radius: 999px;
-            border: 1px solid var(--border-primary);
-            background: var(--bg-tertiary);
-            position: relative;
-            transition: background 0.2s ease, border-color 0.2s ease;
-            cursor: pointer;
-        }
-        .card-visibility-toggle input::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: var(--text-primary);
-            transition: transform 0.2s ease;
-        }
-        .dashboard-visibility-collapse-btn {
-            display: none;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            padding: 4px 10px;
-            border-radius: 999px;
-            border: 1px solid var(--border-primary);
-            background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
-            color: var(--text-primary);
-            font-size: 11px;
-            cursor: pointer;
-            margin-left: auto;
-        }
-        .card-visibility-toggle input:checked {
-            background: var(--color-success-dark);
-            border-color: var(--color-success);
-        }
-        .card-visibility-toggle input:checked::after {
-            transform: translateX(18px);
-        }
-        @media (max-width: 900px) {
-            .dashboard-visibility-card .card-header {
-                padding: 8px 10px;
-                gap: 8px;
-                flex-direction: row;
-                align-items: center;
-                flex-wrap: nowrap;
-            }
-            .dashboard-visibility-collapse-btn {
-                display: inline-flex;
-            }
-            .dashboard-visibility-inline {
-                margin-left: 0;
-                width: 100%;
-                flex: 1 1 100%;
-                flex-wrap: wrap;
-                overflow: hidden;
-                gap: 8px 10px;
-                justify-content: space-between;
-                display: none;
-                padding-top: 8px;
-            }
-            .card-visibility-toggle {
-                font-size: 11px;
-                flex: 1 1 calc(50% - 8px);
-            }
-            .dashboard-visibility-card.mobile-expanded .card-header {
-                flex-wrap: wrap;
-                align-items: flex-start;
-            }
-            .dashboard-visibility-card.mobile-expanded .dashboard-visibility-inline {
-                display: flex;
-            }
-        }
-        .is-hidden-preference {
-            display: none !important;
-        }
-
-        /* Priority Badge for Automation Rules */
-        .priority-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 3px;
-            min-width: 24px;
-        }
-
-        /* Priority color scale: Red (P1) → Orange → Yellow → Green (P10) */
-        .priority-badge.p1 { background: #ff4757; color: #fff; } /* P1: Critical Red */
-        .priority-badge.p2 { background: #ff6b6b; color: #fff; } /* P2: Red */
-        .priority-badge.p3 { background: #ff8c42; color: #fff; } /* P3: Red-Orange */
-        .priority-badge.p4 { background: #ffa24d; color: #000; } /* P4: Orange-Red */
-        .priority-badge.p5 { background: #ffb84d; color: #000; } /* P5: Orange */
-        .priority-badge.p6 { background: #ffd43b; color: #000; } /* P6: Yellow-Orange */
-        .priority-badge.p7 { background: #ffe066; color: #000; } /* P7: Yellow */
-        .priority-badge.p8 { background: #a8d400; color: #000; } /* P8: Lime */
-        .priority-badge.p9 { background: #69db4d; color: #000; } /* P9: Light Green */
-        .priority-badge.p10 { background: #51cf66; color: #000; } /* P10: Green */
-        .priority-badge.p-low { background: var(--bg-tertiary); color: var(--text-secondary); } /* P>10: Very low / Gray */
-
-        /* Secondary Grid */
-        .secondary-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 16px;
-        }
-
-        /* Cards */
-        .card {
-            background: var(--gradient-card);
-            border-radius: 12px;
-            border: 1px solid var(--border-secondary);
-            overflow: hidden;
-            transition: all 0.2s ease;
-        }
-        .card:hover {
-            border-color: color-mix(in srgb, var(--accent-blue) 30%, transparent);
-            box-shadow: 0 8px 32px var(--shadow-lg);
-        }
-        .card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 14px 18px;
-            background: var(--bg-overlay);
-            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
-        }
-        .card-title {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        .card-title .icon {
-            font-size: 18px;
-        }
-        .card-badge {
-            font-size: 10px;
-            padding: 3px 8px;
-            border-radius: 12px;
-            background: color-mix(in srgb, var(--accent-blue) 15%, transparent);
-            color: var(--accent-blue);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .card-body {
-            padding: 16px 18px;
-        }
-
-        /* Priority Card Variants */
-        .card.priority {
-            border-color: color-mix(in srgb, var(--accent-blue) 20%, transparent);
-        }
-        .card.priority .card-header {
-            background: linear-gradient(135deg, color-mix(in srgb, var(--accent-blue) 8%, transparent), transparent);
-        }
-
-        /* Buttons */
-        .btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 10px 14px;
-            background: var(--bg-card);
-            border: 1px solid var(--border-primary);
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-size: 13px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            width: 100%;
-            margin-bottom: 6px;
-        }
-        .btn:hover {
-            background: var(--border-primary);
-            border-color: color-mix(in srgb, var(--accent-blue) 40%, transparent);
-            transform: translateY(-1px);
-        }
-        .btn:active {
-            transform: translateY(0);
-        }
-        .btn-primary {
-            background: var(--gradient-success);
-            border-color: var(--color-success-dark);
-        }
-        .btn-primary:hover {
-            background: var(--gradient-success);
-            filter: brightness(1.1);
-            border-color: var(--color-success);
-        }
-        .btn-sm {
-            padding: 8px 12px;
-            font-size: 12px;
-        }
-        .btn-icon {
-            width: auto;
-            padding: 8px 12px;
-        }
-
-        /* Inputs */
-        .input {
-            width: 100%;
-            padding: 10px 12px;
-            background: var(--bg-input);
-            border: 1px solid var(--border-primary);
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-size: 13px;
-            transition: all 0.2s ease;
-        }
-        .input:focus {
-            outline: none;
-            border-color: var(--accent-blue);
-            box-shadow: 0 0 0 3px var(--accent-blue-bg);
-        }
-        
-        /* Range Slider Styling */
-        input[type="range"] {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 100%;
-            height: 8px;
-            background: linear-gradient(to right, var(--color-success-dark) 0%, var(--accent-blue) 50%, var(--color-orange) 100%);
-            border-radius: 4px;
-            outline: none;
-            cursor: pointer;
-        }
-        
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 20px;
-            height: 20px;
-            background: var(--accent-blue);
-            border: 2px solid var(--bg-primary);
-            border-radius: 50%;
-            cursor: pointer;
-            box-shadow: 0 0 8px color-mix(in srgb, var(--accent-blue) 50%, transparent);
-            transition: all 0.2s ease;
-        }
-        
-        input[type="range"]::-webkit-slider-thumb:hover {
-            background: color-mix(in srgb, var(--accent-blue) 80%, white);
-            box-shadow: 0 0 12px color-mix(in srgb, var(--accent-blue) 80%, transparent);
-            transform: scale(1.1);
-        }
-        
-        input[type="range"]::-moz-range-thumb {
-            width: 20px;
-            height: 20px;
-            background: var(--accent-blue);
-            border: 2px solid var(--bg-primary);
-            border-radius: 50%;
-            cursor: pointer;
-            box-shadow: 0 0 8px color-mix(in srgb, var(--accent-blue) 50%, transparent);
-            transition: all 0.2s ease;
-        }
-        
-        input[type="range"]::-moz-range-thumb:hover {
-            background: color-mix(in srgb, var(--accent-blue) 80%, white);
-            box-shadow: 0 0 12px color-mix(in srgb, var(--accent-blue) 80%, transparent);
-            transform: scale(1.1);
-        }
-        .input::placeholder {
-            color: var(--text-placeholder);
-        }
-        .input-row {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-        .input-group {
-            flex: 1;
-        }
-        .input-group label {
-            display: block;
-            font-size: 11px;
-            color: var(--text-secondary);
-            margin-bottom: 6px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        select.input {
-            cursor: pointer;
-        }
-
-        /* Data Display Cards */
-        .data-card {
-            background: var(--bg-input);
-            border-radius: 8px;
-            padding: 12px;
-            margin-top: 12px;
-            min-height: 80px;
-        }
-        .data-card.success {
-            border-left: 3px solid var(--color-success-dark);
-        }
-        .data-card.info {
-            border-left: 3px solid var(--accent-blue);
-        }
-
-        #inverterCard {
-            border-left: none !important;
-            --battery-shell-color: rgba(255, 255, 255, 0.32);
-            --battery-shell-bg: rgba(255, 255, 255, 0.05);
-        }
-
-        /* Live Data Display */
-        .live-stat {
-            display: flex;
-            align-items: baseline;
-            gap: 8px;
-            padding: 8px 0;
-        }
-        .live-stat .value {
-            font-size: 28px;
-            font-weight: 700;
-            color: var(--accent-blue);
-        }
-        .live-stat .unit {
-            font-size: 14px;
-            color: var(--text-secondary);
-        }
-        .live-stat .label {
-            font-size:12px;
-            color: var(--text-secondary);
-            margin-left: 6px;
-        }
-        .stat-row {
-            display: flex;
-            gap: 16px;
-            flex-wrap: wrap;
-        }
-        .stat-item {
-            flex: 1;
-            min-width: 100px;
-            padding: 12px;
-            background: var(--bg-input);
-            border-radius: 8px;
-            text-align: center;
-            position: relative;
-        }
-        .stat-item .value {
-            font-size: 20px;
-            font-weight: 600;
-            color: var(--color-terminal-text);
-        }
-        /* Smaller inline status (e.g. "(discharging)") shown next to main value */
-        .stat-item .value .substatus {
-            font-size: 0.55em;
-            font-weight: 400;
-            color: var(--text-secondary);
-            margin-left: 6px;
-            vertical-align: baseline;
-        }
-        .stat-item .label {
-            font-size: 11px;
-            color: var(--text-secondary);
-            margin-top: 4px;
-        }
-        .stat-item .tile-icon {
-            font-size: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 6px auto;
-            width: 54px;
-            height: 54px;
-            border-radius: 6px;
-            color: inherit;
-            background: rgba(255,255,255,0.02);
-            position: relative;
-        }
-        /* Curtailment badge on solar tile */
-        .stat-item.curtailed .tile-icon::after {
-            content: '';
-            position: absolute;
-            top: -2px;
-            right: -2px;
-            width: 14px;
-            height: 14px;
-            background: radial-gradient(circle, #ff6b35 0%, #f0883e 100%);
-            border-radius: 50%;
-            border: 2px solid rgba(13, 17, 23, 0.95);
-            box-shadow: 0 0 8px rgba(255, 107, 53, 0.6), inset 0 0 3px rgba(255, 255, 255, 0.3);
-            animation: curtailment-pulse 2s ease-in-out infinite;
-        }
-        @keyframes curtailment-pulse {
-            0%, 100% { 
-                transform: scale(1);
-                box-shadow: 0 0 8px rgba(255, 107, 53, 0.6), inset 0 0 3px rgba(255, 255, 255, 0.3);
-            }
-            50% { 
-                transform: scale(1.15);
-                box-shadow: 0 0 12px rgba(255, 107, 53, 0.8), inset 0 0 4px rgba(255, 255, 255, 0.4);
-            }
-        }
-        /* Border glow effect when curtailed */
-        .stat-item.curtailed {
-            border: 1px solid rgba(255, 107, 53, 0.4);
-            background: linear-gradient(135deg, rgba(13, 17, 23, 0.5), rgba(22, 27, 34, 0.6));
-            box-shadow: inset 0 0 12px rgba(255, 107, 53, 0.08), 0 0 16px rgba(255, 107, 53, 0.12);
-        }
-        /* Thermometer variant: 50% size of default tile icons */
-        .tile-icon.thermometer {
-            width: 27px;
-            height: 27px;
-            padding: 2px 0 0 0;
-            background: transparent;
-        }
-        .tile-icon.thermometer .therm-svg { width: 18px; height: 36px; display:block; }
-        .therm-fill { transition: height 600ms cubic-bezier(.2,.9,.2,1), y 600ms cubic-bezier(.2,.9,.2,1), fill 300ms ease; }
-        /* Battery SVG sizing and charging animation */
-        /* Larger battery tile for improved alignment */
-        .stat-item.battery-tile { min-width: 180px; padding: 12px 18px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-        .tile-icon.battery { width: 54px; height: 60px; padding-top: 2px; }
-        .tile-icon.battery svg { width: 36px; height: 52px; display:block; }
-        .tile-icon.battery .level { transition: all 600ms cubic-bezier(.2,.9,.2,1); }
-        .tile-icon.battery.charging { box-shadow: 0 6px 18px rgba(88,166,255,0.12); }
-        .tile-icon.battery.charging svg { filter: drop-shadow(0 4px 8px rgba(88,166,255,0.18)); }
-        @keyframes batt-pulse { 0% { opacity: 0.95 } 50% { opacity: 1 } 100% { opacity: 0.95 } }
-        .tile-icon.battery.charging { animation: batt-pulse 1.2s infinite ease-in-out; }
-        .stat-item.warning .value { color: var(--color-warning); }
-        .stat-item.danger .value { color: var(--color-danger); }
-
-        /* Extreme daily forecast tiles (stronger amber tint for visibility) */
-        .stat-item.extreme {
-            border: 1px solid rgba(255,176,32,0.45);
-            background: linear-gradient(180deg, rgba(255,176,32,0.14), rgba(22,27,34,0.60));
-            box-shadow: 0 8px 28px rgba(255,176,32,0.12), inset 0 1px 0 rgba(255,255,255,0.02);
-        }
-
-        /* Weather days specific layout: override default .stat-item flex for day tiles */
-        .weather-days {
-            display:flex;
-            gap:6px;
-            flex-wrap:wrap;
-            margin-top:10px;
-        }
-        .weather-days .stat-item {
-            box-sizing: border-box;
-            /* Allow forecast tiles to grow slightly so the last row doesn't leave
-               a large empty gap when there are many items. Also restrict maximum
-               width so items remain card-like on very wide screens. */
-            flex: 1 1 140px;
-            max-width: 180px;
-            min-width: 0;
-            padding: 8px;
-            text-align: left;
-            position: relative; /* allow icon overlay */
-        }
-
-        /* Money bag indicator for very large feed-in prices */
-        .money-bag {
-            display:inline-block;
-            font-size:14px;
-            margin-left:6px;
-            filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6));
-            line-height:1;
-        }
-        @media (max-width: 600px) {
-            .weather-days .stat-item { flex: 0 0 120px; }
-        }
-
-        /* Price Colors */
-        .price-low { color: #7ee787 !important; }
-        .price-mid { color: #d29922 !important; }
-        .price-high { color: #f85149 !important; }
-        .price-neutral { color: #8b949e !important; }
-        .price-darkgreen { color: #238636 !important; }
-
-        /* Feed-in highlight for very large export prices (bright green tile) */
-        .stat-item.feedin-highlight {
-            background: linear-gradient(180deg, #e6ffef, #bff6d4);
-            border: 1px solid rgba(34,139,34,0.35);
-            box-shadow: 0 8px 20px rgba(34,139,34,0.06);
-            color: #053012;
-        }
-        .stat-item.feedin-highlight .value { color: #053012 !important; }
-
-        /* Button Grid */
-        .btn-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 6px;
-        }
-        .btn-grid .btn {
-            margin-bottom: 0;
-        }
-
-        /* Right Panel */
-        .right-panel {
-            width: 480px;
-            min-width: 380px;
-            max-width: 600px;
-            background: var(--bg-secondary);
-            border-left: 1px solid var(--border-primary);
-            display: flex;
-            flex-direction: column;
-            transition: width 0.3s ease, min-width 0.3s ease;
-            position: relative;
-            flex-shrink: 0;
-        }
-        /* Left panel split: main content + automation panel */
-        .left-panel {
-            display: flex;
-            gap: 16px;
-            /* Stretch children so the automation panel can fill available height
-               and its internal scrollbar becomes reachable when content is long. */
-            align-items: stretch;
-        }
-        .main-content {
-            flex: 1 1 auto;
-            min-width: 320px;
-        }
-        .automation-panel {
-            width: 520px;
-            min-width: 280px;
-            max-width: 900px;
-            transition: width 0.12s ease;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            /* Fixed height panel that doesn't scroll itself; children scroll */
-            position: -webkit-sticky;
-            position: sticky;
-            top: 80px;
-            /* Increase the available vertical space by 55% (was 44%, now +11% more) */
-            height: calc((100dvh - 100px) * 1.55);
-            overflow: hidden; /* panel itself doesn't scroll */
-            padding-bottom: 12px;
-        }
-        .automation-panel.collapsed {
-            width: 0 !important;
-            min-width: 0 !important;
-            overflow: hidden;
-            transform: translateX(100%);
-        }
-        /* Make the Active Automation card expand to fill available space and scroll internally */
-        .automation-panel > .card:first-child {
-            flex: 1 1 auto;
-            min-height: 500px; /* Increased from default to make it taller */
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-        .automation-panel > .card:first-child > .card-body {
-            flex: 1 1 auto;
-            min-height: 0;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-            overscroll-behavior: contain;
-            padding-right: 6px;
-        }
-        /* Keep the FAQ card at fixed small size */
-        .automation-panel > .card.faq-card {
-            flex: 0 0 auto;
-            margin-top: 56px; /* Increased from 32px to push FAQ further down */
-        }
-
-        /* FAQ card in automation panel - small default size and scrollable content */
-        .automation-panel .faq-card {
-            /* Reduced height to make FAQ card smaller */
-            max-height: 480px; /* reduced from 728px */
-            min-height: 200px; /* reduced from 280px */
-            overflow: hidden; /* prevent the FAQ card from expanding the automation panel */
-        }
-        .automation-panel .faq-card .card-body {
-            /* Allow only the inner FAQ area to scroll — height adjusted to match
-               the smaller FAQ card container so content inside has more room */
-            max-height: calc(480px - 50px); /* account for header height */
-            overflow-y: auto;
-            padding-right: 6px;
-            overscroll-behavior: contain;
-            -webkit-overflow-scrolling: touch;
-        }
-        /* Force Manual Scheduler into row 2 and span full width */
-        .manual-scheduler-card {
-            grid-column: 1 / -1 !important; /* take whole row */
-            grid-row: 2; /* ensure it is placed on the second row */
-        }
-        .automation-toggle-btn {
-            align-self: center;
-            margin-left: -46px;
-            margin-top: 190px;
-            width: 56px;
-            height: 100px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: 1px solid rgba(255,255,255,0.15);
-            border-left: none;
-            border-radius: 16px 0 0 16px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 10px;
-            font-size: 16px;
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-            z-index: 10001;
-            box-shadow: 0 10px 40px rgba(102,126,234,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
-        }
-        @media (max-height: 900px) {
-            .automation-toggle-btn { margin-top: 150px; }
-        }
-        @media (max-height: 700px) {
-            .automation-toggle-btn { margin-top: 100px; }
-        }
-        @media (max-width: 900px) {
-            .main-layout {
-                display: block;
-                height: auto;
-            }
-            .left-panel {
-                display: block;
-                padding: 12px;
-            }
-            .main-content {
-                min-width: 0;
-                padding-bottom: calc(132px + env(safe-area-inset-bottom));
-            }
-            .automation-panel {
-                width: min(92vw, 460px);
-                min-width: 0;
-                max-width: 92vw;
-                position: fixed;
-                top: 118px;
-                right: 0;
-                height: calc(100dvh - 130px);
-                max-height: calc(100dvh - 130px);
-                background: var(--bg-secondary);
-                border-left: 1px solid var(--border-primary);
-                box-shadow: -16px 0 36px var(--shadow-lg);
-                z-index: 10001;
-                overflow-y: auto;
-                overflow-x: hidden;
-                -webkit-overflow-scrolling: touch;
-                transform: translateX(0);
-                transition: transform 0.2s ease;
-            }
-            .automation-panel > .card:first-child {
-                flex: 0 0 auto;
-                min-height: 0;
-                overflow: visible;
-            }
-            .automation-panel > .card:first-child > .card-body {
-                max-height: none;
-                overflow-y: visible;
-            }
-            .automation-panel > .card.faq-card {
-                margin-top: 0;
-            }
-            .automation-panel .faq-card {
-                max-height: none;
-                overflow: visible;
-            }
-            .automation-panel .faq-card .card-body {
-                max-height: none;
-                overflow-y: visible;
-            }
-            .right-panel {
-                display: none !important;
-            }
-            .toggle-panel {
-                display: none !important;
-            }
-            .panel-resizer {
-                display: none !important;
-            }
-            .automation-toggle-btn {
-                display: flex !important;
-                position: fixed;
-                right: 0;
-                top: 52%;
-                transform: translateY(-50%);
-                margin: 0;
-                width: 52px;
-                height: 88px;
-                border-radius: 14px 0 0 14px;
-                z-index: 10002;
-            }
-            .automation-panel.collapsed {
-                transform: translateX(100%);
-            }
-            .automation-toggle-btn:hover,
-            .automation-toggle-btn {
-                transform: translateY(-50%);
-            }
-        }
-        .automation-toggle-btn:hover { transform: translateY(-8px); box-shadow: 0 16px 52px rgba(102,126,234,0.35), inset 0 1px 0 rgba(255,255,255,0.2); }
-        .automation-toggle-btn:active { transform: translateY(-2px); }
-
-        /* Inline icon & arrow inside the toggle */
-        .automation-toggle-btn .automation-toggle-icon { display:flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:12px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .automation-toggle-btn .automation-toggle-icon svg { width:28px; height:28px; display:block; }
-        .automation-toggle-btn .automation-toggle-arrow { font-size:20px; margin-left:6px; color: rgba(255,255,255,0.9); font-weight: 600; }
-        .automation-toggle-btn:hover .automation-toggle-arrow { color: #fff; }
-        .panel-resizer {
-            width: 20px; /* larger hit area */
-            cursor: col-resize;
-            touch-action: none; /* allow pointer events to control dragging */
-            background: transparent;
-            transition: background 0.12s ease;
-            align-self: stretch;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999; /* make sure it's on top */
-            pointer-events: auto;
-        }
-        .panel-resizer:hover { background: rgba(88,166,255,0.06); }
-        .panel-resizer::before {
-            content: '';
-            width: 2px;
-            height: 48%;
-            background: linear-gradient(180deg, rgba(255,255,255,0.15), rgba(255,255,255,0.06));
-            border-radius: 3px;
-            box-shadow: 0 0 0 1px rgba(255,255,255,0.01) inset;
-            opacity: 0.9;
-        }
-        .right-panel.collapsed {
-            width: 0;
-            min-width: 0;
-            border-left: none;
-            overflow: hidden;
-        }
-        .right-panel.collapsed .result-container {
-            display: none;
-        }
-        .toggle-panel {
-            position: fixed;
-            right: 0;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 36px;
-            height: 72px;
-            background: var(--bg-card);
-            border: 1px solid var(--border-primary);
-            border-right: none;
-            border-radius: 8px 0 0 8px;
-            color: var(--text-secondary);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-            transition: right 0.3s ease;
-            z-index: 1000;
-        }
-        .toggle-panel:hover {
-            background: var(--border-primary);
-            color: var(--text-primary);
-        }
-        .result-container {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-            overflow: hidden;
-        }
-        .result-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 14px 18px;
-            background: var(--bg-overlay);
-            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
-        }
-        .result-header h2 {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        .header-btns {
-            display: flex;
-            gap: 8px;
-        }
-        .header-btns button {
-            padding: 6px 12px;
-            border: 1px solid var(--border-primary);
-            border-radius: 6px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .copy-btn {
-            background: var(--accent-blue-bg);
-            color: var(--accent-blue);
-        }
-        .copy-btn:hover {
-            background: color-mix(in srgb, var(--accent-blue) 20%, transparent);
-        }
-        .clear-btn {
-            background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-            color: var(--color-danger);
-        }
-        .clear-btn:hover {
-            background: color-mix(in srgb, var(--color-danger) 20%, transparent);
-        }
-        .status-bar {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 18px;
-            background: var(--bg-overlay);
-            font-size: 11px;
-            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 20%, transparent);
-        }
-        .status-bar .endpoint { color: var(--accent-blue); }
-        .status-bar .time { color: var(--text-secondary); }
-        .result-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px 18px;
-        }
-        #result {
-            background: var(--bg-terminal);
-            border-radius: 8px;
-            padding: 14px;
-            font-family: 'SF Mono', 'Consolas', monospace;
-            font-size: 12px;
-            line-height: 1.5;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            min-height: 100%;
-            color: var(--text-secondary);
-        }
-        .success { color: var(--color-success); }
-        .error { color: var(--color-danger); }
-
-        /* Resize Handle */
-        .resize-handle {
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 4px;
-            cursor: ew-resize;
-            background: transparent;
-        }
-        .resize-handle:hover {
-            background: color-mix(in srgb, var(--accent-blue) 30%, transparent);
-        }
-
-        /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: var(--bg-overlay);
-        }
-        ::-webkit-scrollbar-thumb {
-            background: color-mix(in srgb, var(--accent-blue) 30%, transparent);
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: color-mix(in srgb, var(--accent-blue) 50%, transparent);
-        }
-
-        /* Settings Forms */
-        .settings-form {
-            background: var(--bg-input);
-            border-radius: 10px;
-            padding: 14px;
-            margin-bottom: 12px;
-            border: 1px solid var(--border-secondary);
-            transition: all 0.2s ease;
-        }
-        .settings-form:hover {
-            border-color: var(--border-primary);
-        }
-        .settings-form .form-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 12px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid var(--border-secondary);
-        }
-        .settings-form .form-title {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        .settings-form .endpoint-tag {
-            font-size: 10px;
-            color: var(--text-secondary);
-            background: var(--bg-overlay);
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-family: 'SF Mono', monospace;
-        }
-        .settings-form .form-row {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-        .settings-form .form-group {
-            flex: 1;
-        }
-        .settings-form .form-group.sm {
-            flex: 0 0 70px;
-        }
-        .settings-form .form-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-            padding-top: 10px;
-            border-top: 1px solid color-mix(in srgb, var(--border-primary) 30%, transparent);
-        }
-        .settings-form .checkbox-row {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 10px;
-        }
-        .checkbox-label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 12px;
-            background: var(--bg-overlay);
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            color: var(--text-secondary);
-            transition: all 0.2s;
-        }
-        .checkbox-label:hover {
-            background: color-mix(in srgb, var(--bg-overlay) 150%, transparent);
-            color: var(--text-primary);
-        }
-        .checkbox-label input {
-            accent-color: var(--accent-blue);
-        }
-        .time-input {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .time-input input {
-            width: 50px;
-            text-align: center;
-        }
-        .time-input .sep {
-            color: var(--text-placeholder);
-            font-weight: bold;
-        }
-
-        /* Section Titles */
-        .section-title {
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid var(--border-secondary);
-        }
-
-        /* Automation Rules Styles */
-        .automation-section {
-            margin-top: 20px;
-        }
-        .automation-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 16px;
-        }
-        .automation-header h2 {
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--text-primary);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .automation-header h2 .icon {
-            font-size: 22px;
-        }
-        .automation-status {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .automation-toggle {
-            position: relative;
-            width: 48px;
-            height: 28px;
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 14px;
-            cursor: pointer;
-            transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
-            border: 1.5px solid rgba(255, 255, 255, 0.25);
-            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
-        }
-        .automation-toggle:hover {
-            background: rgba(255, 255, 255, 0.2);
-            border-color: rgba(255, 255, 255, 0.35);
-        }
-        .automation-toggle.active {
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.85));
-            border-color: rgba(255, 255, 255, 0.9);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5);
-        }
-        .automation-toggle.active:hover {
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.5);
-        }
-        .automation-toggle::after {
-            content: '';
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            background: rgba(255, 255, 255, 0.35);
-            border-radius: 50%;
-            top: 3px;
-            left: 3px;
-            transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-        }
-        .automation-toggle.active::after {
-            left: 24px;
-            background: var(--accent-blue);
-            box-shadow: 0 2px 6px color-mix(in srgb, var(--accent-blue) 40%, transparent);
-        }
-        .automation-toggle.active::after:hover {
-            box-shadow: 0 2px 8px color-mix(in srgb, var(--accent-blue) 60%, transparent);
-        }
-        .automation-status-text {
-            font-size: 12px;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .automation-status-text.active {
-            color: var(--color-success);
-        }
-        .rules-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 16px;
-        }
-        .rule-card {
-            background: var(--gradient-card);
-            border-radius: 12px;
-            border: 1px solid var(--border-secondary);
-            overflow: hidden;
-            transition: all 0.2s ease;
-        }
-        .rule-card:hover {
-            border-color: color-mix(in srgb, var(--accent-blue) 30%, transparent);
-            box-shadow: 0 8px 32px var(--shadow-lg);
-        }
-        .rule-card.disabled {
-            opacity: 0.6;
-        }
-        .rule-card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 16px;
-            background: var(--bg-overlay);
-            border-bottom: 1px solid var(--border-secondary);
-        }
-        .rule-card-title {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        .rule-card-actions {
-            display: flex;
-            gap: 6px;
-        }
-        .rule-card-actions button {
-            padding: 4px 8px;
-            background: var(--bg-card);
-            border: 1px solid var(--border-primary);
-            border-radius: 4px;
-            color: var(--text-secondary);
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.2s ease;
-        }
-        .rule-card-actions button:hover {
-            background: var(--border-primary);
-            color: var(--text-primary);
-        }
-        .rule-card-actions button.delete:hover {
-            background: color-mix(in srgb, var(--color-danger) 20%, transparent);
-            border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
-            color: var(--color-danger);
-        }
-        .rule-card-body {
-            padding: 14px 16px;
-        }
-        .rule-conditions, .rule-actions-box {
-            margin-bottom: 12px;
-        }
-        .rule-section-label {
-            font-size: 10px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .condition-tag, .action-tag {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 12px;
-            margin: 3px;
-        }
-        .condition-tag {
-            background: var(--accent-blue-bg);
-            border: 1px solid color-mix(in srgb, var(--accent-blue) 20%, transparent);
-            color: var(--accent-blue);
-        }
-        .condition-tag.price { border-color: color-mix(in srgb, var(--color-success) 30%, transparent); color: var(--color-success); }
-        .condition-tag.soc { border-color: color-mix(in srgb, var(--color-purple) 30%, transparent); color: var(--color-purple); }
-        .condition-tag.temp { border-color: color-mix(in srgb, var(--color-warning) 30%, transparent); color: var(--color-warning); }
-        .condition-tag.weather { border-color: color-mix(in srgb, var(--accent-blue) 30%, transparent); color: var(--accent-blue); }
-        .action-tag {
-            background: color-mix(in srgb, var(--color-success-dark) 15%, transparent);
-            border: 1px solid color-mix(in srgb, var(--color-success-dark) 30%, transparent);
-            color: var(--color-success);
-        }
-        .action-tag.charge { background: color-mix(in srgb, var(--accent-blue) 15%, transparent); border-color: color-mix(in srgb, var(--accent-blue) 30%, transparent); color: var(--accent-blue); }
-        .action-tag.discharge { background: color-mix(in srgb, var(--color-orange) 15%, transparent); border-color: color-mix(in srgb, var(--color-orange) 30%, transparent); color: var(--color-orange); }
-        .action-tag.feedin { background: color-mix(in srgb, var(--color-warning) 15%, transparent); border-color: color-mix(in srgb, var(--color-warning) 30%, transparent); color: var(--color-warning); }
-        
-        /* Rule Builder Modal */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(4px);
-            z-index: 11000;
-            align-items: center;
-            justify-content: center;
-        }
-        .modal-overlay.show {
-            display: flex;
-        }
-        .modal-content {
-            background: var(--gradient-card);
-            border: 1px solid var(--border-primary);
-            border-radius: 16px;
-            width: 90%;
-            max-width: 840px;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-shadow: 0 20px 60px var(--shadow-lg);
-        }
-        .modal-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 18px 24px;
-            border-bottom: 1px solid var(--border-secondary);
-            background: var(--bg-overlay);
-        }
-        .modal-header h3 {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-primary);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .modal-close {
-            width: 32px;
-            height: 32px;
-            border: none;
-            background: color-mix(in srgb, var(--border-primary) 60%, transparent);
-            border-radius: 6px;
-            color: var(--text-secondary);
-            font-size: 18px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-        }
-        .modal-close:hover {
-            background: color-mix(in srgb, var(--color-danger) 20%, transparent);
-            color: var(--color-danger);
-        }
-        .modal-body {
-            padding: 24px;
-        }
-        .modal-footer {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            padding: 16px 24px;
-            border-top: 1px solid var(--border-secondary);
-            background: var(--bg-overlay);
-        }
-        .form-section {
-            margin-bottom: 24px;
-        }
-        .form-section-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .form-section-title .icon {
-            font-size: 16px;
-        }
-        .condition-builder {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-        }
-        @media (max-width: 600px) {
-            .condition-builder {
-                grid-template-columns: 1fr;
-            }
-        }
-        .condition-item {
-            background: var(--bg-input);
-            border: 1px solid var(--border-secondary);
-            border-radius: 10px;
-            padding: 14px;
-            transition: all 0.2s ease;
-        }
-        .condition-item:hover {
-            border-color: color-mix(in srgb, var(--accent-blue) 30%, transparent);
-        }
-        .condition-item.active {
-            border-color: color-mix(in srgb, var(--accent-blue) 50%, transparent);
-            background: color-mix(in srgb, var(--accent-blue) 5%, transparent);
-        }
-        .condition-item-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-        .condition-item-header input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            accent-color: var(--accent-blue);
-        }
-        .condition-item-header label {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-primary);
-            cursor: pointer;
-        }
-        .condition-item-header .icon {
-            font-size: 16px;
-        }
-        .condition-fields {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            padding-left: 28px;
-        }
-        .condition-field {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .condition-field label {
-            font-size: 11px;
-            color: var(--text-secondary);
-            min-width: 60px;
-        }
-        .condition-field select,
-        .condition-field input {
-            flex: 1;
-            padding: 6px 10px;
-            background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
-            border: 1px solid var(--border-primary);
-            border-radius: 6px;
-            color: var(--text-primary);
-            font-size: 12px;
-        }
-        .condition-field select:focus,
-        .condition-field input:focus {
-            outline: none;
-            border-color: var(--accent-blue);
-        }
-        .action-builder {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .action-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px;
-            background: var(--bg-input);
-            border: 1px solid var(--border-secondary);
-            border-radius: 8px;
-        }
-        .action-item label {
-            font-size: 13px;
-            color: var(--text-secondary);
-            min-width: 100px;
-        }
-        .action-item select,
-        .action-item input {
-            flex: 1;
-            padding: 8px 12px;
-            background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
-            border: 1px solid var(--border-primary);
-            border-radius: 6px;
-            color: var(--text-primary);
-            font-size: 13px;
-        }
-        .add-rule-card {
-            background: color-mix(in srgb, var(--bg-card) 50%, transparent);
-            border: 2px dashed var(--border-primary);
-            border-radius: 12px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 180px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        .add-rule-card:hover {
-            border-color: color-mix(in srgb, var(--accent-blue) 40%, transparent);
-            background: color-mix(in srgb, var(--accent-blue) 5%, transparent);
-        }
-        .add-rule-card .icon {
-            font-size: 36px;
-            color: var(--accent-blue);
-            margin-bottom: 10px;
-        }
-        .add-rule-card span {
-            font-size: 14px;
-            color: var(--text-secondary);
-        }
-        .empty-rules {
-            grid-column: 1 / -1;
-            text-align: center;
-            padding: 40px 20px;
-            color: var(--text-secondary);
-        }
-        .empty-rules .icon {
-            font-size: 48px;
-            margin-bottom: 16px;
-            opacity: 0.5;
-        }
-        .empty-rules p {
-            font-size: 14px;
-            margin-bottom: 8px;
-        }
-        .empty-rules .hint {
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-        
-        /* Spinner for loading states */
-        .spinner {
-            width: 16px;
-            height: 16px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-top-color: #fff;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* FAQ Section */
-        .faq-section { margin-top: 16px; }
-        .faq-item {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-primary);
-            border-radius: 6px;
-            margin-bottom: 6px;
-            overflow: hidden;
-        }
-        .faq-question {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 12px;
-            cursor: pointer;
-            font-weight: 500;
-            font-size: 12px;
-            color: var(--text-primary);
-            transition: background 0.2s;
-        }
-        .faq-question:hover { background: var(--bg-tertiary); }
-        .faq-question .icon {
-            transition: transform 0.2s;
-            font-size: 10px;
-            color: var(--text-secondary);
-        }
-        .faq-item.open .faq-question .icon { transform: rotate(180deg); }
-        .faq-answer {
-            display: none;
-            padding: 0 12px 12px;
-            font-size: 11px;
-            line-height: 1.5;
-            color: var(--text-secondary);
-        }
-        .faq-item.open .faq-answer { display: block; }
-        .faq-answer code {
-            background: var(--bg-terminal);
-            padding: 1px 4px;
-            border-radius: 3px;
-            font-family: 'Consolas', monospace;
-            color: var(--accent-blue);
-            font-size: 10px;
-        }
-        .faq-answer ul { margin: 6px 0; padding-left: 16px; }
-        .faq-answer li { margin-bottom: 4px; }
-        .faq-highlight {
-            background: var(--color-success-bg);
-            padding: 8px;
-            border-radius: 4px;
-            margin: 8px 0;
-            border-left: 2px solid var(--color-success);
-            font-size: 10px;
-        }
-        
-        /* Tooltip styles for action field info */
-        .field-label-with-tooltip {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .tooltip-icon {
-            position: relative;
-            width: 14px;
-            height: 14px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            cursor: help;
-            color: var(--accent-blue);
-            font-size: 11px;
-            font-weight: bold;
-            border-radius: 50%;
-            border: 1px solid var(--accent-blue);
-            margin-left: 2px;
-        }
-
-        /* Fallback tooltip (CSS-only) */
-        .tooltip-icon:hover::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: 125%;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--bg-terminal);
-            color: var(--text-primary);
-            padding: 8px 10px;
-            border-radius: 4px;
-            border: 1px solid var(--border-primary);
-            white-space: normal;
-            max-width: min(280px, calc(100vw - 24px));
-            line-height: 1.35;
-            overflow-wrap: anywhere;
-            font-size: 11px;
-            font-weight: normal;
-            z-index: 10000;
-            box-shadow: 0 2px 8px var(--shadow-lg);
-        }
-        .tooltip-icon:hover::before {
-            content: '';
-            position: absolute;
-            bottom: 118%;
-            left: 50%;
-            transform: translateX(-50%);
-            border: 4px solid transparent;
-            border-top-color: var(--bg-terminal);
-            z-index: 10000;
-        }
-
-        /* JS-enhanced tooltip (viewport-aware) */
-        .tooltip-popover {
-            position: fixed;
-            left: -9999px;
-            top: -9999px;
-            background: var(--bg-terminal);
-            color: var(--text-primary);
-            padding: 8px 10px;
-            border-radius: 4px;
-            border: 1px solid var(--border-primary);
-            font-size: 11px;
-            font-weight: normal;
-            line-height: 1.35;
-            white-space: normal;
-            overflow-wrap: anywhere;
-            box-shadow: 0 2px 8px var(--shadow-lg);
-            pointer-events: none;
-            z-index: 12050;
-            opacity: 0;
-            transform: translateY(2px);
-            transition: opacity 120ms ease, transform 120ms ease;
-        }
-        .tooltip-popover.show {
-            opacity: 1;
-            transform: translateY(0);
-        }
-        .tooltip-popover[data-placement="top"]::after,
-        .tooltip-popover[data-placement="bottom"]::after {
-            content: '';
-            position: absolute;
-            left: var(--tooltip-arrow-left, 50%);
-            transform: translateX(-50%);
-            border: 5px solid transparent;
-        }
-        .tooltip-popover[data-placement="top"]::after {
-            top: 100%;
-            border-top-color: var(--bg-terminal);
-        }
-        .tooltip-popover[data-placement="bottom"]::after {
-            bottom: 100%;
-            border-bottom-color: var(--bg-terminal);
-        }
-
-        /* Disable CSS-only hover tooltip when JS popover is active */
-        body.tooltip-js .tooltip-icon:hover::after,
-        body.tooltip-js .tooltip-icon:hover::before {
-            content: none;
-            display: none;
-        }
-    </style>
-    <style>
-        /* Small inline weather map */
-        .weather-map {
-            width: 100%;
-            min-height: 120px;
-            height: 120px !important;
-            border-radius: 6px;
-            margin-top: 12px;
-            overflow: hidden;
-            background: var(--bg-secondary) !important;
-            border: 1px solid var(--border-secondary) !important;
-            position: relative;
-        }
-        /* Simple modal for Amber history date selection */
-        .modal-backdrop { position: fixed; inset: 0; background: rgba(3,6,9,0.6); display:none; align-items:center; justify-content:center; z-index:1200 }
-        .modal-backdrop.show { display:flex }
-        .modal { background: var(--bg-terminal); border:1px solid var(--border-secondary); padding:16px; border-radius:8px; width:360px; max-width:92%; box-shadow:0 10px 30px var(--shadow-lg) }
-        .modal h3 { margin:0 0 8px 0; font-size:16px }
-        .modal .row { display:flex; gap:8px; align-items:center; margin-bottom:8px }
-        .modal .row input[type=date] { flex:1; padding:8px; background:transparent; border:1px solid var(--border-secondary); color:var(--text-primary) }
-        .modal .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:8px }
-        .leaflet-container {
-            min-height: 120px !important;
-            background: var(--bg-secondary) !important;
-        }
-        /* Force tile images visible if leaflet.css is missing or some rules hide them */
-        .leaflet-tile, .leaflet-tile-loaded { opacity: 1 !important; visibility: visible !important; filter: none !important; }
-        /* Ensure tiles are stacked above any card overlays */
-        .weather-map .leaflet-map-pane, .weather-map .leaflet-tile-pane { z-index: 1 !important; position: relative !important; }
-        .weather-map .leaflet-overlay-pane, .weather-map .leaflet-shadow-pane { z-index: 2 !important; }
-        /* Make Leaflet tiles blend with dark UI when tiles fail to load quickly */
-        .leaflet-container { background: var(--bg-primary); }
-
-        /* ── Light-theme overrides ── */
-        [data-theme="light"] #inverterCard {
-            background: #f4f7fb;
-            border: 1px solid #d8dee6;
-            --battery-shell-color: rgba(87, 96, 106, 0.62);
-            --battery-shell-bg: rgba(87, 96, 106, 0.12);
-        }
-        [data-theme="light"] #inverterCard .stat-item {
-            background: #ffffff;
-            border: 1px solid #d0d7de;
-            box-shadow: 0 1px 2px rgba(27, 31, 36, 0.06);
-        }
-        [data-theme="light"] #inverterCard .stat-item .tile-icon {
-            background: #f6f8fa;
-            border: 1px solid #d8dee6;
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-        }
-        [data-theme="light"] #inverterCard .stat-item.feedin-highlight {
-            border-color: rgba(34, 139, 34, 0.38);
-            box-shadow: 0 4px 14px rgba(34, 139, 34, 0.09);
-        }
-        [data-theme="light"] #inverterCard .stat-item.curtailed {
-            border-color: rgba(255, 107, 53, 0.42);
-            box-shadow: 0 4px 14px rgba(255, 107, 53, 0.11);
-        }
-        [data-theme="light"] .stat-item.curtailed .tile-icon::after {
-            border-color: #ffffff;
-        }
-        [data-theme="light"] .stat-item.curtailed {
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.7), rgba(246, 248, 250, 0.8));
-        }
-        [data-theme="light"] .stat-item.extreme {
-            background: linear-gradient(180deg, rgba(255,176,32,0.10), rgba(246,248,250,0.85));
-        }
-        [data-theme="light"] .automation-toggle {
-            background: rgba(0, 0, 0, 0.08);
-            border-color: rgba(0, 0, 0, 0.15);
-        }
-        [data-theme="light"] .automation-toggle:hover {
-            background: rgba(0, 0, 0, 0.12);
-            border-color: rgba(0, 0, 0, 0.2);
-        }
-        [data-theme="light"] .automation-toggle.active {
-            background: linear-gradient(135deg, rgba(9, 105, 218, 0.15), rgba(9, 105, 218, 0.1));
-            border-color: rgba(9, 105, 218, 0.4);
-        }
-        [data-theme="light"] .automation-toggle::after {
-            background: rgba(0, 0, 0, 0.2);
-        }
-        [data-theme="light"] .automation-toggle.active::after {
-            background: #0969da;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SoCrates — Smart Inverter Automation for Australian Households</title>
+  <meta name="description" content="Rule-based inverter automation that evaluates every 60 seconds. Connect your solar inverter, set custom rules, and automate charging and exporting around live electricity prices. Free for the first 500 members.">
+  <link rel="icon" href="/icons/favicon.ico" sizes="any">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+  <meta property="og:title" content="SoCrates — Smart Inverter Automation">
+  <meta property="og:description" content="Connect your solar inverter, set smart rules, and let SoCrates handle the rest. Free for the first 500 members.">
+  <meta property="og:type" content="website">
+  <link rel="stylesheet" href="/css/landing.css">
 </head>
 <body>
-    <nav class="nav-main">
-        <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
-        <div class="nav-links">
-            <a href="/" class="nav-link">🏠 Overview</a>
-            <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
-            <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
-            <a href="/history.html" class="nav-link">📊 Reports</a>
-            <a href="/control.html" class="nav-link">🎮 Controls</a>
-            <a href="/rules-library.html" class="nav-link">📚 Rules Library</a>
-            <a href="/settings.html" class="nav-link">⚙️ Settings</a>
-            <a href="/curtailment-discovery.html" class="nav-link" id="topologyNavLink" style="display: none;">🔬 WIP - Topology Discovery</a>
-            <a href="/admin.html" class="nav-link" id="adminNavLink" style="display: none;">🛡️ Admin</a>
-        </div>
-        <div class="nav-right">
-            <input type="hidden" id="deviceSn" value="">
-            <div class="user-menu" data-user-menu>
-                <button class="user-avatar" type="button" data-user-avatar>
-                    <span data-user-initials>?</span>
-                </button>
-                <div class="user-dropdown" data-user-dropdown>
-                    <div class="user-dropdown-header">
-                        <div class="user-name" data-user-name>Guest</div>
-                        <div class="user-email" data-user-email>Not signed in</div>
-                    </div>
-                    <button class="user-dropdown-item" type="button" data-go-settings>⚙️ Settings</button>
-                    <button class="user-dropdown-item" type="button" data-contact-us>💬 Contact Us</button>
-                    <button class="user-dropdown-item danger" type="button" data-signout>🚪 Sign Out</button>
-                </div>
-            </div>
-        </div>
-    </nav>
-    
-    <div class="main-layout">
-        <div class="left-panel panel-open">
-            <div class="main-content">
 
-            <div class="card dashboard-visibility-card">
-                <div class="card-header">
-                    <div class="card-title"><span class="icon">🧩</span> Customise Dashboard</div>
-                    <button
-                        id="dashboardVisibilityToggleBtn"
-                        class="dashboard-visibility-collapse-btn"
-                        type="button"
-                        aria-expanded="false"
-                        aria-controls="dashboardVisibilityInline"
-                    >
-                        Show
-                    </button>
-                    <div id="dashboardVisibilityInline" class="dashboard-visibility-inline">
-                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="inverter" onchange="toggleDashboardCardVisibility('inverter', this)"> Inverter</label>
-                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="prices" onchange="toggleDashboardCardVisibility('prices', this)"> Prices</label>
-                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="weather" onchange="toggleDashboardCardVisibility('weather', this)"> Weather</label>
-                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="quickControls" onchange="toggleDashboardCardVisibility('quickControls', this)"> Quick Controls</label>
-                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="scheduler" onchange="toggleDashboardCardVisibility('scheduler', this)"> Scheduler</label>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Priority Row: Inverter, Prices, Weather -->
-            <div class="priority-row" id="priorityRow">
-                
-                <!-- Inverter Status -->
-                <div class="card priority" data-dashboard-card="inverter">
-                    <div class="card-header">
-                        <div class="card-title"><span class="icon">⚡</span> Inverter Status</div>
-                            <div style="display:flex;align-items:center;gap:8px;flex-direction:column;align-items:flex-end">
-                            <div style="display:flex;gap:8px;align-items:center">
-                                <span class="card-badge" id="inverterSourceBadge">Live</span>
-                                <div id="inverterLastUpdate" style="font-size:11px;color:var(--text-secondary);">—</div>
-                                <button class="btn btn-icon" onclick="callAPI('/api/inverter/real-time?forceRefresh=true', 'Real-time Data')" title="Refresh inverter data (bypasses cache)">🔄</button>
-                            </div>
+  <!-- ===================================================
+       TOP NAVIGATION
+  ==================================================== -->
+  <nav class="land-nav" role="navigation" aria-label="Main navigation">
+    <div class="container land-nav__inner">
 
-                                <!-- API call metrics footer -->
-                                <div id="apiMetricsFooter" class="api-metrics-footer">
-                                    <div class="metrics-icon">📊</div>
-                                    <div id="metricsDate" class="metrics-date">—</div>
-                                    <div id="metricsCounts" class="metrics-counts">
-                                        <div class="metric-fox">Fox: <span id="countFox" class="metric-value">0</span></div>
-                                        <div class="metric-amber">Amb: <span id="countAmber" class="metric-value">0</span></div>
-                                        <div class="metric-weather">Wea: <span id="countWeather" class="metric-value">0</span></div>
-                                    </div>
-                                    <button class="btn btn-sm" onclick="loadApiMetrics(1)" title="Refresh metrics">🔄</button>
-                                </div>
-                            <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;text-align:right">
-                                <span id="inverterCloudTime">—</span>
-                                <span style="color:var(--text-muted);margin-left:8px;font-size:10px" id="inverterFetchLabel">(fetched • <span id="inverterFetchAgo">—</span>)</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="data-card" id="inverterCard">
-                            <div style="color:var(--text-secondary);font-size:12px">Loading inverter data...</div>
-                        </div>
-                    </div>
-                </div>
+      <a href="/" class="land-nav__logo" aria-label="SoCrates home">
+        <img src="/icons/icon.svg" width="32" height="32" alt="" class="land-nav__logo-img" aria-hidden="true">
+        SoCrates
+      </a>
 
-                <!-- Amber Prices -->
-                <div class="card priority" data-dashboard-card="prices">
-                    <div class="card-header">
-                        <div class="card-title"><span class="icon">💰</span> Electricity Prices</div>
-                        <div style="display:flex;align-items:center;gap:8px">
-                            <span class="card-badge" id="amberSourceBadge">Amber</span>
-                            <div id="amberLastUpdate" style="font-size:11px;color:var(--text-secondary);">—</div>
-                            <button class="btn btn-icon" onclick="getAmberCurrent(true)" title="Force refresh from API (bypasses cache)">🔄</button>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="input-row">
-                            <select id="amberSiteId" class="input">
-                                <option value="">Loading sites...</option>
-                            </select>
-                            <button class="btn btn-sm" id="amberShowMore" onclick="toggleAmberMore()" style="width:auto;margin:0;padding:6px 12px;font-size:12px">Show all</button>
-                        </div>
-                        <!-- Hidden input for compatibility with existing code -->
-                        <input type="hidden" id="amberNext" value="288">
-                        <div class="data-card" id="amberCard">
-                            <div style="color:var(--text-secondary);font-size:12px">Loading Amber sites...</div>
-                        </div>
-                    </div>
-                </div>
+      <ul class="land-nav__links" id="navLinks" role="list">
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#screenshots">Screenshots</a></li>
+        <li><a href="#community">Community</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a href="/login.html" class="btn btn-ghost" style="padding:7px 18px;font-size:0.88rem;">Sign In</a></li>
+        <li><a href="/login.html?tab=signup" class="btn btn-primary" style="padding:7px 18px;font-size:0.88rem;">Claim your spot</a></li>
+      </ul>
 
-                <!-- Weather -->
-                <div class="card priority" data-dashboard-card="weather">
-                    <div class="card-header">
-                        <div class="card-title"><span class="icon">🌤️</span> Weather Forecast <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:rgba(139,148,158,0.2);color:var(--text-secondary);font-size:10px;font-weight:600;cursor:default;margin-left:4px;vertical-align:middle;position:relative;top:-1px" title="Location also controls the timezone used by automation rules">i</span></div>
-                        <div style="display:flex;align-items:center;gap:8px">
-                            <span class="card-badge">Open-Meteo</span>
-                            <div id="weatherLastUpdate" style="font-size:11px;color:var(--text-secondary);">—</div>
-                            <button class="btn btn-icon" onclick="getWeather(true)" title="Force refresh from API (bypasses cache)">🔄</button>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <!-- Hidden input preserved so getWeather() JS reads .value as before -->
-                        <input type="text" id="weatherPlace" style="display:none" aria-hidden="true">
-                        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
-                            <!-- Location display (read-only — change in Settings) -->
-                            <div style="flex:1;min-width:160px;display:flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border-primary);border-radius:6px;padding:7px 12px;">
-                                <span style="color:var(--text-secondary);font-size:12px;white-space:nowrap;">📍</span>
-                                <span id="weatherPlaceDisplay"
-                                      style="flex:1;color:var(--text-primary);font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                                      title="Weather location — also sets the timezone used by automation rules. Change in Settings → Preferences.">—</span>
-                                <a href="settings.html#preferences" style="font-size:11px;color:var(--accent-blue);white-space:nowrap;text-decoration:none;opacity:0.85;" title="Open Settings to change location">Edit ›</a>
-                            </div>
-                            <!-- Days slider -->
-                            <div style="display:flex;align-items:center;gap:6px;background:var(--bg-input);border:1px solid var(--border-primary);border-radius:6px;padding:7px 12px;min-width:180px;">
-                                <span style="font-size:11px;color:var(--text-secondary);white-space:nowrap;">1d</span>
-                                <input type="range" id="weatherDays" min="1" max="16" step="1" value="6"
-                                       oninput="updateWeatherRequestedLabel()"
-                                       style="flex:1;min-width:0;height:6px;background:var(--border-primary);border-radius:3px;outline:none;-webkit-appearance:none;cursor:pointer;">
-                                <span style="font-size:11px;color:var(--text-secondary);white-space:nowrap;">16d</span>
-                                <span id="weatherRequestedLabel" style="font-size:12px;color:var(--text-primary);font-weight:600;white-space:nowrap;min-width:28px;text-align:right;">6d</span>
-                            </div>
-                            <button id="getWeatherBtn" class="btn btn-primary" onclick="getWeather(true)" style="white-space:nowrap;padding:7px 14px;font-size:13px;width:auto;flex-shrink:0;" title="Fetch fresh forecast (bypasses cache)">Get Forecast</button>
-                        </div>
-                        <div class="data-card" id="weatherCard">
-                            <div style="color:var(--text-secondary);font-size:12px">Enter a location and click Get Forecast</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+      <button class="land-nav__burger" id="navBurger" aria-expanded="false" aria-controls="navLinks" aria-label="Open menu">
+        <span></span><span></span><span></span>
+      </button>
 
-            <!-- Quick Controls -->
-            <div class="card" style="margin-bottom: 20px;" data-dashboard-card="quickControls">
-                <div class="card-header">
-                    <div class="card-title"><span class="icon">🕹️</span> Quick Controls</div>
-                    <button class="btn" onclick="refreshQuickControlStatus(true)" style="font-size:11px;padding:4px 10px;width:auto;margin:0">🔄 Refresh</button>
-                </div>
-                <div class="card-body">
-                    <!-- Message Status Banner -->
-                    <div id="quickControlMessage" style="padding:8px;margin-bottom:10px;border-radius:6px;font-size:12px;display:none;"></div>
-                    
-                    <!-- Status Display -->
-                    <div id="quickControlStatus" style="display:none;padding:12px;margin-bottom:16px;border-radius:6px;font-size:13px;">
-                        <!-- Active status will be displayed here -->
-                    </div>
+    </div>
+  </nav>
 
-                    <!-- Automation Warning -->
-                    <div id="quickControlAutomationWarning" style="display:none;padding:12px;margin-bottom:16px;background:rgba(210,153,34,0.15);border:1px solid rgba(210,153,34,0.4);border-radius:6px;font-size:13px;color:var(--color-warning);">
-                        <div style="font-weight:600;margin-bottom:6px">ℹ️ Automation Mode</div>
-                        <div style="font-size:12px;line-height:1.5;color:var(--text-secondary);">
-                            Automation is currently <strong style="color:var(--color-orange)">enabled</strong>. While quick control is active, automation will be paused automatically and resume after the quick control expires.
-                        </div>
-                    </div>
 
-                    <!-- Control Form -->
-                    <div id="quickControlForm">
-                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;margin-bottom:16px;">
-                            <!-- Type Selection -->
-                            <div class="input-group">
-                                <label style="font-weight:600;color:var(--accent-blue);font-size:13px">Control Type</label>
-                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
-                                    <button id="btnChargeType" class="btn" onclick="selectQuickControlType('charge')" style="background:var(--accent-blue);border-color:var(--accent-blue);padding:10px;font-size:13px;font-weight:600;">
-                                        🔋 Charge
-                                    </button>
-                                    <button id="btnDischargeType" class="btn" onclick="selectQuickControlType('discharge')" style="padding:10px;font-size:13px;">
-                                        ⚡ Discharge
-                                    </button>
-                                </div>
-                            </div>
+  <!-- ===================================================
+       HERO
+  ==================================================== -->
+  <section class="land-hero" aria-labelledby="heroH1">
+    <div class="container">
 
-                            <!-- Duration Selection -->
-                            <div class="input-group">
-                                <label style="font-weight:600;color:var(--accent-blue);font-size:13px">
-                                    Duration: <span id="quickControlDurationDisplay" style="color:var(--text-primary);font-weight:700;">20</span> min
-                                </label>
-                                <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
-                                    <span style="font-size:11px;color:var(--text-secondary);white-space:nowrap;">2m</span>
-                                    <input type="range" id="quickControlDuration" min="2" max="300" step="1" value="20" 
-                                           oninput="updateQuickControlDurationDisplay(this.value)" 
-                                           style="flex:1;min-width:0;height:8px;background:var(--border-primary);border-radius:4px;outline:none;-webkit-appearance:none;">
-                                    <span style="font-size:11px;color:var(--text-secondary);white-space:nowrap;">300m</span>
-                                </div>
-                                <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
-                                    <button class="btn" onclick="setQuickControlDuration(5)" style="font-size:11px;padding:4px 6px;flex:1;min-width:44px;">5m</button>
-                                    <button class="btn" onclick="setQuickControlDuration(15)" style="font-size:11px;padding:4px 6px;flex:1;min-width:44px;">15m</button>
-                                    <button class="btn" onclick="setQuickControlDuration(30)" style="font-size:11px;padding:4px 6px;flex:1;min-width:44px;">30m</button>
-                                    <button class="btn" onclick="setQuickControlDuration(60)" style="font-size:11px;padding:4px 6px;flex:1;min-width:44px;">60m</button>
-                                    <button class="btn" onclick="toggleQuickControlCustomDuration()" style="font-size:11px;padding:4px 6px;flex:1;min-width:44px;">Custom</button>
-                                </div>
-                                <input type="number" id="quickControlDurationCustom" class="input" min="2" max="360" value="20" placeholder="Minutes (2-360)" 
-                                       onchange="setQuickControlDuration(this.value)" 
-                                       style="display:none;margin-top:8px;padding:8px;">
-                            </div>
-                        </div>
+      <h1 class="land-hero__h1" id="heroH1">
+        Automate your solar battery<br>
+        <em>around live & future conditions</em>
+      </h1>
 
-                        <!-- Power Selection -->
-                        <div class="input-group" style="margin-bottom:16px;">
-                            <label style="font-weight:600;color:var(--accent-blue);font-size:13px">
-                                Power: <span id="quickControlPowerDisplay" style="color:var(--text-primary);font-weight:700;">5.0</span> kW
-                            </label>
-                            <div style="display:flex;gap:12px;align-items:center;margin-top:8px;">
-                                <span style="font-size:12px;color:var(--text-secondary);min-width:30px;">0 kW</span>
-                                <input type="range" id="quickControlPower" min="0" max="10000" step="100" value="5000" 
-                                       oninput="updateQuickControlPowerDisplay(this.value)" 
-                                       style="flex:1;height:8px;background:var(--border-primary);border-radius:4px;outline:none;-webkit-appearance:none;">
-                                <span id="quickControlMaxLabel" style="font-size:12px;color:var(--text-secondary);min-width:40px;text-align:right;">10 kW</span>
-                            </div>
-                            <div style="margin-top:8px;display:flex;gap:6px;">
-                                <button class="btn" onclick="setQuickControlPower(2000)" style="font-size:11px;padding:4px 8px;flex:1;">2 kW</button>
-                                <button class="btn" onclick="setQuickControlPower(3000)" style="font-size:11px;padding:4px 8px;flex:1;">3 kW</button>
-                                <button class="btn" onclick="setQuickControlPower(5000)" style="font-size:11px;padding:4px 8px;flex:1;">5 kW</button>
-                                <button class="btn" onclick="setQuickControlPower(7000)" style="font-size:11px;padding:4px 8px;flex:1;">7 kW</button>
-                                <button id="quickControlMaxBtn" class="btn" onclick="setQuickControlPower(10000)" style="font-size:11px;padding:4px 8px;flex:1;">10 kW</button>
-                            </div>
-                        </div>
+      <p class="land-hero__sub">
+        SoCrates runs your custom rules at a cadence you choose — charging when prices are cheap,
+        exporting at peaks, and switching modes automatically. You set the logic, limits, and
+        priorities; SoCrates handles execution. Trusted by 150+ Australian households.
+      </p>
 
-                        <!-- Start Button -->
-                        <button id="btnStartQuickControl" class="btn btn-primary" onclick="startQuickControl()" style="width:100%;padding:12px;font-size:14px;font-weight:600;">
-                            ▶️ Start Quick Control
-                        </button>
-                    </div>
+      <div class="land-hero__actions">
+        <a href="/login.html?tab=signup" class="btn btn-primary btn-lg">Claim your free spot →</a>
+        <a href="#screenshots" class="btn btn-ghost btn-lg">View screenshots</a>
+      </div>
 
-                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-primary);font-size:12px;color:var(--text-secondary);line-height:1.6;">
-                        <strong style="color:var(--accent-blue);">💡 Quick Controls</strong> let you immediately charge or discharge your battery for a set duration without creating automation rules. 
-                        Perfect for ad-hoc adjustments based on weather, price changes, or upcoming events.
-                    </div>
-                </div>
-            </div>
+      <p class="land-hero__notes">Free for first 500 &nbsp;·&nbsp; No credit card &nbsp;·&nbsp; No hardware changes</p>
 
-            <!-- Manual Scheduler (Time Segments) - moved up for prominence -->
-            <div class="card" style="margin-bottom: 20px;" data-dashboard-card="scheduler">
-                <div class="card-header">
-                    <div class="card-title"><span class="icon">📅</span> Manual Scheduler (Time Segments)</div>
-                    <div style="display:flex;gap:8px;">
-                        <button class="btn" onclick="clearAllSchedulerSegments()" style="font-size:11px;padding:4px 10px;width:auto;margin:0;background:var(--color-danger);border-color:var(--color-danger);">🗑️ Clear All</button>
-                        <button class="btn" onclick="loadSchedulerSegments()" style="font-size:11px;padding:4px 10px;width:auto;margin:0">🔄 Load Current</button>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <!-- Automation Conflict Warning -->
-                    <div id="schedulerAutomationWarning" style="display:none;padding:12px;margin-bottom:16px;background:rgba(210,153,34,0.15);border:1px solid rgba(210,153,34,0.4);border-radius:6px;font-size:13px;color:var(--color-warning);">
-                        <div style="font-weight:600;margin-bottom:6px">⚠️ Warning: Automation is Currently Enabled</div>
-                        <div style="font-size:12px;line-height:1.5;color:var(--text-secondary);">
-                            Manual scheduler segments will be <strong style="color:var(--color-orange)">overwritten and cleared</strong> when automation triggers a rule. 
-                            If you want to use manual segments, please disable automation first to avoid conflicts.
-                        </div>
-                    </div>
-                    <div id="schedulerStatus" style="padding:8px;margin-bottom:10px;border-radius:6px;font-size:12px;display:none;"></div>
-                    <div id="schedulerSegments" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:10px;">
-                        <!-- Segments will be loaded here -->
-                        <div style="color:var(--text-secondary);font-size:12px;padding:20px;text-align:center">
-                            Click "Load Current" to fetch your scheduler segments, or add a new segment below.
-                        </div>
-                    </div>
-                    
-                    <!-- Add New Segment -->
-                    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-primary);">
-                        <div style="font-weight:600;color:var(--accent-blue);margin-bottom:10px">➕ Add/Edit Segment</div>
-                        <form id="form-scheduler-segment" onsubmit="submitSchedulerSegment(event)" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:10px;align-items:end;">
-                            <div class="input-group">
-                                <label style="font-size:11px">Segment #</label>
-                                <select name="segmentIndex" class="input" style="padding:6px">
-                                    <option value="0">1</option>
-                                    <option value="1">2</option>
-                                    <option value="2">3</option>
-                                    <option value="3">4</option>
-                                    <option value="4">5</option>
-                                    <option value="5">6</option>
-                                    <option value="6">7</option>
-                                    <option value="7">8</option>
-                                </select>
-                            </div>
-                            <div class="input-group">
-                                <label style="font-size:11px">Enable</label>
-                                <select name="enable" class="input" style="padding:6px">
-                                    <option value="1">Yes</option>
-                                    <option value="0">No</option>
-                                </select>
-                            </div>
-                            <div class="input-group">
-                                <label style="font-size:11px">Work Mode</label>
-                                <select name="workMode" class="input" style="padding:6px">
-                                    <option value="SelfUse">Self Use</option>
-                                    <option value="ForceCharge">Force Charge</option>
-                                    <option value="ForceDischarge">Force Discharge</option>
-                                    <option value="Feedin">Feed In</option>
-                                    <option value="Backup">Backup</option>
-                                </select>
-                            </div>
-                            <div class="input-group">
-                                <label style="font-size:11px">Start Time</label>
-                                <input type="time" name="startTime" class="input" value="00:00" style="padding:5px">
-                            </div>
-                            <div class="input-group">
-                                <label style="font-size:11px">End Time</label>
-                                <input type="time" name="endTime" class="input" value="00:00" style="padding:5px">
-                            </div>
-                            <div class="input-group">
-                                <label style="font-size:11px">Min SoC (Grid) %</label>
-                                <input type="number" name="minSocOnGrid" class="input" min="10" max="100" value="20" style="padding:6px">
-                            </div>
-                            <div class="input-group">
-                                <label style="font-size:11px">Stop SoC %</label>
-                                <input type="number" name="fdSoc" class="input" min="10" max="100" value="35" style="padding:6px">
-                            </div>
-                            <div class="input-group">
-                                <label style="font-size:11px">Power (W)</label>
-                                <input type="number" name="fdPwr" class="input" min="0" max="10500" value="5000" style="padding:6px">
-                            </div>
-                            <div class="input-group">
-                                <label style="font-size:11px">Max SoC %</label>
-                                <input type="number" name="maxSoc" class="input" min="10" max="100" value="90" style="padding:6px">
-                            </div>
-                            <div style="display:flex;gap:6px">
-                                <button class="btn btn-primary" type="submit" style="flex:1">💾 Save Segment</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
+      <!-- Compatible-with strip -->
+      <div class="brand-strip">
+        <span class="brand-strip__label">Works with</span>
+        <img src="/icons/logo-foxess.svg" alt="FoxESS" class="brand-logo brand-logo--foxess">
+        <span class="brand-logo-wrap brand-logo-wrap--soon">
+          <img src="/icons/logo-sigenergy.svg" alt="Sigenergy" class="brand-logo brand-logo--sigenergy">
+          <span class="brand-soon">Soon</span>
+        </span>
+        <span class="brand-logo-wrap brand-logo-wrap--soon">
+          <img src="/icons/logo-sungrow.svg" alt="SunGrow" class="brand-logo brand-logo--sungrow">
+          <span class="brand-soon">Soon</span>
+        </span>
+        <span class="brand-sep">&nbsp;+&nbsp;</span>
+        <span class="brand-badge brand-badge--amber">Amber Electric</span>
+      </div>
 
+      <!-- Animated app preview window -->
+      <div class="hero-preview" aria-hidden="true">
+
+        <div class="hero-preview__bar">
+          <span class="hero-preview__dot"></span>
+          <span class="hero-preview__dot"></span>
+          <span class="hero-preview__dot"></span>
+          <div class="hero-preview__url">
+            <span style="color:#7ee787;font-size:9px;">&#128274;</span>
+            app.socrates.app
+          </div>
         </div>
 
-            </div> <!-- /.main-content -->
+        <div class="hero-preview__body">
+          <div class="product-grid">
 
-            <div id="automationResizer" class="panel-resizer" title="Drag to resize rules panel"></div>
-            <button class="automation-toggle-btn" id="automationToggleBtn" onclick="toggleAutomationPanel()" title="Collapse automation panel" aria-label="Toggle automation panel"><span class="automation-toggle-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><defs><linearGradient id="robotBody" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" style="stop-color:#667eea;stop-opacity:1" /><stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" /></linearGradient></defs><rect x="5" y="8" width="14" height="10" rx="3" fill="url(#robotBody)" stroke="#5567d8" stroke-width="0.5"/><rect x="7" y="4" width="10" height="4" rx="2" fill="#667eea" stroke="#5567d8" stroke-width="0.5"/><circle cx="9.5" cy="11" r="1.3" fill="#fff"/><circle cx="14.5" cy="11" r="1.3" fill="#fff"/><circle cx="9.5" cy="11" r="0.7" fill="#667eea"/><circle cx="14.5" cy="11" r="0.7" fill="#667eea"/><rect x="10" y="15" width="4" height="1.5" rx="0.7" fill="#764ba2"/><circle cx="6" y="4" r="0.8" fill="#ffd700"/></svg></span><span class="automation-toggle-arrow">◀</span></button>
-
-            <div class="automation-panel collapsed" id="automationPanel">
-                <!-- Backend Automation Status -->
-                <div class="card" style="margin-bottom:16px" data-tour="automation-card">
-                    <div class="card-header">
-                        <div class="card-title"><span class="icon">⚡</span> Active Automation</div>
-                    </div>
-                    <div class="card-body" id="backendAutomationStatus">
-                        <div style="color:var(--text-secondary);font-size:12px">Loading automation status...</div>
-                    </div>
+            <article class="product-card product-card--status">
+              <header class="product-card__head">
+                <h3>&#9889; Inverter Status</h3>
+                <div class="product-card__meta">
+                  <span class="product-badge product-badge--live">LIVE</span>
+                  <span class="product-card__age">3m ago</span>
                 </div>
+              </header>
 
-                <!-- FAQ Section -->
-                <div class="card faq-card" style="margin-bottom:16px">
-                    <div class="card-header">
-                        <div class="card-title"><span class="icon">❓</span> How It Works</div>
-                    </div>
-                    <div class="card-body">
-                        <div class="faq-section">
-                            <div class="faq-item">
-                                <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                                    <span>How often are conditions checked?</span>
-                                    <span class="icon">▼</span>
-                                </div>
-                                <div class="faq-answer">
-                                    Every <code id="faqAutomationInterval">60 seconds</code> using <strong>cached data</strong>:
-                                    <ul>
-                                        <li>Amber prices: refreshed every <span id="faqAmberCache">60s</span></li>
-                                        <li>Inverter (SoC, temps): every <span id="faqInverterCache">5 min</span></li>
-                                        <li>Weather: every <span id="faqWeatherCache">30 min</span></li>
-                                    </ul>
-                                </div>
-                            </div>
-                            <div class="faq-item">
-                                <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                                    <span>What is cooldown?</span>
-                                    <span class="icon">▼</span>
-                                </div>
-                                <div class="faq-answer">
-                                    After a rule triggers, it can't trigger again for <code id="faqCooldown">5 minutes</code> (default). Prevents rapid switching when values hover near thresholds.
-                                </div>
-                            </div>
-                            <div class="faq-item">
-                                <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                                    <span>What if conditions change mid-segment?</span>
-                                    <span class="icon">▼</span>
-                                </div>
-                                <div class="faq-answer">
-                                    <div class="faq-highlight">
-                                        <strong>Active Cancellation:</strong> If the triggering rule's conditions are no longer met, the segment is cancelled within ~<span id="faqCancelInterval">60 seconds</span>. Higher-priority rules can also replace active lower-priority rules immediately.
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="faq-item">
-                                <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                                    <span>How does priority work?</span>
-                                    <span class="icon">▼</span>
-                                </div>
-                                <div class="faq-answer">
-                                    <strong>Lower number = Higher priority.</strong> Rules evaluated in order; first match wins. Use priority 1-2 for safety rules.
-                                </div>
-                            </div>
-                        </div>
-                        <div style="text-align:center;margin-top:10px">
-                            <a href="/test.html" style="color:var(--accent-blue);font-size:11px;text-decoration:none">🧪 Full FAQ in Automation Lab →</a>
-                        </div>
-                    </div>
+              <div class="status-flow">
+                <div class="status-flow__tile">
+                  <span class="status-flow__icon">&#9728;</span>
+                  <strong id="heroSolarKw">0.40 kW</strong>
+                  <small>Solar Production</small>
                 </div>
-            </div> <!-- /.automation-panel -->
+                <div class="status-flow__tile">
+                  <span class="status-flow__icon">&#127968;</span>
+                  <strong id="heroLoadKw">0.52 kW</strong>
+                  <small>House Load</small>
+                </div>
+                <div class="status-flow__tile">
+                  <span class="status-flow__icon">&#128268;</span>
+                  <strong id="heroGridKw">2.52 kW</strong>
+                  <small id="heroGridLabel">Grid Import</small>
+                </div>
+              </div>
 
-            <!-- Right Panel - Response -->
-            <div class="right-panel collapsed" id="rightPanel">
-                <div class="resize-handle" id="resizeHandle"></div>
-                
-                <div class="result-container">
-                    <div class="result-header">
-                        <h2>📋 API Response</h2>
-                        <div class="header-btns">
-                            <button class="copy-btn" onclick="copyResult()">📋 Copy</button>
-                            <button class="clear-btn" onclick="clearResult()">Clear</button>
-                        </div>
-                    </div>
-                    <div id="status-bar" class="status-bar" style="display: none;">
-                        <span class="endpoint"></span>
-                        <span class="time"></span>
-                    </div>
-                    <div class="result-content">
-                        <pre id="result">Click any button to see the API response here...</pre>
-                    </div>
+              <div class="status-battery">
+                <div class="status-battery__main">
+                  <span class="status-battery__icon" aria-hidden="true">&#128267;</span>
+                  <div class="status-battery__numbers">
+                    <div class="status-battery__power"><span id="heroChargeW">2.5</span> kW <small id="heroPowerState">&#8593; Charging</small></div>
+                    <div class="status-battery__soc" id="heroSoc">76%</div>
+                    <div class="status-battery__energy"><span id="heroBatteryKwh">23.9</span> kWh available</div>
+                  </div>
                 </div>
-            </div>
+              </div>
 
-        </div> <!-- /.main-layout -->
+              <div class="status-temp-row">
+                <div class="status-temp">
+                  <span>Battery Temp</span>
+                  <strong>29.1&deg;C</strong>
+                </div>
+                <div class="status-temp">
+                  <span>Ambient Temp</span>
+                  <strong>35.5&deg;C</strong>
+                </div>
+                <div class="status-temp">
+                  <span>Inverter Temp</span>
+                  <strong>28.1&deg;C</strong>
+                </div>
+              </div>
+            </article>
 
-        <!-- Toggle button outside main-layout, fixed position, always visible -->
-        <button class="toggle-panel" onclick="togglePanel()" id="toggleBtn">R ◀</button>
+            <article class="product-card product-card--prices">
+              <header class="product-card__head">
+                <h3>&#128176; Electricity Prices</h3>
+                <div class="product-card__meta">
+                  <span class="product-badge product-badge--amber">AMBER</span>
+                  <span class="product-card__age">18s ago</span>
+                </div>
+              </header>
 
-        <!-- Rule Builder Modal -->
-        <div class="modal-overlay" id="ruleModal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3><span class="icon">⚙️</span> <span id="ruleModalTitle">Create Automation Rule</span></h3>
-                    <button class="modal-close" onclick="closeRuleModal()">×</button>
+              <div class="price-summary">
+                <div class="price-kpi">
+                  <span>Buy now</span>
+                  <strong id="heroPrice">8.2&cent;</strong>
                 </div>
-                <div class="modal-body">
-                    <form id="ruleForm">
-                        <!-- Rule Name -->
-                        <div class="form-section">
-                            <div class="form-section-title"><span class="icon">📝</span> Rule Name</div>
-                            <input type="text" id="ruleName" class="input" placeholder="e.g., Cheap Rate Charging" required>
-                        </div>
-                        
-                        <!-- Conditions -->
-                        <div class="form-section">
-                            <div class="form-section-title"><span class="icon">🎯</span> Conditions (when to trigger)</div>
-                            <div class="condition-builder">
-                                <!-- Amber Price Condition -->
-                                <div class="condition-item" id="conditionPrice">
-                                    <div class="condition-item-header">
-                                        <input type="checkbox" id="condPriceEnabled" onchange="toggleCondition('Price')">
-                                        <span class="icon">💰</span>
-                                        <label for="condPriceEnabled">Amber Price</label>
-                                    </div>
-                                    <div class="condition-fields" id="condPriceFields">
-                                        <div class="condition-field">
-                                            <label>Type</label>
-                                            <select id="condPriceType">
-                                                <option value="buy">Buy Price</option>
-                                                <option value="feedin">Feed-in Price</option>
-                                            </select>
-                                        </div>
-                                        <div class="condition-field">
-                                            <label>Operator</label>
-                                            <select id="condPriceOp">
-                                                <option value="<">Less than</option>
-                                                <option value="<=">Less or equal</option>
-                                                <option value=">">Greater than</option>
-                                                <option value=">=">Greater or equal</option>
-                                                <option value="between">Between</option>
-                                            </select>
-                                        </div>
-                                        <div class="condition-field">
-                                            <label>Value (¢)</label>
-                                            <input type="number" id="condPriceValue" placeholder="15" step="0.1">
-                                        </div>
-                                        <div class="condition-field" id="condPriceValue2Row" style="display:none">
-                                            <label>And (¢)</label>
-                                            <input type="number" id="condPriceValue2" placeholder="25" step="0.1">
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Battery SoC Condition -->
-                                <div class="condition-item" id="conditionSoC">
-                                    <div class="condition-item-header">
-                                        <input type="checkbox" id="condSoCEnabled" onchange="toggleCondition('SoC')">
-                                        <span class="icon">🔋</span>
-                                        <label for="condSoCEnabled">Battery SoC</label>
-                                    </div>
-                                    <div class="condition-fields" id="condSoCFields">
-                                        <div class="condition-field">
-                                            <label>Operator</label>
-                                            <select id="condSoCOp">
-                                                <option value="<">Less than</option>
-                                                <option value="<=">Less or equal</option>
-                                                <option value=">">Greater than</option>
-                                                <option value=">=">Greater or equal</option>
-                                                <option value="between">Between</option>
-                                            </select>
-                                        </div>
-                                        <div class="condition-field">
-                                            <label>Value (%)</label>
-                                            <input type="number" id="condSoCValue" min="0" max="100" placeholder="20">
-                                        </div>
-                                        <div class="condition-field" id="condSoCValue2Row" style="display:none">
-                                            <label>And (%)</label>
-                                            <input type="number" id="condSoCValue2" min="0" max="100" placeholder="80">
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Battery Temperature Condition -->
-                                <div class="condition-item" id="conditionTemp">
-                                    <div class="condition-item-header">
-                                        <input type="checkbox" id="condTempEnabled" onchange="toggleCondition('Temp')">
-                                        <span class="icon">🌡️</span>
-                                        <label for="condTempEnabled">Battery Temperature</label>
-                                    </div>
-                                    <div class="condition-fields" id="condTempFields">
-                                        <div class="condition-field">
-                                            <label>Operator</label>
-                                            <select id="condTempOp">
-                                                <option value="<">Less than</option>
-                                                <option value="<=">Less or equal</option>
-                                                <option value=">">Greater than</option>
-                                                <option value=">=">Greater or equal</option>
-                                                <option value="between">Between</option>
-                                            </select>
-                                        </div>
-                                        <div class="condition-field">
-                                            <label>Value (°C)</label>
-                                            <input type="number" id="condTempValue" placeholder="35">
-                                        </div>
-                                        <div class="condition-field" id="condTempValue2Row" style="display:none">
-                                            <label>And (°C)</label>
-                                            <input type="number" id="condTempValue2" placeholder="45">
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Weather Condition -->
-                                <div class="condition-item" id="conditionWeather">
-                                    <div class="condition-item-header">
-                                        <input type="checkbox" id="condWeatherEnabled" onchange="toggleCondition('Weather')">
-                                        <span class="icon">🌤️</span>
-                                        <label for="condWeatherEnabled">Weather Forecast</label>
-                                    </div>
-                                    <div class="condition-fields" id="condWeatherFields">
-                                        <div class="condition-field">
-                                            <label>Condition</label>
-                                            <select id="condWeatherType">
-                                                <option value="sunny">Sunny / Clear</option>
-                                                <option value="cloudy">Cloudy / Overcast</option>
-                                                <option value="rainy">Rainy</option>
-                                                <option value="any">Any</option>
-                                            </select>
-                                        </div>
-                                        <div class="condition-field">
-                                            <label>Solar (kWh)</label>
-                                            <select id="condWeatherSolarOp">
-                                                <option value="any">Any</option>
-                                                <option value=">">Expected &gt;</option>
-                                                <option value="<">Expected &lt;</option>
-                                            </select>
-                                        </div>
-                                        <div class="condition-field" id="condWeatherSolarValueRow">
-                                            <label>Value</label>
-                                            <input type="number" id="condWeatherSolarValue" placeholder="20" step="0.1">
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Time Window Condition -->
-                                <div class="condition-item" id="conditionTime">
-                                    <div class="condition-item-header">
-                                        <input type="checkbox" id="condTimeEnabled" onchange="toggleCondition('Time')">
-                                        <span class="icon">🕐</span>
-                                        <label for="condTimeEnabled">Time Window</label>
-                                    </div>
-                                    <div class="condition-fields" id="condTimeFields">
-                                        <div class="condition-field">
-                                            <label>From</label>
-                                            <input type="time" id="condTimeStart" value="00:00">
-                                        </div>
-                                        <div class="condition-field">
-                                            <label>To</label>
-                                            <input type="time" id="condTimeEnd" value="23:59">
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Actions -->
-                        <div class="form-section">
-                            <div class="form-section-title"><span class="icon">⚡</span> Action (what to do)</div>
-                            <div class="action-builder">
-                                <div class="action-item">
-                                    <label>Work Mode</label>
-                                    <select id="actionWorkMode">
-                                        <option value="">-- Select --</option>
-                                        <option value="SelfUse">Self Use</option>
-                                        <option value="ForceCharge">Force Charge</option>
-                                        <option value="ForceDischarge">Force Discharge</option>
-                                        <option value="Feedin">Feed In</option>
-                                        <option value="Backup">Backup</option>
-                                    </select>
-                                </div>
-                                <div class="action-item">
-                                    <label>Min SoC (Grid) (%)</label>
-                                    <input type="number" id="actionMinSoC" min="10" max="100" placeholder="Optional">
-                                </div>
-                                <div class="action-item">
-                                    <label>Max SoC (%)</label>
-                                    <input type="number" id="actionMaxSoC" min="10" max="100" placeholder="Optional">
-                                </div>
-                                <div class="action-item">
-                                    <label>Power (W)</label>
-                                    <input type="number" id="actionFdPwr" min="0" max="10500" placeholder="Optional">
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Priority -->
-                        <div class="form-section">
-                            <div class="form-section-title"><span class="icon">📊</span> Priority</div>
-                            <div class="action-item">
-                                <label>Rule Priority</label>
-                                <select id="rulePriority">
-                                    <option value="1">1 - Highest</option>
-                                    <option value="2">2 - High</option>
-                                    <option value="3" selected>3 - Normal</option>
-                                    <option value="4">4 - Low</option>
-                                    <option value="5">5 - Lowest</option>
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <input type="hidden" id="ruleId" value="">
-                    </form>
+                <div class="price-kpi">
+                  <span>Feed-in</span>
+                  <strong id="heroFeedInPrice">10.0&cent;</strong>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn" onclick="closeRuleModal()">Cancel</button>
-                    <button class="btn btn-primary" onclick="saveRule()">💾 Save Rule</button>
+                <div class="price-kpi">
+                  <span>Today saved</span>
+                  <strong id="heroSaving">$2.60</strong>
                 </div>
-            </div>
+              </div>
+
+              <div class="price-forecast-row" aria-hidden="true">
+                <span>21&cent;</span>
+                <span>21&cent;</span>
+                <span>20&cent;</span>
+                <span>19&cent;</span>
+                <span>20&cent;</span>
+                <span>19&cent;</span>
+              </div>
+
+              <div class="chart-shell">
+                <svg viewBox="0 0 720 240" preserveAspectRatio="xMidYMid meet" class="price-sparkline" aria-hidden="true">
+                  <rect x="0" y="0" width="720" height="240" fill="url(#chartBgGrad)"/>
+                  <defs>
+                    <linearGradient id="chartBgGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="rgba(88,166,255,.12)"/>
+                      <stop offset="100%" stop-color="rgba(13,17,23,0)"/>
+                    </linearGradient>
+                    <linearGradient id="chartAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="rgba(88,166,255,.34)"/>
+                      <stop offset="100%" stop-color="rgba(88,166,255,0)"/>
+                    </linearGradient>
+                  </defs>
+                  <line x1="24" y1="48" x2="696" y2="48" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
+                  <line x1="24" y1="112" x2="696" y2="112" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
+                  <line x1="24" y1="176" x2="696" y2="176" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
+                  <line id="heroThresholdLine" x1="24" y1="140" x2="696" y2="140" stroke="rgba(126,231,135,.75)" stroke-width="2" stroke-dasharray="5 6"/>
+                  <text id="heroThresholdLabel" x="690" y="134" text-anchor="end">Charge line 8.5&cent;</text>
+                  <path id="heroPriceArea" fill="url(#chartAreaGrad)" d=""/>
+                  <polyline id="heroPriceLine" points="" fill="none" stroke="#58a6ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                  <g id="heroChargeMarkers"></g>
+                  <circle id="heroPeakDot" cx="348" cy="136" r="6" fill="#f85149" stroke="#0d1117" stroke-width="2"/>
+                  <line id="heroNowLine" x1="348" y1="24" x2="348" y2="207" stroke="rgba(255,255,255,.35)" stroke-width="2" stroke-dasharray="6 6"/>
+                  <circle id="heroNowDot" cx="348" cy="136" r="7" fill="#58a6ff" stroke="#0d1117" stroke-width="3"/>
+                  <rect id="heroChartHit" x="24" y="24" width="672" height="183" fill="transparent"/>
+                  <g class="chart-x-axis" aria-hidden="true">
+                    <text x="24" y="228">21:25</text>
+                    <text x="246" y="228">21:55</text>
+                    <text x="470" y="228">22:30</text>
+                    <text x="696" y="228" text-anchor="end">00:00</text>
+                  </g>
+                </svg>
+                <div class="chart-tooltip" id="heroChartTooltip" hidden>
+                  <strong id="heroTooltipTime">10am</strong>
+                  <span id="heroTooltipPrice">8.2&cent;/kWh</span>
+                  <small id="heroTooltipAction">Recommended: Charge</small>
+                </div>
+              </div>
+
+              <div class="price-footer">
+                <span>Now <strong id="heroChartNowPrice">8.2&cent;</strong> (<span id="heroNowLabel">10am</span>)</span>
+                <span>Peak <strong id="heroChartPeak">12.4&cent; @ 6pm</strong></span>
+              </div>
+            </article>
+
+            <article class="product-card product-card--weather">
+              <header class="product-card__head">
+                <h3>&#9925; Weather Forecast</h3>
+                <div class="product-card__meta">
+                  <span class="product-card__age">43s ago</span>
+                </div>
+              </header>
+
+              <div class="weather-toolbar">
+                <div class="weather-location-pill">
+                  <span class="weather-location-pill__pin">&#128205;</span>
+                  <span>Sydney</span>
+                </div>
+                <div class="weather-range">
+                  <span>1d</span>
+                  <span class="weather-range__track"><i></i></span>
+                  <span>6d</span>
+                </div>
+              </div>
+
+              <div class="weather-now">
+                <strong>20.5&deg;C</strong>
+                <span>Sydney &middot; Showers &middot; Now (21:15)</span>
+                <div class="weather-now__meta">
+                  <span>Rain: 3.6 mm</span>
+                  <span>Wind: 5.5 km/h SSE</span>
+                  <span>Sun: 0 W/m&sup2;</span>
+                  <span>Humidity: 55%</span>
+                </div>
+              </div>
+
+              <div class="weather-cards">
+                <div class="weather-card">
+                  <h4>Mon 9/3</h4>
+                  <p>Showers</p>
+                  <small>High 22.8&deg; / Low 18.6&deg;</small>
+                  <div class="weather-card__stats">
+                    <span>Rain 3.6 mm</span>
+                    <span>&#9728; 119 &nbsp; &#9729; 81%</span>
+                  </div>
+                </div>
+                <div class="weather-card">
+                  <h4>Tue 10/3</h4>
+                  <p>Showers</p>
+                  <small>High 25.0&deg; / Low 19.5&deg;</small>
+                  <div class="weather-card__stats">
+                    <span>Rain 1.6 mm</span>
+                    <span>&#9728; 164 &nbsp; &#9729; 73%</span>
+                  </div>
+                </div>
+                <div class="weather-card">
+                  <h4>Wed 11/3</h4>
+                  <p>Partly Cloudy</p>
+                  <small>High 29.8&deg; / Low 18.9&deg;</small>
+                  <div class="weather-card__stats">
+                    <span>Rain 0.0 mm</span>
+                    <span>&#9728; 282 &nbsp; &#9729; 24%</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="product-card product-card--automation">
+              <header class="product-card__head product-card__head--automation">
+                <h3>&#9889; Active Automation</h3>
+                <div class="automation-head-controls">
+                  <div class="automation-cycle">
+                    <span>Next cycle</span>
+                    <strong><span id="heroCountdown">58</span>s</strong>
+                  </div>
+                  <div class="automation-master" aria-label="Master automation active">
+                    <span class="automation-master__label">Master</span>
+                    <span class="automation-master__switch is-on" aria-hidden="true"><i></i></span>
+                    <strong class="automation-master__state">Active</strong>
+                  </div>
+                </div>
+              </header>
+
+              <div class="automation-rule-list">
+                <div class="automation-rule automation-rule--active">
+                  <span class="rule-priority" id="heroRulePriority">P5</span>
+                  <div class="automation-rule__content">
+                    <strong id="heroRule">&#9889; Overnight Solar Planning Charge</strong>
+                    <p id="heroRuleReason">Weak solar forecast tomorrow, topping up overnight reserve</p>
+                    <div class="automation-tags">
+                      <span class="rule-decision is-match" id="heroDecisionPrice">
+                        <span class="rule-decision__name">Time 00:00-06:00</span>
+                        <span class="rule-decision__state">Matched</span>
+                      </span>
+                      <span class="rule-decision is-match" id="heroDecisionSoc">
+                        <span class="rule-decision__name">Battery SoC &le; 80%</span>
+                        <span class="rule-decision__state">Matched</span>
+                      </span>
+                      <span class="rule-decision is-match" id="heroDecisionSolar">
+                        <span class="rule-decision__name">Cloud cover avg &ge; 70% (24h)</span>
+                        <span class="rule-decision__state">Matched</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div><!-- /.hero-preview__body -->
+
+        <!-- Toast notification - appears inside the mock window -->
+        <div class="hero-toast" id="heroToast" hidden>
+          <span class="hero-toast__icon">&#9889;</span>
+          <div class="hero-toast__text">
+            <strong id="heroToastStrong">Automation ran</strong>
+            <span id="heroToastSub">Force Charge &middot; 8.2&cent;/kWh &middot; SoC 76%</span>
+          </div>
+          <span class="hero-toast__check">&#10003;</span>
         </div>
 
-    <script src="js/dashboard.js"></script>
+      </div><!-- /.hero-preview -->
+
+    </div>
+  </section>
+
+
+  <!-- ===================================================
+       HOW IT WORKS
+  ==================================================== -->
+  <section class="land-how" id="how-it-works" aria-labelledby="howTitle">
+    <div class="container">
+
+      <span class="section-label">How it works</span>
+      <h2 class="section-title" id="howTitle">Up and running in 5 minutes</h2>
+      <p class="section-sub">No coding, no hardware changes, no home servers — just three steps.</p>
+
+      <div class="how-steps">
+
+        <div class="how-step reveal">
+          <div class="how-step__num">01</div>
+          <div class="how-step__icon">&#128268;</div>
+          <h3 class="how-step__title">Connect your inverter</h3>
+          <p class="how-step__body">Enter your inverter API key and device serial from the manufacturer's app. SoCrates verifies the connection instantly — no cables, no hardware changes required.</p>
+        </div>
+
+        <div class="how-step__arrow" aria-hidden="true">&#8594;</div>
+
+        <div class="how-step reveal">
+          <div class="how-step__num">02</div>
+          <div class="how-step__icon">&#128203;</div>
+          <h3 class="how-step__title">Set your rules</h3>
+          <p class="how-step__body">Tell SoCrates when to charge, discharge or export using point-and-click conditions: electricity price, battery level, time of day, or solar forecast. Start from library templates or build your own.</p>
+        </div>
+
+        <div class="how-step__arrow" aria-hidden="true">&#8594;</div>
+
+        <div class="how-step reveal">
+          <div class="how-step__num">03</div>
+          <div class="how-step__icon">&#128176;</div>
+          <h3 class="how-step__title">Save automatically</h3>
+          <p class="how-step__body">SoCrates evaluates your rules every 60 seconds in the cloud and sends commands to your inverter automatically. Check in when you like — or just watch your electricity bill shrink.</p>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+
+  <!-- ===================================================
+       FEATURES
+  ==================================================== -->
+  <section class="land-features" id="features" aria-labelledby="featuresTitle">
+    <div class="container">
+
+      <span class="section-label">Features</span>
+      <h2 class="section-title" id="featuresTitle">Everything you need to automate your energy</h2>
+      <p class="section-sub">From live price response to forecast-driven planning — every tool a solar household needs, built in.</p>
+
+      <div class="features-grid">
+
+        <div class="feature-card reveal">
+          <div class="feature-card__icon">&#129302;</div>
+          <h3 class="feature-card__title">Automation Engine</h3>
+          <p class="feature-card__body">Rules evaluate every 60 seconds in the cloud. Combine Amber price, battery SoC, time of day, solar and weather forecasts. First matching rule fires, with a full decision log.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-card__icon">&#9889;</div>
+          <h3 class="feature-card__title">Price &amp; Weather</h3>
+          <p class="feature-card__body">Blend live Amber import/feed-in prices with forward price outlooks and multi-day weather forecasts. Forecast trends feed your rules so you can act before spikes or curtailment windows.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-card__icon">&#128300;</div>
+          <h3 class="feature-card__title">Automation Lab</h3>
+          <p class="feature-card__body">Test any rule before going live. Simulate spikes, low SoC, or cloudy days and see exactly which rule fires and why, without touching your inverter.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-card__icon">&#9728;</div>
+          <h3 class="feature-card__title">Solar Curtailment Monitor</h3>
+          <p class="feature-card__body">Automatically limits export when feed-in prices drop below your threshold. Set your floor price once and SoCrates enforces it every minute.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-card__icon">&#128200;</div>
+          <h3 class="feature-card__title">ROI &amp; Automation History</h3>
+          <p class="feature-card__body">See the dollar impact of every fired rule with daily, weekly, and monthly history. Track savings clearly and export your data anytime.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-card__icon">&#128336;</div>
+          <h3 class="feature-card__title">Quick Controls</h3>
+          <p class="feature-card__body">Need to react fast? Trigger one-tap charge/discharge with power and duration controls, then return to automation with timed auto-resume.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-card__icon">&#128218;</div>
+          <h3 class="feature-card__title">Community Rules Library</h3>
+          <p class="feature-card__body">Filter by category, difficulty, and scenario. Search instantly, import templates in one click, and customize with plain-English summaries.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-card__icon">&#128274;</div>
+          <h3 class="feature-card__title">Private &amp; Secure</h3>
+          <p class="feature-card__body">Per-user isolated accounts on Google Firestore. Inverter API keys are never returned to the browser after setup and never shared with third parties.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ===================================================
+       INTERACTIVE DEMO
+  ==================================================== -->
+  <section class="land-demo" id="screenshots" aria-labelledby="screenshotsTitle">
+    <div class="container">
+
+      <span class="section-label">Screenshots</span>
+      <h2 class="section-title" id="screenshotsTitle">Product Walkthrough</h2>
+      <p class="section-sub">Real screens from the live app &mdash; no mockups.</p>
+
+      <div class="sc-carousel" id="scCarousel" aria-roledescription="carousel" aria-label="App screenshots">
+        <div class="sc-track-wrap">
+          <div class="sc-track" id="scTrack">
+
+            <div class="sc-slide is-active" role="group" aria-roledescription="slide" aria-label="1 of 10" data-caption="Automation Dashboard & Overview - your live system status, active rule, and current savings at a glance.">
+              <img src="/images/screenshots/screen-1.png" alt="Automation dashboard overview with battery SoC, active rule, pricing and savings" loading="lazy" width="900" height="562">
+            </div>
+
+            <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="2 of 10" data-caption="Quick Controls - instantly charge or discharge with one tap, plus power and duration controls.">
+              <img src="/images/screenshots/screen-2.png" alt="Quick Controls panel with action type, power and duration controls" loading="lazy" width="900" height="562">
+            </div>
+
+            <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="3 of 10" data-caption="Automation Rules - priority-based rules evaluate continuously and trigger the best next action.">
+              <img src="/images/screenshots/screen-3.png" alt="Automation rules list with priorities, conditions and status" loading="lazy" width="900" height="562">
+            </div>
+
+            <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="4 of 10" data-caption="Automation ROI - measure dollar impact by rule, mode, and timeframe.">
+              <img src="/images/screenshots/screen-4.png" alt="Automation ROI dashboard with savings metrics and trend summaries" loading="lazy" width="900" height="562">
+            </div>
+
+            <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="5 of 10" data-caption="Rule History - audit every evaluation with clear pass/fail condition traces.">
+              <img src="/images/screenshots/screen-5.png" alt="Rule history timeline showing condition-by-condition evaluation results" loading="lazy" width="900" height="562">
+            </div>
+
+            <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="6 of 10" data-caption="Automation Lab - test and validate scenarios before applying them to your live inverter.">
+              <img src="/images/screenshots/screen-6.png" alt="Automation Lab simulation panel with scenario testing and outcomes" loading="lazy" width="900" height="562">
+            </div>
+
+            <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="7 of 10" data-caption="Reporting - review performance snapshots, trends, and outcomes over time.">
+              <img src="/images/screenshots/screen-7.png" alt="Reporting view with historical summaries and performance trends" loading="lazy" width="900" height="562">
+            </div>
+
+            <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="8 of 10" data-caption="Advanced Controls - configure deeper inverter behavior and automation constraints.">
+              <img src="/images/screenshots/screen-8.png" alt="Advanced controls panel with inverter behavior and automation settings" loading="lazy" width="900" height="562">
+            </div>
+
+            <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="9 of 10" data-caption="Blackout & Curtailment - protect your battery strategy during grid events and export constraints.">
+              <img src="/images/screenshots/screen-9.png" alt="Blackout and curtailment controls for grid events and export limits" loading="lazy" width="900" height="562">
+            </div>
+            <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="10 of 10" data-caption="Weather Tile Demo - forecast tiles feed tomorrow's automation decisions.">
+              <img src="/images/screenshots/screen-10.png" alt="Weather tile demo with forecast data used for automation planning" loading="lazy" width="900" height="562">
+            </div>
+          </div><!-- /.sc-track -->
+        </div><!-- /.sc-track-wrap -->
+
+        <button class="sc-btn sc-btn--prev" id="scPrev" aria-label="Previous screenshot">&#8592;</button>
+        <button class="sc-btn sc-btn--next" id="scNext" aria-label="Next screenshot">&#8594;</button>
+      </div><!-- /.sc-carousel -->
+
+      <div class="sc-dots" id="scDots" role="tablist" aria-label="Screenshot navigation">
+        <button class="sc-dot is-active" role="tab" aria-selected="true"  aria-label="Screenshot 1" data-sc="0"></button>
+        <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 2" data-sc="1"></button>
+        <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 3" data-sc="2"></button>
+        <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 4" data-sc="3"></button>
+        <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 5" data-sc="4"></button>
+        <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 6" data-sc="5"></button>
+        <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 7" data-sc="6"></button>
+        <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 8" data-sc="7"></button>
+        <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 9" data-sc="8"></button>
+        <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 10" data-sc="9"></button>
+      </div>
+      <p class="sc-caption" id="scCaption" aria-live="polite">Automation Dashboard &amp; Overview - your live system status, active rule, and current savings at a glance.</p>
+
+    </div>
+  </section>
+
+
+  <!-- ===================================================
+       STATS STRIP
+  ==================================================== -->
+  <section class="land-stats" aria-label="Product stats">
+    <div class="container">
+      <div class="stats-grid">
+        <div class="stat-item reveal">
+          <div class="stat-item__val">60s</div>
+          <div class="stat-item__label">automation cycle time</div>
+        </div>
+        <div class="stat-item reveal">
+          <div class="stat-item__val">150+</div>
+          <div class="stat-item__label">households already automating</div>
+        </div>
+        <div class="stat-item reveal">
+          <div class="stat-item__val">30</div>
+          <div class="stat-item__label">Library rules ready to import</div>
+        </div>
+        <div class="stat-item reveal">
+          <div class="stat-item__val">5 min</div>
+          <div class="stat-item__label">average setup time</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ===================================================
+       TESTIMONIALS
+  ==================================================== -->
+  <section class="land-testimonials" id="community" aria-labelledby="testimonialTitle">
+    <div class="container">
+
+      <span class="section-label">Community</span>
+      <h2 class="section-title" id="testimonialTitle">What early users are saying</h2>
+      <p class="section-sub">Feedback from the solar community who were first through the door.</p>
+
+      <div class="testimonials-grid">
+
+        <figure class="testimonial-card reveal">
+          <blockquote class="testimonial-card__quote">
+            &ldquo;After a few tweaks to my automations it&rsquo;s all working perfectly now and covers 90% of my use case.&rdquo;
+          </blockquote>
+          <figcaption class="testimonial-card__attr">
+            <span class="testimonial-card__name">gumbes</span>
+            <span class="testimonial-card__source">via Reddit</span>
+          </figcaption>
+        </figure>
+
+        <figure class="testimonial-card reveal">
+          <blockquote class="testimonial-card__quote">
+            &ldquo;Just installed a big FoxESS system today and this thing looks absolutely incredible! I&rsquo;ve already made an account.&rdquo;
+          </blockquote>
+          <figcaption class="testimonial-card__attr">
+            <span class="testimonial-card__name">FluffyMrFox</span>
+            <span class="testimonial-card__source">via Reddit</span>
+          </figcaption>
+        </figure>
+
+        <figure class="testimonial-card reveal">
+          <blockquote class="testimonial-card__quote">
+            &ldquo;Looks fantastic and just what I was after. Did a really quick forced discharge and it works perfectly.&rdquo;
+          </blockquote>
+          <figcaption class="testimonial-card__attr">
+            <span class="testimonial-card__name">WRXY1</span>
+            <span class="testimonial-card__source">via Reddit</span>
+          </figcaption>
+        </figure>
+
+        <figure class="testimonial-card reveal">
+          <blockquote class="testimonial-card__quote">
+            &ldquo;This is exactly what I was hoping to achieve with Home Assistant, but hit a brick wall. This looks amazing &mdash; can&rsquo;t wait to try.&rdquo;
+          </blockquote>
+          <figcaption class="testimonial-card__attr">
+            <span class="testimonial-card__name">DaiShan14</span>
+            <span class="testimonial-card__source">via Reddit</span>
+          </figcaption>
+        </figure>
+
+        <figure class="testimonial-card reveal">
+          <blockquote class="testimonial-card__quote">
+            &ldquo;What an awesome system you&rsquo;ve developed. You&rsquo;ve done a stellar job here.&rdquo;
+          </blockquote>
+          <figcaption class="testimonial-card__attr">
+            <span class="testimonial-card__name">naturald2k</span>
+            <span class="testimonial-card__source">via Reddit</span>
+          </figcaption>
+        </figure>
+
+        <figure class="testimonial-card reveal">
+          <blockquote class="testimonial-card__quote">
+            &ldquo;I also see you&rsquo;ve made a rules library available! Wow. I was hesitant to make the switch, but this changes my mind. Thanks heaps.&rdquo;
+          </blockquote>
+          <figcaption class="testimonial-card__attr">
+            <span class="testimonial-card__name">ObjectivePension5032</span>
+            <span class="testimonial-card__source">via Reddit</span>
+          </figcaption>
+        </figure>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ===================================================
+       PRICING
+  ==================================================== -->
+  <section class="land-pricing" id="pricing" aria-labelledby="pricingTitle">
+    <div class="container">
+
+      <span class="section-label">Pricing</span>
+      <h2 class="section-title" id="pricingTitle">Free for the first 500.</h2>
+      <p class="section-sub">A passion project grown into a fully featured platform, built with input from real solar households. The first 500 sign-ups get unlimited access, free &mdash; no trial, no lock-in, no asterisk.</p>
+
+      <div class="pricing-grid pricing-grid--single">
+
+        <div class="pricing-card pricing-card--community reveal">
+          <span class="pricing-badge pricing-badge--community">Community Edition</span>
+          <div class="pricing-card__name">Free</div>
+          <div class="pricing-card__price pricing-card__price--free">$<span>0</span></div>
+          <p class="pricing-card__desc">Full SoCrates access, no feature limits, no hidden upgrade gates.</p>
+          <ul class="pricing-features">
+            <li>Unlimited automation rules</li>
+            <li>Full community rules library</li>
+            <li>Automation Lab (simulation mode)</li>
+            <li>Solar curtailment monitor</li>
+            <li>ROI &amp; automation history</li>
+            <li>Time segment scheduler (8 segments)</li>
+            <li>Live Amber prices + forecasts</li>
+            <li>Weather &amp; solar intelligence</li>
+            <li>Real-time inverter dashboard</li>
+            <li>Manual override with auto-resume</li>
+          </ul>
+
+          <div class="pricing-spots">
+            <div class="pricing-spots__label">
+              <span>Community spots</span>
+              <span class="pricing-spots__count">First 500 &mdash; free</span>
+            </div>
+            <div class="pricing-spots__bar" aria-hidden="true">
+              <div class="pricing-spots__fill" style="width: 47%"></div>
+            </div>
+          </div>
+
+          <a href="/login.html?tab=signup" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px;">Claim your free spot &rarr;</a>
+        </div>
+
+      </div>
+
+      <p class="pricing-community-note">
+        SoCrates grew from community feedback, testing and real-world use.
+        Early members helped shape every feature &mdash; this is our thank-you.
+        <strong>First 500 sign-ups get free access.</strong>
+      </p>
+
+    </div>
+  </section>
+
+
+  <!-- ===================================================
+       FAQ
+  ==================================================== -->
+  <section class="land-faq" id="faq" aria-labelledby="faqTitle">
+    <div class="container">
+
+      <span class="section-label">FAQ</span>
+      <h2 class="section-title" id="faqTitle">Common questions</h2>
+      <p class="section-sub">Can't find an answer? <a href="mailto:socrates.team.comms@gmail.com">Send us a message</a>.</p>
+
+      <dl class="faq-list">
+
+        <div class="faq-item">
+          <details>
+            <summary>Which inverter brands are supported?</summary>
+            <div class="faq-item__body"><strong>FoxESS</strong> is fully supported today. <strong>Sigenergy</strong> and <strong>SunGrow</strong> integration is in development and coming soon. More brands are on the roadmap — <a href="mailto:socrates.team.comms@gmail.com">let us know</a> which you'd like to see next.</div>
+          </details>
+        </div>
+
+        <div class="faq-item">
+          <details>
+            <summary>Do I need to be an electrician or developer?</summary>
+            <div class="faq-item__body">No. SoCrates connects to your inverter through the manufacturer's existing cloud API using your device serial number and API key. No hardware modifications, no coding — just copy your credentials from the inverter app and paste them into the setup wizard.</div>
+          </details>
+        </div>
+
+        <div class="faq-item">
+          <details>
+            <summary>Which electricity retailers / price feeds are supported?</summary>
+            <div class="faq-item__body">Currently <strong>Amber Electric</strong> (Australia) is supported for live and forecast prices. Support for additional retailers and markets is planned. Static time-of-use schedules work without any price feed.</div>
+          </details>
+        </div>
+
+        <div class="faq-item">
+          <details>
+            <summary>How does automation work — is it always-on?</summary>
+            <div class="faq-item__body">Yes. SoCrates runs a cloud scheduler every minute that evaluates your rules in priority order. The first rule whose conditions are all met sends a command to your inverter. You can pause automation globally with the Master toggle any time.</div>
+          </details>
+        </div>
+
+        <div class="faq-item">
+          <details>
+            <summary>Is my inverter API key stored securely?</summary>
+            <div class="faq-item__body">Credentials are stored encrypted in Google Firestore with per-user access rules. They are never returned to the browser after initial setup or shared with third parties.</div>
+          </details>
+        </div>
+
+        <div class="faq-item">
+          <details>
+            <summary>Will the first 500 users stay free?</summary>
+            <div class="faq-item__body">Yes. Early members get free access. If and when pricing changes for new sign-ups in the future, we're committed to giving early members ample notice and fair options. Right now, the focus is on building something genuinely useful.</div>
+          </details>
+        </div>
+
+        <div class="faq-item">
+          <details>
+            <summary>What happens after the 500 spots fill up?</summary>
+            <div class="faq-item__body">Pricing for sign-ups beyond the first 500 is TBD &mdash; community-first, nothing extractive. We'll involve early members in that conversation before anything changes. Right now, the focus is on building something genuinely useful.</div>
+          </details>
+        </div>
+
+      </dl>
+    </div>
+  </section>
+
+
+  <!-- ===================================================
+       FINAL CTA
+  ==================================================== -->
+  <section class="land-cta" aria-labelledby="ctaTitle">
+    <div class="container">
+      <span class="section-label" style="color:rgba(255,255,255,.5);">Claim your spot</span>
+      <h2 class="section-title" id="ctaTitle">Join the community. Claim your free spot.</h2>
+      <p class="section-sub" style="color:rgba(255,255,255,.65);">
+        150+ households are already running SoCrates. The first 500 sign-ups get full access free &mdash; no credit card, no catch, no expiry.
+      </p>
+      <div class="land-cta__actions">
+        <a href="/login.html?tab=signup" class="btn btn-primary btn-lg">Claim your free spot &#8594;</a>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ===================================================
+       FOOTER
+  ==================================================== -->
+  <footer class="land-footer" role="contentinfo">
+    <div class="container land-footer__inner">
+      <span class="land-footer__brand">
+        <img src="/icons/icon.svg" width="24" height="24" alt="" aria-hidden="true" style="border-radius:6px;vertical-align:middle;">
+        SoCrates
+      </span>
+      <ul class="land-footer__links" role="list">
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#community">Community</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a href="/login.html">Sign In</a></li>
+        <li><a href="mailto:socrates.team.comms@gmail.com">Contact</a></li>
+      </ul>
+      <span>&copy; <span id="footerYear"></span> SoCrates. All rights reserved.</span>
+    </div>
+  </footer>
+
+
+  <!-- ===================================================
+       ALL JS — no external dependencies
+  ==================================================== -->
+  <script>
+  (function () {
+    'use strict';
+
+    /* ── Footer year ────────────────────────────────── */
+    var fy = document.getElementById('footerYear');
+    if (fy) fy.textContent = new Date().getFullYear();
+
+    /* ── Mobile nav ─────────────────────────────────── */
+    var burger   = document.getElementById('navBurger');
+    var navLinks = document.getElementById('navLinks');
+    if (burger && navLinks) {
+      burger.addEventListener('click', function () {
+        var open = navLinks.classList.toggle('is-open');
+        burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      navLinks.addEventListener('click', function (e) {
+        if (e.target.tagName === 'A') {
+          navLinks.classList.remove('is-open');
+          burger.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+
+    /* ── Scroll reveal ───────────────────────────────── */
+    if ('IntersectionObserver' in window) {
+      var revealIO = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            revealIO.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12 });
+      document.querySelectorAll('.reveal').forEach(function (el) { revealIO.observe(el); });
+    } else {
+      document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('is-visible'); });
+    }
+
+    /* ── Hero live data ticker ───────────────────────── */
+    var soc = 76;
+    var prices = [8.6, 8.2, 7.9, 7.6, 7.8, 8.1, 8.5, 9.4, 11.2, 12.4, 11.0, 9.6, 8.8, 8.2];
+    var solarKw = [0.5, 0.4, 0.3, 0.2, 0.3, 0.6, 1.0, 1.8, 2.4, 2.1, 1.4, 1.0, 0.7, 0.5];
+    var houseLoadKw = [0.54, 0.52, 0.51, 0.49, 0.50, 0.55, 0.59, 0.64, 0.69, 0.74, 0.71, 0.66, 0.61, 0.57];
+    var feedInPriceKw = [10.0, 9.8, 9.4, 9.3, 9.7, 10.2, 11.6, 14.2, 18.4, 22.1, 16.8, 10.6, 9.6, 9.2];
+    var forecastSolarWm2 = [210, 190, 175, 220, 300, 420, 520, 610, 700, 640, 480, 320, 230, 200];
+    var forecastCloudPct = [82, 79, 76, 70, 62, 54, 40, 28, 22, 30, 44, 58, 72, 80];
+    var forecastFeedInMax4h = [18, 20, 24, 28, 36, 52, 61, 58, 44, 30, 22, 18, 16, 15];
+    var batteryCapacityKwh = 31.5;
+    var priceIdx = 0;
+    var savings = 2.60;
+    var countdown = 58;
+    var heroRuntime = {
+      activeRule: 'Overnight Solar Planning Charge',
+      ruleReason: 'Weak solar forecast tomorrow, topping up overnight reserve',
+      price: prices[0],
+      chargeKw: 2.4
+    };
+    var chargeThreshold = 8.5;
+    var exportThreshold = 11.5;
+    var minSocBound = 25;
+    var targetSoc = 85;
+    var exportReserveSoc = 38;
+    var peakWindowStart = 8;
+    var peakWindowEnd = 11;
+
+    var chartMinX = 24;
+    var chartMaxX = 696;
+    var chartMinY = 32;
+    var chartMaxY = 192;
+    var chartSvgWidth = 720;
+    var chartLineEl = document.getElementById('heroPriceLine');
+    var chartAreaEl = document.getElementById('heroPriceArea');
+    var chartNowLineEl = document.getElementById('heroNowLine');
+    var chartNowDotEl = document.getElementById('heroNowDot');
+    var chartPeakDotEl = document.getElementById('heroPeakDot');
+    var chartThresholdLineEl = document.getElementById('heroThresholdLine');
+    var chartThresholdLabelEl = document.getElementById('heroThresholdLabel');
+    var chartMarkersEl = document.getElementById('heroChargeMarkers');
+    var chartHitEl = document.getElementById('heroChartHit');
+    var chartShellEl = document.querySelector('.chart-shell');
+    var chartTooltipEl = document.getElementById('heroChartTooltip');
+    var tooltipTimeEl = document.getElementById('heroTooltipTime');
+    var tooltipPriceEl = document.getElementById('heroTooltipPrice');
+    var tooltipActionEl = document.getElementById('heroTooltipAction');
+
+    function chartXForIndex(i) {
+      if (prices.length <= 1) return chartMinX;
+      return chartMinX + (i * (chartMaxX - chartMinX) / (prices.length - 1));
+    }
+
+    function chartYForPrice(v) {
+      var pricePool = prices.concat([chargeThreshold]);
+      var minP = Math.min.apply(null, pricePool) - 0.4;
+      var maxP = Math.max.apply(null, pricePool) + 0.4;
+      var t = (v - minP) / (maxP - minP);
+      return chartMaxY - (t * (chartMaxY - chartMinY));
+    }
+
+    function formatHourForIndex(i) {
+      var hour = (i * 2) % 24;
+      var suffix = hour >= 12 ? 'pm' : 'am';
+      var display = hour % 12;
+      if (display === 0) display = 12;
+      return display + suffix;
+    }
+
+    function formatKw(v) {
+      return Number(v).toFixed(2) + ' kW';
+    }
+
+    function getPeakIndex() {
+      var idx = 0;
+      prices.forEach(function (price, i) {
+        if (price > prices[idx]) idx = i;
+      });
+      return idx;
+    }
+
+    function renderHeroChartSeries() {
+      if (!chartLineEl || !chartAreaEl) return;
+
+      var pts = prices.map(function (p, i) {
+        return { x: chartXForIndex(i), y: chartYForPrice(p), p: p };
+      });
+
+      var poly = pts.map(function (pt) {
+        return pt.x.toFixed(2) + ',' + pt.y.toFixed(2);
+      }).join(' ');
+      chartLineEl.setAttribute('points', poly);
+
+      var areaPath = 'M ' + pts[0].x.toFixed(2) + ' ' + chartMaxY +
+        ' L ' + pts.map(function (pt) { return pt.x.toFixed(2) + ' ' + pt.y.toFixed(2); }).join(' L ') +
+        ' L ' + pts[pts.length - 1].x.toFixed(2) + ' ' + chartMaxY + ' Z';
+      chartAreaEl.setAttribute('d', areaPath);
+
+      if (chartMarkersEl) {
+        chartMarkersEl.innerHTML = '';
+        pts.forEach(function (pt) {
+          if (pt.p > chargeThreshold) return;
+          var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          c.setAttribute('cx', pt.x.toFixed(2));
+          c.setAttribute('cy', pt.y.toFixed(2));
+          c.setAttribute('r', '4.5');
+          c.setAttribute('fill', '#7ee787');
+          c.setAttribute('stroke', '#0d1117');
+          c.setAttribute('stroke-width', '2');
+          chartMarkersEl.appendChild(c);
+        });
+      }
+    }
+
+    function updateHeroChartContext(index) {
+      var safe = (index + prices.length) % prices.length;
+      var peakIdx = getPeakIndex();
+      var nowPrice = prices[safe];
+      var peakPrice = prices[peakIdx];
+      var thresholdY = chartYForPrice(chargeThreshold);
+
+      if (chartThresholdLineEl) {
+        chartThresholdLineEl.setAttribute('y1', thresholdY.toFixed(2));
+        chartThresholdLineEl.setAttribute('y2', thresholdY.toFixed(2));
+      }
+      if (chartThresholdLabelEl) {
+        var labelY = Math.max(20, Math.min(chartMaxY - 8, thresholdY - 6));
+        chartThresholdLabelEl.setAttribute('y', labelY.toFixed(2));
+        chartThresholdLabelEl.textContent = 'Charge line ' + chargeThreshold.toFixed(1) + '\u00a2';
+      }
+      if (chartPeakDotEl) {
+        chartPeakDotEl.setAttribute('cx', chartXForIndex(peakIdx).toFixed(2));
+        chartPeakDotEl.setAttribute('cy', chartYForPrice(peakPrice).toFixed(2));
+      }
+
+      var el = document.getElementById('heroChartNowPrice');
+      if (el) el.textContent = nowPrice.toFixed(1) + '\u00a2';
+
+      el = document.getElementById('heroChartPeak');
+      if (el) el.textContent = peakPrice.toFixed(1) + '\u00a2 @ ' + formatHourForIndex(peakIdx);
+    }
+
+    function updateHeroChartMarker(index) {
+      var safe = (index + prices.length) % prices.length;
+      var x = chartXForIndex(safe);
+      var y = chartYForPrice(prices[safe]);
+
+      if (chartNowLineEl) {
+        chartNowLineEl.setAttribute('x1', x.toFixed(2));
+        chartNowLineEl.setAttribute('x2', x.toFixed(2));
+      }
+      if (chartNowDotEl) {
+        chartNowDotEl.setAttribute('cx', x.toFixed(2));
+        chartNowDotEl.setAttribute('cy', y.toFixed(2));
+      }
+
+      var nowEl = document.getElementById('heroNowLabel');
+      if (nowEl) nowEl.textContent = formatHourForIndex(safe);
+
+      updateHeroChartContext(safe);
+    }
+
+    function setChartTooltip(index, clientX) {
+      if (!chartTooltipEl || !chartShellEl) return;
+      var safe = (index + prices.length) % prices.length;
+      var deltaCharge = prices[safe] - chargeThreshold;
+      var direction = deltaCharge <= 0 ? 'below' : 'above';
+      var recommendation = 'Recommended: Self use';
+
+      if (prices[safe] <= chargeThreshold) {
+        recommendation = 'Recommended: Force charge';
+      } else if (prices[safe] >= exportThreshold) {
+        recommendation = 'Recommended: Peak export';
+      }
+
+      if (tooltipTimeEl) tooltipTimeEl.textContent = formatHourForIndex(safe);
+      if (tooltipPriceEl) {
+        tooltipPriceEl.textContent = prices[safe].toFixed(1) + '\u00a2/kWh \u00b7 ' +
+          Math.abs(deltaCharge).toFixed(1) + '\u00a2 ' + direction + ' charge line';
+      }
+      if (tooltipActionEl) tooltipActionEl.textContent = recommendation;
+
+      var shellRect = chartShellEl.getBoundingClientRect();
+      var tooltipWidth = chartTooltipEl.offsetWidth || 170;
+      var offsetX = Math.max(16, Math.min(shellRect.width - tooltipWidth - 10, clientX - shellRect.left - (tooltipWidth / 2)));
+      chartTooltipEl.style.left = offsetX + 'px';
+      chartTooltipEl.hidden = false;
+    }
+
+    renderHeroChartSeries();
+
+    function setHeroDecision(id, label, matched) {
+      var node = document.getElementById(id);
+      if (!node) return;
+      var name = node.querySelector('.rule-decision__name');
+      if (name && typeof label === 'string' && label) name.textContent = label;
+      node.classList.toggle('is-match', matched);
+      node.classList.toggle('is-skip', !matched);
+      var state = node.querySelector('.rule-decision__state');
+      if (state) state.textContent = matched ? 'Matched' : 'Skipped';
+    }
+
+    function updateHero() {
+      priceIdx = (priceIdx + 1) % prices.length;
+
+      var currentPrice = prices[priceIdx];
+      var currentFeedIn = feedInPriceKw[priceIdx % feedInPriceKw.length];
+      var currentSolar = solarKw[priceIdx];
+      var currentLoad = houseLoadKw[priceIdx % houseLoadKw.length];
+      var nextDaySolar = forecastSolarWm2[priceIdx % forecastSolarWm2.length];
+      var nextDayCloud = forecastCloudPct[priceIdx % forecastCloudPct.length];
+      var next4hFeedInMax = forecastFeedInMax4h[priceIdx % forecastFeedInMax4h.length];
+      var hour = (priceIdx * 2) % 24;
+
+      var inOvernightWindow = hour >= 0 && hour < 6;
+      var inEveningWindow = hour >= 18 && hour <= 23;
+      var chargeReady = inOvernightWindow && soc <= 80 && nextDaySolar < 250 && nextDayCloud >= 70;
+      var exportReady = inEveningWindow && currentFeedIn >= 8 && soc > 50 && nextDaySolar > 150 && next4hFeedInMax <= 50;
+      var selfUseReady = inEveningWindow && currentFeedIn < 11 && soc >= minSocBound;
+
+      var activeRule = '\u267b\ufe0f Post-Spike Return to Self-Use';
+      var rulePriority = 'P8';
+      var ruleReason = 'Monitoring evening window while feed-in cools off';
+      var powerState = '\u2195 Monitoring';
+      var chargeKw = 0;
+      var batteryMode = 'idle';
+      var socDelta = (Math.random() - 0.5) * 0.18;
+
+      if (chargeReady) {
+        activeRule = '\u26a1 Overnight Solar Planning Charge';
+        rulePriority = 'P5';
+        ruleReason = 'Weak solar forecast tomorrow, topping up overnight reserve';
+        powerState = '\u2191 Charging';
+        batteryMode = 'charge';
+        chargeKw = 2.0 + (Math.random() * 0.8);
+        socDelta = 0.75 + (Math.random() * 0.35);
+      } else if (exportReady) {
+        activeRule = '\u26a1 Evening Drain \u2014 Sunny Forecast Tomorrow';
+        rulePriority = 'P7';
+        ruleReason = 'Tomorrow looks sunny and no better spike is forecast';
+        powerState = '\u2198 Exporting';
+        batteryMode = 'discharge';
+        chargeKw = 1.7 + (Math.random() * 0.9);
+        socDelta = -(0.65 + (Math.random() * 0.45));
+      } else {
+        if (selfUseReady) {
+          ruleReason = 'Feed-in is back below 11\u00a2, holding SelfUse';
+          powerState = '\u2195 Self-use hold';
+          batteryMode = 'idle';
+          chargeKw = 0;
+          socDelta -= 0.10 + (Math.random() * 0.12);
+        } else if (currentSolar > currentLoad + 0.25 && soc < (targetSoc - 3)) {
+          powerState = '\u2191 Balancing';
+          batteryMode = 'charge';
+          chargeKw = 0.35 + (Math.random() * 0.35);
+          socDelta += 0.22;
+        } else if (currentPrice > 10.8 && soc > (exportReserveSoc + 5)) {
+          powerState = '\u2193 Balancing';
+          batteryMode = 'discharge';
+          chargeKw = 0.30 + (Math.random() * 0.35);
+          socDelta -= 0.18;
+        } else {
+          batteryMode = 'idle';
+          chargeKw = 0;
+        }
+      }
+
+      var batteryChargeKw = batteryMode === 'charge' ? chargeKw : 0;
+      var batteryDischargeKw = batteryMode === 'discharge' ? chargeKw : 0;
+      var netGridKw = currentLoad + batteryChargeKw - currentSolar - batteryDischargeKw;
+      var gridLabel = 'Grid Neutral';
+      if (netGridKw > 0.02) gridLabel = 'Grid Import';
+      if (netGridKw < -0.02) gridLabel = 'Grid Export';
+
+      soc = Math.max(minSocBound, Math.min(targetSoc, soc + socDelta));
+      soc = Math.round(soc * 10) / 10;
+      var socDisplay = Math.round(soc);
+      var availableKwh = (soc * batteryCapacityKwh / 100).toFixed(1);
+
+      var savingsDelta = 0;
+      if (chargeReady) savingsDelta += 0.03;
+      if (exportReady) savingsDelta += 0.08;
+      if (!chargeReady && !exportReady && currentPrice > 10.2 && socDisplay > (exportReserveSoc + 2)) {
+        savingsDelta += 0.02;
+      }
+      savings = Math.round((savings + savingsDelta) * 100) / 100;
+
+      var el;
+      el = document.getElementById('heroSolarKw'); if (el) el.textContent = formatKw(currentSolar);
+      el = document.getElementById('heroLoadKw'); if (el) el.textContent = formatKw(currentLoad);
+      el = document.getElementById('heroGridKw'); if (el) el.textContent = formatKw(Math.abs(netGridKw));
+      el = document.getElementById('heroGridLabel'); if (el) el.textContent = gridLabel;
+      el = document.getElementById('heroSoc'); if (el) el.textContent = socDisplay + '%';
+      el = document.getElementById('heroBatteryKwh'); if (el) el.textContent = availableKwh;
+      el = document.getElementById('heroPrice'); if (el) el.textContent = currentPrice.toFixed(1) + '\u00a2';
+      el = document.getElementById('heroFeedInPrice'); if (el) el.textContent = currentFeedIn.toFixed(1) + '\u00a2';
+      el = document.getElementById('heroRulePriority'); if (el) el.textContent = rulePriority;
+      el = document.getElementById('heroRule'); if (el) el.textContent = activeRule;
+      el = document.getElementById('heroRuleReason'); if (el) el.textContent = ruleReason;
+      el = document.getElementById('heroPowerState'); if (el) el.textContent = powerState;
+      el = document.getElementById('heroChargeW'); if (el) el.textContent = chargeKw.toFixed(1);
+      el = document.getElementById('heroCountdown'); if (el) el.textContent = countdown;
+      el = document.getElementById('heroSaving'); if (el) el.textContent = '$' + savings.toFixed(2);
+
+      if (chargeReady) {
+        setHeroDecision('heroDecisionPrice', 'Time 00:00-06:00', inOvernightWindow);
+        setHeroDecision('heroDecisionSoc', 'Battery SoC \u2264 80%', socDisplay <= 80);
+        setHeroDecision('heroDecisionSolar', 'Cloud cover avg \u2265 70% (24h)', nextDayCloud >= 70);
+      } else if (exportReady) {
+        setHeroDecision('heroDecisionPrice', 'Time 18:00-23:59', inEveningWindow);
+        setHeroDecision('heroDecisionSoc', 'Feed-in \u2265 8\u00a2 now', currentFeedIn >= 8);
+        setHeroDecision('heroDecisionSolar', 'Solar avg > 150 W/m\u00b2 (24h)', nextDaySolar > 150);
+      } else {
+        setHeroDecision('heroDecisionPrice', 'Time 17:00-23:59', inEveningWindow);
+        setHeroDecision('heroDecisionSoc', 'Feed-in < 11\u00a2 now', currentFeedIn < 11);
+        setHeroDecision('heroDecisionSolar', 'Cloud cover avg < 85% (24h)', nextDayCloud < 85);
+      }
+      updateHeroChartMarker(priceIdx);
+
+      heroRuntime.activeRule = String(activeRule || '').replace(/^[^A-Za-z]+/, '').trim() || 'Automation';
+      heroRuntime.ruleReason = ruleReason;
+      heroRuntime.price = currentPrice;
+      heroRuntime.chargeKw = chargeKw;
+    }
+
+    function tickHeroCountdown() {
+      countdown = countdown <= 1 ? 60 : countdown - 1;
+      var el = document.getElementById('heroCountdown');
+      if (el) el.textContent = countdown;
+    }
+
+    if (chartHitEl && chartShellEl) {
+      chartHitEl.addEventListener('mousemove', function (e) {
+        var rect = chartShellEl.getBoundingClientRect();
+        var contentStart = rect.width * (chartMinX / chartSvgWidth);
+        var contentEnd = rect.width * (chartMaxX / chartSvgWidth);
+        var relX = Math.max(contentStart, Math.min(contentEnd, e.clientX - rect.left));
+        var t = (relX - contentStart) / Math.max(1, (contentEnd - contentStart));
+        var hoverIdx = Math.round(t * (prices.length - 1));
+        updateHeroChartMarker(hoverIdx);
+        setChartTooltip(hoverIdx, e.clientX);
+      });
+
+      chartHitEl.addEventListener('mouseleave', function () {
+        if (chartTooltipEl) chartTooltipEl.hidden = true;
+        updateHeroChartMarker(priceIdx);
+      });
+    }
+
+    updateHero();
+    setInterval(tickHeroCountdown, 1000);
+    setInterval(updateHero, 2800);
+
+    /* ── Hero toast ──────────────────────────────────── */
+    function showToast(strong, sub) {
+      var toast = document.getElementById('heroToast');
+      if (!toast) return;
+      document.getElementById('heroToastStrong').textContent = strong;
+      document.getElementById('heroToastSub').textContent    = sub;
+      toast.hidden = false;
+      requestAnimationFrame(function () { toast.classList.add('is-visible'); });
+      setTimeout(function () { toast.classList.remove('is-visible'); }, 4400);
+      setTimeout(function () { toast.hidden = true; }, 5100);
+    }
+
+    function emitHeroToast() {
+      var priceText = Number(heroRuntime.price || 0).toFixed(1) + '\u00a2/kWh';
+      var socText = Math.round(Number(soc || 0)) + '%';
+      var kwText = Number(heroRuntime.chargeKw || 0).toFixed(1) + ' kW';
+      var ruleText = heroRuntime.activeRule || 'Automation';
+      var reasonText = heroRuntime.ruleReason || 'Rule conditions evaluated';
+      var msgs = [
+        ['Automation ran', ruleText + ' \u00b7 ' + priceText + ' \u00b7 SoC ' + socText],
+        ['Rule matched', reasonText + ' \u00b7 ' + ruleText],
+        ['Inverter updated', 'Mode: ' + ruleText + ' \u00b7 ' + kwText],
+      ];
+      var m = msgs[Math.floor(Math.random() * msgs.length)];
+      showToast(m[0], m[1]);
+    }
+
+    setTimeout(function () {
+      emitHeroToast();
+    }, 1800);
+
+    setInterval(function () {
+      emitHeroToast();
+    }, 14000);
+
+    /* ── Screenshot carousel ─────────────────────────── */
+    var scSlides  = Array.prototype.slice.call(document.querySelectorAll('.sc-slide'));
+    var scDots    = Array.prototype.slice.call(document.querySelectorAll('.sc-dot'));
+    var scTotal   = Math.min(scSlides.length, scDots.length);
+    var scIdx     = 0;
+    var scAuto    = null;
+    var scCapEl   = document.getElementById('scCaption');
+
+    function scGoTo(n) {
+      if (scTotal === 0) return;
+      scIdx = (n + scTotal) % scTotal;
+
+      scSlides.forEach(function (slide, i) {
+        var active = i === scIdx;
+        slide.classList.toggle('is-active', active);
+        slide.setAttribute('aria-hidden', active ? 'false' : 'true');
+      });
+
+      var activeSlide = scSlides[scIdx];
+      var caption = activeSlide && activeSlide.dataset && activeSlide.dataset.caption
+        ? activeSlide.dataset.caption
+        : 'Screenshot ' + (scIdx + 1);
+      if (scCapEl) scCapEl.textContent = caption;
+
+      scDots.forEach(function (d, i) {
+        d.classList.toggle('is-active', i === scIdx);
+        d.setAttribute('aria-selected', i === scIdx ? 'true' : 'false');
+      });
+    }
+
+    function scAdvance() { scGoTo(scIdx + 1); }
+
+    function scResetAuto() {
+      clearInterval(scAuto);
+      if (scTotal > 1) scAuto = setInterval(scAdvance, 4500);
+    }
+
+    var scPrevBtn = document.getElementById('scPrev');
+    var scNextBtn = document.getElementById('scNext');
+    if (scPrevBtn) scPrevBtn.addEventListener('click', function () { scGoTo(scIdx - 1); scResetAuto(); });
+    if (scNextBtn) scNextBtn.addEventListener('click', function () { scGoTo(scIdx + 1); scResetAuto(); });
+
+    scDots.forEach(function (dot) {
+      dot.addEventListener('click', function () { scGoTo(Number(dot.dataset.sc)); scResetAuto(); });
+    });
+
+    var scCarouselEl = document.getElementById('scCarousel');
+    if (scCarouselEl) {
+      scCarouselEl.addEventListener('mouseenter', function () { clearInterval(scAuto); });
+      scCarouselEl.addEventListener('mouseleave', scResetAuto);
+    }
+
+    scGoTo(0);
+    if (scTotal > 1) scAuto = setInterval(scAdvance, 4500);
+
+  })();
+  </script>
+
 </body>
 </html>
+
+

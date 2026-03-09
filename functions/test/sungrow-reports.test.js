@@ -540,14 +540,16 @@ describe('inverter-read.js /api/inverter/report — provider dispatch', () => {
     expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
   });
 
-  test('Sungrow path falls back to FoxESS when adapter.getReport returns null', async () => {
+  test('Sungrow path: adapter.getReport returning null returns 400 (not supported)', async () => {
     const adapterRegistry = {
       getDeviceProvider: jest.fn(() => ({ getReport: async () => null }))
     };
     const { app, foxessAPI } = buildInverterReadApp({ adapterRegistry });
     const res = await request(app).get('/api/inverter/report');
-    expect(res.statusCode).toBe(200);
-    expect(foxessAPI.callFoxESSAPI).toHaveBeenCalled();
+    expect(res.statusCode).toBe(400);
+    expect(res.body.errno).toBe(400);
+    expect(res.body.error).toMatch(/Not supported for provider/);
+    expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
   });
 });
 
@@ -578,14 +580,16 @@ describe('inverter-read.js /api/inverter/generation — provider dispatch', () =
     expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
   });
 
-  test('Sungrow path falls back to FoxESS when adapter.getGeneration returns null', async () => {
+  test('Sungrow path: adapter.getGeneration returning null returns 400 (not supported)', async () => {
     const adapterRegistry = {
       getDeviceProvider: jest.fn(() => ({ getGeneration: async () => null }))
     };
     const { app, foxessAPI } = buildInverterReadApp({ adapterRegistry });
     const res = await request(app).get('/api/inverter/generation');
-    expect(res.statusCode).toBe(200);
-    expect(foxessAPI.callFoxESSAPI).toHaveBeenCalled();
+    expect(res.statusCode).toBe(400);
+    expect(res.body.errno).toBe(400);
+    expect(res.body.error).toMatch(/Not supported for provider/);
+    expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
   });
 });
 

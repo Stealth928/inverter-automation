@@ -88,7 +88,7 @@ Edit `.firebaserc`:
 
 ## External API Keys
 
-Users configure their own API keys in the Settings page after login.
+Users configure their own API keys in the Settings page after login. The system supports three battery inverter providers — configure credentials for whichever provider you use.
 
 ### FoxESS Cloud API
 1. Go to [FoxESS Cloud](https://www.foxesscloud.com)
@@ -96,6 +96,22 @@ Users configure their own API keys in the Settings page after login.
 3. Go to **User Center > API Management**
 4. Generate API key
 5. Note your inverter Serial Number
+
+### Sungrow iSolarCloud API
+1. Go to [iSolarCloud](https://au.isolarcloud.com) (or your regional portal)
+2. Login with your Sungrow/iSolarCloud account
+3. Note your account email, account password, and inverter Serial Number (found in the Device menu)
+4. Enter these in the Setup page — the system will verify credentials via a live login
+
+> **Note:** Sungrow credentials (password) are stored write-only in a Firestore secrets subcollection and cannot be read back via the API.
+
+### SigenEnergy Cloud API
+1. Download the SigenEnergy mobile app and create an account
+2. Note your account email and password
+3. Select your region: `apac` (Asia-Pacific), `eu` (Europe), `cn` (China), or `us` (North America)
+4. Enter these in the Setup page — the system will verify credentials via a live OAuth2 login
+
+> **Note:** SigenEnergy scheduler and history features are in limited beta — work mode control and real-time status are fully supported.
 
 ### Amber Electric API
 1. Go to [Amber Developer Portal](https://app.amber.com.au/developers)

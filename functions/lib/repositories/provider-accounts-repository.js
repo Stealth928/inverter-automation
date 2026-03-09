@@ -17,7 +17,8 @@
 const PROVIDER_TYPES = Object.freeze({
   AMBER: 'amber',
   FOXESS: 'foxess',
-  SUNGROW: 'sungrow'
+  SUNGROW: 'sungrow',
+  SIGENERGY: 'sigenergy'
 });
 
 function toSafeString(value) {
@@ -35,6 +36,10 @@ function deriveFoxessAccountId() {
 
 function deriveSungrowAccountId() {
   return 'sungrow_default';
+}
+
+function deriveSigenEnergyAccountId() {
+  return 'sigenergy_default';
 }
 
 /**
@@ -82,6 +87,24 @@ function buildLegacySungrowAccount(userConfig) {
     providerType: PROVIDER_TYPES.SUNGROW,
     credentials: { username },
     defaultDeviceSn: toSafeString(userConfig?.sungrowDeviceSn) || null,
+    _source: 'legacy-config'
+  };
+}
+
+/**
+ * Build a virtual sigenergy providerAccount document from legacy flat config fields.
+ * Used for users who configured SigenEnergy before the v2 providerAccounts model was adopted.
+ */
+function buildLegacySigenEnergyAccount(userConfig) {
+  const username = toSafeString(userConfig?.sigenUsername);
+  if (!username) return null;
+  return {
+    id: deriveSigenEnergyAccountId(),
+    providerType: PROVIDER_TYPES.SIGENERGY,
+    credentials: { username },
+    defaultStationId: toSafeString(userConfig?.sigenStationId) || null,
+    defaultDeviceSn:  toSafeString(userConfig?.sigenDeviceSn) || null,
+    region:           toSafeString(userConfig?.sigenRegion) || 'apac',
     _source: 'legacy-config'
   };
 }
@@ -268,6 +291,8 @@ function createProviderAccountsRepository(deps = {}) {
     if (foxessAccount) legacyAccounts.push(foxessAccount);
     const sungrowAccount = buildLegacySungrowAccount(userConfig);
     if (sungrowAccount) legacyAccounts.push(sungrowAccount);
+    const sigenEnergyAccount = buildLegacySigenEnergyAccount(userConfig);
+    if (sigenEnergyAccount) legacyAccounts.push(sigenEnergyAccount);
     return legacyAccounts;
   }
 
@@ -352,5 +377,7 @@ module.exports = {
   buildLegacyAmberAccount,
   buildLegacyFoxessAccount,
   buildLegacySungrowAccount,
+  buildLegacySigenEnergyAccount,
+  deriveSigenEnergyAccountId,
   createProviderAccountsRepository
 };

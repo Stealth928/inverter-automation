@@ -33,7 +33,7 @@
   var STEPS = [
     /* 0 — Welcome splash */
     {
-      page: '/index.html',
+      page: '/app.html',
       selector: null,
       position: 'center',
       title: 'Welcome to SoCrates 👋',
@@ -42,7 +42,7 @@
 
     /* 1 — Battery & inverter status */
     {
-      page: '/index.html',
+      page: '/app.html',
       selector: '[data-dashboard-card="inverter"]',
       position: 'bottom',
       title: '🔋 Battery & Inverter Status',
@@ -60,7 +60,7 @@
 
     /* 2 — Live prices */
     {
-      page: '/index.html',
+      page: '/app.html',
       selector: '#amberCard',
       position: 'bottom',
       title: '⚡ Live Electricity Prices',
@@ -69,7 +69,7 @@
 
     /* 3 — Weather forecast */
     {
-      page: '/index.html',
+      page: '/app.html',
       selector: '#weatherCard',
       position: 'bottom',
       title: '🌤 Solar & Weather Forecast',
@@ -78,7 +78,7 @@
 
     /* 4 — Automation panel + master toggle */
     {
-      page: '/index.html',
+      page: '/app.html',
       selector: '[data-tour="automation-card"]',
       position: 'left',
       title: '🤖 Automation Engine',
@@ -98,7 +98,7 @@
 
     /* 5 — Rules list */
     {
-      page: '/index.html',
+      page: '/app.html',
       selector: '#backendAutomationStatus [data-tour="automation-rules"], [data-tour="automation-card"]',
       position: 'left',
       title: '📋 Automation Rules',
@@ -108,7 +108,7 @@
 
     /* 6 — Quick control */
     {
-      page: '/index.html',
+      page: '/app.html',
       selector: '[data-dashboard-card="quickControls"]',
       position: 'top',
       title: '🕹️ Quick Manual Control',
@@ -126,7 +126,7 @@
 
     /* 7 — Dashboard customisation */
     {
-      page: '/index.html',
+      page: '/app.html',
       selector: '.dashboard-visibility-card',
       position: 'bottom',
       title: '\uD83E\uDDE9 Customize Your Dashboard',
@@ -255,7 +255,7 @@
 
     /* 18 — Light / Dark theme */
     {
-      page: '/index.html',
+      page: '/app.html',
       selector: null,
       position: 'center',
       title: '🎨 Light & Dark Themes',
@@ -265,7 +265,7 @@
 
     /* 19 — Outro splash */
     {
-      page: '/index.html',
+      page: '/app.html',
       selector: null,
       position: 'center',
       title: "You're all set! 🎉",
@@ -277,10 +277,10 @@
   /*  Helpers                                                             */
   /* ------------------------------------------------------------------ */
 
-  /** Current page path normalised to /index.html at root */
+  /** Current page path normalised to /app.html at root */
   function currentPage() {
-    var p = window.location.pathname.replace(/\/$/, '') || '/index.html';
-    if (p === '' || p === '/') return '/index.html';
+    var p = window.location.pathname.replace(/\/$/, '') || '/app.html';
+    if (p === '' || p === '/') return '/app.html';
     return p;
   }
 
@@ -289,7 +289,7 @@
     var cp = currentPage();
     var sp = step.page;
     return cp === sp || cp.endsWith(sp) ||
-      (sp === '/index.html' && (cp === '/' || cp === ''));
+      (sp === '/app.html' && (cp === '/' || cp === ''));
   }
 
   /** Total visible steps (none have a skipIf in this build — kept for future use) */

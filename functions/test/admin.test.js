@@ -39,7 +39,7 @@ beforeAll(() => {
   // Admin user token
   mockAuth.verifyIdToken.mockImplementation(async (token) => {
     if (token === 'mock-admin-token') {
-      return { uid: 'admin-uid-1', email: 'sardanapalos928@hotmail.com' };
+      return { uid: 'admin-uid-1', email: 'socrates.team.comms@gmail.com' };
     }
     if (token === 'mock-user-token') {
       return { uid: 'user-uid-2', email: 'regular@example.com' };
@@ -52,7 +52,7 @@ beforeAll(() => {
     users: [
       {
         uid: 'admin-uid-1',
-        email: 'sardanapalos928@hotmail.com',
+        email: 'socrates.team.comms@gmail.com',
         metadata: { creationTime: '2026-01-01T00:00:00.000Z', lastSignInTime: '2026-02-24T09:00:00.000Z' }
       },
       {
@@ -85,7 +85,7 @@ beforeAll(() => {
     })),
     get: jest.fn(async () => ({
       docs: [
-        { id: 'admin-uid-1', data: () => ({ email: 'sardanapalos928@hotmail.com', role: 'admin', automationEnabled: true }) },
+        { id: 'admin-uid-1', data: () => ({ email: 'socrates.team.comms@gmail.com', role: 'admin', automationEnabled: true }) },
         { id: 'user-uid-2', data: () => ({ email: 'regular@example.com', role: 'user', automationEnabled: false }) }
       ],
       size: 2
@@ -329,6 +329,9 @@ describe('Admin API', () => {
       expect(res.body.result.configSummary).toHaveProperty('configured');
       expect(res.body.result.configSummary).toHaveProperty('inverterCapacityW');
       expect(res.body.result.configSummary).toHaveProperty('batteryCapacityKWh');
+      expect(res.body.result.configSummary).toHaveProperty('location');
+      expect(res.body.result.configSummary).toHaveProperty('tourComplete');
+      expect(res.body.result.configSummary).toHaveProperty('tourCompletedAt');
     });
 
     it('should return 403 for non-admin', async () => {

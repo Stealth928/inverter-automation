@@ -737,7 +737,12 @@ A: Every 1 minute by default. You can adjust this in settings.
 A: Typically 60-90 seconds from price update to inverter adjustment.
 
 **Q: Does this work with other inverter brands?**  
-A: Currently FoxESS only. Other brands may be added based on demand.
+A: Yes. Three providers are supported:
+- **FoxESS** — full support (all features)
+- **Sungrow** (iSolarCloud) — full support (work mode control, scheduling, real-time data, history)
+- **SigenEnergy** — partial support (work mode control and real-time status; scheduler/history in limited beta)
+
+Other brands may be added based on demand.
 
 **Q: Can I use this without Amber Electric?**  
 A: Yes, but price-based automation won't work. Weather and time-based rules still function.

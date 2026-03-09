@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -619,7 +619,7 @@
         <nav class="nav-main">
             <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
             <div class="nav-links" style="display:none;">
-                <a href="/" class="nav-link">🏠 Overview</a>
+                <a href="/app.html" class="nav-link">🏠 Overview</a>
                 <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
                 <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
                 <a href="/history.html" class="nav-link">📊 Reports</a>
@@ -705,6 +705,10 @@
                             <label class="provider-option provider-option--coming-soon" id="providerSungrowOption">
                                 <input type="radio" name="provider" value="sungrow" id="providerSungrow" disabled>
                                 <img src="icons/logo-sungrow.svg" alt="Sungrow" class="provider-logo-img">
+                            </label>
+                            <label class="provider-option provider-option--coming-soon" id="providerSigenEnergyOption">
+                                <input type="radio" name="provider" value="sigenergy" id="providerSigenEnergy" disabled>
+                                <img src="icons/logo-sigenergy.svg" alt="SigenEnergy" class="provider-logo-img">
                             </label>
                         </div>
                     </div>
@@ -835,6 +839,67 @@
                             <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
                         </div>
                     </div><!-- /#sungrowFields -->
+
+                    <!-- ╔═══ SigenEnergy Fields ═══╗ -->
+                    <div id="sigenenergyFields" style="display:none">
+                        <div class="form-group" id="sigenenergyUsernameGroup">
+                            <label for="sigenenergyUsername">
+                                <span>SigenEnergy Account Email</span>
+                                <span class="required-indicator">*</span>
+                            </label>
+                            <div class="hint">The email address you use to log in to the SigenEnergy app</div>
+                            <div class="input-wrapper">
+                                <input
+                                    type="email"
+                                    id="sigenenergyUsername"
+                                    name="sigenenergyUsername"
+                                    placeholder="you@example.com"
+                                    autocomplete="email"
+                                    spellcheck="false"
+                                >
+                                <span class="input-icon">📧</span>
+                            </div>
+                            <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
+                            <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
+                        </div>
+
+                        <div class="form-group" id="sigenenergyPasswordGroup">
+                            <label for="sigenenergyPassword">
+                                <span>SigenEnergy Password</span>
+                                <span class="required-indicator">*</span>
+                            </label>
+                            <div class="hint">Your SigenEnergy account password (stored encrypted, used only to refresh API sessions)</div>
+                            <div class="input-wrapper">
+                                <input
+                                    type="password"
+                                    id="sigenenergyPassword"
+                                    name="sigenenergyPassword"
+                                    placeholder="SigenEnergy password"
+                                    autocomplete="current-password"
+                                    spellcheck="false"
+                                >
+                                <span class="input-icon">🔑</span>
+                                <button type="button" class="password-toggle" data-target="sigenenergyPassword" aria-label="Toggle visibility">👁️</button>
+                            </div>
+                            <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
+                            <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
+                        </div>
+
+                        <div class="form-group" id="sigenenergyRegionGroup">
+                            <label for="sigenenergyRegion">
+                                <span>Region</span>
+                            </label>
+                            <div class="hint">Your geographic region for the SigenEnergy cloud API</div>
+                            <div class="input-wrapper">
+                                <select id="sigenenergyRegion" name="sigenenergyRegion">
+                                    <option value="apac" selected>APAC (Australia / Asia-Pacific)</option>
+                                    <option value="eu">Europe</option>
+                                    <option value="us">North America</option>
+                                    <option value="cn">China</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div><!-- /#sigenenergyFields -->
 
                     <!-- ═══ Section: Location & Weather ═══ -->
                     <div class="form-section-header">

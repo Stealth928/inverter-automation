@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
+
 const { buildAllRuleEvaluationsForAudit } = require('../../lib/services/automation-audit-service');
 const {
   applyTriggeredRuleAction,
@@ -32,6 +34,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
   const addAutomationAuditEntry = deps.addAutomationAuditEntry;
   const amberAPI = deps.amberAPI;
   const amberPricesInFlight = deps.amberPricesInFlight;
+  const adapterRegistry = deps.adapterRegistry || null;
   const applyRuleAction = deps.applyRuleAction;
   const checkAndApplyCurtailment = deps.checkAndApplyCurtailment;
   const cleanupExpiredQuickControl = deps.cleanupExpiredQuickControl;
@@ -119,6 +122,41 @@ function registerAutomationCycleRoute(app, deps = {}) {
     throw new Error('registerAutomationCycleRoute requires setUserRule()');
   }
 
+  // ── Provider-aware segment clearing ─────────────────────────────────────────
+  // For non-FoxESS providers, delegates to the adapter's clearSchedule().
+  // For FoxESS, uses the existing clearSchedulerSegmentsOneShot/WithRetry helpers.
+  async function clearSegmentsForUser(userConfig, userId, opts = {}) {
+    const { provider, deviceId } = resolveProviderDeviceId(userConfig);
+    if (provider !== 'foxess' && adapterRegistry) {
+      const adapter = adapterRegistry.getDeviceProvider(provider);
+      if (adapter && typeof adapter.clearSchedule === 'function') {
+        const result = await adapter.clearSchedule({ deviceSN: deviceId, userConfig, userId });
+        return { success: result.errno === 0, clearResult: result };
+      }
+    }
+    const deviceSN = deviceId;
+    if (!deviceSN) return { success: false, clearResult: { errno: -1, error: 'No deviceSN configured' } };
+    return clearSchedulerSegmentsOneShot({ deviceSN, foxessAPI, userConfig, userId, ...opts });
+  }
+
+  async function clearSegmentsForUserWithRetry(userConfig, userId) {
+    const { provider, deviceId } = resolveProviderDeviceId(userConfig);
+    if (provider !== 'foxess' && adapterRegistry) {
+      const adapter = adapterRegistry.getDeviceProvider(provider);
+      if (adapter && typeof adapter.clearSchedule === 'function') {
+        const result = await adapter.clearSchedule({ deviceSN: deviceId, userConfig, userId });
+        return { success: result.errno === 0, clearResult: result };
+      }
+    }
+    const deviceSN = deviceId;
+    if (!deviceSN) return { success: false, clearResult: { errno: -1, error: 'No deviceSN configured' } };
+    return clearSchedulerSegmentsWithRetry({
+      deviceSN, foxessAPI, logger: console,
+      maxAttempts: 3, retryDelayMs: 1200, settleDelayMs: 2500,
+      userConfig, userId
+    });
+  }
+
   // Run automation cycle - evaluates all rules and triggers if conditions met
   // This is called by the frontend timer every 60 seconds
   const automationCycleHandler = async (req, res) => {
@@ -143,15 +181,9 @@ function registerAutomationCycleRoute(app, deps = {}) {
       if (state.segmentsCleared !== true) {
         try {
           const userConfig = await getUserConfig(userId);
-          const deviceSN = userConfig?.deviceSn;
-          if (deviceSN) {
-            // Real API call - counted in metrics for accurate quota tracking
-            const clearOutcome = await clearSchedulerSegmentsOneShot({
-              deviceSN,
-              foxessAPI,
-              userConfig,
-              userId
-            });
+          const { deviceId } = resolveProviderDeviceId(userConfig);
+          if (deviceId) {
+            const clearOutcome = await clearSegmentsForUser(userConfig, userId);
             if (clearOutcome.success === true) {
               // Mark segments as cleared so we don't do this again every cycle
               await saveUserAutomationState(userId, { segmentsCleared: true });
@@ -160,7 +192,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
               console.warn(`[Automation] � ️ Segment clear returned errno=${clearResult?.errno}`);
             }
           } else {
-            console.warn(`[Automation] � ️ No deviceSN found - cannot clear segments`);
+            console.warn('[Automation] No device identifier found - cannot clear segments');
           }
         } catch (err) {
           console.error(`[Automation] ❌ Error clearing segments on disable:`, err.message);
@@ -281,19 +313,10 @@ function registerAutomationCycleRoute(app, deps = {}) {
     // Check if a rule was just disabled and we need to clear segments (via flag)
     if (state.clearSegmentsOnNextCycle) {
       try {
-        const deviceSN = userConfig?.deviceSn;
-        if (deviceSN) {
-          // Real API call - counted in metrics for accurate quota tracking
-          const clearOutcome = await clearSchedulerSegmentsOneShot({
-            deviceSN,
-            foxessAPI,
-            userConfig,
-            userId
-          });
-          const clearResult = clearOutcome.clearResult;
-          if (clearResult?.errno !== 0) {
-            console.warn(`[Cycle] � ️ Failed to clear segments due to rule disable flag: errno=${clearResult?.errno}`);
-          }
+        const clearOutcome = await clearSegmentsForUser(userConfig, userId);
+        const clearResult = clearOutcome.clearResult;
+        if (clearResult?.errno !== 0) {
+          console.warn(`[Cycle] ⚠️ Failed to clear segments due to rule disable flag: errno=${clearResult?.errno}`);
         }
       } catch (err) {
         console.error('[Cycle] Error clearing segments:', err.message);
@@ -311,19 +334,10 @@ function registerAutomationCycleRoute(app, deps = {}) {
     // If activeRule exists but is now disabled, we need to clear segments
     if (state.activeRule && rules[state.activeRule] && !rules[state.activeRule].enabled) {
       try {
-        const deviceSN = userConfig?.deviceSn;
-        if (deviceSN) {
-          // Real API call - counted in metrics for accurate quota tracking
-          const clearOutcome = await clearSchedulerSegmentsOneShot({
-            deviceSN,
-            foxessAPI,
-            userConfig,
-            userId
-          });
-          const clearResult = clearOutcome.clearResult;
-          if (clearResult?.errno !== 0) {
-            console.warn(`[Automation] � ️ Failed to clear segments: errno=${clearResult?.errno}`);
-          }
+        const clearOutcome = await clearSegmentsForUser(userConfig, userId);
+        const clearResult = clearOutcome.clearResult;
+        if (clearResult?.errno !== 0) {
+          console.warn(`[Automation] ⚠️ Failed to clear segments: errno=${clearResult?.errno}`);
         }
       } catch (err) {
         console.error(`[Automation] ❌ Error clearing segments after rule disable:`, err.message);
@@ -340,7 +354,12 @@ function registerAutomationCycleRoute(app, deps = {}) {
     }
     
     // Get live data for evaluation
-    const deviceSN = userConfig?.deviceSn;
+    const resolvedDevice = resolveProviderDeviceId(userConfig);
+    const deviceSN = resolvedDevice.deviceId;
+    const provider = resolvedDevice.provider;
+    const deviceAdapter = provider !== 'foxess' && adapterRegistry
+      ? adapterRegistry.getDeviceProvider(provider)
+      : null;
     const cycleStartTime = Date.now();
 
     // Evaluate which rules are enabled before fetching data so we can early-exit and
@@ -370,6 +389,8 @@ function registerAutomationCycleRoute(app, deps = {}) {
 
     const [inverterData, amberData, weatherDataRaw] = await Promise.all([
       fetchAutomationInverterData({
+        deviceAdapter,
+        provider,
         deviceSN,
         getCachedInverterData,
         getCachedInverterRealtimeData,
@@ -574,17 +595,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
             } else if (newRulePriority < activeRulePriority) {
               // New rule has HIGHER priority (lower number) - cancel active rule first
               try {
-                const deviceSN = userConfig?.deviceSn;
-                if (deviceSN) {
-                  // Real API call - counted in metrics for accurate quota tracking
-                  await clearSchedulerSegmentsOneShot({
-                    deviceSN,
-                    foxessAPI,
-                    settleDelayMs: 2500,
-                    userConfig,
-                    userId
-                  });
-                }
+                await clearSegmentsForUser(userConfig, userId, { settleDelayMs: 2500 });
               } catch (err) {
                 console.error(`[Automation] ❌ Error clearing active rule segment:`, err.message);
               }
@@ -691,21 +702,11 @@ function registerAutomationCycleRoute(app, deps = {}) {
           let segmentClearSuccess = false;
           try {
             // Clear all scheduler segments
-            const deviceSN = userConfig?.deviceSn;
-            if (deviceSN) {
+            {
               // Retry logic for segment clearing (up to 3 attempts)
-              const clearOutcome = await clearSchedulerSegmentsWithRetry({
-                deviceSN,
-                foxessAPI,
-                logger: console,
-                maxAttempts: 3,
-                retryDelayMs: 1200,
-                settleDelayMs: 2500,
-                userConfig,
-                userId
-              });
+              const clearOutcome = await clearSegmentsForUserWithRetry(userConfig, userId);
               segmentClearSuccess = clearOutcome.success === true;
-              
+
               if (!segmentClearSuccess) {
                 console.error(`[Automation] ❌ Failed to clear segments after 3 attempts - aborting replacement rule evaluation for safety`);
                 // Break out of rule loop if we can't clear - too risky to apply new segment

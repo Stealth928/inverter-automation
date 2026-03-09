@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -264,7 +264,7 @@
   <nav class="nav-main">
     <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
     <div class="nav-links">
-      <a href="/" class="nav-link">🏠 Overview</a>
+      <a href="/app.html" class="nav-link">🏠 Overview</a>
       <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
       <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
       <a href="/history.html" class="nav-link">📊 Reports</a>
@@ -300,7 +300,7 @@
     <div class="grid">
       
       <!-- Battery SoC Settings -->
-      <div class="card">
+      <div class="card" id="card-battery-soc">
         <div class="card-header">
           <h2>🔋 Battery SoC Limits</h2>
         </div>
@@ -344,7 +344,7 @@
                 <option value="">-- Select Mode --</option>
                 <option value="SelfUse">Self Use</option>
                 <option value="Feedin">Feed In First</option>
-                <option value="Backup">Backup</option>
+                <option value="Backup" data-foxess-sungrow-only>Backup</option>
               </select>
             </div>
             <div id="currentWorkMode" style="padding:10px;background:rgba(88,166,255,0.05);border-radius:6px;font-size:13px;color:var(--muted);margin-bottom:12px">
@@ -360,7 +360,7 @@
       </div>
 
       <!-- Force Charge Times -->
-      <div class="card">
+      <div class="card" id="card-force-charge">
         <div class="card-header">
           <h2>⏰ Force Charge Times</h2>
         </div>
@@ -485,7 +485,7 @@
 
   <!-- API Call Metrics Footer -->
   <div id="apiMetricsFooter" class="api-metrics-footer">
-    <div class="metrics-icon">📊 API Calls</div>
+    <div class="metrics-icon">API</div>
     <div id="metricsDate" class="metrics-date">—</div>
     <div id="metricsCounts" class="metrics-counts">
       <div class="metric-fox">FoxESS: <span id="countFox" class="metric-value">0</span></div>

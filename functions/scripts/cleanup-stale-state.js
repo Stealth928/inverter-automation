@@ -93,7 +93,7 @@ async function cleanupStaleState(userEmail) {
   }
 }
 
-const USER_EMAIL = 'sardanapalos928@hotmail.com';
+const USER_EMAIL = 'socrates.team.comms@gmail.com';
 console.log('=== Firestore Stale State Cleanup ===\n');
 console.log(`Target user: ${USER_EMAIL}\n`);
 

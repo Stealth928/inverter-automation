@@ -3,7 +3,7 @@
   "short_name": "SoCrates",
   "id": "/",
   "description": "Monitor and automate your inverter with real-time pricing and weather insights.",
-  "start_url": "/index.html",
+  "start_url": "/app.html",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

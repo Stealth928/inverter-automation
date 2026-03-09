@@ -3,7 +3,7 @@ const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const STATIC_ASSETS = [
   '/',
-  '/index.html',
+  '/app.html',
   '/login.html',
   '/setup.html',
   '/settings.html',
@@ -76,7 +76,7 @@ self.addEventListener('fetch', (event) => {
           if (cachedPage) {
             return cachedPage;
           }
-          return caches.match('/index.html');
+          return caches.match('/app.html');
         })
     );
     return;

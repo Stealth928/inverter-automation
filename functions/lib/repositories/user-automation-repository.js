@@ -36,14 +36,23 @@ function createUserAutomationRepository(deps = {}) {
       logger.debug('Config', `Loading config for user: ${userId}`);
 
       // Primary location: users/{uid}/config/main (newer code)
-      const configDoc = await getUserDocRef(userId).collection('config').doc('main').get();
+      // Also fetch users/{uid}/secrets/credentials in parallel — passwords are stored
+      // there separately so clients cannot read them back via Firestore SDK.
+      const userRef = getUserDocRef(userId);
+      const [configDoc, secretsDoc] = await Promise.all([
+        userRef.collection('config').doc('main').get(),
+        userRef.collection('secrets').doc('credentials').get().catch(() => ({ exists: false, data: () => ({}) }))
+      ]);
+
       if (configDoc.exists) {
         const data = configDoc.data() || {};
+        // Merge secrets (passwords) so downstream services can re-authenticate when tokens expire.
+        const secrets = secretsDoc.exists ? (secretsDoc.data() || {}) : {};
         logger.debug(
           'Config',
           `Found config at users/${userId}/config/main: { hasDeviceSn: ${!!data.deviceSn}, hasFoxessToken: ${!!data.foxessToken} }`
         );
-        return { ...data, _source: 'config-main' };
+        return { ...data, ...secrets, _source: 'config-main' };
       }
 
       // Backward compatibility: older deployments stored credentials directly on users/{uid}.credentials

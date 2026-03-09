@@ -1,6 +1,6 @@
 ﻿'use strict';
 
-const DEFAULT_SEED_ADMIN_EMAIL = 'sardanapalos928@hotmail.com';
+const DEFAULT_SEED_ADMIN_EMAIL = 'socrates.team.comms@gmail.com';
 
 function createAdminAccess({ db, seedAdminEmail = DEFAULT_SEED_ADMIN_EMAIL, logger = console } = {}) {
   if (!db || typeof db.collection !== 'function') {
