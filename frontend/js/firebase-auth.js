@@ -269,16 +269,39 @@ class FirebaseAuth {
       this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user));
       return { success: true, user: this.user };
     }
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.addScope('email');
+    provider.addScope('profile');
     try {
-      const provider = new firebase.auth.GoogleAuthProvider();
-      provider.addScope('email');
-      provider.addScope('profile');
-      
       const result = await this.auth.signInWithPopup(provider);
       return { success: true, user: result.user };
     } catch (error) {
+      const code = (error && error.code) ? String(error.code) : '';
+      const message = (error && error.message) ? String(error.message) : '';
+      const lowerMessage = message.toLowerCase();
+      const shouldFallbackToRedirect =
+        code === 'auth/popup-blocked' ||
+        code === 'auth/popup-closed-by-user' ||
+        code === 'auth/cancelled-popup-request' ||
+        lowerMessage.includes('cross-origin-opener-policy') ||
+        lowerMessage.includes('window.closed');
+
+      if (shouldFallbackToRedirect && this.auth && typeof this.auth.signInWithRedirect === 'function') {
+        try {
+          await this.auth.signInWithRedirect(provider);
+          return { success: true, redirect: true };
+        } catch (redirectError) {
+          console.error('[FirebaseAuth] Google redirect sign in error:', redirectError);
+          return {
+            success: false,
+            error: redirectError && redirectError.message ? redirectError.message : 'Google redirect sign in failed',
+            code: redirectError && redirectError.code ? redirectError.code : ''
+          };
+        }
+      }
+
       console.error('[FirebaseAuth] Google sign in error:', error);
-      return { success: false, error: error.message, code: error.code };
+      return { success: false, error: message, code };
     }
   }
 

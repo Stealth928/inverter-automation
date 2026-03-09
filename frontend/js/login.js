@@ -1,11 +1,30 @@
 ﻿
+        function clearSignedOutParamFromUrl() {
+            try {
+                const current = new URL(window.location.href);
+                if (!current.searchParams.has('signedOut')) return;
+                current.searchParams.delete('signedOut');
+                const next = `${current.pathname}${current.search}${current.hash}`;
+                window.history.replaceState({}, '', next);
+            } catch (e) { /* ignore */ }
+        }
+
         function registerAuthRedirect() {
             if (typeof firebaseAuth === 'undefined') return;
+            let allowSignedOutSuppression = true;
             firebaseAuth.onAuthStateChanged(async (user) => {
-                if (!user) return;
+                if (!user) {
+                    // Once Firebase confirms signed-out state, this URL flag is no longer needed.
+                    allowSignedOutSuppression = false;
+                    clearSignedOutParamFromUrl();
+                    return;
+                }
                 try {
                     const params = new URLSearchParams(window.location.search);
-                    if (params.get('signedOut') === '1') return;
+                    if (params.get('signedOut') === '1' && allowSignedOutSuppression) {
+                        allowSignedOutSuppression = false;
+                        return;
+                    }
                 } catch (e) { /* ignore */ }
                 await redirectAfterLogin();
             });
