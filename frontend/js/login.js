@@ -23,6 +23,27 @@
             hideMessages();
         }
 
+        function normalizePostLoginTarget(returnTo) {
+            if (!returnTo || typeof returnTo !== 'string') return '/app.html';
+            if (!returnTo.startsWith('/') || returnTo.startsWith('//')) return '/app.html';
+
+            const [pathOnly] = returnTo.split('?');
+            const normalizedPath = (pathOnly || '').replace(/\/$/, '') || '/';
+
+            // Keep authenticated users out of landing and auth pages after login.
+            if (
+                normalizedPath === '/' ||
+                normalizedPath === '/index' ||
+                normalizedPath === '/index.html' ||
+                normalizedPath === '/login' ||
+                normalizedPath === '/login.html'
+            ) {
+                return '/app.html';
+            }
+
+            return returnTo;
+        }
+
         async function redirectAfterLogin() {
             try {
                 const response = await authenticatedFetch('/api/config/setup-status');
@@ -59,7 +80,7 @@
                 } catch (e) {}
 
                 if (data && data.errno === 0 && data.result?.setupComplete) {
-                    safeRedirect(returnTo || '/app.html');
+                    safeRedirect(normalizePostLoginTarget(returnTo || '/app.html'));
                 } else {
                     safeRedirect('/setup.html');
                 }

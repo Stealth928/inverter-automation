@@ -14,20 +14,6 @@
   <meta property="og:description" content="Connect your solar inverter, set smart rules, and let SoCrates handle the rest. Free for the first 500 members.">
   <meta property="og:type" content="website">
   <link rel="stylesheet" href="/css/landing.css">
-  <!-- Instant auth check: redirect signed-in users before the page renders -->
-  <script>
-  (function(){
-    try {
-      // Firebase stores the active session as firebase:authUser:{apiKey}:[DEFAULT]
-      var key = 'firebase:authUser:AIzaSyDUbi89rbCYvTgoOVQRjx5zkhpYUU1f8eo:[DEFAULT]';
-      var raw = localStorage.getItem(key);
-      if (raw) {
-        var u = JSON.parse(raw);
-        if (u && u.uid) { window.location.replace('/app.html'); }
-      }
-    } catch(e) {}
-  })();
-  </script>
 </head>
 <body>
 
@@ -1307,6 +1293,27 @@
   })();
   </script>
 
+  <!-- Firebase auth check: redirect already-signed-in users straight to the app -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js" defer></script>
+  <script src="/js/firebase-config.js" defer></script>
+  <script>
+  (function () {
+    document.addEventListener('DOMContentLoaded', function () {
+      try {
+        if (typeof firebase === 'undefined' || !window.firebaseConfig) return;
+        var app = firebase.apps.length ? firebase.apps[0] : firebase.initializeApp(window.firebaseConfig);
+        var auth = firebase.auth(app);
+        var unsub = auth.onAuthStateChanged(function (user) {
+          unsub();
+          if (user) {
+            window.location.replace('/app.html');
+          }
+        });
+      } catch (e) { /* silently ignore — landing page must work without auth */ }
+    });
+  })();
+  </script>
 
 </body>
 </html>
