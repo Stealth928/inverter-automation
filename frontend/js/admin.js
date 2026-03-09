@@ -1032,7 +1032,7 @@
             showMessage('info', `🔄 Signing in as ${targetEmail}...`, 0);
             setImpersonationState(uid, targetEmail, 'customToken');
             await firebase.auth().signInWithCustomToken(data.result.customToken);
-            window.location.href = '/';
+            window.location.href = '/app.html';
         } catch (e) {
             try {
                 localStorage.removeItem('adminImpersonationUid');

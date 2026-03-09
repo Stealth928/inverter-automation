@@ -63,6 +63,11 @@
             return returnTo;
         }
 
+        function directAuthRedirect(target) {
+            // Authentication transitions should be deterministic and skip bounce guards.
+            window.location.replace(target);
+        }
+
         async function redirectAfterLogin() {
             try {
                 const response = await authenticatedFetch('/api/config/setup-status');
@@ -99,9 +104,9 @@
                 } catch (e) {}
 
                 if (data && data.errno === 0 && data.result?.setupComplete) {
-                    safeRedirect(normalizePostLoginTarget(returnTo || '/app.html'));
+                    directAuthRedirect(normalizePostLoginTarget(returnTo || '/app.html'));
                 } else {
-                    safeRedirect('/setup.html');
+                    directAuthRedirect('/setup.html');
                 }
             } catch (e) {
                 console.warn('[Auth] Could not determine setup status, staying on login (error):', e);
