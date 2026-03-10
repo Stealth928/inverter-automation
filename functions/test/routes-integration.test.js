@@ -173,6 +173,13 @@ describe('Routes Integration Tests', () => {
       expect(res.body.result).toEqual([]);
     });
 
+    test('GET /api/pricing/sites should work without auth', async () => {
+      const res = await request(app).get('/api/pricing/sites');
+      expect(res.statusCode).toBe(200);
+      expect(res.body.errno).toBe(0);
+      expect(res.body.result).toEqual([]);
+    });
+
     test('GET /api/metrics/api-calls should work without auth', async () => {
       const res = await request(app)
         .get('/api/metrics/api-calls')
@@ -187,6 +194,12 @@ describe('Routes Integration Tests', () => {
   describe('Response Envelope Format', () => {
     test('Success responses should have errno envelope for API routes', async () => {
       const res = await request(app).get('/api/amber/sites');
+      expect(res.body.errno).toBe(0);
+      expect(res.body).toHaveProperty('result');
+    });
+
+    test('Generic pricing routes should have errno envelope', async () => {
+      const res = await request(app).get('/api/pricing/sites');
       expect(res.body.errno).toBe(0);
       expect(res.body).toHaveProperty('result');
     });

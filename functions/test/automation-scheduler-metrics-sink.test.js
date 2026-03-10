@@ -97,10 +97,14 @@ describe('automation scheduler metrics sink', () => {
       deadLetters: 1,
       errors: 1,
       retries: 2,
-      queueLagMs: { avgMs: 20, count: 4, maxMs: 80, minMs: 1 },
-      cycleDurationMs: { avgMs: 30, count: 4, maxMs: 90, minMs: 3 },
+      queueLagMs: { avgMs: 20, count: 4, maxMs: 80, minMs: 1, p95Ms: 70, p99Ms: 79 },
+      cycleDurationMs: { avgMs: 30, count: 4, maxMs: 90, minMs: 3, p95Ms: 80, p99Ms: 89 },
       skipped: { disabledOrBlackout: 1, idempotent: 0, locked: 1, tooSoon: 2 },
-      failureByType: { api_rate_limit: 1 }
+      failureByType: { api_rate_limit: 1 },
+      workerId: 'worker-a',
+      slowCycleSamples: [
+        { userId: 'u-1', cycleKey: 'u-1_1', queueLagMs: 40, cycleDurationMs: 90, retriesUsed: 1, startedAtMs: 1710000000000, completedAtMs: 1710000000090, success: false, failureType: 'api_rate_limit' }
+      ]
     });
 
     await sink.emitSchedulerMetrics({
@@ -114,10 +118,14 @@ describe('automation scheduler metrics sink', () => {
       deadLetters: 0,
       errors: 0,
       retries: 1,
-      queueLagMs: { avgMs: 10, count: 5, maxMs: 40, minMs: 2 },
-      cycleDurationMs: { avgMs: 60, count: 5, maxMs: 140, minMs: 5 },
+      queueLagMs: { avgMs: 10, count: 5, maxMs: 40, minMs: 2, p95Ms: 35, p99Ms: 39 },
+      cycleDurationMs: { avgMs: 60, count: 5, maxMs: 140, minMs: 5, p95Ms: 120, p99Ms: 135 },
       skipped: { disabledOrBlackout: 1, idempotent: 1, locked: 0, tooSoon: 3 },
-      failureByType: { api_timeout: 2, api_rate_limit: 1 }
+      failureByType: { api_timeout: 2, api_rate_limit: 1 },
+      workerId: 'worker-b',
+      slowCycleSamples: [
+        { userId: 'u-2', cycleKey: 'u-2_1', queueLagMs: 20, cycleDurationMs: 140, retriesUsed: 0, startedAtMs: 1710000000500, completedAtMs: 1710000000640, success: true }
+      ]
     });
 
     const dayKey = sink.getDateKey(1710000000000);
@@ -136,8 +144,13 @@ describe('automation scheduler metrics sink', () => {
     ]));
     expect(getDoc(runPathA)).toEqual(expect.objectContaining({
       schedulerId: 'sched-a',
+      workerId: 'worker-a',
       cyclesRun: 3,
       runId: '1710000000000_sched-a',
+      cycleDurationMs: expect.objectContaining({
+        p95Ms: 80,
+        p99Ms: 89
+      }),
       expireAt: new Date(1710000000000 + 30 * 24 * 60 * 60 * 1000),
       slo: expect.objectContaining({
         status: 'breach',
@@ -159,6 +172,8 @@ describe('automation scheduler metrics sink', () => {
       retries: 3,
       maxQueueLagMs: 80,
       maxCycleDurationMs: 140,
+      p95CycleDurationMs: 120,
+      p99CycleDurationMs: 135,
       avgCycleDurationTotalMs: 420,
       avgCycleDurationSamples: 9,
       skipped: {
@@ -181,7 +196,14 @@ describe('automation scheduler metrics sink', () => {
       runId: '1710000000500_sched-b',
       schedulerId: 'sched-b',
       status: 'breach',
-      breachedMetrics: expect.arrayContaining(['errorRatePct', 'deadLetterRatePct'])
+      breachedMetrics: expect.arrayContaining(['errorRatePct', 'deadLetterRatePct']),
+      tailLatency: expect.objectContaining({
+        metric: 'sustainedP99CycleDurationMs',
+        status: 'healthy'
+      }),
+      thresholds: expect.objectContaining({
+        p99CycleDurationMs: 10000
+      })
     }));
     expect(getDoc(dayAlertPath)).toEqual(expect.objectContaining({
       dayKey,
@@ -202,7 +224,8 @@ describe('automation scheduler metrics sink', () => {
         errorRatePct: 0.5,
         deadLetterRatePct: 0.1,
         maxQueueLagMs: 10,
-        maxCycleDurationMs: 10
+        maxCycleDurationMs: 10,
+        p99CycleDurationMs: 10
       },
       onSloAlert
     });
@@ -218,8 +241,8 @@ describe('automation scheduler metrics sink', () => {
       deadLetters: 1,
       errors: 1,
       retries: 0,
-      queueLagMs: { avgMs: 5, count: 3, maxMs: 20, minMs: 1 },
-      cycleDurationMs: { avgMs: 20, count: 3, maxMs: 30, minMs: 5 },
+      queueLagMs: { avgMs: 5, count: 3, maxMs: 20, minMs: 1, p95Ms: 18, p99Ms: 19 },
+      cycleDurationMs: { avgMs: 20, count: 3, maxMs: 30, minMs: 5, p95Ms: 22, p99Ms: 25 },
       skipped: { disabledOrBlackout: 0, idempotent: 0, locked: 0, tooSoon: 1 },
       failureByType: { api_timeout: 1 }
     });
@@ -232,7 +255,8 @@ describe('automation scheduler metrics sink', () => {
       breachedMetrics: expect.arrayContaining([
         'errorRatePct',
         'deadLetterRatePct',
-        'maxCycleDurationMs'
+        'maxCycleDurationMs',
+        'p99CycleDurationMs'
       ]),
       watchMetrics: expect.arrayContaining(['maxQueueLagMs'])
     }));

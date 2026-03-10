@@ -34,6 +34,7 @@ function buildAlertText(alert = {}, status = 'healthy') {
   const deadRate = toFiniteNumber(measured.deadLetterRatePct, 0).toFixed(2);
   const queueLag = Math.round(toFiniteNumber(measured.maxQueueLagMs, 0));
   const cycleDuration = Math.round(toFiniteNumber(measured.maxCycleDurationMs, 0));
+  const p99CycleDuration = Math.round(toFiniteNumber(measured.p99CycleDurationMs, 0));
   const breached = sanitizeMetricList(alert.breachedMetrics);
   const watched = sanitizeMetricList(alert.watchMetrics);
   const metricTags = [
@@ -41,7 +42,13 @@ function buildAlertText(alert = {}, status = 'healthy') {
     ...watched.map((metric) => `watch:${metric}`)
   ];
   const metricSuffix = metricTags.length > 0 ? ` [${metricTags.join(', ')}]` : '';
-  return `[SchedulerSLO] ${severity}${metricSuffix} scheduler=${schedulerId} error=${errorRate}% dead=${deadRate}% queueLagMs=${queueLag} cycleDurationMs=${cycleDuration}`;
+  const tail = alert.tailLatency && typeof alert.tailLatency === 'object'
+    ? alert.tailLatency
+    : null;
+  const tailSuffix = tail
+    ? ` tail=${String(tail.status || 'healthy').toUpperCase()}(${toFiniteNumber(tail.observedRuns, 0)}/${toFiniteNumber(tail.minRuns, 0)}>${Math.round(toFiniteNumber(tail.thresholdMs, 0))}ms)`
+    : '';
+  return `[SchedulerSLO] ${severity}${metricSuffix} scheduler=${schedulerId} error=${errorRate}% dead=${deadRate}% queueLagMs=${queueLag} cycleDurationMs=${cycleDuration} p99CycleDurationMs=${p99CycleDuration}${tailSuffix}`;
 }
 
 function createSchedulerSloAlertNotifier(deps = {}) {
@@ -105,7 +112,10 @@ function createSchedulerSloAlertNotifier(deps = {}) {
           : {},
         thresholds: alert.thresholds && typeof alert.thresholds === 'object'
           ? alert.thresholds
-          : {}
+          : {},
+        tailLatency: alert.tailLatency && typeof alert.tailLatency === 'object'
+          ? alert.tailLatency
+          : null
       }
     };
 

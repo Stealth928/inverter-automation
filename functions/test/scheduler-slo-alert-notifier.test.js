@@ -56,7 +56,15 @@ describe('scheduler slo alert notifier', () => {
         errorRatePct: 2.3,
         deadLetterRatePct: 0.4,
         maxQueueLagMs: 5000,
-        maxCycleDurationMs: 2500
+        maxCycleDurationMs: 2500,
+        p99CycleDurationMs: 2200
+      },
+      tailLatency: {
+        metric: 'sustainedP99CycleDurationMs',
+        status: 'watch',
+        thresholdMs: 10000,
+        observedRuns: 9,
+        minRuns: 10
       }
     });
 
@@ -73,7 +81,10 @@ describe('scheduler slo alert notifier', () => {
       text: expect.stringContaining('[SchedulerSLO] BREACH'),
       schedulerSloAlert: expect.objectContaining({
         status: 'breach',
-        schedulerId: 'sched-2'
+        schedulerId: 'sched-2',
+        tailLatency: expect.objectContaining({
+          status: 'watch'
+        })
       })
     }));
   });

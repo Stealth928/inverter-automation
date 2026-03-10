@@ -28,13 +28,17 @@ Purpose: operational response guide for non-healthy scheduler SLO alerts (`watch
 - `deadLetterRatePct`
 - `maxQueueLagMs`
 - `maxCycleDurationMs`
+- `p99CycleDurationMs`
+- `sustainedP99CycleDurationMs`
 
 Default thresholds:
 
 - `errorRatePct <= 1.0`
 - `deadLetterRatePct <= 0.2`
 - `maxQueueLagMs <= 120000`
-- `maxCycleDurationMs <= 60000`
+- `maxCycleDurationMs <= 20000`
+- `p99CycleDurationMs <= 10000`
+- sustained tail default: `p99 > 10000` for `15` minutes (`minRuns=10`)
 
 ## Runtime Configuration
 
@@ -44,6 +48,10 @@ Environment variable overrides:
 - `AUTOMATION_SCHEDULER_SLO_DEAD_LETTER_RATE_PCT`
 - `AUTOMATION_SCHEDULER_SLO_MAX_QUEUE_LAG_MS`
 - `AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS`
+- `AUTOMATION_SCHEDULER_SLO_P99_CYCLE_DURATION_MS`
+- `AUTOMATION_SCHEDULER_SLO_TAIL_P99_CYCLE_DURATION_MS`
+- `AUTOMATION_SCHEDULER_SLO_TAIL_WINDOW_MINUTES`
+- `AUTOMATION_SCHEDULER_SLO_TAIL_MIN_RUNS`
 - `AUTOMATION_SCHEDULER_SLO_ALERT_WEBHOOK_URL`
 - `AUTOMATION_SCHEDULER_SLO_ALERT_COOLDOWN_MS` (default `300000`)
 
@@ -74,6 +82,9 @@ Environment variable overrides:
   - check bounded concurrency settings.
 - `maxCycleDurationMs` high:
   - inspect slow provider calls, retry loops, and per-user hot paths.
+- `p99CycleDurationMs` / `sustainedP99CycleDurationMs` high:
+  - inspect `slowCycleSamples` in run docs for concrete user/cycle outliers.
+  - correlate with retries, queue-lag spikes, and lock contention indicators.
 
 4. Mitigation options
 - temporarily reduce scheduler concurrency.

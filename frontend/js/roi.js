@@ -130,7 +130,7 @@
                 
                 // Fetch current automation enabled state
                 let isAutomationEnabled = false;
-                // NOTE: /api/automation/state and /api/amber/prices endpoints don't exist or require parameters
+                // NOTE: /api/automation/state and /api/pricing/prices endpoints don't exist or require parameters
                 // We fetch automation state from config endpoint and prices from historical data above
                 let pricesData = null;
                 try {

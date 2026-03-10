@@ -391,18 +391,18 @@ class APIClient {
     return this.post('/api/scheduler/v1/clear-all', { sn });
   }
 
-  // ==================== AMBER ====================
+  // ==================== PRICING ====================
 
   async getAmberSites() {
-    return this.get('/api/amber/sites');
+    return this.get('/api/pricing/sites');
   }
 
   async getAmberPrices(siteId) {
-    return this.get('/api/amber/prices', { siteId });
+    return this.get('/api/pricing/prices', { siteId });
   }
 
   async getAmberCurrentPrices(siteId, forceRefresh = false) {
-    return this.get('/api/amber/prices/current', { siteId, forceRefresh });
+    return this.get('/api/pricing/current', { siteId, forceRefresh });
   }
 
   async getAmberHistoricalPrices(siteId, startDate, endDate, resolution = 30, actualOnly = false) {
@@ -421,7 +421,7 @@ class APIClient {
       params.actual_only = 'true';
     }
     
-    return this.get('/api/amber/prices', params);
+    return this.get('/api/pricing/prices', params);
   }
   /**
    * Get actual (settled) Amber prices for a specific timestamp
@@ -432,7 +432,7 @@ class APIClient {
    * @returns {Promise} Response with actual price data or null if unavailable
    */
   async getAmberActualPrice(siteId, timestamp, resolution = 30) {
-    return this.get('/api/amber/prices/actual', { siteId, timestamp, resolution });
+    return this.get('/api/pricing/actual', { siteId, timestamp, resolution });
   }
 
   // ==================== QUICK CONTROL ====================

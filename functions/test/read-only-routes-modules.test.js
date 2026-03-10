@@ -46,9 +46,17 @@ describe('read-only route modules', () => {
     expect(sites.statusCode).toBe(200);
     expect(sites.body).toEqual({ errno: 0, result: [] });
 
+    const pricingSites = await request(app).get('/api/pricing/sites');
+    expect(pricingSites.statusCode).toBe(200);
+    expect(pricingSites.body).toEqual({ errno: 0, result: [] });
+
     const pricesCurrent = await request(app).get('/api/amber/prices/current');
     expect(pricesCurrent.statusCode).toBe(200);
     expect(pricesCurrent.body).toEqual({ errno: 0, result: [] });
+
+    const pricingCurrent = await request(app).get('/api/pricing/current');
+    expect(pricingCurrent.statusCode).toBe(200);
+    expect(pricingCurrent.body).toEqual({ errno: 0, result: [] });
   });
 
   test('metrics routes return global zero-filled envelope when db is unavailable', async () => {
@@ -166,7 +174,7 @@ describe('read-only route modules', () => {
       });
     });
 
-    const response = await request(app).get('/api/amber/prices/current');
+    const response = await request(app).get('/api/pricing/current');
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({
@@ -220,17 +228,58 @@ describe('read-only route modules', () => {
     });
 
     const unauthorized = await request(app)
-      .get('/api/amber/prices/actual')
+      .get('/api/pricing/actual')
       .query({ timestamp: targetTimestamp.toISOString() });
     expect(unauthorized.statusCode).toBe(401);
 
     const authorized = await request(app)
-      .get('/api/amber/prices/actual')
+      .get('/api/pricing/actual')
       .set('Authorization', 'Bearer token')
       .query({ timestamp: targetTimestamp.toISOString() });
 
     expect(authorized.statusCode).toBe(200);
     expect(authorized.body).toEqual({ errno: 0, result: matchingInterval });
+
+    const legacyAlias = await request(app)
+      .get('/api/amber/prices/actual')
+      .set('Authorization', 'Bearer token')
+      .query({ timestamp: targetTimestamp.toISOString() });
+    expect(legacyAlias.statusCode).toBe(200);
+    expect(legacyAlias.body).toEqual({ errno: 0, result: matchingInterval });
+  });
+
+  test('pricing routes reject unsupported provider values', async () => {
+    const amberPricesInFlight = new Map();
+    const amberAPI = {
+      callAmberAPI: jest.fn(),
+      cacheAmberPricesCurrent: jest.fn(),
+      cacheAmberSites: jest.fn(),
+      getCachedAmberPricesCurrent: jest.fn(),
+      getCachedAmberSites: jest.fn()
+    };
+
+    const app = buildApp((instance) => {
+      registerPricingRoutes(instance, {
+        amberAPI,
+        amberPricesInFlight,
+        authenticateUser: (_req, _res, next) => next(),
+        getUserConfig: jest.fn(),
+        incrementApiCount: jest.fn(),
+        logger: { debug: jest.fn(), warn: jest.fn() },
+        tryAttachUser: jest.fn(async () => null)
+      });
+    });
+
+    const response = await request(app)
+      .get('/api/pricing/sites')
+      .query({ provider: 'flat-rate' });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({
+      errno: 400,
+      error: 'Unsupported pricing provider: flat-rate',
+      result: []
+    });
   });
 
   test('weather routes proxy cached weather helper response', async () => {

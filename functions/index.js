@@ -387,7 +387,19 @@ const {
       process.env.AUTOMATION_SCHEDULER_SLO_MAX_QUEUE_LAG_MS,
     maxCycleDurationMs:
       schedulerSloThresholdConfig.maxCycleDurationMs ||
-      process.env.AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS
+      process.env.AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS,
+    p99CycleDurationMs:
+      schedulerSloThresholdConfig.p99CycleDurationMs ||
+      process.env.AUTOMATION_SCHEDULER_SLO_P99_CYCLE_DURATION_MS,
+    tailP99CycleDurationMs:
+      schedulerSloThresholdConfig.tailP99CycleDurationMs ||
+      process.env.AUTOMATION_SCHEDULER_SLO_TAIL_P99_CYCLE_DURATION_MS,
+    tailWindowMinutes:
+      schedulerSloThresholdConfig.tailWindowMinutes ||
+      process.env.AUTOMATION_SCHEDULER_SLO_TAIL_WINDOW_MINUTES,
+    tailMinRuns:
+      schedulerSloThresholdConfig.tailMinRuns ||
+      process.env.AUTOMATION_SCHEDULER_SLO_TAIL_MIN_RUNS
   },
   serverTimestamp
 });

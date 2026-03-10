@@ -420,7 +420,7 @@
         }
         .scheduler-kpis {
             display: grid;
-            grid-template-columns: repeat(6, minmax(0, 1fr));
+            grid-template-columns: repeat(8, minmax(0, 1fr));
             gap: 8px;
             margin-bottom: 10px;
         }
@@ -531,7 +531,7 @@
         }
         .scheduler-slo-grid {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(5, minmax(0, 1fr));
             gap: 8px;
             margin-bottom: 10px;
         }
@@ -572,7 +572,9 @@
             margin-top: 10px;
             border: 1px solid var(--border-primary);
             border-radius: var(--radius-md);
-            overflow: hidden;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
         }
         .scheduler-recent-table {
             width: 100%;
@@ -601,6 +603,19 @@
             color: var(--text-secondary);
             font-size: 11px;
             display: none;
+        }
+        .scheduler-diagnostics {
+            margin-top: 10px;
+            padding: 10px 12px;
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            background: color-mix(in srgb, var(--bg-tertiary) 55%, transparent);
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.45;
+        }
+        .scheduler-diagnostics strong {
+            color: var(--text-primary);
         }
 
         /* Metrics mini-chart */
@@ -833,7 +848,7 @@
 
         <div class="card firestore-metrics-card">
             <div class="card-header">
-                <div class="card-title"><span class="icon">☁️</span> Firestore Cost & Metrics (MTD)</div>
+                <div class="card-title"><span class="icon">☁️</span> Project Cost & Firestore Metrics (MTD)</div>
                 <button class="action-btn" onclick="loadFirestoreCostMetrics()" id="refreshFirestoreBtn">🔄 Refresh</button>
             </div>
             <div class="card-body">
@@ -856,9 +871,14 @@
                         <div class="value" id="firestoreStorageGb">-</div>
                     </div>
                     <div class="firestore-kpi">
-                        <div class="label">Est. MTD Cost</div>
-                        <div class="value small" id="firestoreMtdCost">-</div>
-                        <div class="sub" id="firestoreServiceBreakdown"></div>
+                        <div class="label">Project MTD Cost</div>
+                        <div class="value small" id="firestoreProjectMtdCost">-</div>
+                        <div class="sub" id="firestoreProjectServiceBreakdown"></div>
+                    </div>
+                    <div class="firestore-kpi">
+                        <div class="label">Firestore Doc-Ops Est.</div>
+                        <div class="value small" id="firestoreDocOpsCost">-</div>
+                        <div class="sub" id="firestoreDocOpsBreakdown"></div>
                     </div>
                 </div>
                 <div class="firestore-chart-wrap">
@@ -908,11 +928,20 @@
                     <div class="scheduler-slo-item" id="schedulerSloCycleDuration">
                         <div class="slo-title">
                             <span class="label-row">SLO: Cycle Duration
-                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 1m 0s).">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 20s).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target avg <= 1m 0s, max <= 1m 0s</div>
+                        <div class="slo-value">Target avg <= 20s, max <= 20s</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="schedulerSloCycleTailP99">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Cycle Tail (P99)
+                                <span class="info-tip" tabindex="0" data-tip="Uses p99 cycle duration; sustained alerting defaults to p99 > 10s for 15 minutes.">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">Target p99 <= 10s</div>
                     </div>
                 </div>
                 <div class="scheduler-kpis">
@@ -964,6 +993,22 @@
                         </div>
                         <div class="value small" id="schedulerLockIdempotentSkips">-</div>
                     </div>
+                    <div class="scheduler-kpi">
+                        <div class="label">
+                            <span class="label-row">Cycle P95
+                                <span class="info-tip" tabindex="0" data-tip="Highest observed daily p95 cycle duration in the selected day window.">i</span>
+                            </span>
+                        </div>
+                        <div class="value small" id="schedulerTailP95">-</div>
+                    </div>
+                    <div class="scheduler-kpi">
+                        <div class="label">
+                            <span class="label-row">Cycle P99
+                                <span class="info-tip" tabindex="0" data-tip="Highest observed daily p99 cycle duration in the selected day window.">i</span>
+                            </span>
+                        </div>
+                        <div class="value small" id="schedulerTailP99">-</div>
+                    </div>
                 </div>
                 <div class="scheduler-chart-wrap">
                     <canvas id="schedulerMetricsChart"></canvas>
@@ -980,12 +1025,15 @@
                                 <th>Dead</th>
                                 <th>Locked</th>
                                 <th>Idempotent</th>
+                                <th>P99</th>
+                                <th>Max</th>
                             </tr>
                         </thead>
                         <tbody id="schedulerRecentRunsBody"></tbody>
                     </table>
                     <div class="scheduler-recent-empty" id="schedulerRecentRunsEmpty">No recent runs in window.</div>
                 </div>
+                <div class="scheduler-diagnostics" id="schedulerDiagnostics">No scheduler outlier diagnostics available yet.</div>
                 <div class="scheduler-warning" id="schedulerMetricsWarning" style="display: none;"></div>
             </div>
         </div>

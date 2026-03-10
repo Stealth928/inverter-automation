@@ -528,8 +528,14 @@
             const warnings = Array.isArray(data.result?.warnings) ? data.result.warnings : [];
 
             const hasStorage = firestore.storageGb !== null && firestore.storageGb !== undefined && Number.isFinite(Number(firestore.storageGb));
-            const hasEstimatedCost = billing.estimatedMtdCostUsd !== null && billing.estimatedMtdCostUsd !== undefined && Number.isFinite(Number(billing.estimatedMtdCostUsd));
-            const isCostEstimate = billing.isEstimate === true;
+            const projectMtdCostUsd = (billing.projectMtdCostUsd !== undefined) ? billing.projectMtdCostUsd : billing.estimatedMtdCostUsd;
+            const projectServices = Array.isArray(billing.projectServices) ? billing.projectServices : billing.services;
+            const projectCostIsEstimate = (billing.projectCostIsEstimate !== undefined) ? (billing.projectCostIsEstimate === true) : (billing.isEstimate === true);
+            const hasProjectCost = projectMtdCostUsd !== null && projectMtdCostUsd !== undefined && Number.isFinite(Number(projectMtdCostUsd));
+
+            const docOpsEstimatedCostUsd = firestore.estimatedDocOpsCostUsd;
+            const docOpsBreakdown = Array.isArray(firestore.estimatedDocOpsBreakdown) ? firestore.estimatedDocOpsBreakdown : [];
+            const hasDocOpsEstimatedCost = docOpsEstimatedCostUsd !== null && docOpsEstimatedCostUsd !== undefined && Number.isFinite(Number(docOpsEstimatedCostUsd));
 
             document.getElementById('firestoreReadsMtd').textContent = formatCompactNumber(firestore.readsMtd || 0);
             document.getElementById('firestoreWritesMtd').textContent = formatCompactNumber(firestore.writesMtd || 0);
@@ -537,36 +543,67 @@
             document.getElementById('firestoreStorageGb').textContent = hasStorage
                 ? Number(firestore.storageGb).toFixed(3)
                 : 'N/A';
-            const costEl = document.getElementById('firestoreMtdCost');
-            if (hasEstimatedCost) {
-                const prefix = isCostEstimate ? '~' : '';
-                costEl.textContent = `${prefix}$${Number(billing.estimatedMtdCostUsd).toFixed(2)}`;
-                costEl.title = isCostEstimate
-                    ? 'Estimated from Firestore read/write/delete counts × GCP pricing. Excludes Functions, Auth, storage, egress.'
-                    : 'Actual MTD cost from Cloud Billing API';
-            } else {
-                costEl.textContent = 'N/A';
-                costEl.title = '';
+            const projectCostEl = document.getElementById('firestoreProjectMtdCost');
+            const projectBreakdownEl = document.getElementById('firestoreProjectServiceBreakdown');
+            if (projectCostEl) {
+                if (hasProjectCost) {
+                    const prefix = projectCostIsEstimate ? '~' : '';
+                    projectCostEl.textContent = `${prefix}$${Number(projectMtdCostUsd).toFixed(2)}`;
+                    projectCostEl.title = projectCostIsEstimate
+                        ? 'Estimated/derived project-level MTD cost (Cloud Monitoring fallback may be delayed and approximate).'
+                        : 'Project-level MTD cost from Cloud Billing API.';
+                } else {
+                    projectCostEl.textContent = 'N/A';
+                    projectCostEl.title = '';
+                }
             }
 
-            // Per-service cost breakdown
-            const breakdownEl = document.getElementById('firestoreServiceBreakdown');
-            if (breakdownEl) {
-                if (hasEstimatedCost && Array.isArray(billing.services) && billing.services.length > 0) {
-                    const parts = billing.services
+            if (projectBreakdownEl) {
+                if (hasProjectCost && Array.isArray(projectServices) && projectServices.length > 0) {
+                    const parts = projectServices
                         .sort((a, b) => b.costUsd - a.costUsd)
-                        .map(s => {
-                            const label = s.service
+                        .map((entry) => {
+                            const label = String(entry.service || '')
                                 .replace('Cloud Firestore', 'Firestore')
                                 .replace('Cloud Functions', 'Functions')
                                 .replace(/^Cloud /, '');
-                            return `${label}: $${Number(s.costUsd).toFixed(2)}`;
+                            return `${label}: $${Number(entry.costUsd || 0).toFixed(2)}`;
                         });
-                    breakdownEl.textContent = parts.join(' · ');
-                    breakdownEl.style.display = '';
-                } else if (!hasEstimatedCost) {
-                    breakdownEl.textContent = '';
-                    breakdownEl.style.display = 'none';
+                    projectBreakdownEl.textContent = parts.join(' · ');
+                    projectBreakdownEl.style.display = '';
+                } else {
+                    projectBreakdownEl.textContent = '';
+                    projectBreakdownEl.style.display = 'none';
+                }
+            }
+
+            const docOpsCostEl = document.getElementById('firestoreDocOpsCost');
+            const docOpsBreakdownEl = document.getElementById('firestoreDocOpsBreakdown');
+            if (docOpsCostEl) {
+                if (hasDocOpsEstimatedCost) {
+                    docOpsCostEl.textContent = `~$${Number(docOpsEstimatedCostUsd).toFixed(2)}`;
+                    docOpsCostEl.title = 'Firestore read/write/delete estimate only. Excludes storage, egress, Functions, and other services.';
+                } else {
+                    docOpsCostEl.textContent = 'N/A';
+                    docOpsCostEl.title = '';
+                }
+            }
+
+            if (docOpsBreakdownEl) {
+                if (hasDocOpsEstimatedCost && docOpsBreakdown.length > 0) {
+                    const parts = docOpsBreakdown
+                        .sort((a, b) => b.costUsd - a.costUsd)
+                        .map((entry) => {
+                            const label = String(entry.service || '')
+                                .replace('Cloud Firestore', 'Firestore')
+                                .replace(/^Firestore /, '');
+                            return `${label}: $${Number(entry.costUsd || 0).toFixed(2)}`;
+                        });
+                    docOpsBreakdownEl.textContent = parts.join(' · ');
+                    docOpsBreakdownEl.style.display = '';
+                } else {
+                    docOpsBreakdownEl.textContent = '';
+                    docOpsBreakdownEl.style.display = 'none';
                 }
             }
 
@@ -612,6 +649,15 @@
         return `${minutes}m ${remSeconds}s`;
     }
 
+    function escapeHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function computeWeightedRunAverageMs(runs, statsKey) {
         const list = Array.isArray(runs) ? runs : [];
         let weightedTotalMs = 0;
@@ -655,37 +701,58 @@
         const deadLetterRatePct = cyclesRun > 0 ? (deadLetters / cyclesRun) * 100 : 0;
         const maxQueueLagMs = Number(summary?.maxQueueLagMs || 0);
         const maxCycleDurationMs = Number(summary?.maxCycleDurationMs || 0);
+        const p99CycleDurationMs = Number(summary?.p99CycleDurationMs || 0);
         const avgQueueLagMs = Number(options?.avgQueueLagMs || 0);
         const avgCycleDurationMs = Number(options?.avgCycleDurationMs || 0);
+        const thresholds = options?.thresholds && typeof options.thresholds === 'object'
+            ? options.thresholds
+            : {};
+        const queueLagTargetMs = Number(thresholds.maxQueueLagMs || 120000);
+        const cycleDurationTargetMs = Number(thresholds.maxCycleDurationMs || 20000);
+        const p99TargetMs = Number(thresholds.p99CycleDurationMs || 10000);
+        const tailWindowMinutes = Math.max(1, Number(thresholds.tailWindowMinutes || 15));
+        const tailInfo = options?.tailLatency && typeof options.tailLatency === 'object'
+            ? options.tailLatency
+            : null;
+        const tailStatus = String(tailInfo?.status || 'healthy').toUpperCase();
+        const tailObservedRuns = Number(tailInfo?.observedRuns || 0);
+        const tailMinRuns = Math.max(1, Number(tailInfo?.minRuns || thresholds.tailMinRuns || 10));
 
         const cards = [
             {
                 id: 'schedulerSloErrorRate',
                 value: errorRatePct,
-                target: 1.0,
+                target: Number(thresholds.errorRatePct || 1.0),
                 display: `${errorRatePct.toFixed(2)}%`,
-                targetDisplay: 'Target <= 1.00%'
+                targetDisplay: `Target <= ${Number(thresholds.errorRatePct || 1.0).toFixed(2)}%`
             },
             {
                 id: 'schedulerSloDeadLetterRate',
                 value: deadLetterRatePct,
-                target: 0.2,
+                target: Number(thresholds.deadLetterRatePct || 0.2),
                 display: `${deadLetterRatePct.toFixed(2)}%`,
-                targetDisplay: 'Target <= 0.20%'
+                targetDisplay: `Target <= ${Number(thresholds.deadLetterRatePct || 0.2).toFixed(2)}%`
             },
             {
                 id: 'schedulerSloQueueLag',
                 value: maxQueueLagMs,
-                target: 120000,
+                target: queueLagTargetMs,
                 display: `${formatDurationMs(avgQueueLagMs)} avg / ${formatDurationMs(maxQueueLagMs)} max`,
-                targetDisplay: `Target avg <= ${formatDurationMs(120000)}, max <= ${formatDurationMs(120000)}`
+                targetDisplay: `Target avg <= ${formatDurationMs(queueLagTargetMs)}, max <= ${formatDurationMs(queueLagTargetMs)}`
             },
             {
                 id: 'schedulerSloCycleDuration',
                 value: maxCycleDurationMs,
-                target: 60000,
+                target: cycleDurationTargetMs,
                 display: `${formatDurationMs(avgCycleDurationMs)} avg / ${formatDurationMs(maxCycleDurationMs)} max`,
-                targetDisplay: `Target avg <= ${formatDurationMs(60000)}, max <= ${formatDurationMs(60000)}`
+                targetDisplay: `Target avg <= ${formatDurationMs(cycleDurationTargetMs)}, max <= ${formatDurationMs(cycleDurationTargetMs)}`
+            },
+            {
+                id: 'schedulerSloCycleTailP99',
+                value: p99CycleDurationMs,
+                target: p99TargetMs,
+                display: `${formatDurationMs(p99CycleDurationMs)} p99`,
+                targetDisplay: `Target p99 <= ${formatDurationMs(p99TargetMs)} · sustained ${tailStatus} (${tailObservedRuns}/${tailMinRuns} runs in ${tailWindowMinutes}m)`
             }
         ];
 
@@ -721,6 +788,10 @@
         const retries = daily.map((point) => Number(point.retries || 0));
         const avgCycleSec = daily.map((point) => {
             const ms = Number(point.avgCycleDurationMs || 0);
+            return ms > 0 ? Math.round(ms / 100) / 10 : null;
+        });
+        const p99CycleSec = daily.map((point) => {
+            const ms = Number(point.p99CycleDurationMs || 0);
             return ms > 0 ? Math.round(ms / 100) / 10 : null;
         });
 
@@ -774,6 +845,18 @@
                         borderDash: [4, 3],
                         pointRadius: 2,
                         tension: 0.3,
+                        spanGaps: true
+                    },
+                    {
+                        type: 'line',
+                        label: 'P99 Cycle (s)',
+                        data: p99CycleSec,
+                        yAxisID: 'y1',
+                        borderColor: 'rgba(250, 204, 21, 0.92)',
+                        backgroundColor: 'rgba(250, 204, 21, 0.2)',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        tension: 0.2,
                         spanGaps: true
                     }
                 ]
@@ -835,23 +918,63 @@
         body.innerHTML = runs.map((run) => {
             const startedAt = run.startedAtMs ? new Date(Number(run.startedAtMs)).toLocaleString('en-AU') : '-';
             const schedulerId = run.schedulerId || '-';
+            const workerId = run.workerId || '-';
             const candidates = Number(run.cycleCandidates || 0);
             const cyclesRun = Number(run.cyclesRun || 0);
             const errors = Number(run.errors || 0);
             const deadLetters = Number(run.deadLetters || 0);
             const locked = Number(run.skipped?.locked || 0);
             const idempotent = Number(run.skipped?.idempotent || 0);
+            const p99Cycle = formatDurationMs(run.cycleDurationMs?.p99Ms || 0);
+            const maxCycle = formatDurationMs(run.cycleDurationMs?.maxMs || 0);
+            const title = `run=${run.runId || '-'} worker=${workerId}`;
             return `<tr>
                 <td>${startedAt}</td>
-                <td title="${schedulerId}">${schedulerId}</td>
+                <td title="${escapeHtml(title)}">${escapeHtml(schedulerId)}</td>
                 <td>${candidates}</td>
                 <td>${cyclesRun}</td>
                 <td>${errors}</td>
                 <td>${deadLetters}</td>
                 <td>${locked}</td>
                 <td>${idempotent}</td>
+                <td>${p99Cycle}</td>
+                <td>${maxCycle}</td>
             </tr>`;
         }).join('');
+    }
+
+    function renderSchedulerDiagnostics(diagnostics) {
+        const el = document.getElementById('schedulerDiagnostics');
+        if (!el) return;
+
+        const diag = diagnostics && typeof diagnostics === 'object' ? diagnostics : {};
+        const outlier = diag.outlierRun && typeof diag.outlierRun === 'object' ? diag.outlierRun : null;
+        const tail = diag.tailLatency && typeof diag.tailLatency === 'object' ? diag.tailLatency : null;
+
+        if (!outlier) {
+            el.textContent = 'No scheduler outlier diagnostics available yet.';
+            return;
+        }
+
+        const startedAt = outlier.startedAtMs ? new Date(Number(outlier.startedAtMs)).toLocaleString('en-AU') : '-';
+        const slowest = outlier.slowestCycle && typeof outlier.slowestCycle === 'object' ? outlier.slowestCycle : null;
+        const causes = Array.isArray(outlier.likelyCauses) ? outlier.likelyCauses : [];
+        const causeText = causes.length ? causes.join(', ') : 'no_clear_cause_from_scheduler_metrics';
+        const tailText = tail
+            ? `${String(tail.status || 'healthy').toUpperCase()} (${Number(tail.observedRuns || 0)}/${Math.max(1, Number(tail.minRuns || 1))} runs above ${formatDurationMs(tail.thresholdMs || 0)} in ${Math.max(1, Number(tail.windowMinutes || 15))}m window)`
+            : 'No sustained tail data';
+
+        const slowestText = slowest
+            ? `slowestCycle user=${escapeHtml(slowest.userId || '-')} duration=${formatDurationMs(slowest.durationMs || 0)} queue=${formatDurationMs(slowest.queueLagMs || 0)} retries=${Number(slowest.retriesUsed || 0)} failure=${escapeHtml(slowest.failureType || 'none')}`
+            : 'slowestCycle unavailable';
+
+        el.innerHTML = `
+            <div><strong>Outlier Run:</strong> ${escapeHtml(outlier.runId || '-')} @ ${escapeHtml(startedAt)} (scheduler=${escapeHtml(outlier.schedulerId || '-')}, worker=${escapeHtml(outlier.workerId || '-')})</div>
+            <div><strong>Tail:</strong> p95=${formatDurationMs(outlier.p95CycleDurationMs || 0)}, p99=${formatDurationMs(outlier.p99CycleDurationMs || 0)}, max=${formatDurationMs(outlier.maxCycleDurationMs || 0)}, queueMax=${formatDurationMs(outlier.queueLagMaxMs || 0)}</div>
+            <div><strong>Likely Causes:</strong> ${escapeHtml(causeText)}</div>
+            <div><strong>Slowest Cycle:</strong> ${slowestText}</div>
+            <div><strong>Sustained Tail Signal:</strong> ${escapeHtml(tailText)}</div>
+        `;
     }
 
     function formatSchedulerAlertMessage(currentAlert) {
@@ -863,11 +986,16 @@
         const measuredDeadRate = Number(alert.measurements?.deadLetterRatePct || 0).toFixed(2);
         const queueLag = formatDurationMs(alert.measurements?.maxQueueLagMs || 0);
         const cycleDuration = formatDurationMs(alert.measurements?.maxCycleDurationMs || 0);
+        const p99CycleDuration = formatDurationMs(alert.measurements?.p99CycleDurationMs || 0);
         const breached = Array.isArray(alert.breachedMetrics) ? alert.breachedMetrics : [];
         const watched = Array.isArray(alert.watchMetrics) ? alert.watchMetrics : [];
         const metricList = [...breached, ...watched];
         const metricHint = metricList.length ? ` [${metricList.join(', ')}]` : '';
-        return `Scheduler SLO ${severity}${metricHint}: error=${measuredErrorRate}%, dead=${measuredDeadRate}%, queue=${queueLag}, cycle=${cycleDuration}`;
+        const tailLatency = alert.tailLatency && typeof alert.tailLatency === 'object' ? alert.tailLatency : null;
+        const tailHint = tailLatency
+            ? `, tail=${String(tailLatency.status || 'healthy').toUpperCase()} (${Number(tailLatency.observedRuns || 0)}/${Math.max(1, Number(tailLatency.minRuns || 1))} > ${formatDurationMs(tailLatency.thresholdMs || 0)})`
+            : '';
+        return `Scheduler SLO ${severity}${metricHint}: error=${measuredErrorRate}%, dead=${measuredDeadRate}%, queue=${queueLag}, cycle=${cycleDuration}, p99=${p99CycleDuration}${tailHint}`;
     }
 
     async function loadSchedulerMetrics() {
@@ -884,7 +1012,7 @@
         try {
             const days = 14;
             const includeRuns = true;
-            const runLimit = 100;
+            const runLimit = 30;
             let data;
             if (typeof adminApiClient.getAdminSchedulerMetrics === 'function') {
                 data = await adminApiClient.getAdminSchedulerMetrics(days, includeRuns, runLimit);
@@ -919,6 +1047,17 @@
             const currentAlert = result.currentAlert && typeof result.currentAlert === 'object'
                 ? result.currentAlert
                 : null;
+            const diagnostics = result.diagnostics && typeof result.diagnostics === 'object'
+                ? result.diagnostics
+                : {};
+            const tailLatency = diagnostics.tailLatency && typeof diagnostics.tailLatency === 'object'
+                ? diagnostics.tailLatency
+                : (currentAlert?.tailLatency && typeof currentAlert.tailLatency === 'object'
+                    ? currentAlert.tailLatency
+                    : null);
+            const sloThresholds = currentAlert?.thresholds && typeof currentAlert.thresholds === 'object'
+                ? currentAlert.thresholds
+                : {};
 
             document.getElementById('schedulerRuns').textContent = formatCompactNumber(summary.runs || 0);
             document.getElementById('schedulerCyclesRun').textContent = formatCompactNumber(summary.cyclesRun || 0);
@@ -928,16 +1067,26 @@
                 `${formatCompactNumber(summary.retries || 0)} / ${formatCompactNumber(summary.deadLetters || 0)}`;
             document.getElementById('schedulerLockIdempotentSkips').textContent =
                 `${formatCompactNumber(summary.skipped?.locked || 0)} / ${formatCompactNumber(summary.skipped?.idempotent || 0)}`;
+            const p95El = document.getElementById('schedulerTailP95');
+            const p99El = document.getElementById('schedulerTailP99');
+            if (p95El) p95El.textContent = formatDurationMs(summary.p95CycleDurationMs || 0);
+            if (p99El) p99El.textContent = formatDurationMs(summary.p99CycleDurationMs || 0);
             renderSchedulerSloCards(summary, {
                 avgQueueLagMs: queueLagAverage.avgMs,
-                avgCycleDurationMs: cycleDurationAverage.avgMs
+                avgCycleDurationMs: cycleDurationAverage.avgMs,
+                thresholds: sloThresholds,
+                tailLatency
             });
 
             renderSchedulerMetricsChart(daily);
             renderSchedulerRecentRuns(recentRuns.slice(0, 20));
+            renderSchedulerDiagnostics({
+                outlierRun: diagnostics.outlierRun || null,
+                tailLatency
+            });
 
             const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
-            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} - ${daily.length} day(s)`;
+            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} · window has ${daily.length} day(s) with data`;
 
             if (currentAlert && ['watch', 'breach'].includes(String(currentAlert.status || '').toLowerCase())) {
                 warningEl.style.display = '';
@@ -949,6 +1098,11 @@
             warningEl.textContent = e.message || String(e);
             renderSchedulerSloCards(null);
             renderSchedulerRecentRuns([]);
+            renderSchedulerDiagnostics(null);
+            const p95El = document.getElementById('schedulerTailP95');
+            const p99El = document.getElementById('schedulerTailP99');
+            if (p95El) p95El.textContent = '-';
+            if (p99El) p99El.textContent = '-';
             showMessage('warning', `Failed to load scheduler metrics: ${e.message || e}`);
         } finally {
             if (refreshBtn) refreshBtn.disabled = false;

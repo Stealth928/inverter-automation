@@ -145,6 +145,14 @@ function warnLog(logger, message) {
   }
 }
 
+function resolveSchedulerWorkerId() {
+  const service = String(process.env.K_SERVICE || process.env.FUNCTION_TARGET || '').trim();
+  const revision = String(process.env.K_REVISION || '').trim();
+  const host = String(process.env.HOSTNAME || '').trim();
+  const parts = [service || 'scheduler', revision, host].filter(Boolean);
+  return parts.length > 0 ? parts.join(':') : 'scheduler-worker';
+}
+
 function createLockRef(db, userId) {
   return db.collection('users').doc(userId).collection('automation').doc('lock');
 }
@@ -422,6 +430,27 @@ function classifyFailureType(error, cycleResult) {
   return 'unknown_error';
 }
 
+function computePercentile(sortedValues, percentile) {
+  const safeSortedValues = Array.isArray(sortedValues) ? sortedValues : [];
+  if (!safeSortedValues.length) {
+    return 0;
+  }
+  if (safeSortedValues.length === 1) {
+    return safeSortedValues[0];
+  }
+  const boundedPercentile = Math.max(0, Math.min(1, toFiniteNumber(percentile, 0)));
+  const rank = boundedPercentile * (safeSortedValues.length - 1);
+  const lowerIndex = Math.floor(rank);
+  const upperIndex = Math.ceil(rank);
+  if (lowerIndex === upperIndex) {
+    return safeSortedValues[lowerIndex];
+  }
+  const lowerValue = safeSortedValues[lowerIndex];
+  const upperValue = safeSortedValues[upperIndex];
+  const interpolation = rank - lowerIndex;
+  return lowerValue + ((upperValue - lowerValue) * interpolation);
+}
+
 function buildDurationStats(values) {
   const safeValues = (Array.isArray(values) ? values : [])
     .map((value) => toFiniteNumber(value, NaN))
@@ -431,7 +460,9 @@ function buildDurationStats(values) {
       avgMs: 0,
       count: 0,
       maxMs: 0,
-      minMs: 0
+      minMs: 0,
+      p95Ms: 0,
+      p99Ms: 0
     };
   }
 
@@ -443,13 +474,40 @@ function buildDurationStats(values) {
     if (value < min) min = value;
     if (value > max) max = value;
   }
+  const sortedValues = safeValues.slice().sort((a, b) => a - b);
 
   return {
     avgMs: Math.round(sum / safeValues.length),
     count: safeValues.length,
     maxMs: Math.round(max),
-    minMs: Math.round(min)
+    minMs: Math.round(min),
+    p95Ms: Math.round(computePercentile(sortedValues, 0.95)),
+    p99Ms: Math.round(computePercentile(sortedValues, 0.99))
   };
+}
+
+function buildSlowCycleSamples(entries, limit = 3) {
+  const safeEntries = Array.isArray(entries) ? entries : [];
+  return safeEntries
+    .filter((entry) => entry && entry.executed === true)
+    .map((entry) => ({
+      userId: entry.userId || null,
+      cycleKey: entry.cycleKey || null,
+      success: entry.success === true,
+      failureType: entry.failureType || null,
+      queueLagMs: Math.max(0, toFiniteNumber(entry.queueLagMs, 0)),
+      cycleDurationMs: Math.max(0, toFiniteNumber(entry.cycleDurationMs, 0)),
+      retriesUsed: Math.max(0, toFiniteNumber(entry.retriesUsed, 0)),
+      startedAtMs: toFiniteNumber(entry.startedAtMs, 0),
+      completedAtMs: toFiniteNumber(entry.completedAtMs, 0)
+    }))
+    .filter((entry) => entry.cycleDurationMs > 0)
+    .sort((a, b) => b.cycleDurationMs - a.cycleDurationMs)
+    .slice(0, Math.max(1, Math.floor(toFiniteNumber(limit, 3))))
+    .map((entry, index) => ({
+      rank: index + 1,
+      ...entry
+    }));
 }
 
 function tallyFailureTypes(entries) {
@@ -588,6 +646,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
 
   const schedulerStartTime = Date.now();
   const schedId = `${schedulerStartTime}_${Math.random().toString(36).slice(2, 11)}`;
+  const workerId = resolveSchedulerWorkerId();
   logger.log(`[Scheduler] ========== Background check ${schedId} START ==========`);
 
   try {
@@ -732,6 +791,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
     let queueLagStats = buildDurationStats([]);
     let cycleDurationStats = buildDurationStats([]);
     let failureByType = {};
+    let slowCycleSamples = [];
     if (cycleCandidates.length > 0) {
       const cycleResults = await mapWithConcurrency(
         cycleCandidates,
@@ -749,7 +809,12 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
           });
           if (!lockHandle || lockHandle.acquired !== true) {
             logger.log(`[Scheduler] User ${userId}: skipped due to active lock`);
+            const completedAtMs = Date.now();
             return {
+              userId,
+              cycleKey,
+              startedAtMs: cycleStartMs,
+              completedAtMs,
               executed: false,
               success: true,
               skippedLocked: 1,
@@ -758,7 +823,8 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               retriesUsed: 0,
               failureType: null,
               queueLagMs,
-              cycleDurationMs: Date.now() - cycleStartMs
+              cycleDurationMs: completedAtMs - cycleStartMs,
+              attempts: 0
             };
           }
 
@@ -771,7 +837,12 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
           });
           if (!shouldRun) {
             logger.log(`[Scheduler] User ${userId}: skipped due to idempotency key ${cycleKey}`);
+            const completedAtMs = Date.now();
             return {
+              userId,
+              cycleKey,
+              startedAtMs: cycleStartMs,
+              completedAtMs,
               executed: false,
               success: true,
               skippedLocked: 0,
@@ -780,7 +851,8 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               retriesUsed: 0,
               failureType: null,
               queueLagMs,
-              cycleDurationMs: Date.now() - cycleStartMs
+              cycleDurationMs: completedAtMs - cycleStartMs,
+              attempts: 0
             };
           }
 
@@ -817,7 +889,12 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
                 },
                 userId
             });
+            const completedAtMs = Date.now();
             return {
+              userId,
+              cycleKey,
+              startedAtMs: cycleStartMs,
+              completedAtMs,
               executed: true,
               success: false,
               skippedLocked: 0,
@@ -826,11 +903,17 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               retriesUsed: Math.max(0, cycleExecution.attempts - 1),
               failureType: cycleExecution.failureType || 'unknown_error',
               queueLagMs,
-              cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, Date.now() - cycleStartMs)
+              cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, completedAtMs - cycleStartMs),
+              attempts: Math.max(1, toFiniteNumber(cycleExecution.attempts, 1))
             };
           }
 
+          const completedAtMs = Date.now();
           return {
+            userId,
+            cycleKey,
+            startedAtMs: cycleStartMs,
+            completedAtMs,
             executed: true,
             success: true,
             skippedLocked: 0,
@@ -839,11 +922,17 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
             retriesUsed: Math.max(0, cycleExecution.attempts - 1),
             failureType: null,
             queueLagMs,
-            cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, Date.now() - cycleStartMs)
+            cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, completedAtMs - cycleStartMs),
+            attempts: Math.max(1, toFiniteNumber(cycleExecution.attempts, 1))
           };
         } catch (error) {
           logger.error(`[Scheduler] User ${userId}: Exception: ${error.message}`);
+          const completedAtMs = Date.now();
           return {
+            userId,
+            cycleKey,
+            startedAtMs: cycleStartMs,
+            completedAtMs,
             executed: false,
             success: false,
             skippedLocked: 0,
@@ -852,7 +941,8 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
             retriesUsed: 0,
             failureType: classifyFailureType(error, null),
             queueLagMs,
-            cycleDurationMs: Date.now() - cycleStartMs
+            cycleDurationMs: completedAtMs - cycleStartMs,
+            attempts: 0
           };
         } finally {
           try {
@@ -877,11 +967,13 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
       queueLagStats = buildDurationStats(cycleResults.map((entry) => entry.queueLagMs));
       cycleDurationStats = buildDurationStats(cycleResults.map((entry) => entry.cycleDurationMs));
       failureByType = tallyFailureTypes(cycleResults);
+      slowCycleSamples = buildSlowCycleSamples(cycleResults);
     }
 
     const duration = Date.now() - schedulerStartTime;
     const schedulerMetrics = {
       schedulerId: schedId,
+      workerId,
       startedAtMs: schedulerStartTime,
       completedAtMs: schedulerStartTime + duration,
       durationMs: duration,
@@ -899,7 +991,8 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
         locked: skippedLocked,
         tooSoon: skippedTooSoon
       },
-      failureByType
+      failureByType,
+      slowCycleSamples
     };
     logger.log(`[Scheduler] ========== Background check ${schedId} COMPLETE ==========`);
     logger.log(

@@ -1946,7 +1946,7 @@
             }
             
             try {
-                let url = '/api/amber/sites';
+                let url = '/api/pricing/sites';
                 if (forceRefresh) {
                     url += '?forceRefresh=true';
                 }
@@ -2053,7 +2053,7 @@
                 if (mockMode) {
                     data = { errno: 0, result: getMockAmberPrices(next, siteId), mock: true };
                 } else {
-                    let url = `/api/amber/prices/current?siteId=${siteId}&next=${next}`;
+                    let url = `/api/pricing/current?siteId=${siteId}&next=${next}`;
                     // Add forceRefresh if force flag is set
                     if (force) {
                         url += '&forceRefresh=true';
@@ -2182,7 +2182,7 @@
                     s = yesterday.toISOString().slice(0,10);
                     e = today.toISOString().slice(0,10);
                 }
-                const resp = await authenticatedFetch(`/api/amber/prices?siteId=${siteId}&startDate=${s}&endDate=${e}`);
+                const resp = await authenticatedFetch(`/api/pricing/prices?siteId=${siteId}&startDate=${s}&endDate=${e}`);
                 const data = await resp.json();
                 renderAmberCard(data);
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);

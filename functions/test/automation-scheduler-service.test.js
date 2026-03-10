@@ -149,12 +149,26 @@ describe('automation scheduler service', () => {
     expect(metrics.failureByType).toEqual(expect.objectContaining({
       api_rate_limit: 1
     }));
+    expect(typeof metrics.workerId).toBe('string');
+    expect(metrics.workerId.length).toBeGreaterThan(0);
     expect(metrics.queueLagMs).toEqual(expect.objectContaining({
-      count: 2
+      count: 2,
+      p95Ms: expect.any(Number),
+      p99Ms: expect.any(Number)
     }));
     expect(metrics.cycleDurationMs).toEqual(expect.objectContaining({
-      count: 2
+      count: 2,
+      p95Ms: expect.any(Number),
+      p99Ms: expect.any(Number)
     }));
+    expect(Array.isArray(metrics.slowCycleSamples)).toBe(true);
+    if (metrics.slowCycleSamples.length > 0) {
+      expect(metrics.slowCycleSamples[0]).toEqual(expect.objectContaining({
+        userId: expect.any(String),
+        cycleDurationMs: expect.any(Number),
+        queueLagMs: expect.any(Number)
+      }));
+    }
   });
 
   test('limits user cycle execution with bounded concurrency', async () => {
