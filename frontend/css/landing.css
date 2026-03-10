@@ -188,6 +188,9 @@ a:hover { text-decoration: underline; }
 
 .land-hero .container {
   max-width: 1320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .land-hero__eyebrow {
@@ -205,6 +208,7 @@ a:hover { text-decoration: underline; }
 }
 
 .land-hero__h1 {
+  order: 1;
   font-size: clamp(2rem, 5vw, 3.25rem);
   font-weight: 800;
   line-height: 1.15;
@@ -220,13 +224,15 @@ a:hover { text-decoration: underline; }
 }
 
 .land-hero__sub {
+  order: 3;
   font-size: clamp(1rem, 2.2vw, 1.2rem);
   color: rgba(211, 225, 241, 0.8);
   max-width: 600px;
-  margin: 0 auto 36px;
+  margin: 36px auto 36px;
 }
 
 .land-hero__actions {
+  order: 4;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -235,6 +241,7 @@ a:hover { text-decoration: underline; }
 }
 
 .land-hero__notes {
+  order: 5;
   margin-top: 20px;
   font-size: 0.82rem;
   color: rgba(159, 183, 209, 0.86);
@@ -598,7 +605,7 @@ section { padding: 80px 0; }
   .land-hero { padding: 42px 0 48px; }
 
   .land-hero__sub {
-    margin-bottom: 24px;
+    margin: 28px auto 24px;
   }
 
   .land-hero__notes {
@@ -691,6 +698,7 @@ section { padding: 80px 0; }
    BRAND STRIP (hero)
    ============================================================ */
 .brand-strip {
+  order: 6;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -724,6 +732,7 @@ section { padding: 80px 0; }
    HERO PREVIEW (product-inspired)
    ============================================================ */
 .hero-preview {
+  order: 2;
   margin: 56px auto 0;
   max-width: 1320px;
   background: linear-gradient(180deg, #0d1523 0%, #08111e 100%);

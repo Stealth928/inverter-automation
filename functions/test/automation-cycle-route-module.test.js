@@ -80,14 +80,21 @@ describe('automation cycle route module', () => {
       .send({});
 
     expect(response.statusCode).toBe(200);
-    expect(response.body).toEqual({
+    expect(response.body).toEqual(expect.objectContaining({
       errno: 0,
-      result: {
+      result: expect.objectContaining({
         reason: 'Automation disabled',
         segmentsCleared: true,
-        skipped: true
-      }
-    });
+        skipped: true,
+        cycleDurationMs: expect.any(Number),
+        phaseTimingsMs: expect.objectContaining({
+          dataFetchMs: expect.any(Number),
+          ruleEvalMs: expect.any(Number),
+          actionApplyMs: expect.any(Number),
+          curtailmentMs: expect.any(Number)
+        })
+      })
+    }));
     expect(deps.foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
     expect(deps.saveUserAutomationState).toHaveBeenCalledWith(
       'u-cycle-disabled',
@@ -160,10 +167,20 @@ describe('automation cycle route module', () => {
       .send({});
 
     expect(response.statusCode).toBe(200);
-    expect(response.body).toEqual({
+    expect(response.body).toEqual(expect.objectContaining({
       errno: 0,
-      result: { reason: 'No rules configured', skipped: true }
-    });
+      result: expect.objectContaining({
+        reason: 'No rules configured',
+        skipped: true,
+        cycleDurationMs: expect.any(Number),
+        phaseTimingsMs: expect.objectContaining({
+          dataFetchMs: expect.any(Number),
+          ruleEvalMs: expect.any(Number),
+          actionApplyMs: expect.any(Number),
+          curtailmentMs: expect.any(Number)
+        })
+      })
+    }));
     expect(deps.getUserRules).toHaveBeenCalledWith('u-cycle-rules');
     expect(deps.saveUserAutomationState).toHaveBeenCalledWith(
       'u-cycle-rules',
@@ -197,14 +214,21 @@ describe('automation cycle route module', () => {
       .send({});
 
     expect(response.statusCode).toBe(200);
-    expect(response.body).toEqual({
+    expect(response.body).toEqual(expect.objectContaining({
       errno: 0,
-      result: {
+      result: expect.objectContaining({
         skipped: true,
         reason: 'Rule was disabled - segments cleared',
-        segmentsCleared: true
-      }
-    });
+        segmentsCleared: true,
+        cycleDurationMs: expect.any(Number),
+        phaseTimingsMs: expect.objectContaining({
+          dataFetchMs: expect.any(Number),
+          ruleEvalMs: expect.any(Number),
+          actionApplyMs: expect.any(Number),
+          curtailmentMs: expect.any(Number)
+        })
+      })
+    }));
     expect(deps.foxessAPI.callFoxESSAPI).toHaveBeenCalledWith(
       '/op/v1/device/scheduler/enable',
       'POST',

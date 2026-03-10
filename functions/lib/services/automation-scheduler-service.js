@@ -153,6 +153,35 @@ function resolveSchedulerWorkerId() {
   return parts.length > 0 ? parts.join(':') : 'scheduler-worker';
 }
 
+const PHASE_TIMING_KEYS = Object.freeze([
+  'dataFetchMs',
+  'ruleEvalMs',
+  'actionApplyMs',
+  'curtailmentMs'
+]);
+
+function createEmptyPhaseTimings() {
+  return {
+    dataFetchMs: 0,
+    ruleEvalMs: 0,
+    actionApplyMs: 0,
+    curtailmentMs: 0
+  };
+}
+
+function sanitizePhaseTimingSample(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const out = createEmptyPhaseTimings();
+  for (const key of PHASE_TIMING_KEYS) {
+    out[key] = Math.max(0, toFiniteNumber(source[key], 0));
+  }
+  return out;
+}
+
+function readPhaseTimingsFromCycleResult(cycleResult) {
+  return sanitizePhaseTimingSample(cycleResult?.result?.phaseTimingsMs);
+}
+
 function createLockRef(db, userId) {
   return db.collection('users').doc(userId).collection('automation').doc('lock');
 }
@@ -486,6 +515,17 @@ function buildDurationStats(values) {
   };
 }
 
+function buildPhaseTimingStats(entries) {
+  const safeEntries = Array.isArray(entries) ? entries : [];
+  const executedEntries = safeEntries.filter((entry) => entry && entry.executed === true);
+  const stats = {};
+  for (const phaseKey of PHASE_TIMING_KEYS) {
+    const phaseValues = executedEntries.map((entry) => toFiniteNumber(entry.phaseTimingsMs?.[phaseKey], NaN));
+    stats[phaseKey] = buildDurationStats(phaseValues);
+  }
+  return stats;
+}
+
 function buildSlowCycleSamples(entries, limit = 3) {
   const safeEntries = Array.isArray(entries) ? entries : [];
   return safeEntries
@@ -569,6 +609,7 @@ async function runCycleWithRetry(options = {}) {
       userId
     });
     if (invokeResult.success) {
+      const phaseTimingsMs = readPhaseTimingsFromCycleResult(invokeResult.cycleResult);
       if (invokeResult.cycleResult?.result?.triggered) {
         logger.log(`[Scheduler] User ${userId}: Rule '${invokeResult.cycleResult.result.rule?.name}' triggered`);
       } else if (invokeResult.cycleResult?.result?.skipped) {
@@ -579,7 +620,8 @@ async function runCycleWithRetry(options = {}) {
         attempts,
         cycleResult: invokeResult.cycleResult,
         durationMs: Date.now() - runStartMs,
-        failureType: null
+        failureType: null,
+        phaseTimingsMs
       };
     }
 
@@ -594,7 +636,8 @@ async function runCycleWithRetry(options = {}) {
         cycleResult: lastCycleResult,
         error: lastError,
         durationMs: Date.now() - runStartMs,
-        failureType: classifyFailureType(lastError, lastCycleResult)
+        failureType: classifyFailureType(lastError, lastCycleResult),
+        phaseTimingsMs: readPhaseTimingsFromCycleResult(lastCycleResult)
       };
     }
 
@@ -614,7 +657,8 @@ async function runCycleWithRetry(options = {}) {
     cycleResult: lastCycleResult,
     error: lastError || new Error('Unknown scheduler retry failure'),
     durationMs: Date.now() - runStartMs,
-    failureType: classifyFailureType(lastError, lastCycleResult)
+    failureType: classifyFailureType(lastError, lastCycleResult),
+    phaseTimingsMs: readPhaseTimingsFromCycleResult(lastCycleResult)
   };
 }
 
@@ -790,6 +834,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
     let totalRetries = 0;
     let queueLagStats = buildDurationStats([]);
     let cycleDurationStats = buildDurationStats([]);
+    let phaseTimingStats = buildPhaseTimingStats([]);
     let failureByType = {};
     let slowCycleSamples = [];
     if (cycleCandidates.length > 0) {
@@ -824,7 +869,8 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               failureType: null,
               queueLagMs,
               cycleDurationMs: completedAtMs - cycleStartMs,
-              attempts: 0
+              attempts: 0,
+              phaseTimingsMs: createEmptyPhaseTimings()
             };
           }
 
@@ -852,7 +898,8 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               failureType: null,
               queueLagMs,
               cycleDurationMs: completedAtMs - cycleStartMs,
-              attempts: 0
+              attempts: 0,
+              phaseTimingsMs: createEmptyPhaseTimings()
             };
           }
 
@@ -904,7 +951,8 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               failureType: cycleExecution.failureType || 'unknown_error',
               queueLagMs,
               cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, completedAtMs - cycleStartMs),
-              attempts: Math.max(1, toFiniteNumber(cycleExecution.attempts, 1))
+              attempts: Math.max(1, toFiniteNumber(cycleExecution.attempts, 1)),
+              phaseTimingsMs: sanitizePhaseTimingSample(cycleExecution.phaseTimingsMs)
             };
           }
 
@@ -923,7 +971,8 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
             failureType: null,
             queueLagMs,
             cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, completedAtMs - cycleStartMs),
-            attempts: Math.max(1, toFiniteNumber(cycleExecution.attempts, 1))
+            attempts: Math.max(1, toFiniteNumber(cycleExecution.attempts, 1)),
+            phaseTimingsMs: sanitizePhaseTimingSample(cycleExecution.phaseTimingsMs)
           };
         } catch (error) {
           logger.error(`[Scheduler] User ${userId}: Exception: ${error.message}`);
@@ -942,7 +991,8 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
             failureType: classifyFailureType(error, null),
             queueLagMs,
             cycleDurationMs: completedAtMs - cycleStartMs,
-            attempts: 0
+            attempts: 0,
+            phaseTimingsMs: createEmptyPhaseTimings()
           };
         } finally {
           try {
@@ -966,6 +1016,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
       totalRetries = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.retriesUsed, 0), 0);
       queueLagStats = buildDurationStats(cycleResults.map((entry) => entry.queueLagMs));
       cycleDurationStats = buildDurationStats(cycleResults.map((entry) => entry.cycleDurationMs));
+      phaseTimingStats = buildPhaseTimingStats(cycleResults);
       failureByType = tallyFailureTypes(cycleResults);
       slowCycleSamples = buildSlowCycleSamples(cycleResults);
     }
@@ -985,6 +1036,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
       retries: totalRetries,
       queueLagMs: queueLagStats,
       cycleDurationMs: cycleDurationStats,
+      phaseTimingsMs: phaseTimingStats,
       skipped: {
         disabledOrBlackout: skippedDisabled,
         idempotent: skippedIdempotent,

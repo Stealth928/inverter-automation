@@ -11,9 +11,55 @@ const DEFAULT_SLO_THRESHOLDS = Object.freeze({
   tailMinRuns: 10
 });
 
+const PHASE_TIMING_KEYS = Object.freeze([
+  'dataFetchMs',
+  'ruleEvalMs',
+  'actionApplyMs',
+  'curtailmentMs'
+]);
+
 function toFiniteNumber(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function sanitizeDurationStats(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  return {
+    avgMs: Math.max(0, toFiniteNumber(source.avgMs, 0)),
+    count: Math.max(0, toFiniteNumber(source.count, 0)),
+    maxMs: Math.max(0, toFiniteNumber(source.maxMs, 0)),
+    minMs: Math.max(0, toFiniteNumber(source.minMs, 0)),
+    p95Ms: Math.max(0, toFiniteNumber(source.p95Ms, 0)),
+    p99Ms: Math.max(0, toFiniteNumber(source.p99Ms, 0))
+  };
+}
+
+function sanitizePhaseTimingStats(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const out = {};
+  for (const phaseKey of PHASE_TIMING_KEYS) {
+    out[phaseKey] = sanitizeDurationStats(source[phaseKey]);
+  }
+  return out;
+}
+
+function sanitizePhaseTimingMaxMs(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const out = {};
+  for (const phaseKey of PHASE_TIMING_KEYS) {
+    out[phaseKey] = Math.max(0, toFiniteNumber(source[phaseKey], 0));
+  }
+  return out;
+}
+
+function buildPhaseTimingMaxMs(phaseTimingsMs) {
+  const source = phaseTimingsMs && typeof phaseTimingsMs === 'object' ? phaseTimingsMs : {};
+  const out = {};
+  for (const phaseKey of PHASE_TIMING_KEYS) {
+    out[phaseKey] = Math.max(0, toFiniteNumber(source[phaseKey]?.maxMs, 0));
+  }
+  return out;
 }
 
 function resolveSloThresholds(overrides = {}) {
@@ -280,22 +326,9 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       deadLetters: toFiniteNumber(metricsInput.deadLetters, 0),
       errors: toFiniteNumber(metricsInput.errors, 0),
       retries: toFiniteNumber(metricsInput.retries, 0),
-      queueLagMs: {
-        avgMs: toFiniteNumber(metricsInput.queueLagMs?.avgMs, 0),
-        count: toFiniteNumber(metricsInput.queueLagMs?.count, 0),
-        maxMs: toFiniteNumber(metricsInput.queueLagMs?.maxMs, 0),
-        minMs: toFiniteNumber(metricsInput.queueLagMs?.minMs, 0),
-        p95Ms: toFiniteNumber(metricsInput.queueLagMs?.p95Ms, 0),
-        p99Ms: toFiniteNumber(metricsInput.queueLagMs?.p99Ms, 0)
-      },
-      cycleDurationMs: {
-        avgMs: toFiniteNumber(metricsInput.cycleDurationMs?.avgMs, 0),
-        count: toFiniteNumber(metricsInput.cycleDurationMs?.count, 0),
-        maxMs: toFiniteNumber(metricsInput.cycleDurationMs?.maxMs, 0),
-        minMs: toFiniteNumber(metricsInput.cycleDurationMs?.minMs, 0),
-        p95Ms: toFiniteNumber(metricsInput.cycleDurationMs?.p95Ms, 0),
-        p99Ms: toFiniteNumber(metricsInput.cycleDurationMs?.p99Ms, 0)
-      },
+      queueLagMs: sanitizeDurationStats(metricsInput.queueLagMs),
+      cycleDurationMs: sanitizeDurationStats(metricsInput.cycleDurationMs),
+      phaseTimingsMs: sanitizePhaseTimingStats(metricsInput.phaseTimingsMs),
       skipped: normalizedSkipped,
       failureByType: normalizedFailureByType,
       workerId: String(metricsInput.workerId || '').trim() || null,
@@ -337,6 +370,15 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       const nextMaxCycleDurationMs = Math.max(previousMaxCycleDuration, normalizedMetrics.cycleDurationMs.maxMs);
       const nextP95CycleDurationMs = Math.max(previousP95CycleDuration, normalizedMetrics.cycleDurationMs.p95Ms);
       const nextP99CycleDurationMs = Math.max(previousP99CycleDuration, normalizedMetrics.cycleDurationMs.p99Ms);
+      const previousPhaseTimingsMaxMs = sanitizePhaseTimingMaxMs(existingData.phaseTimingsMaxMs);
+      const runPhaseTimingsMaxMs = buildPhaseTimingMaxMs(normalizedMetrics.phaseTimingsMs);
+      const nextPhaseTimingsMaxMs = {};
+      for (const phaseKey of PHASE_TIMING_KEYS) {
+        nextPhaseTimingsMaxMs[phaseKey] = Math.max(
+          toFiniteNumber(previousPhaseTimingsMaxMs[phaseKey], 0),
+          toFiniteNumber(runPhaseTimingsMaxMs[phaseKey], 0)
+        );
+      }
       // Weighted-average accumulation: store total weighted sum + sample count so the
       // daily average can be derived without re-reading every individual run.
       const nextAvgCycleDurationTotalMs =
@@ -431,6 +473,7 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
         maxCycleDurationMs: nextMaxCycleDurationMs,
         p95CycleDurationMs: nextP95CycleDurationMs,
         p99CycleDurationMs: nextP99CycleDurationMs,
+        phaseTimingsMaxMs: nextPhaseTimingsMaxMs,
         avgCycleDurationTotalMs: nextAvgCycleDurationTotalMs,
         avgCycleDurationSamples: nextAvgCycleDurationSamples,
         failureByType,

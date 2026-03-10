@@ -163,6 +163,49 @@ describe('admin route module', () => {
     expect(response.body.result.billing.services).toHaveLength(3);
   });
 
+  test('firestore-metrics falls back to firestore doc-ops estimate when project billing is unavailable', async () => {
+    const deps = createDeps({
+      googleApis: {
+        auth: {
+          GoogleAuth: jest.fn(() => ({}))
+        },
+        monitoring: jest.fn(() => ({}))
+      },
+      listMonitoringTimeSeries: jest.fn(async () => []),
+      sumSeriesValues: jest.fn(() => 0),
+      fetchCloudBillingCost: jest.fn(async () => {
+        const err = new Error('billing reports unavailable');
+        err.isBillingReportsUnavailable = true;
+        throw err;
+      }),
+      estimateFirestoreCostFromUsage: jest.fn(() => ({
+        totalUsd: 1.62,
+        isEstimate: true,
+        services: [
+          { service: 'Cloud Firestore reads', costUsd: 1.25 },
+          { service: 'Cloud Firestore writes', costUsd: 0.37 }
+        ]
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/firestore-metrics')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.firestore.estimatedDocOpsCostUsd).toBeCloseTo(1.62);
+    expect(response.body.result.billing.projectMtdCostUsd).toBeCloseTo(1.62);
+    expect(response.body.result.billing.projectCostIsEstimate).toBe(true);
+    expect(response.body.result.billing.projectCostSource).toBe('firestore-doc-ops-estimate');
+    expect(response.body.result.billing.estimatedMtdCostUsd).toBeCloseTo(1.62);
+    expect(response.body.result.billing.costSource).toBe('firestore-doc-ops-estimate');
+    expect(response.body.result.warnings).toContain(
+      'Project-level billing unavailable. Showing Firestore doc-op estimate only for reads/writes/deletes.'
+    );
+  });
+
   test('scheduler-metrics returns aggregate daily view with optional recent runs', async () => {
     const buildSnapshot = (docs) => ({
       size: docs.length,
@@ -186,6 +229,12 @@ describe('admin route module', () => {
           maxCycleDurationMs: 400,
           p95CycleDurationMs: 320,
           p99CycleDurationMs: 390,
+          phaseTimingsMaxMs: {
+            dataFetchMs: 70,
+            ruleEvalMs: 45,
+            actionApplyMs: 120,
+            curtailmentMs: 35
+          },
           skipped: {
             disabledOrBlackout: 1,
             idempotent: 1,
@@ -213,6 +262,12 @@ describe('admin route module', () => {
           maxCycleDurationMs: 300,
           p95CycleDurationMs: 260,
           p99CycleDurationMs: 280,
+          phaseTimingsMaxMs: {
+            dataFetchMs: 60,
+            ruleEvalMs: 40,
+            actionApplyMs: 90,
+            curtailmentMs: 20
+          },
           skipped: {
             disabledOrBlackout: 0,
             idempotent: 0,
@@ -248,6 +303,12 @@ describe('admin route module', () => {
           failureByType: { api_timeout: 1 },
           queueLagMs: { avgMs: 10, count: 3, maxMs: 20, minMs: 1, p95Ms: 18, p99Ms: 19 },
           cycleDurationMs: { avgMs: 40, count: 3, maxMs: 80, minMs: 10, p95Ms: 70, p99Ms: 79 },
+          phaseTimingsMs: {
+            dataFetchMs: { avgMs: 18, count: 3, maxMs: 30, minMs: 10, p95Ms: 28, p99Ms: 29 },
+            ruleEvalMs: { avgMs: 9, count: 3, maxMs: 16, minMs: 4, p95Ms: 15, p99Ms: 15 },
+            actionApplyMs: { avgMs: 7, count: 3, maxMs: 12, minMs: 2, p95Ms: 11, p99Ms: 11 },
+            curtailmentMs: { avgMs: 4, count: 3, maxMs: 9, minMs: 1, p95Ms: 8, p99Ms: 8 }
+          },
           slowCycleSamples: [
             {
               userId: 'u-1',
@@ -379,6 +440,12 @@ describe('admin route module', () => {
       maxCycleDurationMs: 400,
       p95CycleDurationMs: 320,
       p99CycleDurationMs: 390,
+      phaseTimingsMaxMs: {
+        dataFetchMs: 70,
+        ruleEvalMs: 45,
+        actionApplyMs: 120,
+        curtailmentMs: 35
+      },
       errorRatePct: 11.11
     }));
     expect(response.body.result.summary.skipped).toEqual({
@@ -418,6 +485,10 @@ describe('admin route module', () => {
       cycleDurationMs: expect.objectContaining({
         p95Ms: 70,
         p99Ms: 79
+      }),
+      phaseTimingsMs: expect.objectContaining({
+        dataFetchMs: expect.objectContaining({ maxMs: 30 }),
+        actionApplyMs: expect.objectContaining({ maxMs: 12 })
       })
     }));
     expect(response.body.result.currentAlert).toEqual(expect.objectContaining({
@@ -437,6 +508,19 @@ describe('admin route module', () => {
         runId: 'run-1',
         workerId: 'worker-1',
         likelyCauses: expect.arrayContaining(['external_api_slowness_or_retries'])
+      }),
+      phaseTimings: expect.objectContaining({
+        latestRunStartedAtMs: 1000,
+        latestRunMaxMs: expect.objectContaining({
+          dataFetchMs: 30,
+          actionApplyMs: 12
+        }),
+        windowMaxMs: expect.objectContaining({
+          dataFetchMs: 70,
+          ruleEvalMs: 45,
+          actionApplyMs: 120,
+          curtailmentMs: 35
+        })
       })
     }));
     expect(dailyGet).toHaveBeenCalledTimes(1);

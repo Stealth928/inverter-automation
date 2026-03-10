@@ -121,7 +121,19 @@ describe('automation scheduler service', () => {
         res.json({ errno: 429, error: 'Too many requests' });
         return;
       }
-      res.json({ errno: 0, result: { skipped: true, reason: 'No rules configured' } });
+      res.json({
+        errno: 0,
+        result: {
+          skipped: true,
+          reason: 'No rules configured',
+          phaseTimingsMs: {
+            dataFetchMs: 9,
+            ruleEvalMs: 4,
+            actionApplyMs: 2,
+            curtailmentMs: 1
+          }
+        }
+      });
     });
     const { deps } = buildSchedulerDeps({
       automationCycleHandler,
@@ -160,6 +172,24 @@ describe('automation scheduler service', () => {
       count: 2,
       p95Ms: expect.any(Number),
       p99Ms: expect.any(Number)
+    }));
+    expect(metrics.phaseTimingsMs).toEqual(expect.objectContaining({
+      dataFetchMs: expect.objectContaining({
+        count: 2,
+        maxMs: 9
+      }),
+      ruleEvalMs: expect.objectContaining({
+        count: 2,
+        maxMs: 4
+      }),
+      actionApplyMs: expect.objectContaining({
+        count: 2,
+        maxMs: 2
+      }),
+      curtailmentMs: expect.objectContaining({
+        count: 2,
+        maxMs: 1
+      })
     }));
     expect(Array.isArray(metrics.slowCycleSamples)).toBe(true);
     if (metrics.slowCycleSamples.length > 0) {

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'socrates-v45';
+const CACHE_VERSION = 'socrates-v46';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const STATIC_ASSETS = [
@@ -60,6 +60,13 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (requestUrl.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // Screenshot carousel assets should always reflect latest deploys.
+  // Bypass service-worker cache so same-filename replacements are picked up.
+  if (requestUrl.pathname.startsWith('/images/screenshots/')) {
+    event.respondWith(fetch(request));
     return;
   }
 

@@ -527,39 +527,62 @@
             const trend = Array.isArray(data.result?.trend) ? data.result.trend : [];
             const warnings = Array.isArray(data.result?.warnings) ? data.result.warnings : [];
 
+            const docOpsEstimatedCostUsd = firestore.estimatedDocOpsCostUsd;
+            const docOpsBreakdown = Array.isArray(firestore.estimatedDocOpsBreakdown) ? firestore.estimatedDocOpsBreakdown : [];
+            const hasDocOpsEstimatedCost = docOpsEstimatedCostUsd !== null && docOpsEstimatedCostUsd !== undefined && Number.isFinite(Number(docOpsEstimatedCostUsd));
             const hasStorage = firestore.storageGb !== null && firestore.storageGb !== undefined && Number.isFinite(Number(firestore.storageGb));
             const projectMtdCostUsd = (billing.projectMtdCostUsd !== undefined) ? billing.projectMtdCostUsd : billing.estimatedMtdCostUsd;
             const projectServices = Array.isArray(billing.projectServices) ? billing.projectServices : billing.services;
             const projectCostIsEstimate = (billing.projectCostIsEstimate !== undefined) ? (billing.projectCostIsEstimate === true) : (billing.isEstimate === true);
+            const projectCostSourceRaw = (billing.projectCostSource !== undefined) ? billing.projectCostSource : billing.costSource;
+            const projectCostSource = String(projectCostSourceRaw || '').toLowerCase();
             const hasProjectCost = projectMtdCostUsd !== null && projectMtdCostUsd !== undefined && Number.isFinite(Number(projectMtdCostUsd));
-
-            const docOpsEstimatedCostUsd = firestore.estimatedDocOpsCostUsd;
-            const docOpsBreakdown = Array.isArray(firestore.estimatedDocOpsBreakdown) ? firestore.estimatedDocOpsBreakdown : [];
-            const hasDocOpsEstimatedCost = docOpsEstimatedCostUsd !== null && docOpsEstimatedCostUsd !== undefined && Number.isFinite(Number(docOpsEstimatedCostUsd));
+            const shouldFallbackToDocOps = !hasProjectCost && hasDocOpsEstimatedCost;
+            const effectiveProjectCostUsd = hasProjectCost
+                ? Number(projectMtdCostUsd)
+                : (shouldFallbackToDocOps ? Number(docOpsEstimatedCostUsd) : null);
+            const effectiveProjectCostSource = hasProjectCost
+                ? projectCostSource
+                : (shouldFallbackToDocOps ? 'firestore-doc-ops-estimate' : projectCostSource);
+            const hasEffectiveProjectCost = Number.isFinite(effectiveProjectCostUsd);
+            const isDocOpsOnlyProjectCost = effectiveProjectCostSource === 'firestore-doc-ops-estimate';
+            const projectCostApproximate = projectCostIsEstimate || shouldFallbackToDocOps || isDocOpsOnlyProjectCost;
 
             document.getElementById('firestoreReadsMtd').textContent = formatCompactNumber(firestore.readsMtd || 0);
             document.getElementById('firestoreWritesMtd').textContent = formatCompactNumber(firestore.writesMtd || 0);
             document.getElementById('firestoreDeletesMtd').textContent = formatCompactNumber(firestore.deletesMtd || 0);
-            document.getElementById('firestoreStorageGb').textContent = hasStorage
-                ? Number(firestore.storageGb).toFixed(3)
-                : 'N/A';
+            const storageEl = document.getElementById('firestoreStorageGb');
+            if (storageEl) {
+                storageEl.textContent = hasStorage
+                    ? Number(firestore.storageGb).toFixed(3)
+                    : 'Unavailable';
+                storageEl.title = hasStorage
+                    ? 'Approximate Firestore storage from Cloud Monitoring.'
+                    : 'Firestore storage metric unavailable for this project/region.';
+            }
             const projectCostEl = document.getElementById('firestoreProjectMtdCost');
             const projectBreakdownEl = document.getElementById('firestoreProjectServiceBreakdown');
             if (projectCostEl) {
-                if (hasProjectCost) {
-                    const prefix = projectCostIsEstimate ? '~' : '';
-                    projectCostEl.textContent = `${prefix}$${Number(projectMtdCostUsd).toFixed(2)}`;
-                    projectCostEl.title = projectCostIsEstimate
-                        ? 'Estimated/derived project-level MTD cost (Cloud Monitoring fallback may be delayed and approximate).'
-                        : 'Project-level MTD cost from Cloud Billing API.';
+                if (hasEffectiveProjectCost) {
+                    const prefix = projectCostApproximate ? '~' : '';
+                    const suffix = isDocOpsOnlyProjectCost ? '*' : '';
+                    projectCostEl.textContent = `${prefix}$${Number(effectiveProjectCostUsd).toFixed(2)}${suffix}`;
+                    projectCostEl.title = isDocOpsOnlyProjectCost
+                        ? 'Firestore doc-op-only estimate (reads/writes/deletes). Excludes storage, egress, Functions, and other services.'
+                        : (projectCostApproximate
+                            ? 'Estimated/derived project-level MTD cost (Cloud Monitoring fallback may be delayed and approximate).'
+                            : 'Project-level MTD cost from Cloud Billing API.');
                 } else {
-                    projectCostEl.textContent = 'N/A';
-                    projectCostEl.title = '';
+                    projectCostEl.textContent = 'Unavailable';
+                    projectCostEl.title = 'Project-level billing metrics unavailable for this project.';
                 }
             }
 
             if (projectBreakdownEl) {
-                if (hasProjectCost && Array.isArray(projectServices) && projectServices.length > 0) {
+                if (isDocOpsOnlyProjectCost && hasEffectiveProjectCost) {
+                    projectBreakdownEl.textContent = '* Firestore doc-op estimate only (reads/writes/deletes).';
+                    projectBreakdownEl.style.display = '';
+                } else if (hasEffectiveProjectCost && Array.isArray(projectServices) && projectServices.length > 0) {
                     const parts = projectServices
                         .sort((a, b) => b.costUsd - a.costUsd)
                         .map((entry) => {
@@ -579,13 +602,17 @@
 
             const docOpsCostEl = document.getElementById('firestoreDocOpsCost');
             const docOpsBreakdownEl = document.getElementById('firestoreDocOpsBreakdown');
+            const docOpsTileEl = docOpsCostEl ? docOpsCostEl.closest('.firestore-kpi') : null;
+            if (docOpsTileEl) {
+                docOpsTileEl.style.display = isDocOpsOnlyProjectCost ? 'none' : '';
+            }
             if (docOpsCostEl) {
                 if (hasDocOpsEstimatedCost) {
                     docOpsCostEl.textContent = `~$${Number(docOpsEstimatedCostUsd).toFixed(2)}`;
                     docOpsCostEl.title = 'Firestore read/write/delete estimate only. Excludes storage, egress, Functions, and other services.';
                 } else {
-                    docOpsCostEl.textContent = 'N/A';
-                    docOpsCostEl.title = '';
+                    docOpsCostEl.textContent = 'Unavailable';
+                    docOpsCostEl.title = 'Firestore doc-op estimate unavailable.';
                 }
             }
 
@@ -950,15 +977,44 @@
         const diag = diagnostics && typeof diagnostics === 'object' ? diagnostics : {};
         const outlier = diag.outlierRun && typeof diag.outlierRun === 'object' ? diag.outlierRun : null;
         const tail = diag.tailLatency && typeof diag.tailLatency === 'object' ? diag.tailLatency : null;
+        const phaseTimings = diag.phaseTimings && typeof diag.phaseTimings === 'object'
+            ? diag.phaseTimings
+            : null;
+        const phaseRows = [
+            { key: 'dataFetchMs', label: 'Fetch' },
+            { key: 'ruleEvalMs', label: 'Eval' },
+            { key: 'actionApplyMs', label: 'Apply' },
+            { key: 'curtailmentMs', label: 'Curtail' }
+        ];
+        const phaseComparison = phaseRows
+            .map(({ key, label }) => {
+                const latestMs = Number(phaseTimings?.latestRunMaxMs?.[key] || 0);
+                const windowMaxMs = Number(phaseTimings?.windowMaxMs?.[key] || 0);
+                return `${label} ${formatDurationMs(latestMs)} / ${formatDurationMs(windowMaxMs)}`;
+            })
+            .join(' | ');
+        const phaseStartedAt = phaseTimings?.latestRunStartedAtMs
+            ? new Date(Number(phaseTimings.latestRunStartedAtMs)).toLocaleString('en-AU')
+            : '-';
 
-        if (!outlier) {
+        if (!outlier && !phaseTimings) {
             el.textContent = 'No scheduler outlier diagnostics available yet.';
             return;
         }
+        if (!outlier && phaseTimings) {
+            const tailTextOnly = tail
+                ? `${String(tail.status || 'healthy').toUpperCase()} (${Number(tail.observedRuns || 0)}/${Math.max(1, Number(tail.minRuns || 1))} runs above ${formatDurationMs(tail.thresholdMs || 0)} in ${Math.max(1, Number(tail.windowMinutes || 15))}m window)`
+                : 'No sustained tail data';
+            el.innerHTML = `
+                <div><strong>Phase Timings:</strong> latest run @ ${escapeHtml(phaseStartedAt)} maxes (latest / window): ${escapeHtml(phaseComparison)}</div>
+                <div><strong>Sustained Tail Signal:</strong> ${escapeHtml(tailTextOnly)}</div>
+            `;
+            return;
+        }
 
-        const startedAt = outlier.startedAtMs ? new Date(Number(outlier.startedAtMs)).toLocaleString('en-AU') : '-';
-        const slowest = outlier.slowestCycle && typeof outlier.slowestCycle === 'object' ? outlier.slowestCycle : null;
-        const causes = Array.isArray(outlier.likelyCauses) ? outlier.likelyCauses : [];
+        const startedAt = outlier?.startedAtMs ? new Date(Number(outlier.startedAtMs)).toLocaleString('en-AU') : '-';
+        const slowest = outlier?.slowestCycle && typeof outlier.slowestCycle === 'object' ? outlier.slowestCycle : null;
+        const causes = Array.isArray(outlier?.likelyCauses) ? outlier.likelyCauses : [];
         const causeText = causes.length ? causes.join(', ') : 'no_clear_cause_from_scheduler_metrics';
         const tailText = tail
             ? `${String(tail.status || 'healthy').toUpperCase()} (${Number(tail.observedRuns || 0)}/${Math.max(1, Number(tail.minRuns || 1))} runs above ${formatDurationMs(tail.thresholdMs || 0)} in ${Math.max(1, Number(tail.windowMinutes || 15))}m window)`
@@ -969,8 +1025,9 @@
             : 'slowestCycle unavailable';
 
         el.innerHTML = `
-            <div><strong>Outlier Run:</strong> ${escapeHtml(outlier.runId || '-')} @ ${escapeHtml(startedAt)} (scheduler=${escapeHtml(outlier.schedulerId || '-')}, worker=${escapeHtml(outlier.workerId || '-')})</div>
-            <div><strong>Tail:</strong> p95=${formatDurationMs(outlier.p95CycleDurationMs || 0)}, p99=${formatDurationMs(outlier.p99CycleDurationMs || 0)}, max=${formatDurationMs(outlier.maxCycleDurationMs || 0)}, queueMax=${formatDurationMs(outlier.queueLagMaxMs || 0)}</div>
+            <div><strong>Outlier Run:</strong> ${escapeHtml(outlier?.runId || '-')} @ ${escapeHtml(startedAt)} (scheduler=${escapeHtml(outlier?.schedulerId || '-')}, worker=${escapeHtml(outlier?.workerId || '-')})</div>
+            <div><strong>Tail:</strong> p95=${formatDurationMs(outlier?.p95CycleDurationMs || 0)}, p99=${formatDurationMs(outlier?.p99CycleDurationMs || 0)}, max=${formatDurationMs(outlier?.maxCycleDurationMs || 0)}, queueMax=${formatDurationMs(outlier?.queueLagMaxMs || 0)}</div>
+            <div><strong>Phase Timings:</strong> latest run @ ${escapeHtml(phaseStartedAt)} maxes (latest / window): ${escapeHtml(phaseComparison)}</div>
             <div><strong>Likely Causes:</strong> ${escapeHtml(causeText)}</div>
             <div><strong>Slowest Cycle:</strong> ${slowestText}</div>
             <div><strong>Sustained Tail Signal:</strong> ${escapeHtml(tailText)}</div>
@@ -1082,7 +1139,8 @@
             renderSchedulerRecentRuns(recentRuns.slice(0, 20));
             renderSchedulerDiagnostics({
                 outlierRun: diagnostics.outlierRun || null,
-                tailLatency
+                tailLatency,
+                phaseTimings: diagnostics.phaseTimings || null
             });
 
             const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();

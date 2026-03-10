@@ -99,6 +99,12 @@ describe('automation scheduler metrics sink', () => {
       retries: 2,
       queueLagMs: { avgMs: 20, count: 4, maxMs: 80, minMs: 1, p95Ms: 70, p99Ms: 79 },
       cycleDurationMs: { avgMs: 30, count: 4, maxMs: 90, minMs: 3, p95Ms: 80, p99Ms: 89 },
+      phaseTimingsMs: {
+        dataFetchMs: { avgMs: 8, count: 4, maxMs: 20, minMs: 1, p95Ms: 18, p99Ms: 19 },
+        ruleEvalMs: { avgMs: 6, count: 4, maxMs: 14, minMs: 1, p95Ms: 12, p99Ms: 13 },
+        actionApplyMs: { avgMs: 4, count: 4, maxMs: 11, minMs: 1, p95Ms: 10, p99Ms: 10 },
+        curtailmentMs: { avgMs: 2, count: 4, maxMs: 6, minMs: 0, p95Ms: 5, p99Ms: 5 }
+      },
       skipped: { disabledOrBlackout: 1, idempotent: 0, locked: 1, tooSoon: 2 },
       failureByType: { api_rate_limit: 1 },
       workerId: 'worker-a',
@@ -120,6 +126,12 @@ describe('automation scheduler metrics sink', () => {
       retries: 1,
       queueLagMs: { avgMs: 10, count: 5, maxMs: 40, minMs: 2, p95Ms: 35, p99Ms: 39 },
       cycleDurationMs: { avgMs: 60, count: 5, maxMs: 140, minMs: 5, p95Ms: 120, p99Ms: 135 },
+      phaseTimingsMs: {
+        dataFetchMs: { avgMs: 12, count: 5, maxMs: 30, minMs: 1, p95Ms: 26, p99Ms: 28 },
+        ruleEvalMs: { avgMs: 9, count: 5, maxMs: 18, minMs: 1, p95Ms: 16, p99Ms: 17 },
+        actionApplyMs: { avgMs: 7, count: 5, maxMs: 24, minMs: 1, p95Ms: 21, p99Ms: 23 },
+        curtailmentMs: { avgMs: 3, count: 5, maxMs: 8, minMs: 0, p95Ms: 7, p99Ms: 7 }
+      },
       skipped: { disabledOrBlackout: 1, idempotent: 1, locked: 0, tooSoon: 3 },
       failureByType: { api_timeout: 2, api_rate_limit: 1 },
       workerId: 'worker-b',
@@ -151,6 +163,14 @@ describe('automation scheduler metrics sink', () => {
         p95Ms: 80,
         p99Ms: 89
       }),
+      phaseTimingsMs: expect.objectContaining({
+        dataFetchMs: expect.objectContaining({
+          maxMs: 20
+        }),
+        actionApplyMs: expect.objectContaining({
+          maxMs: 11
+        })
+      }),
       expireAt: new Date(1710000000000 + 30 * 24 * 60 * 60 * 1000),
       slo: expect.objectContaining({
         status: 'breach',
@@ -174,6 +194,12 @@ describe('automation scheduler metrics sink', () => {
       maxCycleDurationMs: 140,
       p95CycleDurationMs: 120,
       p99CycleDurationMs: 135,
+      phaseTimingsMaxMs: {
+        dataFetchMs: 30,
+        ruleEvalMs: 18,
+        actionApplyMs: 24,
+        curtailmentMs: 8
+      },
       avgCycleDurationTotalMs: 420,
       avgCycleDurationSamples: 9,
       skipped: {

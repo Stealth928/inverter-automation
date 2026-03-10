@@ -209,18 +209,38 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
     const writesMtd = Math.round(sumSeriesValues(writesMtdSeries));
     const deletesMtd = Math.round(sumSeriesValues(deletesMtdSeries));
     const firestoreUsageEstimate = estimateFirestoreCostFromUsage(readsMtd, writesMtd, deletesMtd, now);
+    const firestoreDocOpsCostUsd = Number.isFinite(Number(firestoreUsageEstimate?.totalUsd))
+      ? Number(firestoreUsageEstimate.totalUsd)
+      : null;
+    const firestoreDocOpsBreakdown = Array.isArray(firestoreUsageEstimate?.services)
+      ? firestoreUsageEstimate.services
+      : [];
 
     // Fetch real project billing cost per service from Cloud Billing API
     let projectBillingData = null;
     let usedMonitoringBillingFallback = false;
     try {
       projectBillingData = await fetchCloudBillingCost(projectId);
+      if (projectBillingData && !projectBillingData.source) {
+        projectBillingData.source = 'cloud-billing';
+      }
       const total = Number(projectBillingData?.totalUsd || 0);
       const serviceCount = Array.isArray(projectBillingData?.services) ? projectBillingData.services.length : 0;
       console.log(`[Admin] Cloud Billing cost fetched: $${total.toFixed(2)} across ${serviceCount} services`);
     } catch (billingErr) {
       if (billingErr.isBillingIamError) {
         warnings.push(billingErr.message);
+        projectBillingData = {
+          services: null,
+          totalUsd: firestoreDocOpsCostUsd,
+          accountId: null,
+          raw: null,
+          isEstimate: true,
+          source: Number.isFinite(firestoreDocOpsCostUsd) ? 'firestore-doc-ops-estimate' : 'unavailable'
+        };
+        warnings.push(
+          'Project-level billing unavailable. Showing Firestore doc-op estimate only for reads/writes/deletes.'
+        );
       } else if (billingErr.isBillingReportsUnavailable) {
         // Fallback 1: Cloud Monitoring billing metrics
         const billingMtdSeries = await loadMetricSeriesSafe({
@@ -239,7 +259,8 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
             totalUsd: fallbackTotal,
             accountId: null,
             raw: null,
-            isEstimate: true
+            isEstimate: true,
+            source: 'monitoring-billing-fallback'
           };
           usedMonitoringBillingFallback = true;
           warnings.push('Billing service breakdown unavailable; using Monitoring total-cost fallback.');
@@ -247,10 +268,11 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
           // Fallback 2: no project-level billing data available
           projectBillingData = {
             services: null,
-            totalUsd: null,
+            totalUsd: firestoreDocOpsCostUsd,
             accountId: null,
             raw: null,
-            isEstimate: true
+            isEstimate: true,
+            source: Number.isFinite(firestoreDocOpsCostUsd) ? 'firestore-doc-ops-estimate' : 'unavailable'
           };
           warnings.push(
             'Project-level billing unavailable. Showing Firestore doc-op estimate only for reads/writes/deletes.'
@@ -285,6 +307,7 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
     const latestStorageBytes = storageSeries.length
       ? Number(storageSeries[storageSeries.length - 1].value || 0)
       : null;
+    const storageGb = Number.isFinite(latestStorageBytes) ? (latestStorageBytes / (1024 * 1024 * 1024)) : null;
 
     res.json({
       errno: 0,
@@ -302,13 +325,9 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
           readsMtd,
           writesMtd,
           deletesMtd,
-          storageGb: Number.isFinite(latestStorageBytes) ? (latestStorageBytes / (1024 * 1024 * 1024)) : null,
-          estimatedDocOpsCostUsd: Number.isFinite(Number(firestoreUsageEstimate?.totalUsd))
-            ? Number(firestoreUsageEstimate.totalUsd)
-            : null,
-          estimatedDocOpsBreakdown: Array.isArray(firestoreUsageEstimate?.services)
-            ? firestoreUsageEstimate.services
-            : []
+          storageGb,
+          estimatedDocOpsCostUsd: firestoreDocOpsCostUsd,
+          estimatedDocOpsBreakdown: firestoreDocOpsBreakdown
         },
         billing: {
           // Preferred explicit fields
@@ -316,11 +335,13 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
           projectServices: projectBillingData ? projectBillingData.services : null,
           projectBillingAccountId: projectBillingData ? projectBillingData.accountId : null,
           projectCostIsEstimate: projectBillingData ? (projectBillingData.isEstimate === true) : false,
+          projectCostSource: projectBillingData ? (projectBillingData.source || 'unknown') : null,
           // Backward-compatible fields
           estimatedMtdCostUsd: projectBillingData ? projectBillingData.totalUsd : null,
           services: projectBillingData ? projectBillingData.services : null,
           billingAccountId: projectBillingData ? projectBillingData.accountId : null,
-          isEstimate: projectBillingData ? (projectBillingData.isEstimate === true) : false
+          isEstimate: projectBillingData ? (projectBillingData.isEstimate === true) : false,
+          costSource: projectBillingData ? (projectBillingData.source || 'unknown') : null
         },
         trend,
         warnings
@@ -661,6 +682,47 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       return Number.isFinite(parsed) ? parsed : fallback;
     };
 
+    const phaseTimingKeys = ['dataFetchMs', 'ruleEvalMs', 'actionApplyMs', 'curtailmentMs'];
+
+    const sanitizeDurationStats = (value) => {
+      const source = value && typeof value === 'object' ? value : {};
+      return {
+        avgMs: Math.max(0, toFiniteNumber(source.avgMs, 0)),
+        count: Math.max(0, toFiniteNumber(source.count, 0)),
+        maxMs: Math.max(0, toFiniteNumber(source.maxMs, 0)),
+        minMs: Math.max(0, toFiniteNumber(source.minMs, 0)),
+        p95Ms: Math.max(0, toFiniteNumber(source.p95Ms, 0)),
+        p99Ms: Math.max(0, toFiniteNumber(source.p99Ms, 0))
+      };
+    };
+
+    const sanitizePhaseTimingStats = (value) => {
+      const source = value && typeof value === 'object' ? value : {};
+      const out = {};
+      for (const phaseKey of phaseTimingKeys) {
+        out[phaseKey] = sanitizeDurationStats(source[phaseKey]);
+      }
+      return out;
+    };
+
+    const sanitizePhaseTimingMaxMs = (value) => {
+      const source = value && typeof value === 'object' ? value : {};
+      const out = {};
+      for (const phaseKey of phaseTimingKeys) {
+        out[phaseKey] = Math.max(0, toFiniteNumber(source[phaseKey], 0));
+      }
+      return out;
+    };
+
+    const extractPhaseTimingRunMaxMs = (phaseTimingStats) => {
+      const source = phaseTimingStats && typeof phaseTimingStats === 'object' ? phaseTimingStats : {};
+      const out = {};
+      for (const phaseKey of phaseTimingKeys) {
+        out[phaseKey] = Math.max(0, toFiniteNumber(source[phaseKey]?.maxMs, 0));
+      }
+      return out;
+    };
+
     const sanitizeFailureByType = (value) => {
       const out = {};
       const source = value && typeof value === 'object' ? value : {};
@@ -878,6 +940,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         avgCycleDurationMs: data.avgCycleDurationSamples > 0
           ? toFiniteNumber(data.avgCycleDurationTotalMs, 0) / toFiniteNumber(data.avgCycleDurationSamples, 1)
           : 0,
+        phaseTimingsMaxMs: sanitizePhaseTimingMaxMs(data.phaseTimingsMaxMs),
         skipped: {
           disabledOrBlackout: toFiniteNumber(data.skipped?.disabledOrBlackout, 0),
           idempotent: toFiniteNumber(data.skipped?.idempotent, 0),
@@ -902,6 +965,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       maxCycleDurationMs: 0,
       p95CycleDurationMs: 0,
       p99CycleDurationMs: 0,
+      phaseTimingsMaxMs: sanitizePhaseTimingMaxMs(null),
       skipped: {
         disabledOrBlackout: 0,
         idempotent: 0,
@@ -923,6 +987,12 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       summary.maxCycleDurationMs = Math.max(summary.maxCycleDurationMs, day.maxCycleDurationMs);
       summary.p95CycleDurationMs = Math.max(summary.p95CycleDurationMs, day.p95CycleDurationMs);
       summary.p99CycleDurationMs = Math.max(summary.p99CycleDurationMs, day.p99CycleDurationMs);
+      for (const phaseKey of phaseTimingKeys) {
+        summary.phaseTimingsMaxMs[phaseKey] = Math.max(
+          toFiniteNumber(summary.phaseTimingsMaxMs[phaseKey], 0),
+          toFiniteNumber(day.phaseTimingsMaxMs?.[phaseKey], 0)
+        );
+      }
       summary.skipped.disabledOrBlackout += day.skipped.disabledOrBlackout;
       summary.skipped.idempotent += day.skipped.idempotent;
       summary.skipped.locked += day.skipped.locked;
@@ -964,22 +1034,9 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           deadLetters: toFiniteNumber(data.deadLetters, 0),
           errors: toFiniteNumber(data.errors, 0),
           retries: toFiniteNumber(data.retries, 0),
-          queueLagMs: {
-            avgMs: toFiniteNumber(data.queueLagMs?.avgMs, 0),
-            count: toFiniteNumber(data.queueLagMs?.count, 0),
-            maxMs: toFiniteNumber(data.queueLagMs?.maxMs, 0),
-            minMs: toFiniteNumber(data.queueLagMs?.minMs, 0),
-            p95Ms: toFiniteNumber(data.queueLagMs?.p95Ms, 0),
-            p99Ms: toFiniteNumber(data.queueLagMs?.p99Ms, 0)
-          },
-          cycleDurationMs: {
-            avgMs: toFiniteNumber(data.cycleDurationMs?.avgMs, 0),
-            count: toFiniteNumber(data.cycleDurationMs?.count, 0),
-            maxMs: toFiniteNumber(data.cycleDurationMs?.maxMs, 0),
-            minMs: toFiniteNumber(data.cycleDurationMs?.minMs, 0),
-            p95Ms: toFiniteNumber(data.cycleDurationMs?.p95Ms, 0),
-            p99Ms: toFiniteNumber(data.cycleDurationMs?.p99Ms, 0)
-          },
+          queueLagMs: sanitizeDurationStats(data.queueLagMs),
+          cycleDurationMs: sanitizeDurationStats(data.cycleDurationMs),
+          phaseTimingsMs: sanitizePhaseTimingStats(data.phaseTimingsMs),
           skipped: {
             disabledOrBlackout: toFiniteNumber(data.skipped?.disabledOrBlackout, 0),
             idempotent: toFiniteNumber(data.skipped?.idempotent, 0),
@@ -992,6 +1049,11 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         });
       });
     }
+
+    const latestRun = recentRuns.length > 0 ? recentRuns[0] : null;
+    const latestRunPhaseTimingsMaxMs = latestRun
+      ? sanitizePhaseTimingMaxMs(extractPhaseTimingRunMaxMs(latestRun.phaseTimingsMs))
+      : sanitizePhaseTimingMaxMs(null);
 
     let outlierRun = null;
     if (recentRuns.length > 0) {
@@ -1107,7 +1169,12 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         currentAlert,
         diagnostics: {
           tailLatency,
-          outlierRun
+          outlierRun,
+          phaseTimings: {
+            latestRunStartedAtMs: toFiniteNumber(latestRun?.startedAtMs, 0),
+            latestRunMaxMs: latestRunPhaseTimingsMaxMs,
+            windowMaxMs: sanitizePhaseTimingMaxMs(summary.phaseTimingsMaxMs)
+          }
         },
         updatedAt: new Date().toISOString()
       }
