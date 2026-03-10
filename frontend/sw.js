@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'socrates-v44';
+const CACHE_VERSION = 'socrates-v45';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const STATIC_ASSETS = [

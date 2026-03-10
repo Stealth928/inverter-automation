@@ -10,9 +10,20 @@
  * Project: inverter-automation-firebase
  */
 
+const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname)
+  ? String(window.location.hostname).toLowerCase()
+  : '';
+
+const useCustomAuthDomain =
+  hostname === 'socratesautomation.com' ||
+  hostname === 'www.socratesautomation.com';
+
 const firebaseConfig = {
   apiKey: "AIzaSyDUbi89rbCYvTgoOVQRjx5zkhpYUU1f8eo",
-  authDomain: "inverter-automation-firebase.firebaseapp.com",
+  // Use custom auth domain on production custom hosts; keep Firebase default for legacy/preview hosts.
+  authDomain: useCustomAuthDomain
+    ? hostname
+    : "inverter-automation-firebase.firebaseapp.com",
   projectId: "inverter-automation-firebase",
   storageBucket: "inverter-automation-firebase.firebasestorage.app",
   messagingSenderId: "527688083750",

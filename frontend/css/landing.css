@@ -2323,7 +2323,7 @@ section { padding: 80px 0; }
 .land-nav__logo-img {
   width: 32px;
   height: 32px;
-  border-radius: 7px;
+  border-radius: 0;
   display: inline-block;
   vertical-align: middle;
   flex-shrink: 0;
