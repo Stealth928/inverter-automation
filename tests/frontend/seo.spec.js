@@ -17,6 +17,19 @@ test.describe('SEO Metadata', () => {
     expect(ldJsonText).toContain('"@type": "Organization"');
   });
 
+  test('landing page includes analytics instrumentation for CTA tracking', async ({ page }) => {
+    await page.goto('/index.html');
+
+    await expect(page.locator('script[src="/js/marketing-analytics.js"]')).toHaveCount(1);
+
+    const trackedCtaCount = await page.locator('[data-analytics-event]').count();
+    expect(trackedCtaCount).toBeGreaterThanOrEqual(8);
+
+    const analyticsState = await page.evaluate(() => window.__socratesMarketingAnalytics);
+    expect(analyticsState).toBeTruthy();
+    expect(typeof analyticsState.measurementId).toBe('string');
+  });
+
   test('internal pages are marked noindex', async ({ page }) => {
     const paths = [
       '/login.html',
