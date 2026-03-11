@@ -20,6 +20,15 @@ function resolveProviderDeviceId(userConfig = {}, explicitDeviceId) {
     };
   }
 
+  if (provider === 'alphaess') {
+    const systemSn = userConfig?.alphaessSystemSn || userConfig?.alphaessSysSn || userConfig?.deviceSn;
+    return {
+      provider,
+      deviceId: systemSn ? String(systemSn).trim() : null,
+      source: userConfig?.alphaessSystemSn ? 'alphaessSystemSn' : (userConfig?.alphaessSysSn ? 'alphaessSysSn' : 'deviceSn')
+    };
+  }
+
   if (provider === 'sungrow') {
     const deviceSn = userConfig?.sungrowDeviceSn || userConfig?.deviceSn;
     return {

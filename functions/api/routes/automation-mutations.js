@@ -1,6 +1,7 @@
-'use strict';
+﻿'use strict';
 
 const { clearSchedulerSegments } = require('../../lib/services/scheduler-segment-service');
+const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
 
 function registerAutomationMutationRoutes(app, deps = {}) {
   const addAutomationAuditEntry = deps.addAutomationAuditEntry;
@@ -9,6 +10,7 @@ function registerAutomationMutationRoutes(app, deps = {}) {
   const clearRulesLastTriggered = deps.clearRulesLastTriggered;
   const compareValue = deps.compareValue;
   const db = deps.db;
+  const adapterRegistry = deps.adapterRegistry || null;
   const DEFAULT_TIMEZONE = deps.DEFAULT_TIMEZONE;
   const deleteUserRule = deps.deleteUserRule;
   const evaluateTemperatureCondition = deps.evaluateTemperatureCondition;
@@ -97,6 +99,126 @@ function registerAutomationMutationRoutes(app, deps = {}) {
     throw new Error('registerAutomationMutationRoutes requires validateRuleActionForUser()');
   }
 
+  function getProviderContext(userConfig = {}, explicitDeviceId) {
+    const resolved = resolveProviderDeviceId(userConfig, explicitDeviceId);
+    return {
+      provider: String(resolved.provider || 'foxess').toLowerCase().trim(),
+      deviceSN: resolved.deviceId || null
+    };
+  }
+
+  async function clearActiveSegmentsForProvider(userId, userConfig, explicitDeviceId = null) {
+    const { provider, deviceSN } = getProviderContext(userConfig, explicitDeviceId);
+    if (!deviceSN) {
+      return {
+        provider,
+        deviceSN: null,
+        errno: 400,
+        msg: 'Device SN not configured',
+        flagResult: null,
+        verify: null
+      };
+    }
+
+    if (provider !== 'foxess' && adapterRegistry) {
+      const adapter = adapterRegistry.getDeviceProvider(provider);
+      if (adapter && typeof adapter.clearSchedule === 'function') {
+        const result = await adapter.clearSchedule({ deviceSN, userConfig, userId });
+        let verify = null;
+        try {
+          if (typeof adapter.getSchedule === 'function') {
+            verify = await adapter.getSchedule({ deviceSN, userConfig, userId });
+          }
+        } catch (verifyErr) {
+          console.warn('[Automation] Adapter verify read failed:', verifyErr && verifyErr.message ? verifyErr.message : verifyErr);
+        }
+
+        return {
+          provider,
+          deviceSN,
+          errno: result?.errno ?? 500,
+          msg: result?.msg || result?.error || (result?.errno === 0 ? 'Automation cancelled' : 'Failed'),
+          flagResult: null,
+          verify: verify?.result || null
+        };
+      }
+
+      return {
+        provider,
+        deviceSN,
+        errno: 400,
+        msg: `Not supported for provider: ${provider}`,
+        flagResult: null,
+        verify: null
+      };
+    }
+
+    const result = await clearSchedulerSegments({
+      deviceSN,
+      foxessAPI,
+      userConfig,
+      userId
+    });
+    logger.debug('Automation', `Cancel v1 result: errno=${result.errno}`);
+
+    let flagResult = null;
+    try {
+      flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
+      logger.debug('Automation', `Cancel flag result: errno=${flagResult?.errno}`);
+    } catch (flagErr) {
+      console.warn('[Automation] Flag disable failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
+    }
+
+    let verify = null;
+    try {
+      verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+    } catch (e) {
+      console.warn('[Automation] Verify read failed:', e && e.message ? e.message : e);
+    }
+
+    return {
+      provider,
+      deviceSN,
+      errno: result.errno,
+      msg: result.msg || (result.errno === 0 ? 'Automation cancelled' : 'Failed'),
+      flagResult,
+      verify: verify?.result || null
+    };
+  }
+
+  async function restoreCurtailmentIfRequired(userId, userConfig, curtailmentState, reasonKey) {
+    if (!curtailmentState?.active) return;
+
+    const { provider, deviceSN } = getProviderContext(userConfig);
+    if (provider !== 'foxess' || !deviceSN) {
+      await db.collection('users').doc(userId).collection('curtailment').doc('state').set({
+        active: false,
+        lastPrice: null,
+        lastDeactivated: Date.now(),
+        disabledByAutomationToggle: true,
+        disabledReason: reasonKey || 'unsupported_provider'
+      });
+      return;
+    }
+
+    const setResult = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', {
+      sn: deviceSN,
+      key: 'ExportLimit',
+      value: 12000
+    }, userConfig, userId);
+
+    if (setResult?.errno === 0) {
+      await db.collection('users').doc(userId).collection('curtailment').doc('state').set({
+        active: false,
+        lastPrice: null,
+        lastDeactivated: Date.now(),
+        disabledByAutomationToggle: true
+      });
+    } else {
+      throw new Error(setResult?.msg || setResult?.error || 'Failed to restore export power');
+    }
+  }
+
 // Toggle automation
 
 app.post('/api/automation/toggle', async (req, res) => {
@@ -111,26 +233,10 @@ app.post('/api/automation/toggle', async (req, res) => {
         const stateDoc = await db.collection('users').doc(userId).collection('curtailment').doc('state').get();
         const curtailmentState = stateDoc.exists ? stateDoc.data() : { active: false };
         
-        if (curtailmentState.active && userConfig?.deviceSn) {
-          console.log(`[Automation Toggle] Restoring export power (curtailment was active, automation disabled)`);
-          
-          const setResult = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', {
-            sn: userConfig.deviceSn,
-            key: 'ExportLimit',
-            value: 12000
-          }, userConfig, userId);
-          
-          if (setResult?.errno === 0) {
-            await db.collection('users').doc(userId).collection('curtailment').doc('state').set({
-              active: false,
-              lastPrice: null,
-              lastDeactivated: Date.now(),
-              disabledByAutomationToggle: true
-            });
-            console.log(`[Automation Toggle] ✓ Export power restored successfully`);
-          } else {
-            console.warn(`[Automation Toggle] � ️ Failed to restore export power: ${setResult?.msg || 'Unknown error'}`);
-          }
+        if (curtailmentState.active) {
+          console.log('[Automation Toggle] Restoring curtailment state before disabling automation');
+          await restoreCurtailmentIfRequired(userId, userConfig, curtailmentState, 'automation_toggle');
+          console.log('[Automation Toggle] Curtailment state restored');
         }
       } catch (curtErr) {
         console.error('[Automation Toggle] Error checking/restoring curtailment:', curtErr);
@@ -164,26 +270,10 @@ app.post('/api/automation/enable', async (req, res) => {
         const stateDoc = await db.collection('users').doc(userId).collection('curtailment').doc('state').get();
         const curtailmentState = stateDoc.exists ? stateDoc.data() : { active: false };
         
-        if (curtailmentState.active && userConfig?.deviceSn) {
-          console.log(`[Automation Enable] Restoring export power (curtailment was active, automation disabled)`);
-          
-          const setResult = await foxessAPI.callFoxESSAPI('/op/v0/device/setting/set', 'POST', {
-            sn: userConfig.deviceSn,
-            key: 'ExportLimit',
-            value: 12000
-          }, userConfig, userId);
-          
-          if (setResult?.errno === 0) {
-            await db.collection('users').doc(userId).collection('curtailment').doc('state').set({
-              active: false,
-              lastPrice: null,
-              lastDeactivated: Date.now(),
-              disabledByAutomationToggle: true
-            });
-            console.log(`[Automation Enable] ✓ Export power restored successfully`);
-          } else {
-            console.warn(`[Automation Enable] � ️ Failed to restore export power: ${setResult?.msg || 'Unknown error'}`);
-          }
+        if (curtailmentState.active) {
+          console.log('[Automation Enable] Restoring curtailment state before disabling automation');
+          await restoreCurtailmentIfRequired(userId, userConfig, curtailmentState, 'automation_enable');
+          console.log('[Automation Enable] Curtailment state restored');
         }
       } catch (curtErr) {
         console.error('[Automation Enable] Error checking/restoring curtailment:', curtErr);
@@ -266,39 +356,15 @@ app.post('/api/automation/cancel', async (req, res) => {
   try {
     const userId = req.user.uid;
     const userConfig = await getUserConfig(userId);
-    const deviceSN = userConfig?.deviceSn;
+    const providerContext = getProviderContext(userConfig);
+    const deviceSN = providerContext.deviceSN;
     
     if (!deviceSN) {
       return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
     }
     
-    logger.debug('Automation', `Cancel request for user ${userId}, device ${deviceSN}`);
-
-    // Send to device via v1 API
-    const result = await clearSchedulerSegments({
-      deviceSN,
-      foxessAPI,
-      userConfig,
-      userId
-    });
-    logger.debug('Automation', `Cancel v1 result: errno=${result.errno}`);
-    
-    // Disable the scheduler flag
-    let flagResult = null;
-    try {
-      flagResult = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/set/flag', 'POST', { deviceSN, enable: 0 }, userConfig, userId);
-      logger.debug('Automation', `Cancel flag result: errno=${flagResult?.errno}`);
-    } catch (flagErr) {
-      console.warn('[Automation] Flag disable failed:', flagErr && flagErr.message ? flagErr.message : flagErr);
-    }
-    
-    // Verification read
-    let verify = null;
-    try {
-      verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
-    } catch (e) {
-      console.warn('[Automation] Verify read failed:', e && e.message ? e.message : e);
-    }
+    logger.debug('Automation', `Cancel request for user ${userId}, provider ${providerContext.provider}, device ${deviceSN}`);
+    const cleared = await clearActiveSegmentsForProvider(userId, userConfig, deviceSN);
     
     // Clear active rule in state
     await saveUserAutomationState(userId, {
@@ -314,10 +380,10 @@ app.post('/api/automation/cancel', async (req, res) => {
     } catch (e) { /* ignore */ }
     
     res.json({
-      errno: result.errno,
-      msg: result.msg || (result.errno === 0 ? 'Automation cancelled' : 'Failed'),
-      flagResult,
-      verify: verify?.result || null
+      errno: cleared.errno,
+      msg: cleared.msg,
+      flagResult: cleared.flagResult,
+      verify: cleared.verify
     });
   } catch (error) {
     console.error('[Automation] Cancel error:', error);
@@ -405,7 +471,7 @@ app.post('/api/automation/rule/end', async (req, res) => {
     }
     
     const durationMs = endTimestamp - startTimestamp;
-    logger.debug('Automation', `✅ Orphan rule ended: ${startEvent.ruleName} (${Math.round(durationMs / 1000)}s duration)`);
+    logger.debug('Automation', `Orphan rule ended: ${startEvent.ruleName} (${Math.round(durationMs / 1000)}s duration)`);
     
     res.json({
       errno: 0,
@@ -525,26 +591,21 @@ app.post('/api/automation/rule/update', async (req, res) => {
       if (state && state.activeRule === ruleId) {
         console.log(`[Rule Update] Disabled rule was active - clearing segments immediately`);
         
-        // Get user config for device SN
+        // Get user config for provider/device context
         const userConfig = await getUserConfig(req.user.uid);
-        const deviceSN = userConfig?.deviceSn;
+        const deviceSN = getProviderContext(userConfig).deviceSN;
         
         // Clear scheduler segments immediately
         if (deviceSN) {
           try {
-            const clearResult = await clearSchedulerSegments({
-              deviceSN,
-              foxessAPI,
-              userConfig,
-              userId: req.user.uid
-            });
-            if (clearResult?.errno === 0) {
-              console.log(`[Rule Update] ✓ Segments cleared successfully`);
+            const cleared = await clearActiveSegmentsForProvider(req.user.uid, userConfig, deviceSN);
+            if (cleared?.errno === 0) {
+              console.log('[Rule Update] Segments cleared successfully');
             } else {
-              console.warn(`[Rule Update] � ️ Failed to clear segments: errno=${clearResult?.errno}`);
+              console.warn(`[Rule Update] Failed to clear segments: errno=${cleared?.errno}`);
             }
           } catch (err) {
-            console.error(`[Rule Update] ❌ Error clearing segments:`, err.message);
+            console.error('[Rule Update] Error clearing segments:', err.message);
           }
         }
         
@@ -576,7 +637,7 @@ app.post('/api/automation/rule/update', async (req, res) => {
           reason: 'Rule disabled by user'
         });
         
-        console.log(`[Rule Update] ✓ Audit entry created - rule marked as ended`);
+        console.log('[Rule Update] Audit entry created - rule marked as ended');
         
         // Clear active rule state
         await saveUserAutomationState(req.user.uid, {
@@ -614,26 +675,21 @@ app.post('/api/automation/rule/delete', async (req, res) => {
     if (state && state.activeRule === ruleId) {
       console.log(`[Rule Delete] Deleted rule was active - clearing segments immediately`);
       
-      // Get user config for device SN
+      // Get user config for provider/device context
       const userConfig = await getUserConfig(req.user.uid);
-      const deviceSN = userConfig?.deviceSn;
+      const deviceSN = getProviderContext(userConfig).deviceSN;
       
       // Clear scheduler segments immediately
       if (deviceSN) {
         try {
-          const clearResult = await clearSchedulerSegments({
-            deviceSN,
-            foxessAPI,
-            userConfig,
-            userId: req.user.uid
-          });
-          if (clearResult?.errno === 0) {
-            console.log(`[Rule Delete] ✓ Segments cleared successfully`);
+          const cleared = await clearActiveSegmentsForProvider(req.user.uid, userConfig, deviceSN);
+          if (cleared?.errno === 0) {
+            console.log('[Rule Delete] Segments cleared successfully');
           } else {
-            console.warn(`[Rule Delete] � ️ Failed to clear segments: errno=${clearResult?.errno}`);
+            console.warn(`[Rule Delete] Failed to clear segments: errno=${cleared?.errno}`);
           }
         } catch (err) {
-          console.error(`[Rule Delete] ❌ Error clearing segments:`, err.message);
+          console.error('[Rule Delete] Error clearing segments:', err.message);
         }
       }
       
@@ -665,7 +721,7 @@ app.post('/api/automation/rule/delete', async (req, res) => {
         reason: 'Rule deleted by user'
       });
       
-      console.log(`[Rule Delete] ✓ Audit entry created - rule marked as ended`);
+      console.log('[Rule Delete] Audit entry created - rule marked as ended');
       
       // Clear active rule state
       await saveUserAutomationState(req.user.uid, {

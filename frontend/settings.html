@@ -868,6 +868,32 @@
                     </div>
                 </div>
 
+                <!-- AlphaESS-specific credentials (shown when deviceProvider=alphaess) -->
+                <div id="alphaessCredentialsSection" style="display:none">
+                    <div class="setting-item">
+                        <div class="setting-label">AlphaESS System SN</div>
+                        <div class="setting-hint">Your AlphaESS system serial number (System SN in the AlphaESS developer portal)</div>
+                        <div class="setting-input">
+                            <input type="text" id="credentials_alphaessSystemSn" placeholder="e.g., ALPHA123456789" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">AlphaESS App ID</div>
+                        <div class="setting-hint">Developer App ID from open.alphaess.com (leave blank to keep current)</div>
+                        <div class="setting-input">
+                            <input type="text" id="credentials_alphaessAppId" placeholder="•••••••• (leave blank to keep current)" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">AlphaESS App Secret</div>
+                        <div class="setting-hint">Developer App Secret from open.alphaess.com (stored encrypted, leave blank to keep current)</div>
+                        <div class="setting-input">
+                            <input type="password" id="credentials_alphaessAppSecret" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
+                            <button type="button" class="btn-secondary" id="credentials_toggleAlphaessSecret">Show</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Sungrow-specific credentials (shown when deviceProvider=sungrow) -->
                 <div id="sungrowCredentialsSection" style="display:none">
                     <div class="setting-item">

@@ -30,6 +30,21 @@ test.describe('SEO Metadata', () => {
     expect(typeof analyticsState.measurementId).toBe('string');
   });
 
+  test('public battery ROI calculator is crawlable and instrumented', async ({ page }) => {
+    await page.goto('/battery-roi-calculator.html');
+
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/battery-roi-calculator.html');
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow');
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://socratesautomation.com/battery-roi-calculator.html');
+    await expect(page.locator('script[src="/js/marketing-analytics.js"]')).toHaveCount(1);
+
+    const structuredData = page.locator('script[type="application/ld+json"]');
+    await expect(structuredData).toHaveCount(1);
+    const ldJsonText = await structuredData.first().textContent();
+    expect(ldJsonText).toContain('"WebApplication"');
+    expect(ldJsonText).toContain('Battery ROI Calculator');
+  });
+
   test('internal pages are marked noindex', async ({ page }) => {
     const paths = [
       '/login.html',

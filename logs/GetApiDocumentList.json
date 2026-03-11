@@ -1,0 +1,21 @@
+﻿{
+    "code":  200,
+    "info":  "Success",
+    "data":  [
+                 {
+                     "id":  3,
+                     "document_name":  "工商业定制文档",
+                     "document_desc":  "工商业定制文档"
+                 },
+                 {
+                     "id":  2,
+                     "document_name":  "第三方机构专用文档",
+                     "document_desc":  "第三方机构专用文档"
+                 },
+                 {
+                     "id":  1,
+                     "document_name":  "标准文档",
+                     "document_desc":  "适用普通终端用户"
+                 }
+             ]
+}

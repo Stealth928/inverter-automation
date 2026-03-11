@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Battery ROI Calculator | SoCrates</title>
+  <meta name="description" content="Estimate the operating value of smarter battery charge and export timing. Model annual savings, automation uplift, and simple payback for your solar battery.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://socratesautomation.com/battery-roi-calculator.html">
+  <link rel="icon" href="/icons/favicon.ico" sizes="any">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+  <meta property="og:site_name" content="SoCrates">
+  <meta property="og:locale" content="en_AU">
+  <meta property="og:title" content="Battery ROI Calculator | SoCrates">
+  <meta property="og:description" content="Model annual battery value, automation uplift, and simple payback from smarter charging and exporting.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://socratesautomation.com/battery-roi-calculator.html">
+  <meta property="og:image" content="https://socratesautomation.com/images/screenshots/screen-4.png">
+  <meta property="og:image:alt" content="SoCrates ROI dashboard screenshot">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Battery ROI Calculator | SoCrates">
+  <meta name="twitter:description" content="Estimate the operating value of smarter battery charge and export timing.">
+  <meta name="twitter:image" content="https://socratesautomation.com/images/screenshots/screen-4.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://socratesautomation.com/#organization",
+        "name": "SoCrates",
+        "url": "https://socratesautomation.com/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://socratesautomation.com/icons/icon-512.png"
+        }
+      },
+      {
+        "@type": "WebApplication",
+        "@id": "https://socratesautomation.com/battery-roi-calculator.html#app",
+        "name": "Battery ROI Calculator",
+        "url": "https://socratesautomation.com/battery-roi-calculator.html",
+        "applicationCategory": "FinanceApplication",
+        "operatingSystem": "Any",
+        "description": "A public calculator for estimating annual battery value, automation uplift, and simple payback from smarter charge and export timing.",
+        "publisher": {
+          "@id": "https://socratesautomation.com/#organization"
+        }
+      }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/tools.css">
+</head>
+<body>
+
+  <nav class="land-nav" role="navigation" aria-label="Main navigation">
+    <div class="container land-nav__inner">
+      <a href="/" class="land-nav__logo" aria-label="SoCrates home">
+        <img src="/icons/logo-login.svg" width="32" height="32" alt="" class="land-nav__logo-img" aria-hidden="true">
+        SoCrates
+      </a>
+
+      <ul class="land-nav__links" id="navLinks" role="list">
+        <li><a href="/#tools">Tools</a></li>
+        <li><a href="/#features">Features</a></li>
+        <li><a href="/#community">Community</a></li>
+        <li><a href="/login.html" class="btn btn-ghost tool-nav__btn" data-analytics-event="sign_in_click" data-analytics-location="roi_tool_nav">Sign In</a></li>
+        <li><a href="/login.html?tab=signup" class="btn btn-primary tool-nav__btn" data-analytics-event="claim_spot_click" data-analytics-location="roi_tool_nav">Claim your spot</a></li>
+      </ul>
+
+      <button class="land-nav__burger" id="navBurger" aria-expanded="false" aria-controls="navLinks" aria-label="Open menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <main>
+    <section class="tool-hero" aria-labelledby="toolHeroTitle">
+      <div class="container tool-hero__grid">
+        <div class="tool-hero__copy">
+          <span class="tool-hero__eyebrow">Free tool</span>
+          <h1 class="tool-hero__title" id="toolHeroTitle">Battery ROI Calculator</h1>
+          <p class="tool-hero__sub">Most battery calculators stop at install cost. This one focuses on operating value: how much smarter charge and export timing could be worth over a year.</p>
+
+          <div class="tool-hero__points" role="list" aria-label="Calculator benefits">
+            <span class="tool-chip" role="listitem">No login required</span>
+            <span class="tool-chip" role="listitem">Built for existing solar owners</span>
+            <span class="tool-chip" role="listitem">Models automation uplift</span>
+          </div>
+        </div>
+
+        <aside class="tool-hero__snapshot" aria-label="Quick summary">
+          <div class="tool-snapshot-card">
+            <span class="tool-snapshot-card__label">What this tool estimates</span>
+            <strong class="tool-snapshot-card__value">Annual battery value</strong>
+            <p class="tool-snapshot-card__body">Use your battery size, cycle frequency, spread, and capture rate to estimate yearly value and the extra upside from automation.</p>
+          </div>
+          <div class="tool-snapshot-list" role="list">
+            <div class="tool-snapshot-list__item" role="listitem">
+              <span>Outputs</span>
+              <strong>Annual value, automation uplift, simple payback</strong>
+            </div>
+            <div class="tool-snapshot-list__item" role="listitem">
+              <span>Best for</span>
+              <strong>Amber users and battery-first operators</strong>
+            </div>
+            <div class="tool-snapshot-list__item" role="listitem">
+              <span>Fastest path</span>
+              <strong>Pick a preset, then tune the spread and cycle rate</strong>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="tool-workbench" aria-labelledby="workbenchTitle">
+      <div class="container">
+        <div class="tool-section-head">
+          <span class="section-label">Calculator</span>
+          <h2 class="section-title" id="workbenchTitle">Model the value of better battery timing</h2>
+          <p class="section-sub">The model treats each cycle as energy that costs or forgoes value when charging, then earns or saves more value later when discharged.</p>
+        </div>
+
+        <div class="tool-presets" role="group" aria-label="Scenario presets">
+          <button type="button" class="tool-preset is-active" data-preset="balanced" data-analytics-event="tool_preset_click" data-analytics-location="roi_calculator">Balanced 13.5 kWh</button>
+          <button type="button" class="tool-preset" data-preset="conservative" data-analytics-event="tool_preset_click" data-analytics-location="roi_calculator">Conservative 10 kWh</button>
+          <button type="button" class="tool-preset" data-preset="large" data-analytics-event="tool_preset_click" data-analytics-location="roi_calculator">Large 20 kWh</button>
+        </div>
+
+        <div class="tool-shell">
+          <section class="tool-form-card" aria-label="Calculator inputs">
+            <form id="batteryRoiForm" class="tool-form" novalidate>
+              <div class="tool-form__grid">
+                <label class="tool-field">
+                  <span class="tool-field__label">Usable battery capacity</span>
+                  <span class="tool-field__meta">kWh you can actually move in a cycle</span>
+                  <input id="batterySizeKwh" name="batterySizeKwh" type="number" min="1" max="80" step="0.1" value="13.5">
+                </label>
+
+                <label class="tool-field">
+                  <span class="tool-field__label">Average cycles per week</span>
+                  <span class="tool-field__meta">How often your battery gets a worthwhile timing opportunity</span>
+                  <input id="cyclesPerWeek" name="cyclesPerWeek" type="number" min="0" max="14" step="0.1" value="4.5">
+                </label>
+
+                <label class="tool-field">
+                  <span class="tool-field__label">Charge energy cost</span>
+                  <span class="tool-field__meta">Off-peak import price or foregone feed-in tariff when charging</span>
+                  <div class="tool-field__input-wrap">
+                    <input id="chargeEnergyCostCents" name="chargeEnergyCostCents" type="number" min="-50" max="150" step="0.5" value="10">
+                    <span class="tool-field__suffix">c/kWh</span>
+                  </div>
+                </label>
+
+                <label class="tool-field">
+                  <span class="tool-field__label">Later discharge value</span>
+                  <span class="tool-field__meta">Peak import avoided or export revenue captured later</span>
+                  <div class="tool-field__input-wrap">
+                    <input id="dischargeValueCents" name="dischargeValueCents" type="number" min="-50" max="200" step="0.5" value="32">
+                    <span class="tool-field__suffix">c/kWh</span>
+                  </div>
+                </label>
+
+                <label class="tool-field">
+                  <span class="tool-field__label">Round-trip efficiency</span>
+                  <span class="tool-field__meta">Accounts for storage losses across charge and discharge; real-world performance can be lower</span>
+                  <div class="tool-field__input-wrap">
+                    <input id="roundTripEfficiency" name="roundTripEfficiency" type="number" min="50" max="100" step="1" value="88">
+                    <span class="tool-field__suffix">%</span>
+                  </div>
+                </label>
+
+                <label class="tool-field">
+                  <span class="tool-field__label">Active months per year</span>
+                  <span class="tool-field__meta">Use less than 12 if your battery strategy only matters seasonally</span>
+                  <input id="activeMonthsPerYear" name="activeMonthsPerYear" type="number" min="1" max="12" step="1" value="11">
+                </label>
+
+                <label class="tool-field">
+                  <span class="tool-field__label">Manual capture rate</span>
+                  <span class="tool-field__meta">Share of opportunities you would realistically catch without automation</span>
+                  <div class="tool-field__input-wrap">
+                    <input id="manualCaptureRate" name="manualCaptureRate" type="number" min="0" max="100" step="1" value="40">
+                    <span class="tool-field__suffix">%</span>
+                  </div>
+                </label>
+
+                <label class="tool-field">
+                  <span class="tool-field__label">Automation capture rate</span>
+                  <span class="tool-field__meta">Share of opportunities a well-tuned automated setup could catch</span>
+                  <div class="tool-field__input-wrap">
+                    <input id="automationCaptureRate" name="automationCaptureRate" type="number" min="0" max="100" step="1" value="82">
+                    <span class="tool-field__suffix">%</span>
+                  </div>
+                </label>
+
+                <label class="tool-field">
+                  <span class="tool-field__label">Annual software cost</span>
+                  <span class="tool-field__meta">Optional: ongoing software or service cost to subtract from the uplift</span>
+                  <div class="tool-field__input-wrap">
+                    <span class="tool-field__prefix">$</span>
+                    <input id="annualSoftwareCost" name="annualSoftwareCost" type="number" min="0" max="5000" step="10" value="0">
+                  </div>
+                </label>
+
+                <label class="tool-field tool-field--wide">
+                  <span class="tool-field__label">Battery system cost</span>
+                  <span class="tool-field__meta">Optional: use to estimate simple payback from modeled operating value only</span>
+                  <div class="tool-field__input-wrap">
+                    <span class="tool-field__prefix">$</span>
+                    <input id="batterySystemCost" name="batterySystemCost" type="number" min="0" max="100000" step="100" value="">
+                  </div>
+                </label>
+              </div>
+            </form>
+
+            <div class="tool-form__note">
+              <strong>Tip:</strong> For solar charging, use your feed-in tariff as the charge cost. For grid charging, use the off-peak import price instead.
+            </div>
+          </section>
+
+          <aside class="tool-results-card" aria-label="Calculator results">
+            <div class="tool-results-card__head">
+              <span class="tool-results-card__eyebrow">Modeled result</span>
+              <h3>Scenario summary</h3>
+            </div>
+
+            <div class="tool-kpis">
+              <div class="tool-kpi">
+                <span class="tool-kpi__label">Annual battery value</span>
+                <strong class="tool-kpi__value" id="annualBatteryValue">$0</strong>
+                <small class="tool-kpi__sub" id="annualBatteryValueSub">Charging cost and battery losses included</small>
+              </div>
+              <div class="tool-kpi tool-kpi--accent">
+                <span class="tool-kpi__label">Automation uplift</span>
+                <strong class="tool-kpi__value" id="automationUpliftValue">$0</strong>
+                <small class="tool-kpi__sub" id="automationUpliftSub">Extra annual value versus manual timing</small>
+              </div>
+              <div class="tool-kpi">
+                <span class="tool-kpi__label">Net uplift after software</span>
+                <strong class="tool-kpi__value" id="netUpliftValue">$0</strong>
+                <small class="tool-kpi__sub" id="netUpliftSub">Automation uplift minus annual software cost</small>
+              </div>
+              <div class="tool-kpi">
+                <span class="tool-kpi__label">Simple payback</span>
+                <strong class="tool-kpi__value" id="simplePaybackValue">Add a battery cost</strong>
+                <small class="tool-kpi__sub" id="simplePaybackSub">Optional based on operating value only</small>
+              </div>
+            </div>
+
+            <div class="tool-capture">
+              <div class="tool-capture__row">
+                <span>Manual capture</span>
+                <strong id="manualCaptureDisplay">40%</strong>
+              </div>
+              <div class="tool-capture__bar">
+                <span id="manualCaptureBar"></span>
+              </div>
+              <div class="tool-capture__row">
+                <span>Automation capture</span>
+                <strong id="automationCaptureDisplay">82%</strong>
+              </div>
+              <div class="tool-capture__bar tool-capture__bar--accent">
+                <span id="automationCaptureBar"></span>
+              </div>
+            </div>
+
+            <dl class="tool-facts">
+              <div class="tool-fact">
+                <dt>Value per successful cycle</dt>
+                <dd id="valuePerCycle">$0</dd>
+              </div>
+              <div class="tool-fact">
+                <dt>Annual shifted energy</dt>
+                <dd id="annualShiftedEnergy">0 kWh</dd>
+              </div>
+              <div class="tool-fact">
+                <dt>Modeled 10-year value</dt>
+                <dd id="tenYearValue">$0</dd>
+              </div>
+            </dl>
+
+            <div class="tool-insight" id="scenarioInsight">
+              Balanced spreads and regular cycling usually create the clearest case for automation.
+            </div>
+
+            <div class="tool-results-card__actions">
+              <a href="/login.html?tab=signup" class="btn btn-primary" data-analytics-event="claim_spot_click" data-analytics-location="roi_tool_results">Claim free access</a>
+              <a href="/#tools" class="btn btn-ghost" data-analytics-event="back_to_tools_click" data-analytics-location="roi_tool_results">Back to tools</a>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="tool-explainer" aria-labelledby="explainerTitle">
+      <div class="container">
+        <div class="tool-section-head tool-section-head--tight">
+          <span class="section-label">How it works</span>
+          <h2 class="section-title" id="explainerTitle">This is an operating-value model, not a full battery business case</h2>
+        </div>
+
+        <div class="tool-explainer__grid">
+          <article class="tool-info-card">
+            <h3>Included in the model</h3>
+            <p>Cycle value = (usable kWh x round-trip efficiency x later value) - (usable kWh x charge cost).</p>
+            <ul>
+              <li>Usable battery capacity</li>
+              <li>Cycle frequency over the year</li>
+              <li>Charge cost versus later discharge value</li>
+              <li>Round-trip efficiency losses</li>
+              <li>Manual versus automated opportunity capture</li>
+              <li>Optional software cost drag</li>
+            </ul>
+          </article>
+
+          <article class="tool-info-card">
+            <h3>Not included</h3>
+            <ul>
+              <li>Backup value during outages</li>
+              <li>Battery degradation and replacement timing</li>
+              <li>Battery-specific warranty cycle or throughput limits</li>
+              <li>Retailer fees, VPP income, or network charges</li>
+              <li>Extra solar self-consumption that is unrelated to timing</li>
+              <li>Tax, finance, or installation incentives</li>
+            </ul>
+          </article>
+
+          <article class="tool-info-card">
+            <h3>Use the result properly</h3>
+            <p>If the uplift is thin, a static schedule may capture most of the value. If the cycle value itself is thin or negative, the tariff setup is the problem rather than the automation. The 10-year view assumes a simple 2% annual capacity fade.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="tool-cta-band" aria-labelledby="ctaBandTitle">
+      <div class="container tool-cta-band__inner">
+        <div>
+          <span class="section-label section-label--light">Next step</span>
+          <h2 class="section-title" id="ctaBandTitle">Want to move from estimate to live automation?</h2>
+          <p class="section-sub">SoCrates lets you run the real thing: rule-based charge and export control around live pricing, forecasts, and battery conditions.</p>
+        </div>
+        <div class="tool-cta-band__actions">
+          <a href="/login.html?tab=signup" class="btn btn-primary btn-lg" data-analytics-event="claim_spot_click" data-analytics-location="roi_tool_cta">Claim your free spot</a>
+          <a href="/#screenshots" class="btn btn-ghost btn-lg" data-analytics-event="view_screenshots_click" data-analytics-location="roi_tool_cta">See screenshots</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="land-footer" role="contentinfo">
+    <div class="container land-footer__inner">
+      <span class="land-footer__brand">
+        <img src="/icons/logo-login.svg" width="26" height="26" alt="" aria-hidden="true">
+        SoCrates
+      </span>
+      <ul class="land-footer__links" role="list">
+        <li><a href="/#how-it-works">How it works</a></li>
+        <li><a href="/#tools">Tools</a></li>
+        <li><a href="/#features">Features</a></li>
+        <li><a href="/#faq">FAQ</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <script src="/js/marketing-analytics.js" defer></script>
+  <script src="/js/battery-roi-calculator.js" defer></script>
+</body>
+</html>

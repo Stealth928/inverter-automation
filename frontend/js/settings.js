@@ -1107,6 +1107,12 @@
                     togglePasswordField('credentials_sigenenergyPassword', tSigenenergyPass);
                 });
             }
+            const tAlphaEssSecret = document.getElementById('credentials_toggleAlphaessSecret');
+            if (tAlphaEssSecret) {
+                tAlphaEssSecret.addEventListener('click', () => {
+                    togglePasswordField('credentials_alphaessAppSecret', tAlphaEssSecret);
+                });
+            }
         });
 
         function togglePasswordField(inputId, btn) {
@@ -1146,6 +1152,7 @@
 
         // Load only credentials status (reload deviceSn and token presence)
         function checkCredentialsChanged() {
+            const isAlphaEss = document.getElementById('alphaessCredentialsSection')?.style.display !== 'none';
             const isSungrow = document.getElementById('sungrowCredentialsSection')?.style.display !== 'none';
             const isSigenEnergy = document.getElementById('sigenenergyCredentialsSection')?.style.display !== 'none';
             const amberInput = document.getElementById('credentials_amberKey');
@@ -1164,6 +1171,20 @@
                 const sgPassChanged = !(sgPass === (originalCredentials.sigenenergyPassword || '') ||
                     (isMaskedCredentialValue(sgPass) && sgPassInput?.dataset.hasSavedCredential === '1'));
                 changed = sgUserChanged || sgPassChanged ||
+                    !(amberMatchesOriginal || amberMaskedSaved);
+            } else if (isAlphaEss) {
+                const snInput = document.getElementById('credentials_alphaessSystemSn');
+                const appIdInput = document.getElementById('credentials_alphaessAppId');
+                const appSecretInput = document.getElementById('credentials_alphaessAppSecret');
+                const systemSn = (snInput?.value || '').trim();
+                const appId = (appIdInput?.value || '').trim();
+                const appSecret = (appSecretInput?.value || '').trim();
+                const systemSnChanged = systemSn !== (originalCredentials.alphaessSystemSn || '');
+                const appIdChanged = !(appId === (originalCredentials.alphaessAppId || '') ||
+                    (isMaskedCredentialValue(appId) && appIdInput?.dataset.hasSavedCredential === '1'));
+                const appSecretChanged = !(appSecret === (originalCredentials.alphaessAppSecret || '') ||
+                    (isMaskedCredentialValue(appSecret) && appSecretInput?.dataset.hasSavedCredential === '1'));
+                changed = systemSnChanged || appIdChanged || appSecretChanged ||
                     !(amberMatchesOriginal || amberMaskedSaved);
             } else if (isSungrow) {
                 const sgSnInput = document.getElementById('credentials_sungrowDeviceSn');
@@ -1215,6 +1236,9 @@
                 const statusData = statusResp ? await statusResp.json().catch(() => null) : null;
 
                 const deviceProvider = statusData?.result?.deviceProvider || 'foxess';
+                const hasAlphaEssSystemSn = statusData?.result?.hasAlphaEssSystemSn || false;
+                const hasAlphaEssAppId = statusData?.result?.hasAlphaEssAppId || false;
+                const hasAlphaEssAppSecret = statusData?.result?.hasAlphaEssAppSecret || false;
                 const hasSungrowUsername = statusData?.result?.hasSungrowUsername || false;
                 const hasSungrowDeviceSn = statusData?.result?.hasSungrowDeviceSn || false;
                 const hasSigenUsername = statusData?.result?.hasSigenUsername || false;
@@ -1223,18 +1247,31 @@
                 // Show/hide provider-specific credential sections
                 const foxessSec = document.getElementById('foxessCredentialsSection');
                 const foxessTokenSec = document.getElementById('foxessTokenSection');
+                const alphaEssSec = document.getElementById('alphaessCredentialsSection');
                 const sungrowSec = document.getElementById('sungrowCredentialsSection');
                 const sigenergySec = document.getElementById('sigenenergyCredentialsSection');
+                const curtailmentSec = document.getElementById('curtailmentSection');
+                const isAlphaEss = deviceProvider === 'alphaess';
                 const isSungrow = deviceProvider === 'sungrow';
                 const isSigenEnergy = deviceProvider === 'sigenergy';
-                if (foxessSec) foxessSec.style.display = (isSungrow || isSigenEnergy) ? 'none' : '';
-                if (foxessTokenSec) foxessTokenSec.style.display = (isSungrow || isSigenEnergy) ? 'none' : '';
+                const isFoxess = !isAlphaEss && !isSungrow && !isSigenEnergy;
+                if (foxessSec) foxessSec.style.display = (isAlphaEss || isSungrow || isSigenEnergy) ? 'none' : '';
+                if (foxessTokenSec) foxessTokenSec.style.display = (isAlphaEss || isSungrow || isSigenEnergy) ? 'none' : '';
+                if (alphaEssSec) alphaEssSec.style.display = isAlphaEss ? '' : 'none';
                 if (sungrowSec) sungrowSec.style.display = isSungrow ? '' : 'none';
                 if (sigenergySec) sigenergySec.style.display = isSigenEnergy ? '' : 'none';
+                if (curtailmentSec) curtailmentSec.style.display = isFoxess ? '' : 'none';
 
                 if (data.errno === 0 && data.result) {
                     if (isSigenEnergy) {
                         // No non-credential config fields for SigenEnergy on this path
+                    } else if (isAlphaEss) {
+                        const alphaSystemSnInput = document.getElementById('credentials_alphaessSystemSn');
+                        const systemSnVal = data.result.alphaessSystemSn || '';
+                        if (alphaSystemSnInput) {
+                            alphaSystemSnInput.value = systemSnVal;
+                            originalCredentials.alphaessSystemSn = systemSnVal;
+                        }
                     } else if (isSungrow) {
                         const sgSnInput = document.getElementById('credentials_sungrowDeviceSn');
                         const snVal = data.result.sungrowDeviceSn || '';
@@ -1249,7 +1286,7 @@
                     }
                 }
 
-                const foxessPresent = !isSungrow && health && health.FOXESS_TOKEN;
+                const foxessPresent = !isAlphaEss && !isSungrow && !isSigenEnergy && health && health.FOXESS_TOKEN;
                 const amberPresent = health && health.AMBER_API_KEY;
 
                 // Get actual credential values from config (only available for foxess path)
@@ -1299,6 +1336,37 @@
                     delete amberInput.dataset.actualValue;
                     originalCredentials.amberKey = '';
                     setSavedCredentialFlag(amberInput, false);
+                }
+
+                // AlphaESS: show masked presence indicators for app ID + app secret
+                if (isAlphaEss) {
+                    const alphaAppIdInput = document.getElementById('credentials_alphaessAppId');
+                    const alphaAppSecretInput = document.getElementById('credentials_alphaessAppSecret');
+                    if (alphaAppIdInput) {
+                        if (hasAlphaEssAppId) {
+                            alphaAppIdInput.value = '••••••••';
+                            setSavedCredentialFlag(alphaAppIdInput, true);
+                            originalCredentials.alphaessAppId = '••••••••';
+                        } else {
+                            alphaAppIdInput.value = '';
+                            setSavedCredentialFlag(alphaAppIdInput, false);
+                            originalCredentials.alphaessAppId = '';
+                        }
+                    }
+                    if (alphaAppSecretInput) {
+                        alphaAppSecretInput.type = 'password';
+                        const tAlpha = document.getElementById('credentials_toggleAlphaessSecret');
+                        if (tAlpha) tAlpha.textContent = 'Show';
+                        if (hasAlphaEssAppSecret) {
+                            alphaAppSecretInput.value = '••••••••';
+                            setSavedCredentialFlag(alphaAppSecretInput, true);
+                            originalCredentials.alphaessAppSecret = '••••••••';
+                        } else {
+                            alphaAppSecretInput.value = '';
+                            setSavedCredentialFlag(alphaAppSecretInput, false);
+                            originalCredentials.alphaessAppSecret = '';
+                        }
+                    }
                 }
 
                 // Sungrow: show masked presence indicators for username/password
@@ -1369,7 +1437,16 @@
 
                 const credStatusEl = document.getElementById('credentialsStatus');
 
-                if (isSigenEnergy) {
+                if (isAlphaEss) {
+                    if (hasAlphaEssSystemSn && hasAlphaEssAppId && hasAlphaEssAppSecret) {
+                        credStatusEl.textContent = 'AlphaESS system SN and app credentials are present (hidden)';
+                    } else if (hasAlphaEssAppId || hasAlphaEssAppSecret) {
+                        credStatusEl.textContent = 'AlphaESS app credentials partially configured — verify App ID/Secret and system SN';
+                    } else {
+                        credStatusEl.textContent = 'No AlphaESS credentials detected';
+                    }
+                    if (amberPresent) credStatusEl.textContent += ' · pricing API key present';
+                } else if (isSigenEnergy) {
                     if (hasSigenUsername) {
                         credStatusEl.textContent = 'SigenEnergy credentials are present (hidden)';
                     } else {
@@ -1426,11 +1503,16 @@
             const amberToSend = amberUnchanged ? null : (amberKey || null);
 
             // Detect current provider from visible section
+            const isAlphaEss = document.getElementById('alphaessCredentialsSection')?.style.display !== 'none';
             const isSungrow = document.getElementById('sungrowCredentialsSection')?.style.display !== 'none';
             const isSigenEnergy = document.getElementById('sigenenergyCredentialsSection')?.style.display !== 'none';
 
             if (isSigenEnergy) {
                 return saveSigenEnergyCredentials(amberToSend, amberUnchanged);
+            }
+
+            if (isAlphaEss) {
+                return saveAlphaEssCredentials(amberToSend, amberUnchanged);
             }
 
             if (isSungrow) {
@@ -1706,8 +1788,96 @@
             }
         }
 
+        async function saveAlphaEssCredentials(amberToSend, amberUnchanged) {
+            const systemSnInput = document.getElementById('credentials_alphaessSystemSn');
+            const appIdInput = document.getElementById('credentials_alphaessAppId');
+            const appSecretInput = document.getElementById('credentials_alphaessAppSecret');
+
+            const systemSn = (systemSnInput?.value || '').trim();
+            const appIdDisplayed = (appIdInput?.value || '').trim();
+            const appSecretDisplayed = (appSecretInput?.value || '').trim();
+
+            const appIdUnchanged = isMaskedCredentialValue(appIdDisplayed) &&
+                appIdInput?.dataset.hasSavedCredential === '1';
+            const appSecretUnchanged = isMaskedCredentialValue(appSecretDisplayed) &&
+                appSecretInput?.dataset.hasSavedCredential === '1';
+            const credsUnchanged = appIdUnchanged && appSecretUnchanged;
+
+            if (!systemSn) {
+                showMessage('warning', 'AlphaESS System SN is required');
+                return;
+            }
+            if (!credsUnchanged && (!appIdDisplayed || isMaskedCredentialValue(appIdDisplayed))) {
+                showMessage('warning', 'AlphaESS App ID is required (or keep existing credentials unchanged)');
+                return;
+            }
+            if (!credsUnchanged && (!appSecretDisplayed || isMaskedCredentialValue(appSecretDisplayed))) {
+                showMessage('warning', 'AlphaESS App Secret is required (or keep existing credentials unchanged)');
+                return;
+            }
+
+            const saveBtn = document.getElementById('credentialsSaveBtn');
+            const prevText = saveBtn.innerHTML;
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
+
+            try {
+                if (credsUnchanged) {
+                    const patchPayload = { alphaessSystemSn: systemSn };
+                    if (!amberUnchanged) patchPayload.amberApiKey = amberToSend || '';
+                    const patchResp = await authenticatedFetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(patchPayload)
+                    });
+                    const patchData = await patchResp.json();
+                    if (!patchResp.ok || patchData.errno !== 0) {
+                        throw new Error(patchData?.msg || patchData?.error || `HTTP ${patchResp.status}`);
+                    }
+                    await loadCredentials();
+                    showMessage('success', 'Credential changes saved.');
+                    return;
+                }
+
+                const payload = {
+                    alphaess_system_sn: systemSn,
+                    alphaess_app_id: appIdDisplayed,
+                    alphaess_app_secret: appSecretDisplayed
+                };
+                if (!amberUnchanged) payload.amber_api_key = amberToSend || null;
+
+                const resp = await authenticatedFetch('/api/config/validate-keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (data.errno !== 0) {
+                    console.warn('validate-keys errors (alphaess)', data);
+                    const first = (data.errors && (
+                        data.errors.alphaess_system_sn ||
+                        data.errors.alphaess_app_id ||
+                        data.errors.alphaess_app_secret ||
+                        data.msg
+                    )) || 'AlphaESS validation failed';
+                    showMessage('warning', first);
+                    return;
+                }
+
+                await loadCredentials();
+                showMessage('success', 'AlphaESS credentials validated and stored on server');
+            } catch (e) {
+                console.error('saveAlphaEssCredentials error', e);
+                showMessage('warning', 'Failed to save credentials: ' + (e.message || e));
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = prevText;
+                updateStatus();
+            }
+        }
+
         async function clearCredentials() {
-            if (!confirm('Clear FOXESS token, DEVICE SN, and AMBER API KEY from the running server?')) return;
+            if (!confirm('Clear inverter provider credentials and Amber API key from the server?')) return;
             try {
                 const resp = await authenticatedFetch('/api/config/clear-credentials', { method: 'POST' });
                 const data = await resp.json();
@@ -1715,6 +1885,12 @@
                     document.getElementById('credentials_deviceSn').value = '';
                     document.getElementById('credentials_foxessToken').value = '';
                     document.getElementById('credentials_amberKey').value = '';
+                    const alphaSystemSn = document.getElementById('credentials_alphaessSystemSn');
+                    const alphaAppId = document.getElementById('credentials_alphaessAppId');
+                    const alphaAppSecret = document.getElementById('credentials_alphaessAppSecret');
+                    if (alphaSystemSn) alphaSystemSn.value = '';
+                    if (alphaAppId) alphaAppId.value = '';
+                    if (alphaAppSecret) alphaAppSecret.value = '';
                     showMessage('success', 'Credentials cleared from server memory');
                     loadSettings();
                 } else {
@@ -1735,7 +1911,20 @@
         });
         
         // Track changes to credential fields
-        ['credentials_deviceSn', 'credentials_foxessToken', 'credentials_amberKey'].forEach(id => {
+        [
+            'credentials_deviceSn',
+            'credentials_foxessToken',
+            'credentials_amberKey',
+            'credentials_alphaessSystemSn',
+            'credentials_alphaessAppId',
+            'credentials_alphaessAppSecret',
+            'credentials_sungrowDeviceSn',
+            'credentials_sungrowUsername',
+            'credentials_sungrowPassword',
+            'credentials_sigenenergyUsername',
+            'credentials_sigenenergyPassword',
+            'credentials_sigenenergyRegion'
+        ].forEach(id => {
             document.getElementById(id)?.addEventListener('input', () => {
                 checkCredentialsChanged();
                 updateStatus();

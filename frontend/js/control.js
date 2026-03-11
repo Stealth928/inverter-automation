@@ -19,10 +19,13 @@
         if (provider !== 'foxess') {
           const socCard = document.getElementById('card-battery-soc');
           const fcCard = document.getElementById('card-force-charge');
+          const workModeForm = document.getElementById('form-workMode');
+          const workModeCard = workModeForm ? workModeForm.closest('.card') : null;
           if (socCard) socCard.style.display = 'none';
           if (fcCard) fcCard.style.display = 'none';
+          if (provider === 'alphaess' && workModeCard) workModeCard.style.display = 'none';
         }
-        if (provider === 'sigenergy') {
+        if (provider === 'sigenergy' || provider === 'alphaess') {
           // SigenEnergy does not support Backup work mode
           const backupOpt = document.querySelector('select[name="workMode"] option[data-foxess-sungrow-only]');
           if (backupOpt) backupOpt.remove();

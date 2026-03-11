@@ -413,6 +413,65 @@ describe('read-only route modules', () => {
     );
   });
 
+  test('inverter real-time endpoint dispatches to non-FoxESS adapter when provider is configured', async () => {
+    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
+    const adapterGetStatus = jest.fn(async () => ({
+      socPct: 61,
+      batteryTempC: 28.5,
+      ambientTempC: 22.2,
+      pvPowerW: 4200,
+      loadPowerW: 1700,
+      gridPowerW: 300,
+      feedInPowerW: 0,
+      batteryPowerW: -1200,
+      observedAtIso: '2026-03-11T10:15:00.000Z'
+    }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-alpha' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({
+            getStatus: adapterGetStatus
+          }))
+        },
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'alphaess',
+          alphaessSystemSn: 'ALPHA-SN-1'
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig: jest.fn(async () => undefined),
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result[0].deviceSN).toBe('ALPHA-SN-1');
+    expect(response.body.result[0].datas).toEqual(expect.arrayContaining([
+      expect.objectContaining({ variable: 'SoC', value: 61 }),
+      expect.objectContaining({ variable: 'pvPower', value: 4200 }),
+      expect.objectContaining({ variable: 'loadsPower', value: 1700 })
+    ]));
+    expect(adapterGetStatus).toHaveBeenCalledWith({
+      deviceSN: 'ALPHA-SN-1',
+      userConfig: {
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'ALPHA-SN-1'
+      },
+      userId: 'u-alpha'
+    });
+    expect(getCachedInverterRealtimeData).not.toHaveBeenCalled();
+  });
+
   test('inverter real-time endpoint auto-persists inferred topology when missing', async () => {
     const realtimePayload = {
       errno: 0,

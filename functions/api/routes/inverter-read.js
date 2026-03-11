@@ -33,6 +33,11 @@ function normalizePowerToKw(rawValue) {
   return Number(kw.toFixed(4));
 }
 
+function toFiniteNumber(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
 function inferSystemCouplingFromRealtime(realtimePayload) {
   const datas = extractRealtimeDatas(realtimePayload);
   if (!datas.length) return null;
@@ -78,6 +83,43 @@ function shouldPersistAutoTopology(existingTopology, inferredCoupling, defaultRe
   const isStale = !lastDetectedAt || ((Date.now() - lastDetectedAt) > refreshAfterMs);
 
   return !hasStoredCoupling || isStale || existingCoupling !== inferredCoupling;
+}
+
+/**
+ * Normalizes adapter status into the same frame shape used by existing FoxESS realtime consumers.
+ * This keeps dashboard/history frontend parsing logic unchanged for non-FoxESS providers.
+ */
+function buildRealtimePayloadFromDeviceStatus(status = {}, sn) {
+  const socPct = toFiniteNumber(status.socPct, null);
+  const batteryTempC = toFiniteNumber(status.batteryTempC, null);
+  const ambientTempC = toFiniteNumber(status.ambientTempC, null);
+  const pvPowerW = toFiniteNumber(status.pvPowerW, 0);
+  const loadPowerW = toFiniteNumber(status.loadPowerW, 0);
+  const gridPowerW = toFiniteNumber(status.gridPowerW, 0);
+  const feedInPowerW = toFiniteNumber(status.feedInPowerW, 0);
+  const batteryPowerW = toFiniteNumber(status.batteryPowerW, 0);
+  const meterPower = gridPowerW > 0 ? gridPowerW : -feedInPowerW;
+
+  return {
+    errno: 0,
+    msg: 'Operation successful',
+    result: [{
+      deviceSN: String(sn || status.deviceSN || ''),
+      time: status.observedAtIso || new Date().toISOString(),
+      datas: [
+        { variable: 'SoC', value: socPct },
+        { variable: 'pvPower', value: pvPowerW },
+        { variable: 'loadsPower', value: loadPowerW },
+        { variable: 'gridConsumptionPower', value: gridPowerW },
+        { variable: 'feedinPower', value: feedInPowerW },
+        { variable: 'meterPower2', value: meterPower },
+        { variable: 'batTemperature', value: batteryTempC },
+        { variable: 'ambientTemperation', value: ambientTempC },
+        { variable: 'batChargePower', value: batteryPowerW },
+        { variable: 'batDischargePower', value: batteryPowerW < 0 ? Math.abs(batteryPowerW) : 0 }
+      ]
+    }]
+  };
 }
 
 function registerInverterReadRoutes(app, deps = {}) {
@@ -179,12 +221,26 @@ function registerInverterReadRoutes(app, deps = {}) {
   app.get('/api/inverter/real-time', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
-      if (foxessGuard(res, userConfig)) return;
+      const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
+      const adapter = getProviderAdapter(userConfig);
       const sn = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
 
       if (!sn) {
         return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
       }
+
+      if (provider !== 'foxess' && adapter && typeof adapter.getStatus === 'function') {
+        const status = await adapter.getStatus({ deviceSN: sn, userConfig, userId: req.user.uid });
+        const normalized = buildRealtimePayloadFromDeviceStatus(status, sn);
+        try {
+          await persistTopologyFromRealtime(req.user.uid, userConfig, normalized);
+        } catch (persistError) {
+          logger.warn('[Inverter] Failed to auto-persist system topology:', persistError.message);
+        }
+        return res.json(normalized);
+      }
+
+      if (foxessGuard(res, userConfig)) return;
 
       // Check for force refresh query parameter (bypass cache when ?forceRefresh=true)
       const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';

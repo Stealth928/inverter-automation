@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
+
 function registerDeviceMutationRoutes(app, deps = {}) {
   const authenticateUser = deps.authenticateUser;
   const foxessAPI = deps.foxessAPI;
@@ -155,7 +157,7 @@ function registerDeviceMutationRoutes(app, deps = {}) {
         if (provider !== 'foxess') {
           const adapter = adapterRegistry.getDeviceProvider(provider);
           if (adapter && typeof adapter.setWorkMode === 'function') {
-            const sn = req.body.sn || userConfig?.sigenStationId || userConfig?.sungrowDeviceSn;
+            const sn = resolveProviderDeviceId(userConfig, req.body.sn).deviceId;
             const adapterResult = await adapter.setWorkMode({ deviceSN: sn, userConfig, userId: req.user.uid }, workMode);
             return res.json(adapterResult);
           }

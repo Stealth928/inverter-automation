@@ -88,7 +88,7 @@ Edit `.firebaserc`:
 
 ## External API Keys
 
-Users configure their own API keys in the Settings page after login. The system supports three battery inverter providers — configure credentials for whichever provider you use.
+Users configure their own API keys in the Settings page after login. The system supports four battery inverter providers (FoxESS, Sungrow, SigenEnergy, AlphaESS) — configure credentials for whichever provider you use.
 
 ### FoxESS Cloud API
 1. Go to [FoxESS Cloud](https://www.foxesscloud.com)
@@ -112,6 +112,13 @@ Users configure their own API keys in the Settings page after login. The system 
 4. Enter these in the Setup page — the system will verify credentials via a live OAuth2 login
 
 > **Note:** SigenEnergy scheduler and history features are in limited beta — work mode control and real-time status are fully supported.
+
+### AlphaESS OpenAPI
+1. Sign in to the AlphaESS OpenAPI portal and create/get your app credentials
+2. Collect your `appId`, `appSecret`, and target `system SN (sysSn)`
+3. Enter these credentials in the Settings page to validate and save them
+
+> **Note:** AlphaESS is currently disabled in the first-run Setup selector (coming soon), but credential onboarding is available from Settings.
 
 ### Amber Electric API
 1. Go to [Amber Developer Portal](https://app.amber.com.au/developers)

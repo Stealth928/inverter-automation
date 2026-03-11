@@ -174,10 +174,19 @@ const sigenEnergyAPI = sigenEnergyModule.init({
   incrementApiCount: null // Will be defined below
 });
 
+const alphaEssModule = require('./api/alphaess');
+const alphaEssAPI = alphaEssModule.init({
+  db,
+  logger: null, // Will be defined below
+  getConfig: null, // Will be defined below
+  incrementApiCount: null // Will be defined below
+});
+
 const { createAdapterRegistry } = require('./lib/adapters/adapter-registry');
 const { createFoxessDeviceAdapter } = require('./lib/adapters/foxess-adapter');
 const { createSungrowDeviceAdapter } = require('./lib/adapters/sungrow-adapter');
 const { createSigenEnergyDeviceAdapter } = require('./lib/adapters/sigenergy-adapter');
+const { createAlphaEssDeviceAdapter } = require('./lib/adapters/alphaess-adapter');
 // adapterRegistry populated once all deps (logger, getConfig) are reinitialized
 const adapterRegistry = createAdapterRegistry();
 
@@ -219,6 +228,11 @@ const getConfig = () => {
     },
     sigenergy: {
       defaultRegion: process.env.SIGENERGY_REGION || 'apac'
+    },
+    alphaess: {
+      appId: process.env.ALPHAESS_APP_ID || '',
+      appSecret: process.env.ALPHAESS_APP_SECRET || '',
+      baseUrl: process.env.ALPHAESS_BASE_URL || 'https://openapi.alphaess.com'
     },
     automation: {
       intervalMs: 60000,
@@ -626,6 +640,7 @@ registerHealthRoutes(app, {
 });
 
 registerSetupPublicRoutes(app, {
+  alphaEssAPI,
   db,
   foxessAPI,
   getConfig,
@@ -770,6 +785,7 @@ registerUserSelfRoutes(app, {
 registerAutomationMutationRoutes(app, {
   addAutomationAuditEntry,
   addHistoryEntry,
+  adapterRegistry,
   applyRuleAction,
   clearRulesLastTriggered,
   compareValue,
@@ -929,10 +945,18 @@ Object.assign(sigenEnergyAPI, sigenEnergyModule.init({
   incrementApiCount
 }));
 
+Object.assign(alphaEssAPI, alphaEssModule.init({
+  db,
+  logger,
+  getConfig,
+  incrementApiCount
+}));
+
 // Register device adapters now that foxessAPI, sungrowAPI, and sigenEnergyAPI are fully initialised
 adapterRegistry.registerDeviceProvider('foxess', createFoxessDeviceAdapter({ foxessAPI, logger }));
 adapterRegistry.registerDeviceProvider('sungrow', createSungrowDeviceAdapter({ sungrowAPI, logger }));
 adapterRegistry.registerDeviceProvider('sigenergy', createSigenEnergyDeviceAdapter({ sigenEnergyAPI, logger }));
+adapterRegistry.registerDeviceProvider('alphaess', createAlphaEssDeviceAdapter({ alphaEssAPI, logger }));
 
 Object.assign(authAPI, authModule.init({
   admin,

@@ -1,0 +1,10 @@
+﻿{
+    "code":  200,
+    "info":  "Success",
+    "data":  {
+                 "interface_id":  1,
+                 "language_category":  "en",
+                 "interface_name":  "",
+                 "interface_content":  ""
+             }
+}

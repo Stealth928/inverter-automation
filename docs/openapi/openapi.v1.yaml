@@ -125,6 +125,23 @@ paths:
                       type: string
                       nullable: true
                       description: Amber Electric API key (optional)
+                - title: AlphaESS credentials
+                  type: object
+                  required: [alphaess_system_sn, alphaess_app_id, alphaess_app_secret]
+                  properties:
+                    alphaess_system_sn:
+                      type: string
+                      description: AlphaESS system serial number (sysSn)
+                    alphaess_app_id:
+                      type: string
+                      description: AlphaESS OpenAPI appId
+                    alphaess_app_secret:
+                      type: string
+                      description: AlphaESS OpenAPI appSecret
+                    amber_api_key:
+                      type: string
+                      nullable: true
+                      description: Amber Electric API key (optional)
       responses:
         "200":
           description: Validation and save result
@@ -297,8 +314,14 @@ components:
                   type: boolean
                 deviceProvider:
                   type: string
-                  enum: [foxess, sungrow, sigenergy]
+                  enum: [foxess, sungrow, sigenergy, alphaess]
                   description: Active inverter provider
+                hasAlphaEssSystemSn:
+                  type: boolean
+                  description: Whether an AlphaESS system serial number is saved
+                hasAlphaEssAppId:
+                  type: boolean
+                  description: Whether an AlphaESS appId is saved
                 hasSungrowUsername:
                   type: boolean
                   description: Whether an iSolarCloud username is saved (Sungrow only)

@@ -1,0 +1,10 @@
+﻿{
+    "code":  200,
+    "info":  "Success",
+    "data":  {
+                 "interface_id":  9,
+                 "language_category":  "en-US",
+                 "interface_name":  "According to SN get the check code according to SN",
+                 "interface_content":  "    \r\n##### Description\r\n\r\n- According to SN get the check code according to SN\r\n\r\n##### Request URL\r\n- ` https://openapi.alphaess.com/api/getVerificationCode `\r\n  \r\n##### Request Type\r\n- GET \r\n##### Headers Parameter\r\n\r\n|Fields|Requires|Type|Description|\r\n|:----    |:---|:----- |-----   |\r\n|appId |Yes |string |AppID   |\r\n|timeStamp |Yes |long| Unix timestamp is used to confirm validity of your request. If the timespan between request timestamp and server timestamp exceeds 300 seconds, then the request will be rejected.How to calculate the unix timestamp?(DateTime.UtcNow-new DateTime(1970,1,1)).TotalSeconds，For example，2022-12-20 10:54:06（Beijing Time） ，this timestamp is 1671507191，url：https://tool.lu/timestamp/|\r\n|sign     |Yes  |string | appId+appSecret+timeStamp，then use Sha512 Encryption 。For example：appId：alphaef7900ee81dbbce9，appSecret：c2d2ef6c047c49678e2c332fb2d74c3c，timeStamp：1676353875，before encryption：alphaef7900ee81dbbce9c2d2ef6c047c49678e2c332fb2d74c3c1676353875，SHA512after encryption：0f023c2287b8f6b21b0994947465f8e9de0e1542567b1735bdc6c427336b9b6406285cd94f9215c3e9af958df37fb11c2c9fe792713d8afbdb8c463359a1add8  |\r\n\r\n##### request parameter （Json）\r\n\r\n|Fields|Requires|Type|Description|\r\n|:----    |:---|:----- |-----   |\r\n|sysSn   |Yes  |string | System S/N  |\r\n|checkCode   |Yes  |string | checkCode |\r\n##### Response Parameter\r\n\r\n|Fields|Type|Description|\r\n|:----    |:----|:----- |-----   |\r\n|code|int   |Return Code |\r\n|msg|string   |Return Message|\r\n|data|data |Return Data|\r\n \r\n\r\n"
+             }
+}

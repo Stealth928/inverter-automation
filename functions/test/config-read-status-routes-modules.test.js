@@ -118,6 +118,36 @@ describe('config/status read route module', () => {
     expect(response.headers['cache-control']).toContain('no-cache');
   });
 
+  test('config route strips write-only provider secrets from response payload', async () => {
+    const deps = createDeps({
+      getUserConfig: jest.fn(async () => ({
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'SYS-ALPHA-1',
+        alphaessAppId: 'APP-1',
+        alphaessAppSecret: 'SECRET-XYZ',
+        sungrowPassword: 'SG-PASS',
+        sigenPassword: 'SIG-PASS',
+        defaults: { cooldownMinutes: 3, durationMinutes: 12 }
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/config')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result).toEqual(expect.objectContaining({
+      deviceProvider: 'alphaess',
+      alphaessSystemSn: 'SYS-ALPHA-1',
+      alphaessAppId: 'APP-1'
+    }));
+    expect(response.body.result).not.toHaveProperty('alphaessAppSecret');
+    expect(response.body.result).not.toHaveProperty('sungrowPassword');
+    expect(response.body.result).not.toHaveProperty('sigenPassword');
+  });
+
   test('system-topology route returns normalized coupling and default refresh', async () => {
     const deps = createDeps({
       getUserConfig: jest.fn(async () => ({

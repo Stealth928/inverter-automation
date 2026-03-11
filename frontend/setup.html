@@ -494,9 +494,11 @@
             display: flex;
             gap: 12px;
             margin-top: 8px;
+            flex-wrap: nowrap;
         }
         .provider-option {
-            flex: 1;
+            flex: 1 1 0;
+            min-width: 0;
             position: relative;
             display: flex;
             align-items: center;
@@ -569,6 +571,36 @@
             border-radius: 10px;
             padding: 3px 7px;
             white-space: nowrap;
+        }
+        .provider-option--beta {
+            opacity: 0.7;
+        }
+        .provider-option--beta:hover {
+            opacity: 0.95;
+        }
+        .provider-option--beta::before {
+            content: 'Beta';
+            position: absolute;
+            top: 7px;
+            left: 8px;
+            font-size: 10px;
+            font-weight: 600;
+            line-height: 1;
+            color: #1d4ed8;
+            background: color-mix(in srgb, #3b82f6 18%, transparent);
+            border: 1px solid color-mix(in srgb, #3b82f6 35%, transparent);
+            border-radius: 10px;
+            padding: 3px 7px;
+            white-space: nowrap;
+        }
+        @media (max-width: 640px) {
+            .provider-selector {
+                overflow-x: auto;
+                padding-bottom: 4px;
+            }
+            .provider-option {
+                flex: 0 0 160px;
+            }
         }
 
         /* Form section headers */
@@ -703,6 +735,10 @@
                                 <input type="radio" name="provider" value="foxess" checked id="providerFoxess">
                                 <img src="icons/logo-foxess.svg" alt="FoxESS" class="provider-logo-img">
                             </label>
+                            <label class="provider-option provider-option--beta" id="providerAlphaEssOption">
+                                <input type="radio" name="provider" value="alphaess" id="providerAlphaEss">
+                                <img src="icons/logo-alphaess.svg?v=2" alt="AlphaESS" class="provider-logo-img">
+                            </label>
                             <label class="provider-option provider-option--coming-soon" id="providerSungrowOption">
                                 <input type="radio" name="provider" value="sungrow" id="providerSungrow" disabled>
                                 <img src="icons/logo-sungrow.svg" alt="Sungrow" class="provider-logo-img">
@@ -773,6 +809,73 @@
                             </div>
                         </div>
                     </div><!-- /#foxessFields -->
+
+                    <!-- AlphaESS Fields -->
+                    <div id="alphaessFields" style="display:none">
+                        <div class="form-group" id="alphaessSystemSnGroup">
+                            <label for="alphaessSystemSn">
+                                <span>System Serial Number (sysSn)</span>
+                                <span class="required-indicator">*</span>
+                            </label>
+                            <div class="hint">Your AlphaESS system SN (from your AlphaESS system details)</div>
+                            <div class="input-wrapper">
+                                <input
+                                    type="text"
+                                    id="alphaessSystemSn"
+                                    name="alphaessSystemSn"
+                                    placeholder="e.g., ALP123456789"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                >
+                                <span class="input-icon">🔌</span>
+                            </div>
+                            <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
+                            <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
+                        </div>
+
+                        <div class="form-group" id="alphaessAppIdGroup">
+                            <label for="alphaessAppId">
+                                <span>AlphaESS App ID</span>
+                                <span class="required-indicator">*</span>
+                            </label>
+                            <div class="hint">OpenAPI developer app ID from AlphaESS developer portal</div>
+                            <div class="input-wrapper">
+                                <input
+                                    type="text"
+                                    id="alphaessAppId"
+                                    name="alphaessAppId"
+                                    placeholder="Your AlphaESS appId"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                >
+                                <span class="input-icon">🆔</span>
+                            </div>
+                            <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
+                            <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
+                        </div>
+
+                        <div class="form-group" id="alphaessAppSecretGroup">
+                            <label for="alphaessAppSecret">
+                                <span>AlphaESS App Secret</span>
+                                <span class="required-indicator">*</span>
+                            </label>
+                            <div class="hint">OpenAPI developer app secret (stored encrypted)</div>
+                            <div class="input-wrapper">
+                                <input
+                                    type="password"
+                                    id="alphaessAppSecret"
+                                    name="alphaessAppSecret"
+                                    placeholder="Your AlphaESS app secret"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                >
+                                <span class="input-icon">🔑</span>
+                                <button type="button" class="password-toggle" data-target="alphaessAppSecret" aria-label="Toggle visibility">👁️</button>
+                            </div>
+                            <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
+                            <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
+                        </div>
+                    </div><!-- /#alphaessFields -->
 
                     <!-- ═══ Sungrow Fields ═══ -->
                     <div id="sungrowFields" style="display:none">

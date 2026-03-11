@@ -30,6 +30,9 @@ function buildDeps(overrides = {}) {
     foxessAPI: {
       callFoxESSAPI: jest.fn(async () => ({ errno: 0, result: { data: [{ deviceSN: 'SN-100' }] } }))
     },
+    alphaEssAPI: {
+      listSystems: jest.fn(async () => ({ errno: 0, result: [{ sysSn: 'SYS-ALPHA-1' }] }))
+    },
     getConfig: jest.fn(() => ({
       automation: {
         intervalMs: 60000,
@@ -364,5 +367,150 @@ describe('setup public route module', () => {
       expect.objectContaining({ sigenPassword: 'sig-secret' }),
       { merge: true }
     );
+  });
+
+  test('validate-keys: AlphaESS returns 400 when app secret is missing', async () => {
+    const { db } = buildFlexibleDb();
+    const deps = buildDeps({ db });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/config/validate-keys')
+      .send({
+        alphaess_system_sn: 'SYS-ALPHA-1',
+        alphaess_app_id: 'APP-1'
+      });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body.errno).toBe(1);
+    expect(response.body.failed_keys).toContain('alphaess_app_secret');
+  });
+
+  test('validate-keys: AlphaESS performs live list check and rejects unknown system SN', async () => {
+    delete process.env.FUNCTIONS_EMULATOR;
+    delete process.env.FIRESTORE_EMULATOR_HOST;
+
+    const { db } = buildFlexibleDb();
+    const deps = buildDeps({
+      db,
+      alphaEssAPI: {
+        listSystems: jest.fn(async () => ({
+          errno: 0,
+          result: [{ sysSn: 'SYS-ALPHA-OTHER' }]
+        }))
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/config/validate-keys')
+      .send({
+        alphaess_system_sn: 'SYS-ALPHA-1',
+        alphaess_app_id: 'APP-123',
+        alphaess_app_secret: 'SECRET-XYZ'
+      });
+
+    expect(deps.alphaEssAPI.listSystems).toHaveBeenCalledWith(
+      expect.objectContaining({
+        alphaessSystemSn: 'SYS-ALPHA-1',
+        alphaessAppId: 'APP-123',
+        alphaessAppSecret: 'SECRET-XYZ'
+      }),
+      null
+    );
+    expect(response.statusCode).toBe(400);
+    expect(response.body.failed_keys).toContain('alphaess_system_sn');
+  });
+
+  test('validate-keys: AlphaESS rejects empty system scope from listSystems', async () => {
+    delete process.env.FUNCTIONS_EMULATOR;
+    delete process.env.FIRESTORE_EMULATOR_HOST;
+
+    const { db } = buildFlexibleDb();
+    const deps = buildDeps({
+      db,
+      alphaEssAPI: {
+        listSystems: jest.fn(async () => ({
+          errno: 0,
+          result: []
+        }))
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/config/validate-keys')
+      .send({
+        alphaess_system_sn: 'SYS-ALPHA-1',
+        alphaess_app_id: 'APP-123',
+        alphaess_app_secret: 'SECRET-XYZ'
+      });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body.failed_keys).toContain('alphaess_system_sn');
+    expect(String(response.body.errors?.alphaess_system_sn || '').toLowerCase()).toContain('no systems found');
+  });
+
+  test('validate-keys: AlphaESS unauthenticated emulator saves non-sensitive config + app secret separately', async () => {
+    process.env.FUNCTIONS_EMULATOR = 'true';
+
+    const { db, serverConfigDoc, serverCredentialsDoc } = buildFlexibleDb();
+    const deps = buildDeps({ db });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/config/validate-keys')
+      .send({
+        alphaess_system_sn: 'SYS-ALPHA-1',
+        alphaess_app_id: 'APP-123',
+        alphaess_app_secret: 'SECRET-XYZ'
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      msg: 'AlphaESS credentials validated successfully',
+      result: { systemSn: 'SYS-ALPHA-1', provider: 'alphaess' }
+    });
+
+    expect(serverConfigDoc.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        alphaessSystemSn: 'SYS-ALPHA-1',
+        alphaessAppId: 'APP-123',
+        deviceProvider: 'alphaess'
+      }),
+      { merge: true }
+    );
+    expect(serverConfigDoc.set).not.toHaveBeenCalledWith(
+      expect.objectContaining({ alphaessAppSecret: expect.anything() }),
+      expect.anything()
+    );
+
+    expect(serverCredentialsDoc.set).toHaveBeenCalledWith(
+      expect.objectContaining({ alphaessAppSecret: 'SECRET-XYZ' }),
+      { merge: true }
+    );
+  });
+
+  test('setup-status: AlphaESS setupComplete requires app secret presence', async () => {
+    const deps = buildDeps({
+      tryAttachUser: jest.fn(async (req) => {
+        req.user = { uid: 'user-alpha-status' };
+      }),
+      getUserConfig: jest.fn(async () => ({
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'SYS-ALPHA-1',
+        alphaessAppId: 'APP-123',
+        alphaessAppSecret: 'SECRET-XYZ'
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app).get('/api/config/setup-status');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.setupComplete).toBe(true);
+    expect(response.body.result.hasAlphaEssAppSecret).toBe(true);
   });
 });

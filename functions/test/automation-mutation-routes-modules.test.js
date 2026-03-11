@@ -66,6 +66,7 @@ function buildDeps(overrides = {}) {
   return {
     addAutomationAuditEntry: jest.fn(async () => undefined),
     addHistoryEntry: jest.fn(async () => undefined),
+    adapterRegistry: null,
     applyRuleAction: jest.fn(async () => ({ applied: true })),
     clearRulesLastTriggered: jest.fn(async () => undefined),
     compareValue: compare,
@@ -142,6 +143,38 @@ describe('automation mutation route module', () => {
       lastPrice: null
     });
     expect(deps.saveUserAutomationState).toHaveBeenCalledWith('u-toggle', { enabled: false });
+  });
+
+  test('toggle route clears curtailment state without FoxESS API for non-FoxESS providers', async () => {
+    const dbMock = createDbMock({ curtailmentActive: true });
+    const deps = buildDeps({
+      db: dbMock.db,
+      getUserConfig: jest.fn(async () => ({
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'ALPHA-TOGGLE-1'
+      }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-toggle-alpha' };
+        next();
+      });
+      registerAutomationMutationRoutes(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/automation/toggle')
+      .send({ enabled: false });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ errno: 0, result: { enabled: false } });
+    expect(deps.foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
+    expect(dbMock.stateSet).toHaveBeenCalledWith(expect.objectContaining({
+      active: false,
+      disabledByAutomationToggle: true,
+      disabledReason: 'automation_toggle'
+    }));
   });
 
   test('enable route resets segmentsCleared when enabling', async () => {
@@ -284,6 +317,49 @@ describe('automation mutation route module', () => {
     expect(setCall[2].groups).toHaveLength(8);
   });
 
+  test('cancel route dispatches to adapter for non-FoxESS providers', async () => {
+    const clearSchedule = jest.fn(async () => ({ errno: 0, msg: 'adapter cleared', result: { ok: true } }));
+    const getSchedule = jest.fn(async () => ({ errno: 0, result: { groups: [{ enable: 0 }], enable: false } }));
+    const deps = buildDeps({
+      adapterRegistry: {
+        getDeviceProvider: jest.fn(() => ({ clearSchedule, getSchedule }))
+      },
+      getUserConfig: jest.fn(async () => ({
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'ALPHA-CANCEL-1'
+      }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-cancel-alpha' };
+        next();
+      });
+      registerAutomationMutationRoutes(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/automation/cancel')
+      .send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      flagResult: null,
+      msg: 'adapter cleared',
+      verify: { groups: [{ enable: 0 }], enable: false }
+    });
+    expect(clearSchedule).toHaveBeenCalledWith({
+      deviceSN: 'ALPHA-CANCEL-1',
+      userConfig: {
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'ALPHA-CANCEL-1'
+      },
+      userId: 'u-cancel-alpha'
+    });
+    expect(deps.foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
+  });
+
   test('rule create validates cooldown range', async () => {
     const deps = buildDeps();
 
@@ -376,6 +452,53 @@ describe('automation mutation route module', () => {
       }),
       { merge: true }
     );
+  });
+
+  test('rule update on non-FoxESS clears active segments via adapter', async () => {
+    const clearSchedule = jest.fn(async () => ({ errno: 0, msg: 'adapter cleared' }));
+    const getSchedule = jest.fn(async () => ({ errno: 0, result: { groups: [], enable: false } }));
+    const deps = buildDeps({
+      adapterRegistry: {
+        getDeviceProvider: jest.fn(() => ({ clearSchedule, getSchedule }))
+      },
+      getUserAutomationState: jest.fn(async () => ({
+        activeRule: 'my_rule',
+        activeRuleName: 'My Rule',
+        lastTriggered: 1000
+      })),
+      getUserConfig: jest.fn(async () => ({
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'ALPHA-RULE-1'
+      })),
+      getUserRule: jest.fn(async () => ({ data: { action: { mode: 'SelfUse', power: 1000 } } }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-rule-update-alpha' };
+        next();
+      });
+      registerAutomationMutationRoutes(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/automation/rule/update')
+      .send({
+        action: { power: 2000 },
+        enabled: false,
+        ruleName: 'my rule'
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(clearSchedule).toHaveBeenCalledWith({
+      deviceSN: 'ALPHA-RULE-1',
+      userConfig: {
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'ALPHA-RULE-1'
+      },
+      userId: 'u-rule-update-alpha'
+    });
+    expect(deps.foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
   });
 
   test('rule end route rejects missing identifiers', async () => {
