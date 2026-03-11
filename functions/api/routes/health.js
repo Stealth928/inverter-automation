@@ -16,6 +16,17 @@ function registerHealthRoutes(app, deps = {}) {
 
   // Health check (no auth required)
   app.get('/api/health', async (req, res) => {
+    const buildResponse = (foxessTokenPresent, amberApiKeyPresent) => ({
+      errno: 0,
+      result: {
+        status: 'OK'
+      },
+      // Legacy fields retained for existing frontend consumers.
+      ok: true,
+      FOXESS_TOKEN: !!foxessTokenPresent,
+      AMBER_API_KEY: !!amberApiKeyPresent
+    });
+
     try {
       await tryAttachUser(req);
       const userId = req.user?.uid;
@@ -34,18 +45,10 @@ function registerHealthRoutes(app, deps = {}) {
         }
       }
 
-      res.json({
-        ok: true,
-        FOXESS_TOKEN: foxessTokenPresent,
-        AMBER_API_KEY: amberApiKeyPresent
-      });
+      res.json(buildResponse(foxessTokenPresent, amberApiKeyPresent));
     } catch (error) {
       console.error('[Health] Error:', error);
-      res.json({
-        ok: true,
-        FOXESS_TOKEN: false,
-        AMBER_API_KEY: false
-      });
+      res.json(buildResponse(false, false));
     }
   });
 }

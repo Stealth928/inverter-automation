@@ -229,6 +229,35 @@ describe('automation scheduler service', () => {
     expect(maxInFlight).toBeLessThanOrEqual(2);
   });
 
+  test('loads user blackout rules with bounded concurrency during candidate evaluation', async () => {
+    let inFlightRuleLoads = 0;
+    let maxInFlightRuleLoads = 0;
+    const getUserRules = jest.fn(async () => {
+      inFlightRuleLoads += 1;
+      maxInFlightRuleLoads = Math.max(maxInFlightRuleLoads, inFlightRuleLoads);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      inFlightRuleLoads -= 1;
+      return {};
+    });
+
+    const { deps } = buildSchedulerDeps({
+      getUserRules,
+      schedulerOptions: {
+        maxConcurrentUsers: 3,
+        retryAttempts: 1,
+        retryBaseDelayMs: 0,
+        retryJitterMs: 0
+      },
+      userIds: ['u-1', 'u-2', 'u-3', 'u-4', 'u-5', 'u-6']
+    });
+
+    await runAutomationSchedulerCycle({}, deps);
+
+    expect(getUserRules).toHaveBeenCalledTimes(6);
+    expect(maxInFlightRuleLoads).toBeGreaterThan(1);
+    expect(maxInFlightRuleLoads).toBeLessThanOrEqual(3);
+  });
+
   test('retries transient failures and succeeds before dead-letter', async () => {
     let attempt = 0;
     const automationCycleHandler = jest.fn(async (_req, res) => {

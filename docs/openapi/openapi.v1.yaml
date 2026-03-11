@@ -271,7 +271,7 @@ components:
               properties:
                 status:
                   type: string
-                  examples: [ok]
+                  examples: [OK]
     ApiEnvelopeConfig:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeBase"

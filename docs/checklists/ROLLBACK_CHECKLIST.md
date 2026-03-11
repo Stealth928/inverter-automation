@@ -1,7 +1,7 @@
 # Rollback Checklist
 
 - Status: Active template
-- Owner: RefactoringMar26
+- Owner: On-call engineer
 - Related Plan: `docs/REFACTORING_IMPLEMENTATION_PLAN_MAR26.md` (Sprint 1 item 18)
 
 ## 1. Trigger Confirmation

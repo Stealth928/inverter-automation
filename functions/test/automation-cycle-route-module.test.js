@@ -244,4 +244,54 @@ describe('automation cycle route module', () => {
       { clearSegmentsOnNextCycle: false }
     );
   });
+
+  test('returns non-200 when segment apply fails so scheduler can retry/fail the cycle', async () => {
+    const deps = buildDeps({
+      evaluateRule: jest.fn(async () => ({
+        triggered: true,
+        conditions: [{ passed: true }]
+      })),
+      getQuickControlState: jest.fn(async () => null),
+      getUserAutomationState: jest.fn(async () => ({ enabled: true })),
+      getUserConfig: jest.fn(async () => ({ automation: { blackoutWindows: [] }, deviceSn: 'SN-ERR-1' })),
+      getUserRules: jest.fn(async () => ({
+        ruleA: {
+          enabled: true,
+          name: 'Rule A',
+          priority: 1,
+          action: { workMode: 'ForceCharge', durationMinutes: 30, minSocOnGrid: 0 }
+        }
+      })),
+      applyRuleAction: jest.fn(async () => ({ errno: 503, msg: 'Upstream timeout' }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-cycle-action-fail' };
+        next();
+      });
+      registerAutomationCycleRoute(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/automation/cycle')
+      .send({});
+
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual(expect.objectContaining({
+      errno: 503,
+      error: expect.stringContaining('Action apply failed')
+    }));
+    expect(deps.applyRuleAction).toHaveBeenCalled();
+    expect(deps.addAutomationAuditEntry).not.toHaveBeenCalled();
+    expect(deps.saveUserAutomationState).toHaveBeenCalledWith(
+      'u-cycle-action-fail',
+      expect.objectContaining({
+        activeRule: 'ruleA',
+        activeRuleName: 'Rule A',
+        activeSegmentEnabled: false,
+        lastActionResult: expect.objectContaining({ errno: 503 })
+      })
+    );
+  });
 });

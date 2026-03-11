@@ -742,8 +742,10 @@
             ? options.tailLatency
             : null;
         const tailStatus = String(tailInfo?.status || 'healthy').toUpperCase();
+        const tailRunsAbove = Number(tailInfo?.runsAboveThreshold || 0);
         const tailObservedRuns = Number(tailInfo?.observedRuns || 0);
         const tailMinRuns = Math.max(1, Number(tailInfo?.minRuns || thresholds.tailMinRuns || 10));
+        const tailThresholdMs = Number(tailInfo?.thresholdMs || p99TargetMs);
 
         const cards = [
             {
@@ -779,7 +781,7 @@
                 value: p99CycleDurationMs,
                 target: p99TargetMs,
                 display: `${formatDurationMs(p99CycleDurationMs)} p99`,
-                targetDisplay: `Target p99 <= ${formatDurationMs(p99TargetMs)} · sustained ${tailStatus} (${tailObservedRuns}/${tailMinRuns} runs in ${tailWindowMinutes}m)`
+                targetDisplay: `Target p99 <= ${formatDurationMs(p99TargetMs)} · sustained ${tailStatus} (${tailRunsAbove}/${tailObservedRuns} above ${formatDurationMs(tailThresholdMs)} in ${tailWindowMinutes}m, min ${tailMinRuns})`
             }
         ];
 
@@ -1002,8 +1004,11 @@
             return;
         }
         if (!outlier && phaseTimings) {
+            const tailRunsAboveOnly = Number(tail?.runsAboveThreshold || 0);
+            const tailObservedOnly = Number(tail?.observedRuns || 0);
+            const tailMinOnly = Math.max(1, Number(tail?.minRuns || 1));
             const tailTextOnly = tail
-                ? `${String(tail.status || 'healthy').toUpperCase()} (${Number(tail.observedRuns || 0)}/${Math.max(1, Number(tail.minRuns || 1))} runs above ${formatDurationMs(tail.thresholdMs || 0)} in ${Math.max(1, Number(tail.windowMinutes || 15))}m window)`
+                ? `${String(tail.status || 'healthy').toUpperCase()} (${tailRunsAboveOnly}/${tailObservedOnly} runs above ${formatDurationMs(tail.thresholdMs || 0)} in ${Math.max(1, Number(tail.windowMinutes || 15))}m window; min ${tailMinOnly})`
                 : 'No sustained tail data';
             el.innerHTML = `
                 <div><strong>Phase Timings:</strong> latest run @ ${escapeHtml(phaseStartedAt)} maxes (latest / window): ${escapeHtml(phaseComparison)}</div>
@@ -1016,8 +1021,11 @@
         const slowest = outlier?.slowestCycle && typeof outlier.slowestCycle === 'object' ? outlier.slowestCycle : null;
         const causes = Array.isArray(outlier?.likelyCauses) ? outlier.likelyCauses : [];
         const causeText = causes.length ? causes.join(', ') : 'no_clear_cause_from_scheduler_metrics';
+        const tailRunsAbove = Number(tail?.runsAboveThreshold || 0);
+        const tailObservedRuns = Number(tail?.observedRuns || 0);
+        const tailMinRuns = Math.max(1, Number(tail?.minRuns || 1));
         const tailText = tail
-            ? `${String(tail.status || 'healthy').toUpperCase()} (${Number(tail.observedRuns || 0)}/${Math.max(1, Number(tail.minRuns || 1))} runs above ${formatDurationMs(tail.thresholdMs || 0)} in ${Math.max(1, Number(tail.windowMinutes || 15))}m window)`
+            ? `${String(tail.status || 'healthy').toUpperCase()} (${tailRunsAbove}/${tailObservedRuns} runs above ${formatDurationMs(tail.thresholdMs || 0)} in ${Math.max(1, Number(tail.windowMinutes || 15))}m window; min ${tailMinRuns})`
             : 'No sustained tail data';
 
         const slowestText = slowest
@@ -1044,15 +1052,23 @@
         const queueLag = formatDurationMs(alert.measurements?.maxQueueLagMs || 0);
         const cycleDuration = formatDurationMs(alert.measurements?.maxCycleDurationMs || 0);
         const p99CycleDuration = formatDurationMs(alert.measurements?.p99CycleDurationMs || 0);
+        const latestRunP99CycleDurationMs = Number(alert.measurements?.latestRunP99CycleDurationMs || 0);
+        const latestRunP99CycleDuration = formatDurationMs(latestRunP99CycleDurationMs);
         const breached = Array.isArray(alert.breachedMetrics) ? alert.breachedMetrics : [];
         const watched = Array.isArray(alert.watchMetrics) ? alert.watchMetrics : [];
         const metricList = [...breached, ...watched];
         const metricHint = metricList.length ? ` [${metricList.join(', ')}]` : '';
         const tailLatency = alert.tailLatency && typeof alert.tailLatency === 'object' ? alert.tailLatency : null;
+        const tailRunsAbove = Number(tailLatency?.runsAboveThreshold || 0);
+        const tailObservedRuns = Number(tailLatency?.observedRuns || 0);
+        const tailMinRuns = Math.max(1, Number(tailLatency?.minRuns || 1));
         const tailHint = tailLatency
-            ? `, tail=${String(tailLatency.status || 'healthy').toUpperCase()} (${Number(tailLatency.observedRuns || 0)}/${Math.max(1, Number(tailLatency.minRuns || 1))} > ${formatDurationMs(tailLatency.thresholdMs || 0)})`
+            ? `, tail=${String(tailLatency.status || 'healthy').toUpperCase()} (${tailRunsAbove}/${tailObservedRuns} > ${formatDurationMs(tailLatency.thresholdMs || 0)}, min ${tailMinRuns})`
             : '';
-        return `Scheduler SLO ${severity}${metricHint}: error=${measuredErrorRate}%, dead=${measuredDeadRate}%, queue=${queueLag}, cycle=${cycleDuration}, p99=${p99CycleDuration}${tailHint}`;
+        const latestHint = latestRunP99CycleDurationMs > 0
+            ? `, latestRunP99=${latestRunP99CycleDuration}`
+            : '';
+        return `Scheduler SLO ${severity}${metricHint}: error=${measuredErrorRate}%, dead=${measuredDeadRate}%, queue=${queueLag}, cycle=${cycleDuration}, p99=${p99CycleDuration}${tailHint}${latestHint}`;
     }
 
     async function loadSchedulerMetrics() {

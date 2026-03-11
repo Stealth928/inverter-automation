@@ -36,6 +36,7 @@ restore-config.json
 
 # Test artifacts and reports
 playwright-report/
+playwright-results.json
 test-results/
 coverage/
 .playwright/

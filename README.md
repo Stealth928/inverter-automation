@@ -84,12 +84,12 @@ inverter-automation/
 |   |-- guides/
 |   |   |-- TESTING_GUIDE.md
 |   |   |-- PRODUCT_GUIDE.md
-|-- archive/                 # Deprecated files (not deployed)
+|   |-- archive/             # Historical docs (not active runbooks)
 ```
 
 ## Tech Stack
 
-- **Backend**: Node.js 20, Firebase Cloud Functions, Express.js
+- **Backend**: Node.js 22, Firebase Cloud Functions, Express.js
 - **Frontend**: HTML/CSS/JavaScript, Firebase Auth SDK
 - **Database**: Cloud Firestore
 - **Hosting**: Firebase Hosting
@@ -208,15 +208,10 @@ Dashboard local mock mode (inverter + Amber cards):
 .\run-tests.ps1
 
 # Run specific test suites
-.\run-tests.ps1 -Type unit          # Unit tests (Jest)
-.\run-tests.ps1 -Type e2e           # End-to-end tests (requires e2e script)
-.\run-tests.ps1 -Type auth          # Auth flow tests
-
-# Run with authentication
-.\run-tests.ps1 -Type e2e -AuthToken "your-firebase-id-token"
-
-# Run against production
-.\run-tests.ps1 -Type e2e -Prod -AuthToken "your-token"
+.\run-tests.ps1 -Type backend       # Backend Jest tests
+.\run-tests.ps1 -Type frontend      # Playwright tests
+.\run-tests.ps1 -Type unit          # Alias for backend tests
+.\run-tests.ps1 -Type auth          # Auth flow tests (emulator required)
 ```
 
 See [docs/guides/TESTING_GUIDE.md](docs/guides/TESTING_GUIDE.md) for complete testing documentation.
@@ -278,4 +273,3 @@ firebase deploy --only hosting     # Deploy frontend only
 ## License
 
 MIT
-

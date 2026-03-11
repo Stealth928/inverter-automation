@@ -776,54 +776,79 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
     let skippedDisabled = 0;
     let skippedTooSoon = 0;
     const now = Date.now();
+    const cycleEligibility = await mapWithConcurrency(
+      userDataAll,
+      schedulerOptions.maxConcurrentUsers,
+      async (userData) => {
+        if (!userData.ready) {
+          return { reason: 'disabled_or_invalid' };
+        }
 
-    for (const userData of userDataAll) {
-      if (!userData.ready) {
+        const { userId, state, userConfig } = userData;
+        const userIntervalMs = userConfig?.automation?.intervalMs || defaultIntervalMs;
+        const lastCheck = state?.lastCheck || 0;
+        if ((now - lastCheck) < userIntervalMs) {
+          return { reason: 'too_soon' };
+        }
+
+        try {
+          const userRules = await getUserRules(userId);
+          const blackoutWindows = userRules?.blackoutWindows || [];
+          let inBlackout = false;
+          if (Array.isArray(blackoutWindows) && blackoutWindows.length > 0) {
+            const userTz = userConfig?.timezone || 'UTC';
+            const userNow = getTimeInTimezone(userTz);
+            const dayOfWeek = userNow.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
+            const currentTime = userNow.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+            for (const window of blackoutWindows) {
+              if (window.enabled === false) continue;
+              const applicableDays = window.days || [];
+              if (applicableDays.length > 0 && !applicableDays.includes(dayOfWeek)) {
+                continue;
+              }
+              if (isTimeInRange(currentTime, window.start, window.end)) {
+                inBlackout = true;
+                break;
+              }
+            }
+          }
+
+          if (inBlackout) {
+            return { reason: 'disabled_or_invalid' };
+          }
+        } catch (rulesError) {
+          warnLog(
+            logger,
+            `[Scheduler] User ${userId}: failed to load/evaluate blackout rules: ${rulesError.message}`
+          );
+          return { reason: 'disabled_or_invalid' };
+        }
+
+        return {
+          reason: 'candidate',
+          value: {
+            userId,
+            cycleKey: buildCycleKey(userId, now, userIntervalMs),
+            state,
+            userConfig
+          }
+        };
+      }
+    );
+
+    for (const entry of cycleEligibility) {
+      if (!entry || entry.reason === 'disabled_or_invalid') {
         skippedDisabled++;
         continue;
       }
-
-      const { userId, state, userConfig } = userData;
-      const userIntervalMs = userConfig?.automation?.intervalMs || defaultIntervalMs;
-      const lastCheck = state?.lastCheck || 0;
-      if ((now - lastCheck) < userIntervalMs) {
+      if (entry.reason === 'too_soon') {
         skippedTooSoon++;
         continue;
       }
-
-      const userRules = await getUserRules(userId);
-      const blackoutWindows = userRules?.blackoutWindows || [];
-      let inBlackout = false;
-      if (Array.isArray(blackoutWindows) && blackoutWindows.length > 0) {
-        const userTz = userConfig?.timezone || 'UTC';
-        const userNow = getTimeInTimezone(userTz);
-        const dayOfWeek = userNow.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
-        const currentTime = userNow.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-
-        for (const window of blackoutWindows) {
-          if (window.enabled === false) continue;
-          const applicableDays = window.days || [];
-          if (applicableDays.length > 0 && !applicableDays.includes(dayOfWeek)) {
-            continue;
-          }
-          if (isTimeInRange(currentTime, window.start, window.end)) {
-            inBlackout = true;
-            break;
-          }
-        }
+      if (entry.reason === 'candidate' && entry.value) {
+        cycleCandidates.push(entry.value);
       }
-
-      if (inBlackout) {
-        skippedDisabled++;
-        continue;
-      }
-
-      cycleCandidates.push({
-        userId,
-        cycleKey: buildCycleKey(userId, now, userIntervalMs),
-        state,
-        userConfig
-      });
     }
 
     let cyclesRun = 0;

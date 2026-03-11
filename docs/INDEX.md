@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last Updated: March 7, 2026
+Last Updated: March 11, 2026
 Purpose: Canonical index of actively maintained project documentation.
 
 ## Core Docs
@@ -47,10 +47,12 @@ Purpose: Canonical index of actively maintained project documentation.
 - [CURTAILMENT_QUICK_START.md](CURTAILMENT_QUICK_START.md)
 - [README_CURTAILMENT.md](README_CURTAILMENT.md)
 
+## Historical Records
+- [evidence/REFACTORING_EXECUTION_LOG_MAR26.md](evidence/REFACTORING_EXECUTION_LOG_MAR26.md): Full chunk-by-chunk execution log moved out of the active plan for context hygiene.
+
 ## Hygiene Rules
 - Keep root-level docs minimal (`README.md` only unless there is a clear reason).
 - Put all new docs under `docs/`.
 - Update this index when adding/removing docs.
 - Remove generated logs/reports from the repo root and keep them ignored.
 - If a doc is superseded, either delete it or explicitly mark it as legacy in its header.
-

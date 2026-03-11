@@ -36,5 +36,8 @@
     "jest": "^29.7.0",
     "supertest": "^7.1.4"
   },
+  "overrides": {
+    "fast-xml-parser": "4.5.4"
+  },
   "private": true
 }

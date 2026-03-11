@@ -3,7 +3,7 @@
 ## Quick Start
 
 ### Prerequisites
-- Node.js 20+ installed
+- Node.js 22+ installed
 - Firebase CLI: `npm install -g firebase-tools`
 - A Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
 
@@ -243,12 +243,13 @@ inverter-automation/
 │
 ├── functions/              # Cloud Functions
 │   ├── package.json
-│   └── index.js            # All API endpoints
+│   └── index.js            # Composition root + function exports
 │
 └── docs/                   # Documentation
     ├── AUTOMATION.md       # Automation rules documentation
     ├── API.md              # API reference
-    └── SETUP.md            # This file
+    ├── SETUP.md            # This file
+    └── archive/            # Historical docs and logs
 ```
 
 ---

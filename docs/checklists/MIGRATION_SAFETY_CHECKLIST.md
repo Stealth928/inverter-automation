@@ -1,7 +1,7 @@
 # Migration Safety Checklist
 
 - Status: Active template
-- Owner: RefactoringMar26
+- Owner: Platform engineering
 - Related Plan: `docs/REFACTORING_IMPLEMENTATION_PLAN_MAR26.md` (Sprint 1 item 18)
 
 ## 1. Pre-Migration Readiness

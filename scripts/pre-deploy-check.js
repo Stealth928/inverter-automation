@@ -181,19 +181,26 @@ if (!importsChecksPassed) {
 section('5. Verifying Critical Routes');
 
 const criticalRoutes = [
-  { pattern: /app\.get\(['"]\/api\/amber\/sites/, name: '/api/amber/sites' },
-  { pattern: /app\.get\(['"]\/api\/amber\/prices\/current/, name: '/api/amber/prices/current' },
-  { pattern: /app\.get\(['"]\/api\/inverter\/real-time/, name: '/api/inverter/real-time' },
-  { pattern: /app\.get\(['"]\/api\/health/, name: '/api/health' },
+  '/api/amber/sites',
+  '/api/amber/prices/current',
+  '/api/inverter/real-time',
+  '/api/health'
 ];
 
 let routesChecksPassed = true;
 
-criticalRoutes.forEach(({ pattern, name }) => {
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Route modules may register aliases through helper calls (for example registerGetAliases)
+// instead of app.get('/path'). Detect route path literals directly in route source files.
+criticalRoutes.forEach((routePath) => {
+  const pattern = new RegExp(`['"\`]${escapeRegExp(routePath)}['"\`]`);
   if (pattern.test(routeSourceContent)) {
-    checkPass(`Route defined: ${name}`);
+    checkPass(`Route defined: ${routePath}`);
   } else {
-    checkFail(`Route missing: ${name}`);
+    checkFail(`Route missing: ${routePath}`);
     routesChecksPassed = false;
   }
 });

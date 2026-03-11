@@ -62,6 +62,17 @@
             document.getElementById('roiEndDate').addEventListener('change', validateDateRange);
         }
 
+        function resolveRoiEventClassification(event) {
+            if (
+                typeof window !== 'undefined' &&
+                window.ROIClassification &&
+                typeof window.ROIClassification.resolveRoiEventClassification === 'function'
+            ) {
+                return window.ROIClassification.resolveRoiEventClassification(event);
+            }
+            return { isChargeRule: false, isFeedinRule: false, ruleType: 'Unknown' };
+        }
+
         /**
          * Calculate ROI based on rule history and prices
          */
@@ -370,78 +381,43 @@
                 // Calculate rule duration in hours (assuming it's stored in milliseconds)
                 const durationHours = (event.durationMs || 0) / (1000 * 60 * 60);
                 
-                // Determine rule type (charge vs discharge/feed-in) and appropriate pricing
-                let isChargeRule = false;
-                let isFeedinRule = false;
-                let ruleType = 'Discharge'; // Default: assume discharge/feed-in (most common)
+                // Determine rule type from explicit workMode when available.
+                const classification = resolveRoiEventClassification(event);
+                let isChargeRule = classification.isChargeRule === true;
+                let isFeedinRule = classification.isFeedinRule === true;
+                let ruleType = classification.ruleType || 'Unknown';
+                const isGridTransferRule = isChargeRule || isFeedinRule;
                 let actualPrice = null;
                 let rulePowerKw = null; // Use actual rule power from fdPwr if available
-                
-                // First check roiSnapshot for workMode (most reliable)
-                if (event.roiSnapshot && event.roiSnapshot.workMode) {
-                    const workMode = event.roiSnapshot.workMode;
-                    if (workMode === 'ForceCharge') {
-                        totalChargeRules++;
-                        isChargeRule = true;
-                        ruleType = 'Charge';
-                        actualPrice = (event.roiSnapshot.buyPrice !== null && event.roiSnapshot.buyPrice !== undefined) ? event.roiSnapshot.buyPrice : null; // Use buy price for charging (from trigger time as fallback)
-                    } else if (workMode === 'ForceDischarge' || workMode === 'Feedin') {
-                        totalFeedinRules++;
-                        isFeedinRule = true;
-                        ruleType = 'Discharge';
-                        actualPrice = (event.roiSnapshot.feedInPrice !== null && event.roiSnapshot.feedInPrice !== undefined) ? event.roiSnapshot.feedInPrice : null; // Use feed-in price for discharge (from trigger time as fallback)
+
+                if (isChargeRule) {
+                    totalChargeRules++;
+                } else if (isFeedinRule) {
+                    totalFeedinRules++;
+                }
+
+                // Look up settled prices only for charge/discharge events.
+                if (event.roiSnapshot && isGridTransferRule) {
+                    if (isChargeRule) {
+                        actualPrice = (event.roiSnapshot.buyPrice !== null && event.roiSnapshot.buyPrice !== undefined)
+                            ? event.roiSnapshot.buyPrice
+                            : null;
+                    } else if (isFeedinRule) {
+                        actualPrice = (event.roiSnapshot.feedInPrice !== null && event.roiSnapshot.feedInPrice !== undefined)
+                            ? event.roiSnapshot.feedInPrice
+                            : null;
                     }
-                    
-                    // ⭐ Look up ACTUAL settled prices averaged across the event's execution window
-                    // This handles price fluctuations during rule execution (e.g., 30-min rule with changing prices)
-                    // Only applies to events older than 5 minutes (skips very recent/ongoing events)
+
                     const actualPrices = getActualPrice(event);
                     if (isChargeRule && actualPrices.buyPrice !== null) {
-                        actualPrice = actualPrices.buyPrice; // Override with actual average buy price during execution
+                        actualPrice = actualPrices.buyPrice;
                     } else if (isFeedinRule && actualPrices.feedInPrice !== null) {
-                        actualPrice = actualPrices.feedInPrice; // Override with actual average feed-in price during execution
-                    }
-                }
-                
-                // Fallback: check action workMode
-                if (!isChargeRule && !isFeedinRule && event.action && event.action.workMode) {
-                    const workMode = event.action.workMode;
-                    if (workMode === 'ForceCharge') {
-                        totalChargeRules++;
-                        isChargeRule = true;
-                        ruleType = 'Charge';
-                    } else if (workMode === 'ForceDischarge' || workMode === 'Feedin') {
-                        totalFeedinRules++;
-                        isFeedinRule = true;
-                        ruleType = 'Discharge';
-                    }
-                }
-                
-                // Legacy fallback: check rule evaluations and rule name
-                if (!isChargeRule && !isFeedinRule && event.startAllRules) {
-                    for (const rule of event.startAllRules) {
-                        if (rule.triggered) {
-                            const ruleName = (rule.name || '').toLowerCase();
-                            
-                            // Detect rule type from name
-                            if (ruleName.includes('charge')) {
-                                totalChargeRules++;
-                                isChargeRule = true;
-                                ruleType = 'Charge';
-                                actualPrice = rule.buyPrice; // Use buy price for charging
-                            } else {
-                                // Default to discharge/feed-in (includes feed, discharge, export, empty, etc.)
-                                totalFeedinRules++;
-                                isFeedinRule = true;
-                                ruleType = 'Discharge';
-                                actualPrice = rule.feedInPrice; // Use feed-in price for discharge
-                            }
-                        }
+                        actualPrice = actualPrices.feedInPrice;
                     }
                 }
                 
                 // If no explicit prices from backend, fall back to condition parsing
-                if (actualPrice === null || actualPrice === undefined) {
+                if ((actualPrice === null || actualPrice === undefined) && isGridTransferRule) {
                     actualPrice = extractPriceFromRule(event.startAllRules);
                 }
                 
@@ -461,17 +437,17 @@
                         ? event.roiSnapshot.estimatedGridExportW / 1000 
                         : null;
                     
-                    // Extract prices from roiSnapshot if not already set
-                    if (actualPrice === null || actualPrice === undefined) {
+                    // Extract prices from roiSnapshot if not already set.
+                    if ((actualPrice === null || actualPrice === undefined) && isGridTransferRule) {
                         if (isChargeRule && event.roiSnapshot.buyPrice !== null && event.roiSnapshot.buyPrice !== undefined) {
                             actualPrice = event.roiSnapshot.buyPrice;
-                        } else if (event.roiSnapshot.feedInPrice !== null && event.roiSnapshot.feedInPrice !== undefined) {
+                        } else if (isFeedinRule && event.roiSnapshot.feedInPrice !== null && event.roiSnapshot.feedInPrice !== undefined) {
                             actualPrice = event.roiSnapshot.feedInPrice;
                         }
                     }
                     
                     // Get power from action (in Watts, convert to kW)
-                    if (event.action && event.action.fdPwr) {
+                    if (event.action && event.action.fdPwr && isGridTransferRule) {
                         rulePowerKw = event.action.fdPwr / 1000;
                     }
                     
@@ -479,7 +455,7 @@
                     // The backend's estimatedRevenue was calculated at trigger time using the RULE's
                     // configured duration (e.g. 30 min), NOT the actual runtime (e.g. 2 min 6 sec).
                     // This caused massively inflated profits (e.g. $127 instead of $0.01).
-                    if ((actualPrice !== null && actualPrice !== undefined) && rulePowerKw !== null) {
+                    if ((actualPrice !== null && actualPrice !== undefined) && rulePowerKw !== null && isGridTransferRule) {
                         // Price conversion: Amber API prices are ALWAYS in cents/kWh
                         // Convert to dollars by dividing by 100
                         const priceAudPerKwh = actualPrice / 100;
@@ -490,7 +466,7 @@
                             // - Negative price: positive result (profit - you get paid to consume!)
                             const gridDrawKw = houseLoadKw !== null ? (rulePowerKw + houseLoadKw) : rulePowerKw;
                             eventProfit = -(gridDrawKw * durationHours * priceAudPerKwh);
-                        } else {
+                        } else if (isFeedinRule) {
                             // DISCHARGE: Revenue = (discharge - house load) * price * duration
                             // - Positive price: positive result (revenue)
                             // - Negative price: negative result (cost - rare, pay to export)
@@ -503,20 +479,22 @@
                 // Calculation complete
                 } else {
                     // Fallback to old method if roiSnapshot not available
-                    if (event.action && event.action.fdPwr) {
+                    if (event.action && event.action.fdPwr && isGridTransferRule) {
                         rulePowerKw = event.action.fdPwr / 1000;
                     } else {
                         rulePowerKw = null;
                     }
                     
-                    if ((actualPrice !== null && actualPrice !== undefined) && rulePowerKw !== null) {
+                    if ((actualPrice !== null && actualPrice !== undefined) && rulePowerKw !== null && isGridTransferRule) {
                         // Price conversion: Amber API prices are ALWAYS in cents/kWh
                         // Convert to dollars by dividing by 100
                         const priceAudPerKwh = actualPrice / 100;
                         
                         if (isChargeRule) {
                             // CHARGE: revenue = -(power * price) (no house load data)
-                        } else {
+                            const energyConsumed = rulePowerKw * durationHours;
+                            eventProfit = -(energyConsumed * priceAudPerKwh);
+                        } else if (isFeedinRule) {
                             // DISCHARGE: Revenue = power * price * duration (no house load data)
                             const energyGenerated = rulePowerKw * durationHours;
                             eventProfit = energyGenerated * priceAudPerKwh;

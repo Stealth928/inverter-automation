@@ -82,7 +82,8 @@
 
 - Amber adapter preserves per-site caching with TTL-based invalidation.
 - `normalizeAmberIntervals()` deduplicates and validates intervals before caching.
-- `amber-caching-no-regression.test.js` specifically validates caching efficiency (2 known-failing tests are related to adapter refactoring envelope shape, not caching regression — tracked as known baseline).
+- `amber-caching-no-regression.test.js` specifically validates caching efficiency.
+- Historical note: earlier transitional failures discussed during P4 closeout were resolved; current backend baseline passes (`npm --prefix functions test -- --runInBand`, verified 2026-03-11).
 
 ---
 

@@ -35,6 +35,7 @@ function buildAlertText(alert = {}, status = 'healthy') {
   const queueLag = Math.round(toFiniteNumber(measured.maxQueueLagMs, 0));
   const cycleDuration = Math.round(toFiniteNumber(measured.maxCycleDurationMs, 0));
   const p99CycleDuration = Math.round(toFiniteNumber(measured.p99CycleDurationMs, 0));
+  const latestRunP99CycleDuration = Math.round(toFiniteNumber(measured.latestRunP99CycleDurationMs, 0));
   const breached = sanitizeMetricList(alert.breachedMetrics);
   const watched = sanitizeMetricList(alert.watchMetrics);
   const metricTags = [
@@ -45,10 +46,16 @@ function buildAlertText(alert = {}, status = 'healthy') {
   const tail = alert.tailLatency && typeof alert.tailLatency === 'object'
     ? alert.tailLatency
     : null;
+  const tailRunsAboveThreshold = toFiniteNumber(tail?.runsAboveThreshold, 0);
+  const tailObservedRuns = toFiniteNumber(tail?.observedRuns, 0);
+  const tailMinRuns = toFiniteNumber(tail?.minRuns, 0);
   const tailSuffix = tail
-    ? ` tail=${String(tail.status || 'healthy').toUpperCase()}(${toFiniteNumber(tail.observedRuns, 0)}/${toFiniteNumber(tail.minRuns, 0)}>${Math.round(toFiniteNumber(tail.thresholdMs, 0))}ms)`
+    ? ` tail=${String(tail.status || 'healthy').toUpperCase()}(${tailRunsAboveThreshold}/${tailObservedRuns}>${Math.round(toFiniteNumber(tail.thresholdMs, 0))}ms,min=${tailMinRuns})`
     : '';
-  return `[SchedulerSLO] ${severity}${metricSuffix} scheduler=${schedulerId} error=${errorRate}% dead=${deadRate}% queueLagMs=${queueLag} cycleDurationMs=${cycleDuration} p99CycleDurationMs=${p99CycleDuration}${tailSuffix}`;
+  const latestRunSuffix = latestRunP99CycleDuration > 0
+    ? ` latestRunP99CycleDurationMs=${latestRunP99CycleDuration}`
+    : '';
+  return `[SchedulerSLO] ${severity}${metricSuffix} scheduler=${schedulerId} error=${errorRate}% dead=${deadRate}% queueLagMs=${queueLag} cycleDurationMs=${cycleDuration} p99CycleDurationMs=${p99CycleDuration}${tailSuffix}${latestRunSuffix}`;
 }
 
 function createSchedulerSloAlertNotifier(deps = {}) {

@@ -10,7 +10,7 @@
 | Check | Command | Expected |
 |---|---|---|
 | Backend lint | `npm --prefix functions run lint` | 0 errors |
-| Backend tests | `npm --prefix functions test -- --runInBand` | No new failures (baseline: 10 known fails in ev-conditions + amber-caching) |
+| Backend tests | `npm --prefix functions test -- --runInBand` | All tests pass |
 | Pre-deploy script | `node scripts/pre-deploy-check.js` | Exit 0 |
 | API contract check | `npm run api:contract:check` | No diffs |
 | OpenAPI check | `npm run openapi:check` | No diffs |
@@ -103,7 +103,7 @@ After deploying to a staging / preview channel, verify:
 npm run test:e2e:frontend
 ```
 
-- [ ] All Playwright tests pass (or known-skip list is up to date)
+- [ ] All Playwright tests pass
 
 ---
 
@@ -128,4 +128,4 @@ Initiate rollback (see `docs/PROD_BACKUP_ROLLBACK_RUNBOOK.md`) if any of:
 
 ---
 
-_Last updated: P6 / G6 consolidation. Owner: on-call engineer._
+_Last updated: 2026-03-11. Owner: on-call engineer._

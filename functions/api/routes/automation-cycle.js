@@ -205,6 +205,25 @@ function registerAutomationCycleRoute(app, deps = {}) {
         }
       })
     );
+    const normalizeActionErrno = (value) => {
+      const parsed = Number(value);
+      if (!Number.isInteger(parsed)) return 500;
+      if (parsed >= 400 && parsed <= 599) return parsed;
+      return 500;
+    };
+    const createActionFailureError = (ruleName, actionResult, stage) => {
+      const actionErrno = Number.isFinite(Number(actionResult?.errno))
+        ? Number(actionResult.errno)
+        : 500;
+      const cycleErrno = normalizeActionErrno(actionErrno);
+      const actionMsg = String(actionResult?.msg || actionResult?.error || 'Action apply failed');
+      const error = new Error(
+        `[Automation] Action apply failed (${stage}) for rule '${ruleName}': errno=${actionErrno}, msg=${actionMsg}`
+      );
+      error.cycleErrno = cycleErrno;
+      error.actionErrno = actionErrno;
+      return error;
+    };
     
     // Get user's automation state
     const state = await getUserAutomationState(userId);
@@ -415,7 +434,12 @@ function registerAutomationCycleRoute(app, deps = {}) {
       return respondSuccess({ skipped: true, reason: 'No rules enabled', totalRules });
     }
 
+    const configuredForecastDays = Number.parseInt(userConfig?.preferences?.forecastDays, 10);
     const weatherFetchPlan = buildWeatherFetchPlan({
+      automationForecastDays:
+        Number.isInteger(configuredForecastDays) && configuredForecastDays > 0
+          ? Math.min(configuredForecastDays, 16)
+          : undefined,
       enabledRules,
       isForecastTemperatureType
     });
@@ -548,6 +572,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
               logger.debug('Automation', `✅ Segment re-send SUCCESSFUL - segment should now be on device`);
             } else {
               console.error(`[Automation] ❌ Segment re-send FAILED: ${retryResult?.msg || 'unknown error'}`);
+              throw createActionFailureError(rule.name, retryResult, 'active_rule_retry');
             }
             break;
           }
@@ -614,6 +639,9 @@ function registerAutomationCycleRoute(app, deps = {}) {
               userId
             });
             
+            if (actionResult?.errno !== 0) {
+              throw createActionFailureError(rule.name, actionResult, 'active_rule_cooldown_retrigger');
+            }
             triggeredRule.actionResult = actionResult;
             break; // Rule applied, exit loop
           } else {
@@ -718,6 +746,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
           logger.debug('Automation', `🔍 Final segment status: ${actionResult?.errno === 0 ? 'ENABLED ✅' : 'FAILED ❌'}`);
           if (actionResult?.errno !== 0) {
             console.error(`[Automation] 🚨 SEGMENT SEND FAILED - errno=${actionResult?.errno}, msg=${actionResult?.msg}`);
+            throw createActionFailureError(rule.name, actionResult, 'new_trigger');
           }
           
           // Log to audit trail - Rule turned ON
@@ -891,7 +920,11 @@ function registerAutomationCycleRoute(app, deps = {}) {
     try {
       await saveUserAutomationState(req.user.uid, { lastCheck: Date.now() });
     } catch (e) { /* ignore */ }
-    res.status(500).json({ errno: 500, error: error.message });
+    const cycleErrno = Number(error?.cycleErrno);
+    const statusCode = Number.isInteger(cycleErrno) && cycleErrno >= 400 && cycleErrno <= 599
+      ? cycleErrno
+      : 500;
+    res.status(statusCode).json({ errno: statusCode, error: error.message });
   }
 };
 
@@ -903,4 +936,3 @@ function registerAutomationCycleRoute(app, deps = {}) {
 module.exports = {
   registerAutomationCycleRoute
 };
-

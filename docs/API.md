@@ -42,7 +42,13 @@ Unauthenticated health check.
 
 **Response:**
 ```json
-{ "ok": true }
+{
+  "errno": 0,
+  "result": { "status": "OK" },
+  "ok": true,
+  "FOXESS_TOKEN": false,
+  "AMBER_API_KEY": false
+}
 ```
 
 ### Authenticated Health Check
@@ -788,4 +794,3 @@ FoxESS, Sungrow, and SigenEnergy upstream errors are proxied in the `errno` fiel
 | FoxESS (History) | ~60 req/hour | 30 minutes | `users/{uid}/cache/history_*` (per 24h chunk) |
 | Amber (Prices) | ~100 req/hour | 24 hours | `amber_prices/{siteId}` (global, shared) |
 | Open-Meteo (Weather) | Unlimited | 30 minutes | `users/{uid}/cache/weather` |
-

@@ -35,6 +35,10 @@ describe('health route module', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({
+      errno: 0,
+      result: {
+        status: 'OK'
+      },
       ok: true,
       FOXESS_TOKEN: false,
       AMBER_API_KEY: false
@@ -57,6 +61,10 @@ describe('health route module', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({
+      errno: 0,
+      result: {
+        status: 'OK'
+      },
       ok: true,
       FOXESS_TOKEN: true,
       AMBER_API_KEY: true
