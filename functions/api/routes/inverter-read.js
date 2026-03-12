@@ -111,6 +111,8 @@ function buildRealtimePayloadFromDeviceStatus(status = {}, sn, options = {}) {
   const gridPower = normalizeToKw ? (wattsToKw(status.gridPowerW) ?? 0) : gridPowerRaw;
   const feedInPower = normalizeToKw ? (wattsToKw(status.feedInPowerW) ?? 0) : feedInPowerRaw;
   const batteryPower = normalizeToKw ? (wattsToKw(status.batteryPowerW) ?? 0) : batteryPowerRaw;
+  const batteryChargePower = batteryPower > 0 ? batteryPower : 0;
+  const batteryDischargePower = batteryPower < 0 ? Math.abs(batteryPower) : 0;
   const meterPower = gridPower > 0 ? gridPower : -feedInPower;
 
   return {
@@ -128,8 +130,8 @@ function buildRealtimePayloadFromDeviceStatus(status = {}, sn, options = {}) {
         { variable: 'meterPower2', value: meterPower, ...(normalizeToKw ? { unit: 'kW' } : {}) },
         { variable: 'batTemperature', value: batteryTempC, ...(normalizeToKw ? { unit: 'C' } : {}) },
         { variable: 'ambientTemperation', value: ambientTempC, ...(normalizeToKw ? { unit: 'C' } : {}) },
-        { variable: 'batChargePower', value: batteryPower, ...(normalizeToKw ? { unit: 'kW' } : {}) },
-        { variable: 'batDischargePower', value: batteryPower < 0 ? Math.abs(batteryPower) : 0, ...(normalizeToKw ? { unit: 'kW' } : {}) }
+        { variable: 'batChargePower', value: batteryChargePower, ...(normalizeToKw ? { unit: 'kW' } : {}) },
+        { variable: 'batDischargePower', value: batteryDischargePower, ...(normalizeToKw ? { unit: 'kW' } : {}) }
       ]
     }]
   };

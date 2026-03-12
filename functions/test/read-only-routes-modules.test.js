@@ -468,12 +468,15 @@ describe('read-only route modules', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body.errno).toBe(0);
     expect(response.body.result[0].deviceSN).toBe('ALPHA-SN-1');
+    const datas = response.body.result[0].datas || [];
+    const chargePoint = datas.find((entry) => entry.variable === 'batChargePower');
     expect(response.body.result[0].datas).toEqual(expect.arrayContaining([
       expect.objectContaining({ variable: 'SoC', value: 61, unit: '%' }),
       expect.objectContaining({ variable: 'pvPower', value: 4.2, unit: 'kW' }),
       expect.objectContaining({ variable: 'loadsPower', value: 1.7, unit: 'kW' }),
       expect.objectContaining({ variable: 'batDischargePower', value: 1.2, unit: 'kW' })
     ]));
+    expect(chargePoint).toEqual(expect.objectContaining({ variable: 'batChargePower', value: 0, unit: 'kW' }));
     expect(adapterGetStatus).toHaveBeenCalledWith({
       deviceSN: 'ALPHA-SN-1',
       userConfig: {

@@ -16,6 +16,7 @@
         // Defaults match legacy hard-coded values so existing users see no change.
         let _batteryCapacityKwh = 41.93; // kWh; overridden from user config on load
         let _inverterCapacityW  = 10000; // Watts; overridden from user config on load
+        let _userProvider       = '';    // 'foxess' | 'alphaess' | 'sungrow' | etc; overridden on load
 
         // apiClient is declared in api-client.js and initialized after Firebase auth is ready
 
@@ -968,9 +969,25 @@
                 }
 
                 // Pull real-time temperatures if present
-                const batTempVal = findValue(items, ['batTemperature','bat_temperature','batterytemperature','batTemp','batteryTemp','battemperation']);
-                const ambTempVal = findValue(items, ['ambientTemperation','ambienttemperature','ambient_temp','ambientTemp','ambTemperature']);
-                const invTempVal = findValue(items, ['invTemperation','invtemperature','invertertemperature','invTemp','inverterTemp']);
+                let batTempVal = findValue(items, ['batTemperature','bat_temperature','batterytemperature','batTemp','batteryTemp','battemperation']);
+                let ambTempVal = findValue(items, ['ambientTemperation','ambienttemperature','ambient_temp','ambientTemp','ambTemperature']);
+                let invTempVal = findValue(items, ['invTemperation','invtemperature','invertertemperature','invTemp','inverterTemp']);
+
+                const isAlphaProvider = String(_userProvider || '').toLowerCase() === 'alphaess';
+                const batTempNum = Number(batTempVal);
+                const ambTempNum = Number(ambTempVal);
+                const invTempNum = Number(invTempVal);
+                const alphaTempsLikelyUnavailable = isAlphaProvider
+                    && Number.isFinite(batTempNum)
+                    && Number.isFinite(ambTempNum)
+                    && batTempNum === 0
+                    && ambTempNum === 0
+                    && (!Number.isFinite(invTempNum) || invTempNum === 0);
+                if (alphaTempsLikelyUnavailable) {
+                    batTempVal = null;
+                    ambTempVal = null;
+                    invTempVal = null;
+                }
 
                 function fmtTemp(v) { if (v === null || v === undefined || v === '-') return '-'; const n = Number(v); if (isNaN(n)) return '-'; return n.toFixed(1) + '°C'; }
 
@@ -1059,6 +1076,9 @@
                         <div class="label">Inverter Temp</div>
                     </div>
                 </div>`;
+                const tempNoticeHtml = alphaTempsLikelyUnavailable
+                    ? `<div style="margin-top:6px;font-size:11px;color:var(--text-secondary);text-align:center;">AlphaESS is currently not reporting temperature sensors.</div>`
+                    : '';
                 // Debug raw view removed for stable inverter status
                 const rawHtml = '';
 
@@ -1094,9 +1114,9 @@
                         </div>`;
                     });
                     pvHtml += '</div>';
-                    card.innerHTML = html + pvHtml;
+                    card.innerHTML = html + tempNoticeHtml + pvHtml;
                 } else {
-                    card.innerHTML = html;
+                    card.innerHTML = html + tempNoticeHtml;
                 }
             } else if (name === 'Battery SoC' && data.result) {
                 const r = data.result;
@@ -2817,6 +2837,23 @@
             const msg = String(error?.message || error || '').toLowerCase();
             return msg.includes('not authenticated') || msg.includes('401');
         }
+
+        function applyProviderNoticeToQCForm(provider) {
+            const noticeEl = document.getElementById('quickControlProviderNotice');
+            if (!noticeEl) return;
+            const p = String(provider || '').toLowerCase();
+            if (p === 'alphaess') {
+                noticeEl.style.display = 'block';
+                noticeEl.innerHTML =
+                    '<strong style="color:var(--accent-blue);">ℹ️ AlphaESS Note</strong><br>' +
+                    '• <strong>Time windows are rounded to 15-minute slots</strong> — a 5-min charge will use the nearest 15-min window.<br>' +
+                    '• <strong>Power setting is advisory</strong> — AlphaESS controls the actual charge/discharge rate within the window.<br>' +
+                    '• Allow <strong>~30–60 seconds</strong> for your inverter to pick up the new schedule.';
+            } else {
+                noticeEl.style.display = 'none';
+                noticeEl.innerHTML = '';
+            }
+        }
         
         async function refreshQuickControlStatus(showFeedback = false) {
             if (showFeedback) {
@@ -2833,6 +2870,11 @@
                 const data = await resp.json();
                 
                 if (data.errno === 0 && data.result) {
+                    // Update form notice if provider is known from status (before config may load)
+                    if (data.result.provider && !_userProvider) {
+                        _userProvider = String(data.result.provider).toLowerCase();
+                    }
+                    applyProviderNoticeToQCForm(data.result.provider || _userProvider);
                     updateQuickControlUI(data.result);
                     
                     // Check automation status for warning
@@ -2961,6 +3003,15 @@
                 statusDiv.style.background = 'rgba(46,160,67,0.15)';
                 statusDiv.style.borderColor = 'rgba(46,160,67,0.4)';
                 statusDiv.style.color = 'var(--color-success)';
+                const isAlphaEss = (status.provider || _userProvider) === 'alphaess';
+                const secondsActive = Math.floor((Date.now() - status.startedAt) / 1000);
+                const alphaEssHint = isAlphaEss ? `
+                    <div style="margin-bottom:12px;padding:8px 10px;background:rgba(56,139,253,0.1);border:1px solid rgba(56,139,253,0.3);border-radius:5px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                        <strong style="color:var(--accent-blue);">ℹ️ AlphaESS</strong> — 
+                        Time window rounded to nearest 15-min slot.
+                        Power is advisory; your inverter sets the actual rate.
+                        ${secondsActive < 90 ? '<strong style="color:var(--color-orange);">Allow ~30–60s for the inverter to apply this schedule.</strong>' : ''}
+                    </div>` : '';
                 statusDiv.innerHTML = `
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                         <div style="font-weight:600;">${typeIcon} ${typeText} at ${powerKW} kW</div>
@@ -2970,6 +3021,7 @@
                         Started: ${new Date(status.startedAt).toLocaleTimeString()} • 
                         Ends: ${new Date(status.expiresAt).toLocaleTimeString()}
                     </div>
+                    ${alphaEssHint}
                     <div style="display:flex;gap:8px;">
                         <button class="btn" onclick="stopQuickControl()" style="background:var(--color-danger);border-color:var(--color-danger);flex:1;font-size:12px;padding:8px;font-weight:600;">
                             ⏹️ Stop Now
@@ -4839,6 +4891,11 @@
                     }
                     if (typeof cfg.result.batteryCapacityKWh === 'number' && cfg.result.batteryCapacityKWh > 0) {
                         _batteryCapacityKwh = cfg.result.batteryCapacityKWh;
+                    }
+                    // Store inverter provider for provider-specific UI hints (e.g. AlphaESS notices)
+                    if (cfg.result.deviceProvider) {
+                        _userProvider = String(cfg.result.deviceProvider).toLowerCase();
+                        applyProviderNoticeToQCForm(_userProvider);
                     }
                     applyInverterCapacityToUI(_inverterCapacityW);
                 }

@@ -280,6 +280,7 @@ function registerQuickControlRoutes(app, deps = {}) {
         durationMinutes: durationMinutes,
         startedAt: startedAt,
         expiresAt: expiresAt,
+        provider: provider,
         createdAt: serverTimestamp()
       });
 
@@ -305,7 +306,8 @@ function registerQuickControlRoutes(app, deps = {}) {
           power: power,
           durationMinutes: durationMinutes,
           startedAt: startedAt,
-          expiresAt: expiresAt
+          expiresAt: expiresAt,
+          provider: provider
         },
         flagResult,
         verify: verify?.result || null
