@@ -79,6 +79,13 @@ function normalizePowerKw(value) {
   return Number((numeric / 1000).toFixed(4));
 }
 
+function maskSystemSn(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.length <= 6) return '***';
+  return `${raw.slice(0, 3)}***${raw.slice(-3)}`;
+}
+
 function normalizeStatus(payload, observedAtIso, systemSn) {
   const pgrid = toFiniteNumber(payload?.pgrid, null);
   const gridPowerW = pgrid !== null ? Math.max(0, pgrid) : Math.max(0, toFiniteNumber(payload?.gridCharge, 0));
@@ -329,6 +336,11 @@ class AlphaEssDeviceAdapter extends DeviceAdapter {
       throw new Error('AlphaEssDeviceAdapter.setSchedule requires groups array');
     }
 
+    const traceId = `alpha-sched-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    this.logger.info(
+      `[AlphaESSAdapter] trace=${traceId} setSchedule start systemSn=${maskSystemSn(systemSn)} user=${context.userId || 'unknown'} groups=${groups.length}`
+    );
+
     // Fetch current values first so unchanged fields are preserved.
     const [existingCharge, existingDischarge] = await Promise.all([
       this.alphaEssAPI.callAlphaESSAPI('/api/getChargeConfigInfo', 'GET', { sysSn: systemSn }, context.userConfig, context.userId),
@@ -343,6 +355,15 @@ class AlphaEssDeviceAdapter extends DeviceAdapter {
     const dischargeGroups = enabledGroups
       .filter((group) => group.workMode === 'ForceDischarge' || group.workMode === 'Feedin')
       .slice(0, MAX_ALPHA_WINDOWS);
+
+    this.logger.info(
+      `[AlphaESSAdapter] trace=${traceId} groupSummary enabled=${enabledGroups.length} charge=${chargeGroups.length} discharge=${dischargeGroups.length}`
+    );
+    if (dischargeGroups.length > 0 && dischargeGroups[0] && dischargeGroups[0].fdPwr !== undefined) {
+      this.logger.info(
+        `[AlphaESSAdapter] trace=${traceId} note AlphaESS scheduler API does not expose per-window power control; fdPwr=${dischargeGroups[0].fdPwr}W is informational only`
+      );
+    }
 
     const chargePayload = {
       sysSn: systemSn,
@@ -363,6 +384,19 @@ class AlphaEssDeviceAdapter extends DeviceAdapter {
       ...groupToAlphaTime(dischargeGroups[1], 'timeDisf2', 'timeDise2')
     };
 
+    this.logger.info(
+      `[AlphaESSAdapter] trace=${traceId} chargePayload=${JSON.stringify({
+        ...chargePayload,
+        sysSn: maskSystemSn(chargePayload.sysSn)
+      })}`
+    );
+    this.logger.info(
+      `[AlphaESSAdapter] trace=${traceId} dischargePayload=${JSON.stringify({
+        ...dischargePayload,
+        sysSn: maskSystemSn(dischargePayload.sysSn)
+      })}`
+    );
+
     const chargeResult = await this.alphaEssAPI.callAlphaESSAPI(
       '/api/updateChargeConfigInfo',
       'POST',
@@ -370,7 +404,15 @@ class AlphaEssDeviceAdapter extends DeviceAdapter {
       context.userConfig,
       context.userId
     );
-    if (chargeResult.errno !== 0) return this.normalizeProviderError(chargeResult);
+    if (chargeResult.errno !== 0) {
+      this.logger.warn(
+        `[AlphaESSAdapter] trace=${traceId} updateChargeConfigInfo failed errno=${chargeResult.errno} error=${chargeResult.error || ''} raw=${JSON.stringify(chargeResult.raw || null)}`
+      );
+      return this.normalizeProviderError(chargeResult);
+    }
+    this.logger.info(
+      `[AlphaESSAdapter] trace=${traceId} updateChargeConfigInfo success raw=${JSON.stringify(chargeResult.raw || null)}`
+    );
 
     const dischargeResult = await this.alphaEssAPI.callAlphaESSAPI(
       '/api/updateDisChargeConfigInfo',
@@ -379,7 +421,15 @@ class AlphaEssDeviceAdapter extends DeviceAdapter {
       context.userConfig,
       context.userId
     );
-    if (dischargeResult.errno !== 0) return this.normalizeProviderError(dischargeResult);
+    if (dischargeResult.errno !== 0) {
+      this.logger.warn(
+        `[AlphaESSAdapter] trace=${traceId} updateDisChargeConfigInfo failed errno=${dischargeResult.errno} error=${dischargeResult.error || ''} raw=${JSON.stringify(dischargeResult.raw || null)}`
+      );
+      return this.normalizeProviderError(dischargeResult);
+    }
+    this.logger.info(
+      `[AlphaESSAdapter] trace=${traceId} updateDisChargeConfigInfo success raw=${JSON.stringify(dischargeResult.raw || null)}`
+    );
 
     return {
       errno: 0,

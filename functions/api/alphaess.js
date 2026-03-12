@@ -27,6 +27,43 @@ let incrementApiCount = null;
 
 const DEFAULT_BASE_URL = 'https://openapi.alphaess.com';
 
+function maskSensitiveValue(value) {
+  if (value === null || value === undefined) return value;
+  const str = String(value);
+  if (str.length <= 6) return '***';
+  return `${str.slice(0, 3)}***${str.slice(-3)}`;
+}
+
+function sanitizeParams(params) {
+  if (!params || typeof params !== 'object') return params;
+  const sanitized = {};
+  for (const [key, value] of Object.entries(params)) {
+    const lower = String(key).toLowerCase();
+    if (
+      lower.includes('secret') ||
+      lower.includes('token') ||
+      lower.includes('password') ||
+      lower.includes('sign')
+    ) {
+      sanitized[key] = '***';
+    } else if (lower.includes('sn')) {
+      sanitized[key] = maskSensitiveValue(value);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
+function summarizeUpstreamPayload(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    code: Number(raw.code),
+    msg: raw.msg || raw.info || raw.message || null,
+    success: raw.success === true
+  };
+}
+
 function toSafeString(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
@@ -158,6 +195,8 @@ async function callAlphaESSAPI(path, method = 'GET', params = null, userConfig =
 
   const normalizedPath = String(path || '').startsWith('/') ? String(path) : `/${String(path || '')}`;
   const httpMethod = String(method || 'GET').toUpperCase();
+  const traceId = `alphaess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const startedAtMs = Date.now();
   const timeStamp = Math.floor(Date.now() / 1000);
   const sign = generateAlphaEssSign(appId, appSecret, timeStamp);
 
@@ -186,6 +225,10 @@ async function callAlphaESSAPI(path, method = 'GET', params = null, userConfig =
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
+  logger.info(
+    `[AlphaESSAPI] trace=${traceId} request ${httpMethod} ${normalizedPath} user=${userId || 'unknown'} params=${JSON.stringify(sanitizeParams(params))}`
+  );
+
   try {
     const response = await fetch(url, {
       method: httpMethod,
@@ -209,13 +252,31 @@ async function callAlphaESSAPI(path, method = 'GET', params = null, userConfig =
       await incrementApiCount(userId, 'alphaess');
     }
 
-    logger.info(`[AlphaESSAPI] ${httpMethod} ${normalizedPath} errno=${normalized.errno}`, true);
+    const elapsedMs = Date.now() - startedAtMs;
+    const upstream = summarizeUpstreamPayload(parsed);
+    if (normalized.errno === 0) {
+      logger.info(
+        `[AlphaESSAPI] trace=${traceId} success ${httpMethod} ${normalizedPath} http=${response.status} errno=${normalized.errno} elapsedMs=${elapsedMs} upstream=${JSON.stringify(upstream)}`,
+        true
+      );
+    } else {
+      logger.warn(
+        `[AlphaESSAPI] trace=${traceId} failure ${httpMethod} ${normalizedPath} http=${response.status} errno=${normalized.errno} elapsedMs=${elapsedMs} upstream=${JSON.stringify(upstream)} params=${JSON.stringify(sanitizeParams(params))}`
+      );
+    }
     return normalized;
   } catch (error) {
     clearTimeout(timeoutId);
+    const elapsedMs = Date.now() - startedAtMs;
     if (error && error.name === 'AbortError') {
+      logger.warn(
+        `[AlphaESSAPI] trace=${traceId} timeout ${httpMethod} ${normalizedPath} elapsedMs=${elapsedMs} params=${JSON.stringify(sanitizeParams(params))}`
+      );
       return { errno: 3505, error: 'AlphaESS request timed out' };
     }
+    logger.error(
+      `[AlphaESSAPI] trace=${traceId} exception ${httpMethod} ${normalizedPath} elapsedMs=${elapsedMs} error=${error && error.message ? error.message : 'unknown'}`
+    );
     return { errno: 3500, error: error && error.message ? error.message : 'AlphaESS API call failed' };
   }
 }

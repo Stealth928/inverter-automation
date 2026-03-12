@@ -629,6 +629,110 @@ describe('admin route module', () => {
     expect(runsGet).not.toHaveBeenCalled();
   });
 
+  test('user stats resolves AlphaESS credential presence from secrets doc', async () => {
+    const metricsGet = jest.fn(async () => ({
+      size: 0,
+      docs: [],
+      forEach: () => {}
+    }));
+    const automationGet = jest.fn(async () => ({
+      exists: true,
+      data: () => ({ enabled: false })
+    }));
+    const rulesGet = jest.fn(async () => ({ size: 0 }));
+    const configGet = jest.fn(async () => ({
+      exists: true,
+      data: () => ({
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'ALPHA-SN-1',
+        alphaessAppId: 'alpha-app-id',
+        setupComplete: false
+      })
+    }));
+    const secretsGet = jest.fn(async () => ({
+      exists: true,
+      data: () => ({
+        alphaessAppSecret: 'super-secret'
+      })
+    }));
+
+    const userDocRef = {
+      collection: jest.fn((subName) => {
+        if (subName === 'metrics') {
+          return {
+            orderBy: jest.fn(() => ({
+              limit: jest.fn(() => ({
+                get: metricsGet
+              }))
+            }))
+          };
+        }
+        if (subName === 'automation') {
+          return {
+            doc: jest.fn(() => ({
+              get: automationGet
+            }))
+          };
+        }
+        if (subName === 'rules') {
+          return {
+            get: rulesGet
+          };
+        }
+        if (subName === 'config') {
+          return {
+            doc: jest.fn((docId) => {
+              if (docId !== 'main') throw new Error(`Unexpected config doc: ${docId}`);
+              return { get: configGet };
+            })
+          };
+        }
+        if (subName === 'secrets') {
+          return {
+            doc: jest.fn((docId) => {
+              if (docId !== 'credentials') throw new Error(`Unexpected secrets doc: ${docId}`);
+              return { get: secretsGet };
+            })
+          };
+        }
+        throw new Error(`Unexpected user subcollection: ${subName}`);
+      })
+    };
+
+    const deps = createDeps({
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') {
+            throw new Error(`Unexpected collection: ${name}`);
+          }
+          return {
+            doc: jest.fn(() => userDocRef)
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/users/user-alpha/stats')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.configSummary).toEqual(expect.objectContaining({
+      deviceProvider: 'alphaess',
+      hasAlphaEssAppId: true,
+      hasAlphaEssAppSecret: true
+    }));
+    expect(response.body.result.configSummary.providerAccess).toEqual(expect.objectContaining({
+      credentialLabel: 'App Credentials',
+      hasCredential: true
+    }));
+    expect(response.body.result.configSummary.alphaessAppSecret).toBeUndefined();
+    expect(configGet).toHaveBeenCalledTimes(1);
+    expect(secretsGet).toHaveBeenCalledTimes(1);
+  });
+
   test('role update validates allowed roles', async () => {
     const deps = createDeps();
     const app = buildApp(deps);

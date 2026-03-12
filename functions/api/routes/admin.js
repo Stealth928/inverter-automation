@@ -1343,8 +1343,9 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
       return 'foxess';
     };
 
-    const buildProviderFlags = (config = {}) => {
+    const buildProviderFlags = (config = {}, secrets = {}) => {
       const provider = normalizeProvider(config.deviceProvider, config);
+      const hasAlphaEssAppSecret = !!(config.alphaessAppSecret || secrets.alphaessAppSecret);
       return {
         provider,
         hasDeviceSn: !!config.deviceSn,
@@ -1352,7 +1353,7 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
         hasAmberApiKey: !!config.amberApiKey,
         hasAlphaEssSystemSn: !!(config.alphaessSystemSn || config.alphaessSysSn),
         hasAlphaEssAppId: !!config.alphaessAppId,
-        hasAlphaEssAppSecret: !!config.alphaessAppSecret,
+        hasAlphaEssAppSecret,
         hasSungrowUsername: !!config.sungrowUsername,
         hasSungrowDeviceSn: !!(config.sungrowDeviceSn || (provider === 'sungrow' && config.deviceSn)),
         hasSigenUsername: !!config.sigenUsername,
@@ -1474,10 +1475,17 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
     // 4. Config summary (no secrets)
     let configSummary = {};
     try {
-      const configDoc = await db.collection('users').doc(uid).collection('config').doc('main').get();
+      const [configDoc, secretsDoc] = await Promise.all([
+        db.collection('users').doc(uid).collection('config').doc('main').get(),
+        db.collection('users').doc(uid).collection('secrets').doc('credentials').get().catch(() => ({
+          exists: false,
+          data: () => ({})
+        }))
+      ]);
       if (configDoc.exists) {
         const c = configDoc.data();
-        const providerFlags = buildProviderFlags(c);
+        const secrets = secretsDoc.exists ? (secretsDoc.data() || {}) : {};
+        const providerFlags = buildProviderFlags(c, secrets);
         const provider = providerFlags.provider;
         const providerAccess = buildProviderAccessSummary(provider, providerFlags);
 

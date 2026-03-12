@@ -540,15 +540,60 @@
             border: 1px solid var(--border-primary);
             border-radius: var(--radius-md);
             padding: 8px 10px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+        }
+        .scheduler-slo-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: transparent;
         }
         .scheduler-slo-item.good {
-            border-color: color-mix(in srgb, var(--color-success) 55%, var(--border-primary));
+            border-color: color-mix(in srgb, var(--color-success) 78%, var(--border-primary));
+            background: linear-gradient(
+                180deg,
+                color-mix(in srgb, var(--color-success) 17%, transparent),
+                color-mix(in srgb, var(--color-success) 7%, var(--bg-tertiary))
+            );
+            box-shadow:
+                inset 0 0 0 1px color-mix(in srgb, var(--color-success) 20%, transparent),
+                0 8px 20px -14px color-mix(in srgb, var(--color-success) 78%, transparent);
         }
         .scheduler-slo-item.warn {
-            border-color: color-mix(in srgb, var(--color-warning) 55%, var(--border-primary));
+            border-color: color-mix(in srgb, var(--color-warning) 78%, var(--border-primary));
+            background: linear-gradient(
+                180deg,
+                color-mix(in srgb, var(--color-warning) 18%, transparent),
+                color-mix(in srgb, var(--color-warning) 7%, var(--bg-tertiary))
+            );
+            box-shadow:
+                inset 0 0 0 1px color-mix(in srgb, var(--color-warning) 24%, transparent),
+                0 8px 20px -14px color-mix(in srgb, var(--color-warning) 82%, transparent);
         }
         .scheduler-slo-item.bad {
-            border-color: color-mix(in srgb, var(--color-danger) 55%, var(--border-primary));
+            border-color: color-mix(in srgb, var(--color-danger) 80%, var(--border-primary));
+            background: linear-gradient(
+                180deg,
+                color-mix(in srgb, var(--color-danger) 19%, transparent),
+                color-mix(in srgb, var(--color-danger) 8%, var(--bg-tertiary))
+            );
+            box-shadow:
+                inset 0 0 0 1px color-mix(in srgb, var(--color-danger) 28%, transparent),
+                0 8px 20px -14px color-mix(in srgb, var(--color-danger) 84%, transparent);
+        }
+        .scheduler-slo-item.good::before {
+            background: color-mix(in srgb, var(--color-success) 90%, white 10%);
+        }
+        .scheduler-slo-item.warn::before {
+            background: color-mix(in srgb, var(--color-warning) 90%, white 10%);
+        }
+        .scheduler-slo-item.bad::before {
+            background: color-mix(in srgb, var(--color-danger) 90%, white 10%);
         }
         .scheduler-slo-item .slo-title {
             font-size: 10px;
@@ -558,10 +603,19 @@
             margin-bottom: 4px;
         }
         .scheduler-slo-item .slo-status {
-            font-size: 12px;
-            font-weight: 700;
+            font-size: 13px;
+            font-weight: 800;
             color: var(--text-primary);
             line-height: 1.2;
+        }
+        .scheduler-slo-item.good .slo-status {
+            color: color-mix(in srgb, var(--color-success) 88%, var(--text-primary));
+        }
+        .scheduler-slo-item.warn .slo-status {
+            color: color-mix(in srgb, var(--color-warning) 90%, var(--text-primary));
+        }
+        .scheduler-slo-item.bad .slo-status {
+            color: color-mix(in srgb, var(--color-danger) 92%, var(--text-primary));
         }
         .scheduler-slo-item .slo-value {
             margin-top: 2px;

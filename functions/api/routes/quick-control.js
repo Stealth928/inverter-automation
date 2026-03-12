@@ -2,6 +2,13 @@
 
 const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
 
+function maskDeviceId(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.length <= 6) return '***';
+  return `${raw.slice(0, 3)}***${raw.slice(-3)}`;
+}
+
 function registerQuickControlRoutes(app, deps = {}) {
   const addHistoryEntry = deps.addHistoryEntry;
   const addMinutes = deps.addMinutes;
@@ -66,8 +73,16 @@ function registerQuickControlRoutes(app, deps = {}) {
     try {
       const userId = req.user.uid;
       const { type, power, durationMinutes } = req.body;
+      const requestId = `qc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-      console.log('[QuickControl] Start request:', { userId, type, power, durationMinutes, bodyType: typeof req.body });
+      console.log('[QuickControl] Start request:', {
+        requestId,
+        userId,
+        type,
+        power,
+        durationMinutes,
+        bodyType: typeof req.body
+      });
 
       if (!type || (type !== 'charge' && type !== 'discharge')) {
         console.log('[QuickControl] Validation failed: invalid type');
@@ -82,7 +97,7 @@ function registerQuickControlRoutes(app, deps = {}) {
         return res.status(400).json({ errno: 400, error: 'durationMinutes must be between 2 and 360' });
       }
 
-      logger.debug('QuickControl', `Start requested: type=${type}, power=${power}W, duration=${durationMinutes}min, userId=${userId}`);
+      logger.debug('QuickControl', `requestId=${requestId} Start requested: type=${type}, power=${power}W, duration=${durationMinutes}min, userId=${userId}`);
 
       const userConfig = await getUserConfig(userId);
       const resolvedDevice = resolveProviderDeviceId(userConfig);
@@ -95,12 +110,17 @@ function registerQuickControlRoutes(app, deps = {}) {
         ? adapterRegistry.getDeviceProvider(provider)
         : null;
 
+      logger.info(
+        'QuickControl',
+        `requestId=${requestId} provider=${provider} device=${maskDeviceId(deviceSN)} adapterAvailable=${!!deviceAdapter}`
+      );
+
       const userTimezone = getAutomationTimezone(userConfig);
       const userTime = getUserTime(userTimezone);
       const startHour = userTime.hour;
       const startMinute = userTime.minute;
 
-      logger.debug('QuickControl', `Using timezone: ${userTimezone}, local time: ${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`);
+      logger.debug('QuickControl', `requestId=${requestId} Using timezone: ${userTimezone}, local time: ${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`);
 
       const endTimeObj = addMinutes(startHour, startMinute, durationMinutes);
       let endHour = endTimeObj.hour;
@@ -114,13 +134,13 @@ function registerQuickControlRoutes(app, deps = {}) {
         endMinute = 59;
       }
 
-      logger.debug('QuickControl', `Segment time: ${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')} -> ${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`);
+      logger.debug('QuickControl', `requestId=${requestId} Segment time: ${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')} -> ${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`);
 
       const workMode = type === 'charge' ? 'ForceCharge' : 'ForceDischarge';
       const minSocOnGrid = 20;
       const fdSoc = type === 'charge' ? 90 : 30;
 
-      logger.debug('QuickControl', `Parameters: workMode=${workMode}, power=${power}W, minSocOnGrid=${minSocOnGrid}%, fdSoc=${fdSoc}%, maxSoc=100%`);
+      logger.debug('QuickControl', `requestId=${requestId} Parameters: workMode=${workMode}, power=${power}W, minSocOnGrid=${minSocOnGrid}%, fdSoc=${fdSoc}%, maxSoc=100%`);
 
       const groups = [];
       for (let i = 0; i < 8; i++) {
@@ -153,6 +173,8 @@ function registerQuickControlRoutes(app, deps = {}) {
         }
       }
 
+      logger.info('QuickControl', `requestId=${requestId} activeGroup=${JSON.stringify(groups[0])}`);
+
       let result = null;
       let attempts = 0;
       const maxAttempts = 3;
@@ -164,32 +186,38 @@ function registerQuickControlRoutes(app, deps = {}) {
             if (!deviceAdapter || typeof deviceAdapter.setSchedule !== 'function') {
               return res.status(400).json({ errno: 400, error: `Not supported for provider: ${provider}` });
             }
-            logger.debug('QuickControl', `Attempt ${attempts}/${maxAttempts}: Calling provider adapter...`);
+            logger.debug('QuickControl', `requestId=${requestId} Attempt ${attempts}/${maxAttempts}: Calling provider adapter...`);
             result = await deviceAdapter.setSchedule({ deviceSN, userConfig, userId }, groups);
           } else {
-            logger.debug('QuickControl', `Attempt ${attempts}/${maxAttempts}: Calling FoxESS API...`);
+            logger.debug('QuickControl', `requestId=${requestId} Attempt ${attempts}/${maxAttempts}: Calling FoxESS API...`);
             result = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/enable', 'POST', {
               deviceSN,
               groups
             }, userConfig, userId);
           }
 
-          logger.debug(
-            'QuickControl',
-            `Attempt ${attempts} result: errno=${result?.errno}, msg=${result?.msg || result?.error || ''}`
-          );
+          const attemptDiagnostic = {
+            requestId,
+            provider,
+            attempt: attempts,
+            errno: result?.errno,
+            msg: result?.msg || result?.error || '',
+            hasResult: !!result?.result,
+            raw: result?.raw || null
+          };
+          logger.debug('QuickControl', `Attempt diagnostic: ${JSON.stringify(attemptDiagnostic)}`);
 
           if (result && result.errno === 0) {
-            logger.debug('QuickControl', `Segment set success on attempt ${attempts}`);
+            logger.debug('QuickControl', `requestId=${requestId} Segment set success on attempt ${attempts}`);
             break;
           } else {
-            logger.debug('QuickControl', `Attempt ${attempts} returned errno=${result?.errno}`);
+            logger.debug('QuickControl', `requestId=${requestId} Attempt ${attempts} returned errno=${result?.errno}`);
             if (attempts < maxAttempts) {
               await new Promise((resolve) => setTimeout(resolve, 1000));
             }
           }
         } catch (apiErr) {
-          logger.debug('QuickControl', `API error on attempt ${attempts}: ${apiErr.message}`);
+          logger.debug('QuickControl', `requestId=${requestId} API error on attempt ${attempts}: ${apiErr.message}`);
           if (attempts === maxAttempts) throw apiErr;
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
@@ -200,16 +228,19 @@ function registerQuickControlRoutes(app, deps = {}) {
           ? 'FoxESS'
           : (provider ? String(provider).toUpperCase() : 'Provider');
         const errorDetails = {
+          requestId,
           errno: result?.errno || 500,
           msg: result?.msg || result?.error || 'Failed to set quick control segment',
           result: result?.result || null,
-          provider
+          provider,
+          raw: result?.raw || null
         };
         console.error(`[QuickControl] ${providerLabel} API failed after retries:`, JSON.stringify(errorDetails));
         return res.status(500).json({
           errno: errorDetails.errno,
           error: errorDetails.msg,
-          details: errorDetails.result
+          details: errorDetails.result,
+          requestId
         });
       }
 
@@ -262,11 +293,12 @@ function registerQuickControlRoutes(app, deps = {}) {
         });
       } catch (e) { /* ignore */ }
 
-      logger.info('QuickControl', `Started: type=${type}, power=${power}W, duration=${durationMinutes}min, expiresAt=${new Date(expiresAt).toISOString()}`);
+      logger.info('QuickControl', `requestId=${requestId} Started: type=${type}, power=${power}W, duration=${durationMinutes}min, expiresAt=${new Date(expiresAt).toISOString()}`);
 
       res.json({
         errno: 0,
         msg: 'Quick control started',
+        requestId,
         state: {
           active: true,
           type: type,
