@@ -40,7 +40,7 @@
       batterySystemCost: ''
     },
     large: {
-      batterySizeKwh: 20,
+      batterySizeKwh: 42,
       cyclesPerWeek: 5.5,
       chargeEnergyCostCents: 8,
       dischargeValueCents: 34,
@@ -48,6 +48,18 @@
       activeMonthsPerYear: 12,
       manualCaptureRate: 45,
       automationCaptureRate: 88,
+      annualSoftwareCost: 0,
+      batterySystemCost: ''
+    },
+    highSpread: {
+      batterySizeKwh: 13.5,
+      cyclesPerWeek: 5.2,
+      chargeEnergyCostCents: 6,
+      dischargeValueCents: 42,
+      roundTripEfficiency: 88,
+      activeMonthsPerYear: 12,
+      manualCaptureRate: 32,
+      automationCaptureRate: 90,
       annualSoftwareCost: 0,
       batterySystemCost: ''
     }
@@ -251,14 +263,14 @@
       if (model.automationAnnualValue > 0) {
         var paybackYears = state.batterySystemCost / model.automationAnnualValue;
         setText('simplePaybackValue', formatPaybackYears(paybackYears));
-        setText('simplePaybackSub', 'Simple payback using modeled timed-use value only');
+        setText('simplePaybackSub', 'Simple payback from annual timed-use value (software cost excluded)');
       } else {
         setText('simplePaybackValue', 'No payback');
-        setText('simplePaybackSub', 'The annual battery value is not positive under this scenario');
+        setText('simplePaybackSub', 'The annual timed-use value is not positive under this scenario');
       }
     } else {
       setText('simplePaybackValue', 'Add a battery cost');
-      setText('simplePaybackSub', 'Optional based on operating value only');
+      setText('simplePaybackSub', 'Optional based on annual timed-use value (excludes software cost)');
     }
 
     setText('manualCaptureDisplay', state.manualCaptureRate + '%');
@@ -272,6 +284,39 @@
     setText('scenarioInsight', resolveInsight(state, model));
   }
 
+  function valuesMatchForPreset(key, left, right) {
+    var normalizedLeft = key === 'batterySystemCost' ? Number(left || 0) : Number(left);
+    var normalizedRight = key === 'batterySystemCost' ? Number(right || 0) : Number(right);
+    return normalizedLeft === normalizedRight;
+  }
+
+  function presetMatchesState(preset, state) {
+    return QUERY_KEYS.every(function (key) {
+      return valuesMatchForPreset(key, preset[key], state[key]);
+    });
+  }
+
+  function setPresetSelection(name) {
+    var presetButtons = document.querySelectorAll('.tool-preset');
+    presetButtons.forEach(function (button) {
+      var isActive = name && button.getAttribute('data-preset') === name;
+      button.classList.toggle('is-active', Boolean(isActive));
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+  }
+
+  function syncPresetSelection(state) {
+    var presetNames = Object.keys(PRESETS);
+    for (var i = 0; i < presetNames.length; i += 1) {
+      var name = presetNames[i];
+      if (presetMatchesState(PRESETS[name], state)) {
+        setPresetSelection(name);
+        return;
+      }
+    }
+    setPresetSelection('');
+  }
+
   function applyPreset(name) {
     var preset = PRESETS[name];
     if (!preset) return;
@@ -279,11 +324,11 @@
     QUERY_KEYS.forEach(function (key) {
       writeInputValue(key, preset[key]);
     });
+    setPresetSelection(name);
+  }
 
-    var presetButtons = document.querySelectorAll('.tool-preset');
-    presetButtons.forEach(function (button) {
-      button.classList.toggle('is-active', button.getAttribute('data-preset') === name);
-    });
+  function clearPresetSelection() {
+    setPresetSelection('');
   }
 
   function bindPresets() {
@@ -310,6 +355,7 @@
 
   function refresh() {
     var state = readState();
+    syncPresetSelection(state);
     var model = calculateModel(state);
     updateResults(state, model);
     serializeState(state);
@@ -322,8 +368,14 @@
 
     var form = document.getElementById('batteryRoiForm');
     if (form) {
-      form.addEventListener('input', refresh);
-      form.addEventListener('change', refresh);
+      form.addEventListener('input', function () {
+        clearPresetSelection();
+        refresh();
+      });
+      form.addEventListener('change', function () {
+        clearPresetSelection();
+        refresh();
+      });
     }
 
     refresh();
