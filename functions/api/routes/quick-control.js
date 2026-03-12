@@ -174,7 +174,10 @@ function registerQuickControlRoutes(app, deps = {}) {
             }, userConfig, userId);
           }
 
-          logger.debug('QuickControl', `Attempt ${attempts} result: errno=${result?.errno}, msg=${result?.msg}`);
+          logger.debug(
+            'QuickControl',
+            `Attempt ${attempts} result: errno=${result?.errno}, msg=${result?.msg || result?.error || ''}`
+          );
 
           if (result && result.errno === 0) {
             logger.debug('QuickControl', `Segment set success on attempt ${attempts}`);
@@ -193,12 +196,16 @@ function registerQuickControlRoutes(app, deps = {}) {
       }
 
       if (!result || result.errno !== 0) {
+        const providerLabel = provider === 'foxess'
+          ? 'FoxESS'
+          : (provider ? String(provider).toUpperCase() : 'Provider');
         const errorDetails = {
           errno: result?.errno || 500,
-          msg: result?.msg || 'Failed to set quick control segment',
-          result: result?.result || null
+          msg: result?.msg || result?.error || 'Failed to set quick control segment',
+          result: result?.result || null,
+          provider
         };
-        console.error('[QuickControl] FoxESS API failed after retries:', JSON.stringify(errorDetails));
+        console.error(`[QuickControl] ${providerLabel} API failed after retries:`, JSON.stringify(errorDetails));
         return res.status(500).json({
           errno: errorDetails.errno,
           error: errorDetails.msg,
@@ -366,7 +373,7 @@ function registerQuickControlRoutes(app, deps = {}) {
       if (!result || result.errno !== 0) {
         return res.status(500).json({
           errno: result?.errno || 500,
-          error: result?.msg || 'Failed to clear quick control segment'
+          error: result?.msg || result?.error || 'Failed to clear quick control segment'
         });
       }
 

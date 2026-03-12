@@ -130,4 +130,30 @@ describe('quick-control route module', () => {
     });
     expect(cleanupExpiredQuickControl).toHaveBeenCalledWith('u-quick', quickState);
   });
+
+  test('start returns provider error details for non-foxess adapters', async () => {
+    const adapter = {
+      setSchedule: jest.fn(async () => ({ errno: 3500, error: 'Parameter Error' }))
+    };
+    const deps = createDeps({
+      getUserConfig: jest.fn(async () => ({
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'ALPHA-SN-001'
+      })),
+      adapterRegistry: {
+        getDeviceProvider: jest.fn(() => adapter)
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/quickcontrol/start')
+      .set('Authorization', 'Bearer token')
+      .send({ type: 'discharge', power: 5000, durationMinutes: 5 });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body.errno).toBe(3500);
+    expect(response.body.error).toBe('Parameter Error');
+    expect(adapter.setSchedule).toHaveBeenCalled();
+  });
 });

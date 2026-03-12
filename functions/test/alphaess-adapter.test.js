@@ -222,6 +222,57 @@ describe('alphaess device adapter', () => {
     );
   });
 
+  test('setSchedule aligns AlphaESS windows to 15-minute increments', async () => {
+    const mockCall = jest.fn(async (path, method, params) => {
+      if (path === '/api/getChargeConfigInfo') {
+        return { errno: 0, result: { batHighCap: 90, gridCharge: 0 } };
+      }
+      if (path === '/api/getDisChargeConfigInfo') {
+        return { errno: 0, result: { batUseCap: 15, ctrDis: 0 } };
+      }
+      if (path === '/api/updateChargeConfigInfo') {
+        expect(method).toBe('POST');
+        expect(params.timeChaf1).toBe('10:15');
+        expect(params.timeChae1).toBe('10:45');
+        return { errno: 0, result: { ok: true } };
+      }
+      if (path === '/api/updateDisChargeConfigInfo') {
+        expect(method).toBe('POST');
+        expect(params.timeDisf1).toBe('19:00');
+        expect(params.timeDise1).toBe('19:30');
+        return { errno: 0, result: { ok: true } };
+      }
+      return { errno: 0, result: {} };
+    });
+
+    const adapter = createAlphaEssDeviceAdapter({
+      alphaEssAPI: { callAlphaESSAPI: mockCall }
+    });
+
+    const result = await adapter.setSchedule(BASE_CONTEXT, [
+      {
+        enable: 1,
+        workMode: 'ForceCharge',
+        startHour: 10,
+        startMinute: 22,
+        endHour: 10,
+        endMinute: 33,
+        maxSoc: 95
+      },
+      {
+        enable: 1,
+        workMode: 'ForceDischarge',
+        startHour: 19,
+        startMinute: 14,
+        endHour: 19,
+        endMinute: 16,
+        fdSoc: 30
+      }
+    ]);
+
+    expect(result.errno).toBe(0);
+  });
+
   test('getHistory rejects windows longer than 7 days', async () => {
     const adapter = buildAdapter();
     const now = Date.now();

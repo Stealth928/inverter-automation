@@ -1322,10 +1322,125 @@
         }
     }
 
+    const PROVIDER_LABELS = {
+        foxess: 'FoxESS',
+        sungrow: 'Sungrow',
+        sigenergy: 'SigenEnergy',
+        alphaess: 'AlphaESS'
+    };
+
+    function normalizeProvider(providerRaw, cfg = null) {
+        const provider = String(providerRaw || '').toLowerCase().trim();
+        if (provider) return provider;
+        if (cfg && typeof cfg === 'object') {
+            if (cfg.hasSungrowUsername || cfg.hasSungrowDeviceSn) return 'sungrow';
+            if (cfg.hasSigenUsername || cfg.hasSigenStationId || cfg.hasSigenDeviceSn) return 'sigenergy';
+            if (cfg.hasAlphaEssSystemSn || cfg.hasAlphaEssAppId || cfg.hasAlphaEssAppSecret) return 'alphaess';
+        }
+        return 'foxess';
+    }
+
+    function providerLabel(providerRaw) {
+        const rawProvider = String(providerRaw || '').toLowerCase().trim();
+        if (!rawProvider) return 'Unknown';
+        const provider = normalizeProvider(rawProvider);
+        if (PROVIDER_LABELS[provider]) return PROVIDER_LABELS[provider];
+        return provider ? `${provider.charAt(0).toUpperCase()}${provider.slice(1)}` : 'Unknown';
+    }
+
+    function toCounter(value) {
+        const n = Number(value);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+
+    function getProviderAccessSummary(cfg = {}, provider = 'foxess') {
+        const providedSummary = cfg.providerAccess;
+        if (providedSummary && typeof providedSummary === 'object') {
+            return {
+                identifierLabel: providedSummary.identifierLabel || 'Device ID',
+                hasIdentifier: !!providedSummary.hasIdentifier,
+                credentialLabel: providedSummary.credentialLabel || 'Credentials',
+                hasCredential: !!providedSummary.hasCredential
+            };
+        }
+
+        switch (provider) {
+            case 'sungrow':
+                return {
+                    identifierLabel: 'Device SN',
+                    hasIdentifier: !!cfg.hasSungrowDeviceSn,
+                    credentialLabel: 'iSolarCloud Login',
+                    hasCredential: !!cfg.hasSungrowUsername
+                };
+            case 'sigenergy':
+                return {
+                    identifierLabel: 'Station / Device ID',
+                    hasIdentifier: !!(cfg.hasSigenStationId || cfg.hasSigenDeviceSn),
+                    credentialLabel: 'Account Login',
+                    hasCredential: !!cfg.hasSigenUsername
+                };
+            case 'alphaess':
+                return {
+                    identifierLabel: 'System SN',
+                    hasIdentifier: !!cfg.hasAlphaEssSystemSn,
+                    credentialLabel: 'App Credentials',
+                    hasCredential: !!(cfg.hasAlphaEssAppId && cfg.hasAlphaEssAppSecret)
+                };
+            case 'foxess':
+            default:
+                return {
+                    identifierLabel: 'Device SN',
+                    hasIdentifier: !!cfg.hasDeviceSn,
+                    credentialLabel: 'API Token',
+                    hasCredential: !!cfg.hasFoxessToken
+                };
+        }
+    }
+
+    function summarizeInverterUsage(dayMetrics = {}) {
+        const byProvider = {};
+        const providerSource = (dayMetrics.inverterByProvider && typeof dayMetrics.inverterByProvider === 'object')
+            ? dayMetrics.inverterByProvider
+            : {};
+
+        Object.entries(providerSource).forEach(([providerKey, value]) => {
+            const count = toCounter(value);
+            if (!count) return;
+            byProvider[normalizeProvider(providerKey)] = count;
+        });
+
+        ['foxess', 'sungrow', 'sigenergy', 'alphaess'].forEach((providerKey) => {
+            if (Object.prototype.hasOwnProperty.call(byProvider, providerKey)) return;
+            const count = toCounter(dayMetrics[providerKey]);
+            if (!count) return;
+            byProvider[providerKey] = count;
+        });
+
+        let inverter = toCounter(dayMetrics.inverter);
+        if (!inverter) {
+            inverter = Object.values(byProvider).reduce((sum, count) => sum + count, 0);
+            Object.entries(dayMetrics).forEach(([metricKey, metricValue]) => {
+                if (metricKey === 'inverter' || metricKey === 'inverterByProvider' || metricKey === 'amber' || metricKey === 'weather' || metricKey === 'updatedAt') return;
+                if (Object.prototype.hasOwnProperty.call(byProvider, normalizeProvider(metricKey))) return;
+                inverter += toCounter(metricValue);
+            });
+        }
+
+        const breakdown = Object.entries(byProvider)
+            .sort((a, b) => b[1] - a[1])
+            .map(([providerKey, count]) => `${providerLabel(providerKey)}: ${count}`)
+            .join(', ');
+
+        return { inverter, breakdown };
+    }
+
     function renderStats(stats) {
         const body = document.getElementById('statsDrawerBody');
         const cfg = stats.configSummary || {};
         const autoState = stats.automationState || {};
+        const provider = normalizeProvider(cfg.deviceProvider, cfg);
+        const providerName = providerLabel(provider);
+        const providerAccess = getProviderAccessSummary(cfg, provider);
         const inverterCapacityW = Number(cfg.inverterCapacityW);
         const batteryCapacityKWh = Number(cfg.batteryCapacityKWh);
         const inverterLabel = Number.isFinite(inverterCapacityW) && inverterCapacityW > 0
@@ -1354,12 +1469,16 @@
                     <div class="stat-subsection-title">Access & Integrations</div>
                     <div class="stat-grid">
                         <div class="stat-item">
-                            <div class="label">Device SN</div>
-                            <div class="value small">${cfg.hasDeviceSn ? '✅ Configured' : '❌ Missing'}</div>
+                            <div class="label">Inverter Provider</div>
+                            <div class="value small">${providerName}</div>
                         </div>
                         <div class="stat-item">
-                            <div class="label">FoxESS Token</div>
-                            <div class="value small">${cfg.hasFoxessToken ? '✅ Set' : '❌ Missing'}</div>
+                            <div class="label">${providerAccess.identifierLabel}</div>
+                            <div class="value small">${providerAccess.hasIdentifier ? '✅ Configured' : '❌ Missing'}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">${providerAccess.credentialLabel}</div>
+                            <div class="value small">${providerAccess.hasCredential ? '✅ Set' : '❌ Missing'}</div>
                         </div>
                         <div class="stat-item">
                             <div class="label">Amber API Key</div>
@@ -1426,8 +1545,9 @@
         const days = Object.keys(metrics).sort().reverse().slice(0, 14); // Last 14 days
         let maxTotal = 1;
         days.forEach(day => {
-            const m = metrics[day];
-            const total = (m.foxess || 0) + (m.amber || 0) + (m.weather || 0);
+            const m = metrics[day] || {};
+            const inverterUsage = summarizeInverterUsage(m);
+            const total = inverterUsage.inverter + toCounter(m.amber) + toCounter(m.weather);
             if (total > maxTotal) maxTotal = total;
         });
 
@@ -1436,21 +1556,25 @@
             metricsHtml += '<p style="color: var(--text-secondary); font-size: 13px;">No metrics data available</p>';
         } else {
             metricsHtml += `<div class="metrics-legend">
-                <span class="foxess">FoxESS</span>
+                <span class="inverter">Inverter</span>
                 <span class="amber">Amber</span>
                 <span class="weather">Weather</span>
             </div>`;
             days.forEach(day => {
-                const m = metrics[day];
-                const foxess = m.foxess || 0;
-                const amber = m.amber || 0;
-                const weather = m.weather || 0;
-                const total = foxess + amber + weather;
+                const m = metrics[day] || {};
+                const inverterUsage = summarizeInverterUsage(m);
+                const inverter = inverterUsage.inverter;
+                const amber = toCounter(m.amber);
+                const weather = toCounter(m.weather);
+                const total = inverter + amber + weather;
                 const barScale = 200; // max bar width in px
+                const inverterTitle = inverterUsage.breakdown
+                    ? `Inverter: ${inverter} (${inverterUsage.breakdown})`
+                    : `Inverter: ${inverter}`;
                 metricsHtml += `<div class="metrics-day">
                     <span class="date">${day.slice(5)}</span>
                     <div class="metrics-bar-group">
-                        <div class="metrics-bar foxess" style="width: ${Math.max(2, foxess / maxTotal * barScale)}px;" title="FoxESS: ${foxess}"></div>
+                        <div class="metrics-bar inverter" style="width: ${Math.max(2, inverter / maxTotal * barScale)}px;" title="${inverterTitle}"></div>
                         <div class="metrics-bar amber" style="width: ${Math.max(2, amber / maxTotal * barScale)}px;" title="Amber: ${amber}"></div>
                         <div class="metrics-bar weather" style="width: ${Math.max(2, weather / maxTotal * barScale)}px;" title="Weather: ${weather}"></div>
                     </div>

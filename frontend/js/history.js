@@ -1125,7 +1125,8 @@
                 const today = data.result[todayKey] || {};
 
                 document.getElementById('metricsDate').textContent = formatDate(new Date(todayKey), false);
-                document.getElementById('countFox').textContent = today.foxess ?? 0;
+                const inverterCount = (typeof getInverterApiCount === 'function') ? getInverterApiCount(today) : (today.inverter ?? today.foxess ?? 0);
+                document.getElementById('countFox').textContent = inverterCount;
                 document.getElementById('countAmber').textContent = today.amber ?? 0;
                 document.getElementById('countWeather').textContent = today.weather ?? 0;
             } catch (e) {

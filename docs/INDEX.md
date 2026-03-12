@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last Updated: March 11, 2026
+Last Updated: March 12, 2026
 Purpose: Canonical index of actively maintained project documentation.
 
 ## Core Docs
@@ -16,6 +16,7 @@ Purpose: Canonical index of actively maintained project documentation.
 - [BACKGROUND_AUTOMATION.md](BACKGROUND_AUTOMATION.md): Scheduler/runtime behavior.
 - [SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md](SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md): Scheduler SLO alert response and escalation flow.
 - [LOGGING_GUIDE.md](LOGGING_GUIDE.md): Canonical runtime logging policy and cost hygiene.
+- [USER_DEBUGGING_RUNBOOK.md](USER_DEBUGGING_RUNBOOK.md): End-to-end user investigation workflow (Auth + Firestore + activity timeline).
 
 ## Product and Testing Guides
 - [guides/PRODUCT_GUIDE.md](guides/PRODUCT_GUIDE.md): Product-facing feature guide.

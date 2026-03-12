@@ -38,6 +38,12 @@ function toFiniteNumber(value, fallback = null) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function wattsToKw(value) {
+  const numeric = toFiniteNumber(value, null);
+  if (numeric === null) return null;
+  return Number((numeric / 1000).toFixed(4));
+}
+
 function inferSystemCouplingFromRealtime(realtimePayload) {
   const datas = extractRealtimeDatas(realtimePayload);
   if (!datas.length) return null;
@@ -89,16 +95,23 @@ function shouldPersistAutoTopology(existingTopology, inferredCoupling, defaultRe
  * Normalizes adapter status into the same frame shape used by existing FoxESS realtime consumers.
  * This keeps dashboard/history frontend parsing logic unchanged for non-FoxESS providers.
  */
-function buildRealtimePayloadFromDeviceStatus(status = {}, sn) {
+function buildRealtimePayloadFromDeviceStatus(status = {}, sn, options = {}) {
+  const normalizeToKw = options.normalizeToKw === true;
   const socPct = toFiniteNumber(status.socPct, null);
   const batteryTempC = toFiniteNumber(status.batteryTempC, null);
   const ambientTempC = toFiniteNumber(status.ambientTempC, null);
-  const pvPowerW = toFiniteNumber(status.pvPowerW, 0);
-  const loadPowerW = toFiniteNumber(status.loadPowerW, 0);
-  const gridPowerW = toFiniteNumber(status.gridPowerW, 0);
-  const feedInPowerW = toFiniteNumber(status.feedInPowerW, 0);
-  const batteryPowerW = toFiniteNumber(status.batteryPowerW, 0);
-  const meterPower = gridPowerW > 0 ? gridPowerW : -feedInPowerW;
+  const pvPowerRaw = toFiniteNumber(status.pvPowerW, 0);
+  const loadPowerRaw = toFiniteNumber(status.loadPowerW, 0);
+  const gridPowerRaw = toFiniteNumber(status.gridPowerW, 0);
+  const feedInPowerRaw = toFiniteNumber(status.feedInPowerW, 0);
+  const batteryPowerRaw = toFiniteNumber(status.batteryPowerW, 0);
+
+  const pvPower = normalizeToKw ? (wattsToKw(status.pvPowerW) ?? 0) : pvPowerRaw;
+  const loadPower = normalizeToKw ? (wattsToKw(status.loadPowerW) ?? 0) : loadPowerRaw;
+  const gridPower = normalizeToKw ? (wattsToKw(status.gridPowerW) ?? 0) : gridPowerRaw;
+  const feedInPower = normalizeToKw ? (wattsToKw(status.feedInPowerW) ?? 0) : feedInPowerRaw;
+  const batteryPower = normalizeToKw ? (wattsToKw(status.batteryPowerW) ?? 0) : batteryPowerRaw;
+  const meterPower = gridPower > 0 ? gridPower : -feedInPower;
 
   return {
     errno: 0,
@@ -107,16 +120,16 @@ function buildRealtimePayloadFromDeviceStatus(status = {}, sn) {
       deviceSN: String(sn || status.deviceSN || ''),
       time: status.observedAtIso || new Date().toISOString(),
       datas: [
-        { variable: 'SoC', value: socPct },
-        { variable: 'pvPower', value: pvPowerW },
-        { variable: 'loadsPower', value: loadPowerW },
-        { variable: 'gridConsumptionPower', value: gridPowerW },
-        { variable: 'feedinPower', value: feedInPowerW },
-        { variable: 'meterPower2', value: meterPower },
-        { variable: 'batTemperature', value: batteryTempC },
-        { variable: 'ambientTemperation', value: ambientTempC },
-        { variable: 'batChargePower', value: batteryPowerW },
-        { variable: 'batDischargePower', value: batteryPowerW < 0 ? Math.abs(batteryPowerW) : 0 }
+        { variable: 'SoC', value: socPct, ...(normalizeToKw ? { unit: '%' } : {}) },
+        { variable: 'pvPower', value: pvPower, ...(normalizeToKw ? { unit: 'kW' } : {}) },
+        { variable: 'loadsPower', value: loadPower, ...(normalizeToKw ? { unit: 'kW' } : {}) },
+        { variable: 'gridConsumptionPower', value: gridPower, ...(normalizeToKw ? { unit: 'kW' } : {}) },
+        { variable: 'feedinPower', value: feedInPower, ...(normalizeToKw ? { unit: 'kW' } : {}) },
+        { variable: 'meterPower2', value: meterPower, ...(normalizeToKw ? { unit: 'kW' } : {}) },
+        { variable: 'batTemperature', value: batteryTempC, ...(normalizeToKw ? { unit: 'C' } : {}) },
+        { variable: 'ambientTemperation', value: ambientTempC, ...(normalizeToKw ? { unit: 'C' } : {}) },
+        { variable: 'batChargePower', value: batteryPower, ...(normalizeToKw ? { unit: 'kW' } : {}) },
+        { variable: 'batDischargePower', value: batteryPower < 0 ? Math.abs(batteryPower) : 0, ...(normalizeToKw ? { unit: 'kW' } : {}) }
       ]
     }]
   };
@@ -231,7 +244,10 @@ function registerInverterReadRoutes(app, deps = {}) {
 
       if (provider !== 'foxess' && adapter && typeof adapter.getStatus === 'function') {
         const status = await adapter.getStatus({ deviceSN: sn, userConfig, userId: req.user.uid });
-        const normalized = buildRealtimePayloadFromDeviceStatus(status, sn);
+        const normalized = buildRealtimePayloadFromDeviceStatus(status, sn, {
+          // AlphaESS adapter status values are canonical watts, while UI cards expect kW.
+          normalizeToKw: provider === 'alphaess'
+        });
         try {
           await persistTopologyFromRealtime(req.user.uid, userConfig, normalized);
         } catch (persistError) {

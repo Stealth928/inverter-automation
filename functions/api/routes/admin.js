@@ -1323,15 +1323,138 @@ app.post('/api/admin/users/:uid/delete', authenticateUser, requireAdmin, async (
 app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (req, res) => {
   try {
     const { uid } = req.params;
-    
+    const KNOWN_INVERTER_METRIC_KEYS = new Set(['foxess', 'sungrow', 'sigenergy', 'alphaess']);
+    const KNOWN_NON_INVERTER_METRIC_KEYS = new Set(['amber', 'weather', 'updatedAt']);
+    const PROVIDER_KEYS = ['foxess', 'sungrow', 'sigenergy', 'alphaess'];
+
+    const toCounter = (value) => {
+      const n = Number(value);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+
+    const normalizeProvider = (providerRaw, config = null) => {
+      const provider = String(providerRaw || '').toLowerCase().trim();
+      if (provider) return provider;
+      if (config && typeof config === 'object') {
+        if (config.sungrowUsername || config.sungrowDeviceSn) return 'sungrow';
+        if (config.sigenUsername || config.sigenStationId || config.sigenDeviceSn) return 'sigenergy';
+        if (config.alphaessSystemSn || config.alphaessSysSn || config.alphaessAppId || config.alphaessAppSecret) return 'alphaess';
+      }
+      return 'foxess';
+    };
+
+    const buildProviderFlags = (config = {}) => {
+      const provider = normalizeProvider(config.deviceProvider, config);
+      return {
+        provider,
+        hasDeviceSn: !!config.deviceSn,
+        hasFoxessToken: !!config.foxessToken,
+        hasAmberApiKey: !!config.amberApiKey,
+        hasAlphaEssSystemSn: !!(config.alphaessSystemSn || config.alphaessSysSn),
+        hasAlphaEssAppId: !!config.alphaessAppId,
+        hasAlphaEssAppSecret: !!config.alphaessAppSecret,
+        hasSungrowUsername: !!config.sungrowUsername,
+        hasSungrowDeviceSn: !!(config.sungrowDeviceSn || (provider === 'sungrow' && config.deviceSn)),
+        hasSigenUsername: !!config.sigenUsername,
+        hasSigenDeviceSn: !!(config.sigenDeviceSn || config.sigenStationId || (provider === 'sigenergy' && config.deviceSn)),
+        hasSigenStationId: !!config.sigenStationId
+      };
+    };
+
+    const isProviderConfigured = (provider, flags) => {
+      switch (provider) {
+      case 'sungrow':
+        return !!(flags.hasSungrowDeviceSn && flags.hasSungrowUsername);
+      case 'sigenergy':
+        return !!flags.hasSigenUsername;
+      case 'alphaess':
+        return !!(flags.hasAlphaEssSystemSn && flags.hasAlphaEssAppId && flags.hasAlphaEssAppSecret);
+      case 'foxess':
+      default:
+        return !!(flags.hasDeviceSn && flags.hasFoxessToken);
+      }
+    };
+
+    const hasAnyProviderConfigured = (flags) =>
+      PROVIDER_KEYS.some((providerKey) => isProviderConfigured(providerKey, flags));
+
+    const buildProviderAccessSummary = (provider, flags) => {
+      switch (provider) {
+      case 'sungrow':
+        return {
+          identifierLabel: 'Device SN',
+          hasIdentifier: !!flags.hasSungrowDeviceSn,
+          credentialLabel: 'iSolarCloud Login',
+          hasCredential: !!flags.hasSungrowUsername
+        };
+      case 'sigenergy':
+        return {
+          identifierLabel: 'Station / Device ID',
+          hasIdentifier: !!(flags.hasSigenStationId || flags.hasSigenDeviceSn),
+          credentialLabel: 'Account Login',
+          hasCredential: !!flags.hasSigenUsername
+        };
+      case 'alphaess':
+        return {
+          identifierLabel: 'System SN',
+          hasIdentifier: !!flags.hasAlphaEssSystemSn,
+          credentialLabel: 'App Credentials',
+          hasCredential: !!(flags.hasAlphaEssAppId && flags.hasAlphaEssAppSecret)
+        };
+      case 'foxess':
+      default:
+        return {
+          identifierLabel: 'Device SN',
+          hasIdentifier: !!flags.hasDeviceSn,
+          credentialLabel: 'API Token',
+          hasCredential: !!flags.hasFoxessToken
+        };
+      }
+    };
+
     // 1. Gather last 30 days of per-user API metrics
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const metricsSnap = await db.collection('users').doc(uid)
       .collection('metrics').orderBy('updatedAt', 'desc').limit(30).get();
     const metrics = {};
     metricsSnap.forEach(doc => {
-      metrics[doc.id] = { foxess: doc.data().foxess || 0, amber: doc.data().amber || 0, weather: doc.data().weather || 0 };
+      const rawMetrics = doc.data() || {};
+      const inverterByProvider = {};
+      let inverterTotal = 0;
+
+      for (const providerKey of PROVIDER_KEYS) {
+        inverterByProvider[providerKey] = toCounter(rawMetrics[providerKey]);
+      }
+
+      const aggregateInverterCounter = toCounter(rawMetrics.inverter);
+      if (aggregateInverterCounter) {
+        inverterTotal = aggregateInverterCounter;
+      } else {
+        Object.entries(rawMetrics).forEach(([metricKey, metricValue]) => {
+          if (metricKey === 'inverter' || KNOWN_NON_INVERTER_METRIC_KEYS.has(metricKey)) return;
+          const counter = toCounter(metricValue);
+          if (!counter) return;
+
+          if (KNOWN_INVERTER_METRIC_KEYS.has(metricKey)) {
+            inverterTotal += counter;
+            return;
+          }
+
+          // Future provider counters should roll into inverter totals automatically.
+          inverterTotal += counter;
+        });
+      }
+
+      metrics[doc.id] = {
+        inverter: inverterTotal,
+        inverterByProvider,
+        amber: toCounter(rawMetrics.amber),
+        weather: toCounter(rawMetrics.weather),
+        // Legacy keys retained for compatibility with older admin clients.
+        foxess: inverterByProvider.foxess,
+        sungrow: inverterByProvider.sungrow,
+        sigenergy: inverterByProvider.sigenergy,
+        alphaess: inverterByProvider.alphaess
+      };
     });
 
     // 2. Automation state
@@ -1354,6 +1477,9 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
       const configDoc = await db.collection('users').doc(uid).collection('config').doc('main').get();
       if (configDoc.exists) {
         const c = configDoc.data();
+        const providerFlags = buildProviderFlags(c);
+        const provider = providerFlags.provider;
+        const providerAccess = buildProviderAccessSummary(provider, providerFlags);
 
         const rawSystemTopology = c.systemTopology || c.topology || null;
         let resolvedCoupling = normalizeCouplingValue(
@@ -1380,10 +1506,20 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
         };
 
         configSummary = {
-          configured: !!(c.setupComplete === true || (c.deviceSn && c.foxessToken)),
-          hasDeviceSn: !!c.deviceSn,
-          hasFoxessToken: !!c.foxessToken,
-          hasAmberApiKey: !!c.amberApiKey,
+          configured: !!(c.setupComplete === true || isProviderConfigured(provider, providerFlags) || hasAnyProviderConfigured(providerFlags)),
+          deviceProvider: provider,
+          providerAccess,
+          hasDeviceSn: providerFlags.hasDeviceSn,
+          hasFoxessToken: providerFlags.hasFoxessToken,
+          hasAmberApiKey: providerFlags.hasAmberApiKey,
+          hasAlphaEssSystemSn: providerFlags.hasAlphaEssSystemSn,
+          hasAlphaEssAppId: providerFlags.hasAlphaEssAppId,
+          hasAlphaEssAppSecret: providerFlags.hasAlphaEssAppSecret,
+          hasSungrowUsername: providerFlags.hasSungrowUsername,
+          hasSungrowDeviceSn: providerFlags.hasSungrowDeviceSn,
+          hasSigenUsername: providerFlags.hasSigenUsername,
+          hasSigenDeviceSn: providerFlags.hasSigenDeviceSn,
+          hasSigenStationId: providerFlags.hasSigenStationId,
           inverterCapacityW: Number.isFinite(Number(c.inverterCapacityW)) ? Number(c.inverterCapacityW) : null,
           batteryCapacityKWh: Number.isFinite(Number(c.batteryCapacityKWh)) ? Number(c.batteryCapacityKWh) : null,
           location: c.location || null,

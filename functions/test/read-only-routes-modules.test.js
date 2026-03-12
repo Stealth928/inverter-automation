@@ -76,7 +76,8 @@ describe('read-only route modules', () => {
     expect(response.body.errno).toBe(0);
     expect(Object.keys(response.body.result)).toHaveLength(2);
     Object.values(response.body.result).forEach((value) => {
-      expect(value).toEqual({ foxess: 0, amber: 0, weather: 0 });
+      expect(value).toEqual(expect.objectContaining({ inverter: 0, foxess: 0, amber: 0, weather: 0 }));
+      expect(value.inverterByProvider).toEqual(expect.objectContaining({ foxess: 0, sungrow: 0, sigenergy: 0, alphaess: 0 }));
     });
   });
 
@@ -142,7 +143,18 @@ describe('read-only route modules', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body.errno).toBe(0);
-    expect(response.body.result[todayKey]).toEqual({ foxess: 7, amber: 5, weather: 3 });
+    expect(response.body.result[todayKey]).toEqual(expect.objectContaining({
+      inverter: 7,
+      foxess: 7,
+      amber: 5,
+      weather: 3
+    }));
+    expect(response.body.result[todayKey].inverterByProvider).toEqual(expect.objectContaining({
+      foxess: 7,
+      sungrow: 0,
+      sigenergy: 0,
+      alphaess: 0
+    }));
   });
 
   test('pricing current endpoint returns cached prices when available', async () => {
@@ -457,9 +469,10 @@ describe('read-only route modules', () => {
     expect(response.body.errno).toBe(0);
     expect(response.body.result[0].deviceSN).toBe('ALPHA-SN-1');
     expect(response.body.result[0].datas).toEqual(expect.arrayContaining([
-      expect.objectContaining({ variable: 'SoC', value: 61 }),
-      expect.objectContaining({ variable: 'pvPower', value: 4200 }),
-      expect.objectContaining({ variable: 'loadsPower', value: 1700 })
+      expect.objectContaining({ variable: 'SoC', value: 61, unit: '%' }),
+      expect.objectContaining({ variable: 'pvPower', value: 4.2, unit: 'kW' }),
+      expect.objectContaining({ variable: 'loadsPower', value: 1.7, unit: 'kW' }),
+      expect.objectContaining({ variable: 'batDischargePower', value: 1.2, unit: 'kW' })
     ]));
     expect(adapterGetStatus).toHaveBeenCalledWith({
       deviceSN: 'ALPHA-SN-1',
@@ -468,6 +481,69 @@ describe('read-only route modules', () => {
         alphaessSystemSn: 'ALPHA-SN-1'
       },
       userId: 'u-alpha'
+    });
+    expect(getCachedInverterRealtimeData).not.toHaveBeenCalled();
+  });
+
+  test('inverter real-time endpoint preserves provider-specific power semantics for non-alpha adapters', async () => {
+    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
+    const adapterGetStatus = jest.fn(async () => ({
+      socPct: 54,
+      batteryTempC: null,
+      ambientTempC: null,
+      pvPowerW: 2.5,
+      loadPowerW: 1.9,
+      gridPowerW: 0.4,
+      feedInPowerW: 0,
+      batteryPowerW: -0.8,
+      observedAtIso: '2026-03-11T11:20:00.000Z'
+    }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-sigen' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({
+            getStatus: adapterGetStatus
+          }))
+        },
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'sigenergy',
+          sigenStationId: 'SIGEN-STATION-1'
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig: jest.fn(async () => undefined),
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result[0].deviceSN).toBe('SIGEN-STATION-1');
+    const datas = response.body.result[0].datas || [];
+    const pvPoint = datas.find((entry) => entry.variable === 'pvPower');
+    const loadPoint = datas.find((entry) => entry.variable === 'loadsPower');
+    const dischargePoint = datas.find((entry) => entry.variable === 'batDischargePower');
+    expect(pvPoint).toEqual(expect.objectContaining({ variable: 'pvPower', value: 2.5 }));
+    expect(loadPoint).toEqual(expect.objectContaining({ variable: 'loadsPower', value: 1.9 }));
+    expect(dischargePoint).toEqual(expect.objectContaining({ variable: 'batDischargePower', value: 0.8 }));
+    expect(pvPoint).not.toHaveProperty('unit');
+    expect(loadPoint).not.toHaveProperty('unit');
+    expect(adapterGetStatus).toHaveBeenCalledWith({
+      deviceSN: 'SIGEN-STATION-1',
+      userConfig: {
+        deviceProvider: 'sigenergy',
+        sigenStationId: 'SIGEN-STATION-1'
+      },
+      userId: 'u-sigen'
     });
     expect(getCachedInverterRealtimeData).not.toHaveBeenCalled();
   });

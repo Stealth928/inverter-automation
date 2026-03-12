@@ -12,6 +12,8 @@ const DEFAULT_CAPABILITIES = Object.freeze({
 
 const DEFAULT_GROUP_COUNT = 8;
 const MAX_ALPHA_WINDOWS = 2;
+const ALPHA_WINDOW_STEP_MINUTES = 15;
+const ALPHA_MAX_MINUTES_OF_DAY = (23 * 60) + 45;
 
 function toFiniteNumber(value, fallback = null) {
   const numeric = Number(value);
@@ -166,15 +168,46 @@ function groupToAlphaTime(group, keyPrefixStart, keyPrefixEnd) {
       [keyPrefixEnd]: '00:00'
     };
   }
-  const pad = (n) => String(Math.max(0, Math.min(59, Number(n) || 0))).padStart(2, '0');
-  const startHour = Math.max(0, Math.min(23, Number(group.startHour) || 0));
-  const startMinute = Math.max(0, Math.min(59, Number(group.startMinute) || 0));
-  const endHour = Math.max(0, Math.min(23, Number(group.endHour) || 0));
-  const endMinute = Math.max(0, Math.min(59, Number(group.endMinute) || 0));
+
+  const toMinutesOfDay = (hour, minute) => {
+    const h = Math.max(0, Math.min(23, Number(hour) || 0));
+    const m = Math.max(0, Math.min(59, Number(minute) || 0));
+    return (h * 60) + m;
+  };
+  const clampWindowMinute = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.max(0, Math.min(ALPHA_MAX_MINUTES_OF_DAY, Math.floor(numeric)));
+  };
+  const floorToStep = (minute) => Math.floor(minute / ALPHA_WINDOW_STEP_MINUTES) * ALPHA_WINDOW_STEP_MINUTES;
+  const ceilToStep = (minute) => Math.ceil(minute / ALPHA_WINDOW_STEP_MINUTES) * ALPHA_WINDOW_STEP_MINUTES;
+  const formatMinute = (minuteOfDay) => {
+    const normalized = clampWindowMinute(minuteOfDay);
+    const hh = String(Math.floor(normalized / 60)).padStart(2, '0');
+    const mm = String(normalized % 60).padStart(2, '0');
+    return `${hh}:${mm}`;
+  };
+
+  let startMinuteOfDay = floorToStep(toMinutesOfDay(group.startHour, group.startMinute));
+  let endMinuteOfDay = ceilToStep(toMinutesOfDay(group.endHour, group.endMinute));
+
+  startMinuteOfDay = clampWindowMinute(startMinuteOfDay);
+  endMinuteOfDay = clampWindowMinute(endMinuteOfDay);
+
+  // AlphaESS requires 15-minute windows and rejects zero-length ranges.
+  if (endMinuteOfDay <= startMinuteOfDay) {
+    if (startMinuteOfDay >= ALPHA_WINDOW_STEP_MINUTES) {
+      startMinuteOfDay -= ALPHA_WINDOW_STEP_MINUTES;
+    }
+    endMinuteOfDay = Math.min(
+      ALPHA_MAX_MINUTES_OF_DAY,
+      startMinuteOfDay + ALPHA_WINDOW_STEP_MINUTES
+    );
+  }
 
   return {
-    [keyPrefixStart]: `${pad(startHour)}:${pad(startMinute)}`,
-    [keyPrefixEnd]: `${pad(endHour)}:${pad(endMinute)}`
+    [keyPrefixStart]: formatMinute(startMinuteOfDay),
+    [keyPrefixEnd]: formatMinute(endMinuteOfDay)
   };
 }
 
@@ -634,4 +667,3 @@ module.exports = {
   normalizeStatus,
   alphaTimeToDisplay
 };
-
