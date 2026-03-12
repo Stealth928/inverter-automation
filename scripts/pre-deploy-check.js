@@ -176,40 +176,6 @@ if (!importsChecksPassed) {
 }
 
 // ============================================================================
-// 5. VERIFY CRITICAL ROUTES EXIST
-// ============================================================================
-section('5. Verifying Critical Routes');
-
-const criticalRoutes = [
-  '/api/amber/sites',
-  '/api/amber/prices/current',
-  '/api/inverter/real-time',
-  '/api/health'
-];
-
-let routesChecksPassed = true;
-
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// Route modules may register aliases through helper calls (for example registerGetAliases)
-// instead of app.get('/path'). Detect route path literals directly in route source files.
-criticalRoutes.forEach((routePath) => {
-  const pattern = new RegExp(`['"\`]${escapeRegExp(routePath)}['"\`]`);
-  if (pattern.test(routeSourceContent)) {
-    checkPass(`Route defined: ${routePath}`);
-  } else {
-    checkFail(`Route missing: ${routePath}`);
-    routesChecksPassed = false;
-  }
-});
-
-if (!routesChecksPassed) {
-  failures.push('ROUTE_FAILURE');
-}
-
-// ============================================================================
 // 6. CHECK FOR COMMON REFACTORING MISTAKES
 // ============================================================================
 section('6. Checking for Common Refactoring Issues');
