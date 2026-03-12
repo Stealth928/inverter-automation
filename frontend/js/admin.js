@@ -1080,29 +1080,11 @@
         if (!alert) return '';
         const status = String(alert.status || '').toLowerCase();
         const severity = status === 'breach' ? 'BREACH' : 'WATCH';
-        const measuredErrorRate = Number(alert.measurements?.errorRatePct || 0).toFixed(2);
-        const measuredDeadRate = Number(alert.measurements?.deadLetterRatePct || 0).toFixed(2);
-        const queueLag = formatDurationMs(alert.measurements?.maxQueueLagMs || 0);
-        const cycleDuration = formatDurationMs(alert.measurements?.maxCycleDurationMs || 0);
-        const telemetryAge = formatDurationMs(alert.measurements?.maxTelemetryAgeMs || 0);
-        const p99CycleDuration = formatDurationMs(alert.measurements?.p99CycleDurationMs || 0);
-        const latestRunP99CycleDurationMs = Number(alert.measurements?.latestRunP99CycleDurationMs || 0);
-        const latestRunP99CycleDuration = formatDurationMs(latestRunP99CycleDurationMs);
         const breached = Array.isArray(alert.breachedMetrics) ? alert.breachedMetrics : [];
         const watched = Array.isArray(alert.watchMetrics) ? alert.watchMetrics : [];
-        const metricList = [...breached, ...watched];
+        const metricList = status === 'breach' ? breached : watched;
         const metricHint = metricList.length ? ` [${metricList.join(', ')}]` : '';
-        const tailLatency = alert.tailLatency && typeof alert.tailLatency === 'object' ? alert.tailLatency : null;
-        const tailRunsAbove = Number(tailLatency?.runsAboveThreshold || 0);
-        const tailObservedRuns = Number(tailLatency?.observedRuns || 0);
-        const tailMinRuns = Math.max(1, Number(tailLatency?.minRuns || 1));
-        const tailHint = tailLatency
-            ? `, tail=${String(tailLatency.status || 'healthy').toUpperCase()} (${tailRunsAbove}/${tailObservedRuns} > ${formatDurationMs(tailLatency.thresholdMs || 0)}, min ${tailMinRuns})`
-            : '';
-        const latestHint = latestRunP99CycleDurationMs > 0
-            ? `, latestRunP99=${latestRunP99CycleDuration}`
-            : '';
-        return `Scheduler SLO ${severity}${metricHint}: error=${measuredErrorRate}%, dead=${measuredDeadRate}%, queue=${queueLag}, cycle=${cycleDuration}, telemetryAge=${telemetryAge}, p99=${p99CycleDuration}${tailHint}${latestHint}`;
+        return `Scheduler SLO ${severity}${metricHint}. See SLO cards and diagnostics for details.`;
     }
 
     async function loadSchedulerMetrics() {
@@ -1197,7 +1179,7 @@
             const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
             updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} · window has ${daily.length} day(s) with data`;
 
-            if (currentAlert && ['watch', 'breach'].includes(String(currentAlert.status || '').toLowerCase())) {
+            if (currentAlert && String(currentAlert.status || '').toLowerCase() === 'breach') {
                 warningEl.style.display = '';
                 warningEl.textContent = formatSchedulerAlertMessage(currentAlert);
             }

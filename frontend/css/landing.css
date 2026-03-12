@@ -751,6 +751,9 @@ section { padding: 80px 0; }
   border: 1px solid var(--land-border);
   border-radius: var(--land-radius);
   padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
   box-shadow: var(--land-shadow);
   transition: transform 0.18s, box-shadow 0.18s;
 }
@@ -868,12 +871,16 @@ section { padding: 80px 0; }
   font-weight: 700;
   color: var(--land-text);
   margin-bottom: 8px;
+  text-align: center;
 }
 
 .feature-card__body {
   font-size: 0.92rem;
   color: var(--land-text-muted);
   line-height: 1.6;
+  text-align: center;
+  margin: 0 auto;
+  max-width: 32ch;
 }
 
 /* ---- Pricing -------------------------------------------- */
