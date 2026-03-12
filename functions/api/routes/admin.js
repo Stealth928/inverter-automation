@@ -754,6 +754,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           deadLetterRatePct: toFiniteNumber(source.thresholds?.deadLetterRatePct, 0),
           maxQueueLagMs: toFiniteNumber(source.thresholds?.maxQueueLagMs, 0),
           maxCycleDurationMs: toFiniteNumber(source.thresholds?.maxCycleDurationMs, 0),
+          maxTelemetryAgeMs: toFiniteNumber(source.thresholds?.maxTelemetryAgeMs, 0),
           p99CycleDurationMs: toFiniteNumber(source.thresholds?.p99CycleDurationMs, 0),
           tailP99CycleDurationMs: toFiniteNumber(source.thresholds?.tailP99CycleDurationMs, 0),
           tailWindowMinutes: toFiniteNumber(source.thresholds?.tailWindowMinutes, 0),
@@ -767,6 +768,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           deadLetterRatePct: toFiniteNumber(source.measurements?.deadLetterRatePct, 0),
           maxQueueLagMs: toFiniteNumber(source.measurements?.maxQueueLagMs, 0),
           maxCycleDurationMs: toFiniteNumber(source.measurements?.maxCycleDurationMs, 0),
+          maxTelemetryAgeMs: toFiniteNumber(source.measurements?.maxTelemetryAgeMs, 0),
           p95CycleDurationMs: toFiniteNumber(source.measurements?.p95CycleDurationMs, 0),
           p99CycleDurationMs: toFiniteNumber(source.measurements?.p99CycleDurationMs, 0),
           latestRunP99CycleDurationMs: toFiniteNumber(source.measurements?.latestRunP99CycleDurationMs, 0)
@@ -935,6 +937,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         retries: toFiniteNumber(data.retries, 0),
         maxQueueLagMs: toFiniteNumber(data.maxQueueLagMs, 0),
         maxCycleDurationMs: toFiniteNumber(data.maxCycleDurationMs, 0),
+        maxTelemetryAgeMs: toFiniteNumber(data.maxTelemetryAgeMs, 0),
         p95CycleDurationMs: toFiniteNumber(data.p95CycleDurationMs, 0),
         p99CycleDurationMs: toFiniteNumber(data.p99CycleDurationMs, 0),
         avgCycleDurationMs: data.avgCycleDurationSamples > 0
@@ -948,6 +951,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           tooSoon: toFiniteNumber(data.skipped?.tooSoon, 0)
         },
         failureByType: sanitizeFailureByType(data.failureByType),
+        telemetryPauseReasons: sanitizeFailureByType(data.telemetryPauseReasons),
         slo: sanitizeSloSnapshot(data.slo),
         updatedAtMs: toFiniteNumber(data.lastRunAtMs, 0)
       });
@@ -963,6 +967,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       retries: 0,
       maxQueueLagMs: 0,
       maxCycleDurationMs: 0,
+      maxTelemetryAgeMs: 0,
       p95CycleDurationMs: 0,
       p99CycleDurationMs: 0,
       phaseTimingsMaxMs: sanitizePhaseTimingMaxMs(null),
@@ -972,7 +977,8 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         locked: 0,
         tooSoon: 0
       },
-      failureByType: {}
+      failureByType: {},
+      telemetryPauseReasons: {}
     };
 
     for (const day of dailyDesc) {
@@ -985,6 +991,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       summary.retries += day.retries;
       summary.maxQueueLagMs = Math.max(summary.maxQueueLagMs, day.maxQueueLagMs);
       summary.maxCycleDurationMs = Math.max(summary.maxCycleDurationMs, day.maxCycleDurationMs);
+      summary.maxTelemetryAgeMs = Math.max(summary.maxTelemetryAgeMs, day.maxTelemetryAgeMs);
       summary.p95CycleDurationMs = Math.max(summary.p95CycleDurationMs, day.p95CycleDurationMs);
       summary.p99CycleDurationMs = Math.max(summary.p99CycleDurationMs, day.p99CycleDurationMs);
       for (const phaseKey of phaseTimingKeys) {
@@ -998,6 +1005,10 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       summary.skipped.locked += day.skipped.locked;
       summary.skipped.tooSoon += day.skipped.tooSoon;
       summary.failureByType = mergeFailureByType(summary.failureByType, day.failureByType);
+      summary.telemetryPauseReasons = mergeFailureByType(
+        summary.telemetryPauseReasons,
+        day.telemetryPauseReasons
+      );
     }
 
     const soak = buildSchedulerSoakSummary({
@@ -1036,6 +1047,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           retries: toFiniteNumber(data.retries, 0),
           queueLagMs: sanitizeDurationStats(data.queueLagMs),
           cycleDurationMs: sanitizeDurationStats(data.cycleDurationMs),
+          telemetryAgeMs: sanitizeDurationStats(data.telemetryAgeMs),
           phaseTimingsMs: sanitizePhaseTimingStats(data.phaseTimingsMs),
           skipped: {
             disabledOrBlackout: toFiniteNumber(data.skipped?.disabledOrBlackout, 0),
@@ -1044,6 +1056,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
             tooSoon: toFiniteNumber(data.skipped?.tooSoon, 0)
           },
           failureByType: sanitizeFailureByType(data.failureByType),
+          telemetryPauseReasons: sanitizeFailureByType(data.telemetryPauseReasons),
           slo: sanitizeSloSnapshot(data.slo),
           slowCycleSamples: sanitizeSlowCycleSamples(data.slowCycleSamples)
         });
@@ -1119,6 +1132,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
             deadLetterRatePct: toFiniteNumber(alertData.thresholds?.deadLetterRatePct, 0),
             maxQueueLagMs: toFiniteNumber(alertData.thresholds?.maxQueueLagMs, 0),
             maxCycleDurationMs: toFiniteNumber(alertData.thresholds?.maxCycleDurationMs, 0),
+            maxTelemetryAgeMs: toFiniteNumber(alertData.thresholds?.maxTelemetryAgeMs, 0),
             p99CycleDurationMs: toFiniteNumber(alertData.thresholds?.p99CycleDurationMs, 0),
             tailP99CycleDurationMs: toFiniteNumber(alertData.thresholds?.tailP99CycleDurationMs, 0),
             tailWindowMinutes: toFiniteNumber(alertData.thresholds?.tailWindowMinutes, 0),
@@ -1132,6 +1146,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
             deadLetterRatePct: toFiniteNumber(alertData.measurements?.deadLetterRatePct, 0),
             maxQueueLagMs: toFiniteNumber(alertData.measurements?.maxQueueLagMs, 0),
             maxCycleDurationMs: toFiniteNumber(alertData.measurements?.maxCycleDurationMs, 0),
+            maxTelemetryAgeMs: toFiniteNumber(alertData.measurements?.maxTelemetryAgeMs, 0),
             p95CycleDurationMs: toFiniteNumber(alertData.measurements?.p95CycleDurationMs, 0),
             p99CycleDurationMs: toFiniteNumber(alertData.measurements?.p99CycleDurationMs, 0),
             latestRunP99CycleDurationMs: toFiniteNumber(alertData.measurements?.latestRunP99CycleDurationMs, 0)
@@ -1170,6 +1185,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         diagnostics: {
           tailLatency,
           outlierRun,
+          telemetryPauseReasons: summary.telemetryPauseReasons,
           phaseTimings: {
             latestRunStartedAtMs: toFiniteNumber(latestRun?.startedAtMs, 0),
             latestRunMaxMs: latestRunPhaseTimingsMaxMs,

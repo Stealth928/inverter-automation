@@ -4276,7 +4276,20 @@
             let html = '';
             
             if (result.skipped) {
-                html += `<span style="color:var(--color-orange);font-size:11px">⏭️ Skipped: ${result.reason || 'Unknown'}</span>`;
+                const reason = String(result.reason || 'Unknown');
+                let reasonText = reason;
+                if (reason === 'stale_telemetry') {
+                    const ageMs = Number(result?.telemetry?.ageMs);
+                    const ageLabel = Number.isFinite(ageMs) ? formatMsToReadable(ageMs) : 'unknown age';
+                    reasonText = `Inverter telemetry stale (${ageLabel} old)`;
+                } else if (reason === 'stale_telemetry_missing_timestamp') {
+                    reasonText = 'Inverter telemetry timestamp missing';
+                } else if (reason === 'frozen_telemetry') {
+                    const ageMs = Number(result?.telemetry?.ageMs);
+                    const ageLabel = Number.isFinite(ageMs) ? formatMsToReadable(ageMs) : 'unknown age';
+                    reasonText = `Inverter telemetry frozen (${ageLabel})`;
+                }
+                html += `<span style="color:var(--color-orange);font-size:11px">⏭️ Skipped: ${reasonText}</span>`;
                 return html;
             }
             
@@ -4977,6 +4990,20 @@
                 const masterEnabled = status.enabled;
                 const inBlackout = status.inBlackout || false;
                 const blackoutWindow = status.currentBlackoutWindow;
+                const telemetryFailsafePaused = masterEnabled && status.telemetryFailsafePaused === true;
+                const telemetryPauseReason = String(status.telemetryFailsafePauseReason || '').trim();
+                const telemetryAgeMs = Number(status.telemetryAgeMs);
+                const telemetryAgeText = Number.isFinite(telemetryAgeMs)
+                    ? formatMsToReadable(telemetryAgeMs)
+                    : 'unknown age';
+                let telemetryPauseText = '';
+                if (telemetryPauseReason === 'stale_telemetry') {
+                    telemetryPauseText = `Automation paused: inverter telemetry is stale (${telemetryAgeText} old).`;
+                } else if (telemetryPauseReason === 'stale_telemetry_missing_timestamp') {
+                    telemetryPauseText = 'Automation paused: inverter telemetry timestamp missing or unreadable.';
+                } else if (telemetryPauseReason === 'frozen_telemetry') {
+                    telemetryPauseText = `Automation paused: inverter telemetry appears frozen (unchanged for ${telemetryAgeText}).`;
+                }
                 // Normalize lastCheck (handle Firestore Timestamp shapes and seconds/ms ambiguity)
                 let lastCheckRaw = status.lastCheck;
                 let lastCheck = Date.now();
@@ -5001,14 +5028,26 @@
                 const nextCheckIn = Math.max(0, automationIntervalSec - Math.floor((Date.now() - lastCheck) / 1000));
                 
                 // Determine effective state: blackout overrides master enabled
-                const effectivelyPaused = !masterEnabled || inBlackout;
-                const statusText = inBlackout ? 'BLACKOUT' : (masterEnabled ? 'ACTIVE' : 'PAUSED');
-                const statusColor = inBlackout ? 'var(--color-orange)' : (masterEnabled ? 'var(--color-success)' : 'var(--color-danger)');
-                const countdownText = inBlackout ? 'BLACKOUT' : (masterEnabled ? nextCheckIn + 's' : 'PAUSED');
+                const effectivelyPaused = !masterEnabled || inBlackout || telemetryFailsafePaused;
+                const statusText = inBlackout
+                    ? 'BLACKOUT'
+                    : (telemetryFailsafePaused ? 'FAILSAFE' : (masterEnabled ? 'ACTIVE' : 'PAUSED'));
+                const statusColor = inBlackout
+                    ? 'var(--color-orange)'
+                    : (telemetryFailsafePaused ? 'var(--color-danger)' : (masterEnabled ? 'var(--color-success)' : 'var(--color-danger)'));
+                const countdownText = inBlackout
+                    ? 'BLACKOUT'
+                    : (!effectivelyPaused ? (nextCheckIn + 's') : 'PAUSED');
                 const subtitleText = inBlackout 
                     ? `⏸️ Blackout window: ${blackoutWindow?.start || '??'} - ${blackoutWindow?.end || '??'}`
-                    : (masterEnabled ? `Auto-refreshes every ${automationIntervalSec} seconds` : 'Enable master switch to activate');
-                const gradientColors = inBlackout ? '#f0883e 0%, #da3633 100%' : (masterEnabled ? '#1f6feb 0%, #238636 100%' : '#6e7681 0%, #8b949e 100%');
+                    : (telemetryFailsafePaused
+                        ? telemetryPauseText
+                        : (masterEnabled ? `Auto-refreshes every ${automationIntervalSec} seconds` : 'Enable master switch to activate'));
+                const gradientColors = inBlackout
+                    ? '#f0883e 0%, #da3633 100%'
+                    : (telemetryFailsafePaused
+                        ? '#da3633 0%, #b62324 100%'
+                        : (masterEnabled ? '#1f6feb 0%, #238636 100%' : '#6e7681 0%, #8b949e 100%'));
             
             let html = `
                 <!-- Unified Countdown Timer + Master Switch -->
@@ -5027,6 +5066,7 @@
                     </div>
                     <div style="font-size:10px;color:rgba(255,255,255,0.75);text-align:center;margin-top:8px;font-weight:500">${subtitleText}</div>
                 </div>
+                ${telemetryFailsafePaused ? `<div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:rgba(248,81,73,0.16);border:1px solid rgba(248,81,73,0.55);color:var(--color-danger);font-size:12px;font-weight:600">⚠️ ${telemetryPauseText || 'Automation paused by telemetry fail-safe.'}</div>` : ''}
                 <!-- Compact Add Rule button placed under master section for quick access -->
                 <div style="display:flex;justify-content:flex-start;gap:8px;margin-bottom:12px">
                     <button class="btn btn-primary btn-sm" onclick="showAddRuleModal()" style="padding:6px 10px;font-size:12px">➕ Add Rule</button>
@@ -5242,9 +5282,10 @@
             })();
             window.automationEnabled = !!status.enabled;
             window.automationInBlackout = !!status.inBlackout;
+            window.automationFailsafePaused = !!status.enabled && !!status.telemetryFailsafePaused;
             
             // Start countdown timer if not already running (or restart if state changed)
-            const shouldRun = window.automationEnabled && !window.automationInBlackout;
+            const shouldRun = window.automationEnabled && !window.automationInBlackout && !window.automationFailsafePaused;
             const wasRunning = !!window.automationCountdownInterval;
             const stateChanged = (shouldRun !== wasRunning) || !window.automationCountdownStarted;
             
@@ -5279,7 +5320,7 @@
                         const remaining = Math.max(0, intervalSec - elapsed);
                         countdownEl.textContent = remaining + 's';
                         // Only trigger cycle if: automation is enabled, not in blackout, and timer reached 0
-                        if (remaining === 0 && window.automationEnabled && !window.automationInBlackout && !window.automationCycleRunning) {
+                        if (remaining === 0 && window.automationEnabled && !window.automationInBlackout && !window.automationFailsafePaused && !window.automationCycleRunning) {
                             // Run the actual automation cycle on the backend
                             runAutomationCycle();
                         }
@@ -5378,6 +5419,18 @@
                             }
                         }
                     } else if (data.result?.skipped) {
+                        const skipReason = String(data.result.reason || '');
+                        if (skipReason === 'stale_telemetry' || skipReason === 'stale_telemetry_missing_timestamp' || skipReason === 'frozen_telemetry') {
+                            const ageMs = Number(data.result?.telemetry?.ageMs);
+                            const ageLabel = Number.isFinite(ageMs) ? formatMsToReadable(ageMs) : 'unknown age';
+                            if (skipReason === 'stale_telemetry') {
+                                showMessage('warning', `Automation paused: inverter telemetry is stale (${ageLabel} old).`, 6000);
+                            } else if (skipReason === 'stale_telemetry_missing_timestamp') {
+                                showMessage('warning', 'Automation paused: inverter telemetry timestamp missing or unreadable.', 6000);
+                            } else {
+                                showMessage('warning', `Automation paused: inverter telemetry appears frozen (${ageLabel}).`, 6000);
+                            }
+                        }
                     } else {
                     }
                     

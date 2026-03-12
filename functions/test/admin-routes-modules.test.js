@@ -227,6 +227,7 @@ describe('admin route module', () => {
           retries: 2,
           maxQueueLagMs: 120,
           maxCycleDurationMs: 400,
+          maxTelemetryAgeMs: 1900000,
           p95CycleDurationMs: 320,
           p99CycleDurationMs: 390,
           phaseTimingsMaxMs: {
@@ -242,6 +243,7 @@ describe('admin route module', () => {
             tooSoon: 2
           },
           failureByType: { api_rate_limit: 1 },
+          telemetryPauseReasons: { stale_telemetry: 2, frozen_telemetry: 1 },
           slo: {
             status: 'breach'
           }
@@ -260,6 +262,7 @@ describe('admin route module', () => {
           retries: 1,
           maxQueueLagMs: 100,
           maxCycleDurationMs: 300,
+          maxTelemetryAgeMs: 1700000,
           p95CycleDurationMs: 260,
           p99CycleDurationMs: 280,
           phaseTimingsMaxMs: {
@@ -275,6 +278,7 @@ describe('admin route module', () => {
             tooSoon: 2
           },
           failureByType: { api_timeout: 2 },
+          telemetryPauseReasons: { stale_telemetry: 1 },
           slo: {
             status: 'healthy'
           }
@@ -303,6 +307,8 @@ describe('admin route module', () => {
           failureByType: { api_timeout: 1 },
           queueLagMs: { avgMs: 10, count: 3, maxMs: 20, minMs: 1, p95Ms: 18, p99Ms: 19 },
           cycleDurationMs: { avgMs: 40, count: 3, maxMs: 80, minMs: 10, p95Ms: 70, p99Ms: 79 },
+          telemetryAgeMs: { avgMs: 1200000, count: 3, maxMs: 1900000, minMs: 600000, p95Ms: 1800000, p99Ms: 1900000 },
+          telemetryPauseReasons: { stale_telemetry: 1 },
           phaseTimingsMs: {
             dataFetchMs: { avgMs: 18, count: 3, maxMs: 30, minMs: 10, p95Ms: 28, p99Ms: 29 },
             ruleEvalMs: { avgMs: 9, count: 3, maxMs: 16, minMs: 4, p95Ms: 15, p99Ms: 15 },
@@ -342,6 +348,7 @@ describe('admin route module', () => {
           deadLetterRatePct: 0.2,
           maxQueueLagMs: 120000,
           maxCycleDurationMs: 20000,
+          maxTelemetryAgeMs: 1800000,
           p99CycleDurationMs: 10000,
           tailP99CycleDurationMs: 10000,
           tailWindowMinutes: 15,
@@ -355,6 +362,7 @@ describe('admin route module', () => {
           deadLetterRatePct: 11.11,
           maxQueueLagMs: 120,
           maxCycleDurationMs: 400,
+          maxTelemetryAgeMs: 1900000,
           p95CycleDurationMs: 320,
           p99CycleDurationMs: 390
         },
@@ -438,6 +446,7 @@ describe('admin route module', () => {
       retries: 3,
       maxQueueLagMs: 120,
       maxCycleDurationMs: 400,
+      maxTelemetryAgeMs: 1900000,
       p95CycleDurationMs: 320,
       p99CycleDurationMs: 390,
       phaseTimingsMaxMs: {
@@ -457,6 +466,10 @@ describe('admin route module', () => {
     expect(response.body.result.summary.failureByType).toEqual({
       api_rate_limit: 1,
       api_timeout: 2
+    });
+    expect(response.body.result.summary.telemetryPauseReasons).toEqual({
+      stale_telemetry: 3,
+      frozen_telemetry: 1
     });
     expect(response.body.result.soak).toEqual(expect.objectContaining({
       daysRequested: 14,
@@ -486,6 +499,9 @@ describe('admin route module', () => {
         p95Ms: 70,
         p99Ms: 79
       }),
+      telemetryAgeMs: expect.objectContaining({
+        maxMs: 1900000
+      }),
       phaseTimingsMs: expect.objectContaining({
         dataFetchMs: expect.objectContaining({ maxMs: 30 }),
         actionApplyMs: expect.objectContaining({ maxMs: 12 })
@@ -496,6 +512,12 @@ describe('admin route module', () => {
       runId: 'run-1',
       schedulerId: 'sched-1',
       breachedMetrics: ['errorRatePct'],
+      thresholds: expect.objectContaining({
+        maxTelemetryAgeMs: 1800000
+      }),
+      measurements: expect.objectContaining({
+        maxTelemetryAgeMs: 1900000
+      }),
       tailLatency: expect.objectContaining({
         status: 'watch'
       })
@@ -508,6 +530,10 @@ describe('admin route module', () => {
         runId: 'run-1',
         workerId: 'worker-1',
         likelyCauses: expect.arrayContaining(['external_api_slowness_or_retries'])
+      }),
+      telemetryPauseReasons: expect.objectContaining({
+        stale_telemetry: 3,
+        frozen_telemetry: 1
       }),
       phaseTimings: expect.objectContaining({
         latestRunStartedAtMs: 1000,

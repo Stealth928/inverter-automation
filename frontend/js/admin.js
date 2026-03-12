@@ -728,6 +728,7 @@
         const deadLetterRatePct = cyclesRun > 0 ? (deadLetters / cyclesRun) * 100 : 0;
         const maxQueueLagMs = Number(summary?.maxQueueLagMs || 0);
         const maxCycleDurationMs = Number(summary?.maxCycleDurationMs || 0);
+        const maxTelemetryAgeMs = Number(summary?.maxTelemetryAgeMs || 0);
         const p99CycleDurationMs = Number(summary?.p99CycleDurationMs || 0);
         const avgQueueLagMs = Number(options?.avgQueueLagMs || 0);
         const avgCycleDurationMs = Number(options?.avgCycleDurationMs || 0);
@@ -736,6 +737,7 @@
             : {};
         const queueLagTargetMs = Number(thresholds.maxQueueLagMs || 120000);
         const cycleDurationTargetMs = Number(thresholds.maxCycleDurationMs || 20000);
+        const telemetryAgeTargetMs = Number(thresholds.maxTelemetryAgeMs || (30 * 60 * 1000));
         const p99TargetMs = Number(thresholds.p99CycleDurationMs || 10000);
         const tailWindowMinutes = Math.max(1, Number(thresholds.tailWindowMinutes || 15));
         const tailInfo = options?.tailLatency && typeof options.tailLatency === 'object'
@@ -775,6 +777,13 @@
                 target: cycleDurationTargetMs,
                 display: `${formatDurationMs(avgCycleDurationMs)} avg / ${formatDurationMs(maxCycleDurationMs)} max`,
                 targetDisplay: `Target avg <= ${formatDurationMs(cycleDurationTargetMs)}, max <= ${formatDurationMs(cycleDurationTargetMs)}`
+            },
+            {
+                id: 'schedulerSloTelemetryAge',
+                value: maxTelemetryAgeMs,
+                target: telemetryAgeTargetMs,
+                display: `${formatDurationMs(maxTelemetryAgeMs)} max`,
+                targetDisplay: `Target max <= ${formatDurationMs(telemetryAgeTargetMs)}`
             },
             {
                 id: 'schedulerSloCycleTailP99',
@@ -988,6 +997,22 @@
             { key: 'actionApplyMs', label: 'Apply' },
             { key: 'curtailmentMs', label: 'Curtail' }
         ];
+        const telemetryPauseReasons = diag.telemetryPauseReasons && typeof diag.telemetryPauseReasons === 'object'
+            ? diag.telemetryPauseReasons
+            : {};
+        const telemetryPauseReasonEntries = Object.entries(telemetryPauseReasons)
+            .map(([reason, count]) => ({
+                reason: String(reason || '').trim(),
+                count: Number(count || 0)
+            }))
+            .filter((entry) => entry.reason && entry.count > 0)
+            .sort((a, b) => b.count - a.count);
+        const telemetryText = telemetryPauseReasonEntries.length > 0
+            ? telemetryPauseReasonEntries
+                .slice(0, 5)
+                .map((entry) => `${entry.reason}=${entry.count}`)
+                .join(', ')
+            : 'none observed in window';
         const phaseComparison = phaseRows
             .map(({ key, label }) => {
                 const latestMs = Number(phaseTimings?.latestRunMaxMs?.[key] || 0);
@@ -999,7 +1024,7 @@
             ? new Date(Number(phaseTimings.latestRunStartedAtMs)).toLocaleString('en-AU')
             : '-';
 
-        if (!outlier && !phaseTimings) {
+        if (!outlier && !phaseTimings && telemetryPauseReasonEntries.length === 0) {
             el.textContent = 'No scheduler outlier diagnostics available yet.';
             return;
         }
@@ -1013,6 +1038,13 @@
             el.innerHTML = `
                 <div><strong>Phase Timings:</strong> latest run @ ${escapeHtml(phaseStartedAt)} maxes (latest / window): ${escapeHtml(phaseComparison)}</div>
                 <div><strong>Sustained Tail Signal:</strong> ${escapeHtml(tailTextOnly)}</div>
+                <div><strong>Telemetry Fail-safe Reasons:</strong> ${escapeHtml(telemetryText)}</div>
+            `;
+            return;
+        }
+        if (!outlier) {
+            el.innerHTML = `
+                <div><strong>Telemetry Fail-safe Reasons:</strong> ${escapeHtml(telemetryText)}</div>
             `;
             return;
         }
@@ -1039,6 +1071,7 @@
             <div><strong>Likely Causes:</strong> ${escapeHtml(causeText)}</div>
             <div><strong>Slowest Cycle:</strong> ${slowestText}</div>
             <div><strong>Sustained Tail Signal:</strong> ${escapeHtml(tailText)}</div>
+            <div><strong>Telemetry Fail-safe Reasons:</strong> ${escapeHtml(telemetryText)}</div>
         `;
     }
 
@@ -1051,6 +1084,7 @@
         const measuredDeadRate = Number(alert.measurements?.deadLetterRatePct || 0).toFixed(2);
         const queueLag = formatDurationMs(alert.measurements?.maxQueueLagMs || 0);
         const cycleDuration = formatDurationMs(alert.measurements?.maxCycleDurationMs || 0);
+        const telemetryAge = formatDurationMs(alert.measurements?.maxTelemetryAgeMs || 0);
         const p99CycleDuration = formatDurationMs(alert.measurements?.p99CycleDurationMs || 0);
         const latestRunP99CycleDurationMs = Number(alert.measurements?.latestRunP99CycleDurationMs || 0);
         const latestRunP99CycleDuration = formatDurationMs(latestRunP99CycleDurationMs);
@@ -1068,7 +1102,7 @@
         const latestHint = latestRunP99CycleDurationMs > 0
             ? `, latestRunP99=${latestRunP99CycleDuration}`
             : '';
-        return `Scheduler SLO ${severity}${metricHint}: error=${measuredErrorRate}%, dead=${measuredDeadRate}%, queue=${queueLag}, cycle=${cycleDuration}, p99=${p99CycleDuration}${tailHint}${latestHint}`;
+        return `Scheduler SLO ${severity}${metricHint}: error=${measuredErrorRate}%, dead=${measuredDeadRate}%, queue=${queueLag}, cycle=${cycleDuration}, telemetryAge=${telemetryAge}, p99=${p99CycleDuration}${tailHint}${latestHint}`;
     }
 
     async function loadSchedulerMetrics() {
@@ -1156,7 +1190,8 @@
             renderSchedulerDiagnostics({
                 outlierRun: diagnostics.outlierRun || null,
                 tailLatency,
-                phaseTimings: diagnostics.phaseTimings || null
+                phaseTimings: diagnostics.phaseTimings || null,
+                telemetryPauseReasons: diagnostics.telemetryPauseReasons || summary.telemetryPauseReasons || {}
             });
 
             const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();

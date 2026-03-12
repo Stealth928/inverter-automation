@@ -531,7 +531,7 @@
         }
         .scheduler-slo-grid {
             display: grid;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
+            grid-template-columns: repeat(6, minmax(0, 1fr));
             gap: 8px;
             margin-bottom: 10px;
         }
@@ -933,6 +933,15 @@
                         </div>
                         <div class="slo-status">-</div>
                         <div class="slo-value">Target avg <= 20s, max <= 20s</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="schedulerSloTelemetryAge">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Telemetry Age
+                                <span class="info-tip" tabindex="0" data-tip="Maximum telemetry staleness observed across executed cycles in the selected day window. Healthy when <= 30m.">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">Target max <= 30m 0s</div>
                     </div>
                     <div class="scheduler-slo-item" id="schedulerSloCycleTailP99">
                         <div class="slo-title">

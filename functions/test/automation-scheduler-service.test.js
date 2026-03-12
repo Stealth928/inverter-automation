@@ -125,7 +125,12 @@ describe('automation scheduler service', () => {
         errno: 0,
         result: {
           skipped: true,
-          reason: 'No rules configured',
+          reason: 'stale_telemetry',
+          telemetry: {
+            status: 'paused',
+            pauseReason: 'stale_telemetry',
+            ageMs: 31 * 60 * 1000
+          },
           phaseTimingsMs: {
             dataFetchMs: 9,
             ruleEvalMs: 4,
@@ -190,6 +195,13 @@ describe('automation scheduler service', () => {
         count: 2,
         maxMs: 1
       })
+    }));
+    expect(metrics.telemetryAgeMs).toEqual(expect.objectContaining({
+      count: 1,
+      maxMs: 31 * 60 * 1000
+    }));
+    expect(metrics.telemetryPauseReasons).toEqual(expect.objectContaining({
+      stale_telemetry: 1
     }));
     expect(Array.isArray(metrics.slowCycleSamples)).toBe(true);
     if (metrics.slowCycleSamples.length > 0) {

@@ -34,6 +34,7 @@ function buildAlertText(alert = {}, status = 'healthy') {
   const deadRate = toFiniteNumber(measured.deadLetterRatePct, 0).toFixed(2);
   const queueLag = Math.round(toFiniteNumber(measured.maxQueueLagMs, 0));
   const cycleDuration = Math.round(toFiniteNumber(measured.maxCycleDurationMs, 0));
+  const telemetryAge = Math.round(toFiniteNumber(measured.maxTelemetryAgeMs, 0));
   const p99CycleDuration = Math.round(toFiniteNumber(measured.p99CycleDurationMs, 0));
   const latestRunP99CycleDuration = Math.round(toFiniteNumber(measured.latestRunP99CycleDurationMs, 0));
   const breached = sanitizeMetricList(alert.breachedMetrics);
@@ -55,7 +56,7 @@ function buildAlertText(alert = {}, status = 'healthy') {
   const latestRunSuffix = latestRunP99CycleDuration > 0
     ? ` latestRunP99CycleDurationMs=${latestRunP99CycleDuration}`
     : '';
-  return `[SchedulerSLO] ${severity}${metricSuffix} scheduler=${schedulerId} error=${errorRate}% dead=${deadRate}% queueLagMs=${queueLag} cycleDurationMs=${cycleDuration} p99CycleDurationMs=${p99CycleDuration}${tailSuffix}${latestRunSuffix}`;
+  return `[SchedulerSLO] ${severity}${metricSuffix} scheduler=${schedulerId} error=${errorRate}% dead=${deadRate}% queueLagMs=${queueLag} cycleDurationMs=${cycleDuration} telemetryAgeMs=${telemetryAge} p99CycleDurationMs=${p99CycleDuration}${tailSuffix}${latestRunSuffix}`;
 }
 
 function createSchedulerSloAlertNotifier(deps = {}) {

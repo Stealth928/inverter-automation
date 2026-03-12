@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Battery ROI Calculator | SoCrates</title>
-  <meta name="description" content="Estimate the operating value of smarter battery charge and export timing. Model annual savings, automation uplift, and simple payback for your solar battery.">
+  <meta name="description" content="Estimate annual battery value from smarter charging and exporting. Model manual vs automated capture, annual uplift, and simple payback.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://socratesautomation.com/battery-roi-calculator.html">
   <link rel="icon" href="/icons/favicon.ico" sizes="any">
@@ -13,20 +13,32 @@
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
   <meta property="og:site_name" content="SoCrates">
+  <meta property="og:locale" content="en_AU">
   <meta property="og:title" content="Battery ROI Calculator | SoCrates">
-  <meta property="og:description" content="Model annual battery value, automation uplift, and simple payback from smarter charging and exporting.">
+  <meta property="og:description" content="Estimate annual battery value from smarter charging and exporting with manual vs automated capture assumptions.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://socratesautomation.com/battery-roi-calculator.html">
   <meta property="og:image" content="https://socratesautomation.com/images/screenshots/screen-4.png">
+  <meta property="og:image:width" content="2088">
+  <meta property="og:image:height" content="1201">
   <meta property="og:image:alt" content="SoCrates ROI dashboard screenshot">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Battery ROI Calculator | SoCrates">
-  <meta name="twitter:description" content="Estimate the operating value of smarter battery charge and export timing.">
+  <meta name="twitter:description" content="Estimate annual battery value from smarter charging and exporting with manual vs automated capture assumptions.">
+  <meta name="twitter:url" content="https://socratesautomation.com/battery-roi-calculator.html">
   <meta name="twitter:image" content="https://socratesautomation.com/images/screenshots/screen-4.png">
+  <meta name="twitter:image:alt" content="SoCrates battery ROI calculator workbench">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://socratesautomation.com/#website",
+        "url": "https://socratesautomation.com/",
+        "name": "SoCrates",
+        "inLanguage": "en-AU"
+      },
       {
         "@type": "Organization",
         "@id": "https://socratesautomation.com/#organization",
@@ -38,13 +50,44 @@
         }
       },
       {
+        "@type": "WebPage",
+        "@id": "https://socratesautomation.com/battery-roi-calculator.html#webpage",
+        "url": "https://socratesautomation.com/battery-roi-calculator.html",
+        "name": "Battery ROI Calculator | SoCrates",
+        "description": "Estimate annual battery value from smarter charging and exporting. Model manual vs automated capture, annual uplift, and simple payback.",
+        "isPartOf": {
+          "@id": "https://socratesautomation.com/#website"
+        },
+        "about": {
+          "@id": "https://socratesautomation.com/#organization"
+        },
+        "inLanguage": "en-AU"
+      },
+      {
         "@type": "WebApplication",
         "@id": "https://socratesautomation.com/battery-roi-calculator.html#app",
         "name": "Battery ROI Calculator",
         "url": "https://socratesautomation.com/battery-roi-calculator.html",
         "applicationCategory": "FinanceApplication",
-        "operatingSystem": "Any",
+        "applicationSubCategory": "Battery ROI calculator",
+        "operatingSystem": "Web",
         "description": "A public calculator for estimating annual battery value, automation uplift, and simple payback from smarter charge and export timing.",
+        "featureList": [
+          "Scenario presets",
+          "Automation vs manual capture comparison",
+          "Annual uplift and simple payback estimate"
+        ],
+        "isAccessibleForFree": true,
+        "inLanguage": "en-AU",
+        "mainEntityOfPage": {
+          "@id": "https://socratesautomation.com/battery-roi-calculator.html#webpage"
+        },
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "AUD",
+          "availability": "https://schema.org/InStock"
+        },
         "publisher": {
           "@id": "https://socratesautomation.com/#organization"
         }
@@ -127,22 +170,22 @@
               <div class="tool-presets" role="group" aria-label="Scenario presets">
                 <button type="button" class="tool-preset is-active" data-preset="balanced" aria-pressed="true" data-analytics-event="tool_preset_click" data-analytics-location="roi_calculator" data-analytics-label="Typical home battery">
                   <span class="tool-preset__title">Typical home battery</span>
-                  <span class="tool-preset__meta">13.5 kWh battery</span>
+                  <span class="tool-preset__meta">13.5 kWh nameplate (~12.2 kWh usable)</span>
                   <span class="tool-preset__desc">Good default for a common residential battery with regular timing opportunities.</span>
                 </button>
                 <button type="button" class="tool-preset" data-preset="conservative" aria-pressed="false" data-analytics-event="tool_preset_click" data-analytics-location="roi_calculator" data-analytics-label="Smaller battery">
                   <span class="tool-preset__title">Smaller battery</span>
-                  <span class="tool-preset__meta">10 kWh battery</span>
+                  <span class="tool-preset__meta">10 kWh nameplate (~9.0 kWh usable)</span>
                   <span class="tool-preset__desc">Lower throughput, fewer worthwhile cycles, and a more cautious upside case.</span>
                 </button>
                 <button type="button" class="tool-preset" data-preset="large" aria-pressed="false" data-analytics-event="tool_preset_click" data-analytics-location="roi_calculator" data-analytics-label="Large battery">
                   <span class="tool-preset__title">Large battery</span>
-                  <span class="tool-preset__meta">42 kWh battery</span>
+                  <span class="tool-preset__meta">42 kWh nameplate (~37.8 kWh usable)</span>
                   <span class="tool-preset__desc">Large-capacity setup with much higher energy shifted per cycle and larger upside when used actively.</span>
                 </button>
                 <button type="button" class="tool-preset" data-preset="highSpread" aria-pressed="false" data-analytics-event="tool_preset_click" data-analytics-location="roi_calculator" data-analytics-label="Strong price swings">
                   <span class="tool-preset__title">Strong price swings</span>
-                  <span class="tool-preset__meta">13.5 kWh battery</span>
+                  <span class="tool-preset__meta">13.5 kWh nameplate (~12.2 kWh usable)</span>
                   <span class="tool-preset__desc">Cheap charging windows and valuable later discharge, which usually favors automation.</span>
                 </button>
               </div>
@@ -167,8 +210,8 @@
                     <div class="tool-form-group__grid">
                       <label class="tool-field">
                         <span class="tool-field__label">Usable battery capacity</span>
-                        <span class="tool-field__meta">kWh you can actually move in a cycle</span>
-                        <input id="batterySizeKwh" name="batterySizeKwh" type="number" min="1" max="80" step="0.1" value="13.5">
+                        <span class="tool-field__meta">kWh you can actually move in a cycle (often ~90% of nameplate)</span>
+                        <input id="batterySizeKwh" name="batterySizeKwh" type="number" min="1" max="80" step="0.1" value="12.2">
                       </label>
 
                       <label class="tool-field">

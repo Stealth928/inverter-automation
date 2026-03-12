@@ -182,6 +182,22 @@ function readPhaseTimingsFromCycleResult(cycleResult) {
   return sanitizePhaseTimingSample(cycleResult?.result?.phaseTimingsMs);
 }
 
+function readTelemetryFromCycleResult(cycleResult) {
+  const telemetry = cycleResult?.result?.telemetry;
+  const pauseReason = telemetry && telemetry.pauseReason
+    ? String(telemetry.pauseReason)
+    : null;
+  const status = telemetry && telemetry.status
+    ? String(telemetry.status)
+    : 'unknown';
+  const ageMs = toFiniteNumber(telemetry?.ageMs, NaN);
+  return {
+    ageMs: Number.isFinite(ageMs) ? Math.max(0, ageMs) : NaN,
+    status,
+    pauseReason
+  };
+}
+
 function createLockRef(db, userId) {
   return db.collection('users').doc(userId).collection('automation').doc('lock');
 }
@@ -561,6 +577,17 @@ function tallyFailureTypes(entries) {
   return failureByType;
 }
 
+function tallyTelemetryPauseReasons(entries) {
+  const pauseReasons = {};
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (!entry || entry.executed !== true) continue;
+    const reason = entry.telemetryPauseReason ? String(entry.telemetryPauseReason).trim() : '';
+    if (!reason) continue;
+    pauseReasons[reason] = (pauseReasons[reason] || 0) + 1;
+  }
+  return pauseReasons;
+}
+
 async function invokeAutomationCycleHandler(options = {}) {
   const automationCycleHandler = options.automationCycleHandler;
   const userId = options.userId;
@@ -610,6 +637,7 @@ async function runCycleWithRetry(options = {}) {
     });
     if (invokeResult.success) {
       const phaseTimingsMs = readPhaseTimingsFromCycleResult(invokeResult.cycleResult);
+      const telemetry = readTelemetryFromCycleResult(invokeResult.cycleResult);
       if (invokeResult.cycleResult?.result?.triggered) {
         logger.log(`[Scheduler] User ${userId}: Rule '${invokeResult.cycleResult.result.rule?.name}' triggered`);
       } else if (invokeResult.cycleResult?.result?.skipped) {
@@ -621,7 +649,10 @@ async function runCycleWithRetry(options = {}) {
         cycleResult: invokeResult.cycleResult,
         durationMs: Date.now() - runStartMs,
         failureType: null,
-        phaseTimingsMs
+        phaseTimingsMs,
+        telemetryAgeMs: telemetry.ageMs,
+        telemetryStatus: telemetry.status,
+        telemetryPauseReason: telemetry.pauseReason
       };
     }
 
@@ -637,7 +668,10 @@ async function runCycleWithRetry(options = {}) {
         error: lastError,
         durationMs: Date.now() - runStartMs,
         failureType: classifyFailureType(lastError, lastCycleResult),
-        phaseTimingsMs: readPhaseTimingsFromCycleResult(lastCycleResult)
+        phaseTimingsMs: readPhaseTimingsFromCycleResult(lastCycleResult),
+        telemetryAgeMs: readTelemetryFromCycleResult(lastCycleResult).ageMs,
+        telemetryStatus: readTelemetryFromCycleResult(lastCycleResult).status,
+        telemetryPauseReason: readTelemetryFromCycleResult(lastCycleResult).pauseReason
       };
     }
 
@@ -658,7 +692,10 @@ async function runCycleWithRetry(options = {}) {
     error: lastError || new Error('Unknown scheduler retry failure'),
     durationMs: Date.now() - runStartMs,
     failureType: classifyFailureType(lastError, lastCycleResult),
-    phaseTimingsMs: readPhaseTimingsFromCycleResult(lastCycleResult)
+    phaseTimingsMs: readPhaseTimingsFromCycleResult(lastCycleResult),
+    telemetryAgeMs: readTelemetryFromCycleResult(lastCycleResult).ageMs,
+    telemetryStatus: readTelemetryFromCycleResult(lastCycleResult).status,
+    telemetryPauseReason: readTelemetryFromCycleResult(lastCycleResult).pauseReason
   };
 }
 
@@ -860,7 +897,9 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
     let queueLagStats = buildDurationStats([]);
     let cycleDurationStats = buildDurationStats([]);
     let phaseTimingStats = buildPhaseTimingStats([]);
+    let telemetryAgeStats = buildDurationStats([]);
     let failureByType = {};
+    let telemetryPauseReasons = {};
     let slowCycleSamples = [];
     if (cycleCandidates.length > 0) {
       const cycleResults = await mapWithConcurrency(
@@ -895,7 +934,10 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               queueLagMs,
               cycleDurationMs: completedAtMs - cycleStartMs,
               attempts: 0,
-              phaseTimingsMs: createEmptyPhaseTimings()
+              phaseTimingsMs: createEmptyPhaseTimings(),
+              telemetryAgeMs: NaN,
+              telemetryStatus: 'unknown',
+              telemetryPauseReason: null
             };
           }
 
@@ -924,7 +966,10 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               queueLagMs,
               cycleDurationMs: completedAtMs - cycleStartMs,
               attempts: 0,
-              phaseTimingsMs: createEmptyPhaseTimings()
+              phaseTimingsMs: createEmptyPhaseTimings(),
+              telemetryAgeMs: NaN,
+              telemetryStatus: 'unknown',
+              telemetryPauseReason: null
             };
           }
 
@@ -977,7 +1022,10 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               queueLagMs,
               cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, completedAtMs - cycleStartMs),
               attempts: Math.max(1, toFiniteNumber(cycleExecution.attempts, 1)),
-              phaseTimingsMs: sanitizePhaseTimingSample(cycleExecution.phaseTimingsMs)
+              phaseTimingsMs: sanitizePhaseTimingSample(cycleExecution.phaseTimingsMs),
+              telemetryAgeMs: toFiniteNumber(cycleExecution.telemetryAgeMs, NaN),
+              telemetryStatus: cycleExecution.telemetryStatus || 'unknown',
+              telemetryPauseReason: cycleExecution.telemetryPauseReason || null
             };
           }
 
@@ -997,7 +1045,10 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
             queueLagMs,
             cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, completedAtMs - cycleStartMs),
             attempts: Math.max(1, toFiniteNumber(cycleExecution.attempts, 1)),
-            phaseTimingsMs: sanitizePhaseTimingSample(cycleExecution.phaseTimingsMs)
+            phaseTimingsMs: sanitizePhaseTimingSample(cycleExecution.phaseTimingsMs),
+            telemetryAgeMs: toFiniteNumber(cycleExecution.telemetryAgeMs, NaN),
+            telemetryStatus: cycleExecution.telemetryStatus || 'unknown',
+            telemetryPauseReason: cycleExecution.telemetryPauseReason || null
           };
         } catch (error) {
           logger.error(`[Scheduler] User ${userId}: Exception: ${error.message}`);
@@ -1017,7 +1068,10 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
             queueLagMs,
             cycleDurationMs: completedAtMs - cycleStartMs,
             attempts: 0,
-            phaseTimingsMs: createEmptyPhaseTimings()
+            phaseTimingsMs: createEmptyPhaseTimings(),
+            telemetryAgeMs: NaN,
+            telemetryStatus: 'unknown',
+            telemetryPauseReason: null
           };
         } finally {
           try {
@@ -1042,7 +1096,9 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
       queueLagStats = buildDurationStats(cycleResults.map((entry) => entry.queueLagMs));
       cycleDurationStats = buildDurationStats(cycleResults.map((entry) => entry.cycleDurationMs));
       phaseTimingStats = buildPhaseTimingStats(cycleResults);
+      telemetryAgeStats = buildDurationStats(cycleResults.map((entry) => entry.telemetryAgeMs));
       failureByType = tallyFailureTypes(cycleResults);
+      telemetryPauseReasons = tallyTelemetryPauseReasons(cycleResults);
       slowCycleSamples = buildSlowCycleSamples(cycleResults);
     }
 
@@ -1062,6 +1118,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
       queueLagMs: queueLagStats,
       cycleDurationMs: cycleDurationStats,
       phaseTimingsMs: phaseTimingStats,
+      telemetryAgeMs: telemetryAgeStats,
       skipped: {
         disabledOrBlackout: skippedDisabled,
         idempotent: skippedIdempotent,
@@ -1069,6 +1126,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
         tooSoon: skippedTooSoon
       },
       failureByType,
+      telemetryPauseReasons,
       slowCycleSamples
     };
     logger.log(`[Scheduler] ========== Background check ${schedId} COMPLETE ==========`);
@@ -1076,7 +1134,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
       `[Scheduler] ${totalEnabled} enabled users: ${cyclesRun} cycles, ${skippedTooSoon} too soon, ${skippedDisabled} skipped, ${skippedLocked} locked, ${skippedIdempotent} idempotent, ${errors} errors, ${deadLetters} dead-letter, ${totalRetries} retries (${duration}ms)`
     );
     logger.log(
-      `[SchedulerMetrics] queueLag avg=${queueLagStats.avgMs}ms max=${queueLagStats.maxMs}ms; cycleDuration avg=${cycleDurationStats.avgMs}ms max=${cycleDurationStats.maxMs}ms; failureTypes=${JSON.stringify(failureByType)}`
+      `[SchedulerMetrics] queueLag avg=${queueLagStats.avgMs}ms max=${queueLagStats.maxMs}ms; cycleDuration avg=${cycleDurationStats.avgMs}ms max=${cycleDurationStats.maxMs}ms; telemetryAge avg=${telemetryAgeStats.avgMs}ms max=${telemetryAgeStats.maxMs}ms; failureTypes=${JSON.stringify(failureByType)}`
     );
     if (typeof emitSchedulerMetrics === 'function') {
       try {

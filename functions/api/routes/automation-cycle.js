@@ -29,6 +29,49 @@ const {
   clearSchedulerSegmentsOneShot,
   clearSchedulerSegmentsWithRetry
 } = require('../../lib/services/scheduler-segment-service');
+const {
+  DEFAULT_FRESHNESS_MAX_AGE_MS,
+  DEFAULT_FROZEN_MAX_AGE_MS,
+  evaluateTelemetryHealth
+} = require('../../lib/services/automation-telemetry-health-service');
+
+function buildTelemetryCyclePayload(telemetryHealth) {
+  if (!telemetryHealth || typeof telemetryHealth !== 'object') {
+    return null;
+  }
+  return {
+    status: telemetryHealth.telemetryStatus || 'unknown',
+    pauseReason: telemetryHealth.pauseReason || null,
+    timestampMs: Number.isFinite(Number(telemetryHealth.telemetryTimestampMs))
+      ? Number(telemetryHealth.telemetryTimestampMs)
+      : null,
+    ageMs: Number.isFinite(Number(telemetryHealth.telemetryAgeMs))
+      ? Number(telemetryHealth.telemetryAgeMs)
+      : null,
+    freshnessMaxAgeMs: Number.isFinite(Number(telemetryHealth.freshnessMaxAgeMs))
+      ? Number(telemetryHealth.freshnessMaxAgeMs)
+      : DEFAULT_FRESHNESS_MAX_AGE_MS,
+    frozenMaxAgeMs: Number.isFinite(Number(telemetryHealth.frozenMaxAgeMs))
+      ? Number(telemetryHealth.frozenMaxAgeMs)
+      : DEFAULT_FROZEN_MAX_AGE_MS,
+    staleDueToMissingTimestamp: telemetryHealth.staleDueToMissingTimestamp === true,
+    staleDueToAge: telemetryHealth.staleDueToAge === true,
+    frozen: telemetryHealth.frozen === true
+  };
+}
+
+function buildTelemetryResetStatePatch(nowMs = Date.now()) {
+  return {
+    telemetryTimestampMs: null,
+    telemetryAgeMs: null,
+    telemetryFingerprint: null,
+    telemetryFingerprintSinceMs: null,
+    telemetryFailsafePaused: false,
+    telemetryFailsafePauseReason: null,
+    telemetryHealthStatus: 'unknown',
+    telemetryUpdatedAtMs: Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now()
+  };
+}
 
 function registerAutomationCycleRoute(app, deps = {}) {
   const addAutomationAuditEntry = deps.addAutomationAuditEntry;
@@ -160,6 +203,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
   // Run automation cycle - evaluates all rules and triggers if conditions met
   // This is called by the frontend timer every 60 seconds
   const automationCycleHandler = async (req, res) => {
+  let telemetryStatePatch = null;
   try {
     const userId = req.user.uid;
     const cycleStartTime = Date.now();
@@ -205,6 +249,33 @@ function registerAutomationCycleRoute(app, deps = {}) {
         }
       })
     );
+    const runCurtailmentCheck = async (userConfig, amberData) => {
+      let curtailmentResult = null;
+      const curtailmentStartMs = Date.now();
+      try {
+        logger.debug(
+          'Cycle',
+          `[Curtailment] Starting check: amberItems=${Array.isArray(amberData) ? amberData.length : 0}, enabled=${userConfig?.curtailment?.enabled === true}`
+        );
+        curtailmentResult = await checkAndApplyCurtailment(userId, userConfig, amberData);
+        logger.debug(
+          'Cycle',
+          `[Curtailment] Result: enabled=${curtailmentResult?.enabled === true}, adjusted=${curtailmentResult?.adjusted === true}, error=${curtailmentResult?.error ? 'yes' : 'no'}`
+        );
+        if (curtailmentResult.error) {
+          console.warn(`[Cycle] Curtailment check failed: ${curtailmentResult.error}`);
+        }
+      } catch (curtErr) {
+        console.error('[Cycle] Curtailment exception:', curtErr);
+        curtailmentResult = {
+          error: curtErr.message,
+          enabled: userConfig?.curtailment?.enabled || false
+        };
+      } finally {
+        addPhaseDuration('curtailmentMs', curtailmentStartMs);
+      }
+      return curtailmentResult;
+    };
     const normalizeActionErrno = (value) => {
       const parsed = Number(value);
       if (!Number.isInteger(parsed)) return 500;
@@ -229,13 +300,17 @@ function registerAutomationCycleRoute(app, deps = {}) {
     const state = await getUserAutomationState(userId);
     // Check explicitly for enabled === false (not undefined which means not set yet)
     if (state && state.enabled === false) {
+      const disabledNowMs = Date.now();
       
       // Always update lastCheck timestamp to prevent scheduler from calling cycle repeatedly
       await saveUserAutomationState(
         userId,
-        buildClearedActiveRuleState({
-          lastCheckMs: Date.now()
-        })
+        {
+          ...buildClearedActiveRuleState({
+            lastCheckMs: disabledNowMs
+          }),
+          ...buildTelemetryResetStatePatch(disabledNowMs)
+        }
       );
       
       // Only clear segments if they haven't been cleared already for this disabled state
@@ -328,7 +403,11 @@ function registerAutomationCycleRoute(app, deps = {}) {
         logger.debug('Automation', `Cycle skipped: Quick control active (type=${quickState.type}, ${remainingMinutes}min remaining)`);
         
         // Update lastCheck to prevent scheduler from calling cycle repeatedly
-        await saveUserAutomationState(userId, { lastCheck: Date.now() });
+        const quickControlNowMs = Date.now();
+        await saveUserAutomationState(userId, {
+          lastCheck: quickControlNowMs,
+          ...buildTelemetryResetStatePatch(quickControlNowMs)
+        });
         
         return respondSuccess({
           skipped: true,
@@ -358,7 +437,13 @@ function registerAutomationCycleRoute(app, deps = {}) {
     );
     
     if (inBlackout) {
-      await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: true, currentBlackoutWindow });
+      const blackoutNowMs = Date.now();
+      await saveUserAutomationState(userId, {
+        lastCheck: blackoutNowMs,
+        inBlackout: true,
+        currentBlackoutWindow,
+        ...buildTelemetryResetStatePatch(blackoutNowMs)
+      });
       return respondSuccess({ skipped: true, reason: 'In blackout window', blackoutWindow: currentBlackoutWindow });
     }
     
@@ -367,7 +452,12 @@ function registerAutomationCycleRoute(app, deps = {}) {
     const totalRules = Object.keys(rules).length;
     
     if (totalRules === 0) {
-      await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
+      const noRulesNowMs = Date.now();
+      await saveUserAutomationState(userId, {
+        lastCheck: noRulesNowMs,
+        inBlackout: false,
+        ...buildTelemetryResetStatePatch(noRulesNowMs)
+      });
       return respondSuccess({ skipped: true, reason: 'No rules configured' });
     }
     
@@ -386,8 +476,10 @@ function registerAutomationCycleRoute(app, deps = {}) {
       }
       
       // Clear the flag after processing
+      const clearFlagNowMs = Date.now();
       await saveUserAutomationState(userId, {
-        clearSegmentsOnNextCycle: false
+        clearSegmentsOnNextCycle: false,
+        ...buildTelemetryResetStatePatch(clearFlagNowMs)
       });
       
       return respondSuccess({ skipped: true, reason: 'Rule was disabled - segments cleared', segmentsCleared: true });
@@ -409,11 +501,15 @@ function registerAutomationCycleRoute(app, deps = {}) {
       }
       
       // Clear automation state (but DON'T update lastCheck - let scheduler timer continue)
+      const activeRuleDisabledNowMs = Date.now();
       await saveUserAutomationState(
         userId,
-        buildClearedActiveRuleState({
-          includeLastCheck: false
-        })
+        {
+          ...buildClearedActiveRuleState({
+            includeLastCheck: false
+          }),
+          ...buildTelemetryResetStatePatch(activeRuleDisabledNowMs)
+        }
       );
       return respondSuccess({ skipped: true, reason: 'Active rule was disabled', segmentsCleared: true });
     }
@@ -430,7 +526,12 @@ function registerAutomationCycleRoute(app, deps = {}) {
     const enabledRules = Object.entries(rules).filter(([_, rule]) => rule.enabled);
 
     if (enabledRules.length === 0) {
-      await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
+      const noEnabledRulesNowMs = Date.now();
+      await saveUserAutomationState(userId, {
+        lastCheck: noEnabledRulesNowMs,
+        inBlackout: false,
+        ...buildTelemetryResetStatePatch(noEnabledRulesNowMs)
+      });
       return respondSuccess({ skipped: true, reason: 'No rules enabled', totalRules });
     }
 
@@ -459,6 +560,8 @@ function registerAutomationCycleRoute(app, deps = {}) {
     let inverterData;
     let amberData;
     let weatherDataRaw;
+    let telemetryHealth = null;
+    let telemetry = null;
     try {
       [inverterData, amberData, weatherDataRaw] = await Promise.all([
         fetchAutomationInverterData({
@@ -484,9 +587,45 @@ function registerAutomationCycleRoute(app, deps = {}) {
       addPhaseDuration('dataFetchMs', dataFetchStartMs);
     }
 
+    const telemetryCheckNowMs = Date.now();
+    telemetryHealth = evaluateTelemetryHealth({
+      inverterData,
+      previousState: state,
+      nowMs: telemetryCheckNowMs,
+      freshnessMaxAgeMs: DEFAULT_FRESHNESS_MAX_AGE_MS,
+      frozenMaxAgeMs: DEFAULT_FROZEN_MAX_AGE_MS
+    });
+    telemetry = buildTelemetryCyclePayload(telemetryHealth);
+    telemetryStatePatch = telemetryHealth && telemetryHealth.statePatch && typeof telemetryHealth.statePatch === 'object'
+      ? telemetryHealth.statePatch
+      : {};
+    const saveStateWithTelemetry = async (patch = {}) => {
+      const safePatch = patch && typeof patch === 'object' ? patch : {};
+      return saveUserAutomationState(userId, {
+        ...telemetryStatePatch,
+        ...safePatch
+      });
+    };
+
+    if (telemetryHealth.shouldPauseAutomation) {
+      await saveStateWithTelemetry({
+        inBlackout: false,
+        lastCheck: telemetryCheckNowMs
+      });
+      const curtailmentResult = await runCurtailmentCheck(userConfig, amberData);
+
+      return respondSuccess({
+        skipped: true,
+        reason: telemetryHealth.pauseReason,
+        telemetry,
+        curtailment: curtailmentResult
+      });
+    }
+
     // Build cache object for rule evaluation
     const cache = {
       amber: amberData,
+      inverterData,
       weather: weatherDataRaw ? (weatherDataRaw.result || weatherDataRaw) : null
     };
     
@@ -561,7 +700,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
             
             // Update state with retry result
             logger.debug('Automation', `💾 Updating state after retry: activeSegmentEnabled=${retryResult?.errno === 0}`);
-            await saveUserAutomationState(userId, {
+            await saveStateWithTelemetry({
               lastCheck: Date.now(),
               activeSegmentEnabled: retryResult?.errno === 0,
               lastActionResult: retryResult,
@@ -587,8 +726,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
               }, { merge: true });
               
               // Clear active rule state so the rule can re-trigger as NEW in this same cycle
-              await saveUserAutomationState(
-                userId,
+              await saveStateWithTelemetry(
                 buildClearedActiveRuleState({
                   inBlackout: false,
                   lastCheckMs: Date.now()
@@ -633,7 +771,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
               lastTriggeredMs: Date.now(),
               ruleId,
               ruleName: rule.name,
-              saveUserAutomationState,
+              saveUserAutomationState: async (_targetUserId, statePatch) => saveStateWithTelemetry(statePatch),
               serverTimestamp,
               setUserRule,
               userId
@@ -669,7 +807,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
             // Update check timestamp only, don't re-apply segment
             // CRITICAL: Preserve activeSegmentEnabled from previous state - if the segment failed to send,
             // don't falsely claim it's enabled on subsequent cycles
-            await saveUserAutomationState(userId, {
+            await saveStateWithTelemetry({
               lastCheck: Date.now(),
               inBlackout: false
               // DO NOT UPDATE activeSegmentEnabled - preserve prior state
@@ -737,7 +875,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
             lastTriggeredMs: Date.now(),
             ruleId,
             ruleName: rule.name,
-            saveUserAutomationState,
+            saveUserAutomationState: async (_targetUserId, statePatch) => saveStateWithTelemetry(statePatch),
             serverTimestamp,
             setUserRule,
             userId
@@ -781,6 +919,10 @@ function registerAutomationCycleRoute(app, deps = {}) {
             rulesEvaluated: sortedRules.length,
             inverterCacheHit: cache?.inverterData?.__cacheHit || false,
             inverterCacheAgeMs: cache?.inverterData?.__cacheAgeMs || null,
+            telemetryTimestampMs: telemetry?.timestampMs || null,
+            telemetryAgeMs: telemetry?.ageMs || null,
+            telemetryStatus: telemetry?.status || null,
+            telemetryPauseReason: telemetry?.pauseReason || null,
             cycleDurationMs: Date.now() - cycleStartTime
           });
           
@@ -788,7 +930,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
           triggeredRule.actionResult = actionResult;
         } else {
           // Active rule is continuing - just update check timestamp, no re-apply needed
-          await saveUserAutomationState(userId, {
+          await saveStateWithTelemetry({
             lastCheck: Date.now(),
             inBlackout: false,
             activeSegmentEnabled: true,
@@ -834,8 +976,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
           
           // Only proceed if segment clear was successful
           if (segmentClearSuccess) {
-            await saveUserAutomationState(
-              userId,
+            await saveStateWithTelemetry(
               buildClearedActiveRuleState({
                 inBlackout: false,
                 lastCheckMs: Date.now()
@@ -857,6 +998,10 @@ function registerAutomationCycleRoute(app, deps = {}) {
               activeRuleBefore: state.activeRule,
               activeRuleAfter: null,
               rulesEvaluated: sortedRules.length,
+              telemetryTimestampMs: telemetry?.timestampMs || null,
+              telemetryAgeMs: telemetry?.ageMs || null,
+              telemetryStatus: telemetry?.status || null,
+              telemetryPauseReason: telemetry?.pauseReason || null,
               cycleDurationMs: Date.now() - cycleStartTime
             });
             
@@ -874,33 +1019,13 @@ function registerAutomationCycleRoute(app, deps = {}) {
       
       // Just update lastCheck timestamp
       // Note: If an active rule's conditions no longer held, it was already handled in the main loop above
-      await saveUserAutomationState(userId, { lastCheck: Date.now(), inBlackout: false });
+      await saveStateWithTelemetry({ lastCheck: Date.now(), inBlackout: false });
     }
 
     // ========== SOLAR CURTAILMENT CHECK ==========
     // Run AFTER automation rules to ensure sequential execution
     // Curtailment failures don't affect automation cycle
-    let curtailmentResult = null;
-    const curtailmentStartMs = Date.now();
-    try {
-      logger.debug(
-        'Cycle',
-        `🌞 Starting curtailment check: amberItems=${Array.isArray(amberData) ? amberData.length : 0}, enabled=${userConfig?.curtailment?.enabled === true}`
-      );
-      curtailmentResult = await checkAndApplyCurtailment(userId, userConfig, amberData);
-      logger.debug(
-        'Cycle',
-        `🌞 Curtailment result: enabled=${curtailmentResult?.enabled === true}, adjusted=${curtailmentResult?.adjusted === true}, error=${curtailmentResult?.error ? 'yes' : 'no'}`
-      );
-      if (curtailmentResult.error) {
-        console.warn(`[Cycle] � ️ Curtailment check failed: ${curtailmentResult.error}`);
-      }
-    } catch (curtErr) {
-      console.error('[Cycle] ❌ Curtailment exception:', curtErr);
-      curtailmentResult = { error: curtErr.message, enabled: userConfig?.curtailment?.enabled || false };
-    } finally {
-      addPhaseDuration('curtailmentMs', curtailmentStartMs);
-    }
+    const curtailmentResult = await runCurtailmentCheck(userConfig, amberData);
     
     return respondSuccess({
       triggered: !!triggeredRule,
@@ -910,6 +1035,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
       totalRules,
       evaluationResults,
       lastCheck: Date.now(),
+      telemetry,
       // Curtailment result (for UI feedback)
       curtailment: curtailmentResult
     });
@@ -918,7 +1044,14 @@ function registerAutomationCycleRoute(app, deps = {}) {
     
     // Still update lastCheck even on error
     try {
-      await saveUserAutomationState(req.user.uid, { lastCheck: Date.now() });
+      const errorNowMs = Date.now();
+      const safeTelemetryPatch = telemetryStatePatch && typeof telemetryStatePatch === 'object'
+        ? telemetryStatePatch
+        : {};
+      await saveUserAutomationState(req.user.uid, {
+        ...safeTelemetryPatch,
+        lastCheck: errorNowMs
+      });
     } catch (e) { /* ignore */ }
     const cycleErrno = Number(error?.cycleErrno);
     const statusCode = Number.isInteger(cycleErrno) && cycleErrno >= 400 && cycleErrno <= 599

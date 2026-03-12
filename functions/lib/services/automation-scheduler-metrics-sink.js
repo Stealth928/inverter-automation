@@ -5,6 +5,7 @@ const DEFAULT_SLO_THRESHOLDS = Object.freeze({
   deadLetterRatePct: 0.2,
   maxQueueLagMs: 120000,
   maxCycleDurationMs: 20000,
+  maxTelemetryAgeMs: 30 * 60 * 1000,
   p99CycleDurationMs: 10000,
   tailP99CycleDurationMs: 10000,
   tailWindowMinutes: 15,
@@ -68,6 +69,7 @@ function resolveSloThresholds(overrides = {}) {
     deadLetterRatePct: toFiniteNumber(overrides.deadLetterRatePct, DEFAULT_SLO_THRESHOLDS.deadLetterRatePct),
     maxQueueLagMs: toFiniteNumber(overrides.maxQueueLagMs, DEFAULT_SLO_THRESHOLDS.maxQueueLagMs),
     maxCycleDurationMs: toFiniteNumber(overrides.maxCycleDurationMs, DEFAULT_SLO_THRESHOLDS.maxCycleDurationMs),
+    maxTelemetryAgeMs: toFiniteNumber(overrides.maxTelemetryAgeMs, DEFAULT_SLO_THRESHOLDS.maxTelemetryAgeMs),
     p99CycleDurationMs: toFiniteNumber(overrides.p99CycleDurationMs, DEFAULT_SLO_THRESHOLDS.p99CycleDurationMs),
     tailP99CycleDurationMs: toFiniteNumber(
       overrides.tailP99CycleDurationMs,
@@ -105,6 +107,7 @@ function buildSchedulerSloSnapshot(metrics = {}, thresholds = {}, monitoredAtMs 
   const deadLetters = toFiniteNumber(metrics.deadLetters, 0);
   const maxQueueLagMs = toFiniteNumber(metrics.maxQueueLagMs, 0);
   const maxCycleDurationMs = toFiniteNumber(metrics.maxCycleDurationMs, 0);
+  const maxTelemetryAgeMs = toFiniteNumber(metrics.maxTelemetryAgeMs, 0);
   const p95CycleDurationMs = toFiniteNumber(metrics.p95CycleDurationMs, 0);
   const p99CycleDurationMs = toFiniteNumber(metrics.p99CycleDurationMs, 0);
   const errorRatePct = cyclesRun > 0 ? Number(((errors / cyclesRun) * 100).toFixed(2)) : 0;
@@ -134,6 +137,12 @@ function buildSchedulerSloSnapshot(metrics = {}, thresholds = {}, monitoredAtMs 
       measured: maxCycleDurationMs,
       threshold: toFiniteNumber(thresholds.maxCycleDurationMs, DEFAULT_SLO_THRESHOLDS.maxCycleDurationMs),
       level: classifySloLevel(maxCycleDurationMs, thresholds.maxCycleDurationMs)
+    },
+    maxTelemetryAgeMs: {
+      metric: 'maxTelemetryAgeMs',
+      measured: maxTelemetryAgeMs,
+      threshold: toFiniteNumber(thresholds.maxTelemetryAgeMs, DEFAULT_SLO_THRESHOLDS.maxTelemetryAgeMs),
+      level: classifySloLevel(maxTelemetryAgeMs, thresholds.maxTelemetryAgeMs)
     },
     p99CycleDurationMs: {
       metric: 'p99CycleDurationMs',
@@ -165,6 +174,7 @@ function buildSchedulerSloSnapshot(metrics = {}, thresholds = {}, monitoredAtMs 
       deadLetterRatePct: metricStates.deadLetterRatePct.threshold,
       maxQueueLagMs: metricStates.maxQueueLagMs.threshold,
       maxCycleDurationMs: metricStates.maxCycleDurationMs.threshold,
+      maxTelemetryAgeMs: metricStates.maxTelemetryAgeMs.threshold,
       p99CycleDurationMs: metricStates.p99CycleDurationMs.threshold
     },
     measurements: {
@@ -175,6 +185,7 @@ function buildSchedulerSloSnapshot(metrics = {}, thresholds = {}, monitoredAtMs 
       deadLetterRatePct,
       maxQueueLagMs,
       maxCycleDurationMs,
+      maxTelemetryAgeMs,
       p95CycleDurationMs,
       p99CycleDurationMs
     },
@@ -307,6 +318,7 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
     const dayAlertRef = metricsRootRef.collection('alerts').doc(dayKey);
 
     const normalizedFailureByType = buildFailureTally(metricsInput.failureByType);
+    const normalizedTelemetryPauseReasons = buildFailureTally(metricsInput.telemetryPauseReasons);
     const slowCycleSamples = sanitizeSlowCycleSamples(metricsInput.slowCycleSamples);
     const normalizedSkipped = {
       disabledOrBlackout: toFiniteNumber(metricsInput.skipped?.disabledOrBlackout, 0),
@@ -329,8 +341,10 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       queueLagMs: sanitizeDurationStats(metricsInput.queueLagMs),
       cycleDurationMs: sanitizeDurationStats(metricsInput.cycleDurationMs),
       phaseTimingsMs: sanitizePhaseTimingStats(metricsInput.phaseTimingsMs),
+      telemetryAgeMs: sanitizeDurationStats(metricsInput.telemetryAgeMs),
       skipped: normalizedSkipped,
       failureByType: normalizedFailureByType,
+      telemetryPauseReasons: normalizedTelemetryPauseReasons,
       workerId: String(metricsInput.workerId || '').trim() || null,
       slowCycleSamples
     };
@@ -339,6 +353,7 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       deadLetters: normalizedMetrics.deadLetters,
       errors: normalizedMetrics.errors,
       maxCycleDurationMs: normalizedMetrics.cycleDurationMs.maxMs,
+      maxTelemetryAgeMs: normalizedMetrics.telemetryAgeMs.maxMs,
       maxQueueLagMs: normalizedMetrics.queueLagMs.maxMs,
       p95CycleDurationMs: normalizedMetrics.cycleDurationMs.p95Ms,
       p99CycleDurationMs: normalizedMetrics.cycleDurationMs.p99Ms
@@ -361,13 +376,20 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       const existingData = readSnapshot.exists ? readSnapshot.data() || {} : {};
       const existingFailureByType = buildFailureTally(existingData.failureByType);
       const failureByType = mergeFailureTally(existingFailureByType, normalizedFailureByType);
+      const existingTelemetryPauseReasons = buildFailureTally(existingData.telemetryPauseReasons);
+      const telemetryPauseReasons = mergeFailureTally(
+        existingTelemetryPauseReasons,
+        normalizedTelemetryPauseReasons
+      );
       const previousRuns = toFiniteNumber(existingData.runs, 0);
       const previousMaxQueueLag = toFiniteNumber(existingData.maxQueueLagMs, 0);
       const previousMaxCycleDuration = toFiniteNumber(existingData.maxCycleDurationMs, 0);
+      const previousMaxTelemetryAge = toFiniteNumber(existingData.maxTelemetryAgeMs, 0);
       const previousP95CycleDuration = toFiniteNumber(existingData.p95CycleDurationMs, 0);
       const previousP99CycleDuration = toFiniteNumber(existingData.p99CycleDurationMs, 0);
       const nextMaxQueueLagMs = Math.max(previousMaxQueueLag, normalizedMetrics.queueLagMs.maxMs);
       const nextMaxCycleDurationMs = Math.max(previousMaxCycleDuration, normalizedMetrics.cycleDurationMs.maxMs);
+      const nextMaxTelemetryAgeMs = Math.max(previousMaxTelemetryAge, normalizedMetrics.telemetryAgeMs.maxMs);
       const nextP95CycleDurationMs = Math.max(previousP95CycleDuration, normalizedMetrics.cycleDurationMs.p95Ms);
       const nextP99CycleDurationMs = Math.max(previousP99CycleDuration, normalizedMetrics.cycleDurationMs.p99Ms);
       const previousPhaseTimingsMaxMs = sanitizePhaseTimingMaxMs(existingData.phaseTimingsMaxMs);
@@ -396,6 +418,7 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
         errors: nextErrors,
         maxQueueLagMs: nextMaxQueueLagMs,
         maxCycleDurationMs: nextMaxCycleDurationMs,
+        maxTelemetryAgeMs: nextMaxTelemetryAgeMs,
         p95CycleDurationMs: nextP95CycleDurationMs,
         p99CycleDurationMs: nextP99CycleDurationMs
       }, sloThresholds, recordedAtMs);
@@ -471,12 +494,14 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
         },
         maxQueueLagMs: nextMaxQueueLagMs,
         maxCycleDurationMs: nextMaxCycleDurationMs,
+        maxTelemetryAgeMs: nextMaxTelemetryAgeMs,
         p95CycleDurationMs: nextP95CycleDurationMs,
         p99CycleDurationMs: nextP99CycleDurationMs,
         phaseTimingsMaxMs: nextPhaseTimingsMaxMs,
         avgCycleDurationTotalMs: nextAvgCycleDurationTotalMs,
         avgCycleDurationSamples: nextAvgCycleDurationSamples,
         failureByType,
+        telemetryPauseReasons,
         slo: dailySlo,
         tailLatencyState: {
           runs: nextTailSamples,
@@ -544,12 +569,14 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       watchMetrics: mergeMetricLists(dailySlo.watchMetrics, Array.from(watchMetrics)),
       thresholds: {
         ...dailySlo.thresholds,
+        maxTelemetryAgeMs: toFiniteNumber(dailySlo.thresholds?.maxTelemetryAgeMs, 0),
         tailP99CycleDurationMs: tailLatency.thresholdMs,
         tailWindowMinutes: tailLatency.windowMinutes,
         tailMinRuns: tailLatency.minRuns
       },
       measurements: {
         ...dailySlo.measurements,
+        maxTelemetryAgeMs: toFiniteNumber(dailySlo.measurements?.maxTelemetryAgeMs, 0),
         latestRunP99CycleDurationMs: normalizedMetrics.cycleDurationMs.p99Ms
       },
       tailLatency,

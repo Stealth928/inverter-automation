@@ -2,7 +2,7 @@
   'use strict';
 
   var FALLBACKS = {
-    batterySizeKwh: 13.5,
+    batterySizeKwh: 12.2,
     cyclesPerWeek: 4.5,
     chargeEnergyCostCents: 10,
     dischargeValueCents: 32,
@@ -16,7 +16,7 @@
 
   var PRESETS = {
     balanced: {
-      batterySizeKwh: 13.5,
+      batterySizeKwh: 12.2,
       cyclesPerWeek: 4.5,
       chargeEnergyCostCents: 10,
       dischargeValueCents: 32,
@@ -28,7 +28,7 @@
       batterySystemCost: ''
     },
     conservative: {
-      batterySizeKwh: 10,
+      batterySizeKwh: 9,
       cyclesPerWeek: 3.2,
       chargeEnergyCostCents: 12,
       dischargeValueCents: 28,
@@ -40,7 +40,7 @@
       batterySystemCost: ''
     },
     large: {
-      batterySizeKwh: 42,
+      batterySizeKwh: 37.8,
       cyclesPerWeek: 5.5,
       chargeEnergyCostCents: 8,
       dischargeValueCents: 34,
@@ -52,7 +52,7 @@
       batterySystemCost: ''
     },
     highSpread: {
-      batterySizeKwh: 13.5,
+      batterySizeKwh: 12.2,
       cyclesPerWeek: 5.2,
       chargeEnergyCostCents: 6,
       dischargeValueCents: 42,

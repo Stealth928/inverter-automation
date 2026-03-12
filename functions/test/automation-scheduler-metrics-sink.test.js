@@ -99,6 +99,7 @@ describe('automation scheduler metrics sink', () => {
       retries: 2,
       queueLagMs: { avgMs: 20, count: 4, maxMs: 80, minMs: 1, p95Ms: 70, p99Ms: 79 },
       cycleDurationMs: { avgMs: 30, count: 4, maxMs: 90, minMs: 3, p95Ms: 80, p99Ms: 89 },
+      telemetryAgeMs: { avgMs: 60000, count: 4, maxMs: 120000, minMs: 10000, p95Ms: 100000, p99Ms: 110000 },
       phaseTimingsMs: {
         dataFetchMs: { avgMs: 8, count: 4, maxMs: 20, minMs: 1, p95Ms: 18, p99Ms: 19 },
         ruleEvalMs: { avgMs: 6, count: 4, maxMs: 14, minMs: 1, p95Ms: 12, p99Ms: 13 },
@@ -107,6 +108,7 @@ describe('automation scheduler metrics sink', () => {
       },
       skipped: { disabledOrBlackout: 1, idempotent: 0, locked: 1, tooSoon: 2 },
       failureByType: { api_rate_limit: 1 },
+      telemetryPauseReasons: { stale_telemetry: 1 },
       workerId: 'worker-a',
       slowCycleSamples: [
         { userId: 'u-1', cycleKey: 'u-1_1', queueLagMs: 40, cycleDurationMs: 90, retriesUsed: 1, startedAtMs: 1710000000000, completedAtMs: 1710000000090, success: false, failureType: 'api_rate_limit' }
@@ -126,6 +128,7 @@ describe('automation scheduler metrics sink', () => {
       retries: 1,
       queueLagMs: { avgMs: 10, count: 5, maxMs: 40, minMs: 2, p95Ms: 35, p99Ms: 39 },
       cycleDurationMs: { avgMs: 60, count: 5, maxMs: 140, minMs: 5, p95Ms: 120, p99Ms: 135 },
+      telemetryAgeMs: { avgMs: 30000, count: 5, maxMs: 60000, minMs: 1000, p95Ms: 55000, p99Ms: 59000 },
       phaseTimingsMs: {
         dataFetchMs: { avgMs: 12, count: 5, maxMs: 30, minMs: 1, p95Ms: 26, p99Ms: 28 },
         ruleEvalMs: { avgMs: 9, count: 5, maxMs: 18, minMs: 1, p95Ms: 16, p99Ms: 17 },
@@ -134,6 +137,7 @@ describe('automation scheduler metrics sink', () => {
       },
       skipped: { disabledOrBlackout: 1, idempotent: 1, locked: 0, tooSoon: 3 },
       failureByType: { api_timeout: 2, api_rate_limit: 1 },
+      telemetryPauseReasons: { frozen_telemetry: 1 },
       workerId: 'worker-b',
       slowCycleSamples: [
         { userId: 'u-2', cycleKey: 'u-2_1', queueLagMs: 20, cycleDurationMs: 140, retriesUsed: 0, startedAtMs: 1710000000500, completedAtMs: 1710000000640, success: true }
@@ -192,6 +196,7 @@ describe('automation scheduler metrics sink', () => {
       retries: 3,
       maxQueueLagMs: 80,
       maxCycleDurationMs: 140,
+      maxTelemetryAgeMs: 120000,
       p95CycleDurationMs: 120,
       p99CycleDurationMs: 135,
       phaseTimingsMaxMs: {
@@ -212,6 +217,10 @@ describe('automation scheduler metrics sink', () => {
         api_rate_limit: 2,
         api_timeout: 2
       },
+      telemetryPauseReasons: {
+        stale_telemetry: 1,
+        frozen_telemetry: 1
+      },
       slo: expect.objectContaining({
         status: 'breach',
         breachedMetrics: expect.arrayContaining(['errorRatePct', 'deadLetterRatePct'])
@@ -228,7 +237,8 @@ describe('automation scheduler metrics sink', () => {
         status: 'healthy'
       }),
       thresholds: expect.objectContaining({
-        p99CycleDurationMs: 10000
+        p99CycleDurationMs: 10000,
+        maxTelemetryAgeMs: 30 * 60 * 1000
       })
     }));
     expect(getDoc(dayAlertPath)).toEqual(expect.objectContaining({
@@ -269,6 +279,7 @@ describe('automation scheduler metrics sink', () => {
       retries: 0,
       queueLagMs: { avgMs: 5, count: 3, maxMs: 20, minMs: 1, p95Ms: 18, p99Ms: 19 },
       cycleDurationMs: { avgMs: 20, count: 3, maxMs: 30, minMs: 5, p95Ms: 22, p99Ms: 25 },
+      telemetryAgeMs: { avgMs: 10000, count: 3, maxMs: 20000, minMs: 5000, p95Ms: 18000, p99Ms: 19000 },
       skipped: { disabledOrBlackout: 0, idempotent: 0, locked: 0, tooSoon: 1 },
       failureByType: { api_timeout: 1 }
     });
@@ -285,6 +296,48 @@ describe('automation scheduler metrics sink', () => {
         'p99CycleDurationMs'
       ]),
       watchMetrics: expect.arrayContaining(['maxQueueLagMs'])
+    }));
+  });
+
+  test('flags telemetry age SLO breach when max telemetry age exceeds threshold', async () => {
+    const { db, getDoc } = createInMemoryDb();
+    const sink = createAutomationSchedulerMetricsSink({
+      db,
+      now: () => 1710000020000,
+      serverTimestamp: () => 'server-ts',
+      timezone: 'UTC',
+      sloThresholds: {
+        maxTelemetryAgeMs: 1000
+      }
+    });
+
+    await sink.emitSchedulerMetrics({
+      schedulerId: 'sched-telemetry',
+      startedAtMs: 1710000020000,
+      completedAtMs: 1710000020200,
+      durationMs: 200,
+      totalEnabledUsers: 2,
+      cycleCandidates: 2,
+      cyclesRun: 2,
+      deadLetters: 0,
+      errors: 0,
+      retries: 0,
+      queueLagMs: { avgMs: 1, count: 2, maxMs: 2, minMs: 1, p95Ms: 2, p99Ms: 2 },
+      cycleDurationMs: { avgMs: 3, count: 2, maxMs: 4, minMs: 2, p95Ms: 4, p99Ms: 4 },
+      telemetryAgeMs: { avgMs: 5000, count: 2, maxMs: 5000, minMs: 5000, p95Ms: 5000, p99Ms: 5000 },
+      skipped: { disabledOrBlackout: 0, idempotent: 0, locked: 0, tooSoon: 0 }
+    });
+
+    const currentAlert = getDoc('metrics/automationScheduler/alerts/current');
+    expect(currentAlert).toEqual(expect.objectContaining({
+      status: 'breach',
+      breachedMetrics: expect.arrayContaining(['maxTelemetryAgeMs']),
+      measurements: expect.objectContaining({
+        maxTelemetryAgeMs: 5000
+      }),
+      thresholds: expect.objectContaining({
+        maxTelemetryAgeMs: 1000
+      })
     }));
   });
 });

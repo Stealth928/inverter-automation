@@ -42,6 +42,52 @@ describe('automation cycle data service', () => {
     expect(getCachedInverterRealtimeData).not.toHaveBeenCalled();
   });
 
+  test('fetchAutomationInverterData builds full telemetry frame for non-fox providers', async () => {
+    const getCachedInverterData = jest.fn(async () => null);
+    const deviceAdapter = {
+      getStatus: jest.fn(async () => ({
+        observedAtIso: '2026-03-12T01:02:03.000Z',
+        socPct: 66,
+        batteryTempC: 24.2,
+        ambientTempC: 20.1,
+        pvPowerW: 4200,
+        loadPowerW: 1700,
+        gridPowerW: 300,
+        feedInPowerW: 0
+      }))
+    };
+
+    const result = await fetchAutomationInverterData({
+      deviceAdapter,
+      deviceSN: 'SN-SG-1',
+      getCachedInverterData,
+      provider: 'sungrow',
+      userConfig: { provider: 'sungrow', deviceSn: 'SN-SG-1' },
+      userId: 'u1'
+    });
+
+    expect(deviceAdapter.getStatus).toHaveBeenCalledWith({
+      deviceSN: 'SN-SG-1',
+      userConfig: { provider: 'sungrow', deviceSn: 'SN-SG-1' },
+      userId: 'u1'
+    });
+    expect(getCachedInverterData).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      errno: 0,
+      result: [expect.objectContaining({
+        time: '2026-03-12T01:02:03.000Z',
+        datas: expect.arrayContaining([
+          { variable: 'SoC', value: 66 },
+          { variable: 'pvPower', value: 4200 },
+          { variable: 'loadsPower', value: 1700 },
+          { variable: 'gridConsumptionPower', value: 300 },
+          { variable: 'feedinPower', value: 0 },
+          { variable: 'meterPower2', value: 300 }
+        ])
+      })]
+    }));
+  });
+
   test('fetchAutomationInverterData falls back to realtime cache when primary payload is invalid', async () => {
     const primaryPayload = { errno: 0, result: [{ data: [] }] };
     const realtimePayload = { errno: 0, result: [{ datas: [{ variable: 'SoC', value: 75 }] }] };

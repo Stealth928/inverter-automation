@@ -503,7 +503,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 18px 20px;
+            padding: 24px 20px 12px;
             min-height: 86px;
             border: 2px solid var(--border-secondary);
             border-radius: 12px;
@@ -542,7 +542,9 @@
         .provider-logo-img {
             max-height: 50px;
             max-width: 160px;
-            width: 100%;
+            width: auto;
+            height: auto;
+            display: block;
             object-fit: contain;
             filter: grayscale(60%) opacity(0.55);
             transition: filter 0.18s;
@@ -572,14 +574,14 @@
             padding: 3px 7px;
             white-space: nowrap;
         }
-        .provider-option--beta {
+        .provider-option--testing {
             opacity: 0.7;
         }
-        .provider-option--beta:hover {
+        .provider-option--testing:hover {
             opacity: 0.95;
         }
-        .provider-option--beta::before {
-            content: 'Beta';
+        .provider-option--testing::before {
+            content: 'TESTING';
             position: absolute;
             top: 7px;
             left: 8px;
@@ -735,9 +737,9 @@
                                 <input type="radio" name="provider" value="foxess" checked id="providerFoxess">
                                 <img src="icons/logo-foxess.svg" alt="FoxESS" class="provider-logo-img">
                             </label>
-                            <label class="provider-option provider-option--beta" id="providerAlphaEssOption">
+                            <label class="provider-option provider-option--testing" id="providerAlphaEssOption">
                                 <input type="radio" name="provider" value="alphaess" id="providerAlphaEss">
-                                <img src="icons/logo-alphaess.svg?v=2" alt="AlphaESS" class="provider-logo-img">
+                                <img src="icons/logo-alphaess.svg?v=3" alt="AlphaESS" class="provider-logo-img">
                             </label>
                             <label class="provider-option provider-option--coming-soon" id="providerSungrowOption">
                                 <input type="radio" name="provider" value="sungrow" id="providerSungrow" disabled>

@@ -548,6 +548,12 @@ async function addAutomationAuditEntry(userId, cycleData) {
       // Cache info
       inverterCacheHit: cycleData.inverterCacheHit || false,
       inverterCacheAgeMs: cycleData.inverterCacheAgeMs || null,
+      telemetryTimestampMs: cycleData.telemetryTimestampMs || null,
+      telemetryAgeMs: Number.isFinite(Number(cycleData.telemetryAgeMs))
+        ? Number(cycleData.telemetryAgeMs)
+        : null,
+      telemetryStatus: cycleData.telemetryStatus || null,
+      telemetryPauseReason: cycleData.telemetryPauseReason || null,
       
       // Timing
       cycleDurationMs: cycleData.cycleDurationMs || 0,

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SoCrates — Smart Solar Battery Automation</title>
-  <meta name="description" content="Rule-based inverter automation that evaluates every 60 seconds. Connect your solar inverter, set custom rules, and automate charging and exporting around live electricity prices. Free for the first 500 members.">
+  <meta name="description" content="Rule-based solar battery automation for homes. Shift charging and exporting around live electricity prices, weather, and demand. Free for the first 500 members.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://socratesautomation.com/">
   <link rel="icon" href="/icons/favicon.ico" sizes="any">
@@ -13,16 +13,21 @@
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
   <meta property="og:site_name" content="SoCrates">
+  <meta property="og:locale" content="en_AU">
   <meta property="og:title" content="SoCrates — Smart Inverter Automation">
-  <meta property="og:description" content="Connect your solar inverter, set smart rules, and let SoCrates handle the rest. Free for the first 500 members.">
+  <meta property="og:description" content="Rule-based solar battery automation for homes. Automate charging and exporting around live prices, weather, and demand.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://socratesautomation.com/">
   <meta property="og:image" content="https://socratesautomation.com/images/screenshots/screen-1.png">
+  <meta property="og:image:width" content="3832">
+  <meta property="og:image:height" content="1516">
   <meta property="og:image:alt" content="SoCrates dashboard showing automation rules and battery status">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="SoCrates - Smart Inverter Automation">
-  <meta name="twitter:description" content="Connect your solar inverter, set smart rules, and let SoCrates handle the rest. Free for the first 500 members.">
+  <meta name="twitter:description" content="Rule-based solar battery automation for homes. Automate charging and exporting around live prices, weather, and demand.">
+  <meta name="twitter:url" content="https://socratesautomation.com/">
   <meta name="twitter:image" content="https://socratesautomation.com/images/screenshots/screen-1.png">
+  <meta name="twitter:image:alt" content="SoCrates dashboard showing automation rules and battery status">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -32,7 +37,11 @@
         "@id": "https://socratesautomation.com/#website",
         "url": "https://socratesautomation.com/",
         "name": "SoCrates",
-        "inLanguage": "en"
+        "description": "Rule-based solar battery automation for homes.",
+        "inLanguage": "en-AU",
+        "publisher": {
+          "@id": "https://socratesautomation.com/#organization"
+        }
       },
       {
         "@type": "Organization",
@@ -42,6 +51,39 @@
         "logo": {
           "@type": "ImageObject",
           "url": "https://socratesautomation.com/icons/icon-512.png"
+        }
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://socratesautomation.com/#webpage",
+        "url": "https://socratesautomation.com/",
+        "name": "SoCrates - Smart Solar Battery Automation",
+        "description": "Rule-based solar battery automation for homes. Shift charging and exporting around live electricity prices, weather, and demand.",
+        "isPartOf": {
+          "@id": "https://socratesautomation.com/#website"
+        },
+        "about": {
+          "@id": "https://socratesautomation.com/#organization"
+        },
+        "inLanguage": "en-AU"
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://socratesautomation.com/#app",
+        "name": "SoCrates",
+        "url": "https://socratesautomation.com/",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Web",
+        "description": "Rule-based solar battery automation platform for managing charge, export, and inverter modes.",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "AUD",
+          "availability": "https://schema.org/InStock"
+        },
+        "publisher": {
+          "@id": "https://socratesautomation.com/#organization"
         }
       }
     ]
@@ -110,6 +152,10 @@
       <div class="brand-strip">
         <span class="brand-strip__label">Works with</span>
         <img src="/icons/logo-foxess.svg" alt="FoxESS" class="brand-logo brand-logo--foxess">
+        <span class="brand-logo-wrap brand-logo-wrap--soon">
+          <img src="/icons/logo-alphaess.svg" alt="AlphaESS" class="brand-logo brand-logo--alphaess">
+          <span class="brand-soon">Soon</span>
+        </span>
         <span class="brand-logo-wrap brand-logo-wrap--soon">
           <img src="/icons/logo-sigenergy.svg" alt="Sigenergy" class="brand-logo brand-logo--sigenergy">
           <span class="brand-soon">Soon</span>
@@ -446,49 +492,122 @@
       <div class="features-grid">
 
         <div class="feature-card reveal">
-          <div class="feature-card__icon">&#129302;</div>
+          <div class="feature-card__icon feature-card__icon--engine" aria-hidden="true">
+            <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+              <rect x="5" y="7" width="14" height="10" rx="2" />
+              <path d="M12 3V5" />
+              <path d="M3 10H5" />
+              <path d="M19 10H21" />
+              <path d="M8.6 12H10.4" />
+              <path d="M13.6 12H15.4" />
+              <path d="M9 15C10.2 16 13.8 16 15 15" />
+            </svg>
+          </div>
           <h3 class="feature-card__title">Automation Engine</h3>
           <p class="feature-card__body">Rules evaluate every 60 seconds in the cloud. Combine price signals, battery SoC, time of day, solar and weather forecasts. First matching rule fires, with a full decision log.</p>
         </div>
 
         <div class="feature-card reveal">
-          <div class="feature-card__icon">&#9889;</div>
+          <div class="feature-card__icon feature-card__icon--weather" aria-hidden="true">
+            <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+              <circle cx="8" cy="8.5" r="2.4" />
+              <path d="M8 3V4.6" />
+              <path d="M8 12.4V14" />
+              <path d="M2.5 8.5H4.1" />
+              <path d="M11.9 8.5H13.5" />
+              <path d="M4.2 4.8L5.3 5.9" />
+              <path d="M10.7 11.1L11.8 12.2" />
+              <path d="M11.8 4.8L10.7 5.9" />
+              <path d="M5.3 11.1L4.2 12.2" />
+              <path d="M4 18H20" />
+              <path d="M11 16L14 13L16 15L20 10" />
+            </svg>
+          </div>
           <h3 class="feature-card__title">Price &amp; Weather</h3>
           <p class="feature-card__body">Blend live import and feed-in prices with forward price outlooks and multi-day weather forecasts. Forecast trends feed your rules so you can act before spikes or curtailment windows.</p>
         </div>
 
         <div class="feature-card reveal">
-          <div class="feature-card__icon">&#128300;</div>
+          <div class="feature-card__icon feature-card__icon--lab" aria-hidden="true">
+            <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+              <path d="M10 3V8L5.4 18.2A2 2 0 0 0 7.2 21H16.8A2 2 0 0 0 18.6 18.2L14 8V3" />
+              <path d="M8 12H16" />
+              <path d="M9.4 15.7L11.4 13.8L13.3 16.1L15.2 14.3" />
+            </svg>
+          </div>
           <h3 class="feature-card__title">Automation Lab</h3>
           <p class="feature-card__body">Test any rule before going live. Simulate spikes, low SoC, or cloudy days and see exactly which rule fires and why, without touching your inverter.</p>
         </div>
 
         <div class="feature-card reveal">
-          <div class="feature-card__icon">&#9728;</div>
+          <div class="feature-card__icon feature-card__icon--curtail" aria-hidden="true">
+            <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+              <circle cx="12" cy="8.5" r="3" />
+              <path d="M12 2.6V4.2" />
+              <path d="M12 12.8V14.4" />
+              <path d="M6.1 8.5H4.5" />
+              <path d="M19.5 8.5H17.9" />
+              <path d="M7.8 4.3L6.7 5.4" />
+              <path d="M17.3 11.6L16.2 12.7" />
+              <path d="M16.2 4.3L17.3 5.4" />
+              <path d="M6.7 11.6L7.8 12.7" />
+              <path d="M3 17H21" />
+              <path d="M7 20H17" />
+            </svg>
+          </div>
           <h3 class="feature-card__title">Solar Curtailment Monitor</h3>
           <p class="feature-card__body">Automatically limits export when feed-in prices drop below your threshold. Set your floor price once and SoCrates enforces it every minute.</p>
         </div>
 
         <div class="feature-card reveal">
-          <div class="feature-card__icon">&#128200;</div>
+          <div class="feature-card__icon feature-card__icon--history" aria-hidden="true">
+            <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+              <path d="M3 20H21" />
+              <path d="M6 17V12" />
+              <path d="M11 17V9" />
+              <path d="M16 17V6" />
+              <path d="M5 11L10 8L14 11L19 5" />
+            </svg>
+          </div>
           <h3 class="feature-card__title">ROI &amp; Automation History</h3>
           <p class="feature-card__body">See the dollar impact of every fired rule with daily, weekly, and monthly history. Track savings clearly and export your data anytime.</p>
         </div>
 
         <div class="feature-card reveal">
-          <div class="feature-card__icon">&#128336;</div>
+          <div class="feature-card__icon feature-card__icon--quick" aria-hidden="true">
+            <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+              <circle cx="10" cy="12" r="5.5" />
+              <path d="M10 9.5V12L12.5 13.6" />
+              <path d="M16.2 8L14.8 12H16.8L15.6 16" />
+            </svg>
+          </div>
           <h3 class="feature-card__title">Quick Controls</h3>
           <p class="feature-card__body">Need to react fast? Trigger one-tap charge/discharge with power and duration controls, then return to automation with timed auto-resume.</p>
         </div>
 
         <div class="feature-card reveal">
-          <div class="feature-card__icon">&#128218;</div>
+          <div class="feature-card__icon feature-card__icon--library" aria-hidden="true">
+            <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+              <rect x="4.2" y="6" width="10.8" height="12.8" rx="1.5" />
+              <path d="M7.8 9H11.6" />
+              <path d="M7.8 12H11.6" />
+              <path d="M7.8 15H10.6" />
+              <path d="M15 8H19.3V20H8.8" />
+            </svg>
+          </div>
           <h3 class="feature-card__title">Community Rules Library</h3>
           <p class="feature-card__body">Filter by category, difficulty, and scenario. Search instantly, import templates in one click, and customize with plain-English summaries.</p>
         </div>
 
         <div class="feature-card reveal">
-          <div class="feature-card__icon">&#128274;</div>
+          <div class="feature-card__icon feature-card__icon--secure" aria-hidden="true">
+            <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+              <rect x="6" y="10" width="12" height="10" rx="2" />
+              <path d="M9 10V7.6A3 3 0 0 1 12 4.6A3 3 0 0 1 15 7.6V10" />
+              <circle cx="12" cy="14.2" r="1.1" />
+              <path d="M12 15.3V17.2" />
+            </svg>
+          </div>
           <h3 class="feature-card__title">Private &amp; Secure</h3>
           <p class="feature-card__body">Per-user isolated accounts on Google Firestore. Inverter API keys are never returned to the browser after setup and never shared with third parties.</p>
         </div>
@@ -688,18 +807,31 @@
       <span class="section-label">Tools</span>
       <h2 class="section-title" id="toolsTitle">Free tools for people who already have solar</h2>
       <p class="section-sub">Estimate automation upside, plan charge windows, and work out when exporting stops paying. Built for battery owners, not just shoppers.</p>
+      <p class="tools-proof"><strong>Trusted by 150+ solar households</strong> already tuning battery timing with SoCrates.</p>
 
       <div class="tools-grid">
 
-        <article class="tool-card reveal">
+        <article class="tool-card tool-card--featured reveal">
           <div class="tool-card__topline">
-            <span class="tool-card__eyebrow">Battery economics</span>
+            <span class="tool-card__eyebrow">ROI calculator</span>
+          </div>
+          <div class="tool-card__media">
+            <div class="tool-card__icon tool-card__icon--roi" aria-hidden="true">
+              <svg class="tool-card__glyph" viewBox="0 0 24 24" focusable="false">
+                <path d="M3 20H21" />
+                <path d="M6 18V12" />
+                <path d="M11 18V9" />
+                <path d="M16 18V6" />
+                <path d="M5 10L10 7L14 10L19 4" />
+                <path d="M16 4H19V7" />
+              </svg>
+            </div>
             <span class="tool-card__badge tool-card__badge--live">Live now</span>
           </div>
-          <div class="tool-card__icon" aria-hidden="true">&#128200;</div>
           <h3 class="tool-card__title">Battery ROI Calculator</h3>
-          <p class="tool-card__body">Estimate what smarter charging, exporting, and rule-based automation could be worth for your home battery before you change anything.</p>
-          <p class="tool-card__hint">Best for: validating whether automation savings justify the effort.</p>
+          <p class="tool-card__body">Estimate annual value from smarter charging and exporting before changing your live setup.</p>
+          <p class="tool-card__hint">Best for: checking if automation savings justify the effort.</p>
+          <p class="tool-card__micro">Start in ~2 minutes. No login required.</p>
           <div class="tool-card__actions">
             <a href="/battery-roi-calculator.html" class="tool-card__cta" data-analytics-event="tool_open_click" data-analytics-location="tools_section" data-analytics-label="Battery ROI Calculator">Open calculator</a>
           </div>
@@ -707,50 +839,88 @@
 
         <article class="tool-card tool-card--coming reveal">
           <div class="tool-card__topline">
-            <span class="tool-card__eyebrow">Export decisioning</span>
+            <span class="tool-card__eyebrow">Export vs store</span>
+          </div>
+          <div class="tool-card__media">
+            <div class="tool-card__icon tool-card__icon--export" aria-hidden="true">
+              <svg class="tool-card__glyph" viewBox="0 0 24 24" focusable="false">
+                <circle cx="12" cy="10" r="3.6" />
+                <path d="M12 2V4.8" />
+                <path d="M12 15.2V18" />
+                <path d="M4.8 10H2" />
+                <path d="M22 10H19.2" />
+                <path d="M6.8 4.8L4.8 2.8" />
+                <path d="M19.2 17.2L17.2 15.2" />
+                <path d="M17.2 4.8L19.2 2.8" />
+                <path d="M4.8 17.2L6.8 15.2" />
+                <path d="M3 20H21" />
+              </svg>
+            </div>
             <span class="tool-card__badge">Coming soon</span>
           </div>
-          <div class="tool-card__icon" aria-hidden="true">&#9728;</div>
           <h3 class="tool-card__title">Curtailment Threshold Checker</h3>
-          <p class="tool-card__body">Find the feed-in price floor where exporting stops making sense. Useful for negative pricing events, weak feed-in windows, and battery-first strategies.</p>
-          <p class="tool-card__hint">Best for: deciding when to hold energy instead of dumping it to the grid.</p>
+          <p class="tool-card__body">Find the feed-in price floor where exporting stops paying and storing energy wins.</p>
+          <p class="tool-card__hint">Best for: deciding hold vs export windows.</p>
           <div class="tool-card__actions">
-            <span class="tool-card__cta tool-card__cta--disabled" aria-disabled="true">Coming soon</span>
+            <a href="/login.html?tab=signup" class="tool-card__cta tool-card__cta--waitlist" data-analytics-event="tool_waitlist_click" data-analytics-location="tools_section" data-analytics-label="Curtailment Threshold Checker">Notify me</a>
           </div>
         </article>
 
         <article class="tool-card tool-card--coming reveal">
           <div class="tool-card__topline">
-            <span class="tool-card__eyebrow">Daily planning</span>
+            <span class="tool-card__eyebrow">Tomorrow plan</span>
+          </div>
+          <div class="tool-card__media">
+            <div class="tool-card__icon tool-card__icon--daily" aria-hidden="true">
+              <svg class="tool-card__glyph" viewBox="0 0 24 24" focusable="false">
+                <path d="M3 6H8" />
+                <path d="M3 12H7" />
+                <path d="M3 18H6" />
+                <path d="M13.4 2L8.4 12H13L11.2 22L19.8 10H14.6L13.4 2Z" />
+              </svg>
+            </div>
             <span class="tool-card__badge">Coming soon</span>
           </div>
-          <div class="tool-card__icon" aria-hidden="true">&#9889;</div>
           <h3 class="tool-card__title">Charge Window Planner</h3>
-          <p class="tool-card__body">Compare overnight import prices with tomorrow&apos;s solar outlook and evening demand so you can decide whether grid charging is worth it.</p>
-          <p class="tool-card__hint">Best for: nights when tomorrow&apos;s weather and price shape matter more than habit.</p>
+          <p class="tool-card__body">Compare overnight import prices with tomorrow&apos;s solar outlook and evening demand.</p>
+          <p class="tool-card__hint">Best for: deciding if tonight&apos;s grid charge is worth it.</p>
           <div class="tool-card__actions">
-            <span class="tool-card__cta tool-card__cta--disabled" aria-disabled="true">Coming soon</span>
+            <a href="/login.html?tab=signup" class="tool-card__cta tool-card__cta--waitlist" data-analytics-event="tool_waitlist_click" data-analytics-location="tools_section" data-analytics-label="Charge Window Planner">Notify me</a>
           </div>
         </article>
 
         <article class="tool-card tool-card--coming reveal">
           <div class="tool-card__topline">
-            <span class="tool-card__eyebrow">Scenario testing</span>
+            <span class="tool-card__eyebrow">Rule testing</span>
+          </div>
+          <div class="tool-card__media">
+            <div class="tool-card__icon tool-card__icon--sim" aria-hidden="true">
+              <svg class="tool-card__glyph" viewBox="0 0 24 24" focusable="false">
+                <rect x="5" y="7" width="14" height="10" rx="2" />
+                <path d="M12 2V5" />
+                <path d="M3 10H5" />
+                <path d="M19 10H21" />
+                <path d="M9 12H10.8" />
+                <path d="M13.2 12H15" />
+                <path d="M9 15C10.2 16 13.8 16 15 15" />
+                <path d="M8.2 17L6.8 21" />
+                <path d="M15.8 17L17.2 21" />
+              </svg>
+            </div>
             <span class="tool-card__badge">Coming soon</span>
           </div>
-          <div class="tool-card__icon" aria-hidden="true">&#129302;</div>
           <h3 class="tool-card__title">Rule Simulator</h3>
-          <p class="tool-card__body">Test strategies like cheap overnight charging, cloudy-day reserve, and peak export windows before applying them to a live system.</p>
-          <p class="tool-card__hint">Best for: checking how a rule behaves before your inverter ever sees it.</p>
+          <p class="tool-card__body">Test rule ideas before applying them to a live inverter schedule.</p>
+          <p class="tool-card__hint">Best for: validating rule behavior before execution.</p>
           <div class="tool-card__actions">
-            <span class="tool-card__cta tool-card__cta--disabled" aria-disabled="true">Coming soon</span>
+            <a href="/login.html?tab=signup" class="tool-card__cta tool-card__cta--waitlist" data-analytics-event="tool_waitlist_click" data-analytics-location="tools_section" data-analytics-label="Rule Simulator">Notify me</a>
           </div>
         </article>
 
       </div>
 
       <div class="tools-footer reveal">
-        <p class="tools-footer__copy">Battery ROI Calculator is live now. Charge planning, curtailment, and rule simulation are coming next.</p>
+        <p class="tools-footer__copy">Battery ROI Calculator is live now. Next up: Curtailment Threshold Checker, then Charge Window Planner and Rule Simulator.</p>
         <div class="tools-footer__actions">
           <a href="/login.html?tab=signup" class="btn btn-primary" data-analytics-event="claim_spot_click" data-analytics-location="tools_section">Claim free access</a>
           <a href="#screenshots" class="btn btn-ghost" data-analytics-event="view_screenshots_click" data-analytics-location="tools_section">See the full platform</a>
@@ -831,7 +1001,7 @@
         <div class="faq-item">
           <details>
             <summary>Which inverter brands are supported?</summary>
-            <div class="faq-item__body"><strong>FoxESS</strong> is fully supported today. <strong>Sigenergy</strong> and <strong>SunGrow</strong> integration is in development and coming soon. More brands are on the roadmap — <a href="mailto:socrates.team.comms@gmail.com" data-analytics-event="contact_click" data-analytics-location="faq_brands">let us know</a> which you'd like to see next.</div>
+            <div class="faq-item__body"><strong>FoxESS</strong> is fully supported today. <strong>AlphaESS</strong>, <strong>Sigenergy</strong>, and <strong>SunGrow</strong> integration is in development and coming soon. More brands are on the roadmap — <a href="mailto:socrates.team.comms@gmail.com" data-analytics-event="contact_click" data-analytics-location="faq_brands">let us know</a> which you'd like to see next.</div>
           </details>
         </div>
 
