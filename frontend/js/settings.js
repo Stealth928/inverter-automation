@@ -36,6 +36,11 @@
         const TESLA_OAUTH_PENDING_KEY = 'teslaOauthPending';
         const TESLA_OAUTH_PENDING_TTL_MS = 20 * 60 * 1000;
         const TESLA_REGION_DEFAULT = 'na';
+        const TESLA_REGION_HELP = Object.freeze({
+            na: 'Use North America + Asia-Pacific for the United States, Canada, Australia, New Zealand, Japan, South Korea, and most Tesla accounts outside Europe, Africa, the Middle East, and China.',
+            eu: 'Use Europe, Middle East + Africa for Tesla accounts based in those regions.',
+            cn: 'Use China for Mainland China Tesla accounts.'
+        });
         const TESLA_VIN_REGEX = /^[A-HJ-NPR-Z0-9]{17}$/i;
         let teslaOnboardingHandlersBound = false;
 
@@ -52,11 +57,13 @@
                 clearPendingBtn: document.getElementById('teslaClearPendingBtn'),
                 refreshBtn: document.getElementById('teslaRefreshVehiclesBtn'),
                 vehiclesList: document.getElementById('teslaVehiclesList'),
+                copyRedirectBtn: document.getElementById('teslaCopyRedirectBtn'),
                 clientIdInput: document.getElementById('teslaClientId'),
                 clientSecretInput: document.getElementById('teslaClientSecret'),
                 vehicleIdInput: document.getElementById('teslaVehicleId'),
                 displayNameInput: document.getElementById('teslaDisplayName'),
                 regionInput: document.getElementById('teslaRegion'),
+                regionHelp: document.getElementById('teslaRegionHelp'),
                 redirectUriInput: document.getElementById('teslaRedirectUri')
             };
         }
@@ -64,7 +71,7 @@
         function setTeslaOnboardingBadge(label, kind = 'sync') {
             const { badge } = getTeslaOnboardingElements();
             if (!badge) return;
-            badge.textContent = String(label || 'Ready');
+            badge.textContent = String(label || 'Setup Required');
             badge.className = kind === 'modified' ? 'badge badge-modified' : 'badge badge-sync';
         }
 
@@ -93,6 +100,48 @@
             const { redirectUriInput } = getTeslaOnboardingElements();
             if (!redirectUriInput) return;
             redirectUriInput.value = getTeslaRedirectUri();
+        }
+
+        function getTeslaRegionHelpText(region) {
+            const normalized = String(region || TESLA_REGION_DEFAULT).trim().toLowerCase();
+            return TESLA_REGION_HELP[normalized] || TESLA_REGION_HELP[TESLA_REGION_DEFAULT];
+        }
+
+        function updateTeslaRegionHelp() {
+            const { regionInput, regionHelp } = getTeslaOnboardingElements();
+            if (!regionHelp) return;
+            regionHelp.textContent = getTeslaRegionHelpText(regionInput?.value);
+        }
+
+        async function copyTeslaRedirectUri() {
+            const { redirectUriInput } = getTeslaOnboardingElements();
+            const redirectUri = String(redirectUriInput?.value || getTeslaRedirectUri()).trim();
+            if (!redirectUri) return;
+
+            const fallbackCopy = () => {
+                const temp = document.createElement('textarea');
+                temp.value = redirectUri;
+                temp.setAttribute('readonly', 'readonly');
+                temp.style.position = 'absolute';
+                temp.style.left = '-9999px';
+                document.body.appendChild(temp);
+                temp.select();
+                document.execCommand('copy');
+                document.body.removeChild(temp);
+            };
+
+            try {
+                if (navigator.clipboard?.writeText) {
+                    await navigator.clipboard.writeText(redirectUri);
+                } else {
+                    fallbackCopy();
+                }
+                setTeslaOnboardingStatus('Redirect URI copied. Paste it into Tesla Developer Dashboard before you connect.', 'success');
+                showMessage('success', 'Tesla redirect URI copied');
+            } catch (error) {
+                setTeslaOnboardingStatus('Unable to copy the redirect URI automatically. Copy it manually from the field above.', 'warning');
+                showMessage('warning', `Failed to copy Tesla redirect URI: ${error.message || error}`);
+            }
         }
 
         function bytesToBase64Url(uint8) {
@@ -213,6 +262,7 @@
             if (vehicleIdInput && pendingVin) vehicleIdInput.value = pendingVin;
             if (displayNameInput && pending.displayName) displayNameInput.value = String(pending.displayName);
             if (regionInput && pending.region) regionInput.value = String(pending.region);
+            updateTeslaRegionHelp();
         }
 
         async function ensureTeslaVehicleRegistered({ vehicleId, displayName, region }) {
@@ -292,8 +342,8 @@
                         setTeslaOnboardingBadge('Connected', 'sync');
                         setTeslaOnboardingStatus(`${teslaVehicles.length} Tesla vehicle(s) connected.`, 'success');
                     } else {
-                        setTeslaOnboardingBadge('Ready', 'sync');
-                        setTeslaOnboardingStatus('No Tesla vehicles connected yet.', 'warning');
+                        setTeslaOnboardingBadge('Setup Required', 'modified');
+                        setTeslaOnboardingStatus('No Tesla vehicles connected yet. Complete the Tesla app setup above, then use Connect with Tesla.', 'warning');
                     }
                 }
                 return teslaVehicles;
@@ -341,19 +391,19 @@
             const form = getTeslaOnboardingFormValues();
             if (!form.clientId) {
                 setTeslaOnboardingBadge('Action Needed', 'modified');
-                setTeslaOnboardingStatus('Tesla Fleet Client ID is required.', 'warning');
+                setTeslaOnboardingStatus('Open Tesla Developer Dashboard, copy your Tesla Client ID, then paste it here.', 'warning');
                 showMessage('warning', 'Tesla Fleet Client ID is required');
                 return;
             }
             if (!form.vehicleId) {
                 setTeslaOnboardingBadge('Action Needed', 'modified');
-                setTeslaOnboardingStatus('Vehicle VIN is required (17 characters).', 'warning');
+                setTeslaOnboardingStatus('Enter the 17-character VIN from the Tesla app or the vehicle before you connect.', 'warning');
                 showMessage('warning', 'Tesla Vehicle VIN is required');
                 return;
             }
             if (!normalizeTeslaVin(form.vehicleId)) {
                 setTeslaOnboardingBadge('Action Needed', 'modified');
-                setTeslaOnboardingStatus('Vehicle VIN format is invalid. Use 17-character VIN.', 'warning');
+                setTeslaOnboardingStatus('Vehicle VIN format is invalid. Use the full 17-character VIN.', 'warning');
                 showMessage('warning', 'Tesla Vehicle VIN format is invalid');
                 return;
             }
@@ -361,7 +411,7 @@
             const prevButtonHtml = connectBtn ? connectBtn.innerHTML : '';
             if (connectBtn) {
                 connectBtn.disabled = true;
-                connectBtn.innerHTML = '<span class="spinner"></span> Redirecting...';
+                connectBtn.innerHTML = '<span class="spinner"></span> Opening Tesla...';
             }
 
             try {
@@ -402,7 +452,7 @@
                 const authUrl = new URL(String(oauthStartResp.result.url));
                 authUrl.searchParams.set('state', stateToken);
                 setTeslaOnboardingBadge('Pending', 'modified');
-                setTeslaOnboardingStatus('Redirecting to Tesla authorization...', 'warning');
+                setTeslaOnboardingStatus('Opening Tesla sign-in. Approve access there and you will return here automatically.', 'warning');
                 window.location.assign(authUrl.toString());
             } catch (error) {
                 clearTeslaPendingOAuth();
@@ -435,9 +485,10 @@
                 if (pending) {
                     applyTeslaPendingValuesToInputs(pending);
                     setTeslaOnboardingBadge('Pending', 'modified');
-                    setTeslaOnboardingStatus('Pending Tesla authorization detected. Complete authorization in Tesla, then return here.', 'warning');
+                    setTeslaOnboardingStatus('Tesla sign-in is still pending. Finish approval in Tesla, then return to this page.', 'warning');
                 } else {
-                    setTeslaOnboardingBadge('Ready', 'sync');
+                    setTeslaOnboardingBadge('Setup Required', 'modified');
+                    setTeslaOnboardingStatus('Start with Step 1 in Tesla Developer Dashboard, then return here to connect.', 'warning');
                 }
                 return { handled: false, success: false };
             }
@@ -447,7 +498,7 @@
                 cleanTeslaOAuthParamsFromUrl();
                 const detail = String(oauthErrorDescription || oauthError || 'Authorization was declined');
                 setTeslaOnboardingBadge('Action Needed', 'modified');
-                setTeslaOnboardingStatus(`Tesla authorization failed: ${detail}`, 'error');
+                setTeslaOnboardingStatus(`Tesla sign-in failed: ${detail}`, 'error');
                 showMessage('warning', `Tesla authorization failed: ${detail}`);
                 return { handled: true, success: false };
             }
@@ -455,8 +506,8 @@
             if (!pending) {
                 cleanTeslaOAuthParamsFromUrl();
                 setTeslaOnboardingBadge('Action Needed', 'modified');
-                setTeslaOnboardingStatus('No pending Tesla authorization session found. Start Connect Tesla again.', 'warning');
-                showMessage('warning', 'No pending Tesla authorization session found. Start Connect Tesla again.');
+                setTeslaOnboardingStatus('No pending Tesla sign-in was found. Use Connect with Tesla to restart the flow.', 'warning');
+                showMessage('warning', 'No pending Tesla sign-in was found. Use Connect with Tesla to restart the flow.');
                 return { handled: true, success: false };
             }
 
@@ -465,16 +516,16 @@
                 clearTeslaPendingOAuth();
                 cleanTeslaOAuthParamsFromUrl();
                 setTeslaOnboardingBadge('Action Needed', 'modified');
-                setTeslaOnboardingStatus('Tesla OAuth state check failed. Start Connect Tesla again.', 'error');
-                showMessage('warning', 'Tesla OAuth state check failed. Start Connect Tesla again.');
+                setTeslaOnboardingStatus('Tesla sign-in verification failed. Restart the connect flow from this page.', 'error');
+                showMessage('warning', 'Tesla sign-in verification failed. Restart the connect flow from this page.');
                 return { handled: true, success: false };
             }
             if (!pending.codeVerifier) {
                 clearTeslaPendingOAuth();
                 cleanTeslaOAuthParamsFromUrl();
                 setTeslaOnboardingBadge('Action Needed', 'modified');
-                setTeslaOnboardingStatus('Missing PKCE verifier. Start Connect Tesla again.', 'error');
-                showMessage('warning', 'Missing PKCE verifier. Start Connect Tesla again.');
+                setTeslaOnboardingStatus('The Tesla login session is incomplete. Restart the connect flow from this page.', 'error');
+                showMessage('warning', 'The Tesla login session is incomplete. Restart the connect flow from this page.');
                 return { handled: true, success: false };
             }
 
@@ -483,7 +534,7 @@
                     throw new Error('API client unavailable');
                 }
                 setTeslaOnboardingBadge('Finalizing', 'modified');
-                setTeslaOnboardingStatus('Completing Tesla authorization...', 'warning');
+                setTeslaOnboardingStatus('Tesla approved. Finalizing the connection now...', 'warning');
 
                 await ensureTeslaVehicleRegistered({
                     vehicleId: pending.vehicleId,
@@ -509,7 +560,7 @@
                 clearTeslaPendingOAuth();
                 cleanTeslaOAuthParamsFromUrl();
                 setTeslaOnboardingBadge('Connected', 'sync');
-                setTeslaOnboardingStatus(`Tesla connected for VIN ${pending.vehicleId}. Pair virtual key in Tesla app if commands remain blocked.`, 'success');
+                setTeslaOnboardingStatus(`Tesla connected for VIN ${pending.vehicleId}. If controls stay locked, pair the virtual key in the Tesla mobile app.`, 'success');
                 showMessage('success', `Tesla connected for VIN ${pending.vehicleId}`);
                 return { handled: true, success: true };
             } catch (error) {
@@ -524,8 +575,8 @@
 
         function clearTeslaPendingAuthFlow() {
             clearTeslaPendingOAuth();
-            setTeslaOnboardingBadge('Ready', 'sync');
-            setTeslaOnboardingStatus('Pending Tesla authorization cleared.', 'warning');
+            setTeslaOnboardingBadge('Setup Required', 'modified');
+            setTeslaOnboardingStatus('Reset Tesla login state. You can start the connect flow again.', 'warning');
             showMessage('info', 'Cleared pending Tesla authorization state');
         }
 
@@ -536,7 +587,9 @@
                 connectBtn,
                 clearPendingBtn,
                 refreshBtn,
-                vehiclesList
+                vehiclesList,
+                regionInput,
+                copyRedirectBtn
             } = getTeslaOnboardingElements();
 
             if (connectBtn) {
@@ -554,6 +607,16 @@
                     loadTeslaVehicles();
                 });
             }
+            if (regionInput) {
+                regionInput.addEventListener('change', () => {
+                    updateTeslaRegionHelp();
+                });
+            }
+            if (copyRedirectBtn) {
+                copyRedirectBtn.addEventListener('click', () => {
+                    copyTeslaRedirectUri();
+                });
+            }
             if (vehiclesList) {
                 vehiclesList.addEventListener('click', (event) => {
                     const target = event?.target;
@@ -568,6 +631,7 @@
         async function initializeTeslaOnboarding() {
             bindTeslaOnboardingHandlers();
             updateTeslaRedirectUriInput();
+            updateTeslaRegionHelp();
             const callbackResult = await handleTeslaOAuthCallbackIfPresent();
             await loadTeslaVehicles({ silent: callbackResult.handled, preserveStatus: callbackResult.handled });
             return callbackResult;

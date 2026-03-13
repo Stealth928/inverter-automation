@@ -6,6 +6,7 @@ const {
   exchangeTeslaAuthCode,
   normalizeTeslaVehicleData,
   TESLA_AUTH_BASE,
+  TESLA_AUTH_BASE_CN,
   TESLA_FLEET_REGIONS,
   TESLA_REQUIRED_SCOPES
 } = require('../lib/adapters/tesla-fleet-adapter');
@@ -64,6 +65,11 @@ describe('TeslaFleetAdapter — constructor', () => {
   test('accepts EU region', () => {
     const adapter = new TeslaFleetAdapter({ httpClient: makeHttpClient(), region: 'eu' });
     expect(adapter._fleetBase).toBe(TESLA_FLEET_REGIONS.eu);
+  });
+
+  test('accepts China region', () => {
+    const adapter = new TeslaFleetAdapter({ httpClient: makeHttpClient(), region: 'cn' });
+    expect(adapter._fleetBase).toBe(TESLA_FLEET_REGIONS.cn);
   });
 
   test('unknown region falls back to NA', () => {
@@ -613,6 +619,15 @@ describe('buildTeslaAuthUrl', () => {
     }, 'eu');
     expect(url).toContain(encodeURIComponent(TESLA_FLEET_REGIONS.eu));
   });
+
+  test('uses China auth host and audience when region=cn', () => {
+    const url = buildTeslaAuthUrl({
+      clientId: 'c',
+      redirectUri: 'https://localhost/cb'
+    }, 'cn');
+    expect(url).toContain(`${TESLA_AUTH_BASE_CN}/authorize`);
+    expect(url).toContain(encodeURIComponent(TESLA_FLEET_REGIONS.cn));
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -650,6 +665,23 @@ describe('exchangeTeslaAuthCode', () => {
     });
     await expect(exchangeTeslaAuthCode({ clientId: 'c', redirectUri: 'r', code: 'x' }, http))
       .rejects.toThrow(/token exchange failed/);
+  });
+
+  test('uses China auth host when region=cn', async () => {
+    const http = makeHttpClient({
+      [`POST ${TESLA_AUTH_BASE_CN}/token`]: {
+        status: 200,
+        data: { access_token: 'acc-cn', refresh_token: 'ref-cn', expires_in: 3600 }
+      }
+    });
+    const result = await exchangeTeslaAuthCode(
+      { clientId: 'c', redirectUri: 'https://localhost/cb', code: 'authcode', region: 'cn' },
+      http
+    );
+    expect(result.accessToken).toBe('acc-cn');
+    const tokenCall = http.calls.find((call) => /\/token$/.test(call.url));
+    expect(tokenCall.url).toBe(`${TESLA_AUTH_BASE_CN}/token`);
+    expect(tokenCall.opts.body.audience).toBe(TESLA_FLEET_REGIONS.cn);
   });
 });
 

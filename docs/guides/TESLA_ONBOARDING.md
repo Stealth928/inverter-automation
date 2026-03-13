@@ -35,7 +35,10 @@ Before connecting Tesla in-app, you need:
    - `Vehicle VIN` (required)
    - optional `Client Secret`
    - optional display name
-   - region (`na` or `eu`)
+   - region:
+     - `na` = North America + Asia-Pacific (except China)
+     - `eu` = Europe + Middle East + Africa
+     - `cn` = China
 3. Confirm the displayed `Redirect URI` is configured in Tesla developer settings.
 4. Click `Connect Tesla`.
 5. User is redirected to Tesla authorization page.

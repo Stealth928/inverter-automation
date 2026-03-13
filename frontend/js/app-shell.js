@@ -318,6 +318,16 @@
         admin: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3 4.5 6v5.8c0 4.4 3 8.3 7.5 9.2 4.5-.9 7.5-4.8 7.5-9.2V6L12 3z"/><path d="m9.5 12 1.8 1.8 3.2-3.4"/></svg>'
     };
 
+    const USER_MENU_ICONS = {
+        tour: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8"/><path d="m14.8 9.2-2 5.6-3.6 1.2 2-5.6 3.6-1.2z"/></svg>',
+        contact: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3h-7l-4 3v-3H6a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3z"/><path d="M8 12h8"/><path d="M8 15h5"/></svg>',
+        'theme-light': '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
+        'theme-dark': '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>',
+        stop: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3h6l6 6v6l-6 6H9l-6-6V9z"/><path d="m8.5 8.5 7 7"/><path d="m15.5 8.5-7 7"/></svg>',
+        delete: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M8 7l1 12h6l1-12"/><path d="M10 10v6"/><path d="M14 10v6"/></svg>',
+        signout: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 7V5a2 2 0 0 1 2-2h6v18h-6a2 2 0 0 1-2-2v-2"/><path d="M15 12H4"/><path d="m7 9-3 3 3 3"/></svg>'
+    };
+
     const PAGE_TITLE_UI = {
         '/roi.html': { icon: 'roi', label: 'Automation ROI' },
         '/test.html': { icon: 'lab' },
@@ -346,6 +356,64 @@
             tokens.shift();
         }
         return tokens.join(' ').trim();
+    }
+
+    function getMenuItemPresentation(button) {
+        if (!button) return null;
+
+        if (button.hasAttribute('data-go-settings')) return { icon: 'settings', label: 'Settings' };
+        if (button.hasAttribute('data-setup-nav-locked') && button.getAttribute('data-setup-nav-locked') === 'settings') return { icon: 'settings', label: 'Settings' };
+        if (button.hasAttribute('data-contact-us')) return { icon: 'contact', label: 'Contact Us' };
+        if (button.hasAttribute('data-signout')) return { icon: 'signout', label: 'Sign Out' };
+        if (button.hasAttribute('data-take-tour')) return { icon: 'tour', label: 'Take a Tour' };
+        if (button.hasAttribute('data-stop-impersonation')) return { icon: 'stop', label: 'Stop Impersonation' };
+        if (button.hasAttribute('data-delete-account')) return { icon: 'delete', label: 'Delete Account' };
+        if (button.hasAttribute('data-toggle-theme')) {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+            return currentTheme === 'light'
+                ? { icon: 'theme-dark', label: 'Dark Theme' }
+                : { icon: 'theme-light', label: 'Light Theme' };
+        }
+        return null;
+    }
+
+    function getIconMarkup(iconKey) {
+        return NAV_LINK_ICONS[iconKey] || USER_MENU_ICONS[iconKey] || '';
+    }
+
+    function decorateUserMenuItem(button) {
+        const presentation = getMenuItemPresentation(button);
+        if (!presentation) return;
+
+        const iconMarkup = getIconMarkup(presentation.icon);
+        if (!iconMarkup) return;
+
+        let iconEl = button.querySelector('.user-dropdown-item__icon');
+        let labelEl = button.querySelector('.user-dropdown-item__label');
+
+        if (!iconEl || !labelEl) {
+            iconEl = document.createElement('span');
+            iconEl.className = 'user-dropdown-item__icon';
+            iconEl.setAttribute('aria-hidden', 'true');
+
+            labelEl = document.createElement('span');
+            labelEl.className = 'user-dropdown-item__label';
+
+            button.textContent = '';
+            button.appendChild(iconEl);
+            button.appendChild(labelEl);
+        }
+
+        iconEl.innerHTML = iconMarkup;
+        labelEl.textContent = presentation.label;
+        button.dataset.userMenuIcon = presentation.icon;
+    }
+
+    function decorateUserMenuItems(root) {
+        if (!root) return;
+        root.querySelectorAll('.user-dropdown-item').forEach((button) => {
+            decorateUserMenuItem(button);
+        });
     }
 
     function decorateNavLinks() {
@@ -528,7 +596,7 @@
             tourBtn.className = 'user-dropdown-item';
             tourBtn.type = 'button';
             tourBtn.setAttribute('data-take-tour', '1');
-            tourBtn.textContent = '❓ Take a Tour';
+            tourBtn.textContent = 'Take a Tour';
             tourBtn.addEventListener('click', () => {
                 dropdown.classList.remove('show');
                 // Don't offer the tour on the setup page — user must finish setup first
@@ -571,8 +639,7 @@
             themeBtn.className = 'user-dropdown-item';
             themeBtn.type = 'button';
             themeBtn.setAttribute('data-toggle-theme', '1');
-            const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-            themeBtn.textContent = currentTheme === 'light' ? '🌙 Dark Theme' : '☀️ Light Theme';
+            themeBtn.textContent = 'Light Theme';
             themeBtn.addEventListener('click', () => {
                 const html = document.documentElement;
                 const next = (html.getAttribute('data-theme') || 'dark') === 'dark' ? 'light' : 'dark';
@@ -586,10 +653,7 @@
                 if (themeColorMeta) {
                     themeColorMeta.setAttribute('content', next === 'light' ? '#ffffff' : '#0d1117');
                 }
-                // Update this button label and any other theme toggle buttons on the page
-                document.querySelectorAll('[data-toggle-theme]').forEach(function (btn) {
-                    btn.textContent = next === 'light' ? '🌙 Dark Theme' : '☀️ Light Theme';
-                });
+                document.querySelectorAll('[data-toggle-theme]').forEach((btn) => decorateUserMenuItem(btn));
                 dropdown.classList.remove('show');
             });
             // Insert before stop-impersonation / delete-account (i.e. after tour btn)
@@ -607,7 +671,7 @@
             stopBtn.className = 'user-dropdown-item danger';
             stopBtn.type = 'button';
             stopBtn.setAttribute('data-stop-impersonation', '1');
-            stopBtn.textContent = '🛑 Stop Impersonation';
+            stopBtn.textContent = 'Stop Impersonation';
             stopBtn.style.display = getImpersonationUid() ? '' : 'none';
             stopBtn.addEventListener('click', async () => {
                 clearImpersonation();
@@ -627,7 +691,7 @@
             deleteBtn.className = 'user-dropdown-item danger';
             deleteBtn.type = 'button';
             deleteBtn.setAttribute('data-delete-account', '1');
-            deleteBtn.textContent = '🗑️ Delete Account';
+            deleteBtn.textContent = 'Delete Account';
 
             deleteBtn.addEventListener('click', async () => {
                 const currentUser = state.user;
@@ -663,7 +727,6 @@
                     return;
                 }
 
-                const originalLabel = deleteBtn.textContent;
                 deleteBtn.disabled = true;
                 deleteBtn.textContent = 'Deleting...';
 
@@ -693,7 +756,7 @@
                     notify('error', `Failed to delete account: ${error.message || error}`);
                 } finally {
                     deleteBtn.disabled = false;
-                    deleteBtn.textContent = originalLabel;
+                    decorateUserMenuItem(deleteBtn);
                 }
             });
 
@@ -726,6 +789,8 @@
                 }
             });
         }
+
+        decorateUserMenuItems(dropdown);
     }
 
     function setupMobileNavMenu() {

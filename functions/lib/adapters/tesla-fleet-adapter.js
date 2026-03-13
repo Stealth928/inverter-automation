@@ -35,9 +35,11 @@ const {
 
 const TESLA_AUTH_BASE = 'https://auth.tesla.com/oauth2/v3';
 const TESLA_AUTH_BASE_FALLBACK = 'https://fleet-auth.prd.vn.cloud.tesla.com/oauth2/v3';
+const TESLA_AUTH_BASE_CN = 'https://auth.tesla.cn/oauth2/v3';
 const TESLA_FLEET_REGIONS = Object.freeze({
   na: 'https://fleet-api.prd.na.vn.cloud.tesla.com',
-  eu: 'https://fleet-api.prd.eu.vn.cloud.tesla.com'
+  eu: 'https://fleet-api.prd.eu.vn.cloud.tesla.com',
+  cn: 'https://fleet-api.prd.cn.vn.cloud.tesla.cn'
 });
 const TESLA_DEFAULT_REGION = 'na';
 const TESLA_VIN_REGEX = /^[A-HJ-NPR-Z0-9]{17}$/i;
@@ -206,14 +208,21 @@ function encodeHttpBody(headers, body) {
   return JSON.stringify(body);
 }
 
-function resolveAuthBaseCandidates() {
+function getTeslaAuthorizeBase(region = TESLA_DEFAULT_REGION) {
+  return normalizeRegion(region) === 'cn' ? TESLA_AUTH_BASE_CN : TESLA_AUTH_BASE;
+}
+
+function resolveAuthBaseCandidates(region = TESLA_DEFAULT_REGION) {
+  if (normalizeRegion(region) === 'cn') {
+    return [TESLA_AUTH_BASE_CN];
+  }
   return Array.from(new Set([TESLA_AUTH_BASE, TESLA_AUTH_BASE_FALLBACK].filter(Boolean)));
 }
 
-async function postTeslaTokenRequest(httpClient, body, logger = null) {
+async function postTeslaTokenRequest(httpClient, body, logger = null, region = TESLA_DEFAULT_REGION) {
   let lastResponse = null;
   let lastError = null;
-  const authBases = resolveAuthBaseCandidates();
+  const authBases = resolveAuthBaseCandidates(region);
 
   for (let index = 0; index < authBases.length; index++) {
     const authBase = authBases[index];
@@ -407,7 +416,7 @@ class TeslaFleetAdapter extends EVAdapter {
 
     let response;
     try {
-      response = await postTeslaTokenRequest(this._http, body, this._logger);
+      response = await postTeslaTokenRequest(this._http, body, this._logger, region);
     } catch (err) {
       throw new Error(`TeslaFleetAdapter: token refresh failed (${err.message})`, { cause: err });
     }
@@ -719,7 +728,7 @@ class TeslaFleetAdapter extends EVAdapter {
 /**
  * Build the Tesla OAuth2 authorization URL.
  * @param {object} params - { clientId, redirectUri, state, codeChallenge }
- * @param {string} [region] - 'na' | 'eu'
+ * @param {string} [region] - 'na' | 'eu' | 'cn'
  * @returns {string} Authorization URL the user should be redirected to.
  */
 function buildTeslaAuthUrl(params, region = TESLA_DEFAULT_REGION) {
@@ -752,7 +761,7 @@ function buildTeslaAuthUrl(params, region = TESLA_DEFAULT_REGION) {
     qs.set('code_challenge_method', codeChallengeMethod);
   }
 
-  return `${TESLA_AUTH_BASE}/authorize?${qs.toString()}`;
+  return `${getTeslaAuthorizeBase(region)}/authorize?${qs.toString()}`;
 }
 
 /**
@@ -788,7 +797,7 @@ async function exchangeTeslaAuthCode(params, httpClient) {
     ...(codeVerifier && { code_verifier: codeVerifier })
   };
 
-  const response = await postTeslaTokenRequest(httpClient, body);
+  const response = await postTeslaTokenRequest(httpClient, body, null, region);
 
   const { access_token, refresh_token, expires_in, token_type, scope } = response.data;
   return {
@@ -864,6 +873,7 @@ module.exports = {
   normalizeTeslaVin,
   TESLA_AUTH_BASE,
   TESLA_AUTH_BASE_FALLBACK,
+  TESLA_AUTH_BASE_CN,
   TESLA_FLEET_REGIONS,
   TESLA_REQUIRED_SCOPES
 };

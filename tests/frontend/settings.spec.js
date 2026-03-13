@@ -283,9 +283,45 @@ test.describe('Settings Page', () => {
     await expect(page.locator('#teslaOnboardingSection')).toBeVisible();
     await expect(page.locator('#teslaClientId')).toBeVisible();
     await expect(page.locator('#teslaVehicleId')).toBeVisible();
-    await expect(page.getByText(/Vehicle VIN/i)).toBeVisible();
+    await expect(page.locator('#teslaOnboardingSection .setting-label').filter({ hasText: 'Vehicle VIN' })).toBeVisible();
+    await expect(page.getByText(/What you need before you connect/i)).toBeVisible();
+    await expect(page.getByRole('link', { name: /Open Tesla Developer Dashboard/i })).toBeVisible();
+    await expect(page.locator('#teslaCopyRedirectBtn')).toBeVisible();
     await expect(page.locator('#teslaConnectBtn')).toBeVisible();
     await expect(page.locator('#teslaVehiclesList')).toBeVisible();
+  });
+
+  test('should keep Tesla integration at the bottom of settings', async ({ page }) => {
+    const isPositionedAtBottom = await page.evaluate(() => {
+      const teslaSection = document.querySelector('#teslaOnboardingSection');
+      const preferencesSection = document.querySelector('#preferences');
+      const actions = Array.from(document.querySelectorAll('.actions')).pop();
+      if (!teslaSection || !preferencesSection || !actions) return false;
+
+      const isAfterPreferences = Boolean(
+        preferencesSection.compareDocumentPosition(teslaSection) & Node.DOCUMENT_POSITION_FOLLOWING
+      );
+      const isBeforeActions = Boolean(
+        teslaSection.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING
+      );
+      return isAfterPreferences && isBeforeActions;
+    });
+
+    expect(isPositionedAtBottom).toBe(true);
+  });
+
+  test('should explain Tesla region choices clearly', async ({ page }) => {
+    await expect(page.locator('#teslaRegion')).toBeEnabled();
+    await expect(page.locator('#teslaRegion')).toContainText('North America + Asia-Pacific');
+    await expect(page.locator('#teslaRegion')).toContainText('Europe, Middle East + Africa');
+    await expect(page.locator('#teslaRegion')).toContainText('China');
+    await expect(page.locator('#teslaRegionHelp')).toContainText(/Australia|Asia-Pacific/i);
+
+    await page.locator('#teslaRegion').selectOption('eu');
+    await expect(page.locator('#teslaRegionHelp')).toContainText(/Europe, Middle East \+ Africa|Europe, Middle East/i);
+
+    await page.locator('#teslaRegion').selectOption('cn');
+    await expect(page.locator('#teslaRegionHelp')).toContainText(/China/i);
   });
 
   test('should complete Tesla OAuth callback and send codeVerifier', async ({ page }) => {
@@ -331,7 +367,7 @@ test.describe('Settings Page', () => {
 
     const callbackRequests = apiMock.getOAuthCallbackRequests();
     expect(callbackRequests.length).toBe(0);
-    await expect(page.locator('#teslaOnboardingStatus')).toContainText('No pending Tesla authorization session found');
+    await expect(page.locator('#teslaOnboardingStatus')).toContainText('No pending Tesla sign-in was found');
     expect(page.url()).not.toContain('code=');
     expect(page.url()).not.toContain('state=');
   });
@@ -342,13 +378,13 @@ test.describe('Settings Page', () => {
   });
 
   test('should navigate back to dashboard', async ({ page }) => {
-    const homeLink = page.locator('a[href*="index"], a:has-text("Home"), a:has-text("Dashboard")').first();
+    const homeLink = page.locator('.nav-main a[href="/app.html"], .nav-main a:has-text("Overview")').first();
     const hasHomeLink = await homeLink.count() > 0;
     
     if (hasHomeLink) {
       await homeLink.click();
-      await page.waitForURL(/index\.html/);
-      expect(page.url()).toContain('index');
+      await page.waitForURL(/app\.html/);
+      expect(page.url()).toContain('app.html');
     } else {
       expect(true).toBeTruthy();
     }
@@ -702,6 +738,11 @@ test.describe('Settings Page - Change Detection', () => {
     }
 
     await intervalInput.fill('75', { timeout: 2000 }).catch(() => {});
+    await intervalInput.evaluate((element) => {
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    }).catch(() => {});
+    await page.waitForTimeout(250);
 
     // Should detect change (badge) or at least keep updated value
     const automationBadge = page.locator('#automationBadge, .automation-badge');
