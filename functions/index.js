@@ -192,8 +192,7 @@ const { createSigenEnergyDeviceAdapter } = require('./lib/adapters/sigenergy-ada
 const { createAlphaEssDeviceAdapter } = require('./lib/adapters/alphaess-adapter');
 const {
   TeslaFleetAdapter,
-  createTeslaHttpClient,
-  createTeslaSignedCommandClient
+  createTeslaHttpClient
 } = require('./lib/adapters/tesla-fleet-adapter');
 // adapterRegistry populated once all deps (logger, getConfig) are reinitialized
 const adapterRegistry = createAdapterRegistry();
@@ -469,7 +468,44 @@ function toKw(value) {
   return Number((numeric / 1000).toFixed(4));
 }
 
-function resolveAlphaEssBatterySignInversion(userConfig) {
+function inferAlphaEssBatterySignInversion(status = {}) {
+  const pvPower = toFiniteNumber(status.pvPowerW, null);
+  const loadPower = toFiniteNumber(status.loadPowerW, null);
+  const gridPower = toFiniteNumber(status.gridPowerW, null);
+  const feedInPower = toFiniteNumber(status.feedInPowerW, null);
+  const batteryPower = toFiniteNumber(status.batteryPowerW, null);
+
+  if (
+    pvPower === null ||
+    loadPower === null ||
+    gridPower === null ||
+    feedInPower === null ||
+    batteryPower === null
+  ) {
+    return null;
+  }
+
+  if (Math.abs(batteryPower) < 50) return null;
+
+  const nonNegative = (value) => Math.max(0, value);
+  const flowResidual = (canonicalBatteryPower) => {
+    const batteryChargePower = canonicalBatteryPower > 0 ? canonicalBatteryPower : 0;
+    const batteryDischargePower = canonicalBatteryPower < 0 ? Math.abs(canonicalBatteryPower) : 0;
+    const powerSources = nonNegative(pvPower) + nonNegative(gridPower) + batteryDischargePower;
+    const powerSinks = nonNegative(loadPower) + nonNegative(feedInPower) + batteryChargePower;
+    return Math.abs(powerSources - powerSinks);
+  };
+
+  const residualNative = flowResidual(batteryPower);
+  const residualInverted = flowResidual(-batteryPower);
+  const marginW = Math.max(50, Math.abs(batteryPower) * 0.1);
+
+  if (residualInverted + marginW < residualNative) return true;
+  if (residualNative + marginW < residualInverted) return false;
+  return null;
+}
+
+function resolveAlphaEssBatterySignInversion(userConfig, status) {
   if (!userConfig || typeof userConfig !== 'object') return false;
 
   if (typeof userConfig.alphaessInvertBatteryPower === 'boolean') {
@@ -485,6 +521,9 @@ function resolveAlphaEssBatterySignInversion(userConfig) {
       return false;
     }
   }
+
+  const inferred = inferAlphaEssBatterySignInversion(status);
+  if (inferred !== null) return inferred;
 
   const coupling = normalizeCouplingValue(userConfig.systemTopology && userConfig.systemTopology.coupling);
   return coupling === 'ac';
@@ -698,7 +737,7 @@ async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, force
         userId
       });
       const invertAlphaEssBatteryPowerSign = provider === 'alphaess'
-        ? resolveAlphaEssBatterySignInversion(userConfig)
+        ? resolveAlphaEssBatterySignInversion(userConfig, status)
         : false;
       data = buildRealtimePayloadFromDeviceStatus(status, resolvedDeviceSN, {
         normalizeToKw: provider === 'alphaess',
@@ -857,16 +896,9 @@ const {
   SEED_ADMIN_EMAIL
 } = createAdminAccess({ db, logger: console });
 const teslaHttpClient = createTeslaHttpClient();
-const teslaSignedCommandClient = createTeslaSignedCommandClient({
-  endpoint: process.env.TESLA_SIGNED_COMMAND_PROXY_URL || '',
-  authToken: process.env.TESLA_SIGNED_COMMAND_PROXY_TOKEN || '',
-  httpClient: teslaHttpClient,
-  logger
-});
 const teslaFleetAdapter = new TeslaFleetAdapter({
   httpClient: teslaHttpClient,
   region: process.env.TESLA_FLEET_REGION || 'na',
-  signedCommandClient: teslaSignedCommandClient,
   logger
 });
 
@@ -959,6 +991,7 @@ registerEVRoutes(app, {
   db,
   getConfig,
   getUserConfig,
+  incrementApiCount,
   logger,
   teslaHttpClient,
   vehiclesRepo

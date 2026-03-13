@@ -103,4 +103,78 @@ describe('ev-usage-control-service', () => {
     expect(estimateBillingUnits('stream_signal', 150000)).toBeCloseTo(1, 6);
     expect(estimateBillingUnits('auth', 100)).toBe(0);
   });
+
+  test('persists Tesla usage under Australia-local metrics date key', async () => {
+    const increment = jest.fn((value) => ({ op: 'increment', value }));
+    const userMetricSet = jest.fn(async () => undefined);
+    const vehicleMetricSet = jest.fn(async () => undefined);
+    let userDayKey = '';
+    let vehicleDayKey = '';
+
+    const userMetricsCollectionRef = {
+      doc: jest.fn((dayKey) => {
+        userDayKey = dayKey;
+        return { set: userMetricSet };
+      })
+    };
+    const vehicleMetricsCollectionRef = {
+      doc: jest.fn((dayKey) => {
+        vehicleDayKey = dayKey;
+        return { set: vehicleMetricSet };
+      })
+    };
+    const vehicleDocRef = {
+      collection: jest.fn((name) => {
+        if (name !== 'metrics') throw new Error(`Unexpected nested collection: ${name}`);
+        return vehicleMetricsCollectionRef;
+      })
+    };
+    const vehiclesCollectionRef = {
+      doc: jest.fn(() => vehicleDocRef)
+    };
+    const userDocRef = {
+      collection: jest.fn((name) => {
+        if (name === 'metrics') return userMetricsCollectionRef;
+        if (name === 'vehicles') return vehiclesCollectionRef;
+        throw new Error(`Unexpected collection: ${name}`);
+      })
+    };
+    const usersCollectionRef = {
+      doc: jest.fn(() => userDocRef)
+    };
+    const db = {
+      collection: jest.fn((name) => {
+        if (name !== 'users') throw new Error(`Unexpected root collection: ${name}`);
+        return usersCollectionRef;
+      })
+    };
+
+    const utcLateEvening = Date.parse('2026-03-13T13:30:00.000Z'); // AU local date is 2026-03-14
+    const svc = createEvUsageControlService({
+      admin: {
+        firestore: {
+          FieldValue: {
+            increment,
+            serverTimestamp: () => '__TS__'
+          }
+        }
+      },
+      db,
+      now: () => utcLateEvening
+    });
+
+    await svc.recordTeslaApiCall({
+      uid: 'u-metrics',
+      vehicleId: 'VIN-AU-1',
+      category: 'command',
+      status: 200,
+      billable: true
+    });
+
+    expect(usersCollectionRef.doc).toHaveBeenCalledWith('u-metrics');
+    expect(userDayKey).toBe('2026-03-14');
+    expect(vehicleDayKey).toBe('2026-03-14');
+    expect(userMetricSet).toHaveBeenCalled();
+    expect(vehicleMetricSet).toHaveBeenCalled();
+  });
 });

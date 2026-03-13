@@ -6,7 +6,6 @@
 // Provides CRUD operations for the EV vehicle data model:
 //   users/{uid}/vehicles/{vehicleId}          — vehicle registration + auth
 //   users/{uid}/vehicles/{vehicleId}/state    — single doc, current status cache
-//   users/{uid}/vehicles/{vehicleId}/commands/{commandId} — command audit log
 // ---------------------------------------------------------------------------
 
 function createVehiclesRepository(deps = {}) {
@@ -32,10 +31,6 @@ function createVehiclesRepository(deps = {}) {
 
   function vehicleStateRef(userId, vehicleId) {
     return vehicleRef(userId, vehicleId).collection('state').doc('current');
-  }
-
-  function commandsCollection(userId, vehicleId) {
-    return vehicleRef(userId, vehicleId).collection('commands');
   }
 
   async function deleteDocumentTreeFallback(docRef) {
@@ -198,82 +193,6 @@ function createVehiclesRepository(deps = {}) {
     return doc.data();
   }
 
-  // ---------------------------------------------------------------------------
-  // Command audit log
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Append a command audit entry for idempotency tracking and observability.
-   * @param {string} userId
-   * @param {string} vehicleId
-   * @param {object} commandEntry - {
-   *   commandId, commandType, status, requestedAtIso, sentAtIso?,
-   *   completedAtIso?, errorMsg?, params?
-   * }
-   * @returns {Promise<string>} Firestore document ID used as the audit key.
-   */
-  async function appendCommand(userId, vehicleId, commandEntry) {
-    const { commandId } = commandEntry;
-    if (!commandId) {
-      throw new Error('appendCommand: commandId is required');
-    }
-
-    const ref = commandsCollection(userId, vehicleId).doc(String(commandId));
-    await ref.set({
-      ...commandEntry,
-      loggedAt: serverTimestamp()
-    });
-    return String(commandId);
-  }
-
-  /**
-   * Update the status of an existing command entry.
-   * @param {string} userId
-   * @param {string} vehicleId
-   * @param {string} commandId
-   * @param {object} patch - e.g. { status: 'confirmed', completedAtIso: '...' }
-   * @returns {Promise<void>}
-   */
-  async function updateCommand(userId, vehicleId, commandId, patch) {
-    await commandsCollection(userId, vehicleId).doc(String(commandId)).update({
-      ...patch,
-      updatedAt: serverTimestamp()
-    });
-  }
-
-  /**
-   * Retrieve a single command audit entry.
-   * @param {string} userId
-   * @param {string} vehicleId
-   * @param {string} commandId
-   * @returns {Promise<object|null>}
-   */
-  async function getCommand(userId, vehicleId, commandId) {
-    const doc = await commandsCollection(userId, vehicleId).doc(String(commandId)).get();
-    if (!doc.exists) return null;
-    return doc.data();
-  }
-
-  /**
-   * List recent commands for a vehicle (newest first), with optional limit.
-   * @param {string} userId
-   * @param {string} vehicleId
-   * @param {object} [options] - { limit?: number }
-   * @returns {Promise<object[]>}
-   */
-  async function listCommands(userId, vehicleId, options = {}) {
-    const limit = typeof options.limit === 'number' ? options.limit : 50;
-    const snapshot = await commandsCollection(userId, vehicleId)
-      .orderBy('loggedAt', 'desc')
-      .limit(limit)
-      .get();
-    const commands = [];
-    snapshot.forEach((doc) => {
-      if (doc.exists) commands.push({ commandId: doc.id, ...doc.data() });
-    });
-    return commands;
-  }
-
   return {
     listVehicles,
     getVehicle,
@@ -283,11 +202,7 @@ function createVehiclesRepository(deps = {}) {
     setVehicleCredentials,
     getVehicleCredentials,
     saveVehicleState,
-    getVehicleState,
-    appendCommand,
-    updateCommand,
-    getCommand,
-    listCommands
+    getVehicleState
   };
 }
 

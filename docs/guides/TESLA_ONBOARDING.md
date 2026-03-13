@@ -28,7 +28,6 @@ Before connecting Tesla in-app, you need:
 6. Allowed origins and top-level domains configured in Tesla developer app.
 7. Tesla app public key metadata hosted on your domain:
    - `/.well-known/appspecific/com.tesla.3p.public-key.pem`
-8. For command control on modern vehicles: virtual-key pairing in Tesla app and signed-command transport configured by operator.
 
 ## User Flow (Settings UI)
 
@@ -48,7 +47,6 @@ Before connecting Tesla in-app, you need:
 6. After consent, Tesla redirects back to `settings.html` with auth query params.
 7. App completes token exchange and stores credentials for the VIN.
 8. Connected vehicle appears in `Connected Tesla vehicles`.
-9. If dashboard command pills show `Signed Command Required` or `Virtual Key Unpaired`, complete Tesla virtual-key pairing and operator-side signed-command setup.
 
 ## Behind-the-Scenes API Sequence
 
@@ -76,16 +74,6 @@ On callback:
 4. Remove auth params from URL and clear pending OAuth state.
 5. Refresh connected vehicles list.
 
-## Command Readiness Model
-
-Before command endpoints execute, backend performs Tesla readiness preflight:
-
-- if VIN missing: blocks with `vin_required`
-- if Tesla requires signed commands and transport is not configured: blocks with `signed_command_required`
-- if signed transport exists but vehicle key is not paired: blocks with `virtual_key_not_paired`
-
-Dashboard surfaces these states in EV status pills and disables command controls until ready.
-
 ## Status Caching Model
 
 - EV status endpoint prefers cache only when cache age is fresh.
@@ -96,14 +84,40 @@ Dashboard surfaces these states in EV status pills and disables command controls
 
 `DELETE /api/ev/vehicles/:vehicleId` performs recursive delete when available (`db.recursiveDelete`) and falls back to document-tree deletion when needed.
 
-## Operator Configuration for Signed Commands
+## Hosted Public Key
 
-Set these environment variables if you run a signed-command proxy:
+Tesla expects the public partner key to remain available at:
 
-- `TESLA_SIGNED_COMMAND_PROXY_URL` (base URL, required to enable signed transport)
-- `TESLA_SIGNED_COMMAND_PROXY_TOKEN` (optional auth token)
+```text
+https://<your-domain>/.well-known/appspecific/com.tesla.3p.public-key.pem
+```
 
-When configured, adapter routes protocol-required commands through the signed proxy.
+This repo already contains the public PEM at:
+
+- `frontend/.well-known/appspecific/com.tesla.3p.public-key.pem`
+
+Deploy hosting and verify it is served:
+
+```bash
+npx firebase deploy --only hosting
+curl https://socratesautomation.com/.well-known/appspecific/com.tesla.3p.public-key.pem
+```
+
+## Tesla Partner Registration
+
+Tesla's official flow is:
+
+1. Keep the public PEM hosted at:
+   `https://<your-domain>/.well-known/appspecific/com.tesla.3p.public-key.pem`
+2. Call the Tesla partner register endpoint for each region you operate in.
+3. Confirm registration with the partner public-key lookup endpoint if needed.
+
+The important distinction is:
+
+- the PEM is hosted on your domain
+- Tesla registers that hosted key against your partner account
+
+This is not the same thing as uploading a private key anywhere.
 
 ## Tesla Approval / Compliance Checklist
 
@@ -114,8 +128,6 @@ For production readiness with Tesla, complete all of the following:
 3. Fleet API scopes and region audience configured.
 4. Public key metadata hosted at Tesla-required `/.well-known/...` location.
 5. OAuth PKCE flow validated end-to-end in deployed environment.
-6. Virtual-key pairing tested on target vehicle(s).
-7. Signed-command transport configured and verified for protocol-required vehicles.
 
 ## Error Handling and Recovery
 
@@ -138,5 +150,4 @@ After connecting Tesla:
 
 1. Tesla VIN appears in `Settings > Tesla EV Integration`.
 2. Dashboard EV card shows vehicle tab and status values.
-3. EV commands are enabled only when credentials and readiness checks pass.
-4. For modern vehicles, signed-command + virtual-key path is validated.
+3. Status refresh succeeds for the connected vehicle.

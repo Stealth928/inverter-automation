@@ -180,9 +180,8 @@ Tesla EV support is part of the live product surface, not roadmap copy.
 
 - Tesla onboarding is available in `Settings` via OAuth PKCE flow
 - connected VIN-based vehicles appear in the dashboard EV overview
-- commands supported today: start charging, stop charging, set charge limit
-- command controls are gated by Tesla readiness checks (VIN, signed-command
-  requirements, virtual-key pairing state)
+- status visibility is supported in the dashboard EV overview
+- remote command controls are not part of the current product scope
 - detailed onboarding and operational requirements are documented in:
   - `docs/guides/TESLA_ONBOARDING.md`
   - `docs/guides/TESLA_EV_INTEGRATION.md`
@@ -340,8 +339,7 @@ When a user says automation is "not working", check these first:
 - weather location/timezone correct if time-based rules look wrong
 - provider limitations understood for Sungrow/SigenEnergy
 - Tesla vehicle connected in Settings (VIN + OAuth credentials)
-- Tesla readiness status on the dashboard (signed-command and virtual-key
-  requirements may block command execution)
+- Tesla status visible on the dashboard after successful OAuth connection
 
 For unusual solar topologies or split-inverter setups, use:
 

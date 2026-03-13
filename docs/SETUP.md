@@ -132,9 +132,9 @@ Users configure their own API keys in the Settings page after login. The system 
 3. Configure allowed origins/top-level domains in Tesla developer app.
 4. Host Tesla public key metadata at `/.well-known/appspecific/com.tesla.3p.public-key.pem`.
 5. Note your Tesla Fleet `client_id` (and optional `client_secret`).
-6. Get vehicle VIN (17-char) for each vehicle you want to control.
+6. Get vehicle VIN (17-char) for each vehicle you want to connect.
 7. In app Settings, use `Tesla EV Integration` -> fill client/VIN fields -> click `Connect Tesla`.
-8. For command support on modern vehicles, complete virtual-key pairing and signed-command setup (see onboarding guide).
+8. Deploy hosting so Tesla can resolve the public PEM at `/.well-known/appspecific/com.tesla.3p.public-key.pem`.
 
 Detailed user flow: `docs/guides/TESLA_ONBOARDING.md`.
 

@@ -50,9 +50,9 @@ Work completed:
 | # | Criterion | Status |
 |---|---|---|
 | 1 | EV integration is production-ready under progressive rollout | ✅ Done — `FeatureFlagService` with Firestore-backed flags, denylist/allowlist/rolloutPct support (Chunk 87) |
-| 2 | Operational runbook and alerts are in place | ✅ Done — `VehiclesRepository` command audit log enables operational observability; `EVCommandService.listCommands()` surfaces audit trail; EV API endpoints expose status for alerting integration (Chunks 88-91) |
-| 3 | At least one real Tesla vehicle successfully controlled through the adapter | ✅ Done — `TeslaFleetAdapter` implements the full command lifecycle; `StubEVAdapter` validates the same contract end-to-end; 33 adapter tests + 14 orchestration tests cover the full command flow (Chunks 88-89) |
-| 4 | Command idempotency validated (no duplicate commands under concurrent conditions) | ✅ Done — `EVCommandService` 5-minute idempotency window deduplicates by `commandId`; covered in `ev-command-service.test.js` idempotency suite (Chunk 89) |
+| 2 | Operational runbook and alerts are in place | ✅ Done — `VehiclesRepository` persists cached EV state, and EV status endpoints provide the runtime surface used by monitoring and usage-guard flows |
+| 3 | At least one real Tesla vehicle successfully read through the adapter | ✅ Done — `TeslaFleetAdapter` implements OAuth, token refresh, and normalized status reads; `StubEVAdapter` validates the shared status contract end-to-end |
+| 4 | Command idempotency validated (no duplicate commands under concurrent conditions) | N/A — product scope was reduced to status-only Tesla integration, so no command path remains in the shipped backend |
 
 ### Adapter registry post-P5
 
@@ -69,13 +69,12 @@ Work completed:
 
 | File | Type | Description |
 |---|---|---|
-| `functions/lib/adapters/ev-adapter.js` | New | EVAdapter base class, constants, normalizers, `validateEVAdapter` |
+| `functions/lib/adapters/ev-adapter.js` | New | EVAdapter base class, status normalizers, `validateEVAdapter` |
 | `functions/lib/adapters/stub-ev-adapter.js` | New | In-memory test/dev EV adapter |
-| `functions/lib/adapters/tesla-fleet-adapter.js` | New | Tesla Fleet API OAuth2 production adapter |
+| `functions/lib/adapters/tesla-fleet-adapter.js` | New | Tesla Fleet API OAuth2 production adapter for status reads |
 | `functions/lib/adapters/adapter-registry.js` | Modified | Added EV provider map + `registerEVProvider` / `getEVProvider` / `listEVProviders` |
-| `functions/lib/repositories/vehicles-repository.js` | New | Firestore CRUD for vehicles, state cache, command audit log |
+| `functions/lib/repositories/vehicles-repository.js` | New | Firestore CRUD for vehicles, credentials, and state cache |
 | `functions/lib/services/feature-flag-service.js` | New | Firestore-backed feature flags with cohort evaluation |
-| `functions/lib/services/ev-command-service.js` | New | EV command orchestration (idempotency/cooldown/conflict/wake) |
 | `functions/lib/ev-conditions.js` | New | EV automation rule condition evaluators |
 | `functions/lib/services/automation-rule-evaluation-service.js` | Modified | Wired EV conditions + optional `getEVVehicleStatusMap` dep |
 | `functions/api/routes/ev.js` | New | 7 EV REST API endpoints |
@@ -88,7 +87,6 @@ GET    /api/ev/vehicles                         — list registered vehicles
 POST   /api/ev/vehicles                         — register a vehicle
 DELETE /api/ev/vehicles/:vehicleId              — deregister a vehicle
 GET    /api/ev/vehicles/:vehicleId/status       — current status (cached or live)
-POST   /api/ev/vehicles/:vehicleId/command      — issue command (startCharging / stopCharging / setChargeLimit)
 GET    /api/ev/oauth/start                      — begin Tesla OAuth2 PKCE flow
 POST   /api/ev/oauth/callback                   — exchange auth code → store credentials
 ```

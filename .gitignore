@@ -9,6 +9,10 @@ functions/node_modules/
 backend/.env
 functions/.runtimeconfig.env
 
+# Tesla partner private key (gitignored — never commit)
+tesla-proxy/private-key.pem
+tesla-proxy/certs/
+
 # Docker / temporary files
 tmp*
 tmp_docker_check/

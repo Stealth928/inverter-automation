@@ -2178,30 +2178,8 @@
                     <div id="evSelectedStatusPills" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>
                     <div id="evSelectedSummary" class="ev-summary-grid"></div>
 
-                    <div id="evControls" style="padding-top:8px;border-top:1px solid var(--border-primary);">
-                        <div class="ev-controls-grid">
-                            <button class="btn btn-primary" id="evStartBtn" onclick="startSelectedEVCharging()">Start Charging</button>
-                            <button class="btn" id="evStopBtn" onclick="stopSelectedEVCharging()">Stop Charging</button>
-                        </div>
-                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                            <label for="evChargeLimitInput" style="font-size:12px;color:var(--text-secondary);min-width:95px;">Charge Limit</label>
-                            <input
-                                id="evChargeLimitInput"
-                                type="range"
-                                min="1"
-                                max="100"
-                                step="1"
-                                value="80"
-                                oninput="updateEVChargeLimitLabel(this.value)"
-                                style="flex:1;min-width:170px;height:8px;background:var(--border-primary);border-radius:4px;outline:none;-webkit-appearance:none;"
-                            >
-                            <span id="evChargeLimitLabel" style="font-size:12px;min-width:44px;color:var(--text-primary);font-weight:600;">80%</span>
-                            <button class="btn" id="evSetLimitBtn" onclick="setSelectedEVChargeLimit()" style="width:auto;margin:0;padding:8px 12px;">Set Limit</button>
-                        </div>
-                    </div>
-
                     <div style="margin-top:12px;font-size:12px;color:var(--text-secondary);line-height:1.5;">
-                        Add or connect vehicles in <a href="/settings.html" style="color:var(--accent-blue);text-decoration:none;">Settings</a>. Readiness and command availability depend on Tesla account and key pairing status.
+                        Add or connect vehicles in <a href="/settings.html" style="color:var(--accent-blue);text-decoration:none;">Settings</a>. The dashboard currently supports Tesla connection and status visibility only.
                     </div>
                 </div>
             </div>

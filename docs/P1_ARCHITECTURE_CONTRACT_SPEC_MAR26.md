@@ -142,17 +142,14 @@ This map is owned by the adapter layer and must not be duplicated in route handl
 ```js
 class EvAdapter {
   async getVehicleStatus(context) {}
-  async startCharging(context, options) {}
-  async stopCharging(context) {}
-  async setChargeLimit(context, targetPct) {}
   normalizeProviderError(error) {}
 }
 ```
 
-Command lifecycle requirements:
-1. Return command id for async providers.
-2. Poll command completion status when provider uses eventual consistency.
-3. Surface provider throttling/authorization errors through normalized taxonomy.
+Status lifecycle requirements:
+1. Return a normalized status shape for cached and live reads.
+2. Preserve provider throttling and authorization semantics through normalized errors.
+3. Support cache-aware polling without leaking provider-specific response formats.
 
 ---
 

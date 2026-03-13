@@ -613,10 +613,6 @@ class APIClient {
     return this.get(`/api/ev/vehicles/${encodeURIComponent(vehicleId)}/status`, { live: live ? '1' : undefined });
   }
 
-  async issueEVCommand(vehicleId, command, targetSocPct, commandId) {
-    return this.post(`/api/ev/vehicles/${encodeURIComponent(vehicleId)}/command`, { command, targetSocPct, commandId });
-  }
-
   async getEVOAuthStartUrl(clientId, redirectUri, codeChallenge, region, state = '') {
     return this.get('/api/ev/oauth/start', { clientId, redirectUri, codeChallenge, region, state: state || undefined });
   }

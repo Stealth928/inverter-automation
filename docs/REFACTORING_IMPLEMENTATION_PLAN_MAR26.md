@@ -360,8 +360,8 @@ Total planned window: 20 weeks.
 5. Define device adapter interface and capability matrix.
    - **Audit finding:** Must normalize: `getStatus(userId, assetId) → { soc, batteryTemp, ambientTemp, pvPower, loadPower, gridPower, feedInPower }`. Must abstract: `setSchedule()`, `getSchedule()`, `clearSchedule()`, `setWorkMode()`. FoxESS-specific: 8-timeslot scheduler model, MD5 signature auth, `errno`-based error codes (40402 = rate limit). A second vendor (e.g., GoodWe, Sungrow, Enphase) will have entirely different auth, scheduling, and telemetry models.
    - **Device variable normalization:** Must define a canonical variable name map. Currently the code does ad-hoc fallback chains like `SoC || SoC1 || SoC_1`. The adapter should return normalized names regardless of device firmware version.
-6. Define EV adapter interface and command lifecycle model.
-   - **Audit finding:** This is greenfield. No existing code to migrate. Design from scratch based on Tesla Fleet API (OAuth2, fleet telemetry, signed commands) and plan for future charger integrations (OCPP, Wallbox API).
+6. Define EV adapter interface and status lifecycle model.
+   - **Audit finding:** This is greenfield. No existing code to migrate. Design from scratch around Tesla Fleet API OAuth2 and vehicle status reads first. Keep the contract narrow enough to extend later for charger integrations or command-capable providers if product scope expands.
 7. Define cross-layer validation and error taxonomy.
    - **Audit finding:** Current API uses `{ errno, result, error }` envelope inconsistently. Some endpoints return `{ errno: 0, result: {...} }`, others return `{ success: true/false }`, others return raw Express error responses. Standardize.
 8. Define OpenAPI versioning and source-of-truth workflow.
@@ -539,20 +539,16 @@ Total planned window: 20 weeks.
 ### Tasks
 
 1. Define EV data model in Firestore:
-   - `users/{uid}/vehicles/{vehicleId}` — vehicle registration, auth tokens, capabilities
+   - `users/{uid}/vehicles/{vehicleId}` — vehicle registration, provider linkage, auth metadata
    - `users/{uid}/vehicles/{vehicleId}/state` — cached vehicle state (SoC, charging status, location)
-   - `users/{uid}/vehicles/{vehicleId}/commands/{commandId}` — command audit log with idempotency
 2. Implement EV adapter interface:
    - `getVehicleStatus(vehicleId) → { soc, chargingState, chargeLimit, isPluggedIn, isHome }`
-   - `startCharging(vehicleId, options) → { commandId, status }`
-   - `stopCharging(vehicleId) → { commandId, status }`
-   - `setChargeLimit(vehicleId, percent) → { commandId, status }`
-   - `wakeVehicle(vehicleId) → { commandId, status }`
+   - `normalizeProviderError(error) → { code, message, retryable? }`
 3. Implement Tesla Fleet API adapter:
    - OAuth2 flow (partner authentication, user authorization, token storage)
    - Token refresh and revocation lifecycle
    - Fleet telemetry subscription (if using streaming data)
-   - Signed command support (using existing key infrastructure from `scripts/generate-tesla-keys.js`)
+   - Vehicle status normalization and cache-friendly polling behavior
    - Rate limiting and retry logic
 4. Implement feature-flag cohort system.
    - **Audit finding:** No feature-flag infrastructure exists. Must build or adopt a simple flag system (e.g., Firestore document `featureFlags/{flagName}` with user cohort lists or percentage rollout).
@@ -990,7 +986,7 @@ functions/
 | P2 | 4 weeks | **5-6 weeks ⚠️** | Extracting 7,500+ lines from a 9,019-line monolith into 15+ modules while maintaining backward compatibility is higher effort than 4 weeks. The deferred initialization pattern and scheduler-to-router coupling add complexity. Consider splitting into P2a (extract services/repos) and P2b (extract routes/adapters). |
 | P3 | 3 weeks | 3 weeks | Achievable once P2 decouples scheduler from Express router. |
 | P4 | 3 weeks | 3-4 weeks | Achievable if second provider/device has a well-documented API. Risk: discovering a second vendor's API is poorly documented. |
-| P5 | 3 weeks | **4-5 weeks ⚠️** | Greenfield from zero. Tesla Fleet API has complex auth (partner tokens, user tokens, fleet keys, signed commands). Three weeks is aggressive for production-grade starting from nothing. Recommend MVP scope: one command (start/stop charging), no fleet telemetry, basic auth flow. |
+| P5 | 3 weeks | 3-4 weeks | Greenfield from zero, but the shipped scope is now narrower: Tesla OAuth, VIN registration, cached/live status reads, and usage controls. This is materially simpler than command-capable support because it avoids signed-command infrastructure. |
 | P6 | 2 weeks | **3-4 weeks ⚠️** | 16,729 lines of inline JS extraction is a large, error-prone task even with no logic changes. Mitigated by starting extraction during P2 as a parallel workstream. If parallel extraction is done, 2 weeks for final P6 is achievable. |
 
 **Revised total:** 22-27 weeks (vs original 20 weeks). Recommend planning for 24 weeks with 2-week buffer.

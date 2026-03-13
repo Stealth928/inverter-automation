@@ -714,7 +714,7 @@
                 cleanTeslaOAuthParamsFromUrl();
                 markTeslaRecentlyConnected(pending.vehicleId);
                 setTeslaOnboardingBadge('Connected', 'sync');
-                setTeslaOnboardingStatus(`Tesla connected for VIN ${pending.vehicleId}. If controls stay locked, pair the virtual key in the Tesla mobile app.`, 'success');
+                    setTeslaOnboardingStatus(`Tesla connected for VIN ${pending.vehicleId}. Dashboard status should now begin syncing for this vehicle.`, 'success');
                 showMessage('success', `Tesla connected for VIN ${pending.vehicleId}`);
                 return { handled: true, success: true };
             } catch (error) {

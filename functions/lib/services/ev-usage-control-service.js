@@ -3,6 +3,7 @@
 const DEFAULT_RATE_WINDOW_MS = 60 * 1000;
 const DEFAULT_STATUS_LIVE_RATE_PER_WINDOW = 30;
 const DEFAULT_COMMAND_RATE_PER_WINDOW = 15;
+const METRICS_TIMEZONE = 'Australia/Sydney';
 
 const CATEGORY_TO_UNIT_COST_DENOMINATOR = Object.freeze({
   stream_signal: 150000,   // 150,000 signals per billing unit
@@ -17,12 +18,34 @@ function parsePositiveInt(value, fallback = 0) {
   return Math.floor(numeric);
 }
 
+function getTimezoneDateParts(date = new Date(), timeZone = METRICS_TIMEZONE) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = formatter.formatToParts(date);
+  const lookup = {};
+  parts.forEach((part) => {
+    if (part.type === 'literal') return;
+    lookup[part.type] = part.value;
+  });
+  return {
+    year: String(lookup.year || ''),
+    month: String(lookup.month || '').padStart(2, '0'),
+    day: String(lookup.day || '').padStart(2, '0')
+  };
+}
+
 function normalizeDateKey(date = new Date()) {
-  return date.toISOString().slice(0, 10);
+  const { year, month, day } = getTimezoneDateParts(date);
+  return `${year}-${month}-${day}`;
 }
 
 function normalizeMonthKey(date = new Date()) {
-  return date.toISOString().slice(0, 7);
+  const { year, month } = getTimezoneDateParts(date);
+  return `${year}-${month}`;
 }
 
 function normalizeCategory(raw) {

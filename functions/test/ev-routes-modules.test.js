@@ -53,11 +53,6 @@ const STUB_STATUS = {
 function makeAdapter(overrides = {}) {
   return {
     getVehicleStatus: jest.fn(async () => STUB_STATUS),
-    getCommandReadiness: jest.fn(async () => ({ readyForCommands: true, blockingReasons: [] })),
-    startCharging: jest.fn(async () => ({ commandId: 'cmd-1', status: 'confirmed', sentAtIso: '2025-01-01T00:00:00.000Z' })),
-    stopCharging: jest.fn(async () => ({ commandId: 'cmd-2', status: 'confirmed', sentAtIso: '2025-01-01T00:00:00.000Z' })),
-    setChargeLimit: jest.fn(async () => ({ commandId: 'cmd-3', status: 'confirmed', sentAtIso: '2025-01-01T00:00:00.000Z' })),
-    wakeVehicle: jest.fn(async () => {}),
     normalizeProviderError: jest.fn(err => ({ errno: 3800, error: err.message })),
     ...overrides
   };
@@ -83,6 +78,7 @@ function makeDeps(overrides = {}) {
     vehiclesRepo: makeVehiclesRepo(),
     adapterRegistry: makeRegistry(),
     evUsageControl: makeEvUsageControl(),
+    incrementApiCount: jest.fn(async () => {}),
     getConfig: jest.fn(() => ({
       automation: {
         cacheTtl: {
@@ -256,7 +252,11 @@ describe('GET /api/ev/vehicles/:vehicleId/status', () => {
 
   test('returns cached status when cache is populated and live=0', async () => {
     const cached = { ...STUB_STATUS, source: 'cache', asOfIso: new Date().toISOString() };
+    const evUsageControl = makeEvUsageControl();
+    const incrementApiCount = jest.fn(async () => {});
     const deps = makeDeps({
+      evUsageControl,
+      incrementApiCount,
       vehiclesRepo: makeVehiclesRepo({
         getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
         getVehicleState: jest.fn(async () => cached)
@@ -266,6 +266,14 @@ describe('GET /api/ev/vehicles/:vehicleId/status', () => {
     const res = await request(app).get('/api/ev/vehicles/v1/status').set('Authorization', 'Bearer tok');
     expect(res.statusCode).toBe(200);
     expect(res.body.source).toBe('cache');
+    expect(res.body.audit).toMatchObject({
+      requestedLive: false,
+      cacheFresh: true,
+      teslaApiCalls: 0,
+      teslaBillableApiCalls: 0
+    });
+    expect(evUsageControl.recordTeslaApiCall).not.toHaveBeenCalled();
+    expect(incrementApiCount).not.toHaveBeenCalled();
   });
 
   test('uses Tesla cache default (10 minutes) when user-specific teslaStatus is not set', async () => {
@@ -318,7 +326,9 @@ describe('GET /api/ev/vehicles/:vehicleId/status', () => {
   test('fetches live status when live=1', async () => {
     const adapter = makeAdapter();
     const saveVehicleState = jest.fn(async () => {});
+    const incrementApiCount = jest.fn(async () => {});
     const deps = makeDeps({
+      incrementApiCount,
       vehiclesRepo: makeVehiclesRepo({
         getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
         getVehicleState: jest.fn(async () => null),
@@ -339,6 +349,51 @@ describe('GET /api/ev/vehicles/:vehicleId/status', () => {
       })
     );
     expect(saveVehicleState).toHaveBeenCalled();
+    expect(res.body.audit).toMatchObject({
+      requestedLive: true,
+      teslaApiCalls: 0,
+      teslaBillableApiCalls: 0
+    });
+    expect(incrementApiCount).not.toHaveBeenCalled();
+  });
+
+  test('increments generic EV counter once for billable Tesla upstream activity within one status request', async () => {
+    const incrementApiCount = jest.fn(async () => {});
+    const evUsageControl = makeEvUsageControl();
+    const adapter = makeAdapter({
+      getVehicleStatus: jest.fn(async (_vehicleId, context) => {
+        await context.recordTeslaApiCall({ category: 'auth', status: 200, billable: false });
+        await context.recordTeslaApiCall({ category: 'data_request', status: 200, billable: true });
+        return STUB_STATUS;
+      })
+    });
+    const deps = makeDeps({
+      incrementApiCount,
+      evUsageControl,
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
+        getVehicleState: jest.fn(async () => null),
+        saveVehicleState: jest.fn(async () => {})
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+
+    const res = await request(app).get('/api/ev/vehicles/v1/status?live=1').set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.audit).toMatchObject({
+      requestedLive: true,
+      teslaApiCalls: 2,
+      teslaBillableApiCalls: 1,
+      teslaApiCallsByCategory: {
+        auth: 1,
+        data_request: 1
+      }
+    });
+    expect(evUsageControl.recordTeslaApiCall).toHaveBeenCalledTimes(2);
+    expect(incrementApiCount).toHaveBeenCalledTimes(1);
+    expect(incrementApiCount).toHaveBeenCalledWith('u-test', 'ev');
   });
 
   test('returns 400 when vehicle credentials are missing', async () => {
@@ -551,232 +606,6 @@ describe('GET /api/ev/vehicles/:vehicleId/status', () => {
 
     expect(res.statusCode).toBe(503);
     expect(res.body.result.reasonCode).toBe('tesla_upstream_unavailable');
-  });
-});
-
-// ─── POST /api/ev/vehicles/:vehicleId/command ────────────────────────────
-
-describe('POST /api/ev/vehicles/:vehicleId/command', () => {
-  function makeCommandDeps(adapter = makeAdapter()) {
-    return {
-      deps: makeDeps({
-        vehiclesRepo: makeVehiclesRepo({
-          getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
-          appendCommand: jest.fn(async () => {}),
-          updateCommand: jest.fn(async () => {}),
-          getCommand: jest.fn(async () => null),
-          listCommands: jest.fn(async () => [])
-        }),
-        adapterRegistry: makeRegistry(adapter)
-      }),
-      adapter
-    };
-  }
-
-  test('returns 400 for unknown command', async () => {
-    const { deps } = makeCommandDeps();
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/v1/command')
-      .set('Authorization', 'Bearer tok').send({ command: 'hackTheGibson' });
-    expect(res.statusCode).toBe(400);
-    expect(res.body.error).toMatch(/startCharging|stopCharging/);
-  });
-
-  test('returns 400 for setChargeLimit without targetSocPct', async () => {
-    const { deps } = makeCommandDeps();
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/v1/command')
-      .set('Authorization', 'Bearer tok').send({ command: 'setChargeLimit' });
-    expect(res.statusCode).toBe(400);
-    expect(res.body.error).toMatch(/targetSocPct/);
-  });
-
-  test('returns 404 when vehicle not registered', async () => {
-    const deps = makeDeps();
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/missing/command')
-      .set('Authorization', 'Bearer tok').send({ command: 'startCharging' });
-    expect(res.statusCode).toBe(404);
-  });
-
-  test('returns 503 when Tesla command path is in degraded mode', async () => {
-    const adapter = makeAdapter();
-    const evUsageControl = makeEvUsageControl({
-      assessRouteRequest: jest.fn(async () => ({
-        blocked: false,
-        degraded: true,
-        mode: 'auto',
-        reasonCode: 'user_unit_limit_reached'
-      }))
-    });
-    const { deps } = makeCommandDeps(adapter);
-    deps.evUsageControl = evUsageControl;
-
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/v1/command')
-      .set('Authorization', 'Bearer tok')
-      .send({ command: 'startCharging' });
-
-    expect(res.statusCode).toBe(503);
-    expect(res.body.result).toMatchObject({
-      degraded: true,
-      reasonCode: 'user_unit_limit_reached'
-    });
-    expect(adapter.startCharging).not.toHaveBeenCalled();
-  });
-
-  test('dispatches startCharging and returns result', async () => {
-    const { deps, adapter } = makeCommandDeps();
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/v1/command')
-      .set('Authorization', 'Bearer tok').send({ command: 'startCharging' });
-    expect(res.statusCode).toBe(200);
-    expect(res.body.errno).toBe(0);
-    expect(adapter.startCharging).toHaveBeenCalled();
-  });
-
-  test('dispatches stopCharging and returns result', async () => {
-    const { deps, adapter } = makeCommandDeps();
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/v1/command')
-      .set('Authorization', 'Bearer tok').send({ command: 'stopCharging' });
-    expect(res.statusCode).toBe(200);
-    expect(adapter.stopCharging).toHaveBeenCalled();
-  });
-
-  test('dispatches setChargeLimit and returns result', async () => {
-    const { deps, adapter } = makeCommandDeps();
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/v1/command')
-      .set('Authorization', 'Bearer tok').send({ command: 'setChargeLimit', targetSocPct: 80 });
-    expect(res.statusCode).toBe(200);
-    expect(adapter.setChargeLimit).toHaveBeenCalled();
-  });
-
-  test('returns 400 when command credentials missing', async () => {
-    const { deps, adapter } = makeCommandDeps();
-    deps.vehiclesRepo.getVehicleCredentials = jest.fn(async () => null);
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/v1/command')
-      .set('Authorization', 'Bearer tok').send({ command: 'startCharging' });
-    expect(res.statusCode).toBe(400);
-    expect(res.body.error).toMatch(/credentials/i);
-    expect(adapter.startCharging).not.toHaveBeenCalled();
-  });
-
-  test('returns 412 when Tesla command readiness reports signed-command setup missing', async () => {
-    const adapter = makeAdapter({
-      getCommandReadiness: jest.fn(async () => ({
-        readyForCommands: false,
-        protocolRequired: true,
-        keyPaired: false,
-        supportsSignedCommands: false,
-        blockingReasons: ['signed_command_required']
-      }))
-    });
-    const { deps } = makeCommandDeps(adapter);
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/v1/command')
-      .set('Authorization', 'Bearer tok')
-      .send({ command: 'startCharging' });
-
-    expect(res.statusCode).toBe(412);
-    expect(res.body.error).toMatch(/signed command setup required/i);
-    expect(res.body.result.readiness).toEqual(expect.objectContaining({
-      protocolRequired: true,
-      supportsSignedCommands: false,
-      readyForCommands: false
-    }));
-    expect(adapter.startCharging).not.toHaveBeenCalled();
-  });
-
-  test('returns 412 with readiness payload when virtual key is not paired', async () => {
-    const adapter = makeAdapter({
-      getCommandReadiness: jest.fn(async () => ({
-        readyForCommands: false,
-        protocolRequired: true,
-        keyPaired: false,
-        supportsSignedCommands: true,
-        blockingReasons: ['virtual_key_not_paired']
-      }))
-    });
-    const { deps } = makeCommandDeps(adapter);
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/v1/command')
-      .set('Authorization', 'Bearer tok')
-      .send({ command: 'stopCharging' });
-
-    expect(res.statusCode).toBe(412);
-    expect(res.body.error).toMatch(/virtual key must be paired/i);
-    expect(res.body).toMatchObject({
-      errno: 412,
-      result: {
-        readiness: {
-          readyForCommands: false,
-          protocolRequired: true,
-          keyPaired: false,
-          supportsSignedCommands: true,
-          blockingReasons: ['virtual_key_not_paired']
-        }
-      }
-    });
-    expect(adapter.stopCharging).not.toHaveBeenCalled();
-  });
-
-  test('returns generic 412 readiness error when blocker reason is unknown', async () => {
-    const adapter = makeAdapter({
-      getCommandReadiness: jest.fn(async () => ({
-        readyForCommands: false,
-        blockingReasons: ['vehicle_asleep']
-      }))
-    });
-    const { deps } = makeCommandDeps(adapter);
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/v1/command')
-      .set('Authorization', 'Bearer tok')
-      .send({ command: 'startCharging' });
-
-    expect(res.statusCode).toBe(412);
-    expect(res.body.error).toMatch(/not ready to accept ev commands/i);
-    expect(res.body.result.readiness).toEqual(expect.objectContaining({
-      readyForCommands: false,
-      blockingReasons: ['vehicle_asleep']
-    }));
-    expect(adapter.startCharging).not.toHaveBeenCalled();
-  });
-
-  test('returns VIN guidance when readiness reports vin_required', async () => {
-    const adapter = makeAdapter({
-      getCommandReadiness: jest.fn(async () => ({
-        readyForCommands: false,
-        blockingReasons: ['vin_required']
-      }))
-    });
-    const { deps } = makeCommandDeps(adapter);
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/v1/command')
-      .set('Authorization', 'Bearer tok')
-      .send({ command: 'startCharging' });
-
-    expect(res.statusCode).toBe(412);
-    expect(res.body.error).toMatch(/vin is required/i);
-    expect(adapter.startCharging).not.toHaveBeenCalled();
-  });
-
-  test('continues command flow when readiness preflight fails unexpectedly', async () => {
-    const adapter = makeAdapter({
-      getCommandReadiness: jest.fn(async () => {
-        throw new Error('fleet_status unavailable');
-      })
-    });
-    const { deps } = makeCommandDeps(adapter);
-    const app = buildApp(deps);
-    const res = await request(app).post('/api/ev/vehicles/v1/command')
-      .set('Authorization', 'Bearer tok')
-      .send({ command: 'startCharging' });
-
-    expect(res.statusCode).toBe(200);
-    expect(adapter.startCharging).toHaveBeenCalled();
   });
 });
 

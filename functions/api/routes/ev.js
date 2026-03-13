@@ -3,18 +3,16 @@
 /**
  * EV (Electric Vehicle) Routes
  *
- * Endpoints for EV vehicle management, status, command issuance, and OAuth flows.
+ * Endpoints for EV vehicle management, status retrieval, and OAuth flows.
  *
  *   GET    /api/ev/vehicles                           — list registered vehicles
  *   POST   /api/ev/vehicles                           — register a vehicle
  *   DELETE /api/ev/vehicles/:vehicleId                — remove a vehicle
  *   GET    /api/ev/vehicles/:vehicleId/status         — current vehicle status
- *   POST   /api/ev/vehicles/:vehicleId/command        — issue an EV command
  *   GET    /api/ev/oauth/start                        — begin OAuth2 flow
  *   POST   /api/ev/oauth/callback                     — exchange auth code for tokens
  */
 
-const { createEVCommandService } = require('../../lib/services/ev-command-service');
 const { createEvUsageControlService } = require('../../lib/services/ev-usage-control-service');
 const {
   buildTeslaAuthUrl,
@@ -30,6 +28,7 @@ function registerEVRoutes(app, deps = {}) {
   const teslaHttpClient = deps.teslaHttpClient || deps.httpClient || null;
   const getUserConfig = typeof deps.getUserConfig === 'function' ? deps.getUserConfig : null;
   const getConfig = typeof deps.getConfig === 'function' ? deps.getConfig : null;
+  const incrementApiCount = typeof deps.incrementApiCount === 'function' ? deps.incrementApiCount : null;
   const logger = deps.logger || console;
   const evUsageControl = deps.evUsageControl || createEvUsageControlService({
     admin: deps.admin || null,
@@ -48,12 +47,6 @@ function registerEVRoutes(app, deps = {}) {
   }
   if (!adapterRegistry || typeof adapterRegistry.getEVProvider !== 'function') {
     throw new Error('registerEVRoutes requires an adapterRegistry with EV provider support');
-  }
-
-  // ── Helper: build command service for a given adapter ────────────────────
-
-  function buildCommandService(evAdapter) {
-    return createEVCommandService({ evAdapter, vehiclesRepo, skipWake: false });
   }
 
   function toPublicVehicleShape(vehicle = {}) {
@@ -79,20 +72,6 @@ function registerEVRoutes(app, deps = {}) {
         storedAtIso: new Date().toISOString()
       });
     };
-  }
-
-  function buildReadinessErrorMessage(readiness = {}) {
-    const reasons = Array.isArray(readiness.blockingReasons) ? readiness.blockingReasons : [];
-    if (reasons.includes('vin_required')) {
-      return 'Tesla VIN is required. Reconnect this vehicle with VIN in Settings before using EV commands';
-    }
-    if (reasons.includes('signed_command_required')) {
-      return 'Tesla signed command setup required before this command can be sent';
-    }
-    if (reasons.includes('virtual_key_not_paired')) {
-      return 'Tesla virtual key must be paired with this vehicle before commands can be sent';
-    }
-    return 'Vehicle is not ready to accept EV commands';
   }
 
   function isTeslaReconnectError(error) {
@@ -246,6 +225,20 @@ function registerEVRoutes(app, deps = {}) {
     return (Date.now() - observedMs) <= maxAgeMs;
   }
 
+  function buildVehicleStatusCacheAudit(cachedState = null, maxAgeMs = EV_STATUS_CACHE_MAX_AGE_MS, requestedLive = false) {
+    const observedMs = cachedState
+      ? (parseMillis(cachedState.savedAt) || parseMillis(cachedState.asOfIso))
+      : null;
+    const ageMs = Number.isFinite(observedMs) ? Math.max(0, Date.now() - observedMs) : null;
+    return {
+      requestedLive: Boolean(requestedLive),
+      cacheConfigured: maxAgeMs > 0,
+      cacheMaxAgeMs: Number(maxAgeMs) > 0 ? Number(maxAgeMs) : 0,
+      cacheAgeMs: Number.isFinite(ageMs) ? ageMs : null,
+      cacheFresh: Boolean(cachedState) && Number.isFinite(ageMs) && maxAgeMs > 0 && ageMs <= maxAgeMs
+    };
+  }
+
   function resolveTeslaVehicleContext(vehicleId, vehicle = {}, credentials = {}) {
     const vehicleVin = normalizeTeslaVin(
       vehicle?.vin ||
@@ -269,20 +262,58 @@ function registerEVRoutes(app, deps = {}) {
     return value === '1' || value === 'true' || value === 1 || value === true;
   }
 
-  function buildTeslaApiCallRecorder({ uid, vehicleId, routeName }) {
+  function createTeslaApiAuditTracker({ uid, vehicleId, routeName }) {
     const normalizedUid = String(uid || '').trim();
     const normalizedVehicleId = String(vehicleId || '').trim();
     const normalizedRouteName = String(routeName || '').trim() || 'unknown_route';
-    if (!normalizedUid || !normalizedVehicleId) return null;
-    if (!evUsageControl || typeof evUsageControl.recordTeslaApiCall !== 'function') return null;
 
-    return async (event = {}) => {
-      await evUsageControl.recordTeslaApiCall({
-        uid: normalizedUid,
-        vehicleId: normalizedVehicleId,
-        routeName: normalizedRouteName,
-        ...event
-      });
+    let totalApiCalls = 0;
+    let billableApiCalls = 0;
+    let genericEvCounterIncremented = false;
+    const categories = {};
+
+    const snapshot = () => ({
+      routeName: normalizedRouteName,
+      teslaApiCalls: totalApiCalls,
+      teslaBillableApiCalls: billableApiCalls,
+      teslaApiCallsByCategory: { ...categories }
+    });
+
+    if (!normalizedUid || !normalizedVehicleId) {
+      return {
+        recordTeslaApiCall: null,
+        snapshot
+      };
+    }
+
+    const recordTeslaApiCall = async (event = {}) => {
+      totalApiCalls += 1;
+      const category = String(event?.category || 'other').trim().toLowerCase() || 'other';
+      categories[category] = Number(categories[category] || 0) + 1;
+      if (event?.billable === true) {
+        billableApiCalls += 1;
+      }
+
+      if (evUsageControl && typeof evUsageControl.recordTeslaApiCall === 'function') {
+        await evUsageControl.recordTeslaApiCall({
+          uid: normalizedUid,
+          vehicleId: normalizedVehicleId,
+          routeName: normalizedRouteName,
+          ...event
+        });
+      }
+
+      // Keep the generic EV counter aligned to billable upstream Tesla activity,
+      // but increment it at most once per route request.
+      if (incrementApiCount && event?.billable === true && !genericEvCounterIncremented) {
+        genericEvCounterIncremented = true;
+        await incrementApiCount(normalizedUid, 'ev');
+      }
+    };
+
+    return {
+      recordTeslaApiCall,
+      snapshot
     };
   }
 
@@ -462,8 +493,20 @@ function registerEVRoutes(app, deps = {}) {
         }
 
         const cached = await vehiclesRepo.getVehicleState(uid, vehicleId);
+        const cacheAudit = buildVehicleStatusCacheAudit(cached, statusCacheMaxAgeMs, live);
         if (!live && cached && isFreshVehicleStatus(cached, statusCacheMaxAgeMs)) {
-          return res.json({ errno: 0, result: cached, source: 'cache' });
+          return res.json({
+            errno: 0,
+            result: cached,
+            source: 'cache',
+            audit: {
+              ...cacheAudit,
+              routeName: 'status_cached',
+              teslaApiCalls: 0,
+              teslaBillableApiCalls: 0,
+              teslaApiCallsByCategory: {}
+            }
+          });
         }
 
         let usageDecision = req.evUsageDecision || null;
@@ -529,16 +572,17 @@ function registerEVRoutes(app, deps = {}) {
           return res.status(400).json({ errno: 400, error: 'Vehicle credentials not configured' });
         }
         const teslaVehicleContext = resolveTeslaVehicleContext(vehicleId, vehicle, credentials);
+        const teslaApiAudit = createTeslaApiAuditTracker({
+          uid,
+          vehicleId,
+          routeName: live ? 'status_live' : 'status_cached'
+        });
 
         const status = await evAdapter.getVehicleStatus(vehicleId, {
           credentials,
           userId: uid,
           vehicleId,
-          recordTeslaApiCall: buildTeslaApiCallRecorder({
-            uid,
-            vehicleId,
-            routeName: live ? 'status_live' : 'status_cached'
-          }),
+          recordTeslaApiCall: teslaApiAudit.recordTeslaApiCall,
           region: vehicle.region || credentials.region || 'na',
           vehicleVin: teslaVehicleContext.vehicleVin,
           teslaVehicleId: teslaVehicleContext.teslaVehicleId,
@@ -553,7 +597,15 @@ function registerEVRoutes(app, deps = {}) {
         // Persist the fresh status
         await vehiclesRepo.saveVehicleState(uid, vehicleId, status);
 
-        return res.json({ errno: 0, result: status, source: 'live' });
+        return res.json({
+          errno: 0,
+          result: status,
+          source: 'live',
+          audit: {
+            ...cacheAudit,
+            ...teslaApiAudit.snapshot()
+          }
+        });
       } catch (err) {
         if (String(vehicle?.provider || '').toLowerCase().trim() === 'tesla') {
           const cachedFallback = await vehiclesRepo.getVehicleState(uid, vehicleId).catch(() => null);
@@ -681,116 +733,6 @@ function registerEVRoutes(app, deps = {}) {
     }
   );
 
-  // ── Command issuance ─────────────────────────────────────────────────────
-
-  /**
-   * POST /api/ev/vehicles/:vehicleId/command
-   * Issue an EV command (startCharging, stopCharging, setChargeLimit).
-   * Body: { command: string, commandId?: string, targetSocPct?: number }
-   */
-  app.post(
-    '/api/ev/vehicles/:vehicleId/command',
-    authenticateUser,
-    createTeslaUsageGuardMiddleware(() => 'command'),
-    async (req, res) => {
-      const uid = req.user.uid;
-      const { vehicleId } = req.params;
-      const { command, commandId, targetSocPct } = req.body || {};
-
-      const ALLOWED_COMMANDS = ['startCharging', 'stopCharging', 'setChargeLimit'];
-      if (!command || !ALLOWED_COMMANDS.includes(command)) {
-        return res.status(400).json({ errno: 400, error: `command must be one of: ${ALLOWED_COMMANDS.join(', ')}` });
-      }
-      if (command === 'setChargeLimit' && (targetSocPct === undefined || targetSocPct === null)) {
-        return res.status(400).json({ errno: 400, error: 'targetSocPct is required for setChargeLimit' });
-      }
-
-      try {
-        const vehicle = req.evVehicle || await vehiclesRepo.getVehicle(uid, vehicleId);
-        if (!vehicle) {
-          return res.status(404).json({ errno: 404, error: 'Vehicle not found' });
-        }
-
-        const usageDecision = req.evUsageDecision || null;
-        if (usageDecision?.degraded) {
-          return res.status(503).json({
-            errno: 503,
-            error: 'Tesla EV commands are temporarily paused to protect API budget',
-            result: {
-              degraded: true,
-              reasonCode: usageDecision.reasonCode || 'degraded_mode'
-            }
-          });
-        }
-
-        const evAdapter = adapterRegistry.getEVProvider(vehicle.provider);
-        if (!evAdapter) {
-          return res.status(400).json({ errno: 400, error: `No EV provider registered for '${vehicle.provider}'` });
-        }
-
-        const credentials = await vehiclesRepo.getVehicleCredentials(uid, vehicleId);
-        const cmdService = buildCommandService(evAdapter);
-        if (!credentials || !credentials.accessToken) {
-          return res.status(400).json({ errno: 400, error: 'Vehicle credentials not configured' });
-        }
-        const teslaVehicleContext = resolveTeslaVehicleContext(vehicleId, vehicle, credentials);
-
-        const context = {
-          credentials,
-          userId: uid,
-          vehicleId,
-          recordTeslaApiCall: buildTeslaApiCallRecorder({
-            uid,
-            vehicleId,
-            routeName: 'command'
-          }),
-          region: vehicle.region || credentials.region || 'na',
-          vehicleVin: teslaVehicleContext.vehicleVin,
-          teslaVehicleId: teslaVehicleContext.teslaVehicleId,
-          persistCredentials: buildPersistCredentialsFn({
-            uid,
-            vehicleId,
-            vehicle,
-            credentials
-          })
-        };
-        const options = { commandId };
-
-        if (typeof evAdapter.getCommandReadiness === 'function') {
-          try {
-            const readiness = await evAdapter.getCommandReadiness(vehicleId, context);
-            if (readiness && readiness.readyForCommands === false) {
-              return res.status(412).json({
-                errno: 412,
-                error: buildReadinessErrorMessage(readiness),
-                result: { readiness }
-              });
-            }
-            context.commandReadiness = readiness || null;
-          } catch {
-            // Readiness check is best-effort only; command path still executes.
-          }
-        }
-
-        let result;
-        if (command === 'startCharging') {
-          result = await cmdService.startCharging(uid, vehicleId, context, options);
-        } else if (command === 'stopCharging') {
-          result = await cmdService.stopCharging(uid, vehicleId, context, options);
-        } else {
-          result = await cmdService.setChargeLimit(uid, vehicleId, context, targetSocPct, options);
-        }
-
-        return res.json({ errno: 0, result });
-      } catch (err) {
-        if (err.message && err.message.includes('cooldown')) {
-          return res.status(429).json({ errno: 429, error: err.message });
-        }
-        return res.status(500).json({ errno: 500, error: err.message });
-      }
-    }
-  );
-
   // ── OAuth2 ────────────────────────────────────────────────────────────────
 
   /**
@@ -856,7 +798,7 @@ function registerEVRoutes(app, deps = {}) {
         return res.status(400).json({ errno: 400, error: `OAuth callback currently supports tesla provider only (got '${provider || 'unknown'}')` });
       }
 
-      const authCallRecorder = buildTeslaApiCallRecorder({
+      const authCallRecorder = createTeslaApiAuditTracker({
         uid,
         vehicleId: resolvedVehicleId || requestedVin || requestedVehicleKey,
         routeName: 'oauth_callback'
@@ -874,16 +816,16 @@ function registerEVRoutes(app, deps = {}) {
           },
           teslaHttpClient || createTeslaHttpClient()
         );
-        if (authCallRecorder) {
-          await authCallRecorder({
+        if (authCallRecorder.recordTeslaApiCall) {
+          await authCallRecorder.recordTeslaApiCall({
             category: 'auth',
             status: 200,
             billable: false
           });
         }
       } catch (exchangeError) {
-        if (authCallRecorder) {
-          await authCallRecorder({
+        if (authCallRecorder.recordTeslaApiCall) {
+          await authCallRecorder.recordTeslaApiCall({
             category: 'auth',
             status: Number(exchangeError?.status) || 500,
             billable: false,

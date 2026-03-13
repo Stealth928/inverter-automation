@@ -22,6 +22,19 @@
     ],
     "headers": [
       {
+        "source": "/.well-known/appspecific/com.tesla.3p.public-key.pem",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/x-pem-file"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
         "source": "/sw.js",
         "headers": [
           {

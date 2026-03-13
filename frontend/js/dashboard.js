@@ -2859,7 +2859,6 @@
             selectedVehicleId: '',
             statusByVehicleId: {},
             statusMetaByVehicleId: {},
-            readinessByVehicleId: {},
             loadingVehicles: false,
             loadingStatusByVehicleId: {},
             commandInFlight: false
@@ -2961,64 +2960,27 @@
             return String(meta.error || '');
         }
 
-        function getSelectedEVReadiness() {
-            const selectedId = String(evDashboardState.selectedVehicleId || '');
-            if (!selectedId) return null;
-            return evDashboardState.readinessByVehicleId[selectedId] || null;
-        }
-
-        function getEVReadinessDescriptor(readiness, statusError = '') {
+        function getEVConnectionDescriptor(statusError = '') {
             if (statusError && /credential/i.test(statusError)) {
                 return {
                     kind: 'error',
-                    label: 'Credentials Missing',
-                    detail: 'Connect Tesla in Settings to enable EV commands'
+                    label: 'Setup Required',
+                    detail: 'Connect Tesla in Settings to enable status visibility'
                 };
             }
 
-            if (!readiness) {
+            if (statusError) {
                 return {
                     kind: 'warn',
-                    label: 'Readiness Unknown',
-                    detail: 'Preflight runs when command is sent'
-                };
-            }
-
-            if (readiness.readyForCommands === true) {
-                return {
-                    kind: 'ok',
-                    label: 'Ready',
-                    detail: 'Commands available'
-                };
-            }
-
-            const reasons = Array.isArray(readiness.blockingReasons) ? readiness.blockingReasons : [];
-            if (reasons.includes('vin_required')) {
-                return {
-                    kind: 'warn',
-                    label: 'VIN Required',
-                    detail: 'Reconnect Tesla with VIN in Settings before sending commands'
-                };
-            }
-            if (reasons.includes('signed_command_required')) {
-                return {
-                    kind: 'warn',
-                    label: 'Signed Command Required',
-                    detail: 'Set up Tesla signed-command key before sending commands'
-                };
-            }
-            if (reasons.includes('virtual_key_not_paired')) {
-                return {
-                    kind: 'warn',
-                    label: 'Virtual Key Unpaired',
-                    detail: 'Pair virtual key with vehicle in Tesla app'
+                    label: 'Status Unavailable',
+                    detail: 'Live vehicle status could not be loaded'
                 };
             }
 
             return {
-                kind: 'warn',
-                label: 'Not Ready',
-                detail: 'Vehicle command readiness check failed'
+                kind: 'ok',
+                label: 'Connected',
+                detail: 'Vehicle connection and status reads are available'
             };
         }
 
@@ -3093,15 +3055,14 @@
             const vehicleId = String(selectedVehicle.vehicleId || '');
             const status = evDashboardState.statusByVehicleId[vehicleId] || {};
             const meta = evDashboardState.statusMetaByVehicleId[vehicleId] || {};
-            const readiness = getSelectedEVReadiness();
             const statusError = getSelectedEVStatusError();
-            const readinessDescriptor = getEVReadinessDescriptor(readiness, statusError);
+            const connectionDescriptor = getEVConnectionDescriptor(statusError);
 
-            const readinessPill = document.createElement('span');
-            readinessPill.className = `ev-status-pill ${readinessDescriptor.kind}`;
-            readinessPill.title = readinessDescriptor.detail;
-            readinessPill.textContent = readinessDescriptor.label;
-            pillsEl.appendChild(readinessPill);
+            const connectionPill = document.createElement('span');
+            connectionPill.className = `ev-status-pill ${connectionDescriptor.kind}`;
+            connectionPill.title = connectionDescriptor.detail;
+            connectionPill.textContent = connectionDescriptor.label;
+            pillsEl.appendChild(connectionPill);
 
             if (meta.source) {
                 const sourcePill = document.createElement('span');
@@ -3135,43 +3096,10 @@
             });
         }
 
-        function updateEVCommandControls() {
-            const startBtn = document.getElementById('evStartBtn');
-            const stopBtn = document.getElementById('evStopBtn');
-            const setLimitBtn = document.getElementById('evSetLimitBtn');
-            const limitInput = document.getElementById('evChargeLimitInput');
-            if (!startBtn || !stopBtn || !setLimitBtn || !limitInput) return;
-
-            const selectedVehicle = getSelectedEVVehicle();
-            const statusError = getSelectedEVStatusError();
-            const readiness = getSelectedEVReadiness();
-            const loadingStatus = !!evDashboardState.loadingStatusByVehicleId[String(evDashboardState.selectedVehicleId || '')];
-            const hasBlockingReadiness = readiness && readiness.readyForCommands === false;
-            const credentialsMissing = /credential/i.test(statusError);
-            const shouldDisable = !selectedVehicle || evDashboardState.commandInFlight || loadingStatus || credentialsMissing || hasBlockingReadiness;
-
-            startBtn.disabled = shouldDisable;
-            stopBtn.disabled = shouldDisable;
-            setLimitBtn.disabled = shouldDisable;
-            limitInput.disabled = shouldDisable;
-        }
-
         function renderEVOverview() {
             updateEVVehicleCountBadge();
             renderEVVehicleTabs();
             renderEVSelectedSummary();
-            updateEVCommandControls();
-        }
-
-        function updateEVChargeLimitLabel(value) {
-            const label = document.getElementById('evChargeLimitLabel');
-            if (!label) return;
-            const numeric = Number(value);
-            if (!Number.isFinite(numeric)) {
-                label.textContent = '—';
-                return;
-            }
-            label.textContent = `${Math.round(numeric)}%`;
         }
 
         async function fetchEVVehicleStatus(vehicleId, options = {}) {
@@ -3243,17 +3171,6 @@
             const forceLive = options.forceLive === true;
             await fetchEVVehicleStatus(selectedId, { live: forceLive, silent: true });
 
-            const status = evDashboardState.statusByVehicleId[selectedId];
-            const limitInput = document.getElementById('evChargeLimitInput');
-            if (limitInput) {
-                const currentLimit = Number(status?.chargeLimitPct);
-                if (Number.isFinite(currentLimit) && currentLimit >= 1 && currentLimit <= 100) {
-                    limitInput.value = String(Math.round(currentLimit));
-                    updateEVChargeLimitLabel(limitInput.value);
-                } else {
-                    updateEVChargeLimitLabel(limitInput.value);
-                }
-            }
         }
 
         function clearStaleEVState() {
@@ -3264,9 +3181,6 @@
             });
             Object.keys(evDashboardState.statusMetaByVehicleId).forEach((vehicleId) => {
                 if (!validIds.has(vehicleId)) delete evDashboardState.statusMetaByVehicleId[vehicleId];
-            });
-            Object.keys(evDashboardState.readinessByVehicleId).forEach((vehicleId) => {
-                if (!validIds.has(vehicleId)) delete evDashboardState.readinessByVehicleId[vehicleId];
             });
         }
 
@@ -3313,7 +3227,6 @@
 
                     if (!hasEVVehicleCredentialsConfigured(vehicle)) {
                         delete evDashboardState.statusByVehicleId[vehicleId];
-                        delete evDashboardState.readinessByVehicleId[vehicleId];
                         evDashboardState.statusMetaByVehicleId[vehicleId] = {
                             source: 'setup',
                             loadedAtMs: Date.now(),
@@ -3339,92 +3252,9 @@
             await loadEVOverviewData(forceLiveSelected === true);
         }
 
-        async function issueSelectedEVCommand(command, payload = {}) {
-            const selectedVehicle = getSelectedEVVehicle();
-            if (!selectedVehicle) {
-                setEVOverviewMessage('warning', 'Select a vehicle first');
-                return;
-            }
-
-            const vehicleId = String(selectedVehicle.vehicleId || '');
-            evDashboardState.commandInFlight = true;
-            renderEVOverview();
-
-            try {
-                const body = {
-                    command,
-                    commandId: `ev-ui-${command}-${Date.now()}`,
-                    ...(payload || {})
-                };
-
-                const response = await authenticatedFetch(
-                    `/api/ev/vehicles/${encodeURIComponent(vehicleId)}/command`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body)
-                    }
-                );
-
-                let data = null;
-                try {
-                    data = await response.json();
-                } catch {
-                    data = null;
-                }
-
-                if (response.ok && data && data.errno === 0) {
-                    delete evDashboardState.readinessByVehicleId[vehicleId];
-                    setEVOverviewMessage('success', `${command} sent successfully`);
-                    await fetchEVVehicleStatus(vehicleId, { live: true, silent: true });
-                    return;
-                }
-
-                const errorMessage = String(data?.error || `Command failed (HTTP ${response.status})`);
-                if (response.status === 412 && data?.result?.readiness) {
-                    evDashboardState.readinessByVehicleId[vehicleId] = data.result.readiness;
-                }
-                if (response.status === 400 && /credential/i.test(errorMessage)) {
-                    evDashboardState.statusMetaByVehicleId[vehicleId] = {
-                        ...(evDashboardState.statusMetaByVehicleId[vehicleId] || {}),
-                        error: errorMessage,
-                        loadedAtMs: Date.now()
-                    };
-                }
-                setEVOverviewMessage('warning', errorMessage);
-            } catch (error) {
-                setEVOverviewMessage('error', String(error?.message || 'Failed to send EV command'));
-            } finally {
-                evDashboardState.commandInFlight = false;
-                renderEVOverview();
-            }
-        }
-
-        async function startSelectedEVCharging() {
-            await issueSelectedEVCommand('startCharging');
-        }
-
-        async function stopSelectedEVCharging() {
-            await issueSelectedEVCommand('stopCharging');
-        }
-
-        async function setSelectedEVChargeLimit() {
-            const limitInput = document.getElementById('evChargeLimitInput');
-            const targetSocPct = Number(limitInput?.value);
-            if (!Number.isFinite(targetSocPct) || targetSocPct < 1 || targetSocPct > 100) {
-                setEVOverviewMessage('warning', 'Charge limit must be between 1 and 100');
-                return;
-            }
-            await issueSelectedEVCommand('setChargeLimit', { targetSocPct: Math.round(targetSocPct) });
-        }
-
         // Expose EV handlers for inline dashboard controls.
         window.refreshEVOverview = refreshEVOverview;
         window.selectEVVehicle = selectEVVehicle;
-        window.startSelectedEVCharging = startSelectedEVCharging;
-        window.stopSelectedEVCharging = stopSelectedEVCharging;
-        window.setSelectedEVChargeLimit = setSelectedEVChargeLimit;
-        window.updateEVChargeLimitLabel = updateEVChargeLimitLabel;
         
         // ============================================================
         // Quick Controls
@@ -5422,10 +5252,6 @@
             // Suppress auto-opening of the right-panel while the page initializes
             window.suppressPanelAutoOpen = true;
             try { initSmartTooltips(); } catch (e) { console.warn('initSmartTooltips failed', e); }
-            try {
-                const initialLimit = document.getElementById('evChargeLimitInput')?.value || '80';
-                updateEVChargeLimitLabel(initialLimit);
-            } catch (e) {}
 
             initDashboardCardVisibilityPreferences();
             initDashboardVisibilityCollapse();

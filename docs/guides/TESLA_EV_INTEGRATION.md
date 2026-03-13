@@ -17,12 +17,18 @@ For implementation-level setup and operator detail, use:
 - Tesla connect flow in `Settings` using OAuth PKCE
 - VIN-based vehicle registration and credential storage
 - EV overview card on dashboard with per-vehicle status
-- dashboard commands:
-  - `startCharging`
-  - `stopCharging`
-  - `setChargeLimit`
-- readiness-aware command gating (VIN, signed-command requirements, virtual key
-  pairing status)
+- hosted Tesla public key metadata at the required `/.well-known/...` path
+
+## Minimum Viable Setup
+
+The current product scope is read-only Tesla support:
+
+1. OAuth connect
+2. VIN registration
+3. vehicle status reads
+4. Tesla public PEM hosted on the app domain
+
+Remote command support is intentionally not part of the active product scope.
 
 ## Where Users See Tesla Integration
 
@@ -38,30 +44,23 @@ For implementation-level setup and operator detail, use:
 
 - connect Tesla once from Settings and keep vehicle credentials tied to account
 - monitor connected vehicle status from the same dashboard as inverter data
-- execute charging commands without leaving SoCrates
-- keep command safety via readiness checks before command dispatch
+- keep Tesla setup limited to connection and status visibility
 
-## Command Readiness Notes
+## Product Boundary
 
-- Command controls may be blocked when Tesla preconditions are not met.
-- Expected blocking states include:
-  - `vin_required`
-  - `signed_command_required`
-  - `virtual_key_not_paired`
-- These states are surfaced in the dashboard EV panel and should be described
-  as setup prerequisites, not product defects.
+- Tesla commands are not exposed in the dashboard.
+- No signed-command proxy is required for the current repo scope.
+- No Cloud Run service is required for the current repo scope.
 
 ## Marketing Positioning Guidance
 
 Use these claims:
 - "Tesla EV integration is available in Settings and Dashboard."
 - "Connect by VIN using Tesla OAuth and monitor EV status in SoCrates."
-- "Start/stop charging and set charge limits when Tesla readiness checks pass."
 
 Avoid these claims:
 - "All EV brands are supported."
-- "Tesla commands always execute without prerequisites."
-- "Signed-command setup is optional for every vehicle."
+- "Tesla remote commands are currently available in the dashboard."
 
 ## Related Docs
 

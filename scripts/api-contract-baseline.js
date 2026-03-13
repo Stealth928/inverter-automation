@@ -106,6 +106,7 @@ function lineNumberFromIndex(content, index) {
 function parseBackendRoutesFromFile(content, sourceFile) {
   const lines = content.split(/\r?\n/);
   const routeLinePattern = /^\s*app\.(get|post|put|delete|patch)\(\s*['"]([^'"]+)['"]\s*,\s*(.*)$/;
+  const routeStartPattern = /^\s*app\.(get|post|put|delete|patch)\(\s*$/;
   const aliasRouteLinePattern = /^\s*register(Get|Post|Put|Delete|Patch)Aliases\(\s*app\s*,\s*\[([^\]]+)\]\s*,\s*(.*)$/;
   const pathLiteralPattern = /['"]([^'"]+)['"]/g;
   const routes = [];
@@ -124,6 +125,37 @@ function parseBackendRoutesFromFile(content, sourceFile) {
         method,
         path: routePath,
         middlewareSegment: match[3] || '',
+        line: i + 1,
+        lineIndex: i,
+      });
+      continue;
+    }
+
+    const routeStartMatch = line.match(routeStartPattern);
+    if (routeStartMatch) {
+      const method = routeStartMatch[1].toUpperCase();
+      let routePath = '';
+      let middlewareSegment = '';
+
+      for (let j = i + 1; j < Math.min(lines.length, i + 8); j += 1) {
+        const candidateLine = lines[j];
+        const pathMatch = candidateLine.match(/['"]([^'"]+)['"]/);
+        if (!pathMatch) {
+          continue;
+        }
+        routePath = normalizeEndpointPath(pathMatch[1]);
+        middlewareSegment = lines.slice(j + 1, Math.min(lines.length, j + 4)).join(' ');
+        break;
+      }
+
+      if (!routePath) {
+        continue;
+      }
+
+      routes.push({
+        method,
+        path: routePath,
+        middlewareSegment,
         line: i + 1,
         lineIndex: i,
       });

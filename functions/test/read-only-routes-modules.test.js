@@ -584,9 +584,9 @@ describe('read-only route modules', () => {
       expect.objectContaining({ variable: 'SoC', value: 61, unit: '%' }),
       expect.objectContaining({ variable: 'pvPower', value: 4.2, unit: 'kW' }),
       expect.objectContaining({ variable: 'loadsPower', value: 1.7, unit: 'kW' }),
-      expect.objectContaining({ variable: 'batDischargePower', value: 1.2, unit: 'kW' })
+      expect.objectContaining({ variable: 'batChargePower', value: 1.2, unit: 'kW' })
     ]));
-    expect(chargePoint).toEqual(expect.objectContaining({ variable: 'batChargePower', value: 0, unit: 'kW' }));
+    expect(chargePoint).toEqual(expect.objectContaining({ variable: 'batChargePower', value: 1.2, unit: 'kW' }));
     expect(adapterGetStatus).toHaveBeenCalledWith({
       deviceSN: 'ALPHA-SN-1',
       userConfig: {
@@ -703,6 +703,59 @@ describe('read-only route modules', () => {
     const dischargePoint = datas.find((entry) => entry.variable === 'batDischargePower');
     expect(chargePoint).toEqual(expect.objectContaining({ variable: 'batChargePower', value: 1.2, unit: 'kW' }));
     expect(dischargePoint).toEqual(expect.objectContaining({ variable: 'batDischargePower', value: 0, unit: 'kW' }));
+  });
+
+  test('inverter real-time endpoint infers AlphaESS sign inversion from flow balance when topology fallback is wrong', async () => {
+    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
+    const adapterGetStatus = jest.fn(async () => ({
+      socPct: 91.2,
+      batteryTempC: 0,
+      ambientTempC: 0,
+      pvPowerW: 0,
+      loadPowerW: 448,
+      gridPowerW: 0,
+      feedInPowerW: 0,
+      batteryPowerW: 448,
+      observedAtIso: '2026-03-13T13:27:57.885Z'
+    }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-alpha' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({
+            getStatus: adapterGetStatus
+          }))
+        },
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'alphaess',
+          alphaessSystemSn: 'ALPHA-SN-1',
+          systemTopology: {
+            coupling: 'dc',
+            source: 'auto'
+          }
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig: jest.fn(async () => undefined),
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    const datas = response.body.result[0].datas || [];
+    const chargePoint = datas.find((entry) => entry.variable === 'batChargePower');
+    const dischargePoint = datas.find((entry) => entry.variable === 'batDischargePower');
+    expect(chargePoint).toEqual(expect.objectContaining({ variable: 'batChargePower', value: 0, unit: 'kW' }));
+    expect(dischargePoint).toEqual(expect.objectContaining({ variable: 'batDischargePower', value: 0.448, unit: 'kW' }));
   });
 
   test('inverter real-time endpoint preserves provider-specific power semantics for non-alpha adapters', async () => {
@@ -1442,11 +1495,11 @@ describe('read-only route modules', () => {
     expect(response.body.result[0].deviceSN).toBe('ALPHA-DIAG-1');
     expect(response.body.result[0].datas).toEqual(expect.arrayContaining([
       expect.objectContaining({ variable: 'pvPower', value: 0, unit: 'kW' }),
-      expect.objectContaining({ variable: 'batChargePower', value: 1.2, unit: 'kW' }),
+      expect.objectContaining({ variable: 'batDischargePower', value: 1.2, unit: 'kW' }),
       expect.objectContaining({ variable: 'gridConsumptionPower', value: 0.2, unit: 'kW' })
     ]));
     expect(response.body.topologyHints).toEqual(expect.objectContaining({
-      likelyTopology: 'AC-coupled (external PV via meter)'
+      likelyTopology: 'Unknown (check during solar production hours)'
     }));
     expect(adapterGetStatus).toHaveBeenCalledWith({
       deviceSN: 'ALPHA-DIAG-1',

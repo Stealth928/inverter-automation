@@ -378,10 +378,9 @@ test.describe('Dashboard Page', () => {
 
     await expect(page.locator('#evSelectedSummary')).toContainText('Model 3 RWD');
     await expect(page.locator('#evSelectedSummary')).toContainText('74%');
-    await expect(page.locator('#evChargeLimitLabel')).toHaveText('90%');
   });
 
-  test('should disable EV commands when vehicle credentials are missing', async ({ page }) => {
+  test('should show Tesla setup required when vehicle credentials are missing', async ({ page }) => {
     await mockEvApis(page, {
       vehicles: [{ vehicleId: 'veh-missing-creds', displayName: 'Model S Plaid' }],
       statusByVehicleId: {
@@ -397,14 +396,11 @@ test.describe('Dashboard Page', () => {
 
     await page.reload();
 
-    await expect(page.locator('#evSelectedStatusPills')).toContainText('Credentials Missing');
-    await expect(page.locator('#evStartBtn')).toBeDisabled();
-    await expect(page.locator('#evStopBtn')).toBeDisabled();
-    await expect(page.locator('#evSetLimitBtn')).toBeDisabled();
-    await expect(page.locator('#evChargeLimitInput')).toBeDisabled();
+    await expect(page.locator('#evSelectedStatusPills')).toContainText('Setup Required');
+    await expect(page.locator('#evControls')).toHaveCount(0);
   });
 
-  test('should skip EV status fetch for vehicles pending Tesla auth and keep commands disabled', async ({ page }) => {
+  test('should skip EV status fetch for vehicles pending Tesla auth and show setup required', async ({ page }) => {
     let statusCallCount = 0;
 
     await mockEvApis(page, {
@@ -419,31 +415,18 @@ test.describe('Dashboard Page', () => {
     await page.reload();
 
     await expect(page.locator('#evVehicleTabs .ev-vehicle-tab').first()).toContainText('Setup Required');
-    await expect(page.locator('#evSelectedStatusPills')).toContainText('Credentials Missing');
-    await expect(page.locator('#evStartBtn')).toBeDisabled();
-    await expect(page.locator('#evStopBtn')).toBeDisabled();
-    await expect(page.locator('#evSetLimitBtn')).toBeDisabled();
+    await expect(page.locator('#evSelectedStatusPills')).toContainText('Setup Required');
     expect(statusCallCount).toBe(0);
   });
 
-  test('should block EV command submission when no vehicle is selected', async ({ page }) => {
-    let commandCallCount = 0;
-
+  test('should render EV overview without command controls when no vehicle is selected', async ({ page }) => {
     await mockEvApis(page, {
       vehicles: []
     });
 
-    await page.route('**/api/ev/vehicles/*/command', async (route) => {
-      commandCallCount += 1;
-      await route.fulfill(jsonResponse({ errno: 0, result: { accepted: true } }, 200));
-    });
-
     await page.reload();
     await expect(page.locator('#evVehicleTabs')).toContainText('No EV vehicles connected yet');
-    await page.evaluate(() => window.startSelectedEVCharging());
-
-    await expect(page.locator('#evOverviewMessage')).toContainText('Select a vehicle first');
-    expect(commandCallCount).toBe(0);
+    await expect(page.locator('#evControls')).toHaveCount(0);
   });
 
   test('should render EV vehicle names as plain text to avoid HTML injection', async ({ page }) => {

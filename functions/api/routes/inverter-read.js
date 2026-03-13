@@ -33,6 +33,43 @@ function normalizePowerToKw(rawValue) {
   return Number(kw.toFixed(4));
 }
 
+function inferAlphaEssBatterySignInversion(status = {}) {
+  const pvPower = toFiniteNumber(status.pvPowerW, null);
+  const loadPower = toFiniteNumber(status.loadPowerW, null);
+  const gridPower = toFiniteNumber(status.gridPowerW, null);
+  const feedInPower = toFiniteNumber(status.feedInPowerW, null);
+  const batteryPower = toFiniteNumber(status.batteryPowerW, null);
+
+  if (
+    pvPower === null ||
+    loadPower === null ||
+    gridPower === null ||
+    feedInPower === null ||
+    batteryPower === null
+  ) {
+    return null;
+  }
+
+  if (Math.abs(batteryPower) < 50) return null;
+
+  const nonNegative = (value) => Math.max(0, value);
+  const flowResidual = (canonicalBatteryPower) => {
+    const batteryChargePower = canonicalBatteryPower > 0 ? canonicalBatteryPower : 0;
+    const batteryDischargePower = canonicalBatteryPower < 0 ? Math.abs(canonicalBatteryPower) : 0;
+    const powerSources = nonNegative(pvPower) + nonNegative(gridPower) + batteryDischargePower;
+    const powerSinks = nonNegative(loadPower) + nonNegative(feedInPower) + batteryChargePower;
+    return Math.abs(powerSources - powerSinks);
+  };
+
+  const residualNative = flowResidual(batteryPower);
+  const residualInverted = flowResidual(-batteryPower);
+  const marginW = Math.max(50, Math.abs(batteryPower) * 0.1);
+
+  if (residualInverted + marginW < residualNative) return true;
+  if (residualNative + marginW < residualInverted) return false;
+  return null;
+}
+
 function toFiniteNumber(value, fallback = null) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
@@ -92,7 +129,7 @@ function shouldPersistAutoTopology(existingTopology, inferredCoupling, defaultRe
   return !hasStoredCoupling || isStale || existingCoupling !== inferredCoupling;
 }
 
-function resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue) {
+function resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue, status) {
   if (!userConfig || typeof userConfig !== 'object') return false;
 
   if (typeof userConfig.alphaessInvertBatteryPower === 'boolean') {
@@ -108,6 +145,9 @@ function resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue)
       return false;
     }
   }
+
+  const inferred = inferAlphaEssBatterySignInversion(status);
+  if (inferred !== null) return inferred;
 
   const coupling = typeof normalizeCouplingValue === 'function'
     ? normalizeCouplingValue(userConfig.systemTopology && userConfig.systemTopology.coupling)
@@ -276,7 +316,7 @@ function registerInverterReadRoutes(app, deps = {}) {
         const status = await adapter.getStatus({ deviceSN: sn, userConfig, userId: req.user.uid });
         const normalizeToKw = provider === 'alphaess';
         const invertBatteryPowerSign = provider === 'alphaess'
-          ? resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue)
+          ? resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue, status)
           : false;
         const normalized = buildRealtimePayloadFromDeviceStatus(status, sn, { normalizeToKw, invertBatteryPowerSign });
         return res.json(normalized);
@@ -460,7 +500,7 @@ function registerInverterReadRoutes(app, deps = {}) {
       if (provider !== 'foxess' && adapter && typeof adapter.getStatus === 'function') {
         const status = await adapter.getStatus({ deviceSN, userConfig, userId: req.user.uid });
         const invertAlphaEssBatteryPowerSign = provider === 'alphaess'
-          ? resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue)
+          ? resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue, status)
           : false;
         const normalized = buildRealtimePayloadFromDeviceStatus(status, deviceSN, {
           normalizeToKw: provider === 'alphaess',
