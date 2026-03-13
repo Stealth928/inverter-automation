@@ -84,7 +84,7 @@ inverter-automation/
 |   |-- guides/
 |   |   |-- TESTING_GUIDE.md
 |   |   |-- PRODUCT_GUIDE.md
-|   |-- archive/             # Historical docs (not active runbooks)
+|   |-- evidence/            # Historical execution evidence and records
 ```
 
 ## Tech Stack

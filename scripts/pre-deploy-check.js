@@ -63,7 +63,7 @@ let failures = [];
 section('1. Running Test Suite');
 try {
   log(colors.cyan, 'Running: npm --prefix functions test -- --passWithNoTests');
-  execSync('npm --prefix functions test -- --passWithNoTests', { stdio: 'inherit' });
+  execSync('npm --prefix functions test -- --passWithNoTests', { stdio: 'inherit', cwd: repoRoot });
   checkPass('All tests passed');
 } catch (e) {
   checkFail('Tests failed - see output above');
@@ -76,7 +76,7 @@ try {
 section('2. Running ESLint');
 try {
   log(colors.cyan, 'Running: npm --prefix functions run lint');
-  execSync('npm --prefix functions run lint', { stdio: 'inherit' });
+  execSync('npm --prefix functions run lint', { stdio: 'inherit', cwd: repoRoot });
   checkPass('No linting errors');
 } catch (e) {
   checkFail('Linting errors found - see output above');

@@ -20,9 +20,13 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const fetch = require('node-fetch');
+const fetch = global.fetch;
 const { validateRuleActionForUser } = require('../lib/services/automation-rule-action-service');
 const { normalizeWeekdays } = require('../lib/automation-conditions');
+
+if (typeof fetch !== 'function') {
+  throw new Error('Global fetch is not available in this runtime.');
+}
 
 const PROJECT_ID = process.env.FIREBASE_PROJECT || 'inverter-automation-firebase';
 const BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;

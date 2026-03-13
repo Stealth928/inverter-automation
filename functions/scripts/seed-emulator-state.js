@@ -5,7 +5,6 @@
 const admin = require('firebase-admin');
 const {
   TEST_USERS,
-  TEST_USER,
   TEST_CONFIG,
   getProjectId,
   assertEmulatorEnvironment

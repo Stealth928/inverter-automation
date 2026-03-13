@@ -471,6 +471,38 @@ body {
   margin-bottom: 18px;
 }
 
+.tool-form-group__title {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.tool-form-group__icon.feature-card__icon {
+  width: 48px;
+  height: 48px;
+  margin: 0;
+  border-radius: 15px;
+  flex-shrink: 0;
+}
+
+.tool-form-group__icon .feature-card__glyph {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2;
+}
+
+.tool-form-group__title > div {
+  min-width: 0;
+}
+
+.tool-form-group__title h4 {
+  margin-bottom: 6px;
+}
+
+.tool-form-group__title p {
+  margin: 0;
+}
+
 .tool-form-group__head h4 {
   font-size: 1.04rem;
   line-height: 1.25;
@@ -610,6 +642,33 @@ body {
   margin-bottom: 22px;
   padding-bottom: 18px;
   border-bottom: 1px solid rgba(88,166,255,.12);
+}
+
+.tool-results-card__summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.tool-results-card__copy {
+  min-width: 0;
+}
+
+.tool-results-card__icon.feature-card__icon {
+  width: 56px;
+  height: 56px;
+  margin: 0;
+  border-radius: 17px;
+  flex-shrink: 0;
+}
+
+.tool-results-card__icon .feature-card__glyph {
+  width: 30px;
+  height: 30px;
+}
+
+.tool-results-card__copy .tool-results-card__eyebrow {
+  margin-bottom: 8px;
 }
 
 .tool-kpis {
@@ -782,6 +841,18 @@ body {
   padding: 26px;
 }
 
+.tool-info-card__icon.feature-card__icon {
+  width: 54px;
+  height: 54px;
+  margin: 0 0 14px;
+  border-radius: 16px;
+}
+
+.tool-info-card__icon .feature-card__glyph {
+  width: 28px;
+  height: 28px;
+}
+
 .tool-info-card::before {
   content: "";
   position: absolute;
@@ -917,6 +988,28 @@ body {
   .tool-hero__title {
     max-width: none;
     font-size: clamp(2.1rem, 12vw, 3.2rem);
+  }
+
+  .tool-results-card__icon.feature-card__icon {
+    width: 50px;
+    height: 50px;
+  }
+
+  .tool-results-card__icon .feature-card__glyph {
+    width: 26px;
+    height: 26px;
+  }
+
+  .tool-form-group__icon.feature-card__icon,
+  .tool-info-card__icon.feature-card__icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .tool-form-group__icon .feature-card__glyph,
+  .tool-info-card__icon .feature-card__glyph {
+    width: 22px;
+    height: 22px;
   }
 
   .tool-workbench {

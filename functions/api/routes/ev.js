@@ -15,12 +15,17 @@
  */
 
 const { createEVCommandService } = require('../../lib/services/ev-command-service');
-const { buildTeslaAuthUrl, exchangeTeslaAuthCode } = require('../../lib/adapters/tesla-fleet-adapter');
+const {
+  buildTeslaAuthUrl,
+  createTeslaHttpClient,
+  exchangeTeslaAuthCode
+} = require('../../lib/adapters/tesla-fleet-adapter');
 
 function registerEVRoutes(app, deps = {}) {
   const authenticateUser = deps.authenticateUser;
   const vehiclesRepo = deps.vehiclesRepo;
   const adapterRegistry = deps.adapterRegistry;
+  const teslaHttpClient = deps.teslaHttpClient || deps.httpClient || null;
 
   if (!app || typeof app.get !== 'function') {
     throw new Error('registerEVRoutes requires an Express app');
@@ -41,6 +46,39 @@ function registerEVRoutes(app, deps = {}) {
     return createEVCommandService({ evAdapter, vehiclesRepo, skipWake: false });
   }
 
+  function toPublicVehicleShape(vehicle = {}) {
+    const publicFields = { ...(vehicle || {}) };
+    delete publicFields.credentials;
+    delete publicFields.credentialsUpdatedAt;
+    return publicFields;
+  }
+
+  function buildPersistCredentialsFn({ uid, vehicleId, vehicle, credentials }) {
+    return async (nextCredentials = {}) => {
+      const merged = {
+        ...(credentials || {}),
+        ...(nextCredentials || {})
+      };
+      await vehiclesRepo.setVehicleCredentials(uid, vehicleId, {
+        ...merged,
+        provider: merged.provider || vehicle?.provider || 'tesla',
+        region: merged.region || vehicle?.region || 'na',
+        storedAtIso: new Date().toISOString()
+      });
+    };
+  }
+
+  function buildReadinessErrorMessage(readiness = {}) {
+    const reasons = Array.isArray(readiness.blockingReasons) ? readiness.blockingReasons : [];
+    if (reasons.includes('signed_command_required')) {
+      return 'Tesla signed command setup required before this command can be sent';
+    }
+    if (reasons.includes('virtual_key_not_paired')) {
+      return 'Tesla virtual key must be paired with this vehicle before commands can be sent';
+    }
+    return 'Vehicle is not ready to accept EV commands';
+  }
+
   // ── Vehicle CRUD ──────────────────────────────────────────────────────────
 
   /**
@@ -51,7 +89,7 @@ function registerEVRoutes(app, deps = {}) {
     const uid = req.user.uid;
     try {
       const vehicles = await vehiclesRepo.listVehicles(uid);
-      return res.json({ errno: 0, result: vehicles });
+      return res.json({ errno: 0, result: vehicles.map(toPublicVehicleShape) });
     } catch (err) {
       return res.status(500).json({ errno: 500, error: err.message });
     }
@@ -135,7 +173,20 @@ function registerEVRoutes(app, deps = {}) {
       }
 
       const credentials = await vehiclesRepo.getVehicleCredentials(uid, vehicleId);
-      const status = await evAdapter.getVehicleStatus(vehicleId, { credentials });
+      if (!credentials || !credentials.accessToken) {
+        return res.status(400).json({ errno: 400, error: 'Vehicle credentials not configured' });
+      }
+
+      const status = await evAdapter.getVehicleStatus(vehicleId, {
+        credentials,
+        region: vehicle.region || credentials.region || 'na',
+        persistCredentials: buildPersistCredentialsFn({
+          uid,
+          vehicleId,
+          vehicle,
+          credentials
+        })
+      });
 
       // Persist the fresh status
       await vehiclesRepo.saveVehicleState(uid, vehicleId, status);
@@ -179,8 +230,36 @@ function registerEVRoutes(app, deps = {}) {
 
       const credentials = await vehiclesRepo.getVehicleCredentials(uid, vehicleId);
       const cmdService = buildCommandService(evAdapter);
-      const context = { credentials };
+      if (!credentials || !credentials.accessToken) {
+        return res.status(400).json({ errno: 400, error: 'Vehicle credentials not configured' });
+      }
+
+      const context = {
+        credentials,
+        region: vehicle.region || credentials.region || 'na',
+        persistCredentials: buildPersistCredentialsFn({
+          uid,
+          vehicleId,
+          vehicle,
+          credentials
+        })
+      };
       const options = { commandId };
+
+      if (typeof evAdapter.getCommandReadiness === 'function') {
+        try {
+          const readiness = await evAdapter.getCommandReadiness(vehicleId, context);
+          if (readiness && readiness.readyForCommands === false) {
+            return res.status(412).json({
+              errno: 412,
+              error: buildReadinessErrorMessage(readiness),
+              result: { readiness }
+            });
+          }
+        } catch {
+          // Readiness check is best-effort only; command path still executes.
+        }
+      }
 
       let result;
       if (command === 'startCharging') {
@@ -223,28 +302,50 @@ function registerEVRoutes(app, deps = {}) {
   /**
    * POST /api/ev/oauth/callback
    * Exchange an authorization code for Tesla tokens and store credentials.
-   * Body: { vehicleId, clientId, clientSecret, redirectUri, code, region? }
+   * Body: { vehicleId, clientId, redirectUri, code, codeVerifier, clientSecret?, region? }
    */
   app.post('/api/ev/oauth/callback', authenticateUser, async (req, res) => {
     const uid = req.user.uid;
-    const { vehicleId, clientId, clientSecret, redirectUri, code, region } = req.body || {};
+    const { vehicleId, clientId, clientSecret, redirectUri, code, codeVerifier, region } = req.body || {};
 
-    if (!vehicleId || !clientId || !clientSecret || !redirectUri || !code) {
-      return res.status(400).json({ errno: 400, error: 'vehicleId, clientId, clientSecret, redirectUri, and code are required' });
+    if (!vehicleId || !clientId || !redirectUri || !code || !codeVerifier) {
+      return res.status(400).json({ errno: 400, error: 'vehicleId, clientId, redirectUri, code, and codeVerifier are required' });
     }
 
     try {
+      const vehicle = await vehiclesRepo.getVehicle(uid, vehicleId);
+      if (!vehicle) {
+        return res.status(404).json({ errno: 404, error: 'Vehicle not found' });
+      }
+
+      const provider = String(vehicle.provider || '').toLowerCase().trim();
+      if (provider !== 'tesla') {
+        return res.status(400).json({ errno: 400, error: `OAuth callback currently supports tesla provider only (got '${provider || 'unknown'}')` });
+      }
+
       const tokens = await exchangeTeslaAuthCode(
-        { clientId, clientSecret, redirectUri, code, region: region || 'na' },
-        /* httpClient */ undefined
+        {
+          clientId,
+          clientSecret,
+          redirectUri,
+          code,
+          codeVerifier,
+          region: region || vehicle.region || 'na'
+        },
+        teslaHttpClient || createTeslaHttpClient()
       );
+
       // Store credentials against the vehicle
       await vehiclesRepo.setVehicleCredentials(uid, vehicleId, {
         provider: 'tesla',
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        tokenType: tokens.token_type,
-        expiresIn: tokens.expires_in,
+        region: region || vehicle.region || 'na',
+        clientId,
+        ...(clientSecret ? { clientSecret } : {}),
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        tokenType: tokens.tokenType || 'Bearer',
+        scope: tokens.scope || '',
+        expiresAtMs: tokens.expiresAtMs,
         storedAtIso: new Date().toISOString()
       });
       return res.json({ errno: 0, result: { stored: true, vehicleId } });

@@ -256,7 +256,7 @@ inverter-automation/
     ├── AUTOMATION.md       # Automation rules documentation
     ├── API.md              # API reference
     ├── SETUP.md            # This file
-    └── archive/            # Historical docs and logs
+    └── evidence/           # Historical execution logs/evidence
 ```
 
 ---

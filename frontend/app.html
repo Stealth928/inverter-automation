@@ -219,6 +219,116 @@
             display: none !important;
         }
 
+        .ev-vehicle-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .ev-vehicle-tab {
+            border: 1px solid var(--border-primary);
+            background: var(--bg-input);
+            color: var(--text-primary);
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .ev-vehicle-tab.active {
+            border-color: color-mix(in srgb, var(--accent-blue) 70%, transparent);
+            background: color-mix(in srgb, var(--accent-blue) 16%, transparent);
+        }
+        .ev-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .ev-summary-stat {
+            background: var(--bg-input);
+            border: 1px solid var(--border-primary);
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+        .ev-summary-label {
+            font-size: 10px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 4px;
+        }
+        .ev-summary-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            word-break: break-word;
+        }
+        .ev-status-pill {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            border: 1px solid var(--border-primary);
+            padding: 4px 9px;
+            font-size: 11px;
+            color: var(--text-primary);
+            background: var(--bg-input);
+        }
+        .ev-status-pill.ok {
+            border-color: color-mix(in srgb, var(--color-success) 70%, transparent);
+            background: color-mix(in srgb, var(--color-success) 14%, transparent);
+            color: var(--color-success);
+        }
+        .ev-status-pill.warn {
+            border-color: color-mix(in srgb, var(--color-warning) 70%, transparent);
+            background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+            color: var(--color-warning);
+        }
+        .ev-status-pill.error {
+            border-color: color-mix(in srgb, var(--color-danger) 70%, transparent);
+            background: color-mix(in srgb, var(--color-danger) 16%, transparent);
+            color: var(--color-danger);
+        }
+        .ev-controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .ev-message {
+            display: none;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-primary);
+            padding: 8px 10px;
+            font-size: 12px;
+        }
+        .ev-message.info {
+            display: block;
+            color: var(--text-secondary);
+            background: var(--bg-input);
+        }
+        .ev-message.success {
+            display: block;
+            color: var(--color-success);
+            border-color: color-mix(in srgb, var(--color-success) 65%, transparent);
+            background: color-mix(in srgb, var(--color-success) 14%, transparent);
+        }
+        .ev-message.warning {
+            display: block;
+            color: var(--color-warning);
+            border-color: color-mix(in srgb, var(--color-warning) 65%, transparent);
+            background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+        }
+        .ev-message.error {
+            display: block;
+            color: var(--color-danger);
+            border-color: color-mix(in srgb, var(--color-danger) 65%, transparent);
+            background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+        }
+
         /* Priority Badge for Automation Rules */
         .priority-badge {
             display: inline-flex;
@@ -1835,6 +1945,7 @@
                         <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="inverter" onchange="toggleDashboardCardVisibility('inverter', this)"> Inverter</label>
                         <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="prices" onchange="toggleDashboardCardVisibility('prices', this)"> Prices</label>
                         <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="weather" onchange="toggleDashboardCardVisibility('weather', this)"> Weather</label>
+                        <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="ev" onchange="toggleDashboardCardVisibility('ev', this)"> EV</label>
                         <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="quickControls" onchange="toggleDashboardCardVisibility('quickControls', this)"> Quick Controls</label>
                         <label class="card-visibility-toggle"><input type="checkbox" data-dashboard-toggle="scheduler" onchange="toggleDashboardCardVisibility('scheduler', this)"> Scheduler</label>
                     </div>
@@ -1940,6 +2051,49 @@
                         <div class="data-card" id="weatherCard">
                             <div style="color:var(--text-secondary);font-size:12px">Enter a location and click Get Forecast</div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EV Overview -->
+            <div class="card" style="margin-bottom: 20px;" data-dashboard-card="ev">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">🚗</span> EV Overview</div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="card-badge" id="evVehicleCountBadge">0 vehicles</span>
+                        <button class="btn" onclick="refreshEVOverview(true)" style="font-size:11px;padding:4px 10px;width:auto;margin:0">🔄 Refresh</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="evOverviewMessage" class="ev-message"></div>
+                    <div id="evVehicleTabs" class="ev-vehicle-tabs"></div>
+                    <div id="evSelectedStatusPills" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>
+                    <div id="evSelectedSummary" class="ev-summary-grid"></div>
+
+                    <div id="evControls" style="padding-top:8px;border-top:1px solid var(--border-primary);">
+                        <div class="ev-controls-grid">
+                            <button class="btn btn-primary" id="evStartBtn" onclick="startSelectedEVCharging()">Start Charging</button>
+                            <button class="btn" id="evStopBtn" onclick="stopSelectedEVCharging()">Stop Charging</button>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <label for="evChargeLimitInput" style="font-size:12px;color:var(--text-secondary);min-width:95px;">Charge Limit</label>
+                            <input
+                                id="evChargeLimitInput"
+                                type="range"
+                                min="1"
+                                max="100"
+                                step="1"
+                                value="80"
+                                oninput="updateEVChargeLimitLabel(this.value)"
+                                style="flex:1;min-width:170px;height:8px;background:var(--border-primary);border-radius:4px;outline:none;-webkit-appearance:none;"
+                            >
+                            <span id="evChargeLimitLabel" style="font-size:12px;min-width:44px;color:var(--text-primary);font-weight:600;">80%</span>
+                            <button class="btn" id="evSetLimitBtn" onclick="setSelectedEVChargeLimit()" style="width:auto;margin:0;padding:8px 12px;">Set Limit</button>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:12px;font-size:12px;color:var(--text-secondary);line-height:1.5;">
+                        Add or connect vehicles in <a href="/settings.html" style="color:var(--accent-blue);text-decoration:none;">Settings</a>. Readiness and command availability depend on Tesla account and key pairing status.
                     </div>
                 </div>
             </div>

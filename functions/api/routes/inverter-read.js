@@ -55,9 +55,10 @@ function inferSystemCouplingFromRealtime(realtimePayload) {
   }
   if (pvPower === null || meterPower2 === null) return null;
 
-  const isLikelyAcCoupled = Math.abs(pvPower) < 0.05 && meterPower2 > 0.05;
+  const meterPowerMagnitude = Math.abs(meterPower2);
+  const isLikelyAcCoupled = Math.abs(pvPower) < 0.05 && meterPowerMagnitude > 0.05;
   const confidence = isLikelyAcCoupled
-    ? (meterPower2 > 0.3 ? 0.9 : 0.75)
+    ? (meterPowerMagnitude > 0.3 ? 0.9 : 0.75)
     : (Math.abs(pvPower) > 0.2 ? 0.8 : 0.65);
 
   return {
@@ -66,7 +67,7 @@ function inferSystemCouplingFromRealtime(realtimePayload) {
     evidence: {
       pvPower,
       meterPower2,
-      heuristic: 'pvPower~0 && meterPower2>0'
+      heuristic: 'pvPower~0 && |meterPower2|>0'
     }
   };
 }
@@ -91,12 +92,36 @@ function shouldPersistAutoTopology(existingTopology, inferredCoupling, defaultRe
   return !hasStoredCoupling || isStale || existingCoupling !== inferredCoupling;
 }
 
+function resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue) {
+  if (!userConfig || typeof userConfig !== 'object') return false;
+
+  if (typeof userConfig.alphaessInvertBatteryPower === 'boolean') {
+    return userConfig.alphaessInvertBatteryPower;
+  }
+
+  const rawPolicy = String(userConfig.alphaessBatteryPowerSign || '').toLowerCase().trim();
+  if (rawPolicy) {
+    if (rawPolicy === 'invert' || rawPolicy === 'inverted' || rawPolicy === 'reverse' || rawPolicy === 'reversed') {
+      return true;
+    }
+    if (rawPolicy === 'default' || rawPolicy === 'normal' || rawPolicy === 'native' || rawPolicy === 'standard') {
+      return false;
+    }
+  }
+
+  const coupling = typeof normalizeCouplingValue === 'function'
+    ? normalizeCouplingValue(userConfig.systemTopology && userConfig.systemTopology.coupling)
+    : normalizeLocalCouplingValue(userConfig.systemTopology && userConfig.systemTopology.coupling);
+  return coupling === 'ac';
+}
+
 /**
  * Normalizes adapter status into the same frame shape used by existing FoxESS realtime consumers.
  * This keeps dashboard/history frontend parsing logic unchanged for non-FoxESS providers.
  */
 function buildRealtimePayloadFromDeviceStatus(status = {}, sn, options = {}) {
   const normalizeToKw = options.normalizeToKw === true;
+  const invertBatteryPowerSign = options.invertBatteryPowerSign === true;
   const socPct = toFiniteNumber(status.socPct, null);
   const batteryTempC = toFiniteNumber(status.batteryTempC, null);
   const ambientTempC = toFiniteNumber(status.ambientTempC, null);
@@ -105,12 +130,13 @@ function buildRealtimePayloadFromDeviceStatus(status = {}, sn, options = {}) {
   const gridPowerRaw = toFiniteNumber(status.gridPowerW, 0);
   const feedInPowerRaw = toFiniteNumber(status.feedInPowerW, 0);
   const batteryPowerRaw = toFiniteNumber(status.batteryPowerW, 0);
+  const batteryPowerCanonicalRaw = invertBatteryPowerSign ? -batteryPowerRaw : batteryPowerRaw;
 
   const pvPower = normalizeToKw ? (wattsToKw(status.pvPowerW) ?? 0) : pvPowerRaw;
   const loadPower = normalizeToKw ? (wattsToKw(status.loadPowerW) ?? 0) : loadPowerRaw;
   const gridPower = normalizeToKw ? (wattsToKw(status.gridPowerW) ?? 0) : gridPowerRaw;
   const feedInPower = normalizeToKw ? (wattsToKw(status.feedInPowerW) ?? 0) : feedInPowerRaw;
-  const batteryPower = normalizeToKw ? (wattsToKw(status.batteryPowerW) ?? 0) : batteryPowerRaw;
+  const batteryPower = normalizeToKw ? (wattsToKw(batteryPowerCanonicalRaw) ?? 0) : batteryPowerCanonicalRaw;
   const batteryChargePower = batteryPower > 0 ? batteryPower : 0;
   const batteryDischargePower = batteryPower < 0 ? Math.abs(batteryPower) : 0;
   const meterPower = gridPower > 0 ? gridPower : -feedInPower;
@@ -246,9 +272,13 @@ function registerInverterReadRoutes(app, deps = {}) {
 
       if (provider !== 'foxess' && adapter && typeof adapter.getStatus === 'function') {
         const status = await adapter.getStatus({ deviceSN: sn, userConfig, userId: req.user.uid });
+        const invertAlphaEssBatteryPowerSign = provider === 'alphaess'
+          ? resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue)
+          : false;
         const normalized = buildRealtimePayloadFromDeviceStatus(status, sn, {
           // AlphaESS adapter status values are canonical watts, while UI cards expect kW.
-          normalizeToKw: provider === 'alphaess'
+          normalizeToKw: provider === 'alphaess',
+          invertBatteryPowerSign: invertAlphaEssBatteryPowerSign
         });
         try {
           await persistTopologyFromRealtime(req.user.uid, userConfig, normalized);

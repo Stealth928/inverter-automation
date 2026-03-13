@@ -6,6 +6,69 @@ const { test, expect } = require('@playwright/test');
  * Tests the main dashboard at index.html
  */
 
+function jsonResponse(payload, status = 200) {
+  return {
+    status,
+    contentType: 'application/json',
+    body: JSON.stringify(payload)
+  };
+}
+
+function extractVehicleIdFromUrl(url) {
+  try {
+    const pathname = new URL(url).pathname;
+    const match = pathname.match(/\/api\/ev\/vehicles\/([^/]+)\/(?:status|command)$/i);
+    return match ? decodeURIComponent(match[1]) : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+async function mockEvApis(page, options = {}) {
+  const vehicles = Array.isArray(options.vehicles) ? options.vehicles : [];
+  const statusByVehicleId = options.statusByVehicleId || {};
+  const commandByVehicleId = options.commandByVehicleId || {};
+  const defaultStatus = options.defaultStatus || {
+    status: 200,
+    body: {
+      errno: 0,
+      source: 'cache',
+      result: {
+        socPct: 50,
+        chargingState: 'stopped',
+        isPluggedIn: false,
+        isHome: false,
+        rangeKm: 250,
+        chargeLimitPct: 80,
+        asOfIso: new Date().toISOString()
+      }
+    }
+  };
+  const defaultCommand = options.defaultCommand || {
+    status: 200,
+    body: { errno: 0, result: { accepted: true } }
+  };
+
+  await page.route('**/api/ev/vehicles', async (route) => {
+    await route.fulfill(jsonResponse({ errno: 0, result: vehicles }, 200));
+  });
+
+  await page.route('**/api/ev/vehicles/*/status*', async (route) => {
+    const vehicleId = extractVehicleIdFromUrl(route.request().url());
+    const mocked = statusByVehicleId[vehicleId] || defaultStatus;
+    await route.fulfill(jsonResponse(mocked.body, mocked.status));
+  });
+
+  await page.route('**/api/ev/vehicles/*/command', async (route) => {
+    if (typeof options.onCommandRequest === 'function') {
+      await options.onCommandRequest(route.request());
+    }
+    const vehicleId = extractVehicleIdFromUrl(route.request().url());
+    const mocked = commandByVehicleId[vehicleId] || defaultCommand;
+    await route.fulfill(jsonResponse(mocked.body, mocked.status));
+  });
+}
+
 test.describe('Dashboard Page', () => {
   
   test.beforeEach(async ({ page }) => {
@@ -162,7 +225,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should render dashboard visibility toggles and keep cards visible by default', async ({ page }) => {
-    const toggleKeys = ['inverter', 'prices', 'weather', 'quickControls', 'scheduler'];
+    const toggleKeys = ['inverter', 'prices', 'weather', 'ev', 'quickControls', 'scheduler'];
     for (const key of toggleKeys) {
       const toggle = page.locator(`[data-dashboard-toggle="${key}"]`);
       const card = page.locator(`[data-dashboard-card="${key}"]`);
@@ -193,27 +256,146 @@ test.describe('Dashboard Page', () => {
 
   test('should persist card visibility preferences across reload', async ({ page }) => {
     await page.evaluate(() => {
-      localStorage.setItem('dashboardCardVisibility:guest', JSON.stringify({
+      const payload = JSON.stringify({
         inverter: false,
         prices: true,
         weather: true,
+        ev: false,
         quickControls: true,
         scheduler: false
-      }));
+      });
+      localStorage.setItem('dashboardCardVisibility:guest', payload);
+      localStorage.setItem('dashboardCardVisibility:test-user-123', payload);
     });
 
     await page.reload();
     await page.waitForTimeout(300);
+    await expect(page.locator('[data-dashboard-toggle="ev"]')).not.toBeChecked();
+    await expect(page.locator('[data-dashboard-card="ev"]')).toBeHidden();
 
     const persistedAfterReload = await page.evaluate(() => {
       try {
-        const parsed = JSON.parse(localStorage.getItem('dashboardCardVisibility:guest') || '{}');
-        return parsed.inverter === false && parsed.scheduler === false;
+        const fromUserKey = JSON.parse(localStorage.getItem('dashboardCardVisibility:test-user-123') || '{}');
+        const fromGuestKey = JSON.parse(localStorage.getItem('dashboardCardVisibility:guest') || '{}');
+        const parsed = (fromUserKey && Object.keys(fromUserKey).length > 0) ? fromUserKey : fromGuestKey;
+        return parsed.inverter === false && parsed.scheduler === false && parsed.ev === false;
       } catch (e) {
         return false;
       }
     });
     expect(persistedAfterReload).toBeTruthy();
+  });
+
+  test('should render EV overview tabs and summary from EV API data', async ({ page }) => {
+    await mockEvApis(page, {
+      vehicles: [
+        { vehicleId: 'veh-model-y', displayName: 'Model Y LR' },
+        { vehicleId: 'veh-model-3', displayName: 'Model 3 RWD' }
+      ],
+      statusByVehicleId: {
+        'veh-model-y': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache',
+            result: {
+              socPct: 58,
+              chargingState: 'stopped',
+              isPluggedIn: true,
+              isHome: true,
+              rangeKm: 322,
+              chargeLimitPct: 83,
+              asOfIso: '2026-03-13T00:00:00.000Z'
+            }
+          }
+        },
+        'veh-model-3': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache',
+            result: {
+              socPct: 74,
+              chargingState: 'charging',
+              isPluggedIn: true,
+              isHome: false,
+              rangeKm: 410,
+              chargeLimitPct: 90,
+              asOfIso: '2026-03-13T00:00:00.000Z'
+            }
+          }
+        }
+      }
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evVehicleCountBadge')).toHaveText('2 vehicles');
+    await expect(page.locator('#evVehicleTabs .ev-vehicle-tab').first()).toContainText('Model Y LR');
+    await expect(page.locator('#evSelectedSummary')).toContainText('Model Y LR');
+    await expect(page.locator('#evSelectedSummary')).toContainText('58%');
+
+    await page.locator('#evVehicleTabs .ev-vehicle-tab').nth(1).click();
+
+    await expect(page.locator('#evSelectedSummary')).toContainText('Model 3 RWD');
+    await expect(page.locator('#evSelectedSummary')).toContainText('74%');
+    await expect(page.locator('#evChargeLimitLabel')).toHaveText('90%');
+  });
+
+  test('should disable EV commands when vehicle credentials are missing', async ({ page }) => {
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-missing-creds', displayName: 'Model S Plaid' }],
+      statusByVehicleId: {
+        'veh-missing-creds': {
+          status: 400,
+          body: {
+            errno: 1,
+            error: 'Tesla credentials missing for current user'
+          }
+        }
+      }
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evSelectedStatusPills')).toContainText('Credentials Missing');
+    await expect(page.locator('#evStartBtn')).toBeDisabled();
+    await expect(page.locator('#evStopBtn')).toBeDisabled();
+    await expect(page.locator('#evSetLimitBtn')).toBeDisabled();
+    await expect(page.locator('#evChargeLimitInput')).toBeDisabled();
+  });
+
+  test('should block EV command submission when no vehicle is selected', async ({ page }) => {
+    let commandCallCount = 0;
+
+    await mockEvApis(page, {
+      vehicles: []
+    });
+
+    await page.route('**/api/ev/vehicles/*/command', async (route) => {
+      commandCallCount += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: { accepted: true } }, 200));
+    });
+
+    await page.reload();
+    await expect(page.locator('#evVehicleTabs')).toContainText('No EV vehicles connected yet');
+    await page.evaluate(() => window.startSelectedEVCharging());
+
+    await expect(page.locator('#evOverviewMessage')).toContainText('Select a vehicle first');
+    expect(commandCallCount).toBe(0);
+  });
+
+  test('should render EV vehicle names as plain text to avoid HTML injection', async ({ page }) => {
+    const unsafeDisplayName = '<img src=x onerror=window.__evInjected=1>Model X';
+
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-xss', displayName: unsafeDisplayName }]
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evVehicleTabs .ev-vehicle-tab').first()).toContainText('<img src=x');
+    await expect(page.locator('#evVehicleTabs img')).toHaveCount(0);
   });
 
   test('window.sharedUtils exposes getStoredAmberSiteId and setStoredAmberSiteId', async ({ page }) => {

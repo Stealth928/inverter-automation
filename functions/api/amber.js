@@ -11,7 +11,11 @@
  */
 
 const admin = require('firebase-admin');
-const fetch = require('node-fetch');
+const fetch = global.fetch;
+
+if (typeof fetch !== 'function') {
+  throw new Error('Global fetch is not available in this runtime.');
+}
 
 // Rate limiting state (shared across all requests)
 const amberRateLimitState = {

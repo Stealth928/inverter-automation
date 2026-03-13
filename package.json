@@ -13,16 +13,18 @@
     "scheduler:soak:capture": "node scripts/scheduler-soak-evidence-capture.js",
     "scheduler:soak:status": "node scripts/scheduler-soak-evidence-status.js",
     "scheduler:soak:ready": "node scripts/scheduler-soak-evidence-status.js --require-ready",
+    "icons:generate": "node scripts/generate-icons.js",
     "test:e2e:frontend": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.57.0",
+    "@playwright/test": "^1.58.2",
     "js-yaml": "^4.1.1"
   },
   "dependencies": {
-    "firebase-admin": "^13.6.0"
+    "firebase-admin": "^13.7.0"
   },
   "overrides": {
+    "@tootallnate/once": "3.0.1",
     "fast-xml-parser": "4.5.4"
   }
 }

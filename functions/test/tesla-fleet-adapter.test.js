@@ -83,6 +83,93 @@ describe('TeslaFleetAdapter — EVAdapter contract', () => {
   });
 });
 
+describe('TeslaFleetAdapter — getCommandReadiness', () => {
+  test('reports not ready when protocol is required but signing client is unavailable', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/fleet_status`]: {
+        status: 200,
+        data: {
+          response: {
+            vehicle_info: {
+              vin123: {
+                vehicle_command_protocol_required: true
+              }
+            },
+            key_paired_vins: [],
+            unpaired_vins: ['vin123']
+          }
+        }
+      }
+    });
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+    const readiness = await adapter.getCommandReadiness('vin123', makeContext());
+
+    expect(readiness.readyForCommands).toBe(false);
+    expect(readiness.protocolRequired).toBe(true);
+    expect(readiness.supportsSignedCommands).toBe(false);
+    expect(readiness.blockingReasons).toContain('signed_command_required');
+  });
+
+  test('reports not ready when protocol is required, signing exists, but virtual key is unpaired', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/fleet_status`]: {
+        status: 200,
+        data: {
+          response: {
+            vehicle_info: {
+              VIN123: {
+                vehicle_command_protocol_required: true
+              }
+            },
+            key_paired_vins: [],
+            unpaired_vins: ['VIN123']
+          }
+        }
+      }
+    });
+    const adapter = new TeslaFleetAdapter({
+      httpClient: http,
+      signingClient: { sign: jest.fn(async () => ({})) }
+    });
+    const readiness = await adapter.getCommandReadiness('vin123', makeContext());
+
+    expect(readiness.readyForCommands).toBe(false);
+    expect(readiness.protocolRequired).toBe(true);
+    expect(readiness.supportsSignedCommands).toBe(true);
+    expect(readiness.keyPaired).toBe(false);
+    expect(readiness.blockingReasons).toContain('virtual_key_not_paired');
+  });
+
+  test('reports ready when protocol is required and key is paired with signing support', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/fleet_status`]: {
+        status: 200,
+        data: {
+          response: {
+            vehicle_info: {
+              vin123: {
+                vehicle_command_protocol_required: true
+              }
+            },
+            key_paired_vins: ['vin123'],
+            unpaired_vins: []
+          }
+        }
+      }
+    });
+    const adapter = new TeslaFleetAdapter({
+      httpClient: http,
+      signingClient: { sign: jest.fn(async () => ({})) }
+    });
+    const readiness = await adapter.getCommandReadiness('vin123', makeContext());
+
+    expect(readiness.readyForCommands).toBe(true);
+    expect(readiness.protocolRequired).toBe(true);
+    expect(readiness.keyPaired).toBe(true);
+    expect(readiness.blockingReasons).toEqual([]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 3 — getVehicleStatus
 // ---------------------------------------------------------------------------
@@ -129,7 +216,70 @@ describe('TeslaFleetAdapter — getVehicleStatus', () => {
       }
     });
     const adapter = new TeslaFleetAdapter({ httpClient: http });
-    await expect(adapter.getVehicleStatus('vin123', makeContext())).rejects.toThrow(/Unauthorized/);
+    await expect(
+      adapter.getVehicleStatus('vin123', { credentials: { accessToken: 'test-access-token' } })
+    ).rejects.toThrow(/Unauthorized/);
+  });
+
+  test('refreshes expired token on 401 and retries request once', async () => {
+    const teslaResponse = {
+      charge_state: { battery_level: 65, charging_state: 'Charging', charge_limit_soc: 85, charge_port_door_open: true, est_battery_range: 200 },
+      drive_state: { speed: null, active_route_destination: null },
+      vehicle_state: { homelink_nearby: true }
+    };
+
+    const http = jest.fn(async (method, url, opts = {}) => {
+      if (method === 'GET' && url === `${FLEET_NA_BASE}/api/1/vehicles/vin123/vehicle_data`) {
+        if (opts.headers.Authorization === 'Bearer old-token') {
+          return { status: 401, data: { error: { message: 'Unauthorized' } }, headers: {} };
+        }
+        if (opts.headers.Authorization === 'Bearer new-token') {
+          return { status: 200, data: { response: teslaResponse }, headers: {} };
+        }
+      }
+
+      if (method === 'POST' && /\/oauth2\/v3\/token$/.test(url)) {
+        return {
+          status: 200,
+          data: {
+            access_token: 'new-token',
+            refresh_token: 'new-refresh',
+            expires_in: 3600,
+            token_type: 'Bearer',
+            scope: 'openid offline_access'
+          },
+          headers: {}
+        };
+      }
+
+      return { status: 500, data: { error: 'unexpected test request' }, headers: {} };
+    });
+
+    const persistCredentials = jest.fn(async () => {});
+    const context = {
+      credentials: {
+        accessToken: 'old-token',
+        refreshToken: 'old-refresh',
+        clientId: 'client123',
+        clientSecret: 'secret123'
+      },
+      persistCredentials
+    };
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+    const status = await adapter.getVehicleStatus('vin123', context);
+
+    expect(status.socPct).toBe(65);
+    expect(context.credentials.accessToken).toBe('new-token');
+    expect(context.credentials.refreshToken).toBe('new-refresh');
+    expect(persistCredentials).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: 'new-token',
+        refreshToken: 'new-refresh',
+        tokenType: 'Bearer',
+        scope: 'openid offline_access'
+      })
+    );
+    expect(http).toHaveBeenCalled();
   });
 });
 

@@ -51,6 +51,7 @@ const { registerSchedulerReadRoutes } = require('./api/routes/scheduler-read');
 const { registerSchedulerMutationRoutes } = require('./api/routes/scheduler-mutations');
 const { registerAutomationMutationRoutes } = require('./api/routes/automation-mutations');
 const { registerAutomationCycleRoute } = require('./api/routes/automation-cycle');
+const { registerEVRoutes } = require('./api/routes/ev');
 const { runAutomationSchedulerCycle } = require('./lib/services/automation-scheduler-service');
 const { createAutomationSchedulerMetricsSink } = require('./lib/services/automation-scheduler-metrics-sink');
 const { createApiMetricsService } = require('./lib/services/api-metrics-service');
@@ -64,6 +65,7 @@ const { parseAutomationTelemetry } = require('./lib/device-telemetry');
 const { getCurrentAmberPrices } = require('./lib/pricing-normalization');
 const { createAutomationStateRepository } = require('./lib/repositories/automation-state-repository');
 const { createUserAutomationRepository } = require('./lib/repositories/user-automation-repository');
+const { createVehiclesRepository } = require('./lib/repositories/vehicles-repository');
 const {
   addMinutes,
   getAutomationTimezone: getAutomationTimezoneWithFallback,
@@ -187,6 +189,7 @@ const { createFoxessDeviceAdapter } = require('./lib/adapters/foxess-adapter');
 const { createSungrowDeviceAdapter } = require('./lib/adapters/sungrow-adapter');
 const { createSigenEnergyDeviceAdapter } = require('./lib/adapters/sigenergy-adapter');
 const { createAlphaEssDeviceAdapter } = require('./lib/adapters/alphaess-adapter');
+const { TeslaFleetAdapter, createTeslaHttpClient } = require('./lib/adapters/tesla-fleet-adapter');
 // adapterRegistry populated once all deps (logger, getConfig) are reinitialized
 const adapterRegistry = createAdapterRegistry();
 
@@ -304,6 +307,12 @@ const {
   saveQuickControlState,
   saveUserAutomationState
 } = createAutomationStateRepository({ db });
+
+const vehiclesRepo = createVehiclesRepository({
+  db,
+  logger,
+  serverTimestamp
+});
 
 const {
   getAusDateKey,
@@ -639,6 +648,12 @@ const {
   requireAdmin,
   SEED_ADMIN_EMAIL
 } = createAdminAccess({ db, logger: console });
+const teslaHttpClient = createTeslaHttpClient();
+const teslaFleetAdapter = new TeslaFleetAdapter({
+  httpClient: teslaHttpClient,
+  region: process.env.TESLA_FLEET_REGION || 'na',
+  logger
+});
 
 registerHealthRoutes(app, {
   getUserConfig,
@@ -720,6 +735,13 @@ registerAuthLifecycleRoutes(app, {
   logger,
   serverTimestamp,
   setUserConfig
+});
+
+registerEVRoutes(app, {
+  adapterRegistry,
+  authenticateUser,
+  teslaHttpClient,
+  vehiclesRepo
 });
 
 // ==================== HELPER FUNCTIONS ====================
@@ -963,6 +985,7 @@ adapterRegistry.registerDeviceProvider('foxess', createFoxessDeviceAdapter({ fox
 adapterRegistry.registerDeviceProvider('sungrow', createSungrowDeviceAdapter({ sungrowAPI, logger }));
 adapterRegistry.registerDeviceProvider('sigenergy', createSigenEnergyDeviceAdapter({ sigenEnergyAPI, logger }));
 adapterRegistry.registerDeviceProvider('alphaess', createAlphaEssDeviceAdapter({ alphaEssAPI, logger }));
+adapterRegistry.registerEVProvider('tesla', teslaFleetAdapter);
 
 Object.assign(authAPI, authModule.init({
   admin,

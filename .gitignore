@@ -28,6 +28,7 @@ firebase.local.json
 
 # Runtime artifacts and log dumps
 *.pid
+logs/
 recent_logs_full.txt
 functions/test-output.txt
 functions/quick-control-test-output.txt

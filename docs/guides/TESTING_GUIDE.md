@@ -1,16 +1,16 @@
 # Testing Guide
 
 Purpose: canonical test execution reference.
-Last verified: 2026-03-11
+Last verified: 2026-03-13
 
 ## 1. Test Tracks
 
 - Backend: Jest (`functions/test/*.test.js`)
 - Frontend: Playwright (`tests/frontend/*.spec.js`)
 
-Current snapshot (2026-03-11):
-- Jest test files: 99
-- Backend run (`--runInBand`): 99 suites, 1352 tests passing
+Current snapshot (2026-03-13):
+- Jest test files: 103
+- Backend run (`--runInBand`): 103 suites, 1406 tests passing
 - Playwright spec files: 13
 - Playwright listed tests: 201
 
