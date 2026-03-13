@@ -67,7 +67,9 @@ async function fetchAutomationInverterData(options = {}) {
 
   let inverterData = null;
 
-  if (typeof getCachedInverterData === 'function') {
+  const isNonFoxessWithAdapter = provider !== 'foxess' && deviceAdapter && typeof deviceAdapter.getStatus === 'function';
+
+  if (!isNonFoxessWithAdapter && typeof getCachedInverterData === 'function') {
     try {
       inverterData = await getCachedInverterData(userId, deviceSN, userConfig, false);
 
@@ -92,9 +94,8 @@ async function fetchAutomationInverterData(options = {}) {
     }
   }
 
-  // Backward-compatible fallback for environments where cached helper does not yet
-  // support non-Fox providers.
-  if (!hasNestedDatasFrame(inverterData) && provider !== 'foxess' && deviceAdapter && typeof deviceAdapter.getStatus === 'function') {
+  // Non-FoxESS providers with an adapter: go directly to adapter without cache.
+  if (!hasNestedDatasFrame(inverterData) && isNonFoxessWithAdapter) {
     try {
       const status = await deviceAdapter.getStatus({ deviceSN, userConfig, userId });
       inverterData = toAutomationTelemetryFrame(status);

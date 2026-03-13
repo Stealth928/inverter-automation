@@ -213,6 +213,60 @@ describe('read-only route modules', () => {
     }));
   });
 
+  test('metrics routes normalize fractional counters and support lowercase teslafleet payloads', async () => {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const metricsSnapshot = {
+      forEach: (callback) => {
+        callback({
+          id: todayKey,
+          data: () => ({
+            inverter: 584.456,
+            amber: 512.2,
+            weather: 58.6,
+            teslafleet: {
+              calls: {
+                total: 3.2
+              }
+            }
+          })
+        });
+      }
+    };
+    const db = {
+      collection: jest.fn(() => ({
+        doc: jest.fn(() => ({
+          collection: jest.fn(() => ({
+            get: jest.fn(async () => metricsSnapshot)
+          }))
+        }))
+      }))
+    };
+
+    const app = buildApp((instance) => {
+      registerMetricsRoutes(instance, {
+        db,
+        getAusDateKey: (date) => date.toISOString().slice(0, 10),
+        tryAttachUser: jest.fn(async (req) => {
+          req.user = { uid: 'u-metrics' };
+          return req.user;
+        })
+      });
+    });
+
+    const response = await request(app)
+      .get('/api/metrics/api-calls')
+      .query({ scope: 'user', days: 1 });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result[todayKey]).toEqual(expect.objectContaining({
+      inverter: 584,
+      amber: 512,
+      weather: 59,
+      ev: 3
+    }));
+  });
+
   test('pricing current endpoint returns cached prices when available', async () => {
     const amberPricesInFlight = new Map();
     const amberAPI = {

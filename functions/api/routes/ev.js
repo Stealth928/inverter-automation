@@ -115,7 +115,14 @@ function registerEVRoutes(app, deps = {}) {
     const status = extractErrorStatus(error);
     if (status === 404) return true;
     const message = extractErrorMessage(error);
-    return /not found|unknown vehicle|vehicle unavailable/.test(message);
+    return /not found|unknown vehicle/.test(message);
+  }
+
+  function isTeslaVehicleOfflineError(error) {
+    const status = extractErrorStatus(error);
+    if (status === 408) return true;
+    const message = extractErrorMessage(error);
+    return /vehicle.*(offline|asleep|unavailable)|\boffline\b|\basleep\b/.test(message);
   }
 
   function isTeslaUpstreamServiceError(error) {
@@ -574,6 +581,32 @@ function registerEVRoutes(app, deps = {}) {
                 reasonCode: 'provider_rate_limited',
                 retryAfterSeconds
               }
+            });
+          }
+
+          if (isTeslaVehicleOfflineError(err)) {
+            if (cachedFallback) {
+              return res.json({
+                errno: 0,
+                result: cachedFallback,
+                source: 'cache_vehicle_offline',
+                reasonCode: 'vehicle_offline'
+              });
+            }
+            return res.json({
+              errno: 0,
+              result: {
+                socPct: null,
+                chargingState: 'unknown',
+                chargeLimitPct: null,
+                isPluggedIn: null,
+                isHome: null,
+                rangeKm: null,
+                asOfIso: new Date().toISOString(),
+                reasonCode: 'vehicle_offline'
+              },
+              source: 'synthesized',
+              reasonCode: 'vehicle_offline'
             });
           }
 

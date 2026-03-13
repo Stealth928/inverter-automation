@@ -273,14 +273,12 @@ function registerInverterReadRoutes(app, deps = {}) {
       }
 
       if (provider !== 'foxess' && adapter && typeof adapter.getStatus === 'function') {
-        // For non-Fox providers, reuse the same cached helper so cache TTL settings
-        // apply consistently across providers (not just FoxESS).
-        const normalized = await getCachedInverterRealtimeData(req.user.uid, sn, userConfig, forceRefresh);
-        try {
-          await persistTopologyFromRealtime(req.user.uid, userConfig, normalized);
-        } catch (persistError) {
-          logger.warn('[Inverter] Failed to auto-persist system topology:', persistError.message);
-        }
+        const status = await adapter.getStatus({ deviceSN: sn, userConfig, userId: req.user.uid });
+        const normalizeToKw = provider === 'alphaess';
+        const invertBatteryPowerSign = provider === 'alphaess'
+          ? resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue)
+          : false;
+        const normalized = buildRealtimePayloadFromDeviceStatus(status, sn, { normalizeToKw, invertBatteryPowerSign });
         return res.json(normalized);
       }
 

@@ -1124,14 +1124,32 @@
                 const todayKey = keys[0];
                 const today = data.result[todayKey] || {};
 
+                const toCounter = (value) => {
+                    const n = Number(value);
+                    return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+                };
+                const fallbackEvCounter = (metrics = {}) => {
+                    const fleet = metrics.teslaFleet || metrics.teslafleet || null;
+                    if (toCounter(metrics.ev)) return toCounter(metrics.ev);
+                    if (toCounter(metrics.tesla)) return toCounter(metrics.tesla);
+                    if (toCounter(fleet?.calls?.billable)) return toCounter(fleet.calls.billable);
+                    if (toCounter(fleet?.calls?.total)) return toCounter(fleet.calls.total);
+                    const byCategory = fleet && fleet.calls && fleet.calls.byCategory;
+                    if (byCategory && typeof byCategory === 'object') {
+                        const sum = Object.values(byCategory).reduce((acc, value) => acc + toCounter(value), 0);
+                        if (sum) return sum;
+                    }
+                    return 0;
+                };
+
                 document.getElementById('metricsDate').textContent = formatDate(new Date(todayKey), false);
-                const inverterCount = (typeof getInverterApiCount === 'function') ? getInverterApiCount(today) : (today.inverter ?? today.foxess ?? 0);
+                const inverterCount = (typeof getInverterApiCount === 'function') ? getInverterApiCount(today) : toCounter(today.inverter ?? today.foxess ?? 0);
                 const evCount = (typeof getEvApiCount === 'function')
                     ? getEvApiCount(today)
-                    : (Number.isFinite(Number(today?.ev)) ? Number(today.ev) : 0);
+                    : fallbackEvCounter(today);
                 document.getElementById('countFox').textContent = inverterCount;
-                document.getElementById('countAmber').textContent = today.amber ?? 0;
-                document.getElementById('countWeather').textContent = today.weather ?? 0;
+                document.getElementById('countAmber').textContent = toCounter(today.amber);
+                document.getElementById('countWeather').textContent = toCounter(today.weather);
                 const evEl = document.getElementById('countEV');
                 if (evEl) evEl.textContent = evCount;
             } catch (e) {

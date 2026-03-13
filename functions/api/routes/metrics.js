@@ -26,7 +26,13 @@ function registerMetricsRoutes(app, deps = {}) {
 
   const toCounter = (value) => {
     const n = Number(value);
-    return Number.isFinite(n) && n > 0 ? n : 0;
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.round(n);
+  };
+
+  const getTeslaFleetRoot = (metricsDoc = {}) => {
+    if (!metricsDoc || typeof metricsDoc !== 'object') return null;
+    return metricsDoc.teslaFleet || metricsDoc.teslafleet || null;
   };
 
   const normalizeMetricKey = (metricKey) => String(metricKey || '').toLowerCase().trim();
@@ -47,10 +53,22 @@ function registerMetricsRoutes(app, deps = {}) {
     const explicitTesla = toCounter(metricsDoc.tesla);
     if (explicitTesla) return explicitTesla;
 
-    const teslaFleetBillable = readNestedCounter(metricsDoc, ['teslaFleet', 'calls', 'billable']);
+    const teslaFleetRoot = getTeslaFleetRoot(metricsDoc);
+    const teslaFleetBillable = readNestedCounter(teslaFleetRoot, ['calls', 'billable']);
     if (teslaFleetBillable) return teslaFleetBillable;
 
-    return readNestedCounter(metricsDoc, ['teslaFleet', 'calls', 'total']);
+    const teslaFleetTotal = readNestedCounter(teslaFleetRoot, ['calls', 'total']);
+    if (teslaFleetTotal) return teslaFleetTotal;
+
+    const byCategory = (teslaFleetRoot && teslaFleetRoot.calls && teslaFleetRoot.calls.byCategory)
+      ? teslaFleetRoot.calls.byCategory
+      : null;
+    if (byCategory && typeof byCategory === 'object') {
+      const sum = Object.values(byCategory).reduce((acc, value) => acc + toCounter(value), 0);
+      if (sum) return sum;
+    }
+
+    return 0;
   };
 
   const buildMetricsEnvelope = (rawDoc = {}) => {

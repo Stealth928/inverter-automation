@@ -88,7 +88,7 @@ function getInverterApiCount(dayMetrics = {}) {
     const metrics = (dayMetrics && typeof dayMetrics === 'object') ? dayMetrics : {};
     const explicitInverter = Number(metrics.inverter);
     if (Number.isFinite(explicitInverter) && explicitInverter >= 0) {
-        return explicitInverter;
+        return Math.round(explicitInverter);
     }
 
     const providerBuckets = {};
@@ -117,15 +117,16 @@ function getInverterApiCount(dayMetrics = {}) {
         addProviderCount(key, value);
     });
 
-    return Object.values(providerBuckets).reduce((sum, count) => sum + count, 0);
+    return Math.round(Object.values(providerBuckets).reduce((sum, count) => sum + count, 0));
 }
 
 function getEvApiCount(dayMetrics = {}) {
     const metrics = (dayMetrics && typeof dayMetrics === 'object') ? dayMetrics : {};
     const toCounter = (value) => {
         const n = Number(value);
-        return Number.isFinite(n) && n > 0 ? n : 0;
+        return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
     };
+    const teslaFleetRoot = metrics.teslaFleet || metrics.teslafleet || null;
 
     const readNestedCounter = (root, path = []) => {
         if (!root || typeof root !== 'object' || !Array.isArray(path) || path.length === 0) return 0;
@@ -143,10 +144,19 @@ function getEvApiCount(dayMetrics = {}) {
     const explicitTesla = toCounter(metrics.tesla);
     if (explicitTesla) return explicitTesla;
 
-    const teslaFleetBillable = readNestedCounter(metrics, ['teslaFleet', 'calls', 'billable']);
+    const teslaFleetBillable = readNestedCounter(teslaFleetRoot, ['calls', 'billable']);
     if (teslaFleetBillable) return teslaFleetBillable;
 
-    return readNestedCounter(metrics, ['teslaFleet', 'calls', 'total']);
+    const teslaFleetTotal = readNestedCounter(teslaFleetRoot, ['calls', 'total']);
+    if (teslaFleetTotal) return teslaFleetTotal;
+
+    const byCategory = teslaFleetRoot && teslaFleetRoot.calls && teslaFleetRoot.calls.byCategory;
+    if (byCategory && typeof byCategory === 'object') {
+        const sum = Object.values(byCategory).reduce((acc, value) => acc + toCounter(value), 0);
+        if (sum) return sum;
+    }
+
+    return 0;
 }
 
 /**
@@ -199,10 +209,15 @@ async function loadApiMetrics(days = 1) {
         const weatherEl = document.getElementById('countWeather');
         const evEl = document.getElementById('countEV');
         
+        const displayCounter = (value) => {
+            const n = Number(value);
+            return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+        };
+
         if (dateEl) dateEl.textContent = formatted;
         if (inverterEl) inverterEl.textContent = getInverterApiCount(today);
-        if (amberEl) amberEl.textContent = today.amber ?? 0;
-        if (weatherEl) weatherEl.textContent = today.weather ?? 0;
+        if (amberEl) amberEl.textContent = displayCounter(today.amber);
+        if (weatherEl) weatherEl.textContent = displayCounter(today.weather);
         if (evEl) evEl.textContent = getEvApiCount(today);
     } catch (e) {
         console.warn('Failed to load API metrics:', e.message);

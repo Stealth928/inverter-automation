@@ -3,7 +3,8 @@
 const { createApiMetricsService } = require('../lib/services/api-metrics-service');
 
 function createMetricsHarness() {
-  const userMetricsDocRef = { path: 'users/user-1/metrics/doc' };
+  const userSet = jest.fn(async () => undefined);
+  const userMetricsDocRef = { path: 'users/user-1/metrics/doc', set: userSet };
   const globalSet = jest.fn(async () => undefined);
 
   const globalMetricsDocRef = {
@@ -49,6 +50,7 @@ function createMetricsHarness() {
   return {
     db,
     globalSet,
+    userSet,
     metricsCollectionRef,
     transaction,
     userMetricsCollectionRef
@@ -78,7 +80,7 @@ describe('api metrics service', () => {
   });
 
   test('incrementApiCount updates user and global metrics', async () => {
-    const { db, globalSet, transaction } = createMetricsHarness();
+    const { db, globalSet, userSet } = createMetricsHarness();
     const increment = jest.fn((value) => ({ op: 'increment', value }));
     const logger = { debug: jest.fn() };
 
@@ -92,13 +94,12 @@ describe('api metrics service', () => {
 
     await service.incrementApiCount('user-1', 'weather');
 
-    expect(db.runTransaction).toHaveBeenCalledTimes(1);
-    expect(transaction.get).toHaveBeenCalledTimes(1);
-    expect(transaction.set).toHaveBeenCalledTimes(1);
+    expect(db.runTransaction).not.toHaveBeenCalled();
+    expect(userSet).toHaveBeenCalledTimes(1);
     expect(logger.debug).toHaveBeenCalled();
 
-    const [, userData, setOptions] = transaction.set.mock.calls[0];
-    expect(userData.weather).toBe(1);
+    const [userData, setOptions] = userSet.mock.calls[0];
+    expect(userData.weather).toEqual({ op: 'increment', value: 1 });
     expect(userData.updatedAt).toBe('__TS__');
     expect(setOptions).toEqual({ merge: true });
 

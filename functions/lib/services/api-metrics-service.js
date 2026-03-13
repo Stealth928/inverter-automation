@@ -52,14 +52,15 @@ function createApiMetricsService(deps = {}) {
 
       const docRef = db.collection('users').doc(userId).collection('metrics').doc(today);
       try {
-        await db.runTransaction(async (transaction) => {
-          const doc = await transaction.get(docRef);
-          const data = doc.exists ? doc.data() : { foxess: 0, amber: 0, weather: 0 };
-          data[apiType] = (data[apiType] || 0) + 1;
-          data.updatedAt = serverTimestamp();
-          transaction.set(docRef, data, { merge: true });
-          console.log(`[Metrics] -> Incremented ${apiType} to ${data[apiType]}`);
-        });
+        const fieldValue =
+          admin && admin.firestore && admin.firestore.FieldValue &&
+          typeof admin.firestore.FieldValue.increment === 'function'
+            ? admin.firestore.FieldValue.increment(1)
+            : 1;
+        await docRef.set({
+          [apiType]: fieldValue,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
       } catch (error) {
         console.error('Error incrementing API count:', error);
       }
