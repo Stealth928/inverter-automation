@@ -16,7 +16,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="SoCrates">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="stylesheet" href="css/shared-styles.css?v=7" />
+    <link rel="stylesheet" href="css/shared-styles.css?v=8" />
     <link rel="stylesheet" href="css/tour.css?v=3" />
     <script src="js/theme-init.js"></script>
     <!-- Firebase SDK (compat) - must load before firebase-auth.js -->
@@ -27,7 +27,7 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=11"></script>
+    <script src="js/app-shell.js?v=12"></script>
     <script src="js/tour.js?v=29"></script>
     <style>
         /* Page-specific styles */
@@ -152,7 +152,7 @@
             gap: 20px;
         }
         .settings-grid--automation-refresh {
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(5, minmax(0, 1fr));
         }
         .setting-item {
             background: var(--bg-primary);
@@ -182,9 +182,11 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            min-width: 0;
         }
         .setting-input input {
             flex: 1;
+            min-width: 0;
             background: var(--bg-input);
             border: 1px solid var(--border-primary);
             color: var(--text-primary);
@@ -388,23 +390,136 @@
             padding-top: 14px;
             border-top: 1px solid var(--border-primary);
         }
-        .tesla-vehicles-list {
+        .tesla-multi-vehicle-note {
+            margin: 14px 0 0;
+            padding: 12px 14px;
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 22%, var(--border-primary));
+            border-radius: 10px;
+            background: color-mix(in srgb, var(--accent-blue) 10%, var(--bg-primary));
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .tesla-multi-vehicle-note strong {
+            color: var(--text-primary);
+        }
+        .tesla-vehicles-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .tesla-status-counts {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
         }
-        .tesla-vehicle-chip {
+        .tesla-status-count-chip {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            border: 1px solid var(--border-primary);
             border-radius: 999px;
-            padding: 6px 10px;
+            border: 1px solid var(--border-primary);
+            padding: 4px 10px;
             background: var(--bg-primary);
-            font-size: 12px;
+            font-size: 11px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+        .tesla-status-count-chip .count {
+            font-weight: 700;
             color: var(--text-primary);
         }
-        .tesla-vehicle-chip button {
+        .tesla-status-count-chip.status-connected {
+            border-color: color-mix(in srgb, var(--color-success) 35%, var(--border-primary));
+            color: var(--color-success);
+        }
+        .tesla-status-count-chip.status-setup_required {
+            border-color: color-mix(in srgb, var(--color-warning) 35%, var(--border-primary));
+            color: var(--color-warning);
+        }
+        .tesla-status-count-chip.status-action_needed {
+            border-color: color-mix(in srgb, var(--color-danger) 40%, var(--border-primary));
+            color: var(--color-danger);
+        }
+        .tesla-vehicles-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .tesla-vehicle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8px;
+            border: 1px solid var(--border-primary);
+            border-radius: 12px;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+        }
+        .tesla-vehicle-row.is-recently-connected {
+            border-color: color-mix(in srgb, var(--color-success) 45%, var(--border-primary));
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-success) 18%, transparent);
+        }
+        .tesla-vehicle-main {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .tesla-vehicle-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .tesla-vehicle-id {
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+            color: var(--text-secondary);
+        }
+        .tesla-vehicle-subtext {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .tesla-vehicle-right {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .tesla-vehicle-status {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            border: 1px solid var(--border-primary);
+            padding: 3px 8px;
+            font-size: 11px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .tesla-vehicle-status.status-connected {
+            border-color: color-mix(in srgb, var(--color-success) 35%, var(--border-primary));
+            color: var(--color-success);
+        }
+        .tesla-vehicle-status.status-setup_required {
+            border-color: color-mix(in srgb, var(--color-warning) 35%, var(--border-primary));
+            color: var(--color-warning);
+        }
+        .tesla-vehicle-status.status-action_needed {
+            border-color: color-mix(in srgb, var(--color-danger) 35%, var(--border-primary));
+            color: var(--color-danger);
+        }
+        .tesla-vehicle-status.status-new {
+            border-color: color-mix(in srgb, var(--accent-blue) 35%, var(--border-primary));
+            color: var(--accent-blue);
+        }
+        .tesla-vehicle-right button {
             border: 0;
             background: transparent;
             color: var(--color-danger);
@@ -413,7 +528,7 @@
             padding: 0;
             line-height: 1;
         }
-        .tesla-vehicle-chip button:disabled {
+        .tesla-vehicle-right button:disabled {
             cursor: not-allowed;
             opacity: 0.6;
         }
@@ -652,6 +767,14 @@
             .tesla-onboarding-links {
                 align-items: stretch;
             }
+            .tesla-vehicle-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .tesla-vehicle-right {
+                width: 100%;
+                justify-content: space-between;
+            }
 
             .container {
                 padding: 12px;
@@ -838,6 +961,15 @@
                         <span class="time-display" id="cache_weather_display">= 30.0m</span>
                     </div>
                 </div>
+                <div class="setting-item">
+                    <div class="setting-label">Tesla EV Status Cache</div>
+                    <div class="setting-hint">Shared Tesla polling cache for all connected vehicles</div>
+                    <div class="setting-input">
+                        <input type="number" id="cache_teslaStatus" data-section="cache" data-key="teslaStatus" min="120" max="10000" step="1" value="600">
+                        <span class="unit">sec</span>
+                        <span class="time-display" id="cache_teslaStatus_display">= 10.0m</span>
+                    </div>
+                </div>
             </div>
             <div class="faq-section">
                 <div class="faq-toggle" onclick="toggleFaq(this)">
@@ -866,7 +998,7 @@
                     <div class="faq-item">
                         <div class="faq-question">What defaults are recommended?</div>
                         <div class="faq-answer">
-                            Recommended baseline: <code>60s</code> automation, <code>60s</code> pricing, <code>5m</code> inverter, <code>30m</code> weather. Adjust only if you have a clear need for faster or slower refresh behavior.
+                            Recommended baseline: <code>60s</code> automation, <code>60s</code> pricing, <code>5m</code> inverter, <code>30m</code> weather, <code>10m</code> Tesla status. Adjust only if you have a clear need for faster or slower refresh behavior.
                         </div>
                     </div>
                 </div>
@@ -1061,6 +1193,17 @@
             <div class="section-description">
                 Configure your inverter device serial number, inverter API token, and pricing API key. Tokens are not shown by default for security — enter them when you want to update them.
             </div>
+            <form id="credentials-alphaess-secret-form" autocomplete="off" onsubmit="return false;">
+                <input type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
+            </form>
+            <form id="credentials-sungrow-form" autocomplete="off" onsubmit="return false;"></form>
+            <form id="credentials-sigenenergy-form" autocomplete="off" onsubmit="return false;"></form>
+            <form id="credentials-foxess-form" autocomplete="off" onsubmit="return false;">
+                <input type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
+            </form>
+            <form id="credentials-amber-form" autocomplete="off" onsubmit="return false;">
+                <input type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
+            </form>
             <div class="settings-grid">
                 <!-- FoxESS-specific credentials (shown when deviceProvider=foxess) -->
                 <div id="foxessCredentialsSection">
@@ -1093,7 +1236,7 @@
                         <div class="setting-label">AlphaESS App Secret</div>
                         <div class="setting-hint">Developer App Secret from open.alphaess.com (stored encrypted, leave blank to keep current)</div>
                         <div class="setting-input">
-                            <input type="password" id="credentials_alphaessAppSecret" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
+                            <input type="password" id="credentials_alphaessAppSecret" form="credentials-alphaess-secret-form" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
                             <button type="button" class="btn-secondary" id="credentials_toggleAlphaessSecret">Show</button>
                         </div>
                     </div>
@@ -1112,14 +1255,14 @@
                         <div class="setting-label">iSolarCloud Account Email</div>
                         <div class="setting-hint">Email used to log in to au.isolarcloud.com (leave blank to keep current)</div>
                         <div class="setting-input">
-                            <input type="email" id="credentials_sungrowUsername" placeholder="•••••••• (leave blank to keep current)" autocomplete="off">
+                            <input type="email" id="credentials_sungrowUsername" form="credentials-sungrow-form" placeholder="•••••••• (leave blank to keep current)" autocomplete="username">
                         </div>
                     </div>
                     <div class="setting-item">
                         <div class="setting-label">iSolarCloud Password</div>
                         <div class="setting-hint">Your iSolarCloud password (stored encrypted, leave blank to keep current)</div>
                         <div class="setting-input">
-                            <input type="password" id="credentials_sungrowPassword" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
+                            <input type="password" id="credentials_sungrowPassword" form="credentials-sungrow-form" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
                             <button type="button" class="btn-secondary" id="credentials_toggleSungrowPassword">Show</button>
                         </div>
                     </div>
@@ -1131,14 +1274,14 @@
                         <div class="setting-label">SigenEnergy Account Email</div>
                         <div class="setting-hint">Email used to log in to the SigenEnergy app (leave blank to keep current)</div>
                         <div class="setting-input">
-                            <input type="email" id="credentials_sigenenergyUsername" placeholder="•••••••• (leave blank to keep current)" autocomplete="off">
+                            <input type="email" id="credentials_sigenenergyUsername" form="credentials-sigenenergy-form" placeholder="•••••••• (leave blank to keep current)" autocomplete="username">
                         </div>
                     </div>
                     <div class="setting-item">
                         <div class="setting-label">SigenEnergy Password</div>
                         <div class="setting-hint">Your SigenEnergy account password (stored encrypted, leave blank to keep current)</div>
                         <div class="setting-input">
-                            <input type="password" id="credentials_sigenenergyPassword" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
+                            <input type="password" id="credentials_sigenenergyPassword" form="credentials-sigenenergy-form" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
                             <button type="button" class="btn-secondary" id="credentials_toggleSigenenergyPassword">Show</button>
                         </div>
                     </div>
@@ -1156,27 +1299,25 @@
                     </div>
                 </div>
 
-                <form id="credentials-form">
-                    <div id="foxessTokenSection">
-                        <div class="setting-item">
-                            <div class="setting-label">Inverter API Token</div>
-                            <div class="setting-hint">Enter an inverter API token to allow the server to read inverter data (kept hidden)</div>
-                            <div class="setting-input">
-                                <input type="password" id="credentials_foxessToken" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
-                                <button type="button" class="btn-secondary" id="credentials_toggleFoxess">Show</button>
-                            </div>
-                        </div>
-                    </div>
-
+                <div id="foxessTokenSection">
                     <div class="setting-item">
-                        <div class="setting-label">Pricing API Key (optional)</div>
-                        <div class="setting-hint">Optional API key for electricity pricing data (used for automation)</div>
+                        <div class="setting-label">Inverter API Token</div>
+                        <div class="setting-hint">Enter an inverter API token to allow the server to read inverter data (kept hidden)</div>
                         <div class="setting-input">
-                            <input type="password" id="credentials_amberKey" placeholder="•••••••• (optional)" autocomplete="new-password">
-                            <button type="button" class="btn-secondary" id="credentials_toggleAmber">Show</button>
+                            <input type="password" id="credentials_foxessToken" form="credentials-foxess-form" placeholder="•••••••• (leave blank to keep current)" autocomplete="new-password">
+                            <button type="button" class="btn-secondary" id="credentials_toggleFoxess">Show</button>
                         </div>
                     </div>
-                </form>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">Pricing API Key (optional)</div>
+                    <div class="setting-hint">Optional API key for electricity pricing data (used for automation)</div>
+                    <div class="setting-input">
+                        <input type="password" id="credentials_amberKey" form="credentials-amber-form" placeholder="•••••••• (optional)" autocomplete="new-password">
+                        <button type="button" class="btn-secondary" id="credentials_toggleAmber">Show</button>
+                    </div>
+                </div>
             </div>
 
             <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
@@ -1400,6 +1541,7 @@
                 <div>
                     <div class="section-title">
                         🚗 Tesla EV Integration
+                        <span class="badge badge-sync">Testing</span>
                         <span class="badge badge-modified" id="teslaOnboardingBadge">Setup Required</span>
                     </div>
                 </div>
@@ -1410,6 +1552,13 @@
             <div class="section-description">
                 Connect your Tesla account so vehicle status, charging insight, and dashboard controls can show up in one place.
             </div>
+            <div class="tesla-multi-vehicle-note">
+                <strong>Multiple Tesla vehicles are supported.</strong> Add one VIN at a time. After each successful Tesla sign-in, use
+                <strong>Add another vehicle</strong> to register the next VIN with the same Tesla app credentials.
+            </div>
+            <form id="tesla-onboarding-form" autocomplete="off" onsubmit="return false;">
+                <input type="text" id="teslaOnboardingUsernameHint" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
+            </form>
 
             <div class="tesla-onboarding-hero">
                 <div>
@@ -1463,7 +1612,7 @@
                             <div class="setting-label">Tesla Fleet Client Secret</div>
                             <div class="setting-hint">Optional. Leave blank if your Tesla app uses PKCE only.</div>
                             <div class="setting-input">
-                                <input type="password" id="teslaClientSecret" placeholder="Optional" autocomplete="new-password" disabled>
+                                <input type="password" id="teslaClientSecret" form="tesla-onboarding-form" placeholder="Optional" autocomplete="new-password" disabled>
                             </div>
                         </div>
                         <div class="setting-item">
@@ -1512,11 +1661,15 @@
             </div>
             <div class="tesla-onboarding-actions">
                 <button class="btn-primary" type="button" id="teslaConnectBtn">Connect with Tesla</button>
-                <button class="btn-secondary" type="button" id="teslaClearPendingBtn">Reset Tesla Login</button>
+                <button class="btn-secondary" type="button" id="teslaAddVehicleBtn">Add another vehicle</button>
+                <button class="btn-secondary" type="button" id="teslaClearPendingBtn">No Pending Tesla Login</button>
                 <div id="teslaOnboardingStatus" class="tesla-onboarding-status">Start with Step 1 in Tesla Developer Dashboard, then return here to connect.</div>
             </div>
             <div class="tesla-vehicles-wrap">
-                <div class="setting-hint">Connected Tesla vehicles</div>
+                <div class="tesla-vehicles-header">
+                    <div class="setting-hint">Tesla vehicles in this account</div>
+                    <div id="teslaVehicleStatusCounts" class="tesla-status-counts"></div>
+                </div>
                 <div id="teslaVehiclesList" class="tesla-vehicles-list"></div>
             </div>
         </div>

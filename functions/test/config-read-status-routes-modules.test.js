@@ -49,13 +49,13 @@ function createDeps(overrides = {}) {
     getConfig: jest.fn(() => ({
       automation: {
         intervalMs: 60000,
-        cacheTtl: { amber: 70000, inverter: 300000, weather: 1800000 }
+        cacheTtl: { amber: 70000, inverter: 300000, weather: 1800000, teslaStatus: 600000 }
       }
     })),
     getUserAutomationState: jest.fn(async () => ({ enabled: true })),
     getUserConfig: jest.fn(async () => ({
       automation: { intervalMs: 90000, inverterCacheTtlMs: 240000, blackoutWindows: [] },
-      cache: { amber: 75000, weather: 1900000 },
+      cache: { amber: 75000, weather: 1900000, teslaStatus: 840000 },
       defaults: { cooldownMinutes: 3, durationMinutes: 12 }
     })),
     getUserRules: jest.fn(async () => ({ ruleA: { enabled: true } })),
@@ -112,7 +112,7 @@ describe('config/status read route module', () => {
     expect(response.body.errno).toBe(0);
     expect(response.body.result.config).toEqual({
       automation: { intervalMs: 90000 },
-      cache: { amber: 75000, inverter: 240000, weather: 1900000 },
+      cache: { amber: 75000, inverter: 240000, weather: 1900000, teslaStatus: 840000 },
       defaults: { cooldownMinutes: 3, durationMinutes: 12 }
     });
     expect(response.headers['cache-control']).toContain('no-cache');
@@ -214,6 +214,7 @@ describe('config/status read route module', () => {
     expect(response.body.errno).toBe(0);
     expect(response.body.result.inBlackout).toBe(true);
     expect(response.body.result.nextCheckIn).toBe(120000);
+    expect(response.body.result.config.cache.teslaStatus).toBe(600000);
     expect(dbMock.userDocSet).toHaveBeenCalledWith(
       { automationEnabled: true },
       { merge: true }

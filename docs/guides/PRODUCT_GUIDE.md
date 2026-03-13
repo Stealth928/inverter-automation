@@ -1,6 +1,6 @@
 # SoCrates Product Guide
 
-Last updated: March 11, 2026
+Last updated: March 13, 2026
 
 ## Purpose
 
@@ -19,6 +19,7 @@ battery systems. It combines:
 - weather forecasts and timezone-aware scheduling
 - user-defined automation rules
 - manual scheduler control and quick overrides
+- Tesla EV integration for vehicle status and charging commands
 - reporting, ROI analysis, and support diagnostics
 
 The product is shipped as a responsive web app with PWA support, so it works on
@@ -43,7 +44,7 @@ reporting are reduced.
 | Page | What it does today | Notes |
 | --- | --- | --- |
 | `Setup` | Guided onboarding for credentials, location/timezone, Amber key, inverter size, and battery size | Current self-service onboarding is FoxESS-first in the UI; the backend and settings flows are broader |
-| `Overview` | Main dashboard with live inverter status, electricity prices, weather, quick controls, manual scheduler, active automation, and rule management | Users can also customise which dashboard cards are visible |
+| `Overview` | Main dashboard with live inverter status, electricity prices, weather, quick controls, EV overview, manual scheduler, active automation, and rule management | Users can also customise which dashboard cards are visible |
 | `Automation Lab` | Safe simulation page for rule testing | No live inverter commands are sent; includes mock scheduler output and payload preview |
 | `Reports` | Amber price history, inverter history, energy reports, generation summary, and raw data viewer | Data is fetched on demand to reduce API pressure |
 | `Automation ROI` | Savings/ROI analysis plus recent automation history | Current ROI workflow is oriented around short date windows and the UI caps ranges to 7 days |
@@ -173,6 +174,19 @@ tools.
 
 This is especially useful for split-inverter or AC-coupled installations.
 
+### 10. Tesla EV Integration
+
+Tesla EV support is part of the live product surface, not roadmap copy.
+
+- Tesla onboarding is available in `Settings` via OAuth PKCE flow
+- connected VIN-based vehicles appear in the dashboard EV overview
+- commands supported today: start charging, stop charging, set charge limit
+- command controls are gated by Tesla readiness checks (VIN, signed-command
+  requirements, virtual-key pairing state)
+- detailed onboarding and operational requirements are documented in:
+  - `docs/guides/TESLA_ONBOARDING.md`
+  - `docs/guides/TESLA_EV_INTEGRATION.md`
+
 ## Supported Integrations and Current Status
 
 | Integration | Status today | Notes |
@@ -182,7 +196,7 @@ This is especially useful for split-inverter or AC-coupled installations.
 | SigenEnergy | Partial / limited | Real-time status and work mode support exist, but scheduler/history/report coverage is not yet at parity |
 | Amber Electric | Production | Current pricing, short-horizon forecast pricing, price history, and ROI workflows |
 | Weather (Open-Meteo) | Production | Forecasts plus timezone/location resolution used by rules and dashboard |
-| Tesla EV (Settings onboarding) | Available | Users can connect Tesla via Settings OAuth flow (PKCE + callback), manage connected VIN-based vehicles, and use dashboard EV status; commands require Tesla readiness (VIN + virtual key + signed-command path as applicable) |
+| Tesla EV (Settings + Dashboard) | Available | Users can connect Tesla via Settings OAuth flow (PKCE + callback), manage connected VIN-based vehicles, monitor EV status on the dashboard, and issue start/stop/set-charge-limit commands when readiness checks pass |
 
 ## Provider Notes You Should Know
 
@@ -224,7 +238,7 @@ The Settings page currently covers:
 
 - provider-specific credentials
 - optional Amber API key
-- Tesla EV onboarding (client ID, optional client secret, vehicle VIN, region, OAuth connect flow)
+- Tesla EV onboarding and control setup (client ID, optional client secret, vehicle VIN, region, OAuth connect flow, connected vehicle management)
 - automation interval
 - cache TTLs for Amber, inverter, and weather data
 - blackout windows
@@ -239,6 +253,8 @@ Notable behavior:
   for rules
 - automation interval is configurable from the UI
 - blackout windows pause automation without deleting rules
+- Tesla EV command buttons are shown only when the selected vehicle is in a
+  command-ready state
 - curtailment runs separately from the main rule match
 
 ## Guided Setup Flow
@@ -323,6 +339,9 @@ When a user says automation is "not working", check these first:
 - Amber key valid if price conditions are involved
 - weather location/timezone correct if time-based rules look wrong
 - provider limitations understood for Sungrow/SigenEnergy
+- Tesla vehicle connected in Settings (VIN + OAuth credentials)
+- Tesla readiness status on the dashboard (signed-command and virtual-key
+  requirements may block command execution)
 
 For unusual solar topologies or split-inverter setups, use:
 
@@ -338,6 +357,7 @@ includes:
 - live automation and manual control
 - rule simulation
 - rule-template import
+- Tesla EV onboarding and dashboard command controls
 - reporting and ROI analysis
 - multi-provider groundwork and active provider adapters
 - advanced support tooling for topology and curtailment
@@ -348,4 +368,5 @@ The main accuracy traps to avoid are:
 - describing rules as AND/OR
 - referring to a generic preview mode instead of Automation Lab
 - overstating SigenEnergy support
+- ignoring the current Tesla EV integration in Settings and dashboard flows
 - ignoring the current Rules Library, Reports, Controls, and topology tooling

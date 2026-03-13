@@ -5,6 +5,14 @@ function registerMetricsRoutes(app, deps = {}) {
   const getAusDateKey = deps.getAusDateKey;
   const tryAttachUser = deps.tryAttachUser;
   const KNOWN_INVERTER_PROVIDER_KEYS = ['foxess', 'sungrow', 'sigenergy', 'alphaess'];
+  const KNOWN_NON_INVERTER_METRIC_KEYS = new Set([
+    'amber',
+    'weather',
+    'ev',
+    'tesla',
+    'teslafleet',
+    'updatedat'
+  ]);
 
   if (!app || typeof app.get !== 'function') {
     throw new Error('registerMetricsRoutes requires an Express app');
@@ -22,6 +30,28 @@ function registerMetricsRoutes(app, deps = {}) {
   };
 
   const normalizeMetricKey = (metricKey) => String(metricKey || '').toLowerCase().trim();
+  const readNestedCounter = (root, path = []) => {
+    if (!root || typeof root !== 'object' || !Array.isArray(path) || path.length === 0) return 0;
+    let cursor = root;
+    for (const segment of path) {
+      if (!cursor || typeof cursor !== 'object') return 0;
+      cursor = cursor[segment];
+    }
+    return toCounter(cursor);
+  };
+
+  const resolveEvCounter = (metricsDoc = {}) => {
+    const explicitEv = toCounter(metricsDoc.ev);
+    if (explicitEv) return explicitEv;
+
+    const explicitTesla = toCounter(metricsDoc.tesla);
+    if (explicitTesla) return explicitTesla;
+
+    const teslaFleetBillable = readNestedCounter(metricsDoc, ['teslaFleet', 'calls', 'billable']);
+    if (teslaFleetBillable) return teslaFleetBillable;
+
+    return readNestedCounter(metricsDoc, ['teslaFleet', 'calls', 'total']);
+  };
 
   const buildMetricsEnvelope = (rawDoc = {}) => {
     const metricsDoc = (rawDoc && typeof rawDoc === 'object') ? rawDoc : {};
@@ -47,7 +77,7 @@ function registerMetricsRoutes(app, deps = {}) {
 
     Object.entries(metricsDoc).forEach(([metricKey, metricValue]) => {
       const key = normalizeMetricKey(metricKey);
-      if (!key || key === 'inverter' || key === 'inverterbyprovider' || key === 'amber' || key === 'weather' || key === 'updatedat') {
+      if (!key || key === 'inverter' || key === 'inverterbyprovider' || KNOWN_NON_INVERTER_METRIC_KEYS.has(key)) {
         return;
       }
       if (Object.prototype.hasOwnProperty.call(providerBreakdown, key)) return;
@@ -74,7 +104,8 @@ function registerMetricsRoutes(app, deps = {}) {
       sigenergy: inverterByProvider.sigenergy || 0,
       alphaess: inverterByProvider.alphaess || 0,
       amber: toCounter(metricsDoc.amber),
-      weather: toCounter(metricsDoc.weather)
+      weather: toCounter(metricsDoc.weather),
+      ev: resolveEvCounter(metricsDoc)
     };
   };
 

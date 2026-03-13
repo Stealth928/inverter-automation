@@ -59,7 +59,7 @@ const WAKE_POLL_INTERVAL_MS = 2000;
 const WAKE_MAX_WAIT_MS = 30000;
 
 // Tesla rate-limit retry defaults
-const DEFAULT_RETRY_COUNT = 2;
+const DEFAULT_RETRY_COUNT = 1; // one retry max (two attempts total)
 const DEFAULT_RETRY_DELAY_MS = 1000;
 const DEFAULT_HTTP_TIMEOUT_MS = 30000;
 
@@ -206,6 +206,79 @@ function encodeHttpBody(headers, body) {
   }
   if (typeof body === 'string') return body;
   return JSON.stringify(body);
+}
+
+function parseRetryAfterMs(headers = {}) {
+  const raw = headers?.['retry-after'];
+  if (raw === undefined || raw === null || raw === '') return null;
+
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric) && numeric >= 0) {
+    return Math.max(0, Math.floor(numeric * 1000));
+  }
+
+  const parsedDateMs = Date.parse(String(raw));
+  if (Number.isFinite(parsedDateMs)) {
+    return Math.max(0, parsedDateMs - Date.now());
+  }
+
+  return null;
+}
+
+function parseRateLimitResetMs(headers = {}) {
+  const raw =
+    headers?.['ratelimit-reset'] ??
+    headers?.['rate-limit-reset'] ??
+    headers?.['x-ratelimit-reset'] ??
+    null;
+  if (raw === undefined || raw === null || raw === '') return null;
+
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+
+  // If value is a small number, treat it as seconds-until-reset.
+  if (numeric < 1e6) {
+    return Math.max(0, Math.floor(numeric * 1000));
+  }
+
+  // If value is in unix seconds, convert to ms.
+  if (numeric < 1e12) {
+    return Math.max(0, Math.floor((numeric * 1000) - Date.now()));
+  }
+
+  // Otherwise assume unix milliseconds.
+  return Math.max(0, Math.floor(numeric - Date.now()));
+}
+
+function resolveRateLimitBackoffMs(headers = {}) {
+  return (
+    parseRetryAfterMs(headers) ??
+    parseRateLimitResetMs(headers) ??
+    DEFAULT_RETRY_DELAY_MS
+  );
+}
+
+function classifyTeslaApiCallCategory(method, url, categoryHint = '') {
+  const hinted = String(categoryHint || '').trim().toLowerCase();
+  if (hinted) return hinted;
+
+  const normalizedMethod = String(method || '').trim().toUpperCase();
+  const normalizedUrl = String(url || '').trim();
+  let pathname = normalizedUrl;
+  try {
+    pathname = new URL(normalizedUrl).pathname || normalizedUrl;
+  } catch {
+    pathname = normalizedUrl;
+  }
+  const path = String(pathname || '').toLowerCase();
+
+  if (path.endsWith('/wake_up')) return 'wake';
+  if (path.includes('/command/')) return 'command';
+  if (path.includes('/fleet_status')) return 'data_request';
+  if (path.endsWith('/vehicle_data')) return 'data_request';
+  if (normalizedMethod === 'GET' && /\/api\/1\/vehicles\/[^/]+$/.test(path)) return 'data_request';
+  if (path.includes('/oauth2/v3/token')) return 'auth';
+  return 'other';
 }
 
 function getTeslaAuthorizeBase(region = TESLA_DEFAULT_REGION) {
@@ -376,6 +449,7 @@ class TeslaFleetAdapter extends EVAdapter {
     this._signedCommandClient = deps.signedCommandClient || deps.signingClient || null;
     this._signingClient = deps.signingClient || null;
     this._sleep = deps.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+    this._onApiCall = typeof deps.onApiCall === 'function' ? deps.onApiCall : null;
   }
 
   _fleetBaseForContext(context) {
@@ -388,6 +462,23 @@ class TeslaFleetAdapter extends EVAdapter {
       this._signedCommandClient &&
       typeof this._signedCommandClient.sendCommand === 'function'
     );
+  }
+
+  _emitApiCallMetric(opts = {}, payload = {}) {
+    const perRequestHandler = typeof opts?.onApiCall === 'function' ? opts.onApiCall : null;
+    const handler = perRequestHandler || this._onApiCall;
+    if (typeof handler !== 'function') return;
+
+    try {
+      const result = handler(payload);
+      if (result && typeof result.catch === 'function') {
+        result.catch((err) => {
+          this._logger.warn('TeslaFleetAdapter', `API metric handler rejected: ${err?.message || err}`);
+        });
+      }
+    } catch (err) {
+      this._logger.warn('TeslaFleetAdapter', `API metric handler threw: ${err?.message || err}`);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -492,7 +583,9 @@ class TeslaFleetAdapter extends EVAdapter {
       context,
       (headers) => this._makeRequest('POST', url, {
         headers,
-        body: { vins: [vehicleRef.vin] }
+        body: { vins: [vehicleRef.vin] },
+        categoryHint: 'data_request',
+        onApiCall: context?.recordTeslaApiCall
       })
     );
 
@@ -547,7 +640,11 @@ class TeslaFleetAdapter extends EVAdapter {
     const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}/vehicle_data`;
     const response = await this._requestWithAuthRefresh(
       context,
-      (headers) => this._makeRequest('GET', url, { headers })
+      (headers) => this._makeRequest('GET', url, {
+        headers,
+        categoryHint: 'data_request',
+        onApiCall: context?.recordTeslaApiCall
+      })
     );
 
     const vehicleData = response.data?.response || response.data || {};
@@ -598,7 +695,12 @@ class TeslaFleetAdapter extends EVAdapter {
     const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}/command/charge_start`;
     const response = await this._requestWithAuthRefresh(
       context,
-      (headers) => this._makeRequest('POST', url, { headers, body: {} })
+      (headers) => this._makeRequest('POST', url, {
+        headers,
+        body: {},
+        categoryHint: 'command',
+        onApiCall: context?.recordTeslaApiCall
+      })
     );
     return normalizeTeslaCommandResult(response.data?.response || response.data, 'charge_start');
   }
@@ -612,7 +714,12 @@ class TeslaFleetAdapter extends EVAdapter {
     const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}/command/charge_stop`;
     const response = await this._requestWithAuthRefresh(
       context,
-      (headers) => this._makeRequest('POST', url, { headers, body: {} })
+      (headers) => this._makeRequest('POST', url, {
+        headers,
+        body: {},
+        categoryHint: 'command',
+        onApiCall: context?.recordTeslaApiCall
+      })
     );
     return normalizeTeslaCommandResult(response.data?.response || response.data, 'charge_stop');
   }
@@ -631,7 +738,12 @@ class TeslaFleetAdapter extends EVAdapter {
     const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}/command/set_charge_limit`;
     const response = await this._requestWithAuthRefresh(
       context,
-      (headers) => this._makeRequest('POST', url, { headers, body: { percent: limit } })
+      (headers) => this._makeRequest('POST', url, {
+        headers,
+        body: { percent: limit },
+        categoryHint: 'command',
+        onApiCall: context?.recordTeslaApiCall
+      })
     );
     return normalizeTeslaCommandResult(response.data?.response || response.data, 'set_charge_limit');
   }
@@ -643,7 +755,12 @@ class TeslaFleetAdapter extends EVAdapter {
 
     const response = await this._requestWithAuthRefresh(
       context,
-      (headers) => this._makeRequest('POST', url, { headers, body: {} })
+      (headers) => this._makeRequest('POST', url, {
+        headers,
+        body: {},
+        categoryHint: 'wake',
+        onApiCall: context?.recordTeslaApiCall
+      })
     );
     const state = response.data?.response?.state || response.data?.state || '';
 
@@ -660,7 +777,11 @@ class TeslaFleetAdapter extends EVAdapter {
         (headers) => this._makeRequest(
           'GET',
           `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}`,
-          { headers }
+          {
+            headers,
+            categoryHint: 'data_request',
+            onApiCall: context?.recordTeslaApiCall
+          }
         )
       );
       const pollState = pollResp.data?.response?.state || '';
@@ -688,13 +809,28 @@ class TeslaFleetAdapter extends EVAdapter {
   async _makeRequest(method, url, opts = {}) {
     const maxAttempts = DEFAULT_RETRY_COUNT + 1;
     let lastError = null;
+    const category = classifyTeslaApiCallCategory(method, url, opts?.categoryHint);
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const response = await this._http(method, url, opts);
+        const statusCode = Number(response?.status) || 0;
+        const billable = statusCode > 0 && statusCode < 500;
+        this._emitApiCallMetric(opts, {
+          category,
+          method: String(method || '').toUpperCase(),
+          url: String(url || ''),
+          status: statusCode,
+          billable,
+          attempt: attempt + 1
+        });
+
         if (response.status === 429) {
-          const retryAfterMs = Number(response.headers?.['retry-after']) * 1000 || DEFAULT_RETRY_DELAY_MS;
-          this._logger.warn('TeslaFleetAdapter', `Rate limited (attempt ${attempt + 1}/${maxAttempts}); waiting ${retryAfterMs}ms`);
+          const retryAfterMs = resolveRateLimitBackoffMs(response.headers || {});
+          this._logger.warn(
+            'TeslaFleetAdapter',
+            `Rate limited (attempt ${attempt + 1}/${maxAttempts}); waiting ${retryAfterMs}ms`
+          );
           if (attempt < maxAttempts - 1) {
             await this._sleep(retryAfterMs);
             continue;
@@ -704,14 +840,32 @@ class TeslaFleetAdapter extends EVAdapter {
           const msg = response.data?.error?.message || response.data?.error || `HTTP ${response.status}`;
           const err = new Error(String(msg));
           err.status = response.status;
+          err.retryAfterMs = resolveRateLimitBackoffMs(response.headers || {});
+          err.__teslaCallMetricLogged = true;
           throw err;
         }
         return response;
       } catch (err) {
         lastError = err;
         if (err.status === 429 && attempt < maxAttempts - 1) {
-          await this._sleep(DEFAULT_RETRY_DELAY_MS);
+          const retryAfterMs = Number(err.retryAfterMs) > 0
+            ? Math.floor(Number(err.retryAfterMs))
+            : DEFAULT_RETRY_DELAY_MS;
+          await this._sleep(retryAfterMs);
           continue;
+        }
+        if (!err.__teslaCallMetricLogged) {
+          const statusCode = Number(err?.status) || 0;
+          const billable = statusCode > 0 && statusCode < 500;
+          this._emitApiCallMetric(opts, {
+            category,
+            method: String(method || '').toUpperCase(),
+            url: String(url || ''),
+            status: statusCode,
+            billable,
+            attempt: attempt + 1,
+            error: String(err?.message || 'Request failed')
+          });
         }
         throw err;
       }

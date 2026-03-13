@@ -55,6 +55,9 @@ function registerAuthLifecycleRoutes(app, deps = {}) {
         amberApiKey: '',
         amberSiteId: '',
         weatherPlace: 'Sydney',
+        cache: {
+          teslaStatus: 600000
+        },
         automation: {
           intervalMs: 60000,
           enabled: true

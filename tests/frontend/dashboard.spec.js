@@ -273,6 +273,26 @@ test.describe('Dashboard Page', () => {
     await expect(page.locator('#operationsRow')).toBeHidden();
   });
 
+  test('should align automation launcher with the right panel edge', async ({ page }) => {
+    const alignment = await page.evaluate(() => {
+      const automationToggle = document.getElementById('automationToggleBtn');
+      const rightPanelToggle = document.getElementById('toggleBtn');
+      if (!automationToggle || !rightPanelToggle) return null;
+      const a = automationToggle.getBoundingClientRect();
+      const r = rightPanelToggle.getBoundingClientRect();
+      return {
+        diff: Math.abs(a.right - r.right),
+        aDisplay: window.getComputedStyle(automationToggle).display,
+        rDisplay: window.getComputedStyle(rightPanelToggle).display
+      };
+    });
+
+    expect(alignment).not.toBeNull();
+    expect(alignment.aDisplay).not.toBe('none');
+    expect(alignment.rDisplay).not.toBe('none');
+    expect(alignment.diff).toBeLessThanOrEqual(2);
+  });
+
   test('should persist card visibility preferences across reload', async ({ page }) => {
     await page.evaluate(() => {
       const payload = JSON.stringify({
@@ -382,6 +402,28 @@ test.describe('Dashboard Page', () => {
     await expect(page.locator('#evStopBtn')).toBeDisabled();
     await expect(page.locator('#evSetLimitBtn')).toBeDisabled();
     await expect(page.locator('#evChargeLimitInput')).toBeDisabled();
+  });
+
+  test('should skip EV status fetch for vehicles pending Tesla auth and keep commands disabled', async ({ page }) => {
+    let statusCallCount = 0;
+
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-pending-auth', displayName: 'Model Y', hasCredentials: false }]
+    });
+
+    await page.route('**/api/ev/vehicles/*/status*', async (route) => {
+      statusCallCount += 1;
+      await route.fulfill(jsonResponse({ errno: 400, error: 'Vehicle credentials not configured' }, 400));
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evVehicleTabs .ev-vehicle-tab').first()).toContainText('Setup Required');
+    await expect(page.locator('#evSelectedStatusPills')).toContainText('Credentials Missing');
+    await expect(page.locator('#evStartBtn')).toBeDisabled();
+    await expect(page.locator('#evStopBtn')).toBeDisabled();
+    await expect(page.locator('#evSetLimitBtn')).toBeDisabled();
+    expect(statusCallCount).toBe(0);
   });
 
   test('should block EV command submission when no vehicle is selected', async ({ page }) => {

@@ -76,7 +76,7 @@ describe('read-only route modules', () => {
     expect(response.body.errno).toBe(0);
     expect(Object.keys(response.body.result)).toHaveLength(2);
     Object.values(response.body.result).forEach((value) => {
-      expect(value).toEqual(expect.objectContaining({ inverter: 0, foxess: 0, amber: 0, weather: 0 }));
+      expect(value).toEqual(expect.objectContaining({ inverter: 0, foxess: 0, amber: 0, weather: 0, ev: 0 }));
       expect(value.inverterByProvider).toEqual(expect.objectContaining({ foxess: 0, sungrow: 0, sigenergy: 0, alphaess: 0 }));
     });
   });
@@ -147,13 +147,69 @@ describe('read-only route modules', () => {
       inverter: 7,
       foxess: 7,
       amber: 5,
-      weather: 3
+      weather: 3,
+      ev: 0
     }));
     expect(response.body.result[todayKey].inverterByProvider).toEqual(expect.objectContaining({
       foxess: 7,
       sungrow: 0,
       sigenergy: 0,
       alphaess: 0
+    }));
+  });
+
+  test('metrics routes expose EV counter from teslaFleet usage metrics', async () => {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const metricsSnapshot = {
+      forEach: (callback) => {
+        callback({
+          id: todayKey,
+          data: () => ({
+            foxess: 2,
+            amber: 1,
+            weather: 1,
+            teslaFleet: {
+              calls: {
+                billable: 9,
+                total: 12
+              }
+            }
+          })
+        });
+      }
+    };
+    const db = {
+      collection: jest.fn(() => ({
+        doc: jest.fn(() => ({
+          collection: jest.fn(() => ({
+            get: jest.fn(async () => metricsSnapshot)
+          }))
+        }))
+      }))
+    };
+
+    const app = buildApp((instance) => {
+      registerMetricsRoutes(instance, {
+        db,
+        getAusDateKey: (date) => date.toISOString().slice(0, 10),
+        tryAttachUser: jest.fn(async (req) => {
+          req.user = { uid: 'u-metrics' };
+          return req.user;
+        })
+      });
+    });
+
+    const response = await request(app)
+      .get('/api/metrics/api-calls')
+      .query({ scope: 'user', days: 1 });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result[todayKey]).toEqual(expect.objectContaining({
+      inverter: 2,
+      amber: 1,
+      weather: 1,
+      ev: 9
     }));
   });
 
@@ -656,6 +712,70 @@ describe('read-only route modules', () => {
       userId: 'u-sigen'
     });
     expect(getCachedInverterRealtimeData).not.toHaveBeenCalled();
+  });
+
+  test('inverter discover-variables endpoint dispatches to non-FoxESS adapter when provider is configured', async () => {
+    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
+    const foxessAPI = { callFoxESSAPI: jest.fn() };
+    const adapterGetStatus = jest.fn(async () => ({
+      socPct: 64,
+      batteryTempC: 27.8,
+      ambientTempC: 21.9,
+      pvPowerW: 3500,
+      loadPowerW: 2100,
+      gridPowerW: 120,
+      feedInPowerW: 0,
+      batteryPowerW: -600,
+      observedAtIso: '2026-03-12T03:30:00.000Z'
+    }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-alpha-discover' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({
+            getStatus: adapterGetStatus
+          }))
+        },
+        foxessAPI,
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'alphaess',
+          alphaessSystemSn: 'ALPHA-DISCOVER-1'
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig: jest.fn(async () => undefined),
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/discover-variables');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result).toEqual(expect.arrayContaining([
+      'SoC',
+      'pvPower',
+      'loadsPower',
+      'gridConsumptionPower',
+      'feedinPower',
+      'meterPower2',
+      'batChargePower',
+      'batDischargePower'
+    ]));
+    expect(adapterGetStatus).toHaveBeenCalledWith({
+      deviceSN: 'ALPHA-DISCOVER-1',
+      userConfig: {
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'ALPHA-DISCOVER-1'
+      },
+      userId: 'u-alpha-discover'
+    });
+    expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
   });
 
   test('inverter real-time endpoint auto-persists inferred topology when missing', async () => {
@@ -1223,6 +1343,67 @@ describe('read-only route modules', () => {
       { deviceSn: 'SN-DIAG' },
       'u-diagnostics'
     );
+  });
+
+  test('diagnostics read routes all-data dispatches to adapter for non-FoxESS providers', async () => {
+    const foxessAPI = {
+      callFoxESSAPI: jest.fn(async () => ({ errno: 0, result: [] }))
+    };
+    const adapterGetStatus = jest.fn(async () => ({
+      socPct: 73,
+      batteryTempC: 29.1,
+      ambientTempC: 23.4,
+      pvPowerW: 0,
+      loadPowerW: 1800,
+      gridPowerW: 200,
+      feedInPowerW: 0,
+      batteryPowerW: -1200,
+      observedAtIso: '2026-03-12T04:20:00.000Z'
+    }));
+
+    const app = buildApp((instance) => {
+      registerDiagnosticsReadRoutes(instance, {
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({
+            getStatus: adapterGetStatus
+          }))
+        },
+        authenticateUser: (req, _res, next) => {
+          req.user = { uid: 'u-diagnostics-alpha' };
+          next();
+        },
+        foxessAPI,
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'alphaess',
+          alphaessSystemSn: 'ALPHA-DIAG-1',
+          systemTopology: { coupling: 'ac', source: 'manual' }
+        }))
+      });
+    });
+
+    const response = await request(app).post('/api/inverter/all-data').send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result[0].deviceSN).toBe('ALPHA-DIAG-1');
+    expect(response.body.result[0].datas).toEqual(expect.arrayContaining([
+      expect.objectContaining({ variable: 'pvPower', value: 0, unit: 'kW' }),
+      expect.objectContaining({ variable: 'batChargePower', value: 1.2, unit: 'kW' }),
+      expect.objectContaining({ variable: 'gridConsumptionPower', value: 0.2, unit: 'kW' })
+    ]));
+    expect(response.body.topologyHints).toEqual(expect.objectContaining({
+      likelyTopology: 'AC-coupled (external PV via meter)'
+    }));
+    expect(adapterGetStatus).toHaveBeenCalledWith({
+      deviceSN: 'ALPHA-DIAG-1',
+      userConfig: {
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'ALPHA-DIAG-1',
+        systemTopology: { coupling: 'ac', source: 'manual' }
+      },
+      userId: 'u-diagnostics-alpha'
+    });
+    expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
   });
 
   test('scheduler read routes return defaults when device SN is unavailable', async () => {

@@ -69,11 +69,28 @@ function makeRegistry(adapter = makeAdapter()) {
   };
 }
 
+function makeEvUsageControl(overrides = {}) {
+  return {
+    assessRouteRequest: jest.fn(async () => ({ blocked: false, degraded: false, mode: 'off' })),
+    recordTeslaApiCall: jest.fn(async () => {}),
+    ...overrides
+  };
+}
+
 function makeDeps(overrides = {}) {
   return {
     authenticateUser: makeAuth(),
     vehiclesRepo: makeVehiclesRepo(),
     adapterRegistry: makeRegistry(),
+    evUsageControl: makeEvUsageControl(),
+    getConfig: jest.fn(() => ({
+      automation: {
+        cacheTtl: {
+          teslaStatus: 600000
+        }
+      }
+    })),
+    getUserConfig: jest.fn(async () => ({})),
     ...overrides
   };
 }
@@ -138,6 +155,22 @@ describe('GET /api/ev/vehicles', () => {
     expect(res.body.result).toHaveLength(1);
     expect(res.body.result[0].vehicleId).toBe('v1');
     expect(res.body.result[0].credentials).toBeUndefined();
+    expect(res.body.result[0].hasCredentials).toBe(true);
+  });
+
+  test('marks hasCredentials=false when access token is missing', async () => {
+    const vehicle = {
+      vehicleId: 'v2',
+      provider: 'tesla',
+      displayName: 'Pending Tesla',
+      credentials: { refreshToken: 'refresh-only' }
+    };
+    const deps = makeDeps({ vehiclesRepo: makeVehiclesRepo({ listVehicles: jest.fn(async () => [vehicle]) }) });
+    const app = buildApp(deps);
+    const res = await request(app).get('/api/ev/vehicles').set('Authorization', 'Bearer tok');
+    expect(res.statusCode).toBe(200);
+    expect(res.body.result).toHaveLength(1);
+    expect(res.body.result[0].hasCredentials).toBe(false);
   });
 });
 
@@ -235,6 +268,53 @@ describe('GET /api/ev/vehicles/:vehicleId/status', () => {
     expect(res.body.source).toBe('cache');
   });
 
+  test('uses Tesla cache default (10 minutes) when user-specific teslaStatus is not set', async () => {
+    const adapter = makeAdapter();
+    const cached = { ...STUB_STATUS, asOfIso: new Date(Date.now() - 180000).toISOString() }; // 3 minutes old
+    const deps = makeDeps({
+      getUserConfig: jest.fn(async () => ({ cache: {} })),
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
+        getVehicleState: jest.fn(async () => cached)
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app).get('/api/ev/vehicles/v1/status').set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.source).toBe('cache');
+    expect(adapter.getVehicleStatus).not.toHaveBeenCalled();
+  });
+
+  test('applies the same user Tesla cache TTL to all vehicles', async () => {
+    const adapter = makeAdapter();
+    const staleCached = { ...STUB_STATUS, asOfIso: new Date(Date.now() - 180000).toISOString() }; // 3 minutes old
+    const getVehicle = jest.fn(async (_uid, vehicleId) => ({ vehicleId, provider: 'tesla' }));
+    const getVehicleState = jest.fn(async () => staleCached);
+    const getUserConfig = jest.fn(async () => ({ cache: { teslaStatus: 120000 } })); // 2 minutes
+    const deps = makeDeps({
+      getUserConfig,
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle,
+        getVehicleState,
+        saveVehicleState: jest.fn(async () => {})
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+
+    const resOne = await request(app).get('/api/ev/vehicles/v1/status').set('Authorization', 'Bearer tok');
+    const resTwo = await request(app).get('/api/ev/vehicles/v2/status').set('Authorization', 'Bearer tok');
+
+    expect(resOne.statusCode).toBe(200);
+    expect(resTwo.statusCode).toBe(200);
+    expect(resOne.body.source).toBe('live');
+    expect(resTwo.body.source).toBe('live');
+    expect(getUserConfig).toHaveBeenCalledWith('u-test');
+    expect(adapter.getVehicleStatus).toHaveBeenCalledTimes(2);
+  });
+
   test('fetches live status when live=1', async () => {
     const adapter = makeAdapter();
     const saveVehicleState = jest.fn(async () => {});
@@ -290,6 +370,188 @@ describe('GET /api/ev/vehicles/:vehicleId/status', () => {
     expect(res.statusCode).toBe(400);
     expect(res.body.error).toMatch(/unknown-provider/);
   });
+
+  test('returns 429 when Tesla usage guard blocks live status request', async () => {
+    const adapter = makeAdapter();
+    const evUsageControl = makeEvUsageControl({
+      assessRouteRequest: jest.fn(async () => ({
+        blocked: true,
+        statusCode: 429,
+        errno: 429,
+        reasonCode: 'rate_limit_exceeded',
+        retryAfterSeconds: 12,
+        error: 'Tesla EV rate limit exceeded for this vehicle; retry after 12s'
+      }))
+    });
+    const deps = makeDeps({
+      evUsageControl,
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
+        getVehicleState: jest.fn(async () => null)
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app).get('/api/ev/vehicles/v1/status?live=1').set('Authorization', 'Bearer tok');
+    expect(res.statusCode).toBe(429);
+    expect(res.headers['retry-after']).toBe('12');
+    expect(res.body.result.reasonCode).toBe('rate_limit_exceeded');
+    expect(adapter.getVehicleStatus).not.toHaveBeenCalled();
+  });
+
+  test('returns cached status in degraded mode for live status requests', async () => {
+    const cached = { ...STUB_STATUS, asOfIso: '2025-01-01T00:00:00.000Z' };
+    const adapter = makeAdapter();
+    const evUsageControl = makeEvUsageControl({
+      assessRouteRequest: jest.fn(async () => ({
+        blocked: false,
+        degraded: true,
+        mode: 'auto',
+        reasonCode: 'vehicle_unit_limit_reached'
+      }))
+    });
+    const deps = makeDeps({
+      evUsageControl,
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
+        getVehicleState: jest.fn(async () => cached)
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app).get('/api/ev/vehicles/v1/status?live=1').set('Authorization', 'Bearer tok');
+    expect(res.statusCode).toBe(200);
+    expect(res.body.source).toBe('cache_degraded');
+    expect(res.body.degraded).toBe(true);
+    expect(res.body.reasonCode).toBe('vehicle_unit_limit_reached');
+    expect(adapter.getVehicleStatus).not.toHaveBeenCalled();
+  });
+
+  test('returns 400 with reconnect guidance when Tesla provider auth is stale', async () => {
+    const providerError = new Error('Unauthorized');
+    providerError.status = 401;
+
+    const adapter = makeAdapter({
+      getVehicleStatus: jest.fn(async () => {
+        throw providerError;
+      })
+    });
+    const deps = makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
+        getVehicleState: jest.fn(async () => null)
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app).get('/api/ev/vehicles/v1/status?live=1').set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/reconnect tesla/i);
+    expect(res.body.result.reasonCode).toBe('tesla_reconnect_required');
+  });
+
+  test('returns 429 with Retry-After when Tesla provider rate-limits live status', async () => {
+    const providerError = new Error('Too Many Requests');
+    providerError.status = 429;
+    providerError.retryAfterMs = 12000;
+
+    const adapter = makeAdapter({
+      getVehicleStatus: jest.fn(async () => {
+        throw providerError;
+      })
+    });
+    const deps = makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
+        getVehicleState: jest.fn(async () => null)
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app).get('/api/ev/vehicles/v1/status?live=1').set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(429);
+    expect(res.headers['retry-after']).toBe('12');
+    expect(res.body.result.reasonCode).toBe('provider_rate_limited');
+  });
+
+  test('returns cached status when Tesla provider upstream is unavailable', async () => {
+    const providerError = new Error('HTTP 500');
+    providerError.status = 500;
+    const cached = { ...STUB_STATUS, asOfIso: '2025-01-01T00:00:00.000Z' };
+
+    const adapter = makeAdapter({
+      getVehicleStatus: jest.fn(async () => {
+        throw providerError;
+      })
+    });
+    const deps = makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
+        getVehicleState: jest.fn(async () => cached)
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app).get('/api/ev/vehicles/v1/status?live=1').set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.source).toBe('cache_upstream_unavailable');
+    expect(res.body.degraded).toBe(true);
+    expect(res.body.reasonCode).toBe('tesla_upstream_unavailable');
+  });
+
+  test('returns 503 when Tesla provider upstream is unavailable and no cache exists', async () => {
+    const providerError = new Error('HTTP 500');
+    providerError.status = 500;
+    providerError.retryAfterMs = 7000;
+
+    const adapter = makeAdapter({
+      getVehicleStatus: jest.fn(async () => {
+        throw providerError;
+      })
+    });
+    const deps = makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
+        getVehicleState: jest.fn(async () => null)
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app).get('/api/ev/vehicles/v1/status?live=1').set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(503);
+    expect(res.headers['retry-after']).toBe('7');
+    expect(res.body.result).toMatchObject({
+      degraded: true,
+      reasonCode: 'tesla_upstream_unavailable',
+      retryAfterSeconds: 7
+    });
+  });
+
+  test('maps message-only HTTP 500 Tesla errors to degraded 503 response', async () => {
+    const providerError = new Error('Tesla token exchange failed (HTTP 500)');
+
+    const adapter = makeAdapter({
+      getVehicleStatus: jest.fn(async () => {
+        throw providerError;
+      })
+    });
+    const deps = makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
+        getVehicleState: jest.fn(async () => null)
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app).get('/api/ev/vehicles/v1/status?live=1').set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(503);
+    expect(res.body.result.reasonCode).toBe('tesla_upstream_unavailable');
+  });
 });
 
 // ─── POST /api/ev/vehicles/:vehicleId/command ────────────────────────────
@@ -335,6 +597,32 @@ describe('POST /api/ev/vehicles/:vehicleId/command', () => {
     const res = await request(app).post('/api/ev/vehicles/missing/command')
       .set('Authorization', 'Bearer tok').send({ command: 'startCharging' });
     expect(res.statusCode).toBe(404);
+  });
+
+  test('returns 503 when Tesla command path is in degraded mode', async () => {
+    const adapter = makeAdapter();
+    const evUsageControl = makeEvUsageControl({
+      assessRouteRequest: jest.fn(async () => ({
+        blocked: false,
+        degraded: true,
+        mode: 'auto',
+        reasonCode: 'user_unit_limit_reached'
+      }))
+    });
+    const { deps } = makeCommandDeps(adapter);
+    deps.evUsageControl = evUsageControl;
+
+    const app = buildApp(deps);
+    const res = await request(app).post('/api/ev/vehicles/v1/command')
+      .set('Authorization', 'Bearer tok')
+      .send({ command: 'startCharging' });
+
+    expect(res.statusCode).toBe(503);
+    expect(res.body.result).toMatchObject({
+      degraded: true,
+      reasonCode: 'user_unit_limit_reached'
+    });
+    expect(adapter.startCharging).not.toHaveBeenCalled();
   });
 
   test('dispatches startCharging and returns result', async () => {

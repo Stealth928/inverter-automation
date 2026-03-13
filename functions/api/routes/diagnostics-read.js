@@ -1,9 +1,142 @@
 'use strict';
 
+const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
+
+function toFiniteNumber(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function powerToKw(value) {
+  const numeric = toFiniteNumber(value, null);
+  if (numeric === null) return null;
+  if (Math.abs(numeric) > 100) return Number((numeric / 1000).toFixed(4));
+  return Number(numeric.toFixed(4));
+}
+
+function normalizeLocalCouplingValue(value) {
+  const raw = String(value || '').toLowerCase().trim();
+  if (raw === 'ac' || raw === 'ac-coupled' || raw === 'ac_coupled') return 'ac';
+  if (raw === 'dc' || raw === 'dc-coupled' || raw === 'dc_coupled') return 'dc';
+  return 'unknown';
+}
+
+function resolveAlphaEssBatterySignInversion(userConfig) {
+  if (!userConfig || typeof userConfig !== 'object') return false;
+
+  if (typeof userConfig.alphaessInvertBatteryPower === 'boolean') {
+    return userConfig.alphaessInvertBatteryPower;
+  }
+
+  const rawPolicy = String(userConfig.alphaessBatteryPowerSign || '').toLowerCase().trim();
+  if (rawPolicy) {
+    if (rawPolicy === 'invert' || rawPolicy === 'inverted' || rawPolicy === 'reverse' || rawPolicy === 'reversed') {
+      return true;
+    }
+    if (rawPolicy === 'default' || rawPolicy === 'normal' || rawPolicy === 'native' || rawPolicy === 'standard') {
+      return false;
+    }
+  }
+
+  return normalizeLocalCouplingValue(userConfig.systemTopology && userConfig.systemTopology.coupling) === 'ac';
+}
+
+function buildRealtimePayloadFromDeviceStatus(status = {}, sn, options = {}) {
+  const normalizeToKw = options.normalizeToKw === true;
+  const invertBatteryPowerSign = options.invertBatteryPowerSign === true;
+  const socPct = toFiniteNumber(status.socPct, null);
+  const batteryTempC = toFiniteNumber(status.batteryTempC, null);
+  const ambientTempC = toFiniteNumber(status.ambientTempC, null);
+  const pvPowerRaw = toFiniteNumber(status.pvPowerW, 0);
+  const loadPowerRaw = toFiniteNumber(status.loadPowerW, 0);
+  const gridPowerRaw = toFiniteNumber(status.gridPowerW, 0);
+  const feedInPowerRaw = toFiniteNumber(status.feedInPowerW, 0);
+  const batteryPowerRaw = toFiniteNumber(status.batteryPowerW, 0);
+  const batteryPowerCanonicalRaw = invertBatteryPowerSign ? -batteryPowerRaw : batteryPowerRaw;
+
+  const asPower = (value) => {
+    if (!normalizeToKw) return value;
+    return powerToKw(value) ?? 0;
+  };
+
+  const pvPower = asPower(pvPowerRaw);
+  const loadPower = asPower(loadPowerRaw);
+  const gridPower = asPower(gridPowerRaw);
+  const feedInPower = asPower(feedInPowerRaw);
+  const batteryPower = asPower(batteryPowerCanonicalRaw);
+  const batteryChargePower = batteryPower > 0 ? batteryPower : 0;
+  const batteryDischargePower = batteryPower < 0 ? Math.abs(batteryPower) : 0;
+  const meterPower = gridPower > 0 ? gridPower : -feedInPower;
+  const unit = normalizeToKw ? 'kW' : undefined;
+
+  return {
+    errno: 0,
+    msg: 'Operation successful',
+    result: [{
+      deviceSN: String(sn || status.deviceSN || ''),
+      time: status.observedAtIso || new Date().toISOString(),
+      datas: [
+        { variable: 'SoC', value: socPct, ...(normalizeToKw ? { unit: '%' } : {}) },
+        { variable: 'pvPower', value: pvPower, ...(unit ? { unit } : {}) },
+        { variable: 'loadsPower', value: loadPower, ...(unit ? { unit } : {}) },
+        { variable: 'gridConsumptionPower', value: gridPower, ...(unit ? { unit } : {}) },
+        { variable: 'feedinPower', value: feedInPower, ...(unit ? { unit } : {}) },
+        { variable: 'meterPower2', value: meterPower, ...(unit ? { unit } : {}) },
+        { variable: 'batTemperature', value: batteryTempC, ...(normalizeToKw ? { unit: 'C' } : {}) },
+        { variable: 'ambientTemperation', value: ambientTempC, ...(normalizeToKw ? { unit: 'C' } : {}) },
+        { variable: 'batChargePower', value: batteryChargePower, ...(unit ? { unit } : {}) },
+        { variable: 'batDischargePower', value: batteryDischargePower, ...(unit ? { unit } : {}) }
+      ]
+    }]
+  };
+}
+
+function extractDatas(payload) {
+  if (Array.isArray(payload?.result?.[0]?.datas)) return payload.result[0].datas;
+  if (Array.isArray(payload?.result?.datas)) return payload.result.datas;
+  return [];
+}
+
+function findDataValue(datas, variable, fallback = null) {
+  if (!Array.isArray(datas)) return fallback;
+  const match = datas.find((entry) => entry && entry.variable === variable);
+  if (!match) return fallback;
+  const numeric = toFiniteNumber(match.value, fallback);
+  return numeric;
+}
+
+function withTopologyHints(payload) {
+  if (!payload || payload.errno !== 0) return payload;
+
+  const datas = extractDatas(payload);
+  const pvPower = findDataValue(datas, 'pvPower', 0);
+  const meterPower = findDataValue(datas, 'meterPower', null);
+  const meterPower2 = findDataValue(datas, 'meterPower2', null);
+  const batChargePower = findDataValue(datas, 'batChargePower', 0);
+  const gridConsumptionPower = findDataValue(datas, 'gridConsumptionPower', 0);
+
+  payload.topologyHints = {
+    pvPower,
+    meterPower,
+    meterPower2,
+    batChargePower,
+    gridConsumptionPower,
+    likelyTopology:
+      (pvPower < 0.1 && (batChargePower > 0.5 || meterPower2 > 0.5) && gridConsumptionPower < 0.5)
+        ? 'AC-coupled (external PV via meter)'
+        : (pvPower > 0.5)
+          ? 'DC-coupled (standard)'
+          : 'Unknown (check during solar production hours)'
+  };
+
+  return payload;
+}
+
 function registerDiagnosticsReadRoutes(app, deps = {}) {
   const authenticateUser = deps.authenticateUser;
   const foxessAPI = deps.foxessAPI;
   const getUserConfig = deps.getUserConfig;
+  const adapterRegistry = deps.adapterRegistry || null;
 
   if (!app || typeof app.post !== 'function') {
     throw new Error('registerDiagnosticsReadRoutes requires an Express app');
@@ -23,6 +156,10 @@ function registerDiagnosticsReadRoutes(app, deps = {}) {
   app.post('/api/device/setting/get', authenticateUser, async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
+      const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
+      if (provider !== 'foxess') {
+        return res.status(400).json({ errno: 400, error: `Not supported for provider: ${provider}` });
+      }
       const sn = req.body.sn || userConfig?.deviceSn;
       const key = req.body.key;
 
@@ -98,12 +235,34 @@ function registerDiagnosticsReadRoutes(app, deps = {}) {
       console.log(`[Diagnostics] all-data endpoint called by user: ${req.user.uid}`);
 
       const userConfig = await getUserConfig(req.user.uid);
-      console.log(`[Diagnostics] User config loaded, deviceSn: ${userConfig?.deviceSn}`);
+      const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
+      const adapter = provider !== 'foxess' && adapterRegistry
+        ? adapterRegistry.getDeviceProvider(provider)
+        : null;
+      const sn = resolveProviderDeviceId(userConfig, req.body.sn).deviceId;
+      console.log(`[Diagnostics] User config loaded, provider=${provider}, deviceSn=${sn}`);
 
-      const sn = req.body.sn || userConfig?.deviceSn;
       if (!sn) {
         console.error('[Diagnostics] No device SN found');
         return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
+      }
+
+      if (provider !== 'foxess' && adapter && typeof adapter.getStatus === 'function') {
+        const status = await adapter.getStatus({ deviceSN: sn, userConfig, userId: req.user.uid });
+        const invertAlphaEssBatteryPowerSign = provider === 'alphaess'
+          ? resolveAlphaEssBatterySignInversion(userConfig)
+          : false;
+        const normalized = buildRealtimePayloadFromDeviceStatus(status, sn, {
+          normalizeToKw: true,
+          invertBatteryPowerSign: invertAlphaEssBatteryPowerSign
+        });
+        const withHints = withTopologyHints(normalized);
+        console.log(`[Diagnostics] Adapter diagnostics response ready for provider=${provider}`);
+        return res.json(withHints);
+      }
+
+      if (provider !== 'foxess') {
+        return res.status(400).json({ errno: 400, error: `Not supported for provider: ${provider}` });
       }
 
       console.log(`[Diagnostics] Querying ALL variables for device: ${sn}`);
@@ -149,29 +308,7 @@ function registerDiagnosticsReadRoutes(app, deps = {}) {
         return res.json(result); // Return the error response as-is
       }
 
-      // Add topology hints based on data
-      if (result.result && Array.isArray(result.result)) {
-        const datas = result.result[0]?.datas || [];
-        const pvPower = datas.find((d) => d.variable === 'pvPower')?.value || 0;
-        const meterPower = datas.find((d) => d.variable === 'meterPower')?.value || null;
-        const meterPower2 = datas.find((d) => d.variable === 'meterPower2')?.value || null;
-        const batChargePower = datas.find((d) => d.variable === 'batChargePower')?.value || 0;
-        const gridConsumptionPower = datas.find((d) => d.variable === 'gridConsumptionPower')?.value || 0;
-
-        result.topologyHints = {
-          pvPower,
-          meterPower,
-          meterPower2,
-          batChargePower,
-          gridConsumptionPower,
-          likelyTopology:
-            (pvPower < 0.1 && (batChargePower > 0.5 || meterPower2 > 0.5) && gridConsumptionPower < 0.5)
-              ? 'AC-coupled (external PV via meter)'
-              : (pvPower > 0.5)
-                ? 'DC-coupled (standard)'
-                : 'Unknown (check during solar production hours)'
-        };
-      }
+      withTopologyHints(result);
 
       console.log('[Diagnostics] All data retrieved, topology hints:', result.topologyHints);
       res.json(result);

@@ -1547,7 +1547,7 @@
         days.forEach(day => {
             const m = metrics[day] || {};
             const inverterUsage = summarizeInverterUsage(m);
-            const total = inverterUsage.inverter + toCounter(m.amber) + toCounter(m.weather);
+            const total = inverterUsage.inverter + toCounter(m.amber) + toCounter(m.weather) + toCounter(m.ev);
             if (total > maxTotal) maxTotal = total;
         });
 
@@ -1559,6 +1559,7 @@
                 <span class="inverter">Inverter</span>
                 <span class="amber">Amber</span>
                 <span class="weather">Weather</span>
+                <span class="ev">EV</span>
             </div>`;
             days.forEach(day => {
                 const m = metrics[day] || {};
@@ -1566,7 +1567,8 @@
                 const inverter = inverterUsage.inverter;
                 const amber = toCounter(m.amber);
                 const weather = toCounter(m.weather);
-                const total = inverter + amber + weather;
+                const ev = toCounter(m.ev);
+                const total = inverter + amber + weather + ev;
                 const barScale = 200; // max bar width in px
                 const inverterTitle = inverterUsage.breakdown
                     ? `Inverter: ${inverter} (${inverterUsage.breakdown})`
@@ -1577,6 +1579,7 @@
                         <div class="metrics-bar inverter" style="width: ${Math.max(2, inverter / maxTotal * barScale)}px;" title="${inverterTitle}"></div>
                         <div class="metrics-bar amber" style="width: ${Math.max(2, amber / maxTotal * barScale)}px;" title="Amber: ${amber}"></div>
                         <div class="metrics-bar weather" style="width: ${Math.max(2, weather / maxTotal * barScale)}px;" title="Weather: ${weather}"></div>
+                        <div class="metrics-bar ev" style="width: ${Math.max(2, ev / maxTotal * barScale)}px;" title="EV: ${ev}"></div>
                     </div>
                     <span class="total">${total}</span>
                 </div>`;

@@ -112,12 +112,41 @@ function getInverterApiCount(dayMetrics = {}) {
 
     Object.entries(metrics).forEach(([metricKey, value]) => {
         const key = String(metricKey || '').toLowerCase().trim();
-        if (!key || key === 'inverter' || key === 'inverterbyprovider' || key === 'amber' || key === 'weather' || key === 'updatedat') return;
+        if (!key || key === 'inverter' || key === 'inverterbyprovider' || key === 'amber' || key === 'weather' || key === 'ev' || key === 'tesla' || key === 'teslafleet' || key === 'updatedat') return;
         if (Object.prototype.hasOwnProperty.call(providerBuckets, key)) return;
         addProviderCount(key, value);
     });
 
     return Object.values(providerBuckets).reduce((sum, count) => sum + count, 0);
+}
+
+function getEvApiCount(dayMetrics = {}) {
+    const metrics = (dayMetrics && typeof dayMetrics === 'object') ? dayMetrics : {};
+    const toCounter = (value) => {
+        const n = Number(value);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+
+    const readNestedCounter = (root, path = []) => {
+        if (!root || typeof root !== 'object' || !Array.isArray(path) || path.length === 0) return 0;
+        let cursor = root;
+        for (const segment of path) {
+            if (!cursor || typeof cursor !== 'object') return 0;
+            cursor = cursor[segment];
+        }
+        return toCounter(cursor);
+    };
+
+    const explicitEv = toCounter(metrics.ev);
+    if (explicitEv) return explicitEv;
+
+    const explicitTesla = toCounter(metrics.tesla);
+    if (explicitTesla) return explicitTesla;
+
+    const teslaFleetBillable = readNestedCounter(metrics, ['teslaFleet', 'calls', 'billable']);
+    if (teslaFleetBillable) return teslaFleetBillable;
+
+    return readNestedCounter(metrics, ['teslaFleet', 'calls', 'total']);
 }
 
 /**
@@ -168,11 +197,13 @@ async function loadApiMetrics(days = 1) {
         const inverterEl = document.getElementById('countFox');
         const amberEl = document.getElementById('countAmber');
         const weatherEl = document.getElementById('countWeather');
+        const evEl = document.getElementById('countEV');
         
         if (dateEl) dateEl.textContent = formatted;
         if (inverterEl) inverterEl.textContent = getInverterApiCount(today);
         if (amberEl) amberEl.textContent = today.amber ?? 0;
         if (weatherEl) weatherEl.textContent = today.weather ?? 0;
+        if (evEl) evEl.textContent = getEvApiCount(today);
     } catch (e) {
         console.warn('Failed to load API metrics:', e.message);
     }

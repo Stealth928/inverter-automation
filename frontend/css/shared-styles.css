@@ -1539,6 +1539,10 @@ textarea.input {
     color: var(--color-yellow);
 }
 
+.api-metrics-footer .metric-ev {
+    color: var(--color-purple);
+}
+
 .api-metrics-footer .metric-value {
     font-weight: 600;
 }

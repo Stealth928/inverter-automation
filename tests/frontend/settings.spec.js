@@ -9,7 +9,8 @@ const BASE_CONFIG = {
   cache: {
     amber: 60000,
     inverter: 300000,
-    weather: 1800000
+    weather: 1800000,
+    teslaStatus: 600000
   },
   defaults: {
     cooldownMinutes: 5,
@@ -131,6 +132,10 @@ async function mockSettingsApi(page, config = BASE_CONFIG) {
 
   return {
     getVehicles: () => evVehicles.map((vehicle) => ({ ...vehicle })),
+    setVehicles: (vehicles = []) => {
+      const next = Array.isArray(vehicles) ? vehicles : [];
+      evVehicles.splice(0, evVehicles.length, ...next.map((vehicle) => ({ ...vehicle })));
+    },
     getOAuthStartRequests: () => oauthStartRequests.map((req) => ({ ...req })),
     getOAuthCallbackRequests: () => oauthCallbackRequests.map((req) => ({ ...req }))
   };
@@ -288,7 +293,38 @@ test.describe('Settings Page', () => {
     await expect(page.getByRole('link', { name: /Open Tesla Developer Dashboard/i })).toBeVisible();
     await expect(page.locator('#teslaCopyRedirectBtn')).toBeVisible();
     await expect(page.locator('#teslaConnectBtn')).toBeVisible();
+    await expect(page.locator('#teslaAddVehicleBtn')).toBeVisible();
+    await expect(page.locator('#teslaVehicleStatusCounts')).toBeVisible();
     await expect(page.locator('#teslaVehiclesList')).toBeVisible();
+  });
+
+  test('should show per-vehicle Tesla status rows and count chips', async ({ page }) => {
+    apiMock.setVehicles([
+      {
+        vehicleId: '5YJ3E1EA7JF000001',
+        vin: '5YJ3E1EA7JF000001',
+        provider: 'tesla',
+        displayName: 'Model Y Home',
+        hasCredentials: true
+      },
+      {
+        vehicleId: '5YJ3E1EA7JF000002',
+        vin: '5YJ3E1EA7JF000002',
+        provider: 'tesla',
+        displayName: 'Model 3 Work',
+        hasCredentials: false
+      }
+    ]);
+
+    await page.locator('#teslaRefreshVehiclesBtn').click();
+
+    await expect(page.locator('#teslaVehiclesList')).toContainText('Model Y Home');
+    await expect(page.locator('#teslaVehiclesList')).toContainText('Model 3 Work');
+    await expect(page.locator('#teslaVehiclesList')).toContainText(/Connected/i);
+    await expect(page.locator('#teslaVehiclesList')).toContainText(/Setup Required/i);
+    await expect(page.locator('#teslaVehicleStatusCounts')).toContainText(/Connected/i);
+    await expect(page.locator('#teslaVehicleStatusCounts')).toContainText(/Setup Required/i);
+    await expect(page.locator('#teslaVehicleStatusCounts')).toContainText(/Action Needed/i);
   });
 
   test('should keep Tesla integration at the bottom of settings', async ({ page }) => {
@@ -324,6 +360,56 @@ test.describe('Settings Page', () => {
     await expect(page.locator('#teslaRegionHelp')).toContainText(/China/i);
   });
 
+  test('should disable Tesla reset login button when there is no pending OAuth session', async ({ page }) => {
+    const resetBtn = page.locator('#teslaClearPendingBtn');
+    await expect(resetBtn).toBeVisible();
+    await expect(resetBtn).toBeDisabled();
+    await expect(resetBtn).toContainText(/No Pending Tesla Login/i);
+  });
+
+  test('should clear pending Tesla OAuth session when reset login button is clicked', async ({ page }) => {
+    const pending = {
+      vehicleId: '5YJ3E1EA7JF000001',
+      vin: '5YJ3E1EA7JF000001',
+      clientId: 'tesla-client-id-123',
+      clientSecret: '',
+      displayName: 'Model Y Test',
+      region: 'na',
+      redirectUri: 'http://localhost:3000/settings.html',
+      codeVerifier: 'pkce-verifier-123',
+      state: 'oauth-state-123',
+      startedAtMs: Date.now()
+    };
+
+    await page.evaluate((payload) => {
+      sessionStorage.setItem('teslaOauthPending', JSON.stringify(payload));
+    }, pending);
+    await page.reload();
+
+    const resetBtn = page.locator('#teslaClearPendingBtn');
+    await expect(resetBtn).toBeEnabled();
+
+    await resetBtn.click();
+
+    await expect(page.locator('#teslaOnboardingStatus')).toContainText(/reset tesla login state|start a fresh login/i);
+    await expect(resetBtn).toBeDisabled();
+    await expect(resetBtn).toContainText(/No Pending Tesla Login/i);
+
+    const pendingRaw = await page.evaluate(() => sessionStorage.getItem('teslaOauthPending'));
+    expect(pendingRaw).toBeNull();
+  });
+
+  test('should prepare onboarding form when adding another Tesla vehicle', async ({ page }) => {
+    await page.locator('#teslaVehicleId').fill('5YJ3E1EA7JF000099');
+    await page.locator('#teslaDisplayName').fill('Temporary Tesla');
+
+    await page.locator('#teslaAddVehicleBtn').click();
+
+    await expect(page.locator('#teslaVehicleId')).toHaveValue('');
+    await expect(page.locator('#teslaDisplayName')).toHaveValue('');
+    await expect(page.locator('#teslaOnboardingStatus')).toContainText(/adding another tesla/i);
+  });
+
   test('should complete Tesla OAuth callback and send codeVerifier', async ({ page }) => {
     const pending = {
       vehicleId: '5YJ3E1EA7JF000001',
@@ -352,6 +438,7 @@ test.describe('Settings Page', () => {
     expect(callbackRequests[0].vin).toBe('5YJ3E1EA7JF000001');
 
     await expect(page.locator('#teslaVehiclesList')).toContainText('5YJ3E1EA7JF000001');
+    await expect(page.locator('#teslaVehiclesList')).toContainText(/Newly connected/i);
     await expect(page.locator('#teslaOnboardingStatus')).toContainText(/Tesla vehicle\(s\) connected|Tesla connected/i);
     expect(page.url()).not.toContain('code=');
     expect(page.url()).not.toContain('state=');

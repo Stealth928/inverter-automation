@@ -6,6 +6,9 @@ const WRITE_ONLY_SECRET_FIELDS = Object.freeze([
   'sigenPassword'
 ]);
 
+const TESLA_STATUS_CACHE_MIN_MS = 120000;
+const TESLA_STATUS_CACHE_MAX_MS = 10000000;
+
 function stripWriteOnlySecrets(config) {
   if (!config || typeof config !== 'object') return config;
   const sanitized = { ...config };
@@ -119,6 +122,23 @@ function registerConfigMutationRoutes(app, deps = {}) {
       const newConfig = req.body && typeof req.body === 'object' ? (req.body.config ?? req.body) : null;
       if (!newConfig || typeof newConfig !== 'object') {
         return res.status(400).json({ errno: 400, error: 'Invalid payload: expected config object' });
+      }
+
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'cache') && newConfig.cache && typeof newConfig.cache === 'object') {
+        if (Object.prototype.hasOwnProperty.call(newConfig.cache, 'teslaStatus')) {
+          const teslaStatusMs = Number(newConfig.cache.teslaStatus);
+          if (!Number.isFinite(teslaStatusMs)) {
+            return res.status(400).json({ errno: 400, error: 'Tesla status cache must be a numeric millisecond value' });
+          }
+          const roundedTtl = Math.round(teslaStatusMs);
+          if (roundedTtl < TESLA_STATUS_CACHE_MIN_MS || roundedTtl > TESLA_STATUS_CACHE_MAX_MS) {
+            return res.status(400).json({
+              errno: 400,
+              error: `Tesla status cache must be between ${TESLA_STATUS_CACHE_MIN_MS} and ${TESLA_STATUS_CACHE_MAX_MS} milliseconds`
+            });
+          }
+          newConfig.cache.teslaStatus = roundedTtl;
+        }
       }
 
       const userId = req.user.uid;

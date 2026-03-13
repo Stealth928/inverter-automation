@@ -848,6 +848,11 @@ section { padding: 80px 0; }
   --feature-glow: rgba(182, 191, 255, 0.45);
 }
 
+.feature-card__icon--ev {
+  --feature-glyph: #ff9f9a;
+  --feature-glow: rgba(255, 159, 154, 0.46);
+}
+
 .feature-card__icon--library {
   --feature-glyph: #9be8ff;
   --feature-glow: rgba(155, 232, 255, 0.48);
@@ -1157,6 +1162,9 @@ section { padding: 80px 0; }
 .features-grid  .reveal:nth-child(4) { transition-delay: .07s; }
 .features-grid  .reveal:nth-child(5) { transition-delay: .14s; }
 .features-grid  .reveal:nth-child(6) { transition-delay: .21s; }
+.features-grid  .reveal:nth-child(7) { transition-delay: .07s; }
+.features-grid  .reveal:nth-child(8) { transition-delay: .14s; }
+.features-grid  .reveal:nth-child(9) { transition-delay: .21s; }
 .tools-grid     .reveal:nth-child(2) { transition-delay: .07s; }
 .tools-grid     .reveal:nth-child(3) { transition-delay: .14s; }
 .tools-grid     .reveal:nth-child(4) { transition-delay: .21s; }
@@ -1215,6 +1223,11 @@ section { padding: 80px 0; }
   color: #f2ca78;
   background: rgba(85, 59, 14, 0.58);
   border-color: rgba(210, 153, 34, 0.62);
+}
+.brand-badge--tesla {
+  color: #ffb4ae;
+  background: rgba(86, 26, 24, 0.58);
+  border-color: rgba(248, 81, 73, 0.62);
 }
 .brand-sep { font-size: 0.78rem; color: rgba(165, 187, 212, 0.86); }
 
@@ -2932,7 +2945,7 @@ section { padding: 80px 0; }
   color: var(--land-text);
 }
 
-/* Features grid — 4 cols at large viewport for 8-card layout */
+/* Features grid — 4 columns at large viewport */
 @media (min-width: 1100px) {
   .tools-grid { grid-template-columns: repeat(4, 1fr); }
   .features-grid { grid-template-columns: repeat(4, 1fr); }

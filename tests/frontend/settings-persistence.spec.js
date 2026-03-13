@@ -43,7 +43,8 @@ test.describe('Settings Page - Data Persistence', () => {
         cache: {
           amber: 60000,
           inverter: 300000,
-          weather: 1800000
+          weather: 1800000,
+          teslaStatus: 600000
         },
         defaults: {
           cooldownMinutes: 5,
@@ -242,10 +243,12 @@ test.describe('Settings Page - Data Persistence', () => {
     await expect(page.locator('#cache_amber')).toHaveValue('60');
     await expect(page.locator('#cache_inverter')).toHaveValue('300');
     await expect(page.locator('#cache_weather')).toHaveValue('1800');
+    await expect(page.locator('#cache_teslaStatus')).toHaveValue('600');
     await expect(page.locator('#automation_intervalMs_display')).toHaveText('= 1.0m');
     await expect(page.locator('#cache_amber_display')).toHaveText('= 1.0m');
     await expect(page.locator('#cache_inverter_display')).toHaveText('= 5.0m');
     await expect(page.locator('#cache_weather_display')).toHaveText('= 30.0m');
+    await expect(page.locator('#cache_teslaStatus_display')).toHaveText('= 10.0m');
   });
 
   test('should translate seconds input values to milliseconds in API payload', async ({ page }) => {
@@ -260,6 +263,7 @@ test.describe('Settings Page - Data Persistence', () => {
     await page.locator('#cache_amber').fill('11');
     await page.locator('#cache_inverter').fill('77');
     await page.locator('#cache_weather').fill('333');
+    await page.locator('#cache_teslaStatus').fill('777');
 
     const saveBtn = page.locator('button:has-text("Save")').first();
     await saveBtn.click();
@@ -270,6 +274,7 @@ test.describe('Settings Page - Data Persistence', () => {
     expect(lastPost.cache?.amber).toBe(11000);
     expect(lastPost.cache?.inverter).toBe(77000);
     expect(lastPost.cache?.weather).toBe(333000);
+    expect(lastPost.cache?.teslaStatus).toBe(777000);
   });
 
   test('should keep automation FAQ and units aligned to seconds UI', async ({ page }) => {
@@ -282,7 +287,7 @@ test.describe('Settings Page - Data Persistence', () => {
     await faqToggle.click();
 
     const secUnitCount = await page.locator('#automationSection .setting-input .unit:has-text("sec")').count();
-    expect(secUnitCount).toBe(4);
+    expect(secUnitCount).toBe(5);
     await expect(page.locator('#automationSection .faq-content')).toContainText('Inputs on this page are in seconds; values are converted to milliseconds when saved to the API.');
   });
 

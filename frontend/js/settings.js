@@ -10,6 +10,10 @@
             onReady: () => {
                 try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch(e) {}
                 try {
+                    bindTeslaOnboardingHandlers();
+                    updateTeslaRedirectUriInput();
+                    updateTeslaRegionHelp();
+                    syncTeslaPendingAuthControls();
                     loadSettings();
                 } catch (error) {
                     console.warn('[Settings] loadSettings failed to start', error);
@@ -30,11 +34,13 @@
             'automation_intervalMs',
             'cache_amber',
             'cache_inverter',
-            'cache_weather'
+            'cache_weather',
+            'cache_teslaStatus'
         ]);
 
         const TESLA_OAUTH_PENDING_KEY = 'teslaOauthPending';
         const TESLA_OAUTH_PENDING_TTL_MS = 20 * 60 * 1000;
+        const TESLA_RECENT_CONNECTION_HIGHLIGHT_MS = 10 * 60 * 1000;
         const TESLA_REGION_DEFAULT = 'na';
         const TESLA_REGION_HELP = Object.freeze({
             na: 'Use North America + Asia-Pacific for the United States, Canada, Australia, New Zealand, Japan, South Korea, and most Tesla accounts outside Europe, Africa, the Middle East, and China.',
@@ -43,6 +49,8 @@
         });
         const TESLA_VIN_REGEX = /^[A-HJ-NPR-Z0-9]{17}$/i;
         let teslaOnboardingHandlersBound = false;
+        let teslaRecentlyConnectedVin = '';
+        let teslaRecentlyConnectedAtMs = 0;
 
         function normalizeTeslaVin(vin) {
             const normalized = String(vin || '').trim().toUpperCase();
@@ -54,9 +62,11 @@
                 badge: document.getElementById('teslaOnboardingBadge'),
                 status: document.getElementById('teslaOnboardingStatus'),
                 connectBtn: document.getElementById('teslaConnectBtn'),
+                addVehicleBtn: document.getElementById('teslaAddVehicleBtn'),
                 clearPendingBtn: document.getElementById('teslaClearPendingBtn'),
                 refreshBtn: document.getElementById('teslaRefreshVehiclesBtn'),
                 vehiclesList: document.getElementById('teslaVehiclesList'),
+                vehicleStatusCounts: document.getElementById('teslaVehicleStatusCounts'),
                 copyRedirectBtn: document.getElementById('teslaCopyRedirectBtn'),
                 clientIdInput: document.getElementById('teslaClientId'),
                 clientSecretInput: document.getElementById('teslaClientSecret'),
@@ -176,6 +186,7 @@
             } catch (e) {
                 console.warn('[Tesla OAuth] Failed to persist pending session', e);
             }
+            syncTeslaPendingAuthControls();
         }
 
         function clearTeslaPendingOAuth() {
@@ -184,6 +195,7 @@
             } catch (e) {
                 console.warn('[Tesla OAuth] Failed to clear pending session', e);
             }
+            syncTeslaPendingAuthControls();
         }
 
         function readTeslaPendingOAuth() {
@@ -209,6 +221,24 @@
                 console.warn('[Tesla OAuth] Failed to read pending session', e);
                 clearTeslaPendingOAuth();
                 return null;
+            }
+        }
+
+        function syncTeslaPendingAuthControls() {
+            const { clearPendingBtn, addVehicleBtn } = getTeslaOnboardingElements();
+            if (!clearPendingBtn) return;
+            const pending = readTeslaPendingOAuth();
+            const hasPending = Boolean(pending);
+            clearPendingBtn.disabled = !hasPending;
+            clearPendingBtn.textContent = hasPending ? 'Reset Tesla Login' : 'No Pending Tesla Login';
+            clearPendingBtn.title = hasPending
+                ? 'Clear the pending Tesla OAuth session and restart login.'
+                : 'No Tesla OAuth login session is currently pending.';
+            if (addVehicleBtn) {
+                addVehicleBtn.disabled = hasPending;
+                addVehicleBtn.title = hasPending
+                    ? 'Finish or reset the current Tesla sign-in before adding another vehicle.'
+                    : 'Prepare the form to add another Tesla VIN.';
             }
         }
 
@@ -285,12 +315,87 @@
             }
         }
 
+        function buildTeslaVehicleStatusSummaryChips(summary = {}) {
+            return [
+                { key: 'connected', label: 'Connected', count: Number(summary.connected || 0) },
+                { key: 'setup_required', label: 'Setup Required', count: Number(summary.setup_required || 0) },
+                { key: 'action_needed', label: 'Action Needed', count: Number(summary.action_needed || 0) }
+            ];
+        }
+
+        function renderTeslaVehicleStatusCounts(summary = {}) {
+            const { vehicleStatusCounts } = getTeslaOnboardingElements();
+            if (!vehicleStatusCounts) return;
+            vehicleStatusCounts.innerHTML = '';
+            const chips = buildTeslaVehicleStatusSummaryChips(summary);
+            chips.forEach((chip) => {
+                const el = document.createElement('div');
+                el.className = `tesla-status-count-chip status-${chip.key}`;
+                const label = document.createElement('span');
+                label.textContent = chip.label;
+                const count = document.createElement('span');
+                count.className = 'count';
+                count.textContent = String(chip.count);
+                el.appendChild(label);
+                el.appendChild(count);
+                vehicleStatusCounts.appendChild(el);
+            });
+        }
+
+        function isTeslaRecentConnection(vehicleVin) {
+            const normalizedVin = normalizeTeslaVin(vehicleVin);
+            if (!normalizedVin || !teslaRecentlyConnectedVin) return false;
+            if (normalizedVin !== teslaRecentlyConnectedVin) return false;
+            return (Date.now() - Number(teslaRecentlyConnectedAtMs || 0)) <= TESLA_RECENT_CONNECTION_HIGHLIGHT_MS;
+        }
+
+        function markTeslaRecentlyConnected(vehicleId) {
+            const normalizedVin = normalizeTeslaVin(vehicleId);
+            if (!normalizedVin) return;
+            teslaRecentlyConnectedVin = normalizedVin;
+            teslaRecentlyConnectedAtMs = Date.now();
+        }
+
+        function resolveTeslaVehicleUiStatus(vehicle, pendingVin = '') {
+            const vehicleVin = normalizeTeslaVin(vehicle?.vin || vehicle?.vehicleId || '');
+            const vehicleId = String(vehicle?.vehicleId || '').trim();
+            const hasCredentials = vehicle?.hasCredentials !== false;
+            const normalizedPendingVin = normalizeTeslaVin(pendingVin);
+            const normalizedVehicleId = normalizeTeslaVin(vehicleId);
+
+            if (normalizedPendingVin && (normalizedPendingVin === vehicleVin || normalizedPendingVin === normalizedVehicleId)) {
+                return {
+                    key: 'action_needed',
+                    label: 'Action Needed',
+                    detail: 'Complete Tesla sign-in approval and return here to finish setup.'
+                };
+            }
+
+            if (!hasCredentials) {
+                return {
+                    key: 'setup_required',
+                    label: 'Setup Required',
+                    detail: 'Vehicle is registered, but Tesla OAuth credentials are missing.'
+                };
+            }
+
+            return {
+                key: 'connected',
+                label: 'Connected',
+                detail: 'Vehicle is connected and ready for dashboard status updates.'
+            };
+        }
+
         function renderTeslaVehicles(vehicles) {
             const { vehiclesList } = getTeslaOnboardingElements();
             if (!vehiclesList) return;
             vehiclesList.innerHTML = '';
             const list = Array.isArray(vehicles) ? vehicles : [];
+            const pending = readTeslaPendingOAuth();
+            const pendingVin = normalizeTeslaVin(pending?.vin || pending?.vehicleId || '');
+            const statusSummary = { connected: 0, setup_required: 0, action_needed: 0 };
             if (list.length === 0) {
+                renderTeslaVehicleStatusCounts(statusSummary);
                 const empty = document.createElement('span');
                 empty.style.color = 'var(--text-secondary)';
                 empty.style.fontSize = '12px';
@@ -303,24 +408,55 @@
                 const vehicleId = String(vehicle?.vehicleId || '').trim();
                 const primaryKey = vehicleVin || vehicleId;
                 if (!primaryKey) return;
-                const chip = document.createElement('div');
-                chip.className = 'tesla-vehicle-chip';
-
-                const label = document.createElement('span');
                 const displayName = String(vehicle?.displayName || primaryKey);
                 const idLabel = vehicleVin || vehicleId;
-                label.textContent = `${displayName} (${idLabel})`;
-                chip.appendChild(label);
+                const vehicleStatus = resolveTeslaVehicleUiStatus(vehicle, pendingVin);
+                statusSummary[vehicleStatus.key] = Number(statusSummary[vehicleStatus.key] || 0) + 1;
+                const isRecent = isTeslaRecentConnection(vehicleVin || vehicleId);
+
+                const row = document.createElement('div');
+                row.className = `tesla-vehicle-row status-${vehicleStatus.key}${isRecent ? ' is-recently-connected' : ''}`;
+
+                const main = document.createElement('div');
+                main.className = 'tesla-vehicle-main';
+                const title = document.createElement('div');
+                title.className = 'tesla-vehicle-title';
+                title.textContent = displayName;
+                const idEl = document.createElement('div');
+                idEl.className = 'tesla-vehicle-id';
+                idEl.textContent = idLabel;
+                const detail = document.createElement('div');
+                detail.className = 'tesla-vehicle-subtext';
+                detail.textContent = vehicleStatus.detail;
+                main.appendChild(title);
+                main.appendChild(idEl);
+                main.appendChild(detail);
+                row.appendChild(main);
+
+                const right = document.createElement('div');
+                right.className = 'tesla-vehicle-right';
+                const statusPill = document.createElement('span');
+                statusPill.className = `tesla-vehicle-status status-${vehicleStatus.key}`;
+                statusPill.textContent = vehicleStatus.label;
+                right.appendChild(statusPill);
+
+                if (isRecent) {
+                    const newPill = document.createElement('span');
+                    newPill.className = 'tesla-vehicle-status status-new';
+                    newPill.textContent = 'Newly connected';
+                    right.appendChild(newPill);
+                }
 
                 const removeBtn = document.createElement('button');
                 removeBtn.type = 'button';
                 removeBtn.setAttribute('data-tesla-remove-id', primaryKey);
                 removeBtn.title = `Disconnect ${displayName}`;
                 removeBtn.textContent = 'Disconnect';
-                chip.appendChild(removeBtn);
-
-                vehiclesList.appendChild(chip);
+                right.appendChild(removeBtn);
+                row.appendChild(right);
+                vehiclesList.appendChild(row);
             });
+            renderTeslaVehicleStatusCounts(statusSummary);
         }
 
         async function loadTeslaVehicles(options = {}) {
@@ -340,7 +476,10 @@
                 if (!preserveStatus) {
                     if (teslaVehicles.length > 0) {
                         setTeslaOnboardingBadge('Connected', 'sync');
-                        setTeslaOnboardingStatus(`${teslaVehicles.length} Tesla vehicle(s) connected.`, 'success');
+                        const suffix = teslaVehicles.length > 1
+                            ? 'Use Add another vehicle to onboard more Teslas.'
+                            : 'Use Add another vehicle when you are ready for the next Tesla.';
+                        setTeslaOnboardingStatus(`${teslaVehicles.length} Tesla vehicle(s) listed. ${suffix}`, 'success');
                     } else {
                         setTeslaOnboardingBadge('Setup Required', 'modified');
                         setTeslaOnboardingStatus('No Tesla vehicles connected yet. Complete the Tesla app setup above, then use Connect with Tesla.', 'warning');
@@ -363,14 +502,28 @@
         async function removeTeslaVehicle(vehicleId) {
             const trimmedId = String(vehicleId || '').trim();
             if (!trimmedId) return;
-            if (!window.apiClient || typeof window.apiClient.deleteEVVehicle !== 'function') {
+            if (
+                !window.apiClient ||
+                (
+                    typeof window.apiClient.deleteEVVehicle !== 'function' &&
+                    typeof window.apiClient.request !== 'function'
+                )
+            ) {
                 showMessage('warning', 'Tesla vehicle removal is unavailable right now');
                 return;
             }
             const shouldDelete = confirm(`Disconnect Tesla vehicle ${trimmedId}?`);
             if (!shouldDelete) return;
             try {
-                const resp = await window.apiClient.deleteEVVehicle(trimmedId);
+                let resp = null;
+                if (typeof window.apiClient.request === 'function') {
+                    resp = await window.apiClient.request(
+                        `/api/ev/vehicles/${encodeURIComponent(trimmedId)}`,
+                        { method: 'DELETE' }
+                    );
+                } else {
+                    resp = await window.apiClient.deleteEVVehicle(trimmedId);
+                }
                 if (!resp || resp.errno !== 0) {
                     throw new Error(extractApiErrorMessage(resp, 'Failed to disconnect vehicle'));
                 }
@@ -559,6 +712,7 @@
 
                 clearTeslaPendingOAuth();
                 cleanTeslaOAuthParamsFromUrl();
+                markTeslaRecentlyConnected(pending.vehicleId);
                 setTeslaOnboardingBadge('Connected', 'sync');
                 setTeslaOnboardingStatus(`Tesla connected for VIN ${pending.vehicleId}. If controls stay locked, pair the virtual key in the Tesla mobile app.`, 'success');
                 showMessage('success', `Tesla connected for VIN ${pending.vehicleId}`);
@@ -574,10 +728,39 @@
         }
 
         function clearTeslaPendingAuthFlow() {
+            const pending = readTeslaPendingOAuth();
+            if (!pending) {
+                syncTeslaPendingAuthControls();
+                setTeslaOnboardingBadge('Setup Required', 'modified');
+                setTeslaOnboardingStatus('No pending Tesla sign-in session found. Use Connect with Tesla to start a fresh login.', 'warning');
+                showMessage('info', 'No pending Tesla login session to reset');
+                return;
+            }
             clearTeslaPendingOAuth();
             setTeslaOnboardingBadge('Setup Required', 'modified');
             setTeslaOnboardingStatus('Reset Tesla login state. You can start the connect flow again.', 'warning');
             showMessage('info', 'Cleared pending Tesla authorization state');
+        }
+
+        function prepareTeslaAddAnotherVehicleFlow() {
+            const pending = readTeslaPendingOAuth();
+            if (pending) {
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus('Finish or reset the current Tesla sign-in before adding another vehicle.', 'warning');
+                showMessage('warning', 'Finish or reset the current Tesla login before adding another vehicle');
+                return;
+            }
+            const { vehicleIdInput, displayNameInput } = getTeslaOnboardingElements();
+            if (vehicleIdInput) {
+                vehicleIdInput.value = '';
+                vehicleIdInput.focus();
+            }
+            if (displayNameInput) {
+                displayNameInput.value = '';
+            }
+            setTeslaOnboardingBadge('Setup Required', 'modified');
+            setTeslaOnboardingStatus('Adding another Tesla: enter the next VIN, optional name, then click Connect with Tesla.', 'warning');
+            showMessage('info', 'Ready to add another Tesla vehicle');
         }
 
         function bindTeslaOnboardingHandlers() {
@@ -585,6 +768,7 @@
             teslaOnboardingHandlersBound = true;
             const {
                 connectBtn,
+                addVehicleBtn,
                 clearPendingBtn,
                 refreshBtn,
                 vehiclesList,
@@ -595,6 +779,11 @@
             if (connectBtn) {
                 connectBtn.addEventListener('click', () => {
                     startTeslaOnboardingFlow();
+                });
+            }
+            if (addVehicleBtn) {
+                addVehicleBtn.addEventListener('click', () => {
+                    prepareTeslaAddAnotherVehicleFlow();
                 });
             }
             if (clearPendingBtn) {
@@ -632,8 +821,12 @@
             bindTeslaOnboardingHandlers();
             updateTeslaRedirectUriInput();
             updateTeslaRegionHelp();
+            syncTeslaPendingAuthControls();
+            const pendingBeforeCallback = readTeslaPendingOAuth();
             const callbackResult = await handleTeslaOAuthCallbackIfPresent();
-            await loadTeslaVehicles({ silent: callbackResult.handled, preserveStatus: callbackResult.handled });
+            const preserveStatus = Boolean(callbackResult?.handled || pendingBeforeCallback);
+            await loadTeslaVehicles({ silent: callbackResult.handled, preserveStatus });
+            syncTeslaPendingAuthControls();
             return callbackResult;
         }
 
@@ -684,7 +877,7 @@
         function updateAllTimeDisplays() {
             const msInputs = [
                 'automation_intervalMs',
-                'cache_amber', 'cache_inverter', 'cache_weather'
+                'cache_amber', 'cache_inverter', 'cache_weather', 'cache_teslaStatus'
             ];
             msInputs.forEach(updateTimeDisplay);
         }
@@ -766,15 +959,6 @@
                 // Set current config
                 currentConfig = data.result;
                 
-                // Debug: Log what we received to understand location field structure
-                console.log('[Settings] Loaded config:', {
-                    location: currentConfig.location,
-                    weatherPlace: currentConfig.weatherPlace,
-                    preferencesWeatherPlace: currentConfig.preferences?.weatherPlace,
-                    hasConfig: !!currentConfig.config,
-                    timezone: currentConfig.timezone
-                });
-                
                 // Helper to safely set input value
                 const setInput = (id, value) => setInputValue(id, value);
                 
@@ -783,11 +967,13 @@
                 const cacheAmberMs = withMsFallback(currentConfig.cache?.amber, 60000);
                 const cacheInverterMs = withMsFallback(currentConfig.cache?.inverter, 300000);
                 const cacheWeatherMs = withMsFallback(currentConfig.cache?.weather, 1800000);
+                const cacheTeslaStatusMs = withMsFallback(currentConfig.cache?.teslaStatus, 600000);
 
                 setInput('automation_intervalMs', automationIntervalMs);
                 setInput('cache_amber', cacheAmberMs);
                 setInput('cache_inverter', cacheInverterMs);
                 setInput('cache_weather', cacheWeatherMs);
+                setInput('cache_teslaStatus', cacheTeslaStatusMs);
                 
                 // Defaults
                 if (currentConfig.defaults) {
@@ -995,6 +1181,9 @@
                 if (originalConfig.cache.weather === undefined || originalConfig.cache.weather === null) {
                     originalConfig.cache.weather = cacheWeatherMs;
                 }
+                if (originalConfig.cache.teslaStatus === undefined || originalConfig.cache.teslaStatus === null) {
+                    originalConfig.cache.teslaStatus = cacheTeslaStatusMs;
+                }
                 
                 if (originalConfig.defaults.cooldownMinutes === undefined || originalConfig.defaults.cooldownMinutes === null) {
                     originalConfig.defaults.cooldownMinutes = getInputValue('defaults_cooldownMinutes') || 5;
@@ -1095,7 +1284,6 @@
         function checkForChanges() {
             // Don't check if configs aren't loaded yet
             if (!currentConfig || !originalConfig) {
-                console.log('checkForChanges: configs not loaded yet');
                 return false;
             }
             
@@ -1297,7 +1485,8 @@
                     cache: {
                         amber: getInputValue('cache_amber'),
                         inverter: getInputValue('cache_inverter'),
-                        weather: getInputValue('cache_weather')
+                        weather: getInputValue('cache_weather'),
+                        teslaStatus: getInputValue('cache_teslaStatus')
                     },
                     defaults: {
                         cooldownMinutes: getInputValue('defaults_cooldownMinutes'),
@@ -1344,6 +1533,9 @@
                 }
                 if (newConfig.cache.weather < 300000 || newConfig.cache.weather > 3600000) {
                     validationErrors.push('Weather cache: must be 5m-1h');
+                }
+                if (newConfig.cache.teslaStatus < 120000 || newConfig.cache.teslaStatus > 10000000) {
+                    validationErrors.push('Tesla EV status cache: must be 120s-10000s');
                 }
                 
                 // Hardware validation
@@ -1598,6 +1790,10 @@
                 min: 300, max: 3600,
                 errorMsg: 'Weather cache must be 5m-1h'
             },
+            'cache_teslaStatus': {
+                min: 120, max: 10000,
+                errorMsg: 'Tesla EV status cache must be 120s-10000s'
+            },
             'defaults_cooldownMinutes': {
                 min: 0, max: 60,
                 errorMsg: 'Cooldown must be 0-60 minutes'
@@ -1668,8 +1864,6 @@
 
         // Add change listeners to all inputs
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('DOM Content Loaded');
-            
             // Add change listeners for status and time displays
             document.querySelectorAll('input[type="number"]').forEach(input => {
                 input.addEventListener('input', () => {

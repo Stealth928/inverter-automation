@@ -109,9 +109,14 @@ class FirebaseAuth {
       
       // Use Auth emulator for localhost development
       const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
-      const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+      const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
       if (isLocalhost && !this.auth.emulatorConfig) {
-        this.auth.useEmulator('http://127.0.0.1:9099');
+        const authEmulatorUrl = 'http://127.0.0.1:9099';
+        try {
+          this.auth.useEmulator(authEmulatorUrl, { disableWarnings: true });
+        } catch {
+          this.auth.useEmulator(authEmulatorUrl);
+        }
         // console.log('[FirebaseAuth] Using Auth emulator at http://127.0.0.1:9099');
       }
       

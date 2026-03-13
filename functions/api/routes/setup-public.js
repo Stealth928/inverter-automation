@@ -1,5 +1,21 @@
 'use strict';
 
+const TESLA_STATUS_CACHE_MIN_MS = 120000;
+const TESLA_STATUS_CACHE_MAX_MS = 10000000;
+const TESLA_STATUS_CACHE_DEFAULT_MS = 600000;
+
+function resolveTeslaStatusCacheMs(userConfig, serverConfig) {
+  const serverDefaultRaw = Number(serverConfig?.automation?.cacheTtl?.teslaStatus);
+  const serverDefault = Number.isFinite(serverDefaultRaw)
+    ? Math.round(serverDefaultRaw)
+    : TESLA_STATUS_CACHE_DEFAULT_MS;
+  const fallback = Math.min(TESLA_STATUS_CACHE_MAX_MS, Math.max(TESLA_STATUS_CACHE_MIN_MS, serverDefault));
+  const userValue = Number(userConfig?.cache?.teslaStatus);
+  if (!Number.isFinite(userValue)) return fallback;
+  const rounded = Math.round(userValue);
+  return Math.min(TESLA_STATUS_CACHE_MAX_MS, Math.max(TESLA_STATUS_CACHE_MIN_MS, rounded));
+}
+
 function registerSetupPublicRoutes(app, deps = {}) {
   const db = deps.db;
   const foxessAPI = deps.foxessAPI;
@@ -482,7 +498,8 @@ function registerSetupPublicRoutes(app, deps = {}) {
           cache: {
             amber: (userConfig?.cache?.amber) || serverConfig.automation.cacheTtl.amber,
             inverter: (userConfig?.automation?.inverterCacheTtlMs) || serverConfig.automation.cacheTtl.inverter,
-            weather: (userConfig?.cache?.weather) || serverConfig.automation.cacheTtl.weather
+            weather: (userConfig?.cache?.weather) || serverConfig.automation.cacheTtl.weather,
+            teslaStatus: resolveTeslaStatusCacheMs(userConfig, serverConfig)
           },
           defaults: {
             cooldownMinutes: (userConfig?.defaults?.cooldownMinutes) || 5,
@@ -531,7 +548,12 @@ function registerSetupPublicRoutes(app, deps = {}) {
           );
           const config = {
             automation: { intervalMs: serverConfig.automation.intervalMs },
-            cache: serverConfig.automation.cacheTtl,
+            cache: {
+              amber: serverConfig.automation.cacheTtl.amber,
+              inverter: serverConfig.automation.cacheTtl.inverter,
+              weather: serverConfig.automation.cacheTtl.weather,
+              teslaStatus: resolveTeslaStatusCacheMs(null, serverConfig)
+            },
             defaults: { cooldownMinutes: 5, durationMinutes: 30 }
           };
 
@@ -561,7 +583,12 @@ function registerSetupPublicRoutes(app, deps = {}) {
 
       const config = {
         automation: { intervalMs: serverConfig.automation.intervalMs },
-        cache: serverConfig.automation.cacheTtl,
+        cache: {
+          amber: serverConfig.automation.cacheTtl.amber,
+          inverter: serverConfig.automation.cacheTtl.inverter,
+          weather: serverConfig.automation.cacheTtl.weather,
+          teslaStatus: resolveTeslaStatusCacheMs(null, serverConfig)
+        },
         defaults: { cooldownMinutes: 5, durationMinutes: 30 }
       };
 

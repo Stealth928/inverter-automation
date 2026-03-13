@@ -16,7 +16,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="SoCrates">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="stylesheet" href="css/shared-styles.css?v=7" />
+    <link rel="stylesheet" href="css/shared-styles.css?v=8" />
     <script src="js/theme-init.js"></script>
     <!-- Firebase SDK (compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -26,7 +26,7 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=7"></script>
+    <script src="js/app-shell.js?v=12"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         .container {
@@ -702,6 +702,7 @@
         .metrics-bar.foxess { background: var(--accent-blue); }
         .metrics-bar.amber { background: var(--color-orange); }
         .metrics-bar.weather { background: var(--color-success); }
+        .metrics-bar.ev { background: var(--color-purple); }
         .metrics-day .total {
             width: 40px;
             text-align: right;
@@ -728,6 +729,7 @@
         .metrics-legend .foxess::before { background: var(--accent-blue); }
         .metrics-legend .amber::before { background: var(--color-orange); }
         .metrics-legend .weather::before { background: var(--color-success); }
+        .metrics-legend .ev::before { background: var(--color-purple); }
 
         /* Impersonation banner */
         .impersonate-banner {

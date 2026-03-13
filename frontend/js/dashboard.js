@@ -4,6 +4,113 @@
             return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
         }
 
+        const OVERVIEW_ICON_SVGS = {
+            customize: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/><circle cx="9" cy="6" r="1.8"/><circle cx="15" cy="12" r="1.8"/><circle cx="11" cy="18" r="1.8"/></svg>',
+            settings: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/><circle cx="12" cy="12" r="3"/></svg>',
+            bolt: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m13 2-7 11h5l-1 9 8-12h-5z"/></svg>',
+            money: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 18h16"/><path d="m6 14 4-4 3 3 5-6"/><circle cx="7" cy="7" r="2.2"/><path d="M7 5.6v2.8"/><path d="M5.8 7h2.4"/></svg>',
+            weather: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 17h10a3.5 3.5 0 0 0 .5-7A5 5 0 0 0 7.5 10 3.5 3.5 0 0 0 7 17z"/><path d="M9 13h6"/></svg>',
+            ev: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 15h14l-1.2-5H6.2L5 15z"/><circle cx="8" cy="17" r="1.5"/><circle cx="16" cy="17" r="1.5"/><path d="M7 10l1-2h8l1 2"/></svg>',
+            quick: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="9" width="18" height="10" rx="5"/><path d="M8 13v4"/><path d="M6 15h4"/><circle cx="15.5" cy="13.5" r="1"/><circle cx="17.5" cy="15.5" r="1"/></svg>',
+            calendar: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M4 10h16"/><path d="M8 14h4"/></svg>',
+            help: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8"/><path d="M9.5 9a2.5 2.5 0 1 1 4.3 1.7c-.6.6-1.3.9-1.8 1.6-.2.3-.3.6-.3 1"/><circle cx="12" cy="16.3" r=".6" fill="currentColor" stroke="none"/></svg>',
+            note: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M9 11h6"/><path d="M9 14h5"/></svg>',
+            target: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>',
+            chart: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="7" rx="1"/><rect x="11" y="8" width="3" height="10" rx="1"/><rect x="16" y="5" width="3" height="13" rx="1"/></svg>',
+            battery: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="7" width="14" height="10" rx="2"/><rect x="18" y="10" width="2" height="4" rx="1"/><rect x="6.5" y="9.5" width="8" height="5" rx="1" fill="currentColor" stroke="none"/></svg>',
+            temp: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 4a2 2 0 0 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v6"/></svg>',
+            clock: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>',
+            solar: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3.5"/><path d="M12 3v2.5"/><path d="M12 18.5V21"/><path d="m5.64 5.64 1.77 1.77"/><path d="m16.59 16.59 1.77 1.77"/><path d="M3 12h2.5"/><path d="M18.5 12H21"/><path d="m5.64 18.36 1.77-1.77"/><path d="m16.59 7.41 1.77-1.77"/></svg>',
+            home: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.8V20h14V9.8"/><path d="M9.5 20v-6h5v6"/></svg>',
+            grid: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 4v5"/><path d="M15 4v5"/><path d="M7 9h10v3a5 5 0 0 1-10 0z"/><path d="M12 15v5"/></svg>',
+            refresh: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M6.5 10.5A6 6 0 0 1 17 7"/><path d="M17.5 13.5A6 6 0 0 1 7 17"/></svg>',
+            play: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 7 8 5-8 5z" fill="currentColor" stroke="none"/></svg>',
+            stop: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>'
+        };
+
+        const OVERVIEW_EMOJI_ICON_MAP = {
+            '🧩': 'customize',
+            '⚙': 'settings',
+            '⚡': 'bolt',
+            '💰': 'money',
+            '🌤': 'weather',
+            '🚗': 'ev',
+            '🕹': 'quick',
+            '📅': 'calendar',
+            '❓': 'help',
+            '📝': 'note',
+            '🎯': 'target',
+            '📊': 'chart',
+            '🔋': 'battery',
+            '🌡': 'temp',
+            '🕐': 'clock'
+        };
+
+        function overviewIconSvg(iconKey) {
+            return OVERVIEW_ICON_SVGS[iconKey] || '';
+        }
+
+        function overviewIconChipHtml(iconKey, extraClasses = '') {
+            const svg = overviewIconSvg(iconKey);
+            if (!svg) return '';
+            const classes = ['app-overview-icon', `app-overview-icon--${iconKey}`];
+            if (extraClasses) classes.push(extraClasses);
+            return `<span class="${classes.join(' ')}" aria-hidden="true">${svg}</span>`;
+        }
+
+        function overviewIconKeyFromText(text) {
+            const firstToken = String(text || '').trim().split(/\s+/)[0] || '';
+            const normalized = firstToken.replace(/\uFE0F/g, '');
+            return OVERVIEW_EMOJI_ICON_MAP[normalized] || '';
+        }
+
+        function decorateOverviewIconSpans(root = document) {
+            const targets = root.querySelectorAll('.card-title .icon, .form-section-title .icon, .condition-item-header .icon, .automation-header h2 .icon, .modal-header h3 .icon');
+            targets.forEach((el) => {
+                if (el.dataset.overviewIconDecorated === '1') return;
+                const key = overviewIconKeyFromText(el.textContent || '');
+                if (!key) return;
+                const svg = overviewIconSvg(key);
+                if (!svg) return;
+                el.classList.add('app-overview-icon', `app-overview-icon--${key}`);
+                el.dataset.overviewIconDecorated = '1';
+                el.setAttribute('aria-hidden', 'true');
+                el.innerHTML = svg;
+            });
+        }
+
+        function decorateOverviewButtons(root = document) {
+            root.querySelectorAll('button.btn').forEach((btn) => {
+                if (btn.dataset.overviewEmojiButtonDecorated === '1') return;
+                const text = String(btn.textContent || '').trim();
+                let iconKey = '';
+                let label = '';
+
+                if (text.startsWith('🔋')) {
+                    iconKey = 'battery';
+                    label = text.replace(/^🔋\s*/, '') || 'Charge';
+                } else if (text.startsWith('⚡')) {
+                    iconKey = 'bolt';
+                    label = text.replace(/^⚡\s*/, '') || 'Discharge';
+                } else if (text.startsWith('▶')) {
+                    iconKey = 'play';
+                    label = text.replace(/^▶️?\s*/, '') || 'Start Quick Control';
+                } else if (text.startsWith('⏹')) {
+                    iconKey = 'stop';
+                    label = text.replace(/^⏹️?\s*/, '') || 'Stop Now';
+                }
+
+                if (!iconKey) return;
+                btn.innerHTML = `${overviewIconChipHtml(iconKey, 'app-overview-icon--sm')}<span>${label}</span>`;
+                btn.dataset.overviewEmojiButtonDecorated = '1';
+            });
+        }
+
+        function setQuickControlStartButtonIdle(button) {
+            if (!button) return;
+            button.innerHTML = `${overviewIconChipHtml('play', 'app-overview-icon--sm')}<span>Start Quick Control</span>`;
+        }
+
         // default collapsed state for right response panel; value persisted in localStorage
         let panelCollapsed = false;
         // When true, suppress auto-opening the right response panel (used during init)
@@ -70,6 +177,8 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             setTimeout(syncAutomationToggleVisibility, 0);
+            decorateOverviewIconSpans();
+            decorateOverviewButtons();
         });
 
         function initSmartTooltips() {
@@ -215,9 +324,15 @@
         function updateToggleBtnPosition() {
             const panel = document.getElementById('rightPanel');
             const toggleBtn = document.getElementById('toggleBtn');
-            if (!panel || !toggleBtn) return;
-            const panelWidth = panel.offsetWidth || 0;
-            toggleBtn.style.right = panelWidth + 'px';
+            const automationToggleBtn = document.getElementById('automationToggleBtn');
+            if (!panel) return;
+            const panelWidth = panel.classList.contains('collapsed') ? 0 : (panel.offsetWidth || 0);
+            if (toggleBtn) toggleBtn.style.right = panelWidth + 'px';
+            if (automationToggleBtn) {
+                // On desktop, keep automation launcher aligned with the right-panel edge.
+                // On mobile, CSS pins it to viewport edge.
+                automationToggleBtn.style.right = window.innerWidth > 900 ? `${panelWidth}px` : '0px';
+            }
         }
         
         function togglePanel() {
@@ -231,7 +346,6 @@
                 panel.classList.add('collapsed');
                 // Panel is collapsed — clicking should open it (move left), so show left-facing arrow
                 toggleBtn.textContent = 'R ◀';
-                toggleBtn.style.right = '0px';
                 try { localStorage.setItem('rightPanelCollapsed', 'true'); } catch(e) {}
             } else {
                 // Force reflow before removing class
@@ -239,10 +353,9 @@
                 panel.classList.remove('collapsed');
                 // Panel is expanded — clicking should collapse it (move right), so show right-facing arrow
                 toggleBtn.textContent = 'R ▶';
-                // Set button position to target width immediately - CSS transition will animate both smoothly
-                toggleBtn.style.right = '480px';
                 try { localStorage.setItem('rightPanelCollapsed', 'false'); } catch(e) {}
             }
+            updateToggleBtnPosition();
         }
         
         async function callAPI(endpoint, name, autoOpen = false, forceRefresh = false) {
@@ -1029,9 +1142,9 @@
                 const curtailmentLabel = curtailmentActive ? ' (Curtailed)' : '';
 
                 const html = `<div class="stat-row">
-                    <div class="${solarTileClass}" id="solar-tile"><div class="tile-icon">☀️</div><div class="value">${solarDisplay}</div><div class="label">Solar Production${curtailmentLabel}</div></div>
-                    <div class="stat-item"><div class="tile-icon">🏠</div><div class="value">${loadDisplay}</div><div class="label">House Load</div></div>
-                    <div class="stat-item"><div class="tile-icon">🔌</div><div class="value ${gridClass}">${gridDisplay}</div><div class="label">Grid Import/Export</div></div>
+                    <div class="${solarTileClass}" id="solar-tile"><div class="tile-icon tile-icon--glyph">${overviewIconChipHtml('solar', 'app-overview-icon--tile')}</div><div class="value">${solarDisplay}</div><div class="label">Solar Production${curtailmentLabel}</div></div>
+                    <div class="stat-item"><div class="tile-icon tile-icon--glyph">${overviewIconChipHtml('home', 'app-overview-icon--tile')}</div><div class="value">${loadDisplay}</div><div class="label">House Load</div></div>
+                    <div class="stat-item"><div class="tile-icon tile-icon--glyph">${overviewIconChipHtml('grid', 'app-overview-icon--tile')}</div><div class="value ${gridClass}">${gridDisplay}</div><div class="label">Grid Import/Export</div></div>
                     <div class="stat-item battery-tile"><div class="tile-icon battery ${batteryIsCharging ? 'charging' : ''}">
                                 <!-- Inline SVG battery: fill level reflects SoC -->
                                 ${(() => {
@@ -2758,6 +2871,16 @@
             return String(vehicle?.vehicleId || 'Unknown vehicle');
         }
 
+        function hasEVVehicleCredentialsConfigured(vehicle) {
+            if (!vehicle || typeof vehicle !== 'object') return false;
+            if (typeof vehicle.hasCredentials === 'boolean') {
+                return vehicle.hasCredentials;
+            }
+            // Backward compatibility with older API payloads that do not expose
+            // hasCredentials yet: keep existing behavior and try status fetch.
+            return true;
+        }
+
         function formatEVChargingState(state) {
             const normalized = String(state || 'unknown').toLowerCase();
             if (normalized === 'charging') return 'Charging';
@@ -2924,14 +3047,18 @@
 
             evDashboardState.vehicles.forEach((vehicle) => {
                 const vehicleId = String(vehicle.vehicleId || '');
+                const hasCredentials = hasEVVehicleCredentialsConfigured(vehicle);
                 const status = evDashboardState.statusByVehicleId[vehicleId] || null;
                 const socText = formatEVSoc(status?.socPct);
                 const chargingText = formatEVChargingState(status?.chargingState);
+                const summaryText = hasCredentials
+                    ? `${socText} • ${chargingText}`
+                    : 'Setup Required';
 
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = `ev-vehicle-tab${evDashboardState.selectedVehicleId === vehicleId ? ' active' : ''}`;
-                button.textContent = `${getEVVehicleDisplayName(vehicle)} • ${socText} • ${chargingText}`;
+                button.textContent = `${getEVVehicleDisplayName(vehicle)} • ${summaryText}`;
                 button.addEventListener('click', () => {
                     selectEVVehicle(vehicleId);
                 });
@@ -3102,6 +3229,17 @@
             evDashboardState.selectedVehicleId = selectedId;
             renderEVOverview();
 
+            const selectedVehicle = getSelectedEVVehicle();
+            if (selectedVehicle && !hasEVVehicleCredentialsConfigured(selectedVehicle)) {
+                evDashboardState.statusMetaByVehicleId[selectedId] = {
+                    source: 'setup',
+                    loadedAtMs: Date.now(),
+                    error: 'Vehicle credentials not configured. Connect Tesla in Settings to finish setup.'
+                };
+                renderEVOverview();
+                return;
+            }
+
             const forceLive = options.forceLive === true;
             await fetchEVVehicleStatus(selectedId, { live: forceLive, silent: true });
 
@@ -3171,6 +3309,19 @@
 
                 const statusFetches = evDashboardState.vehicles.map((vehicle) => {
                     const vehicleId = String(vehicle.vehicleId || '');
+                    if (!vehicleId) return Promise.resolve(null);
+
+                    if (!hasEVVehicleCredentialsConfigured(vehicle)) {
+                        delete evDashboardState.statusByVehicleId[vehicleId];
+                        delete evDashboardState.readinessByVehicleId[vehicleId];
+                        evDashboardState.statusMetaByVehicleId[vehicleId] = {
+                            source: 'setup',
+                            loadedAtMs: Date.now(),
+                            error: 'Vehicle credentials not configured. Connect Tesla in Settings to finish setup.'
+                        };
+                        return Promise.resolve(null);
+                    }
+
                     const live = forceLiveSelected && vehicleId === evDashboardState.selectedVehicleId;
                     return fetchEVVehicleStatus(vehicleId, { live, silent: true });
                 });
@@ -3515,7 +3666,7 @@
             statusDiv.style.display = 'block';
             formDiv.style.display = 'none';
             
-            const typeIcon = status.type === 'charge' ? '🔋' : '⚡';
+            const typeIcon = overviewIconChipHtml(status.type === 'charge' ? 'battery' : 'bolt', 'app-overview-icon--sm');
             const typeText = status.type === 'charge' ? 'Charging' : 'Discharging';
             const powerKW = (status.power / 1000).toFixed(1);
             
@@ -3552,7 +3703,7 @@
                     </div>` : '';
                 statusDiv.innerHTML = `
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                        <div style="font-weight:600;">${typeIcon} ${typeText} at ${powerKW} kW</div>
+                        <div style="font-weight:600;display:flex;align-items:center;gap:8px;">${typeIcon}<span>${typeText} at ${powerKW} kW</span></div>
                         <div id="quickControlCountdown" style="font-family:monospace;font-size:16px;font-weight:700;">${formatCountdown(remainingMs)}</div>
                     </div>
                     <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">
@@ -3562,7 +3713,7 @@
                     ${alphaEssHint}
                     <div style="display:flex;gap:8px;">
                         <button class="btn" onclick="stopQuickControl()" style="background:var(--color-danger);border-color:var(--color-danger);flex:1;font-size:12px;padding:8px;font-weight:600;">
-                            ⏹️ Stop Now
+                            ${overviewIconChipHtml('stop', 'app-overview-icon--sm')}<span>Stop Now</span>
                         </button>
                         <button class="btn" onclick="refreshQuickControlStatus(true)" style="font-size:12px;padding:8px;">
                             🔄 Refresh
@@ -3673,7 +3824,7 @@
                     
                     // Reset button first (in case updateQuickControlUI doesn't hide form immediately)
                     startBtn.disabled = false;
-                    startBtn.innerHTML = '▶️ Start Quick Control';
+                    setQuickControlStartButtonIdle(startBtn);
                     
                     // Update UI to show active status (this will hide the form)
                     updateQuickControlUI(data.state);
@@ -3683,7 +3834,7 @@
                     messageEl.textContent = `❌ Failed: ${data.error || data.msg || 'Unknown error'}`;
                     setTimeout(() => { messageEl.style.display = 'none'; }, 5000);
                     startBtn.disabled = false;
-                    startBtn.innerHTML = '▶️ Start Quick Control';
+                    setQuickControlStartButtonIdle(startBtn);
                 }
             } catch (error) {
                 console.error('[QuickControl] Start error:', error);
@@ -3697,7 +3848,7 @@
                 
                 setTimeout(() => { messageEl.style.display = 'none'; }, 5000);
                 startBtn.disabled = false;
-                startBtn.innerHTML = '▶️ Start Quick Control';
+                setQuickControlStartButtonIdle(startBtn);
             }
         }
         
@@ -4101,6 +4252,7 @@
             const newWidth = window.innerWidth - e.clientX;
             if (newWidth >= 300 && newWidth <= 800) {
                 rightPanel.style.width = newWidth + 'px';
+                updateToggleBtnPosition();
             }
         });
         
@@ -4108,6 +4260,11 @@
             isResizing = false;
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
+            updateToggleBtnPosition();
+        });
+
+        window.addEventListener('resize', () => {
+            updateToggleBtnPosition();
         });
 
         // Clean up timers before unload (helps when navigating away during development)
@@ -4559,7 +4716,6 @@
         let inverterRefreshTimer = null;
         let weatherRefreshTimer = null;
         let evRefreshTimer = null;
-        let evRefreshTick = 0;
 
         // Auto-refresh control: pause when tab hidden or after idle timeout
         const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes of no interaction
@@ -4613,7 +4769,6 @@
             if (evRefreshTimer) {
                 clearInterval(evRefreshTimer);
                 evRefreshTimer = null;
-                evRefreshTick = 0;
             }
             if (window.metricsRefreshTimer) {
                 clearInterval(window.metricsRefreshTimer);
@@ -4659,14 +4814,13 @@
                 }, REFRESH.weatherMs);
             }
 
-            // EV: refresh selected vehicle status every 90s (cached path)
+            // EV: refresh selected vehicle status every 90s (cached path only).
+            // Live fetches are user-initiated to avoid unnecessary paid API calls.
             if (!evRefreshTimer) {
                 evRefreshTimer = setInterval(() => {
                     const selectedId = String(evDashboardState.selectedVehicleId || '');
                     if (!selectedId) return;
-                    evRefreshTick += 1;
-                    const shouldForceLive = (evRefreshTick % 2) === 0;
-                    fetchEVVehicleStatus(selectedId, { live: shouldForceLive, silent: true });
+                    fetchEVVehicleStatus(selectedId, { live: false, silent: true });
                 }, 90000);
             }
 
@@ -5295,16 +5449,15 @@
                         toggleBtn.textContent = 'R ▶';
                     }
                     panelCollapsed = false;
-                    setTimeout(updateToggleBtnPosition, 100);
                 } else {
                     // Default or 'true' - keep collapsed
                     if (panel) panel.classList.add('collapsed');
                     if (toggleBtn) {
                         toggleBtn.textContent = 'R ◀';
-                        toggleBtn.style.right = '0px';
                     }
                     panelCollapsed = true;
                 }
+                setTimeout(updateToggleBtnPosition, 100);
             } catch (e) { /* ignore */ }
             // NOTE: All authenticated API calls are deferred to initializePageData()
             // which is called only after firebaseAuth confirms user is authenticated
@@ -7241,8 +7394,8 @@
                 const modal = document.getElementById('addRuleModal');
                 
                 // Change modal title
-                const modalTitle = modal?.querySelector('h3');
-                if (modalTitle) modalTitle.innerHTML = '✏️ Edit Automation Rule';
+                const modalTitle = modal?.querySelector('#ruleModalTitle');
+                if (modalTitle) modalTitle.textContent = 'Edit Automation Rule';
                 
                 // Set editing flag
                 document.getElementById('editingRuleId').value = ruleName;

@@ -1096,6 +1096,7 @@
         const isStandalone = () =>
             window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
+        const isLocalhost = () => ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
         const isIOS = () => /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
         const isAndroid = () => /android/i.test(window.navigator.userAgent || '');
 
@@ -1207,6 +1208,11 @@
         };
 
         window.addEventListener('beforeinstallprompt', (event) => {
+            if (isLocalhost()) {
+                deferredInstallPrompt = null;
+                hideButton();
+                return;
+            }
             event.preventDefault();
             deferredInstallPrompt = event;
             if (fallbackTimer) {

@@ -1324,12 +1324,33 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
   try {
     const { uid } = req.params;
     const KNOWN_INVERTER_METRIC_KEYS = new Set(['foxess', 'sungrow', 'sigenergy', 'alphaess']);
-    const KNOWN_NON_INVERTER_METRIC_KEYS = new Set(['amber', 'weather', 'updatedAt']);
+    const KNOWN_NON_INVERTER_METRIC_KEYS = new Set(['amber', 'weather', 'ev', 'tesla', 'teslafleet', 'updatedat']);
     const PROVIDER_KEYS = ['foxess', 'sungrow', 'sigenergy', 'alphaess'];
 
     const toCounter = (value) => {
       const n = Number(value);
       return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+    const readNestedCounter = (root, path = []) => {
+      if (!root || typeof root !== 'object' || !Array.isArray(path) || path.length === 0) return 0;
+      let cursor = root;
+      for (const segment of path) {
+        if (!cursor || typeof cursor !== 'object') return 0;
+        cursor = cursor[segment];
+      }
+      return toCounter(cursor);
+    };
+    const resolveEvCounter = (metricsDoc = {}) => {
+      const explicitEv = toCounter(metricsDoc.ev);
+      if (explicitEv) return explicitEv;
+
+      const explicitTesla = toCounter(metricsDoc.tesla);
+      if (explicitTesla) return explicitTesla;
+
+      const teslaFleetBillable = readNestedCounter(metricsDoc, ['teslaFleet', 'calls', 'billable']);
+      if (teslaFleetBillable) return teslaFleetBillable;
+
+      return readNestedCounter(metricsDoc, ['teslaFleet', 'calls', 'total']);
     };
 
     const normalizeProvider = (providerRaw, config = null) => {
@@ -1431,11 +1452,12 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
         inverterTotal = aggregateInverterCounter;
       } else {
         Object.entries(rawMetrics).forEach(([metricKey, metricValue]) => {
-          if (metricKey === 'inverter' || KNOWN_NON_INVERTER_METRIC_KEYS.has(metricKey)) return;
+          const normalizedMetricKey = String(metricKey || '').toLowerCase().trim();
+          if (normalizedMetricKey === 'inverter' || KNOWN_NON_INVERTER_METRIC_KEYS.has(normalizedMetricKey)) return;
           const counter = toCounter(metricValue);
           if (!counter) return;
 
-          if (KNOWN_INVERTER_METRIC_KEYS.has(metricKey)) {
+          if (KNOWN_INVERTER_METRIC_KEYS.has(normalizedMetricKey)) {
             inverterTotal += counter;
             return;
           }
@@ -1450,6 +1472,7 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
         inverterByProvider,
         amber: toCounter(rawMetrics.amber),
         weather: toCounter(rawMetrics.weather),
+        ev: resolveEvCounter(rawMetrics),
         // Legacy keys retained for compatibility with older admin clients.
         foxess: inverterByProvider.foxess,
         sungrow: inverterByProvider.sungrow,

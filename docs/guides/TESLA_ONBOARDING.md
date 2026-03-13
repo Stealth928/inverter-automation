@@ -13,6 +13,9 @@ This guide documents the Tesla onboarding flow implemented in:
 It describes what users do in the UI, what the app does behind the scenes,
 and what must be configured with Tesla for production operation.
 
+For product-level and marketing-level positioning, see:
+- `docs/guides/TESLA_EV_INTEGRATION.md`
+
 ## Prerequisites
 
 Before connecting Tesla in-app, you need:

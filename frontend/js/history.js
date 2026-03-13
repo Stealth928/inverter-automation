@@ -1126,9 +1126,14 @@
 
                 document.getElementById('metricsDate').textContent = formatDate(new Date(todayKey), false);
                 const inverterCount = (typeof getInverterApiCount === 'function') ? getInverterApiCount(today) : (today.inverter ?? today.foxess ?? 0);
+                const evCount = (typeof getEvApiCount === 'function')
+                    ? getEvApiCount(today)
+                    : (Number.isFinite(Number(today?.ev)) ? Number(today.ev) : 0);
                 document.getElementById('countFox').textContent = inverterCount;
                 document.getElementById('countAmber').textContent = today.amber ?? 0;
                 document.getElementById('countWeather').textContent = today.weather ?? 0;
+                const evEl = document.getElementById('countEV');
+                if (evEl) evEl.textContent = evCount;
             } catch (e) {
                 console.warn('Failed to load api metrics', e.message);
             }

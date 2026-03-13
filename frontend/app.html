@@ -26,10 +26,10 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/shared-utils.js?v=12"></script>
-    <script src="js/app-shell.js?v=11"></script>
+    <script src="js/app-shell.js?v=12"></script>
     <script src="js/tour.js?v=29"></script>
     <script src="js/theme-init.js"></script>
-    <link rel="stylesheet" href="css/shared-styles.css?v=7" />
+    <link rel="stylesheet" href="css/shared-styles.css?v=8" />
     <link rel="stylesheet" href="css/tour.css?v=3" />
     <style>
         
@@ -395,6 +395,104 @@
         .card-title .icon {
             font-size: 18px;
         }
+        .app-overview-icon {
+            --icon-glyph: #9fcfff;
+            width: 22px;
+            height: 22px;
+            border-radius: 7px;
+            border: 1px solid rgba(180, 220, 255, 0.42);
+            background:
+                radial-gradient(circle at 24% 18%, rgba(255,255,255,.30), rgba(255,255,255,0) 44%),
+                linear-gradient(165deg, #173661 0%, #10284a 56%, #0d203d 100%);
+            color: var(--icon-glyph);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,.2),
+                0 8px 14px -10px rgba(9, 23, 45, 0.75);
+        }
+        .app-overview-icon svg {
+            width: 13px;
+            height: 13px;
+            display: block;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.9;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .app-overview-icon--sm {
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+        }
+        .app-overview-icon--sm svg {
+            width: 11px;
+            height: 11px;
+        }
+        .app-overview-icon--tile {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+        }
+        .app-overview-icon--tile svg {
+            width: 20px;
+            height: 20px;
+        }
+        .app-overview-icon--customize { --icon-glyph: #9be8ff; }
+        .app-overview-icon--bolt { --icon-glyph: #ffc56d; }
+        .app-overview-icon--money { --icon-glyph: #7af0b0; }
+        .app-overview-icon--weather { --icon-glyph: #b4e4ff; }
+        .app-overview-icon--ev { --icon-glyph: #ff99c9; }
+        .app-overview-icon--quick { --icon-glyph: #b7c1ff; }
+        .app-overview-icon--calendar { --icon-glyph: #a5d3ff; }
+        .app-overview-icon--help { --icon-glyph: #ffd978; }
+        .app-overview-icon--note { --icon-glyph: #9be8ff; }
+        .app-overview-icon--target { --icon-glyph: #ff8db8; }
+        .app-overview-icon--chart { --icon-glyph: #7af0b0; }
+        .app-overview-icon--battery { --icon-glyph: #7af0b0; }
+        .app-overview-icon--temp { --icon-glyph: #ffc56d; }
+        .app-overview-icon--clock { --icon-glyph: #b6c4d6; }
+        .app-overview-icon--solar { --icon-glyph: #ffc56d; }
+        .app-overview-icon--home { --icon-glyph: #9be8ff; }
+        .app-overview-icon--grid { --icon-glyph: #b7c1ff; }
+        .app-overview-icon--refresh { --icon-glyph: #9fcfff; }
+        .app-overview-icon--play { --icon-glyph: #7af0b0; }
+        .app-overview-icon--stop { --icon-glyph: #ff8d85; }
+        [data-theme="light"] .app-overview-icon {
+            border-color: #b6c6d9;
+            background:
+                radial-gradient(circle at 24% 18%, rgba(255,255,255,.84), rgba(255,255,255,0) 45%),
+                linear-gradient(165deg, #f2f8ff 0%, #e6f0fb 56%, #d9e7f6 100%);
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,.86),
+                0 8px 14px -10px rgba(23, 54, 97, 0.5);
+        }
+        [data-theme="light"] .app-overview-icon svg {
+            stroke-width: 2.15;
+        }
+        [data-theme="light"] .app-overview-icon--customize { --icon-glyph: #0c7db0; }
+        [data-theme="light"] .app-overview-icon--bolt { --icon-glyph: #a46200; }
+        [data-theme="light"] .app-overview-icon--money { --icon-glyph: #1f7a3e; }
+        [data-theme="light"] .app-overview-icon--weather { --icon-glyph: #14658f; }
+        [data-theme="light"] .app-overview-icon--ev { --icon-glyph: #c13b73; }
+        [data-theme="light"] .app-overview-icon--quick { --icon-glyph: #5a58c8; }
+        [data-theme="light"] .app-overview-icon--calendar { --icon-glyph: #156f9d; }
+        [data-theme="light"] .app-overview-icon--help { --icon-glyph: #9b6700; }
+        [data-theme="light"] .app-overview-icon--note { --icon-glyph: #0c7db0; }
+        [data-theme="light"] .app-overview-icon--target { --icon-glyph: #b4336a; }
+        [data-theme="light"] .app-overview-icon--chart { --icon-glyph: #1f7a3e; }
+        [data-theme="light"] .app-overview-icon--battery { --icon-glyph: #1f7a3e; }
+        [data-theme="light"] .app-overview-icon--temp { --icon-glyph: #a46200; }
+        [data-theme="light"] .app-overview-icon--clock { --icon-glyph: #5f6a78; }
+        [data-theme="light"] .app-overview-icon--solar { --icon-glyph: #a46200; }
+        [data-theme="light"] .app-overview-icon--home { --icon-glyph: #156f9d; }
+        [data-theme="light"] .app-overview-icon--grid { --icon-glyph: #5a58c8; }
+        [data-theme="light"] .app-overview-icon--refresh { --icon-glyph: #1869c6; }
+        [data-theme="light"] .app-overview-icon--play { --icon-glyph: #1f7a3e; }
+        [data-theme="light"] .app-overview-icon--stop { --icon-glyph: #c93d36; }
         .card-badge {
             font-size: 10px;
             padding: 3px 8px;
@@ -633,6 +731,9 @@
             background: rgba(255,255,255,0.02);
             position: relative;
         }
+        .tile-icon.tile-icon--glyph {
+            background: transparent;
+        }
         /* Curtailment badge on solar tile */
         .stat-item.curtailed .tile-icon::after {
             content: '';
@@ -842,9 +943,10 @@
             grid-row: 2; /* ensure it is placed on the second row */
         }
         .automation-toggle-btn {
-            align-self: center;
-            margin-left: -46px;
-            margin-top: 190px;
+            position: fixed;
+            right: 0;
+            top: calc(50% + 140px);
+            margin: 0;
             width: 56px;
             height: 100px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -857,15 +959,15 @@
             justify-content: center;
             padding: 10px;
             font-size: 16px;
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: right 0.3s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
             z-index: 10001;
             box-shadow: 0 10px 40px rgba(102,126,234,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
         }
         @media (max-height: 900px) {
-            .automation-toggle-btn { margin-top: 150px; }
+            .automation-toggle-btn { top: calc(50% + 100px); }
         }
         @media (max-height: 700px) {
-            .automation-toggle-btn { margin-top: 100px; }
+            .automation-toggle-btn { top: calc(50% + 50px); }
         }
         @media (max-width: 900px) {
             .main-layout {
@@ -1977,6 +2079,7 @@
                                         <div class="metric-fox">Inv: <span id="countFox" class="metric-value">0</span></div>
                                         <div class="metric-amber">Amb: <span id="countAmber" class="metric-value">0</span></div>
                                         <div class="metric-weather">Wea: <span id="countWeather" class="metric-value">0</span></div>
+                                        <div class="metric-ev">EV: <span id="countEV" class="metric-value">0</span></div>
                                     </div>
                                     <button class="btn btn-sm" onclick="loadApiMetrics(1)" title="Refresh metrics">🔄</button>
                                 </div>
@@ -2064,6 +2167,7 @@
                 <div class="card-header">
                     <div class="card-title"><span class="icon">🚗</span> EV Overview</div>
                     <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="card-badge">Testing</span>
                         <span class="card-badge" id="evVehicleCountBadge">0 vehicles</span>
                         <button class="btn" onclick="refreshEVOverview(true)" style="font-size:11px;padding:4px 10px;width:auto;margin:0">🔄 Refresh</button>
                     </div>

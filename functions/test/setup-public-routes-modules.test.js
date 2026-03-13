@@ -36,7 +36,7 @@ function buildDeps(overrides = {}) {
     getConfig: jest.fn(() => ({
       automation: {
         intervalMs: 60000,
-        cacheTtl: { amber: 60000, inverter: 300000, weather: 1800000 }
+        cacheTtl: { amber: 60000, inverter: 300000, weather: 1800000, teslaStatus: 600000 }
       }
     })),
     getUserConfig: jest.fn(async () => ({})),
@@ -172,7 +172,7 @@ describe('setup public route module', () => {
         amberApiKey: 'amber',
         setupComplete: true,
         automation: { intervalMs: 90000, inverterCacheTtlMs: 240000 },
-        cache: { amber: 75000, weather: 1900000 },
+        cache: { amber: 75000, weather: 1900000, teslaStatus: 840000 },
         defaults: { cooldownMinutes: 3, durationMinutes: 12 },
         _source: 'user'
       }))
@@ -187,7 +187,7 @@ describe('setup public route module', () => {
     expect(response.body.result.source).toBe('user');
     expect(response.body.result.config).toEqual({
       automation: { intervalMs: 90000 },
-      cache: { amber: 75000, inverter: 240000, weather: 1900000 },
+      cache: { amber: 75000, inverter: 240000, weather: 1900000, teslaStatus: 840000 },
       defaults: { cooldownMinutes: 3, durationMinutes: 12 }
     });
   });

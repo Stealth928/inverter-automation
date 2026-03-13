@@ -265,21 +265,17 @@ function registerInverterReadRoutes(app, deps = {}) {
       const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
       const adapter = getProviderAdapter(userConfig);
       const sn = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
+      // Check for force refresh query parameter (bypass cache when ?forceRefresh=true)
+      const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
 
       if (!sn) {
         return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
       }
 
       if (provider !== 'foxess' && adapter && typeof adapter.getStatus === 'function') {
-        const status = await adapter.getStatus({ deviceSN: sn, userConfig, userId: req.user.uid });
-        const invertAlphaEssBatteryPowerSign = provider === 'alphaess'
-          ? resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue)
-          : false;
-        const normalized = buildRealtimePayloadFromDeviceStatus(status, sn, {
-          // AlphaESS adapter status values are canonical watts, while UI cards expect kW.
-          normalizeToKw: provider === 'alphaess',
-          invertBatteryPowerSign: invertAlphaEssBatteryPowerSign
-        });
+        // For non-Fox providers, reuse the same cached helper so cache TTL settings
+        // apply consistently across providers (not just FoxESS).
+        const normalized = await getCachedInverterRealtimeData(req.user.uid, sn, userConfig, forceRefresh);
         try {
           await persistTopologyFromRealtime(req.user.uid, userConfig, normalized);
         } catch (persistError) {
@@ -289,9 +285,6 @@ function registerInverterReadRoutes(app, deps = {}) {
       }
 
       if (foxessGuard(res, userConfig)) return;
-
-      // Check for force refresh query parameter (bypass cache when ?forceRefresh=true)
-      const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
 
       // Use cached data to avoid excessive Fox API calls (unless force refresh requested)
       // This respects per-user cache TTL and reduces API quota usage significantly
@@ -456,11 +449,37 @@ function registerInverterReadRoutes(app, deps = {}) {
   app.get('/api/inverter/discover-variables', authenticateUser, async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
-      if (foxessGuard(res, userConfig)) return;
-      const deviceSN = req.query.sn || userConfig?.deviceSn;
+      const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
+      const adapter = getProviderAdapter(userConfig);
+      const deviceSN = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
+
       if (!deviceSN) {
         return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
       }
+
+      // Non-Fox providers: derive available variables from adapter status normalized to the
+      // same frame shape used by the dashboard so diagnostics stay useful across providers.
+      if (provider !== 'foxess' && adapter && typeof adapter.getStatus === 'function') {
+        const status = await adapter.getStatus({ deviceSN, userConfig, userId: req.user.uid });
+        const invertAlphaEssBatteryPowerSign = provider === 'alphaess'
+          ? resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue)
+          : false;
+        const normalized = buildRealtimePayloadFromDeviceStatus(status, deviceSN, {
+          normalizeToKw: provider === 'alphaess',
+          invertBatteryPowerSign: invertAlphaEssBatteryPowerSign
+        });
+        const variables = extractRealtimeDatas(normalized)
+          .map((entry) => String(entry?.variable || '').trim())
+          .filter(Boolean);
+        const uniqueVariables = Array.from(new Set(variables));
+        return res.json({
+          errno: 0,
+          msg: 'Variables discovered from provider adapter',
+          result: uniqueVariables
+        });
+      }
+
+      if (foxessGuard(res, userConfig)) return;
 
       console.log(`[Diagnostics] Discovering variables for device: ${deviceSN}`);
 

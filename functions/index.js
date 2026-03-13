@@ -74,6 +74,7 @@ const {
   isTimeInRange,
   isValidTimezone
 } = require('./lib/time-utils');
+const { resolveProviderDeviceId } = require('./lib/provider-device-id');
 const amberModule = require('./api/amber');
 let googleApis = null;
 try {
@@ -247,7 +248,8 @@ const getConfig = () => {
       cacheTtl: {
         amber: 60000,      // 60 seconds
         inverter: 300000,  // 5 minutes
-        weather: 1800000   // 30 minutes
+        weather: 1800000,  // 30 minutes
+        teslaStatus: 600000 // 10 minutes
       }
     }
   };
@@ -437,29 +439,199 @@ const {
  * Respects TTL (default 5 minutes, configurable via user config).
  * Only fetches fresh data if cache is expired.
  */
+function toPositiveMs(value, fallback = null) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
+  return Math.floor(numeric);
+}
+
+function resolveInverterCacheTtlMs(userConfig, defaultTtlMs, options = {}) {
+  const preferRealtime = options.preferRealtime === true;
+  const fromAutomationRealtime = toPositiveMs(userConfig?.automation?.inverterRealtimeCacheTtlMs, null);
+  const fromAutomation = toPositiveMs(userConfig?.automation?.inverterCacheTtlMs, null);
+  const fromCacheSection = toPositiveMs(userConfig?.cache?.inverter, null);
+
+  if (preferRealtime && fromAutomationRealtime !== null) return fromAutomationRealtime;
+  if (fromAutomation !== null) return fromAutomation;
+  if (fromCacheSection !== null) return fromCacheSection;
+  if (fromAutomationRealtime !== null) return fromAutomationRealtime;
+  return toPositiveMs(defaultTtlMs, 300000);
+}
+
+function toFiniteNumber(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function toKw(value) {
+  const numeric = toFiniteNumber(value, null);
+  if (numeric === null) return null;
+  return Number((numeric / 1000).toFixed(4));
+}
+
+function resolveAlphaEssBatterySignInversion(userConfig) {
+  if (!userConfig || typeof userConfig !== 'object') return false;
+
+  if (typeof userConfig.alphaessInvertBatteryPower === 'boolean') {
+    return userConfig.alphaessInvertBatteryPower;
+  }
+
+  const rawPolicy = String(userConfig.alphaessBatteryPowerSign || '').toLowerCase().trim();
+  if (rawPolicy) {
+    if (rawPolicy === 'invert' || rawPolicy === 'inverted' || rawPolicy === 'reverse' || rawPolicy === 'reversed') {
+      return true;
+    }
+    if (rawPolicy === 'default' || rawPolicy === 'normal' || rawPolicy === 'native' || rawPolicy === 'standard') {
+      return false;
+    }
+  }
+
+  const coupling = normalizeCouplingValue(userConfig.systemTopology && userConfig.systemTopology.coupling);
+  return coupling === 'ac';
+}
+
+function buildRealtimePayloadFromDeviceStatus(status = {}, sn, options = {}) {
+  const normalizeToKw = options.normalizeToKw === true;
+  const invertBatteryPowerSign = options.invertBatteryPowerSign === true;
+
+  const socPct = toFiniteNumber(status.socPct, null);
+  const batteryTempC = toFiniteNumber(status.batteryTempC, null);
+  const ambientTempC = toFiniteNumber(status.ambientTempC, null);
+  const pvPowerRaw = toFiniteNumber(status.pvPowerW, 0);
+  const loadPowerRaw = toFiniteNumber(status.loadPowerW, 0);
+  const gridPowerRaw = toFiniteNumber(status.gridPowerW, 0);
+  const feedInPowerRaw = toFiniteNumber(status.feedInPowerW, 0);
+  const batteryPowerRaw = toFiniteNumber(status.batteryPowerW, 0);
+  const batteryPowerCanonicalRaw = invertBatteryPowerSign ? -batteryPowerRaw : batteryPowerRaw;
+
+  const mapPower = (raw) => {
+    if (!normalizeToKw) return raw;
+    return toKw(raw) ?? 0;
+  };
+
+  const pvPower = mapPower(pvPowerRaw);
+  const loadPower = mapPower(loadPowerRaw);
+  const gridPower = mapPower(gridPowerRaw);
+  const feedInPower = mapPower(feedInPowerRaw);
+  const batteryPower = mapPower(batteryPowerCanonicalRaw);
+  const batteryChargePower = batteryPower > 0 ? batteryPower : 0;
+  const batteryDischargePower = batteryPower < 0 ? Math.abs(batteryPower) : 0;
+  const meterPower = gridPower > 0 ? gridPower : -feedInPower;
+  const unit = normalizeToKw ? 'kW' : undefined;
+
+  return {
+    errno: 0,
+    msg: 'Operation successful',
+    result: [{
+      deviceSN: String(sn || status.deviceSN || ''),
+      time: status.observedAtIso || new Date().toISOString(),
+      datas: [
+        { variable: 'SoC', value: socPct, ...(normalizeToKw ? { unit: '%' } : {}) },
+        { variable: 'pvPower', value: pvPower, ...(unit ? { unit } : {}) },
+        { variable: 'loadsPower', value: loadPower, ...(unit ? { unit } : {}) },
+        { variable: 'gridConsumptionPower', value: gridPower, ...(unit ? { unit } : {}) },
+        { variable: 'feedinPower', value: feedInPower, ...(unit ? { unit } : {}) },
+        { variable: 'meterPower2', value: meterPower, ...(unit ? { unit } : {}) },
+        { variable: 'batTemperature', value: batteryTempC, ...(normalizeToKw ? { unit: 'C' } : {}) },
+        { variable: 'ambientTemperation', value: ambientTempC, ...(normalizeToKw ? { unit: 'C' } : {}) },
+        { variable: 'batChargePower', value: batteryChargePower, ...(unit ? { unit } : {}) },
+        { variable: 'batDischargePower', value: batteryDischargePower, ...(unit ? { unit } : {}) }
+      ]
+    }]
+  };
+}
+
+function buildAutomationTelemetryPayloadFromStatus(status = {}) {
+  const datas = [];
+  const pushNumeric = (variable, value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return;
+    datas.push({ variable, value: numeric });
+  };
+
+  pushNumeric('SoC', status.socPct);
+  pushNumeric('batTemperature', status.batteryTempC);
+  pushNumeric('ambientTemperation', status.ambientTempC);
+  pushNumeric('pvPower', status.pvPowerW);
+  pushNumeric('loadsPower', status.loadPowerW);
+  pushNumeric('gridConsumptionPower', status.gridPowerW);
+  pushNumeric('feedinPower', status.feedInPowerW);
+
+  const gridPower = Number(status.gridPowerW);
+  const feedInPower = Number(status.feedInPowerW);
+  const meterPower = Number.isFinite(gridPower) && gridPower > 0
+    ? gridPower
+    : Number.isFinite(feedInPower) && feedInPower > 0
+      ? -feedInPower
+      : NaN;
+  pushNumeric('meterPower2', meterPower);
+
+  return {
+    errno: 0,
+    result: [{
+      time: status.observedAtIso || new Date().toISOString(),
+      datas
+    }]
+  };
+}
+
+function isMatchingProviderCacheEntry(cacheRecord, provider, deviceSN) {
+  const cachedProviderRaw = String(cacheRecord?.provider || '').toLowerCase().trim();
+  const cachedDeviceRaw = String(cacheRecord?.deviceSN || '').trim();
+  const providerNormalized = String(provider || 'foxess').toLowerCase().trim();
+  const deviceNormalized = String(deviceSN || '').trim();
+  const providerMatch = cachedProviderRaw
+    ? cachedProviderRaw === providerNormalized
+    : providerNormalized === 'foxess';
+  const deviceMatch = cachedDeviceRaw ? (cachedDeviceRaw === deviceNormalized) : true;
+  return providerMatch && deviceMatch;
+}
+
 async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh = false) {
   const config = getConfig();
-  // Use user's custom TTL if set, otherwise fall back to default
-  const ttlMs = (userConfig?.automation?.inverterCacheTtlMs) || config.automation.cacheTtl.inverter;
+  const ttlMs = resolveInverterCacheTtlMs(userConfig, config?.automation?.cacheTtl?.inverter, { preferRealtime: false });
+  const resolved = resolveProviderDeviceId(userConfig, deviceSN);
+  const provider = String(resolved.provider || 'foxess').toLowerCase().trim();
+  const resolvedDeviceSN = resolved.deviceId;
   
   try {
+    if (!resolvedDeviceSN) {
+      return { errno: 400, error: 'Device SN not configured' };
+    }
+
     // Check cache if not forcing refresh
     if (!forceRefresh) {
       const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('inverter').get();
       if (cacheDoc.exists) {
-        const { data, timestamp } = cacheDoc.data();
+        const cachePayload = cacheDoc.data() || {};
+        const { data, timestamp } = cachePayload;
         const ageMs = Date.now() - timestamp;
-        if (ageMs < ttlMs) {
+        if (ageMs < ttlMs && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
           return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
         }
       }
     }
-    
-    // Fetch fresh data from FoxESS
-    const data = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', {
-      sn: deviceSN,
-      variables: ['SoC', 'SoC1', 'batTemperature', 'ambientTemperation', 'pvPower', 'loadsPower', 'gridConsumptionPower', 'feedinPower']
-    }, userConfig, userId);
+
+    let data = null;
+
+    if (provider !== 'foxess') {
+      const adapter = adapterRegistry.getDeviceProvider(provider);
+      if (!adapter || typeof adapter.getStatus !== 'function') {
+        return { errno: 400, error: `Not supported for provider: ${provider}` };
+      }
+      const status = await adapter.getStatus({
+        deviceSN: resolvedDeviceSN,
+        userConfig,
+        userId
+      });
+      data = buildAutomationTelemetryPayloadFromStatus(status);
+    } else {
+      // Fetch fresh data from FoxESS
+      data = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', {
+        sn: resolvedDeviceSN,
+        variables: ['SoC', 'SoC1', 'batTemperature', 'ambientTemperation', 'pvPower', 'loadsPower', 'gridConsumptionPower', 'feedinPower']
+      }, userConfig, userId);
+    }
     
     // Store in cache if successful
     if (data?.errno === 0) {
@@ -467,6 +639,8 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
         data,
         timestamp: Date.now(),
         ttlMs,
+        provider,
+        deviceSN: resolvedDeviceSN,
         ttl: Math.floor(Date.now() / 1000) + Math.floor(ttlMs / 1000) // Firestore TTL in seconds
       }, { merge: true }).catch(cacheErr => {
         console.warn(`[Cache] Failed to store inverter cache: ${cacheErr.message}`);
@@ -488,27 +662,55 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
  */
 async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, forceRefresh = false) {
   const config = getConfig();
-  // Use user's custom TTL if set, otherwise fall back to default (5 min for real-time data)
-  const ttlMs = (userConfig?.automation?.inverterRealtimeCacheTtlMs) || config.automation.cacheTtl.inverter || 300000;
+  const ttlMs = resolveInverterCacheTtlMs(userConfig, config?.automation?.cacheTtl?.inverter || 300000, { preferRealtime: true });
+  const resolved = resolveProviderDeviceId(userConfig, deviceSN);
+  const provider = String(resolved.provider || 'foxess').toLowerCase().trim();
+  const resolvedDeviceSN = resolved.deviceId;
   
   try {
+    if (!resolvedDeviceSN) {
+      return { errno: 400, error: 'Device SN not configured' };
+    }
+
     // Check cache if not forcing refresh
     if (!forceRefresh) {
       const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('inverter-realtime').get();
       if (cacheDoc.exists) {
-        const { data, timestamp } = cacheDoc.data();
+        const cachePayload = cacheDoc.data() || {};
+        const { data, timestamp } = cachePayload;
         const ageMs = Date.now() - timestamp;
-        if (ageMs < ttlMs) {
+        if (ageMs < ttlMs && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
           return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
         }
       }
     }
-    
-    // Fetch fresh data from FoxESS with all required variables
-    const data = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', {
-      sn: deviceSN,
-      variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'meterPower', 'meterPower2', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'SoC1', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
-    }, userConfig, userId);
+
+    let data = null;
+
+    if (provider !== 'foxess') {
+      const adapter = adapterRegistry.getDeviceProvider(provider);
+      if (!adapter || typeof adapter.getStatus !== 'function') {
+        return { errno: 400, error: `Not supported for provider: ${provider}` };
+      }
+      const status = await adapter.getStatus({
+        deviceSN: resolvedDeviceSN,
+        userConfig,
+        userId
+      });
+      const invertAlphaEssBatteryPowerSign = provider === 'alphaess'
+        ? resolveAlphaEssBatterySignInversion(userConfig)
+        : false;
+      data = buildRealtimePayloadFromDeviceStatus(status, resolvedDeviceSN, {
+        normalizeToKw: provider === 'alphaess',
+        invertBatteryPowerSign: invertAlphaEssBatteryPowerSign
+      });
+    } else {
+      // Fetch fresh data from FoxESS with all required variables
+      data = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', {
+        sn: resolvedDeviceSN,
+        variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'meterPower', 'meterPower2', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'SoC1', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
+      }, userConfig, userId);
+    }
     
     // Store in cache if successful
     if (data?.errno === 0) {
@@ -516,6 +718,8 @@ async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, force
         data,
         timestamp: Date.now(),
         ttlMs,
+        provider,
+        deviceSN: resolvedDeviceSN,
         ttl: Math.floor(Date.now() / 1000) + Math.floor(ttlMs / 1000) // Firestore TTL in seconds
       }, { merge: true }).catch(cacheErr => {
         console.warn(`[Cache] Failed to store inverter realtime cache: ${cacheErr.message}`);
@@ -749,8 +953,13 @@ registerAuthLifecycleRoutes(app, {
 });
 
 registerEVRoutes(app, {
+  admin,
   adapterRegistry,
   authenticateUser,
+  db,
+  getConfig,
+  getUserConfig,
+  logger,
   teslaHttpClient,
   vehiclesRepo
 });
@@ -917,6 +1126,7 @@ registerDeviceReadRoutes(app, {
 });
 
 registerDiagnosticsReadRoutes(app, {
+  adapterRegistry,
   authenticateUser,
   foxessAPI,
   getUserConfig

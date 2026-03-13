@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'socrates-v46';
+const CACHE_VERSION = 'socrates-v47';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const STATIC_ASSETS = [
@@ -11,14 +11,14 @@ const STATIC_ASSETS = [
   '/history.html',
   '/roi.html',
   '/curtailment-discovery.html',
-  '/css/shared-styles.css?v=7',
+  '/css/shared-styles.css?v=8',
   '/css/tour.css?v=3',
   '/js/tour.js?v=29',
   '/js/firebase-config.js',
   '/js/firebase-auth.js',
   '/js/api-client.js',
   '/js/shared-utils.js',
-  '/js/app-shell.js?v=11',
+  '/js/app-shell.js?v=12',
   '/favicon.ico',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
@@ -89,11 +89,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  const isTourOrShellScript =
+  const isCriticalShellAsset =
     requestUrl.pathname === '/js/tour.js' ||
-    requestUrl.pathname === '/js/app-shell.js';
+    requestUrl.pathname === '/js/app-shell.js' ||
+    requestUrl.pathname === '/css/shared-styles.css' ||
+    requestUrl.pathname === '/css/tour.css';
 
-  if (isTourOrShellScript) {
+  if (isCriticalShellAsset) {
     event.respondWith(
       fetch(request)
         .then((networkResponse) => {

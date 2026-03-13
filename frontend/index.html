@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SoCrates — Smart Solar Battery Automation</title>
-  <meta name="description" content="Rule-based solar battery automation for homes. Shift charging and exporting around live electricity prices, weather, and demand. Free for the first 500 members.">
+  <meta name="description" content="Rule-based solar battery automation for homes with Tesla EV integration. Shift charging and exporting around live electricity prices, weather, demand, and EV charging needs. Free for the first 500 members.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://socratesautomation.com/">
   <link rel="icon" href="/icons/favicon.ico" sizes="any">
@@ -15,7 +15,7 @@
   <meta property="og:site_name" content="SoCrates">
   <meta property="og:locale" content="en_AU">
   <meta property="og:title" content="SoCrates — Smart Inverter Automation">
-  <meta property="og:description" content="Rule-based solar battery automation for homes. Automate charging and exporting around live prices, weather, and demand.">
+  <meta property="og:description" content="Rule-based solar battery automation for homes with Tesla EV integration. Automate charging, exporting, and EV charging around live prices, weather, and demand.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://socratesautomation.com/">
   <meta property="og:image" content="https://socratesautomation.com/images/screenshots/screen-1.png">
@@ -24,7 +24,7 @@
   <meta property="og:image:alt" content="SoCrates dashboard showing automation rules and battery status">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="SoCrates - Smart Inverter Automation">
-  <meta name="twitter:description" content="Rule-based solar battery automation for homes. Automate charging and exporting around live prices, weather, and demand.">
+  <meta name="twitter:description" content="Rule-based solar battery automation for homes with Tesla EV integration. Automate charging, exporting, and EV charging around live prices, weather, and demand.">
   <meta name="twitter:url" content="https://socratesautomation.com/">
   <meta name="twitter:image" content="https://socratesautomation.com/images/screenshots/screen-1.png">
   <meta name="twitter:image:alt" content="SoCrates dashboard showing automation rules and battery status">
@@ -37,7 +37,7 @@
         "@id": "https://socratesautomation.com/#website",
         "url": "https://socratesautomation.com/",
         "name": "SoCrates",
-        "description": "Rule-based solar battery automation for homes.",
+        "description": "Rule-based solar battery automation for homes with Tesla EV integration.",
         "inLanguage": "en-AU",
         "publisher": {
           "@id": "https://socratesautomation.com/#organization"
@@ -58,7 +58,7 @@
         "@id": "https://socratesautomation.com/#webpage",
         "url": "https://socratesautomation.com/",
         "name": "SoCrates - Smart Solar Battery Automation",
-        "description": "Rule-based solar battery automation for homes. Shift charging and exporting around live electricity prices, weather, and demand.",
+        "description": "Rule-based solar battery automation for homes with Tesla EV integration. Shift charging and exporting around live electricity prices, weather, demand, and EV charging needs.",
         "isPartOf": {
           "@id": "https://socratesautomation.com/#website"
         },
@@ -74,7 +74,7 @@
         "url": "https://socratesautomation.com/",
         "applicationCategory": "UtilitiesApplication",
         "operatingSystem": "Web",
-        "description": "Rule-based solar battery automation platform for managing charge, export, and inverter modes.",
+        "description": "Rule-based solar battery automation platform for managing charge, export, inverter modes, and Tesla EV charging control.",
         "isAccessibleForFree": true,
         "offers": {
           "@type": "Offer",
@@ -138,7 +138,8 @@
       <p class="land-hero__sub">
         SoCrates runs your custom rules at a cadence you choose — charging when prices are cheap,
         exporting at peaks, and switching modes automatically. You set the logic, limits, and
-        priorities; SoCrates handles execution. Trusted by 150+ solar households.
+        priorities; SoCrates handles execution. Tesla EV integration is now live for connected
+        vehicle status and charging control in the same platform.
       </p>
 
       <div class="land-hero__actions">
@@ -166,6 +167,8 @@
         </span>
         <span class="brand-sep">&nbsp;+&nbsp;</span>
         <span class="brand-badge brand-badge--amber">Amber Electric</span>
+        <span class="brand-sep">&nbsp;+&nbsp;</span>
+        <span class="brand-badge brand-badge--tesla">Tesla EV Integration</span>
       </div>
 
       <!-- Animated app preview window -->
@@ -487,7 +490,7 @@
 
       <span class="section-label">Features</span>
       <h2 class="section-title" id="featuresTitle">Everything you need to automate your energy</h2>
-      <p class="section-sub">From live rule execution to quick controls and audit history, SoCrates keeps the operating layer in one place.</p>
+      <p class="section-sub">From live rule execution to quick controls, Tesla EV charging, and audit history, SoCrates keeps the operating layer in one place.</p>
 
       <div class="features-grid">
 
@@ -583,6 +586,21 @@
           </div>
           <h3 class="feature-card__title">Quick Controls</h3>
           <p class="feature-card__body">Need to react fast? Trigger one-tap charge/discharge with power and duration controls, then return to automation with timed auto-resume.</p>
+        </div>
+
+        <div class="feature-card reveal">
+          <div class="feature-card__icon feature-card__icon--ev" aria-hidden="true">
+            <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+              <rect x="3.8" y="9.3" width="16.4" height="6.8" rx="2.1" />
+              <circle cx="8.2" cy="17.3" r="1.4" />
+              <circle cx="16.2" cy="17.3" r="1.4" />
+              <path d="M6.2 9.3L7.8 6.6H16.2L17.8 9.3" />
+              <path d="M12.4 7.1V3.9" />
+              <path d="M10.9 6.1L12.4 3.9L13.9 6.1" />
+            </svg>
+          </div>
+          <h3 class="feature-card__title">Tesla EV Integration</h3>
+          <p class="feature-card__body">Connect Tesla in Settings, monitor EV status in the dashboard, and send start, stop, and charge-limit commands when readiness checks pass.</p>
         </div>
 
         <div class="feature-card reveal">
@@ -958,6 +976,7 @@
             <li>Live price feeds + forecasts</li>
             <li>Weather &amp; solar intelligence</li>
             <li>Real-time inverter dashboard</li>
+            <li>Tesla EV connect + charge controls</li>
             <li>Manual override with auto-resume</li>
           </ul>
 
@@ -1016,6 +1035,13 @@
           <details>
             <summary>Which electricity retailers / price feeds are supported?</summary>
             <div class="faq-item__body">Currently <strong>Amber Electric</strong> is supported for live and forecast prices in Australia. Support for additional retailers and markets is planned. Static time-of-use schedules work without any price feed.</div>
+          </details>
+        </div>
+
+        <div class="faq-item">
+          <details>
+            <summary>Do you support EV integration?</summary>
+            <div class="faq-item__body">Yes. Tesla EV integration is available now through <strong>Settings</strong>. You can connect by VIN with OAuth, view EV readiness and status on the dashboard, and use start/stop/set-charge-limit controls when Tesla command prerequisites are met.</div>
           </details>
         </div>
 

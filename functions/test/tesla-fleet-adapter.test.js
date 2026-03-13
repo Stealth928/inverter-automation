@@ -218,6 +218,27 @@ describe('TeslaFleetAdapter — getVehicleStatus', () => {
     expect(status.rangeKm).toBeCloseTo(318.7, 0);
   });
 
+  test('emits Tesla call accounting payload via per-request recorder', async () => {
+    const recordTeslaApiCall = jest.fn(async () => {});
+    const http = makeHttpClient({
+      [`GET ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/vehicle_data`]: {
+        status: 200,
+        data: { response: { charge_state: {} } }
+      }
+    });
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+    await adapter.getVehicleStatus('5YJ3E1EA7JF000001', {
+      ...makeContext(),
+      recordTeslaApiCall
+    });
+
+    expect(recordTeslaApiCall).toHaveBeenCalledWith(expect.objectContaining({
+      category: 'data_request',
+      status: 200,
+      billable: true
+    }));
+  });
+
   test('throws when accessToken is missing', async () => {
     const adapter = new TeslaFleetAdapter({ httpClient: makeHttpClient() });
     await expect(adapter.getVehicleStatus('vin1', {})).rejects.toThrow(/accessToken is required/);
@@ -530,6 +551,43 @@ describe('TeslaFleetAdapter — rate-limit retry', () => {
     const result = await adapter.startCharging('vin1', makeContext());
     expect(result.status).toBe('confirmed');
     expect(callCount).toBeGreaterThanOrEqual(2);
+  });
+
+  test('retries at most once when Tesla keeps returning 429', async () => {
+    let callCount = 0;
+    const http = async () => {
+      callCount += 1;
+      return { status: 429, data: { error: 'Too Many Requests' }, headers: { 'retry-after': '0' } };
+    };
+    const adapter = new TeslaFleetAdapter({
+      httpClient: http,
+      sleep: async () => {}
+    });
+
+    await expect(adapter.startCharging('vin1', makeContext())).rejects.toThrow(/too many requests/i);
+    expect(callCount).toBe(2);
+  });
+
+  test('uses RateLimit-Reset header when Retry-After is absent', async () => {
+    let callCount = 0;
+    const sleepCalls = [];
+    const http = async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return { status: 429, data: {}, headers: { 'ratelimit-reset': '7' } };
+      }
+      return { status: 200, data: { response: { result: true, reason: '' } }, headers: {} };
+    };
+    const adapter = new TeslaFleetAdapter({
+      httpClient: http,
+      sleep: async (ms) => {
+        sleepCalls.push(ms);
+      }
+    });
+
+    const result = await adapter.startCharging('vin1', makeContext());
+    expect(result.status).toBe('confirmed');
+    expect(sleepCalls[0]).toBe(7000);
   });
 });
 

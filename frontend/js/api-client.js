@@ -253,6 +253,17 @@ class APIClient {
     });
   }
 
+  /**
+   * DELETE request
+   */
+  async delete(endpoint, body = null) {
+    const options = { method: 'DELETE' };
+    if (body !== null && body !== undefined) {
+      options.body = JSON.stringify(body);
+    }
+    return this.request(endpoint, options);
+  }
+
   // ==================== CONFIG ====================
 
   async getConfig() {

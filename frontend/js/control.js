@@ -360,9 +360,14 @@
         const inverterCount = (typeof getInverterApiCount === 'function')
           ? getInverterApiCount(today)
           : (today.inverter ?? today.foxess ?? 0);
+        const evCount = (typeof getEvApiCount === 'function')
+          ? getEvApiCount(today)
+          : (Number.isFinite(Number(today?.ev)) ? Number(today.ev) : 0);
         document.getElementById('countFox').textContent = inverterCount;
         document.getElementById('countAmber').textContent = today.amber ?? 0;
         document.getElementById('countWeather').textContent = today.weather ?? 0;
+        const evEl = document.getElementById('countEV');
+        if (evEl) evEl.textContent = evCount;
       } catch (e) {
         console.warn('Failed to load api metrics', e.message);
       }
@@ -424,12 +429,20 @@
         });
         
         console.log('[Diagnostics] Response status:', resp.status);
-        
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        let result = null;
+        const contentType = String(resp.headers.get('content-type') || '').toLowerCase();
+        if (contentType.includes('application/json')) {
+          result = await resp.json();
+        } else {
+          const rawText = await resp.text();
+          result = { errno: resp.status, error: rawText || `HTTP ${resp.status}` };
         }
-        
-        const result = await resp.json();
+
+        if (!resp.ok) {
+          const serverMessage = result?.error || result?.msg || `HTTP ${resp.status}: ${resp.statusText || 'Request failed'}`;
+          throw new Error(serverMessage);
+        }
+
         console.log('[Diagnostics] Response data:', result);
 
         if (result.errno === 0) {

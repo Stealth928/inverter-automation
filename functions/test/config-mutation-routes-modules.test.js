@@ -93,6 +93,32 @@ describe('config mutation route module', () => {
     expect(deps.setUserConfig).not.toHaveBeenCalled();
   });
 
+  test('config save rejects Tesla status cache outside allowed bounds', async () => {
+    const deps = buildDeps({
+      getUserConfig: jest.fn(async () => ({ location: 'Sydney' }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-config' };
+        next();
+      });
+      registerConfigMutationRoutes(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/config')
+      .send({
+        cache: {
+          teslaStatus: 110000
+        }
+      });
+
+    expect(response.statusCode).toBe(400);
+    expect(String(response.body.error || '')).toMatch(/tesla status cache/i);
+    expect(deps.setUserConfig).not.toHaveBeenCalled();
+  });
+
   test('config save prioritizes browser timezone and skips weather lookup', async () => {
     const deps = buildDeps({
       getUserConfig: jest.fn(async () => ({

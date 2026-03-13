@@ -65,44 +65,43 @@ async function fetchAutomationInverterData(options = {}) {
     return { errno: 400, error: 'Device identifier not configured' };
   }
 
-  // Non-FoxESS providers should source status directly from the device adapter.
-  if (provider !== 'foxess' && deviceAdapter && typeof deviceAdapter.getStatus === 'function') {
+  let inverterData = null;
+
+  if (typeof getCachedInverterData === 'function') {
+    try {
+      inverterData = await getCachedInverterData(userId, deviceSN, userConfig, false);
+
+      // If automation cache misses expected datas payload, try realtime cache fallback.
+      if (!hasNestedDatasFrame(inverterData) && typeof getCachedInverterRealtimeData === 'function') {
+        logger.warn(
+          '[Automation] Automation inverter cache missing datas structure (errno=%s), falling back to realtime cache',
+          inverterData?.errno
+        );
+        try {
+          const realtimeData = await getCachedInverterRealtimeData(userId, deviceSN, userConfig, false);
+          if (hasNestedDatasFrame(realtimeData)) {
+            inverterData = realtimeData;
+            logger.info('[Automation] Realtime cache fallback succeeded - SoC data now available');
+          }
+        } catch (fallbackError) {
+          logger.warn('[Automation] Realtime cache fallback also failed:', fallbackError.message);
+        }
+      }
+    } catch (error) {
+      logger.warn('[Automation] Failed to get inverter data:', error.message);
+    }
+  }
+
+  // Backward-compatible fallback for environments where cached helper does not yet
+  // support non-Fox providers.
+  if (!hasNestedDatasFrame(inverterData) && provider !== 'foxess' && deviceAdapter && typeof deviceAdapter.getStatus === 'function') {
     try {
       const status = await deviceAdapter.getStatus({ deviceSN, userConfig, userId });
-      return toAutomationTelemetryFrame(status);
+      inverterData = toAutomationTelemetryFrame(status);
     } catch (error) {
       logger.warn(`[Automation] Failed to fetch ${provider} status: ${error?.message || error}`);
       return { errno: 500, error: error?.message || String(error) };
     }
-  }
-
-  if (typeof getCachedInverterData !== 'function') {
-    return null;
-  }
-
-  let inverterData = null;
-
-  try {
-    inverterData = await getCachedInverterData(userId, deviceSN, userConfig, false);
-
-    // If automation cache misses expected datas payload, try realtime cache fallback.
-    if (!hasNestedDatasFrame(inverterData) && typeof getCachedInverterRealtimeData === 'function') {
-      logger.warn(
-        '[Automation] Automation inverter cache missing datas structure (errno=%s), falling back to realtime cache',
-        inverterData?.errno
-      );
-      try {
-        const realtimeData = await getCachedInverterRealtimeData(userId, deviceSN, userConfig, false);
-        if (hasNestedDatasFrame(realtimeData)) {
-          inverterData = realtimeData;
-          logger.info('[Automation] Realtime cache fallback succeeded - SoC data now available');
-        }
-      } catch (fallbackError) {
-        logger.warn('[Automation] Realtime cache fallback also failed:', fallbackError.message);
-      }
-    }
-  } catch (error) {
-    logger.warn('[Automation] Failed to get inverter data:', error.message);
   }
 
   return inverterData;

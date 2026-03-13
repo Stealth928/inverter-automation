@@ -105,6 +105,9 @@ describe('auth lifecycle route module', () => {
         foxessToken: '',
         amberApiKey: '',
         weatherPlace: 'Sydney',
+        cache: {
+          teslaStatus: 600000
+        },
         createdAt: 'server-ts'
       }),
       { merge: true }
