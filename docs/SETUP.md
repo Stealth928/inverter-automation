@@ -126,6 +126,18 @@ Users configure their own API keys in the Settings page after login. The system 
 3. Generate API token
 4. Copy the token (shown once)
 
+### Tesla Fleet API (EV Integration)
+1. Create/configure a Tesla developer app for Fleet OAuth.
+2. Add your app redirect URI to Tesla exactly as shown in `Settings > Tesla EV Integration` (`https://<your-host>/settings.html`).
+3. Configure allowed origins/top-level domains in Tesla developer app.
+4. Host Tesla public key metadata at `/.well-known/appspecific/com.tesla.3p.public-key.pem`.
+5. Note your Tesla Fleet `client_id` (and optional `client_secret`).
+6. Get vehicle VIN (17-char) for each vehicle you want to control.
+7. In app Settings, use `Tesla EV Integration` -> fill client/VIN fields -> click `Connect Tesla`.
+8. For command support on modern vehicles, complete virtual-key pairing and signed-command setup (see onboarding guide).
+
+Detailed user flow: `docs/guides/TESLA_ONBOARDING.md`.
+
 ### Scheduler SLO Alert Channel (Optional but Recommended)
 
 Configure environment variables for operational alerting and threshold overrides:

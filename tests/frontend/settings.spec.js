@@ -54,11 +54,15 @@ function authInitScript(uid, email) {
 
 async function mockSettingsApi(page, config = BASE_CONFIG) {
   const state = cloneConfig(config);
+  const evVehicles = [];
+  const oauthStartRequests = [];
+  const oauthCallbackRequests = [];
 
   await page.route('**/api/**', async (route) => {
     const requestUrl = new URL(route.request().url());
     const method = route.request().method().toUpperCase();
     const path = requestUrl.pathname;
+    let status = 200;
     let body = { errno: 0, result: {} };
 
     if (path === '/api/config' && method === 'GET') {
@@ -77,14 +81,59 @@ async function mockSettingsApi(page, config = BASE_CONFIG) {
       body = { errno: 0, result: { isAdmin: false } };
     } else if (path === '/api/config/validate-keys') {
       body = { errno: 0, result: { valid: true } };
+    } else if (path === '/api/ev/vehicles' && method === 'GET') {
+      body = { errno: 0, result: evVehicles.slice() };
+    } else if (path === '/api/ev/vehicles' && method === 'POST') {
+      const postData = route.request().postDataJSON ? route.request().postDataJSON() : {};
+      const vehicleId = String(postData?.vehicleId || '').trim();
+      const provider = String(postData?.provider || '').trim() || 'tesla';
+      const region = String(postData?.region || 'na').trim() || 'na';
+      const displayName = String(postData?.displayName || vehicleId).trim() || vehicleId;
+      const existingIdx = evVehicles.findIndex((vehicle) => String(vehicle.vehicleId) === vehicleId);
+      const payload = { vehicleId, provider, region, displayName };
+      if (existingIdx >= 0) {
+        evVehicles[existingIdx] = { ...evVehicles[existingIdx], ...payload };
+      } else {
+        evVehicles.push(payload);
+      }
+      body = { errno: 0, result: payload };
+    } else if (path.startsWith('/api/ev/vehicles/') && method === 'DELETE') {
+      const vehicleId = decodeURIComponent(path.split('/').pop() || '');
+      const next = evVehicles.filter((vehicle) => String(vehicle.vehicleId) !== String(vehicleId));
+      evVehicles.splice(0, evVehicles.length, ...next);
+      body = { errno: 0, result: { deleted: true } };
+    } else if (path === '/api/ev/oauth/start' && method === 'GET') {
+      const query = Object.fromEntries(requestUrl.searchParams.entries());
+      oauthStartRequests.push(query);
+      body = {
+        errno: 0,
+        result: {
+          url: `https://fleet-auth.tesla.test/oauth2/v3/authorize?client_id=${encodeURIComponent(query.clientId || 'test-client')}`
+        }
+      };
+    } else if (path === '/api/ev/oauth/callback' && method === 'POST') {
+      const postData = route.request().postDataJSON ? route.request().postDataJSON() : {};
+      oauthCallbackRequests.push(postData);
+      if (!postData?.codeVerifier) {
+        status = 400;
+        body = { errno: 400, error: 'codeVerifier is required' };
+      } else {
+        body = { errno: 0, result: { stored: true, vehicleId: postData.vehicleId || 'unknown' } };
+      }
     }
 
     await route.fulfill({
-      status: 200,
+      status,
       contentType: 'application/json',
       body: JSON.stringify(body)
     });
   });
+
+  return {
+    getVehicles: () => evVehicles.map((vehicle) => ({ ...vehicle })),
+    getOAuthStartRequests: () => oauthStartRequests.map((req) => ({ ...req })),
+    getOAuthCallbackRequests: () => oauthCallbackRequests.map((req) => ({ ...req }))
+  };
 }
 
 async function readTextFast(locator) {
@@ -99,6 +148,7 @@ async function readTextFast(locator) {
  */
 
 test.describe('Settings Page', () => {
+  let apiMock;
   
   test.beforeEach(async ({ page }) => {
     await page.route('**/js/firebase-config.js', async (route) => {
@@ -108,7 +158,7 @@ test.describe('Settings Page', () => {
         body: 'window.firebaseConfig = { apiKey: "YOUR_TEST_KEY" };'
       });
     });
-    await mockSettingsApi(page);
+    apiMock = await mockSettingsApi(page);
     await page.addInitScript(authInitScript('test-user-123', 'test@example.com'), {
       userUid: 'test-user-123',
       userEmail: 'test@example.com'
@@ -227,6 +277,63 @@ test.describe('Settings Page', () => {
     
     // Notifications are optional
     expect(hasNotifications || hasCheckbox || true).toBeTruthy();
+  });
+
+  test('should render Tesla onboarding controls in settings', async ({ page }) => {
+    await expect(page.locator('#teslaOnboardingSection')).toBeVisible();
+    await expect(page.locator('#teslaClientId')).toBeVisible();
+    await expect(page.locator('#teslaVehicleId')).toBeVisible();
+    await expect(page.getByText(/Vehicle VIN/i)).toBeVisible();
+    await expect(page.locator('#teslaConnectBtn')).toBeVisible();
+    await expect(page.locator('#teslaVehiclesList')).toBeVisible();
+  });
+
+  test('should complete Tesla OAuth callback and send codeVerifier', async ({ page }) => {
+    const pending = {
+      vehicleId: '5YJ3E1EA7JF000001',
+      vin: '5YJ3E1EA7JF000001',
+      clientId: 'tesla-client-id-123',
+      clientSecret: '',
+      displayName: 'Model Y Test',
+      region: 'na',
+      redirectUri: 'http://localhost:3000/settings.html',
+      codeVerifier: 'pkce-verifier-123',
+      state: 'oauth-state-123',
+      startedAtMs: Date.now()
+    };
+
+    await page.evaluate((payload) => {
+      sessionStorage.setItem('teslaOauthPending', JSON.stringify(payload));
+    }, pending);
+
+    await page.goto('/settings.html?code=auth-code-123&state=oauth-state-123');
+    await page.waitForTimeout(600);
+
+    const callbackRequests = apiMock.getOAuthCallbackRequests();
+    expect(callbackRequests.length).toBeGreaterThan(0);
+    expect(callbackRequests[0].codeVerifier).toBe('pkce-verifier-123');
+    expect(callbackRequests[0].vehicleId).toBe('5YJ3E1EA7JF000001');
+    expect(callbackRequests[0].vin).toBe('5YJ3E1EA7JF000001');
+
+    await expect(page.locator('#teslaVehiclesList')).toContainText('5YJ3E1EA7JF000001');
+    await expect(page.locator('#teslaOnboardingStatus')).toContainText(/Tesla vehicle\(s\) connected|Tesla connected/i);
+    expect(page.url()).not.toContain('code=');
+    expect(page.url()).not.toContain('state=');
+  });
+
+  test('should reject OAuth callback when pending Tesla auth is missing', async ({ page }) => {
+    await page.evaluate(() => {
+      sessionStorage.removeItem('teslaOauthPending');
+    });
+
+    await page.goto('/settings.html?code=orphan-code&state=orphan-state');
+    await page.waitForTimeout(500);
+
+    const callbackRequests = apiMock.getOAuthCallbackRequests();
+    expect(callbackRequests.length).toBe(0);
+    await expect(page.locator('#teslaOnboardingStatus')).toContainText('No pending Tesla authorization session found');
+    expect(page.url()).not.toContain('code=');
+    expect(page.url()).not.toContain('state=');
   });
 
   test('should have automation settings', async ({ page }) => {

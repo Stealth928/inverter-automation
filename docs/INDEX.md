@@ -20,6 +20,7 @@ Purpose: Canonical index of actively maintained project documentation.
 
 ## Product and Testing Guides
 - [guides/PRODUCT_GUIDE.md](guides/PRODUCT_GUIDE.md): Product-facing feature guide.
+- [guides/TESLA_ONBOARDING.md](guides/TESLA_ONBOARDING.md): End-user Tesla EV connect/auth flow in Settings.
 - [guides/TESTING_GUIDE.md](guides/TESTING_GUIDE.md): Backend/frontend test execution guide.
 
 ## Refactor and Governance Track

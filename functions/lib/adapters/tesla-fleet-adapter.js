@@ -33,13 +33,14 @@ const {
 // Tesla API constants
 // ---------------------------------------------------------------------------
 
-const TESLA_AUTH_BASE = 'https://fleet-auth.prd.vn.cloud.tesla.com/oauth2/v3';
-const TESLA_AUTH_BASE_FALLBACK = 'https://auth.tesla.com/oauth2/v3';
+const TESLA_AUTH_BASE = 'https://auth.tesla.com/oauth2/v3';
+const TESLA_AUTH_BASE_FALLBACK = 'https://fleet-auth.prd.vn.cloud.tesla.com/oauth2/v3';
 const TESLA_FLEET_REGIONS = Object.freeze({
   na: 'https://fleet-api.prd.na.vn.cloud.tesla.com',
   eu: 'https://fleet-api.prd.eu.vn.cloud.tesla.com'
 });
 const TESLA_DEFAULT_REGION = 'na';
+const TESLA_VIN_REGEX = /^[A-HJ-NPR-Z0-9]{17}$/i;
 
 // Scopes required for full vehicle control
 const TESLA_REQUIRED_SCOPES = Object.freeze([
@@ -75,6 +76,31 @@ function getFleetBase(region) {
 
 function normalizeVehicleId(vehicleId) {
   return String(vehicleId || '').trim().toUpperCase();
+}
+
+function normalizeTeslaVin(vin) {
+  const normalized = normalizeVehicleId(vin);
+  return TESLA_VIN_REGEX.test(normalized) ? normalized : '';
+}
+
+function resolveVehicleReference(vehicleId, context = {}) {
+  const vin = normalizeTeslaVin(
+    context?.vehicleVin ||
+    context?.credentials?.vin ||
+    vehicleId
+  );
+  if (vin) {
+    return { id: vin, vin, kind: 'vin' };
+  }
+
+  const legacyId = String(
+    context?.teslaVehicleId ||
+    context?.credentials?.teslaVehicleId ||
+    vehicleId ||
+    ''
+  ).trim();
+
+  return { id: legacyId, vin: '', kind: 'legacy_id' };
 }
 
 function toNullableBoolean(value) {
@@ -338,6 +364,7 @@ class TeslaFleetAdapter extends EVAdapter {
     this._region = normalizeRegion(deps.region);
     this._fleetBase = getFleetBase(this._region);
     this._logger = deps.logger || { debug: () => {}, warn: () => {}, error: () => {} };
+    this._signedCommandClient = deps.signedCommandClient || deps.signingClient || null;
     this._signingClient = deps.signingClient || null;
     this._sleep = deps.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
@@ -348,7 +375,10 @@ class TeslaFleetAdapter extends EVAdapter {
   }
 
   _supportsSignedCommands() {
-    return Boolean(this._signingClient && typeof this._signingClient.sign === 'function');
+    return Boolean(
+      this._signedCommandClient &&
+      typeof this._signedCommandClient.sendCommand === 'function'
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -366,10 +396,12 @@ class TeslaFleetAdapter extends EVAdapter {
       throw new Error('TeslaFleetAdapter.refreshAccessToken: refreshToken is required');
     }
 
+    const region = normalizeRegion(credentials?.region || this._region);
     const body = {
       grant_type: 'refresh_token',
       client_id: credentials.clientId,
       refresh_token: credentials.refreshToken,
+      audience: getFleetBase(region),
       ...(credentials.clientSecret ? { client_secret: credentials.clientSecret } : {})
     };
 
@@ -430,17 +462,32 @@ class TeslaFleetAdapter extends EVAdapter {
   }
 
   async getCommandReadiness(vehicleId, context = {}) {
+    const vehicleRef = resolveVehicleReference(vehicleId, context);
+    if (!vehicleRef.vin) {
+      return {
+        vehicleId: String(vehicleId),
+        vehicleVin: '',
+        checkedAtIso: new Date().toISOString(),
+        protocolRequired: null,
+        keyPaired: null,
+        supportsSignedCommands: this._supportsSignedCommands(),
+        transportMode: this._supportsSignedCommands() ? 'signed_command' : 'legacy_rest',
+        readyForCommands: false,
+        blockingReasons: ['vin_required']
+      };
+    }
+
     const fleetBase = this._fleetBaseForContext(context);
     const url = `${fleetBase}/api/1/vehicles/fleet_status`;
     const response = await this._requestWithAuthRefresh(
       context,
       (headers) => this._makeRequest('POST', url, {
         headers,
-        body: { vins: [String(vehicleId)] }
+        body: { vins: [vehicleRef.vin] }
       })
     );
 
-    const readiness = parseFleetStatusReadiness(response.data, vehicleId);
+    const readiness = parseFleetStatusReadiness(response.data, vehicleRef.vin);
     const supportsSignedCommands = this._supportsSignedCommands();
     const blockingReasons = [];
 
@@ -453,6 +500,7 @@ class TeslaFleetAdapter extends EVAdapter {
 
     return {
       vehicleId: String(vehicleId),
+      vehicleVin: vehicleRef.vin,
       checkedAtIso: new Date().toISOString(),
       protocolRequired: readiness.protocolRequired,
       keyPaired: readiness.keyPaired,
@@ -485,8 +533,9 @@ class TeslaFleetAdapter extends EVAdapter {
   // ---------------------------------------------------------------------------
 
   async getVehicleStatus(vehicleId, context) {
+    const vehicleRef = resolveVehicleReference(vehicleId, context);
     const fleetBase = this._fleetBaseForContext(context);
-    const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleId)}/vehicle_data`;
+    const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}/vehicle_data`;
     const response = await this._requestWithAuthRefresh(
       context,
       (headers) => this._makeRequest('GET', url, { headers })
@@ -496,9 +545,48 @@ class TeslaFleetAdapter extends EVAdapter {
     return normalizeTeslaVehicleData(vehicleData);
   }
 
+  _shouldUseSignedTransport(context = {}) {
+    return (
+      context?.forceSignedCommands === true ||
+      context?.commandReadiness?.protocolRequired === true
+    );
+  }
+
+  async _sendSignedCommand(command, vehicleId, context = {}, payload = {}) {
+    if (!this._supportsSignedCommands()) {
+      throw new Error('Tesla signed command transport is not configured');
+    }
+    const vehicleVin = normalizeTeslaVin(
+      context?.vehicleVin ||
+      context?.credentials?.vin ||
+      vehicleId
+    );
+    if (!vehicleVin) {
+      throw new Error('Tesla VIN is required for signed command transport');
+    }
+    const credentials = context?.credentials || {};
+    if (!credentials.accessToken) {
+      throw new Error('Tesla access token is required for signed command transport');
+    }
+
+    const response = await this._signedCommandClient.sendCommand({
+      command,
+      vehicleVin,
+      payload,
+      region: normalizeRegion(context?.region || credentials.region || this._region),
+      credentials
+    });
+
+    return normalizeTeslaCommandResult(response || {}, command);
+  }
+
   async startCharging(vehicleId, context, _options = {}) {
+    if (this._shouldUseSignedTransport(context)) {
+      return this._sendSignedCommand('charge_start', vehicleId, context, {});
+    }
+    const vehicleRef = resolveVehicleReference(vehicleId, context);
     const fleetBase = this._fleetBaseForContext(context);
-    const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleId)}/command/charge_start`;
+    const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}/command/charge_start`;
     const response = await this._requestWithAuthRefresh(
       context,
       (headers) => this._makeRequest('POST', url, { headers, body: {} })
@@ -507,8 +595,12 @@ class TeslaFleetAdapter extends EVAdapter {
   }
 
   async stopCharging(vehicleId, context) {
+    if (this._shouldUseSignedTransport(context)) {
+      return this._sendSignedCommand('charge_stop', vehicleId, context, {});
+    }
+    const vehicleRef = resolveVehicleReference(vehicleId, context);
     const fleetBase = this._fleetBaseForContext(context);
-    const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleId)}/command/charge_stop`;
+    const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}/command/charge_stop`;
     const response = await this._requestWithAuthRefresh(
       context,
       (headers) => this._makeRequest('POST', url, { headers, body: {} })
@@ -522,8 +614,12 @@ class TeslaFleetAdapter extends EVAdapter {
       throw new Error(`TeslaFleetAdapter.setChargeLimit: invalid limit ${limitPct}`);
     }
 
+    if (this._shouldUseSignedTransport(context)) {
+      return this._sendSignedCommand('set_charge_limit', vehicleId, context, { percent: limit });
+    }
+    const vehicleRef = resolveVehicleReference(vehicleId, context);
     const fleetBase = this._fleetBaseForContext(context);
-    const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleId)}/command/set_charge_limit`;
+    const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}/command/set_charge_limit`;
     const response = await this._requestWithAuthRefresh(
       context,
       (headers) => this._makeRequest('POST', url, { headers, body: { percent: limit } })
@@ -532,8 +628,9 @@ class TeslaFleetAdapter extends EVAdapter {
   }
 
   async wakeVehicle(vehicleId, context) {
+    const vehicleRef = resolveVehicleReference(vehicleId, context);
     const fleetBase = this._fleetBaseForContext(context);
-    const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleId)}/wake_up`;
+    const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}/wake_up`;
 
     const response = await this._requestWithAuthRefresh(
       context,
@@ -553,7 +650,7 @@ class TeslaFleetAdapter extends EVAdapter {
         context,
         (headers) => this._makeRequest(
           'GET',
-          `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleId)}`,
+          `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}`,
           { headers }
         )
       );
@@ -665,7 +762,14 @@ function buildTeslaAuthUrl(params, region = TESLA_DEFAULT_REGION) {
  * @returns {Promise<{ accessToken, refreshToken, expiresAtMs }>}
  */
 async function exchangeTeslaAuthCode(params, httpClient) {
-  const { clientId, clientSecret = '', redirectUri, code, codeVerifier = '' } = params;
+  const {
+    clientId,
+    clientSecret = '',
+    redirectUri,
+    code,
+    codeVerifier = '',
+    region = TESLA_DEFAULT_REGION
+  } = params;
 
   if (!clientId || !redirectUri || !code) {
     throw new Error('exchangeTeslaAuthCode: clientId, redirectUri, and code are required');
@@ -679,6 +783,7 @@ async function exchangeTeslaAuthCode(params, httpClient) {
     client_id: clientId,
     redirect_uri: redirectUri,
     code,
+    audience: getFleetBase(region),
     ...(clientSecret && { client_secret: clientSecret }),
     ...(codeVerifier && { code_verifier: codeVerifier })
   };
@@ -695,12 +800,68 @@ async function exchangeTeslaAuthCode(params, httpClient) {
   };
 }
 
+function createTeslaSignedCommandClient(options = {}) {
+  const endpoint = String(options.endpoint || '').trim().replace(/\/+$/, '');
+  if (!endpoint) return null;
+
+  const authToken = String(options.authToken || '').trim();
+  const httpClient = options.httpClient || createTeslaHttpClient(options);
+  const logger = options.logger || { debug: () => {}, warn: () => {}, error: () => {} };
+
+  return {
+    async sendCommand({ command, vehicleVin, payload = {}, region = TESLA_DEFAULT_REGION, credentials = {} }) {
+      const vin = normalizeTeslaVin(vehicleVin);
+      if (!vin) {
+        throw new Error('Tesla signed command client requires a valid VIN');
+      }
+      const accessToken = String(credentials.accessToken || '').trim();
+      if (!accessToken) {
+        throw new Error('Tesla signed command client requires access token');
+      }
+      const requestHeaders = {
+        'Content-Type': 'application/json'
+      };
+      if (authToken) {
+        requestHeaders.Authorization = `Bearer ${authToken}`;
+      }
+
+      const response = await httpClient('POST', `${endpoint}/command`, {
+        headers: requestHeaders,
+        body: {
+          command: String(command || '').trim(),
+          vehicleVin: vin,
+          region: normalizeRegion(region),
+          payload,
+          accessToken
+        }
+      });
+
+      if (!response || Number(response.status) >= 400) {
+        const errorMessage =
+          response?.data?.error?.message ||
+          response?.data?.error ||
+          `Signed command proxy returned HTTP ${response?.status || 500}`;
+        throw new Error(String(errorMessage));
+      }
+
+      logger.debug('TeslaFleetAdapter', `Signed command dispatched via proxy for VIN ${vin}`);
+      const data = response.data?.response || response.data || {};
+      return {
+        result: data.result === undefined ? true : Boolean(data.result),
+        reason: String(data.reason || '')
+      };
+    }
+  };
+}
+
 module.exports = {
   TeslaFleetAdapter,
   createTeslaHttpClient,
+  createTeslaSignedCommandClient,
   buildTeslaAuthUrl,
   exchangeTeslaAuthCode,
   normalizeTeslaVehicleData,
+  normalizeTeslaVin,
   TESLA_AUTH_BASE,
   TESLA_AUTH_BASE_FALLBACK,
   TESLA_FLEET_REGIONS,

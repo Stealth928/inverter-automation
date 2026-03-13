@@ -2870,6 +2870,13 @@
             }
 
             const reasons = Array.isArray(readiness.blockingReasons) ? readiness.blockingReasons : [];
+            if (reasons.includes('vin_required')) {
+                return {
+                    kind: 'warn',
+                    label: 'VIN Required',
+                    detail: 'Reconnect Tesla with VIN in Settings before sending commands'
+                };
+            }
             if (reasons.includes('signed_command_required')) {
                 return {
                     kind: 'warn',
@@ -4482,11 +4489,12 @@
                 card.classList.toggle('is-hidden-preference', !isVisible);
             });
 
-            const priorityRow = document.getElementById('priorityRow');
-            if (priorityRow) {
-                const hasVisibleCards = !!priorityRow.querySelector('[data-dashboard-card]:not(.is-hidden-preference)');
-                priorityRow.classList.toggle('is-hidden-preference', !hasVisibleCards);
-            }
+            ['priorityRow', 'operationsRow'].forEach((rowId) => {
+                const row = document.getElementById(rowId);
+                if (!row) return;
+                const hasVisibleCards = !!row.querySelector('[data-dashboard-card]:not(.is-hidden-preference)');
+                row.classList.toggle('is-hidden-preference', !hasVisibleCards);
+            });
 
             syncDashboardCardVisibilityToggles();
         }
@@ -4551,6 +4559,7 @@
         let inverterRefreshTimer = null;
         let weatherRefreshTimer = null;
         let evRefreshTimer = null;
+        let evRefreshTick = 0;
 
         // Auto-refresh control: pause when tab hidden or after idle timeout
         const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes of no interaction
@@ -4604,6 +4613,7 @@
             if (evRefreshTimer) {
                 clearInterval(evRefreshTimer);
                 evRefreshTimer = null;
+                evRefreshTick = 0;
             }
             if (window.metricsRefreshTimer) {
                 clearInterval(window.metricsRefreshTimer);
@@ -4654,7 +4664,9 @@
                 evRefreshTimer = setInterval(() => {
                     const selectedId = String(evDashboardState.selectedVehicleId || '');
                     if (!selectedId) return;
-                    fetchEVVehicleStatus(selectedId, { live: false, silent: true });
+                    evRefreshTick += 1;
+                    const shouldForceLive = (evRefreshTick % 2) === 0;
+                    fetchEVVehicleStatus(selectedId, { live: shouldForceLive, silent: true });
                 }, 90000);
             }
 

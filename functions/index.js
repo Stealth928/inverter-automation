@@ -189,7 +189,11 @@ const { createFoxessDeviceAdapter } = require('./lib/adapters/foxess-adapter');
 const { createSungrowDeviceAdapter } = require('./lib/adapters/sungrow-adapter');
 const { createSigenEnergyDeviceAdapter } = require('./lib/adapters/sigenergy-adapter');
 const { createAlphaEssDeviceAdapter } = require('./lib/adapters/alphaess-adapter');
-const { TeslaFleetAdapter, createTeslaHttpClient } = require('./lib/adapters/tesla-fleet-adapter');
+const {
+  TeslaFleetAdapter,
+  createTeslaHttpClient,
+  createTeslaSignedCommandClient
+} = require('./lib/adapters/tesla-fleet-adapter');
 // adapterRegistry populated once all deps (logger, getConfig) are reinitialized
 const adapterRegistry = createAdapterRegistry();
 
@@ -649,9 +653,16 @@ const {
   SEED_ADMIN_EMAIL
 } = createAdminAccess({ db, logger: console });
 const teslaHttpClient = createTeslaHttpClient();
+const teslaSignedCommandClient = createTeslaSignedCommandClient({
+  endpoint: process.env.TESLA_SIGNED_COMMAND_PROXY_URL || '',
+  authToken: process.env.TESLA_SIGNED_COMMAND_PROXY_TOKEN || '',
+  httpClient: teslaHttpClient,
+  logger
+});
 const teslaFleetAdapter = new TeslaFleetAdapter({
   httpClient: teslaHttpClient,
   region: process.env.TESLA_FLEET_REGION || 'na',
+  signedCommandClient: teslaSignedCommandClient,
   logger
 });
 

@@ -96,14 +96,17 @@
         }
 
         /* Priority Row - Weather, Prices, Inverter */
-        .priority-row {
+        .priority-row,
+        .operations-row {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
             gap: 16px;
             margin-bottom: 20px;
+            align-items: start;
         }
         @media (max-width: 900px) {
-            .priority-row {
+            .priority-row,
+            .operations-row {
                 grid-template-columns: 1fr;
             }
         }
@@ -2055,8 +2058,9 @@
                 </div>
             </div>
 
+            <div class="operations-row" id="operationsRow">
             <!-- EV Overview -->
-            <div class="card" style="margin-bottom: 20px;" data-dashboard-card="ev">
+            <div class="card" data-dashboard-card="ev">
                 <div class="card-header">
                     <div class="card-title"><span class="icon">🚗</span> EV Overview</div>
                     <div style="display:flex;align-items:center;gap:8px;">
@@ -2099,7 +2103,7 @@
             </div>
 
             <!-- Quick Controls -->
-            <div class="card" style="margin-bottom: 20px;" data-dashboard-card="quickControls">
+            <div class="card" data-dashboard-card="quickControls">
                 <div class="card-header">
                     <div class="card-title"><span class="icon">🕹️</span> Quick Controls</div>
                     <button class="btn" onclick="refreshQuickControlStatus(true)" style="font-size:11px;padding:4px 10px;width:auto;margin:0">🔄 Refresh</button>
@@ -2201,7 +2205,7 @@
             </div>
 
             <!-- Manual Scheduler (Time Segments) - moved up for prominence -->
-            <div class="card" style="margin-bottom: 20px;" data-dashboard-card="scheduler">
+            <div class="card" data-dashboard-card="scheduler">
                 <div class="card-header">
                     <div class="card-title"><span class="icon">📅</span> Manual Scheduler (Time Segments)</div>
                     <div style="display:flex;gap:8px;">

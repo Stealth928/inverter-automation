@@ -171,6 +171,31 @@ describe('POST /api/ev/vehicles', () => {
     expect(res.body.result.vehicleId).toBe('v1');
     expect(setVehicle).toHaveBeenCalled();
   });
+
+  test('normalizes Tesla VIN as canonical vehicleId when provided', async () => {
+    const setVehicle = jest.fn(async () => {});
+    const deps = makeDeps({ vehiclesRepo: makeVehiclesRepo({ setVehicle }) });
+    const app = buildApp(deps);
+    const res = await request(app).post('/api/ev/vehicles')
+      .set('Authorization', 'Bearer tok')
+      .send({
+        provider: 'tesla',
+        vin: '5yj3e1ea7jf000001',
+        displayName: 'Model Y'
+      });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.result.vehicleId).toBe('5YJ3E1EA7JF000001');
+    expect(res.body.result.vin).toBe('5YJ3E1EA7JF000001');
+    expect(setVehicle).toHaveBeenCalledWith(
+      'u-test',
+      '5YJ3E1EA7JF000001',
+      expect.objectContaining({
+        provider: 'tesla',
+        vin: '5YJ3E1EA7JF000001'
+      })
+    );
+  });
 });
 
 // ─── DELETE /api/ev/vehicles/:vehicleId ──────────────────────────────────
@@ -197,7 +222,7 @@ describe('GET /api/ev/vehicles/:vehicleId/status', () => {
   });
 
   test('returns cached status when cache is populated and live=0', async () => {
-    const cached = { ...STUB_STATUS, source: 'cache' };
+    const cached = { ...STUB_STATUS, source: 'cache', asOfIso: new Date().toISOString() };
     const deps = makeDeps({
       vehiclesRepo: makeVehiclesRepo({
         getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
@@ -432,6 +457,24 @@ describe('POST /api/ev/vehicles/:vehicleId/command', () => {
     expect(adapter.startCharging).not.toHaveBeenCalled();
   });
 
+  test('returns VIN guidance when readiness reports vin_required', async () => {
+    const adapter = makeAdapter({
+      getCommandReadiness: jest.fn(async () => ({
+        readyForCommands: false,
+        blockingReasons: ['vin_required']
+      }))
+    });
+    const { deps } = makeCommandDeps(adapter);
+    const app = buildApp(deps);
+    const res = await request(app).post('/api/ev/vehicles/v1/command')
+      .set('Authorization', 'Bearer tok')
+      .send({ command: 'startCharging' });
+
+    expect(res.statusCode).toBe(412);
+    expect(res.body.error).toMatch(/vin is required/i);
+    expect(adapter.startCharging).not.toHaveBeenCalled();
+  });
+
   test('continues command flow when readiness preflight fails unexpectedly', async () => {
     const adapter = makeAdapter({
       getCommandReadiness: jest.fn(async () => {
@@ -563,5 +606,54 @@ describe('POST /api/ev/oauth/callback', () => {
     const saved = setVehicleCredentials.mock.calls[0][2];
     expect(saved.expiresAtMs).toEqual(expect.any(Number));
     expect(saved.expiresAtMs).toBeGreaterThan(Date.now());
+  });
+
+  test('resolves vehicle lookup by VIN when vehicleId is omitted', async () => {
+    const setVehicleCredentials = jest.fn(async () => {});
+    const updateVehicle = jest.fn(async () => {});
+    const httpClient = makeTeslaTokenHttpClient();
+    const app = buildApp(makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async (_uid, id) => {
+          if (id === '5YJ3E1EA7JF000001') {
+            return { vehicleId: '5YJ3E1EA7JF000001', provider: 'tesla', region: 'na' };
+          }
+          return null;
+        }),
+        setVehicleCredentials,
+        updateVehicle
+      }),
+      httpClient
+    }));
+
+    const res = await request(app)
+      .post('/api/ev/oauth/callback')
+      .set('Authorization', 'Bearer tok')
+      .send({
+        vin: '5yj3e1ea7jf000001',
+        clientId: 'client-1',
+        redirectUri: 'https://example.com/callback',
+        code: 'auth-code',
+        codeVerifier: 'verifier'
+      });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.result).toEqual(expect.objectContaining({
+      stored: true,
+      vehicleId: '5YJ3E1EA7JF000001',
+      vin: '5YJ3E1EA7JF000001'
+    }));
+    expect(setVehicleCredentials).toHaveBeenCalledWith(
+      'u-test',
+      '5YJ3E1EA7JF000001',
+      expect.objectContaining({
+        vin: '5YJ3E1EA7JF000001'
+      })
+    );
+    expect(updateVehicle).toHaveBeenCalledWith(
+      'u-test',
+      '5YJ3E1EA7JF000001',
+      expect.objectContaining({ vin: '5YJ3E1EA7JF000001' })
+    );
   });
 });

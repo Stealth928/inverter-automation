@@ -254,6 +254,25 @@ test.describe('Dashboard Page', () => {
     await expect(page.locator('#priorityRow')).toBeHidden();
   });
 
+  test('should keep EV, quick controls, and scheduler in a responsive shared row', async ({ page }) => {
+    const evToggle = page.locator('[data-dashboard-toggle="ev"]');
+    const quickControlsToggle = page.locator('[data-dashboard-toggle="quickControls"]');
+    const schedulerToggle = page.locator('[data-dashboard-toggle="scheduler"]');
+
+    await evToggle.uncheck();
+    await quickControlsToggle.uncheck();
+
+    await expect(page.locator('[data-dashboard-card="ev"]')).toBeHidden();
+    await expect(page.locator('[data-dashboard-card="quickControls"]')).toBeHidden();
+    await expect(page.locator('[data-dashboard-card="scheduler"]')).toBeVisible();
+
+    const visibleOperationsCards = page.locator('#operationsRow [data-dashboard-card]:not(.is-hidden-preference)');
+    await expect(visibleOperationsCards).toHaveCount(1);
+
+    await schedulerToggle.uncheck();
+    await expect(page.locator('#operationsRow')).toBeHidden();
+  });
+
   test('should persist card visibility preferences across reload', async ({ page }) => {
     await page.evaluate(() => {
       const payload = JSON.stringify({

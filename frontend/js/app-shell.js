@@ -294,22 +294,163 @@
 
     }
 
+    const NAV_LINK_UI = {
+        '/app.html': { icon: 'overview', label: 'Overview' },
+        '/roi.html': { icon: 'roi', label: 'Automation ROI' },
+        '/test.html': { icon: 'lab', label: 'Automation Lab' },
+        '/history.html': { icon: 'reports', label: 'Reports' },
+        '/control.html': { icon: 'controls', label: 'Controls' },
+        '/rules-library.html': { icon: 'library', label: 'Rules Library' },
+        '/settings.html': { icon: 'settings', label: 'Settings' },
+        '/curtailment-discovery.html': { icon: 'topology', label: 'WIP - Topology Discovery' },
+        '/admin.html': { icon: 'admin', label: 'Admin' }
+    };
+
+    const NAV_LINK_ICONS = {
+        overview: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.8V20h14V9.8"/><path d="M9.5 20v-6h5v6"/></svg>',
+        library: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h12a2 2 0 0 1 2 2v12H7a2 2 0 0 0-2 2z"/><path d="M7 4v16"/><path d="M11 8h5"/><path d="M11 11h5"/></svg>',
+        roi: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 18h16"/><path d="m6 14 4-4 3 3 5-6"/><circle cx="7" cy="7" r="2.2"/><path d="M7 5.6v2.8"/><path d="M5.8 7h2.4"/></svg>',
+        lab: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 3v5l-5.5 9.5A2 2 0 0 0 6.2 20h11.6a2 2 0 0 0 1.7-2.5L14 8V3"/><path d="M9 8h6"/><path d="M9 14h6"/><path d="M11 16.5h2"/></svg>',
+        reports: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="7" rx="1"/><rect x="11" y="8" width="3" height="10" rx="1"/><rect x="16" y="5" width="3" height="13" rx="1"/></svg>',
+        controls: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="9" width="18" height="10" rx="5"/><path d="M8 13v4"/><path d="M6 15h4"/><circle cx="15.5" cy="13.5" r="1"/><circle cx="17.5" cy="15.5" r="1"/></svg>',
+        settings: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/><circle cx="12" cy="12" r="3"/></svg>',
+        topology: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M8.2 6h7.6"/><path d="M8 7.5l2.8 7.4"/><path d="M16 7.5l-2.8 7.4"/></svg>',
+        admin: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3 4.5 6v5.8c0 4.4 3 8.3 7.5 9.2 4.5-.9 7.5-4.8 7.5-9.2V6L12 3z"/><path d="m9.5 12 1.8 1.8 3.2-3.4"/></svg>'
+    };
+
+    const PAGE_TITLE_UI = {
+        '/roi.html': { icon: 'roi', label: 'Automation ROI' },
+        '/test.html': { icon: 'lab' },
+        '/history.html': { icon: 'reports', label: 'Reports' },
+        '/control.html': { icon: 'controls', label: 'Advanced Controls' },
+        '/rules-library.html': { icon: 'library', label: 'Rules Library' },
+        '/settings.html': { icon: 'settings', label: 'Settings' },
+        '/admin.html': { icon: 'admin', label: 'Admin Panel' },
+        '/curtailment-discovery.html': {
+            icon: 'topology',
+            label: 'Solar Curtailment Discovery & Testing',
+            selector: '.discovery-container .discovery-section .section-title'
+        }
+    };
+
+    function normalizeNavPath(path) {
+        const cleaned = (path || '').replace(/\/$/, '');
+        if (cleaned === '' || cleaned === '/' || cleaned === '/index' || cleaned === '/index.html') return '/app.html';
+        return cleaned;
+    }
+
+    function stripLegacyIconPrefix(text) {
+        const tokens = String(text || '').trim().split(/\s+/).filter(Boolean);
+        if (!tokens.length) return '';
+        if (tokens.length > 1 && !/[A-Za-z0-9]/.test(tokens[0])) {
+            tokens.shift();
+        }
+        return tokens.join(' ').trim();
+    }
+
+    function decorateNavLinks() {
+        const links = document.querySelectorAll('.nav-link[href]');
+        if (!links.length) return;
+
+        links.forEach((link) => {
+            if (link.dataset.navIconDecorated === '1') return;
+
+            let path = '';
+            try {
+                path = normalizeNavPath(new URL(link.getAttribute('href'), window.location.origin).pathname);
+            } catch (err) {
+                path = normalizeNavPath(link.getAttribute('href') || '');
+            }
+
+            const config = NAV_LINK_UI[path];
+            if (!config) return;
+
+            const iconMarkup = NAV_LINK_ICONS[config.icon];
+            if (!iconMarkup) return;
+
+            const fallbackLabel = stripLegacyIconPrefix(link.textContent || config.label);
+            const label = config.label || fallbackLabel;
+
+            const iconEl = document.createElement('span');
+            iconEl.className = 'nav-link__icon';
+            iconEl.setAttribute('aria-hidden', 'true');
+            iconEl.innerHTML = iconMarkup;
+
+            const labelEl = document.createElement('span');
+            labelEl.className = 'nav-link__label';
+            labelEl.textContent = label || fallbackLabel;
+
+            link.classList.add('nav-link--with-icon');
+            link.dataset.navIcon = config.icon;
+            link.dataset.navIconDecorated = '1';
+            link.textContent = '';
+            link.appendChild(iconEl);
+            link.appendChild(labelEl);
+        });
+    }
+
+    function resolvePrimaryPageTitle(config) {
+        const selectors = [];
+        if (config && config.selector) {
+            selectors.push(config.selector);
+        }
+        selectors.push(
+            '.page-header h1',
+            '.container.page-shell > header > h1',
+            '.container > header > h1',
+            'main header h1',
+            'header h1'
+        );
+
+        for (const selector of selectors) {
+            const el = document.querySelector(selector);
+            if (el) return el;
+        }
+        return null;
+    }
+
+    function decoratePrimaryPageTitle() {
+        const path = normalizeNavPath(window.location.pathname);
+        const config = PAGE_TITLE_UI[path];
+        if (!config || !config.icon) return;
+
+        const heading = resolvePrimaryPageTitle(config);
+        if (!heading || heading.dataset.pageTitleDecorated === '1') return;
+
+        const iconMarkup = NAV_LINK_ICONS[config.icon];
+        if (!iconMarkup) return;
+
+        const stripped = stripLegacyIconPrefix(heading.textContent || '');
+        const labelText = (config.label || stripped || '').trim();
+        if (!labelText) return;
+
+        const iconEl = document.createElement('span');
+        iconEl.className = 'page-title__icon';
+        iconEl.setAttribute('aria-hidden', 'true');
+        iconEl.innerHTML = iconMarkup;
+
+        const labelEl = document.createElement('span');
+        labelEl.className = 'page-title__label';
+        labelEl.textContent = labelText;
+
+        heading.classList.add('page-title--with-icon');
+        heading.dataset.pageTitleIcon = config.icon;
+        heading.dataset.pageTitleDecorated = '1';
+        heading.textContent = '';
+        heading.appendChild(iconEl);
+        heading.appendChild(labelEl);
+    }
+
     function setupNavHighlight() {
         const links = document.querySelectorAll('.nav-link');
         if (!links.length) return;
-        const normalizePath = (path) => {
-            const cleaned = (path || '').replace(/\/$/, '');
-            if (cleaned === '' || cleaned === '/' || cleaned === '/index') return '/app.html';
-            return cleaned;
-        };
-
-        const currentPath = normalizePath(window.location.pathname);
+        const currentPath = normalizeNavPath(window.location.pathname);
         const homeAliases = new Set(['/app.html']);
         let matched = false;
 
         links.forEach(link => {
             try {
-                const linkPath = normalizePath(new URL(link.getAttribute('href'), window.location.origin).pathname);
+                const linkPath = normalizeNavPath(new URL(link.getAttribute('href'), window.location.origin).pathname);
                 const isHomeMatch = homeAliases.has(currentPath) && homeAliases.has(linkPath);
                 if (linkPath === currentPath || isHomeMatch) {
                     link.classList.add('active');
@@ -1043,6 +1184,8 @@
     document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.add('has-fixed-nav');
         setupMobileNavMenu();
+        decorateNavLinks();
+        decoratePrimaryPageTitle();
         setupNavHighlight();
         setupUserMenu();
         relocateMetricsWidget();

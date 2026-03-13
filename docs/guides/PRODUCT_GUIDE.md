@@ -49,7 +49,7 @@ reporting are reduced.
 | `Automation ROI` | Savings/ROI analysis plus recent automation history | Current ROI workflow is oriented around short date windows and the UI caps ranges to 7 days |
 | `Controls` | Advanced controls for SoC limits, work mode, force-charge windows, and topology diagnostics | Some cards are FoxESS-only and are hidden for unsupported providers |
 | `Rules Library` | Import/remove prebuilt rule templates | Imported rules arrive inactive and priorities are auto-adjusted to avoid clashes |
-| `Settings` | Credentials, automation timing, cache TTLs, blackout windows, curtailment, preferences, and default rule settings | Weather location also controls automation timezone |
+| `Settings` | Credentials, automation timing, cache TTLs, blackout windows, curtailment, preferences, default rule settings, and Tesla EV onboarding | Weather location also controls automation timezone |
 | `WIP - Topology Discovery` | Advanced FoxESS-focused topology detection, export-limit probing, and curtailment testing | Hidden/admin-style page for advanced use and support |
 | `Admin` | Platform metrics and admin workflows | Only visible to admins |
 
@@ -182,7 +182,7 @@ This is especially useful for split-inverter or AC-coupled installations.
 | SigenEnergy | Partial / limited | Real-time status and work mode support exist, but scheduler/history/report coverage is not yet at parity |
 | Amber Electric | Production | Current pricing, short-horizon forecast pricing, price history, and ROI workflows |
 | Weather (Open-Meteo) | Production | Forecasts plus timezone/location resolution used by rules and dashboard |
-| EV APIs / Tesla OAuth groundwork | Early-stage platform capability | Backend endpoints and adapter scaffolding exist, but this is not yet a standard end-user workflow in the main UI |
+| Tesla EV (Settings onboarding) | Available | Users can connect Tesla via Settings OAuth flow (PKCE + callback), manage connected VIN-based vehicles, and use dashboard EV status; commands require Tesla readiness (VIN + virtual key + signed-command path as applicable) |
 
 ## Provider Notes You Should Know
 
@@ -224,6 +224,7 @@ The Settings page currently covers:
 
 - provider-specific credentials
 - optional Amber API key
+- Tesla EV onboarding (client ID, optional client secret, vehicle VIN, region, OAuth connect flow)
 - automation interval
 - cache TTLs for Amber, inverter, and weather data
 - blackout windows

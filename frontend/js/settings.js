@@ -33,6 +33,546 @@
             'cache_weather'
         ]);
 
+        const TESLA_OAUTH_PENDING_KEY = 'teslaOauthPending';
+        const TESLA_OAUTH_PENDING_TTL_MS = 20 * 60 * 1000;
+        const TESLA_REGION_DEFAULT = 'na';
+        const TESLA_VIN_REGEX = /^[A-HJ-NPR-Z0-9]{17}$/i;
+        let teslaOnboardingHandlersBound = false;
+
+        function normalizeTeslaVin(vin) {
+            const normalized = String(vin || '').trim().toUpperCase();
+            return TESLA_VIN_REGEX.test(normalized) ? normalized : '';
+        }
+
+        function getTeslaOnboardingElements() {
+            return {
+                badge: document.getElementById('teslaOnboardingBadge'),
+                status: document.getElementById('teslaOnboardingStatus'),
+                connectBtn: document.getElementById('teslaConnectBtn'),
+                clearPendingBtn: document.getElementById('teslaClearPendingBtn'),
+                refreshBtn: document.getElementById('teslaRefreshVehiclesBtn'),
+                vehiclesList: document.getElementById('teslaVehiclesList'),
+                clientIdInput: document.getElementById('teslaClientId'),
+                clientSecretInput: document.getElementById('teslaClientSecret'),
+                vehicleIdInput: document.getElementById('teslaVehicleId'),
+                displayNameInput: document.getElementById('teslaDisplayName'),
+                regionInput: document.getElementById('teslaRegion'),
+                redirectUriInput: document.getElementById('teslaRedirectUri')
+            };
+        }
+
+        function setTeslaOnboardingBadge(label, kind = 'sync') {
+            const { badge } = getTeslaOnboardingElements();
+            if (!badge) return;
+            badge.textContent = String(label || 'Ready');
+            badge.className = kind === 'modified' ? 'badge badge-modified' : 'badge badge-sync';
+        }
+
+        function setTeslaOnboardingStatus(message, kind = 'muted') {
+            const { status } = getTeslaOnboardingElements();
+            if (!status) return;
+            status.textContent = String(message || '');
+            status.className = 'tesla-onboarding-status';
+            if (kind === 'success') status.classList.add('is-success');
+            if (kind === 'warning') status.classList.add('is-warning');
+            if (kind === 'error') status.classList.add('is-error');
+        }
+
+        function getTeslaRedirectUri() {
+            try {
+                const url = new URL(window.location.href);
+                url.search = '';
+                url.hash = '';
+                return `${url.origin}${url.pathname}`;
+            } catch (e) {
+                return `${window.location.origin}/settings.html`;
+            }
+        }
+
+        function updateTeslaRedirectUriInput() {
+            const { redirectUriInput } = getTeslaOnboardingElements();
+            if (!redirectUriInput) return;
+            redirectUriInput.value = getTeslaRedirectUri();
+        }
+
+        function bytesToBase64Url(uint8) {
+            let binary = '';
+            for (let i = 0; i < uint8.length; i += 1) {
+                binary += String.fromCharCode(uint8[i]);
+            }
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+        }
+
+        function createRandomBase64Url(byteLength = 32) {
+            if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+                throw new Error('Secure random generator unavailable in this browser');
+            }
+            const bytes = new Uint8Array(byteLength);
+            window.crypto.getRandomValues(bytes);
+            return bytesToBase64Url(bytes);
+        }
+
+        async function createPkceCodeChallenge(codeVerifier) {
+            if (!window.crypto || !window.crypto.subtle || typeof window.crypto.subtle.digest !== 'function') {
+                throw new Error('WebCrypto API unavailable for PKCE challenge generation');
+            }
+            const encoder = new TextEncoder();
+            const digest = await window.crypto.subtle.digest('SHA-256', encoder.encode(String(codeVerifier || '')));
+            return bytesToBase64Url(new Uint8Array(digest));
+        }
+
+        function persistTeslaPendingOAuth(payload) {
+            try {
+                sessionStorage.setItem(TESLA_OAUTH_PENDING_KEY, JSON.stringify(payload || {}));
+            } catch (e) {
+                console.warn('[Tesla OAuth] Failed to persist pending session', e);
+            }
+        }
+
+        function clearTeslaPendingOAuth() {
+            try {
+                sessionStorage.removeItem(TESLA_OAUTH_PENDING_KEY);
+            } catch (e) {
+                console.warn('[Tesla OAuth] Failed to clear pending session', e);
+            }
+        }
+
+        function readTeslaPendingOAuth() {
+            try {
+                const raw = sessionStorage.getItem(TESLA_OAUTH_PENDING_KEY);
+                if (!raw) return null;
+                const pending = JSON.parse(raw);
+                if (!pending || typeof pending !== 'object') {
+                    clearTeslaPendingOAuth();
+                    return null;
+                }
+                const startedAtMs = Number(pending.startedAtMs || 0);
+                if (!Number.isFinite(startedAtMs) || startedAtMs <= 0) {
+                    clearTeslaPendingOAuth();
+                    return null;
+                }
+                if ((Date.now() - startedAtMs) > TESLA_OAUTH_PENDING_TTL_MS) {
+                    clearTeslaPendingOAuth();
+                    return null;
+                }
+                return pending;
+            } catch (e) {
+                console.warn('[Tesla OAuth] Failed to read pending session', e);
+                clearTeslaPendingOAuth();
+                return null;
+            }
+        }
+
+        function cleanTeslaOAuthParamsFromUrl() {
+            try {
+                const url = new URL(window.location.href);
+                const keys = ['code', 'state', 'error', 'error_description', 'scope'];
+                keys.forEach((key) => url.searchParams.delete(key));
+                const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+                window.history.replaceState({}, document.title, nextUrl);
+            } catch (e) {
+                console.warn('[Tesla OAuth] Failed to clean URL parameters', e);
+            }
+        }
+
+        function extractApiErrorMessage(resp, fallback) {
+            if (!resp || typeof resp !== 'object') return fallback;
+            return resp.error || resp.msg || fallback;
+        }
+
+        function getTeslaOnboardingFormValues() {
+            const {
+                clientIdInput,
+                clientSecretInput,
+                vehicleIdInput,
+                displayNameInput,
+                regionInput
+            } = getTeslaOnboardingElements();
+            return {
+                clientId: (clientIdInput?.value || '').trim(),
+                clientSecret: (clientSecretInput?.value || '').trim(),
+                vehicleId: normalizeTeslaVin(vehicleIdInput?.value || ''),
+                displayName: (displayNameInput?.value || '').trim(),
+                region: String(regionInput?.value || TESLA_REGION_DEFAULT).trim() || TESLA_REGION_DEFAULT,
+                redirectUri: getTeslaRedirectUri()
+            };
+        }
+
+        function applyTeslaPendingValuesToInputs(pending) {
+            const {
+                clientIdInput,
+                clientSecretInput,
+                vehicleIdInput,
+                displayNameInput,
+                regionInput
+            } = getTeslaOnboardingElements();
+            if (!pending || typeof pending !== 'object') return;
+            if (clientIdInput && pending.clientId) clientIdInput.value = String(pending.clientId);
+            if (clientSecretInput && pending.clientSecret) clientSecretInput.value = String(pending.clientSecret);
+            const pendingVin = normalizeTeslaVin(pending.vin || pending.vehicleId || '');
+            if (vehicleIdInput && pendingVin) vehicleIdInput.value = pendingVin;
+            if (displayNameInput && pending.displayName) displayNameInput.value = String(pending.displayName);
+            if (regionInput && pending.region) regionInput.value = String(pending.region);
+        }
+
+        async function ensureTeslaVehicleRegistered({ vehicleId, displayName, region }) {
+            if (!window.apiClient || typeof window.apiClient.registerEVVehicle !== 'function') {
+                throw new Error('API client unavailable');
+            }
+            const normalizedVin = normalizeTeslaVin(vehicleId);
+            if (!normalizedVin) {
+                throw new Error('Tesla VIN must be 17 characters');
+            }
+            const resp = await window.apiClient.registerEVVehicle(
+                normalizedVin,
+                'tesla',
+                String(displayName || '').trim() || normalizedVin,
+                String(region || TESLA_REGION_DEFAULT).trim() || TESLA_REGION_DEFAULT,
+                { vin: normalizedVin }
+            );
+            if (!resp || resp.errno !== 0) {
+                throw new Error(extractApiErrorMessage(resp, 'Failed to register Tesla vehicle'));
+            }
+        }
+
+        function renderTeslaVehicles(vehicles) {
+            const { vehiclesList } = getTeslaOnboardingElements();
+            if (!vehiclesList) return;
+            vehiclesList.innerHTML = '';
+            const list = Array.isArray(vehicles) ? vehicles : [];
+            if (list.length === 0) {
+                const empty = document.createElement('span');
+                empty.style.color = 'var(--text-secondary)';
+                empty.style.fontSize = '12px';
+                empty.textContent = 'No Tesla vehicles connected yet.';
+                vehiclesList.appendChild(empty);
+                return;
+            }
+            list.forEach((vehicle) => {
+                const vehicleVin = normalizeTeslaVin(vehicle?.vin || vehicle?.vehicleId || '');
+                const vehicleId = String(vehicle?.vehicleId || '').trim();
+                const primaryKey = vehicleVin || vehicleId;
+                if (!primaryKey) return;
+                const chip = document.createElement('div');
+                chip.className = 'tesla-vehicle-chip';
+
+                const label = document.createElement('span');
+                const displayName = String(vehicle?.displayName || primaryKey);
+                const idLabel = vehicleVin || vehicleId;
+                label.textContent = `${displayName} (${idLabel})`;
+                chip.appendChild(label);
+
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.setAttribute('data-tesla-remove-id', primaryKey);
+                removeBtn.title = `Disconnect ${displayName}`;
+                removeBtn.textContent = 'Disconnect';
+                chip.appendChild(removeBtn);
+
+                vehiclesList.appendChild(chip);
+            });
+        }
+
+        async function loadTeslaVehicles(options = {}) {
+            const { silent = false, preserveStatus = false } = options || {};
+            if (!window.apiClient || typeof window.apiClient.listEVVehicles !== 'function') {
+                return [];
+            }
+            try {
+                if (!silent) setTeslaOnboardingStatus('Loading Tesla vehicles...', 'muted');
+                const resp = await window.apiClient.listEVVehicles();
+                if (!resp || resp.errno !== 0) {
+                    throw new Error(extractApiErrorMessage(resp, 'Failed to load Tesla vehicles'));
+                }
+                const allVehicles = Array.isArray(resp.result) ? resp.result : [];
+                const teslaVehicles = allVehicles.filter((vehicle) => String(vehicle?.provider || '').toLowerCase() === 'tesla');
+                renderTeslaVehicles(teslaVehicles);
+                if (!preserveStatus) {
+                    if (teslaVehicles.length > 0) {
+                        setTeslaOnboardingBadge('Connected', 'sync');
+                        setTeslaOnboardingStatus(`${teslaVehicles.length} Tesla vehicle(s) connected.`, 'success');
+                    } else {
+                        setTeslaOnboardingBadge('Ready', 'sync');
+                        setTeslaOnboardingStatus('No Tesla vehicles connected yet.', 'warning');
+                    }
+                }
+                return teslaVehicles;
+            } catch (error) {
+                renderTeslaVehicles([]);
+                if (!preserveStatus) {
+                    setTeslaOnboardingBadge('Error', 'modified');
+                    setTeslaOnboardingStatus(error.message || 'Failed to load Tesla vehicles', 'error');
+                }
+                if (!silent) {
+                    showMessage('warning', `Failed to load Tesla vehicles: ${error.message || error}`);
+                }
+                return [];
+            }
+        }
+
+        async function removeTeslaVehicle(vehicleId) {
+            const trimmedId = String(vehicleId || '').trim();
+            if (!trimmedId) return;
+            if (!window.apiClient || typeof window.apiClient.deleteEVVehicle !== 'function') {
+                showMessage('warning', 'Tesla vehicle removal is unavailable right now');
+                return;
+            }
+            const shouldDelete = confirm(`Disconnect Tesla vehicle ${trimmedId}?`);
+            if (!shouldDelete) return;
+            try {
+                const resp = await window.apiClient.deleteEVVehicle(trimmedId);
+                if (!resp || resp.errno !== 0) {
+                    throw new Error(extractApiErrorMessage(resp, 'Failed to disconnect vehicle'));
+                }
+                showMessage('success', `Tesla vehicle ${trimmedId} disconnected`);
+                await loadTeslaVehicles({ silent: true });
+            } catch (error) {
+                setTeslaOnboardingBadge('Error', 'modified');
+                setTeslaOnboardingStatus(error.message || 'Failed to disconnect Tesla vehicle', 'error');
+                showMessage('warning', `Failed to disconnect Tesla vehicle: ${error.message || error}`);
+            }
+        }
+
+        async function startTeslaOnboardingFlow() {
+            const {
+                connectBtn
+            } = getTeslaOnboardingElements();
+
+            const form = getTeslaOnboardingFormValues();
+            if (!form.clientId) {
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus('Tesla Fleet Client ID is required.', 'warning');
+                showMessage('warning', 'Tesla Fleet Client ID is required');
+                return;
+            }
+            if (!form.vehicleId) {
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus('Vehicle VIN is required (17 characters).', 'warning');
+                showMessage('warning', 'Tesla Vehicle VIN is required');
+                return;
+            }
+            if (!normalizeTeslaVin(form.vehicleId)) {
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus('Vehicle VIN format is invalid. Use 17-character VIN.', 'warning');
+                showMessage('warning', 'Tesla Vehicle VIN format is invalid');
+                return;
+            }
+
+            const prevButtonHtml = connectBtn ? connectBtn.innerHTML : '';
+            if (connectBtn) {
+                connectBtn.disabled = true;
+                connectBtn.innerHTML = '<span class="spinner"></span> Redirecting...';
+            }
+
+            try {
+                if (!window.apiClient || typeof window.apiClient.getEVOAuthStartUrl !== 'function') {
+                    throw new Error('API client unavailable');
+                }
+
+                await ensureTeslaVehicleRegistered(form);
+
+                const codeVerifier = createRandomBase64Url(48);
+                const codeChallenge = await createPkceCodeChallenge(codeVerifier);
+                const stateToken = createRandomBase64Url(24);
+
+                persistTeslaPendingOAuth({
+                    vehicleId: form.vehicleId,
+                    vin: form.vehicleId,
+                    clientId: form.clientId,
+                    clientSecret: form.clientSecret,
+                    displayName: form.displayName,
+                    region: form.region,
+                    redirectUri: form.redirectUri,
+                    codeVerifier,
+                    state: stateToken,
+                    startedAtMs: Date.now()
+                });
+
+                const oauthStartResp = await window.apiClient.getEVOAuthStartUrl(
+                    form.clientId,
+                    form.redirectUri,
+                    codeChallenge,
+                    form.region,
+                    stateToken
+                );
+                if (!oauthStartResp || oauthStartResp.errno !== 0 || !oauthStartResp.result || !oauthStartResp.result.url) {
+                    throw new Error(extractApiErrorMessage(oauthStartResp, 'Failed to start Tesla OAuth flow'));
+                }
+
+                const authUrl = new URL(String(oauthStartResp.result.url));
+                authUrl.searchParams.set('state', stateToken);
+                setTeslaOnboardingBadge('Pending', 'modified');
+                setTeslaOnboardingStatus('Redirecting to Tesla authorization...', 'warning');
+                window.location.assign(authUrl.toString());
+            } catch (error) {
+                clearTeslaPendingOAuth();
+                setTeslaOnboardingBadge('Error', 'modified');
+                setTeslaOnboardingStatus(error.message || 'Failed to start Tesla OAuth', 'error');
+                showMessage('warning', `Tesla connect failed: ${error.message || error}`);
+            } finally {
+                if (connectBtn) {
+                    connectBtn.disabled = false;
+                    connectBtn.innerHTML = prevButtonHtml;
+                }
+            }
+        }
+
+        async function handleTeslaOAuthCallbackIfPresent() {
+            let url;
+            try {
+                url = new URL(window.location.href);
+            } catch (e) {
+                return { handled: false, success: false };
+            }
+
+            const code = url.searchParams.get('code');
+            const state = url.searchParams.get('state');
+            const oauthError = url.searchParams.get('error');
+            const oauthErrorDescription = url.searchParams.get('error_description');
+            const pending = readTeslaPendingOAuth();
+
+            if (!code && !oauthError) {
+                if (pending) {
+                    applyTeslaPendingValuesToInputs(pending);
+                    setTeslaOnboardingBadge('Pending', 'modified');
+                    setTeslaOnboardingStatus('Pending Tesla authorization detected. Complete authorization in Tesla, then return here.', 'warning');
+                } else {
+                    setTeslaOnboardingBadge('Ready', 'sync');
+                }
+                return { handled: false, success: false };
+            }
+
+            if (oauthError) {
+                clearTeslaPendingOAuth();
+                cleanTeslaOAuthParamsFromUrl();
+                const detail = String(oauthErrorDescription || oauthError || 'Authorization was declined');
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus(`Tesla authorization failed: ${detail}`, 'error');
+                showMessage('warning', `Tesla authorization failed: ${detail}`);
+                return { handled: true, success: false };
+            }
+
+            if (!pending) {
+                cleanTeslaOAuthParamsFromUrl();
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus('No pending Tesla authorization session found. Start Connect Tesla again.', 'warning');
+                showMessage('warning', 'No pending Tesla authorization session found. Start Connect Tesla again.');
+                return { handled: true, success: false };
+            }
+
+            applyTeslaPendingValuesToInputs(pending);
+            if (!state || String(state) !== String(pending.state || '')) {
+                clearTeslaPendingOAuth();
+                cleanTeslaOAuthParamsFromUrl();
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus('Tesla OAuth state check failed. Start Connect Tesla again.', 'error');
+                showMessage('warning', 'Tesla OAuth state check failed. Start Connect Tesla again.');
+                return { handled: true, success: false };
+            }
+            if (!pending.codeVerifier) {
+                clearTeslaPendingOAuth();
+                cleanTeslaOAuthParamsFromUrl();
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus('Missing PKCE verifier. Start Connect Tesla again.', 'error');
+                showMessage('warning', 'Missing PKCE verifier. Start Connect Tesla again.');
+                return { handled: true, success: false };
+            }
+
+            try {
+                if (!window.apiClient || typeof window.apiClient.exchangeEVOAuthCode !== 'function') {
+                    throw new Error('API client unavailable');
+                }
+                setTeslaOnboardingBadge('Finalizing', 'modified');
+                setTeslaOnboardingStatus('Completing Tesla authorization...', 'warning');
+
+                await ensureTeslaVehicleRegistered({
+                    vehicleId: pending.vehicleId,
+                    displayName: pending.displayName,
+                    region: pending.region
+                });
+
+                const exchangeResp = await window.apiClient.exchangeEVOAuthCode(
+                    pending.vehicleId,
+                    pending.clientId,
+                    pending.clientSecret || '',
+                    pending.redirectUri || getTeslaRedirectUri(),
+                    code,
+                    pending.codeVerifier,
+                    pending.region || TESLA_REGION_DEFAULT,
+                    { vin: pending.vin || pending.vehicleId }
+                );
+
+                if (!exchangeResp || exchangeResp.errno !== 0) {
+                    throw new Error(extractApiErrorMessage(exchangeResp, 'Tesla OAuth callback exchange failed'));
+                }
+
+                clearTeslaPendingOAuth();
+                cleanTeslaOAuthParamsFromUrl();
+                setTeslaOnboardingBadge('Connected', 'sync');
+                setTeslaOnboardingStatus(`Tesla connected for VIN ${pending.vehicleId}. Pair virtual key in Tesla app if commands remain blocked.`, 'success');
+                showMessage('success', `Tesla connected for VIN ${pending.vehicleId}`);
+                return { handled: true, success: true };
+            } catch (error) {
+                clearTeslaPendingOAuth();
+                cleanTeslaOAuthParamsFromUrl();
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus(error.message || 'Tesla callback handling failed', 'error');
+                showMessage('warning', `Tesla callback failed: ${error.message || error}`);
+                return { handled: true, success: false };
+            }
+        }
+
+        function clearTeslaPendingAuthFlow() {
+            clearTeslaPendingOAuth();
+            setTeslaOnboardingBadge('Ready', 'sync');
+            setTeslaOnboardingStatus('Pending Tesla authorization cleared.', 'warning');
+            showMessage('info', 'Cleared pending Tesla authorization state');
+        }
+
+        function bindTeslaOnboardingHandlers() {
+            if (teslaOnboardingHandlersBound) return;
+            teslaOnboardingHandlersBound = true;
+            const {
+                connectBtn,
+                clearPendingBtn,
+                refreshBtn,
+                vehiclesList
+            } = getTeslaOnboardingElements();
+
+            if (connectBtn) {
+                connectBtn.addEventListener('click', () => {
+                    startTeslaOnboardingFlow();
+                });
+            }
+            if (clearPendingBtn) {
+                clearPendingBtn.addEventListener('click', () => {
+                    clearTeslaPendingAuthFlow();
+                });
+            }
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', () => {
+                    loadTeslaVehicles();
+                });
+            }
+            if (vehiclesList) {
+                vehiclesList.addEventListener('click', (event) => {
+                    const target = event?.target;
+                    if (!(target instanceof Element)) return;
+                    const removeId = target.getAttribute('data-tesla-remove-id');
+                    if (!removeId) return;
+                    removeTeslaVehicle(removeId);
+                });
+            }
+        }
+
+        async function initializeTeslaOnboarding() {
+            bindTeslaOnboardingHandlers();
+            updateTeslaRedirectUriInput();
+            const callbackResult = await handleTeslaOAuthCallbackIfPresent();
+            await loadTeslaVehicles({ silent: callbackResult.handled, preserveStatus: callbackResult.handled });
+            return callbackResult;
+        }
+
         function isTimingInputId(inputId) {
             return TIMING_INPUT_IDS.has(inputId);
         }
@@ -429,10 +969,19 @@
                 document.querySelectorAll('input, select').forEach(input => {
                     input.disabled = false;
                 });
-                
+
+                let teslaInitResult = { handled: false };
+                try {
+                    teslaInitResult = await initializeTeslaOnboarding();
+                } catch (teslaInitErr) {
+                    console.warn('[Settings] Tesla onboarding initialization failed', teslaInitErr);
+                }
+
                 updateAllTimeDisplays();
                 updateStatus();
-                showMessage('success', 'Configuration loaded from server');
+                if (!teslaInitResult?.handled) {
+                    showMessage('success', 'Configuration loaded from server');
+                }
             } catch (error) {
                 console.error('loadSettings error:', error);
                 setConfigStatus('error', 'Error');
@@ -1079,7 +1628,10 @@
             document.querySelectorAll('input[type="text"]').forEach(input => {
                 input.addEventListener('input', updateStatus);
             });
-            
+
+            bindTeslaOnboardingHandlers();
+            updateTeslaRedirectUriInput();
+
             // Initialize time displays
             updateAllTimeDisplays();
             // Credentials toggles
@@ -1477,6 +2029,7 @@
                 // Update badge after reload
                 checkCredentialsChanged();
                 updateStatus();
+                await loadTeslaVehicles({ silent: true });
             } catch (e) {
                 console.warn('loadCredentials failed', e);
             }

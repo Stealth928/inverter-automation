@@ -217,6 +217,66 @@
     box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.12);
 }
 
+[data-theme="light"] .nav-link__icon {
+    border-color: #b6c6d9;
+    background:
+        radial-gradient(circle at 24% 18%, rgba(255,255,255,.84), rgba(255,255,255,0) 45%),
+        linear-gradient(165deg, #f2f8ff 0%, #e6f0fb 56%, #d9e7f6 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.86),
+        0 8px 14px -10px rgba(23, 54, 97, 0.5);
+}
+
+[data-theme="light"] .nav-link:hover .nav-link__icon {
+    border-color: #7aa4db;
+}
+
+[data-theme="light"] .nav-link.active .nav-link__icon {
+    border-color: rgba(255,255,255,0.55);
+    background: rgba(255,255,255,0.18);
+    color: #ffffff;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.35);
+}
+
+[data-theme="light"] .page-title__icon {
+    border-color: #b6c6d9;
+    background:
+        radial-gradient(circle at 24% 18%, rgba(255,255,255,.84), rgba(255,255,255,0) 45%),
+        linear-gradient(165deg, #f2f8ff 0%, #e6f0fb 56%, #d9e7f6 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.86),
+        0 10px 18px -14px rgba(23, 54, 97, 0.54);
+}
+
+[data-theme="light"] .nav-link__icon svg,
+[data-theme="light"] .page-title__icon svg {
+    stroke-width: 2.15;
+}
+
+[data-theme="light"] .nav-link[data-nav-icon="overview"] .nav-link__icon { color: #1869c6; }
+[data-theme="light"] .nav-link[data-nav-icon="library"] .nav-link__icon { color: #0c7db0; }
+[data-theme="light"] .nav-link[data-nav-icon="roi"] .nav-link__icon { color: #1f7a3e; }
+[data-theme="light"] .nav-link[data-nav-icon="lab"] .nav-link__icon { color: #2f63c9; }
+[data-theme="light"] .nav-link[data-nav-icon="reports"] .nav-link__icon { color: #a46200; }
+[data-theme="light"] .nav-link[data-nav-icon="controls"] .nav-link__icon { color: #5a58c8; }
+[data-theme="light"] .nav-link[data-nav-icon="settings"] .nav-link__icon { color: #5f6a78; }
+[data-theme="light"] .nav-link[data-nav-icon="topology"] .nav-link__icon { color: #156f9d; }
+[data-theme="light"] .nav-link[data-nav-icon="admin"] .nav-link__icon { color: #9b6700; }
+
+[data-theme="light"] .page-title--with-icon[data-page-title-icon="overview"] .page-title__icon { color: #1869c6; }
+[data-theme="light"] .page-title--with-icon[data-page-title-icon="library"] .page-title__icon { color: #0c7db0; }
+[data-theme="light"] .page-title--with-icon[data-page-title-icon="roi"] .page-title__icon { color: #1f7a3e; }
+[data-theme="light"] .page-title--with-icon[data-page-title-icon="lab"] .page-title__icon { color: #2f63c9; }
+[data-theme="light"] .page-title--with-icon[data-page-title-icon="reports"] .page-title__icon { color: #a46200; }
+[data-theme="light"] .page-title--with-icon[data-page-title-icon="controls"] .page-title__icon { color: #5a58c8; }
+[data-theme="light"] .page-title--with-icon[data-page-title-icon="settings"] .page-title__icon { color: #5f6a78; }
+[data-theme="light"] .page-title--with-icon[data-page-title-icon="topology"] .page-title__icon { color: #156f9d; }
+[data-theme="light"] .page-title--with-icon[data-page-title-icon="admin"] .page-title__icon { color: #9b6700; }
+
+[data-theme="light"] .nav-link.active .nav-link__icon {
+    color: #ffffff;
+}
+
 [data-theme="light"] .user-dropdown {
     background: #ffffff;
     border: 1px solid #d0d7de;
@@ -510,6 +570,9 @@ body.has-fixed-nav {
     text-decoration: none;
     font-size: var(--font-size-md);
     font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     transition: all var(--transition-normal);
     white-space: nowrap;
 }
@@ -526,6 +589,64 @@ body.has-fixed-nav {
     font-weight: 600;
     box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.1);
 }
+
+.nav-link__icon {
+    --nav-icon-glyph: #9fcfff;
+    position: relative;
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
+    border: 1px solid rgba(180, 220, 255, 0.42);
+    background:
+        radial-gradient(circle at 24% 18%, rgba(255,255,255,.30), rgba(255,255,255,0) 44%),
+        linear-gradient(165deg, #173661 0%, #10284a 56%, #0d203d 100%);
+    color: var(--nav-icon-glyph);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.2),
+        0 8px 14px -10px rgba(9, 23, 45, 0.75);
+    transition: transform var(--transition-normal), border-color var(--transition-normal), background var(--transition-normal), color var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.nav-link__icon svg {
+    width: 13px;
+    height: 13px;
+    display: block;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.nav-link__label {
+    line-height: 1.1;
+}
+
+.nav-link:hover .nav-link__icon {
+    transform: translateY(-1px);
+    border-color: rgba(190, 224, 255, 0.62);
+}
+
+.nav-link.active .nav-link__icon {
+    border-color: rgba(255,255,255,0.46);
+    background: rgba(255,255,255,0.16);
+    color: #ffffff;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.26);
+}
+
+.nav-link[data-nav-icon="overview"] .nav-link__icon { --nav-icon-glyph: #8ed0ff; }
+.nav-link[data-nav-icon="library"] .nav-link__icon { --nav-icon-glyph: #9be8ff; }
+.nav-link[data-nav-icon="roi"] .nav-link__icon { --nav-icon-glyph: #7af0b0; }
+.nav-link[data-nav-icon="lab"] .nav-link__icon { --nav-icon-glyph: #c1e0ff; }
+.nav-link[data-nav-icon="reports"] .nav-link__icon { --nav-icon-glyph: #ffc56d; }
+.nav-link[data-nav-icon="controls"] .nav-link__icon { --nav-icon-glyph: #b7c1ff; }
+.nav-link[data-nav-icon="settings"] .nav-link__icon { --nav-icon-glyph: #d9dee7; }
+.nav-link[data-nav-icon="topology"] .nav-link__icon { --nav-icon-glyph: #a5d3ff; }
+.nav-link[data-nav-icon="admin"] .nav-link__icon { --nav-icon-glyph: #ffd978; }
 
 /* Nav link order - ensures consistent positioning */
 .nav-link[href="/"],
@@ -718,6 +839,57 @@ body.has-fixed-nav {
     font-size: var(--font-size-md);
     margin-top: var(--space-xs);
 }
+
+.page-title--with-icon {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.page-title__icon {
+    --page-title-glyph: #9fcfff;
+    position: relative;
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
+    border: 1px solid rgba(180, 220, 255, 0.44);
+    background:
+        radial-gradient(circle at 24% 18%, rgba(255,255,255,.32), rgba(255,255,255,0) 42%),
+        linear-gradient(165deg, #173661 0%, #10284a 56%, #0d203d 100%);
+    color: var(--page-title-glyph);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.2),
+        0 12px 20px -14px rgba(9, 23, 45, 0.72);
+}
+
+.page-title__icon svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.page-title__label {
+    line-height: 1.15;
+}
+
+.page-title--with-icon[data-page-title-icon="overview"] .page-title__icon { --page-title-glyph: #8ed0ff; }
+.page-title--with-icon[data-page-title-icon="library"] .page-title__icon { --page-title-glyph: #9be8ff; }
+.page-title--with-icon[data-page-title-icon="roi"] .page-title__icon { --page-title-glyph: #7af0b0; }
+.page-title--with-icon[data-page-title-icon="lab"] .page-title__icon { --page-title-glyph: #c1e0ff; }
+.page-title--with-icon[data-page-title-icon="reports"] .page-title__icon { --page-title-glyph: #ffc56d; }
+.page-title--with-icon[data-page-title-icon="controls"] .page-title__icon { --page-title-glyph: #b7c1ff; }
+.page-title--with-icon[data-page-title-icon="settings"] .page-title__icon { --page-title-glyph: #d9dee7; }
+.page-title--with-icon[data-page-title-icon="topology"] .page-title__icon { --page-title-glyph: #a5d3ff; }
+.page-title--with-icon[data-page-title-icon="admin"] .page-title__icon { --page-title-glyph: #ffd978; }
 
 .page-actions {
     display: flex;

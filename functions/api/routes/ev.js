@@ -18,7 +18,8 @@ const { createEVCommandService } = require('../../lib/services/ev-command-servic
 const {
   buildTeslaAuthUrl,
   createTeslaHttpClient,
-  exchangeTeslaAuthCode
+  exchangeTeslaAuthCode,
+  normalizeTeslaVin
 } = require('../../lib/adapters/tesla-fleet-adapter');
 
 function registerEVRoutes(app, deps = {}) {
@@ -70,6 +71,9 @@ function registerEVRoutes(app, deps = {}) {
 
   function buildReadinessErrorMessage(readiness = {}) {
     const reasons = Array.isArray(readiness.blockingReasons) ? readiness.blockingReasons : [];
+    if (reasons.includes('vin_required')) {
+      return 'Tesla VIN is required. Reconnect this vehicle with VIN in Settings before using EV commands';
+    }
     if (reasons.includes('signed_command_required')) {
       return 'Tesla signed command setup required before this command can be sent';
     }
@@ -77,6 +81,58 @@ function registerEVRoutes(app, deps = {}) {
       return 'Tesla virtual key must be paired with this vehicle before commands can be sent';
     }
     return 'Vehicle is not ready to accept EV commands';
+  }
+
+  const EV_STATUS_CACHE_MAX_AGE_MS = Math.max(0, Number(process.env.EV_STATUS_CACHE_MAX_AGE_MS || 120000));
+
+  function parseMillis(value) {
+    if (!value) return null;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (value instanceof Date) {
+      const ms = value.getTime();
+      return Number.isFinite(ms) ? ms : null;
+    }
+    if (typeof value?.toDate === 'function') {
+      const ms = value.toDate().getTime();
+      return Number.isFinite(ms) ? ms : null;
+    }
+    if (typeof value?._seconds === 'number') {
+      const ms = (Number(value._seconds) * 1000) + Math.floor(Number(value._nanoseconds || 0) / 1000000);
+      return Number.isFinite(ms) ? ms : null;
+    }
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  }
+
+  function isFreshVehicleStatus(cachedState = {}, maxAgeMs = EV_STATUS_CACHE_MAX_AGE_MS) {
+    if (!cachedState || maxAgeMs <= 0) return false;
+    const observedMs =
+      parseMillis(cachedState.savedAt) ||
+      parseMillis(cachedState.asOfIso);
+    if (!Number.isFinite(observedMs)) return false;
+    return (Date.now() - observedMs) <= maxAgeMs;
+  }
+
+  function resolveTeslaVehicleContext(vehicleId, vehicle = {}, credentials = {}) {
+    const vehicleVin = normalizeTeslaVin(
+      vehicle?.vin ||
+      credentials?.vin ||
+      vehicleId
+    );
+    const teslaVehicleId = String(
+      vehicle?.teslaVehicleId ||
+      credentials?.teslaVehicleId ||
+      vehicleId ||
+      ''
+    ).trim();
+
+    return {
+      vehicleVin,
+      teslaVehicleId
+    };
   }
 
   // ── Vehicle CRUD ──────────────────────────────────────────────────────────
@@ -102,24 +158,47 @@ function registerEVRoutes(app, deps = {}) {
    */
   app.post('/api/ev/vehicles', authenticateUser, async (req, res) => {
     const uid = req.user.uid;
-    const { vehicleId, provider, displayName, region } = req.body || {};
+    const {
+      vehicleId,
+      vin,
+      teslaVehicleId,
+      provider,
+      displayName,
+      region
+    } = req.body || {};
 
-    if (!vehicleId || typeof vehicleId !== 'string') {
-      return res.status(400).json({ errno: 400, error: 'vehicleId is required' });
-    }
     if (!provider || typeof provider !== 'string') {
       return res.status(400).json({ errno: 400, error: 'provider is required' });
     }
 
+    const normalizedProvider = String(provider || '').trim().toLowerCase();
+    const normalizedVin = normalizeTeslaVin(vin || (normalizedProvider === 'tesla' ? vehicleId : ''));
+    const normalizedVehicleId = String(vehicleId || '').trim();
+
+    if (normalizedProvider === 'tesla') {
+      if (!normalizedVin && !normalizedVehicleId) {
+        return res.status(400).json({ errno: 400, error: 'vin (preferred) or vehicleId is required for tesla' });
+      }
+    } else if (!normalizedVehicleId) {
+      return res.status(400).json({ errno: 400, error: 'vehicleId is required' });
+    }
+
     try {
+      const canonicalVehicleId = normalizedProvider === 'tesla'
+        ? (normalizedVin || normalizedVehicleId)
+        : normalizedVehicleId;
       const vehicle = {
-        vehicleId,
-        provider,
-        displayName: displayName || vehicleId,
+        vehicleId: canonicalVehicleId,
+        provider: normalizedProvider,
+        displayName: displayName || canonicalVehicleId,
         region: region || 'na',
+        ...(normalizedProvider === 'tesla' && normalizedVin ? { vin: normalizedVin } : {}),
+        ...(normalizedProvider === 'tesla' && String(teslaVehicleId || '').trim()
+          ? { teslaVehicleId: String(teslaVehicleId).trim() }
+          : {}),
         registeredAtIso: new Date().toISOString()
       };
-      await vehiclesRepo.setVehicle(uid, vehicleId, vehicle);
+      await vehiclesRepo.setVehicle(uid, canonicalVehicleId, vehicle);
       return res.status(201).json({ errno: 0, result: vehicle });
     } catch (err) {
       return res.status(500).json({ errno: 500, error: err.message });
@@ -162,7 +241,7 @@ function registerEVRoutes(app, deps = {}) {
 
       if (!live) {
         const cached = await vehiclesRepo.getVehicleState(uid, vehicleId);
-        if (cached) {
+        if (cached && isFreshVehicleStatus(cached)) {
           return res.json({ errno: 0, result: cached, source: 'cache' });
         }
       }
@@ -176,10 +255,13 @@ function registerEVRoutes(app, deps = {}) {
       if (!credentials || !credentials.accessToken) {
         return res.status(400).json({ errno: 400, error: 'Vehicle credentials not configured' });
       }
+      const teslaVehicleContext = resolveTeslaVehicleContext(vehicleId, vehicle, credentials);
 
       const status = await evAdapter.getVehicleStatus(vehicleId, {
         credentials,
         region: vehicle.region || credentials.region || 'na',
+        vehicleVin: teslaVehicleContext.vehicleVin,
+        teslaVehicleId: teslaVehicleContext.teslaVehicleId,
         persistCredentials: buildPersistCredentialsFn({
           uid,
           vehicleId,
@@ -233,10 +315,13 @@ function registerEVRoutes(app, deps = {}) {
       if (!credentials || !credentials.accessToken) {
         return res.status(400).json({ errno: 400, error: 'Vehicle credentials not configured' });
       }
+      const teslaVehicleContext = resolveTeslaVehicleContext(vehicleId, vehicle, credentials);
 
       const context = {
         credentials,
         region: vehicle.region || credentials.region || 'na',
+        vehicleVin: teslaVehicleContext.vehicleVin,
+        teslaVehicleId: teslaVehicleContext.teslaVehicleId,
         persistCredentials: buildPersistCredentialsFn({
           uid,
           vehicleId,
@@ -256,6 +341,7 @@ function registerEVRoutes(app, deps = {}) {
               result: { readiness }
             });
           }
+          context.commandReadiness = readiness || null;
         } catch {
           // Readiness check is best-effort only; command path still executes.
         }
@@ -284,15 +370,15 @@ function registerEVRoutes(app, deps = {}) {
   /**
    * GET /api/ev/oauth/start
    * Begin Tesla OAuth2 PKCE flow.
-   * Query: { clientId, redirectUri, codeChallenge, region? }
+   * Query: { clientId, redirectUri, codeChallenge, region?, state? }
    */
   app.get('/api/ev/oauth/start', authenticateUser, (req, res) => {
-    const { clientId, redirectUri, codeChallenge, region } = req.query;
+    const { clientId, redirectUri, codeChallenge, region, state } = req.query;
     if (!clientId || !redirectUri || !codeChallenge) {
       return res.status(400).json({ errno: 400, error: 'clientId, redirectUri, and codeChallenge are required' });
     }
     try {
-      const url = buildTeslaAuthUrl({ clientId, redirectUri, codeChallenge }, region || 'na');
+      const url = buildTeslaAuthUrl({ clientId, redirectUri, codeChallenge, state: String(state || '') }, region || 'na');
       return res.json({ errno: 0, result: { url } });
     } catch (err) {
       return res.status(500).json({ errno: 500, error: err.message });
@@ -302,18 +388,39 @@ function registerEVRoutes(app, deps = {}) {
   /**
    * POST /api/ev/oauth/callback
    * Exchange an authorization code for Tesla tokens and store credentials.
-   * Body: { vehicleId, clientId, redirectUri, code, codeVerifier, clientSecret?, region? }
+   * Body: { vehicleId|vin, clientId, redirectUri, code, codeVerifier, clientSecret?, region?, teslaVehicleId? }
    */
   app.post('/api/ev/oauth/callback', authenticateUser, async (req, res) => {
     const uid = req.user.uid;
-    const { vehicleId, clientId, clientSecret, redirectUri, code, codeVerifier, region } = req.body || {};
+    const {
+      vehicleId,
+      vin,
+      teslaVehicleId,
+      clientId,
+      clientSecret,
+      redirectUri,
+      code,
+      codeVerifier,
+      region
+    } = req.body || {};
+    const requestedVin = normalizeTeslaVin(vin || vehicleId);
+    const requestedVehicleKey = String(vehicleId || '').trim();
 
-    if (!vehicleId || !clientId || !redirectUri || !code || !codeVerifier) {
-      return res.status(400).json({ errno: 400, error: 'vehicleId, clientId, redirectUri, code, and codeVerifier are required' });
+    if ((!requestedVehicleKey && !requestedVin) || !clientId || !redirectUri || !code || !codeVerifier) {
+      return res.status(400).json({ errno: 400, error: 'vehicleId (or vin), clientId, redirectUri, code, and codeVerifier are required' });
     }
 
     try {
-      const vehicle = await vehiclesRepo.getVehicle(uid, vehicleId);
+      let vehicle = null;
+      let resolvedVehicleId = '';
+      if (requestedVin) {
+        vehicle = await vehiclesRepo.getVehicle(uid, requestedVin);
+        resolvedVehicleId = vehicle ? requestedVin : '';
+      }
+      if (!vehicle && requestedVehicleKey) {
+        vehicle = await vehiclesRepo.getVehicle(uid, requestedVehicleKey);
+        resolvedVehicleId = vehicle ? requestedVehicleKey : resolvedVehicleId;
+      }
       if (!vehicle) {
         return res.status(404).json({ errno: 404, error: 'Vehicle not found' });
       }
@@ -336,9 +443,14 @@ function registerEVRoutes(app, deps = {}) {
       );
 
       // Store credentials against the vehicle
-      await vehiclesRepo.setVehicleCredentials(uid, vehicleId, {
+      const resolvedVin = normalizeTeslaVin(requestedVin || vehicle.vin || '');
+      await vehiclesRepo.setVehicleCredentials(uid, resolvedVehicleId, {
         provider: 'tesla',
         region: region || vehicle.region || 'na',
+        ...(resolvedVin ? { vin: resolvedVin } : {}),
+        ...(String(teslaVehicleId || vehicle.teslaVehicleId || '').trim()
+          ? { teslaVehicleId: String(teslaVehicleId || vehicle.teslaVehicleId).trim() }
+          : {}),
         clientId,
         ...(clientSecret ? { clientSecret } : {}),
         accessToken: tokens.accessToken,
@@ -348,7 +460,17 @@ function registerEVRoutes(app, deps = {}) {
         expiresAtMs: tokens.expiresAtMs,
         storedAtIso: new Date().toISOString()
       });
-      return res.json({ errno: 0, result: { stored: true, vehicleId } });
+      if (resolvedVin && typeof vehiclesRepo.updateVehicle === 'function') {
+        await vehiclesRepo.updateVehicle(uid, resolvedVehicleId, { vin: resolvedVin });
+      }
+      return res.json({
+        errno: 0,
+        result: {
+          stored: true,
+          vehicleId: resolvedVehicleId,
+          ...(resolvedVin ? { vin: resolvedVin } : {})
+        }
+      });
     } catch (err) {
       return res.status(500).json({ errno: 500, error: err.message });
     }

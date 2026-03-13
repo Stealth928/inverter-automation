@@ -584,8 +584,14 @@ class APIClient {
     return this.get('/api/ev/vehicles');
   }
 
-  async registerEVVehicle(vehicleId, provider, displayName, region) {
-    return this.post('/api/ev/vehicles', { vehicleId, provider, displayName, region });
+  async registerEVVehicle(vehicleId, provider, displayName, region, options = {}) {
+    return this.post('/api/ev/vehicles', {
+      vehicleId,
+      provider,
+      displayName,
+      region,
+      ...(options || {})
+    });
   }
 
   async deleteEVVehicle(vehicleId) {
@@ -600,12 +606,21 @@ class APIClient {
     return this.post(`/api/ev/vehicles/${encodeURIComponent(vehicleId)}/command`, { command, targetSocPct, commandId });
   }
 
-  async getEVOAuthStartUrl(clientId, redirectUri, codeChallenge, region) {
-    return this.get('/api/ev/oauth/start', { clientId, redirectUri, codeChallenge, region });
+  async getEVOAuthStartUrl(clientId, redirectUri, codeChallenge, region, state = '') {
+    return this.get('/api/ev/oauth/start', { clientId, redirectUri, codeChallenge, region, state: state || undefined });
   }
 
-  async exchangeEVOAuthCode(vehicleId, clientId, clientSecret, redirectUri, code, region) {
-    return this.post('/api/ev/oauth/callback', { vehicleId, clientId, clientSecret, redirectUri, code, region });
+  async exchangeEVOAuthCode(vehicleId, clientId, clientSecret, redirectUri, code, codeVerifier, region, options = {}) {
+    return this.post('/api/ev/oauth/callback', {
+      vehicleId,
+      clientId,
+      clientSecret,
+      redirectUri,
+      code,
+      codeVerifier,
+      region,
+      ...(options || {})
+    });
   }
 }
 

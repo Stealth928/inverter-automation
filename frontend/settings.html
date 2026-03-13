@@ -222,6 +222,65 @@
             min-width: 60px;
             text-align: center;
         }
+        .tesla-onboarding-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 12px;
+        }
+        .tesla-onboarding-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+        .tesla-onboarding-status {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .tesla-onboarding-status.is-success {
+            color: var(--color-success);
+        }
+        .tesla-onboarding-status.is-warning {
+            color: var(--color-warning);
+        }
+        .tesla-onboarding-status.is-error {
+            color: var(--color-danger);
+        }
+        .tesla-vehicles-wrap {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid var(--border-primary);
+        }
+        .tesla-vehicles-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .tesla-vehicle-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--border-primary);
+            border-radius: 999px;
+            padding: 6px 10px;
+            background: var(--bg-primary);
+            font-size: 12px;
+            color: var(--text-primary);
+        }
+        .tesla-vehicle-chip button {
+            border: 0;
+            background: transparent;
+            color: var(--color-danger);
+            cursor: pointer;
+            font-size: 12px;
+            padding: 0;
+            line-height: 1;
+        }
+        .tesla-vehicle-chip button:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
         .alert {
             padding: 12px 16px;
             border-radius: 6px;
@@ -978,6 +1037,83 @@
                 <button class="btn-primary" onclick="saveCredentials()" id="credentialsSaveBtn">💾 Save Credentials</button>
                 <button class="btn-secondary" onclick="clearCredentials()">🧹 Clear Credentials</button>
                 <div style="margin-left:12px;color:var(--muted);font-size:13px" id="credentialsStatus">Checking...</div>
+            </div>
+        </div>
+
+        <!-- Tesla EV Onboarding -->
+        <div class="section" id="teslaOnboardingSection">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        🚗 Tesla EV Integration
+                        <span class="badge badge-sync" id="teslaOnboardingBadge">Ready</span>
+                    </div>
+                </div>
+                <div>
+                    <button class="btn-secondary" type="button" id="teslaRefreshVehiclesBtn">Refresh</button>
+                </div>
+            </div>
+            <div class="section-description">
+                Connect your Tesla account with OAuth2 so EV status and charge controls are available on the dashboard.
+            </div>
+            <div class="setting-hint" style="margin:0 0 14px 0;">
+                Command control on most modern Tesla vehicles also requires virtual-key pairing and signed-command setup.
+            </div>
+            <div class="tesla-onboarding-grid">
+                <div class="setting-item">
+                    <div class="setting-label">Tesla Fleet Client ID</div>
+                    <div class="setting-hint">Required. From your Tesla developer app.</div>
+                    <div class="setting-input">
+                        <input type="text" id="teslaClientId" placeholder="e.g., your-tesla-client-id" autocomplete="off" disabled>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Tesla Fleet Client Secret</div>
+                    <div class="setting-hint">Optional. Leave blank for PKCE-only flow.</div>
+                    <div class="setting-input">
+                        <input type="password" id="teslaClientSecret" placeholder="Optional" autocomplete="new-password" disabled>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Vehicle VIN</div>
+                    <div class="setting-hint">Required. 17-character VIN (recommended by Tesla Fleet API).</div>
+                    <div class="setting-input">
+                        <input type="text" id="teslaVehicleId" placeholder="e.g., 5YJ..." autocomplete="off" disabled>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Vehicle Display Name</div>
+                    <div class="setting-hint">Optional label shown in dashboard tabs.</div>
+                    <div class="setting-input">
+                        <input type="text" id="teslaDisplayName" placeholder="e.g., Model Y Home" autocomplete="off" disabled>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Region</div>
+                    <div class="setting-hint">Match your Tesla account region.</div>
+                    <div class="setting-input">
+                        <select id="teslaRegion" disabled>
+                            <option value="na">North America</option>
+                            <option value="eu">Europe</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Redirect URI</div>
+                    <div class="setting-hint">Set this exact URI in your Tesla app configuration.</div>
+                    <div class="setting-input">
+                        <input type="text" id="teslaRedirectUri" readonly disabled>
+                    </div>
+                </div>
+            </div>
+            <div class="tesla-onboarding-actions">
+                <button class="btn-primary" type="button" id="teslaConnectBtn">Connect Tesla</button>
+                <button class="btn-secondary" type="button" id="teslaClearPendingBtn">Clear Pending Auth</button>
+                <div id="teslaOnboardingStatus" class="tesla-onboarding-status">Not connected yet.</div>
+            </div>
+            <div class="tesla-vehicles-wrap">
+                <div class="setting-hint">Connected Tesla vehicles</div>
+                <div id="teslaVehiclesList" class="tesla-vehicles-list"></div>
             </div>
         </div>
 
