@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
     <title>Admin — SoCrates</title>
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/icons/favicon.ico" sizes="any">
@@ -419,7 +420,7 @@
         }
         .scheduler-kpis {
             display: grid;
-            grid-template-columns: repeat(6, minmax(0, 1fr));
+            grid-template-columns: repeat(8, minmax(0, 1fr));
             gap: 8px;
             margin-bottom: 10px;
         }
@@ -530,7 +531,7 @@
         }
         .scheduler-slo-grid {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(6, minmax(0, 1fr));
             gap: 8px;
             margin-bottom: 10px;
         }
@@ -539,15 +540,60 @@
             border: 1px solid var(--border-primary);
             border-radius: var(--radius-md);
             padding: 8px 10px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+        }
+        .scheduler-slo-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: transparent;
         }
         .scheduler-slo-item.good {
-            border-color: color-mix(in srgb, var(--color-success) 55%, var(--border-primary));
+            border-color: color-mix(in srgb, var(--color-success) 78%, var(--border-primary));
+            background: linear-gradient(
+                180deg,
+                color-mix(in srgb, var(--color-success) 17%, transparent),
+                color-mix(in srgb, var(--color-success) 7%, var(--bg-tertiary))
+            );
+            box-shadow:
+                inset 0 0 0 1px color-mix(in srgb, var(--color-success) 20%, transparent),
+                0 8px 20px -14px color-mix(in srgb, var(--color-success) 78%, transparent);
         }
         .scheduler-slo-item.warn {
-            border-color: color-mix(in srgb, var(--color-warning) 55%, var(--border-primary));
+            border-color: color-mix(in srgb, var(--color-warning) 78%, var(--border-primary));
+            background: linear-gradient(
+                180deg,
+                color-mix(in srgb, var(--color-warning) 18%, transparent),
+                color-mix(in srgb, var(--color-warning) 7%, var(--bg-tertiary))
+            );
+            box-shadow:
+                inset 0 0 0 1px color-mix(in srgb, var(--color-warning) 24%, transparent),
+                0 8px 20px -14px color-mix(in srgb, var(--color-warning) 82%, transparent);
         }
         .scheduler-slo-item.bad {
-            border-color: color-mix(in srgb, var(--color-danger) 55%, var(--border-primary));
+            border-color: color-mix(in srgb, var(--color-danger) 80%, var(--border-primary));
+            background: linear-gradient(
+                180deg,
+                color-mix(in srgb, var(--color-danger) 19%, transparent),
+                color-mix(in srgb, var(--color-danger) 8%, var(--bg-tertiary))
+            );
+            box-shadow:
+                inset 0 0 0 1px color-mix(in srgb, var(--color-danger) 28%, transparent),
+                0 8px 20px -14px color-mix(in srgb, var(--color-danger) 84%, transparent);
+        }
+        .scheduler-slo-item.good::before {
+            background: color-mix(in srgb, var(--color-success) 90%, white 10%);
+        }
+        .scheduler-slo-item.warn::before {
+            background: color-mix(in srgb, var(--color-warning) 90%, white 10%);
+        }
+        .scheduler-slo-item.bad::before {
+            background: color-mix(in srgb, var(--color-danger) 90%, white 10%);
         }
         .scheduler-slo-item .slo-title {
             font-size: 10px;
@@ -557,10 +603,19 @@
             margin-bottom: 4px;
         }
         .scheduler-slo-item .slo-status {
-            font-size: 12px;
-            font-weight: 700;
+            font-size: 13px;
+            font-weight: 800;
             color: var(--text-primary);
             line-height: 1.2;
+        }
+        .scheduler-slo-item.good .slo-status {
+            color: color-mix(in srgb, var(--color-success) 88%, var(--text-primary));
+        }
+        .scheduler-slo-item.warn .slo-status {
+            color: color-mix(in srgb, var(--color-warning) 90%, var(--text-primary));
+        }
+        .scheduler-slo-item.bad .slo-status {
+            color: color-mix(in srgb, var(--color-danger) 92%, var(--text-primary));
         }
         .scheduler-slo-item .slo-value {
             margin-top: 2px;
@@ -571,7 +626,9 @@
             margin-top: 10px;
             border: 1px solid var(--border-primary);
             border-radius: var(--radius-md);
-            overflow: hidden;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
         }
         .scheduler-recent-table {
             width: 100%;
@@ -601,6 +658,19 @@
             font-size: 11px;
             display: none;
         }
+        .scheduler-diagnostics {
+            margin-top: 10px;
+            padding: 10px 12px;
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            background: color-mix(in srgb, var(--bg-tertiary) 55%, transparent);
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.45;
+        }
+        .scheduler-diagnostics strong {
+            color: var(--text-primary);
+        }
 
         /* Metrics mini-chart */
         .metrics-day {
@@ -628,6 +698,7 @@
             min-width: 2px;
             transition: width 0.3s ease;
         }
+        .metrics-bar.inverter,
         .metrics-bar.foxess { background: var(--accent-blue); }
         .metrics-bar.amber { background: var(--color-orange); }
         .metrics-bar.weather { background: var(--color-success); }
@@ -653,6 +724,7 @@
             margin-right: 4px;
             vertical-align: middle;
         }
+        .metrics-legend .inverter::before,
         .metrics-legend .foxess::before { background: var(--accent-blue); }
         .metrics-legend .amber::before { background: var(--color-orange); }
         .metrics-legend .weather::before { background: var(--color-success); }
@@ -832,7 +904,7 @@
 
         <div class="card firestore-metrics-card">
             <div class="card-header">
-                <div class="card-title"><span class="icon">☁️</span> Firestore Cost & Metrics (MTD)</div>
+                <div class="card-title"><span class="icon">☁️</span> Project Cost & Firestore Metrics (MTD)</div>
                 <button class="action-btn" onclick="loadFirestoreCostMetrics()" id="refreshFirestoreBtn">🔄 Refresh</button>
             </div>
             <div class="card-body">
@@ -855,9 +927,14 @@
                         <div class="value" id="firestoreStorageGb">-</div>
                     </div>
                     <div class="firestore-kpi">
-                        <div class="label">Est. MTD Cost</div>
-                        <div class="value small" id="firestoreMtdCost">-</div>
-                        <div class="sub" id="firestoreServiceBreakdown"></div>
+                        <div class="label">Project MTD Cost</div>
+                        <div class="value small" id="firestoreProjectMtdCost">-</div>
+                        <div class="sub" id="firestoreProjectServiceBreakdown"></div>
+                    </div>
+                    <div class="firestore-kpi">
+                        <div class="label">Firestore Doc-Ops Est.</div>
+                        <div class="value small" id="firestoreDocOpsCost">-</div>
+                        <div class="sub" id="firestoreDocOpsBreakdown"></div>
                     </div>
                 </div>
                 <div class="firestore-chart-wrap">
@@ -907,11 +984,29 @@
                     <div class="scheduler-slo-item" id="schedulerSloCycleDuration">
                         <div class="slo-title">
                             <span class="label-row">SLO: Cycle Duration
-                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 1m 0s).">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 20s).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target avg <= 1m 0s, max <= 1m 0s</div>
+                        <div class="slo-value">Target avg <= 20s, max <= 20s</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="schedulerSloTelemetryAge">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Telemetry Age
+                                <span class="info-tip" tabindex="0" data-tip="Maximum telemetry staleness observed across executed cycles in the selected day window. Healthy when <= 30m.">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">Target max <= 30m 0s</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="schedulerSloCycleTailP99">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Cycle Tail (P99)
+                                <span class="info-tip" tabindex="0" data-tip="Uses p99 cycle duration; sustained alerting defaults to p99 > 10s for 15 minutes.">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">Target p99 <= 10s</div>
                     </div>
                 </div>
                 <div class="scheduler-kpis">
@@ -963,6 +1058,22 @@
                         </div>
                         <div class="value small" id="schedulerLockIdempotentSkips">-</div>
                     </div>
+                    <div class="scheduler-kpi">
+                        <div class="label">
+                            <span class="label-row">Cycle P95
+                                <span class="info-tip" tabindex="0" data-tip="Highest observed daily p95 cycle duration in the selected day window.">i</span>
+                            </span>
+                        </div>
+                        <div class="value small" id="schedulerTailP95">-</div>
+                    </div>
+                    <div class="scheduler-kpi">
+                        <div class="label">
+                            <span class="label-row">Cycle P99
+                                <span class="info-tip" tabindex="0" data-tip="Highest observed daily p99 cycle duration in the selected day window.">i</span>
+                            </span>
+                        </div>
+                        <div class="value small" id="schedulerTailP99">-</div>
+                    </div>
                 </div>
                 <div class="scheduler-chart-wrap">
                     <canvas id="schedulerMetricsChart"></canvas>
@@ -979,12 +1090,15 @@
                                 <th>Dead</th>
                                 <th>Locked</th>
                                 <th>Idempotent</th>
+                                <th>P99</th>
+                                <th>Max</th>
                             </tr>
                         </thead>
                         <tbody id="schedulerRecentRunsBody"></tbody>
                     </table>
                     <div class="scheduler-recent-empty" id="schedulerRecentRunsEmpty">No recent runs in window.</div>
                 </div>
+                <div class="scheduler-diagnostics" id="schedulerDiagnostics">No scheduler outlier diagnostics available yet.</div>
                 <div class="scheduler-warning" id="schedulerMetricsWarning" style="display: none;"></div>
             </div>
         </div>

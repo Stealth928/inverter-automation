@@ -5,19 +5,19 @@
       "firebase.json",
       "**/node_modules/**"
     ],
-    
+
+    "redirects": [
+      {
+        "source": "/index.html",
+        "destination": "/",
+        "type": 301
+      }
+    ],
+
     "rewrites": [
       {
         "source": "/api/**",
         "function": "api"
-      },
-      {
-        "source": "/{roi,test,history,control,settings,curtailment-discovery}.html",
-        "destination": "/{roi,test,history,control,settings,curtailment-discovery}.html"
-      },
-      {
-        "source": "**",
-        "destination": "/app.html"
       }
     ],
     "headers": [
@@ -54,6 +54,15 @@
           {
             "key": "Cache-Control",
             "value": "public, max-age=3600, stale-while-revalidate=86400"
+          }
+        ]
+      },
+      {
+        "source": "/images/screenshots/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
           }
         ]
       },

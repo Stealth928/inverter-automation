@@ -3,6 +3,8 @@
 function registerSetupPublicRoutes(app, deps = {}) {
   const db = deps.db;
   const foxessAPI = deps.foxessAPI;
+  // alphaEssAPI is optional — only required when AlphaESS credentials are submitted
+  const alphaEssAPI = deps.alphaEssAPI || null;
   // sungrowAPI is optional — only required when Sungrow credentials are submitted
   const sungrowAPI = deps.sungrowAPI || null;
   // sigenEnergyAPI is optional — only required when SigenEnergy credentials are submitted
@@ -68,6 +70,8 @@ function registerSetupPublicRoutes(app, deps = {}) {
       await tryAttachUser(req);
       const {
         device_sn, foxess_token, amber_api_key, weather_place,
+        // AlphaESS credentials
+        alphaess_system_sn, alphaess_app_id, alphaess_app_secret,
         // Sungrow credentials (mutually exclusive with foxess_token / device_sn)
         sungrow_username, sungrow_password, sungrow_device_sn,
         // SigenEnergy credentials
@@ -83,6 +87,110 @@ function registerSetupPublicRoutes(app, deps = {}) {
       );
 
       // ── SigenEnergy credential validation ──────────────────────────────────
+      // AlphaESS credential validation
+      const isAlphaEssSetup = !!(alphaess_system_sn || alphaess_app_id || alphaess_app_secret);
+
+      if (isAlphaEssSetup) {
+        if (!alphaess_system_sn) {
+          failed_keys.push('alphaess_system_sn');
+          errors.alphaess_system_sn = 'AlphaESS system SN is required';
+        }
+        if (!alphaess_app_id) {
+          failed_keys.push('alphaess_app_id');
+          errors.alphaess_app_id = 'AlphaESS App ID is required';
+        }
+        if (!alphaess_app_secret) {
+          failed_keys.push('alphaess_app_secret');
+          errors.alphaess_app_secret = 'AlphaESS App Secret is required';
+        }
+
+        if (failed_keys.length === 0 && alphaEssAPI) {
+          if (isEmulator) {
+            logger.info('Validation', 'Emulator mode: skipping live AlphaESS API check', true);
+          } else {
+            logger.info('Validation', 'Testing AlphaESS credentials', true);
+            const testConfig = {
+              alphaessSystemSn: alphaess_system_sn,
+              alphaessAppId: alphaess_app_id,
+              alphaessAppSecret: alphaess_app_secret
+            };
+            const listResult = await alphaEssAPI.listSystems(testConfig, null);
+
+            if (listResult.errno !== 0) {
+              failed_keys.push('alphaess_app_id');
+              errors.alphaess_app_id = listResult.error || 'AlphaESS credentials are invalid or not authorized';
+            } else {
+              const systems = Array.isArray(listResult.result) ? listResult.result : [];
+              if (systems.length === 0) {
+                failed_keys.push('alphaess_system_sn');
+                errors.alphaess_system_sn = 'No systems found for this AlphaESS app. Verify the app has access to at least one system.';
+              } else {
+                const found = systems.some((item) => String(item?.sysSn || '').trim() === String(alphaess_system_sn).trim());
+                if (!found) {
+                  failed_keys.push('alphaess_system_sn');
+                  const known = systems.map((item) => item?.sysSn).filter(Boolean);
+                  errors.alphaess_system_sn = `System SN not found in your app scope. Found: ${known.join(', ')}`;
+                }
+              }
+            }
+          }
+        } else if (failed_keys.length === 0 && !alphaEssAPI) {
+          failed_keys.push('alphaess_app_id');
+          errors.alphaess_app_id = 'AlphaESS module not initialized on server';
+        }
+
+        if (failed_keys.length === 0) {
+          const configData = {
+            alphaessSystemSn: alphaess_system_sn,
+            alphaessAppId: alphaess_app_id,
+            deviceProvider: 'alphaess',
+            amberApiKey: amber_api_key || '',
+            location: weather_place || 'Sydney',
+            inverterCapacityW: (typeof req.body.inverter_capacity_w === 'number' && req.body.inverter_capacity_w > 0)
+              ? Math.round(req.body.inverter_capacity_w)
+              : 5000,
+            batteryCapacityKWh: (typeof req.body.battery_capacity_kwh === 'number' && req.body.battery_capacity_kwh > 0)
+              ? req.body.battery_capacity_kwh
+              : 9.6,
+            setupComplete: true,
+            updatedAt: serverTimestamp()
+          };
+          const credentialsData = {
+            alphaessAppSecret: alphaess_app_secret,
+            updatedAt: serverTimestamp()
+          };
+
+          if (req.user?.uid) {
+            await Promise.all([
+              setUserConfig(req.user.uid, configData, { merge: true }),
+              db.collection('users').doc(req.user.uid).collection('secrets').doc('credentials')
+                .set(credentialsData, { merge: true })
+            ]);
+            logger.info('Validation', `AlphaESS config saved for user ${req.user.uid}`, true);
+          } else {
+            await Promise.all([
+              db.collection('shared').doc('serverConfig').set(configData, { merge: true }),
+              db.collection('shared').doc('serverCredentials').set(credentialsData, { merge: true })
+            ]);
+          }
+        }
+
+        if (failed_keys.length > 0) {
+          return res.status(400).json({
+            errno: 1,
+            msg: `Validation failed for: ${failed_keys.join(', ')}`,
+            failed_keys,
+            errors
+          });
+        }
+
+        return res.json({
+          errno: 0,
+          msg: 'AlphaESS credentials validated successfully',
+          result: { systemSn: alphaess_system_sn, provider: 'alphaess' }
+        });
+      }
+
       const isSigenEnergySetup = !!(sigenergy_username || sigenergy_password);
 
       if (isSigenEnergySetup) {
@@ -359,9 +467,10 @@ function registerSetupPublicRoutes(app, deps = {}) {
 
       if (req.user?.uid) {
         const userConfig = await getUserConfig(req.user.uid);
+        const hasAlphaEssAppSecret = !!userConfig?.alphaessAppSecret;
         const setupComplete = !!(
-          (userConfig?.setupComplete === true) ||
           (userConfig?.deviceSn && userConfig?.foxessToken) ||
+          (userConfig?.alphaessSystemSn && userConfig?.alphaessAppId && hasAlphaEssAppSecret) ||
           (userConfig?.sungrowDeviceSn && userConfig?.sungrowUsername) ||
           (userConfig?.sigenUsername)
         );
@@ -388,6 +497,9 @@ function registerSetupPublicRoutes(app, deps = {}) {
             deviceProvider: userConfig?.deviceProvider || 'foxess',
             hasDeviceSn: !!userConfig?.deviceSn,
             hasFoxessToken: !!userConfig?.foxessToken,
+            hasAlphaEssSystemSn: !!userConfig?.alphaessSystemSn,
+            hasAlphaEssAppId: !!userConfig?.alphaessAppId,
+            hasAlphaEssAppSecret: hasAlphaEssAppSecret,
             hasSungrowUsername: !!userConfig?.sungrowUsername,
             hasSungrowDeviceSn: !!userConfig?.sungrowDeviceSn,
             hasSigenUsername: !!userConfig?.sigenUsername,
@@ -403,10 +515,19 @@ function registerSetupPublicRoutes(app, deps = {}) {
         const sharedDoc = await db.collection('shared').doc('serverConfig').get();
         if (sharedDoc.exists) {
           const cfg = sharedDoc.data() || {};
+          let sharedCredentials = {};
+          try {
+            const credsDoc = await db.collection('shared').doc('serverCredentials').get();
+            sharedCredentials = credsDoc.exists ? (credsDoc.data() || {}) : {};
+          } catch (_sharedCredErr) {
+            sharedCredentials = {};
+          }
+          const hasAlphaEssAppSecret = !!sharedCredentials?.alphaessAppSecret;
           const setupComplete = !!(
-            (cfg.setupComplete && cfg.deviceSn && cfg.foxessToken) ||
-            (cfg.setupComplete && cfg.sungrowDeviceSn && cfg.sungrowUsername) ||
-            (cfg.setupComplete && cfg.sigenUsername)
+            (cfg.deviceSn && cfg.foxessToken) ||
+            (cfg.alphaessSystemSn && cfg.alphaessAppId && hasAlphaEssAppSecret) ||
+            (cfg.sungrowDeviceSn && cfg.sungrowUsername) ||
+            (cfg.sigenUsername)
           );
           const config = {
             automation: { intervalMs: serverConfig.automation.intervalMs },
@@ -421,6 +542,9 @@ function registerSetupPublicRoutes(app, deps = {}) {
               deviceProvider: cfg.deviceProvider || 'foxess',
               hasDeviceSn: !!cfg.deviceSn,
               hasFoxessToken: !!cfg.foxessToken,
+              hasAlphaEssSystemSn: !!cfg.alphaessSystemSn,
+              hasAlphaEssAppId: !!cfg.alphaessAppId,
+              hasAlphaEssAppSecret: hasAlphaEssAppSecret,
               hasSungrowUsername: !!cfg.sungrowUsername,
               hasSungrowDeviceSn: !!cfg.sungrowDeviceSn,
               hasSigenUsername: !!cfg.sigenUsername,
@@ -448,6 +572,9 @@ function registerSetupPublicRoutes(app, deps = {}) {
           deviceProvider: 'foxess',
           hasDeviceSn: false,
           hasFoxessToken: false,
+          hasAlphaEssSystemSn: false,
+          hasAlphaEssAppId: false,
+          hasAlphaEssAppSecret: false,
           hasSungrowUsername: false,
           hasSungrowDeviceSn: false,
           hasSigenUsername: false,

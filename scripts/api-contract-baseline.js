@@ -106,28 +106,52 @@ function lineNumberFromIndex(content, index) {
 function parseBackendRoutesFromFile(content, sourceFile) {
   const lines = content.split(/\r?\n/);
   const routeLinePattern = /^\s*app\.(get|post|put|delete|patch)\(\s*['"]([^'"]+)['"]\s*,\s*(.*)$/;
+  const aliasRouteLinePattern = /^\s*register(Get|Post|Put|Delete|Patch)Aliases\(\s*app\s*,\s*\[([^\]]+)\]\s*,\s*(.*)$/;
+  const pathLiteralPattern = /['"]([^'"]+)['"]/g;
   const routes = [];
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     const match = line.match(routeLinePattern);
-    if (!match) {
+    if (match) {
+      const method = match[1].toUpperCase();
+      const routePath = normalizeEndpointPath(match[2]);
+      if (!routePath) {
+        continue;
+      }
+
+      routes.push({
+        method,
+        path: routePath,
+        middlewareSegment: match[3] || '',
+        line: i + 1,
+        lineIndex: i,
+      });
       continue;
     }
 
-    const method = match[1].toUpperCase();
-    const routePath = normalizeEndpointPath(match[2]);
-    if (!routePath) {
+    const aliasMatch = line.match(aliasRouteLinePattern);
+    if (!aliasMatch) {
       continue;
     }
 
-    routes.push({
-      method,
-      path: routePath,
-      middlewareSegment: match[3] || '',
-      line: i + 1,
-      lineIndex: i,
-    });
+    const method = aliasMatch[1].toUpperCase();
+    const middlewareSegment = aliasMatch[3] || '';
+    pathLiteralPattern.lastIndex = 0;
+    let pathMatch;
+    while ((pathMatch = pathLiteralPattern.exec(aliasMatch[2])) !== null) {
+      const routePath = normalizeEndpointPath(pathMatch[1]);
+      if (!routePath) {
+        continue;
+      }
+      routes.push({
+        method,
+        path: routePath,
+        middlewareSegment,
+        line: i + 1,
+        lineIndex: i,
+      });
+    }
   }
 
   return routes.map((route, idx) => {

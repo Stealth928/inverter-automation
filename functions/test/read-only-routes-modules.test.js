@@ -46,9 +46,17 @@ describe('read-only route modules', () => {
     expect(sites.statusCode).toBe(200);
     expect(sites.body).toEqual({ errno: 0, result: [] });
 
+    const pricingSites = await request(app).get('/api/pricing/sites');
+    expect(pricingSites.statusCode).toBe(200);
+    expect(pricingSites.body).toEqual({ errno: 0, result: [] });
+
     const pricesCurrent = await request(app).get('/api/amber/prices/current');
     expect(pricesCurrent.statusCode).toBe(200);
     expect(pricesCurrent.body).toEqual({ errno: 0, result: [] });
+
+    const pricingCurrent = await request(app).get('/api/pricing/current');
+    expect(pricingCurrent.statusCode).toBe(200);
+    expect(pricingCurrent.body).toEqual({ errno: 0, result: [] });
   });
 
   test('metrics routes return global zero-filled envelope when db is unavailable', async () => {
@@ -68,7 +76,8 @@ describe('read-only route modules', () => {
     expect(response.body.errno).toBe(0);
     expect(Object.keys(response.body.result)).toHaveLength(2);
     Object.values(response.body.result).forEach((value) => {
-      expect(value).toEqual({ foxess: 0, amber: 0, weather: 0 });
+      expect(value).toEqual(expect.objectContaining({ inverter: 0, foxess: 0, amber: 0, weather: 0 }));
+      expect(value.inverterByProvider).toEqual(expect.objectContaining({ foxess: 0, sungrow: 0, sigenergy: 0, alphaess: 0 }));
     });
   });
 
@@ -134,7 +143,18 @@ describe('read-only route modules', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body.errno).toBe(0);
-    expect(response.body.result[todayKey]).toEqual({ foxess: 7, amber: 5, weather: 3 });
+    expect(response.body.result[todayKey]).toEqual(expect.objectContaining({
+      inverter: 7,
+      foxess: 7,
+      amber: 5,
+      weather: 3
+    }));
+    expect(response.body.result[todayKey].inverterByProvider).toEqual(expect.objectContaining({
+      foxess: 7,
+      sungrow: 0,
+      sigenergy: 0,
+      alphaess: 0
+    }));
   });
 
   test('pricing current endpoint returns cached prices when available', async () => {
@@ -166,7 +186,7 @@ describe('read-only route modules', () => {
       });
     });
 
-    const response = await request(app).get('/api/amber/prices/current');
+    const response = await request(app).get('/api/pricing/current');
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({
@@ -220,17 +240,58 @@ describe('read-only route modules', () => {
     });
 
     const unauthorized = await request(app)
-      .get('/api/amber/prices/actual')
+      .get('/api/pricing/actual')
       .query({ timestamp: targetTimestamp.toISOString() });
     expect(unauthorized.statusCode).toBe(401);
 
     const authorized = await request(app)
-      .get('/api/amber/prices/actual')
+      .get('/api/pricing/actual')
       .set('Authorization', 'Bearer token')
       .query({ timestamp: targetTimestamp.toISOString() });
 
     expect(authorized.statusCode).toBe(200);
     expect(authorized.body).toEqual({ errno: 0, result: matchingInterval });
+
+    const legacyAlias = await request(app)
+      .get('/api/amber/prices/actual')
+      .set('Authorization', 'Bearer token')
+      .query({ timestamp: targetTimestamp.toISOString() });
+    expect(legacyAlias.statusCode).toBe(200);
+    expect(legacyAlias.body).toEqual({ errno: 0, result: matchingInterval });
+  });
+
+  test('pricing routes reject unsupported provider values', async () => {
+    const amberPricesInFlight = new Map();
+    const amberAPI = {
+      callAmberAPI: jest.fn(),
+      cacheAmberPricesCurrent: jest.fn(),
+      cacheAmberSites: jest.fn(),
+      getCachedAmberPricesCurrent: jest.fn(),
+      getCachedAmberSites: jest.fn()
+    };
+
+    const app = buildApp((instance) => {
+      registerPricingRoutes(instance, {
+        amberAPI,
+        amberPricesInFlight,
+        authenticateUser: (_req, _res, next) => next(),
+        getUserConfig: jest.fn(),
+        incrementApiCount: jest.fn(),
+        logger: { debug: jest.fn(), warn: jest.fn() },
+        tryAttachUser: jest.fn(async () => null)
+      });
+    });
+
+    const response = await request(app)
+      .get('/api/pricing/sites')
+      .query({ provider: 'flat-rate' });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({
+      errno: 400,
+      error: 'Unsupported pricing provider: flat-rate',
+      result: []
+    });
   });
 
   test('weather routes proxy cached weather helper response', async () => {
@@ -364,6 +425,239 @@ describe('read-only route modules', () => {
     );
   });
 
+  test('inverter real-time endpoint dispatches to non-FoxESS adapter when provider is configured', async () => {
+    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
+    const adapterGetStatus = jest.fn(async () => ({
+      socPct: 61,
+      batteryTempC: 28.5,
+      ambientTempC: 22.2,
+      pvPowerW: 4200,
+      loadPowerW: 1700,
+      gridPowerW: 300,
+      feedInPowerW: 0,
+      batteryPowerW: -1200,
+      observedAtIso: '2026-03-11T10:15:00.000Z'
+    }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-alpha' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({
+            getStatus: adapterGetStatus
+          }))
+        },
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'alphaess',
+          alphaessSystemSn: 'ALPHA-SN-1'
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig: jest.fn(async () => undefined),
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result[0].deviceSN).toBe('ALPHA-SN-1');
+    const datas = response.body.result[0].datas || [];
+    const chargePoint = datas.find((entry) => entry.variable === 'batChargePower');
+    expect(response.body.result[0].datas).toEqual(expect.arrayContaining([
+      expect.objectContaining({ variable: 'SoC', value: 61, unit: '%' }),
+      expect.objectContaining({ variable: 'pvPower', value: 4.2, unit: 'kW' }),
+      expect.objectContaining({ variable: 'loadsPower', value: 1.7, unit: 'kW' }),
+      expect.objectContaining({ variable: 'batDischargePower', value: 1.2, unit: 'kW' })
+    ]));
+    expect(chargePoint).toEqual(expect.objectContaining({ variable: 'batChargePower', value: 0, unit: 'kW' }));
+    expect(adapterGetStatus).toHaveBeenCalledWith({
+      deviceSN: 'ALPHA-SN-1',
+      userConfig: {
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'ALPHA-SN-1'
+      },
+      userId: 'u-alpha'
+    });
+    expect(getCachedInverterRealtimeData).not.toHaveBeenCalled();
+  });
+
+  test('inverter real-time endpoint inverts AlphaESS battery sign for AC-coupled topology', async () => {
+    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
+    const adapterGetStatus = jest.fn(async () => ({
+      socPct: 61,
+      batteryTempC: 28.5,
+      ambientTempC: 22.2,
+      pvPowerW: 0,
+      loadPowerW: 1700,
+      gridPowerW: 0,
+      feedInPowerW: 2400,
+      batteryPowerW: 1200,
+      observedAtIso: '2026-03-11T10:15:00.000Z'
+    }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-alpha' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({
+            getStatus: adapterGetStatus
+          }))
+        },
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'alphaess',
+          alphaessSystemSn: 'ALPHA-SN-1',
+          systemTopology: {
+            coupling: 'ac',
+            source: 'manual'
+          }
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig: jest.fn(async () => undefined),
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    const datas = response.body.result[0].datas || [];
+    const chargePoint = datas.find((entry) => entry.variable === 'batChargePower');
+    const dischargePoint = datas.find((entry) => entry.variable === 'batDischargePower');
+    expect(chargePoint).toEqual(expect.objectContaining({ variable: 'batChargePower', value: 0, unit: 'kW' }));
+    expect(dischargePoint).toEqual(expect.objectContaining({ variable: 'batDischargePower', value: 1.2, unit: 'kW' }));
+  });
+
+  test('inverter real-time endpoint honors explicit AlphaESS battery sign override', async () => {
+    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
+    const adapterGetStatus = jest.fn(async () => ({
+      socPct: 57,
+      batteryTempC: 27.1,
+      ambientTempC: 21.8,
+      pvPowerW: 0,
+      loadPowerW: 1600,
+      gridPowerW: 0,
+      feedInPowerW: 2200,
+      batteryPowerW: 1200,
+      observedAtIso: '2026-03-11T10:25:00.000Z'
+    }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-alpha' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({
+            getStatus: adapterGetStatus
+          }))
+        },
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'alphaess',
+          alphaessSystemSn: 'ALPHA-SN-1',
+          alphaessBatteryPowerSign: 'normal',
+          systemTopology: {
+            coupling: 'ac',
+            source: 'manual'
+          }
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig: jest.fn(async () => undefined),
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    const datas = response.body.result[0].datas || [];
+    const chargePoint = datas.find((entry) => entry.variable === 'batChargePower');
+    const dischargePoint = datas.find((entry) => entry.variable === 'batDischargePower');
+    expect(chargePoint).toEqual(expect.objectContaining({ variable: 'batChargePower', value: 1.2, unit: 'kW' }));
+    expect(dischargePoint).toEqual(expect.objectContaining({ variable: 'batDischargePower', value: 0, unit: 'kW' }));
+  });
+
+  test('inverter real-time endpoint preserves provider-specific power semantics for non-alpha adapters', async () => {
+    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
+    const adapterGetStatus = jest.fn(async () => ({
+      socPct: 54,
+      batteryTempC: null,
+      ambientTempC: null,
+      pvPowerW: 2.5,
+      loadPowerW: 1.9,
+      gridPowerW: 0.4,
+      feedInPowerW: 0,
+      batteryPowerW: -0.8,
+      observedAtIso: '2026-03-11T11:20:00.000Z'
+    }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-sigen' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({
+            getStatus: adapterGetStatus
+          }))
+        },
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'sigenergy',
+          sigenStationId: 'SIGEN-STATION-1'
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig: jest.fn(async () => undefined),
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result[0].deviceSN).toBe('SIGEN-STATION-1');
+    const datas = response.body.result[0].datas || [];
+    const pvPoint = datas.find((entry) => entry.variable === 'pvPower');
+    const loadPoint = datas.find((entry) => entry.variable === 'loadsPower');
+    const dischargePoint = datas.find((entry) => entry.variable === 'batDischargePower');
+    expect(pvPoint).toEqual(expect.objectContaining({ variable: 'pvPower', value: 2.5 }));
+    expect(loadPoint).toEqual(expect.objectContaining({ variable: 'loadsPower', value: 1.9 }));
+    expect(dischargePoint).toEqual(expect.objectContaining({ variable: 'batDischargePower', value: 0.8 }));
+    expect(pvPoint).not.toHaveProperty('unit');
+    expect(loadPoint).not.toHaveProperty('unit');
+    expect(adapterGetStatus).toHaveBeenCalledWith({
+      deviceSN: 'SIGEN-STATION-1',
+      userConfig: {
+        deviceProvider: 'sigenergy',
+        sigenStationId: 'SIGEN-STATION-1'
+      },
+      userId: 'u-sigen'
+    });
+    expect(getCachedInverterRealtimeData).not.toHaveBeenCalled();
+  });
+
   test('inverter real-time endpoint auto-persists inferred topology when missing', async () => {
     const realtimePayload = {
       errno: 0,
@@ -412,8 +706,58 @@ describe('read-only route modules', () => {
           lastDetectedAt: expect.any(Number),
           updatedAt: { __serverTimestamp: true },
           evidence: expect.objectContaining({
-            heuristic: 'pvPower~0 && meterPower2>0',
+            heuristic: 'pvPower~0 && |meterPower2|>0',
             pvPower: 0
+          })
+        })
+      }),
+      { merge: true }
+    );
+  });
+
+  test('inverter real-time endpoint infers AC topology with negative meterPower2 export', async () => {
+    const realtimePayload = {
+      errno: 0,
+      result: [
+        {
+          datas: [
+            { variable: 'pvPower', value: 0 },
+            { variable: 'meterPower2', value: -850 }
+          ]
+        }
+      ]
+    };
+    const getCachedInverterRealtimeData = jest.fn(async () => realtimePayload);
+    const setUserConfig = jest.fn(async () => undefined);
+    const serverTimestamp = jest.fn(() => ({ __serverTimestamp: true }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-inverter' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({ deviceSn: 'SN-NEG' })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig,
+        serverTimestamp
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(realtimePayload);
+    expect(setUserConfig).toHaveBeenCalledWith(
+      'u-inverter',
+      expect.objectContaining({
+        systemTopology: expect.objectContaining({
+          coupling: 'ac',
+          evidence: expect.objectContaining({
+            heuristic: 'pvPower~0 && |meterPower2|>0'
           })
         })
       }),

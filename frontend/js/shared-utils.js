@@ -84,6 +84,42 @@ function showInfo(message, duration = 5000) {
    API METRICS UTILITIES
    ============================================ */
 
+function getInverterApiCount(dayMetrics = {}) {
+    const metrics = (dayMetrics && typeof dayMetrics === 'object') ? dayMetrics : {};
+    const explicitInverter = Number(metrics.inverter);
+    if (Number.isFinite(explicitInverter) && explicitInverter >= 0) {
+        return explicitInverter;
+    }
+
+    const providerBuckets = {};
+    const addProviderCount = (providerKey, value) => {
+        const key = String(providerKey || '').toLowerCase().trim();
+        if (!key) return;
+        const count = Number(value);
+        if (!Number.isFinite(count) || count <= 0) return;
+        providerBuckets[key] = Math.max(providerBuckets[key] || 0, count);
+    };
+
+    ['foxess', 'sungrow', 'sigenergy', 'alphaess'].forEach((providerKey) => {
+        addProviderCount(providerKey, metrics[providerKey]);
+    });
+
+    if (metrics.inverterByProvider && typeof metrics.inverterByProvider === 'object') {
+        Object.entries(metrics.inverterByProvider).forEach(([providerKey, value]) => {
+            addProviderCount(providerKey, value);
+        });
+    }
+
+    Object.entries(metrics).forEach(([metricKey, value]) => {
+        const key = String(metricKey || '').toLowerCase().trim();
+        if (!key || key === 'inverter' || key === 'inverterbyprovider' || key === 'amber' || key === 'weather' || key === 'updatedat') return;
+        if (Object.prototype.hasOwnProperty.call(providerBuckets, key)) return;
+        addProviderCount(key, value);
+    });
+
+    return Object.values(providerBuckets).reduce((sum, count) => sum + count, 0);
+}
+
 /**
  * Load and display API call metrics
  * @param {number} days - Number of days to fetch
@@ -129,12 +165,12 @@ async function loadApiMetrics(days = 1) {
         
         // Update UI elements
         const dateEl = document.getElementById('metricsDate');
-        const foxEl = document.getElementById('countFox');
+        const inverterEl = document.getElementById('countFox');
         const amberEl = document.getElementById('countAmber');
         const weatherEl = document.getElementById('countWeather');
         
         if (dateEl) dateEl.textContent = formatted;
-        if (foxEl) foxEl.textContent = today.foxess ?? 0;
+        if (inverterEl) inverterEl.textContent = getInverterApiCount(today);
         if (amberEl) amberEl.textContent = today.amber ?? 0;
         if (weatherEl) weatherEl.textContent = today.weather ?? 0;
     } catch (e) {
@@ -523,6 +559,7 @@ if (typeof module !== 'undefined' && module.exports) {
         showWarning,
         showInfo,
         loadApiMetrics,
+        getInverterApiCount,
         startMetricsAutoRefresh,
         formatMs,
         formatDate,
@@ -558,6 +595,7 @@ if (typeof window !== 'undefined') {
         formatValue,
         formatDate,
         formatTimeAgo,
+        getInverterApiCount,
         getStoredAmberSiteId,
         setStoredAmberSiteId
     });

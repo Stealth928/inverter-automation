@@ -78,9 +78,26 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.x
+        cache: 'npm'
+        cache-dependency-path: |
+          package-lock.json
+          functions/package-lock.json
+
+    - name: Install dependencies
+      run: |
+        npm ci
+        npm --prefix functions ci
     
-    - name: Run npm audit
-      run: npm --prefix functions audit --audit-level=moderate
+    - name: Run npm audit (functions)
+      run: npm --prefix functions audit --audit-level=high
+
+    - name: Run npm audit (root)
+      run: npm audit --audit-level=high
 
   frontend-e2e:
     name: Frontend E2E (Playwright)

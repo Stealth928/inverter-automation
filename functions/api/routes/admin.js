@@ -205,15 +205,42 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
       })
     ]);
 
-    // Fetch real billing cost per service from Cloud Billing API
-    let billingData = null;
+    const readsMtd = Math.round(sumSeriesValues(readsMtdSeries));
+    const writesMtd = Math.round(sumSeriesValues(writesMtdSeries));
+    const deletesMtd = Math.round(sumSeriesValues(deletesMtdSeries));
+    const firestoreUsageEstimate = estimateFirestoreCostFromUsage(readsMtd, writesMtd, deletesMtd, now);
+    const firestoreDocOpsCostUsd = Number.isFinite(Number(firestoreUsageEstimate?.totalUsd))
+      ? Number(firestoreUsageEstimate.totalUsd)
+      : null;
+    const firestoreDocOpsBreakdown = Array.isArray(firestoreUsageEstimate?.services)
+      ? firestoreUsageEstimate.services
+      : [];
+
+    // Fetch real project billing cost per service from Cloud Billing API
+    let projectBillingData = null;
     let usedMonitoringBillingFallback = false;
     try {
-      billingData = await fetchCloudBillingCost(projectId);
-      console.log(`[Admin] Cloud Billing cost fetched: $${billingData.totalUsd.toFixed(2)} across ${billingData.services.length} services`);
+      projectBillingData = await fetchCloudBillingCost(projectId);
+      if (projectBillingData && !projectBillingData.source) {
+        projectBillingData.source = 'cloud-billing';
+      }
+      const total = Number(projectBillingData?.totalUsd || 0);
+      const serviceCount = Array.isArray(projectBillingData?.services) ? projectBillingData.services.length : 0;
+      console.log(`[Admin] Cloud Billing cost fetched: $${total.toFixed(2)} across ${serviceCount} services`);
     } catch (billingErr) {
       if (billingErr.isBillingIamError) {
         warnings.push(billingErr.message);
+        projectBillingData = {
+          services: null,
+          totalUsd: firestoreDocOpsCostUsd,
+          accountId: null,
+          raw: null,
+          isEstimate: true,
+          source: Number.isFinite(firestoreDocOpsCostUsd) ? 'firestore-doc-ops-estimate' : 'unavailable'
+        };
+        warnings.push(
+          'Project-level billing unavailable. Showing Firestore doc-op estimate only for reads/writes/deletes.'
+        );
       } else if (billingErr.isBillingReportsUnavailable) {
         // Fallback 1: Cloud Monitoring billing metrics
         const billingMtdSeries = await loadMetricSeriesSafe({
@@ -227,31 +254,28 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
 
         const fallbackTotal = billingMtdSeries.length ? sumSeriesValues(billingMtdSeries) : null;
         if (Number.isFinite(fallbackTotal) && fallbackTotal > 0) {
-          billingData = {
+          projectBillingData = {
             services: null,
             totalUsd: fallbackTotal,
             accountId: null,
-            raw: null
+            raw: null,
+            isEstimate: true,
+            source: 'monitoring-billing-fallback'
           };
           usedMonitoringBillingFallback = true;
           warnings.push('Billing service breakdown unavailable; using Monitoring total-cost fallback.');
         } else {
-          // Fallback 2: estimate from Firestore read/write/delete usage counts we already fetched
-          const readsMtdVal   = Math.round(sumSeriesValues(readsMtdSeries));
-          const writesMtdVal  = Math.round(sumSeriesValues(writesMtdSeries));
-          const deletesMtdVal = Math.round(sumSeriesValues(deletesMtdSeries));
-          const estimate = estimateFirestoreCostFromUsage(readsMtdVal, writesMtdVal, deletesMtdVal, now);
-          billingData = {
-            services: estimate.services,
-            totalUsd: estimate.totalUsd,
+          // Fallback 2: no project-level billing data available
+          projectBillingData = {
+            services: null,
+            totalUsd: firestoreDocOpsCostUsd,
             accountId: null,
             raw: null,
-            isEstimate: true
+            isEstimate: true,
+            source: Number.isFinite(firestoreDocOpsCostUsd) ? 'firestore-doc-ops-estimate' : 'unavailable'
           };
           warnings.push(
-            'Est. MTD cost calculated from Firestore read/write/delete counts × GCP pricing ' +
-            '($0.06/100K reads, $0.18/100K writes, $0.02/100K deletes, minus daily free tier). ' +
-            'Does not include Cloud Functions, Auth, storage, or egress costs.'
+            'Project-level billing unavailable. Showing Firestore doc-op estimate only for reads/writes/deletes.'
           );
         }
       } else {
@@ -283,30 +307,41 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
     const latestStorageBytes = storageSeries.length
       ? Number(storageSeries[storageSeries.length - 1].value || 0)
       : null;
+    const storageGb = Number.isFinite(latestStorageBytes) ? (latestStorageBytes / (1024 * 1024 * 1024)) : null;
 
     res.json({
       errno: 0,
       result: {
         source: (() => {
-          if (!billingData) return 'gcp-monitoring';
+          if (!projectBillingData) return 'gcp-monitoring';
           if (usedMonitoringBillingFallback) return 'gcp-monitoring+monitoring-billing-fallback';
-          if (billingData.isEstimate) return 'gcp-monitoring+usage-estimate';
+          if (projectBillingData.isEstimate) return 'gcp-monitoring+usage-estimate';
           return 'gcp-monitoring+cloud-billing';
         })(),
         projectId,
         updatedAt: now.toISOString(),
         windowHours: hours,
         firestore: {
-          readsMtd: Math.round(sumSeriesValues(readsMtdSeries)),
-          writesMtd: Math.round(sumSeriesValues(writesMtdSeries)),
-          deletesMtd: Math.round(sumSeriesValues(deletesMtdSeries)),
-          storageGb: Number.isFinite(latestStorageBytes) ? (latestStorageBytes / (1024 * 1024 * 1024)) : null
+          readsMtd,
+          writesMtd,
+          deletesMtd,
+          storageGb,
+          estimatedDocOpsCostUsd: firestoreDocOpsCostUsd,
+          estimatedDocOpsBreakdown: firestoreDocOpsBreakdown
         },
         billing: {
-          estimatedMtdCostUsd: billingData ? billingData.totalUsd : null,
-          services: billingData ? billingData.services : null,
-          billingAccountId: billingData ? billingData.accountId : null,
-          isEstimate: billingData ? (billingData.isEstimate === true) : false
+          // Preferred explicit fields
+          projectMtdCostUsd: projectBillingData ? projectBillingData.totalUsd : null,
+          projectServices: projectBillingData ? projectBillingData.services : null,
+          projectBillingAccountId: projectBillingData ? projectBillingData.accountId : null,
+          projectCostIsEstimate: projectBillingData ? (projectBillingData.isEstimate === true) : false,
+          projectCostSource: projectBillingData ? (projectBillingData.source || 'unknown') : null,
+          // Backward-compatible fields
+          estimatedMtdCostUsd: projectBillingData ? projectBillingData.totalUsd : null,
+          services: projectBillingData ? projectBillingData.services : null,
+          billingAccountId: projectBillingData ? projectBillingData.accountId : null,
+          isEstimate: projectBillingData ? (projectBillingData.isEstimate === true) : false,
+          costSource: projectBillingData ? (projectBillingData.source || 'unknown') : null
         },
         trend,
         warnings
@@ -647,6 +682,47 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       return Number.isFinite(parsed) ? parsed : fallback;
     };
 
+    const phaseTimingKeys = ['dataFetchMs', 'ruleEvalMs', 'actionApplyMs', 'curtailmentMs'];
+
+    const sanitizeDurationStats = (value) => {
+      const source = value && typeof value === 'object' ? value : {};
+      return {
+        avgMs: Math.max(0, toFiniteNumber(source.avgMs, 0)),
+        count: Math.max(0, toFiniteNumber(source.count, 0)),
+        maxMs: Math.max(0, toFiniteNumber(source.maxMs, 0)),
+        minMs: Math.max(0, toFiniteNumber(source.minMs, 0)),
+        p95Ms: Math.max(0, toFiniteNumber(source.p95Ms, 0)),
+        p99Ms: Math.max(0, toFiniteNumber(source.p99Ms, 0))
+      };
+    };
+
+    const sanitizePhaseTimingStats = (value) => {
+      const source = value && typeof value === 'object' ? value : {};
+      const out = {};
+      for (const phaseKey of phaseTimingKeys) {
+        out[phaseKey] = sanitizeDurationStats(source[phaseKey]);
+      }
+      return out;
+    };
+
+    const sanitizePhaseTimingMaxMs = (value) => {
+      const source = value && typeof value === 'object' ? value : {};
+      const out = {};
+      for (const phaseKey of phaseTimingKeys) {
+        out[phaseKey] = Math.max(0, toFiniteNumber(source[phaseKey], 0));
+      }
+      return out;
+    };
+
+    const extractPhaseTimingRunMaxMs = (phaseTimingStats) => {
+      const source = phaseTimingStats && typeof phaseTimingStats === 'object' ? phaseTimingStats : {};
+      const out = {};
+      for (const phaseKey of phaseTimingKeys) {
+        out[phaseKey] = Math.max(0, toFiniteNumber(source[phaseKey]?.maxMs, 0));
+      }
+      return out;
+    };
+
     const sanitizeFailureByType = (value) => {
       const out = {};
       const source = value && typeof value === 'object' ? value : {};
@@ -677,7 +753,12 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           errorRatePct: toFiniteNumber(source.thresholds?.errorRatePct, 0),
           deadLetterRatePct: toFiniteNumber(source.thresholds?.deadLetterRatePct, 0),
           maxQueueLagMs: toFiniteNumber(source.thresholds?.maxQueueLagMs, 0),
-          maxCycleDurationMs: toFiniteNumber(source.thresholds?.maxCycleDurationMs, 0)
+          maxCycleDurationMs: toFiniteNumber(source.thresholds?.maxCycleDurationMs, 0),
+          maxTelemetryAgeMs: toFiniteNumber(source.thresholds?.maxTelemetryAgeMs, 0),
+          p99CycleDurationMs: toFiniteNumber(source.thresholds?.p99CycleDurationMs, 0),
+          tailP99CycleDurationMs: toFiniteNumber(source.thresholds?.tailP99CycleDurationMs, 0),
+          tailWindowMinutes: toFiniteNumber(source.thresholds?.tailWindowMinutes, 0),
+          tailMinRuns: toFiniteNumber(source.thresholds?.tailMinRuns, 0)
         },
         measurements: {
           cyclesRun: toFiniteNumber(source.measurements?.cyclesRun, 0),
@@ -686,10 +767,58 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           errorRatePct: toFiniteNumber(source.measurements?.errorRatePct, 0),
           deadLetterRatePct: toFiniteNumber(source.measurements?.deadLetterRatePct, 0),
           maxQueueLagMs: toFiniteNumber(source.measurements?.maxQueueLagMs, 0),
-          maxCycleDurationMs: toFiniteNumber(source.measurements?.maxCycleDurationMs, 0)
+          maxCycleDurationMs: toFiniteNumber(source.measurements?.maxCycleDurationMs, 0),
+          maxTelemetryAgeMs: toFiniteNumber(source.measurements?.maxTelemetryAgeMs, 0),
+          p95CycleDurationMs: toFiniteNumber(source.measurements?.p95CycleDurationMs, 0),
+          p99CycleDurationMs: toFiniteNumber(source.measurements?.p99CycleDurationMs, 0),
+          latestRunP99CycleDurationMs: toFiniteNumber(source.measurements?.latestRunP99CycleDurationMs, 0)
         },
         breachedMetrics: sanitizeMetricList(source.breachedMetrics),
         watchMetrics: sanitizeMetricList(source.watchMetrics)
+      };
+    };
+
+    const sanitizeSlowCycleSamples = (value) => {
+      return (Array.isArray(value) ? value : [])
+        .map((entry, index) => {
+          const source = entry && typeof entry === 'object' ? entry : {};
+          return {
+            rank: Math.max(1, Math.floor(toFiniteNumber(source.rank, index + 1))),
+            userId: source.userId != null ? String(source.userId) : null,
+            cycleKey: source.cycleKey != null ? String(source.cycleKey) : null,
+            success: source.success === true,
+            failureType: source.failureType ? String(source.failureType) : null,
+            queueLagMs: Math.max(0, toFiniteNumber(source.queueLagMs, 0)),
+            cycleDurationMs: Math.max(0, toFiniteNumber(source.cycleDurationMs, 0)),
+            retriesUsed: Math.max(0, toFiniteNumber(source.retriesUsed, 0)),
+            startedAtMs: Math.max(0, toFiniteNumber(source.startedAtMs, 0)),
+            completedAtMs: Math.max(0, toFiniteNumber(source.completedAtMs, 0))
+          };
+        })
+        .filter((entry) => entry.cycleDurationMs > 0)
+        .sort((a, b) => b.cycleDurationMs - a.cycleDurationMs)
+        .slice(0, 3)
+        .map((entry, index) => ({ ...entry, rank: index + 1 }));
+    };
+
+    const sanitizeTailLatency = (value) => {
+      const source = value && typeof value === 'object' ? value : {};
+      const statusRaw = String(source.status || '').trim().toLowerCase();
+      const status = ['healthy', 'watch', 'breach'].includes(statusRaw) ? statusRaw : 'healthy';
+      return {
+        metric: String(source.metric || 'sustainedP99CycleDurationMs'),
+        status,
+        thresholdMs: Math.max(0, toFiniteNumber(source.thresholdMs, 0)),
+        windowMinutes: Math.max(0, toFiniteNumber(source.windowMinutes, 0)),
+        minRuns: Math.max(0, toFiniteNumber(source.minRuns, 0)),
+        observedRuns: Math.max(0, toFiniteNumber(source.observedRuns, 0)),
+        runsAboveThreshold: Math.max(0, toFiniteNumber(source.runsAboveThreshold, 0)),
+        ratioAboveThreshold: Math.max(0, toFiniteNumber(source.ratioAboveThreshold, 0)),
+        latestP99Ms: Math.max(0, toFiniteNumber(source.latestP99Ms, 0)),
+        minObservedP99Ms: Math.max(0, toFiniteNumber(source.minObservedP99Ms, 0)),
+        maxObservedP99Ms: Math.max(0, toFiniteNumber(source.maxObservedP99Ms, 0)),
+        windowStartMs: Math.max(0, toFiniteNumber(source.windowStartMs, 0)),
+        windowEndMs: Math.max(0, toFiniteNumber(source.windowEndMs, 0))
       };
     };
 
@@ -699,6 +828,87 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         merged[key] = toFiniteNumber(merged[key], 0) + toFiniteNumber(count, 0);
       }
       return merged;
+    };
+
+    const buildLikelyCauseTags = (run) => {
+      const failureByType = run && typeof run.failureByType === 'object' ? run.failureByType : {};
+      const skipped = run && typeof run.skipped === 'object' ? run.skipped : {};
+      const tags = [];
+      const apiFailureCount =
+        toFiniteNumber(failureByType.api_timeout, 0) +
+        toFiniteNumber(failureByType.api_rate_limit, 0) +
+        toFiniteNumber(failureByType.network_error, 0) +
+        toFiniteNumber(failureByType.service_unavailable, 0) +
+        toFiniteNumber(failureByType.server_error, 0);
+      const dbFailureCount =
+        toFiniteNumber(failureByType.firestore_contention, 0) +
+        toFiniteNumber(failureByType.conflict, 0);
+      const lockSkips = toFiniteNumber(skipped.locked, 0);
+      const idempotentSkips = toFiniteNumber(skipped.idempotent, 0);
+      const retries = toFiniteNumber(run.retries, 0);
+      const queueLagMaxMs = toFiniteNumber(run.queueLagMs?.maxMs, 0);
+
+      if (apiFailureCount > 0 || retries > 0) {
+        tags.push('external_api_slowness_or_retries');
+      }
+      if (dbFailureCount > 0) {
+        tags.push('firestore_contention_or_conflicts');
+      }
+      if (lockSkips > 0) {
+        tags.push('lock_contention');
+      }
+      if (idempotentSkips > 0) {
+        tags.push('overlapping_scheduler_invocations');
+      }
+      if (queueLagMaxMs >= 10000) {
+        tags.push('possible_cold_start_or_invocation_backlog');
+      }
+
+      if (!tags.length) {
+        tags.push('no_clear_cause_from_scheduler_metrics');
+      }
+      return tags;
+    };
+
+    const buildTailLatencyFromRuns = (runs = [], thresholdMs = 10000, windowMinutes = 15, minRuns = 10) => {
+      const nowMs = Date.now();
+      const windowStartMs = nowMs - (Math.max(1, windowMinutes) * 60 * 1000);
+      const inWindowRuns = (Array.isArray(runs) ? runs : []).filter(
+        (run) => toFiniteNumber(run.startedAtMs, 0) >= windowStartMs
+      );
+      const p99Values = inWindowRuns
+        .map((run) => toFiniteNumber(run.cycleDurationMs?.p99Ms, toFiniteNumber(run.cycleDurationMs?.maxMs, 0)))
+        .filter((value) => Number.isFinite(value) && value >= 0);
+      const runsAboveThreshold = thresholdMs > 0
+        ? p99Values.filter((value) => value > thresholdMs).length
+        : 0;
+      const ratioAboveThreshold = p99Values.length > 0
+        ? Number((runsAboveThreshold / p99Values.length).toFixed(4))
+        : 0;
+      let status = 'healthy';
+      if (p99Values.length >= minRuns && thresholdMs > 0) {
+        if (runsAboveThreshold === p99Values.length) {
+          status = 'breach';
+        } else if (ratioAboveThreshold >= 0.8) {
+          status = 'watch';
+        }
+      }
+
+      return {
+        metric: 'sustainedP99CycleDurationMs',
+        status,
+        thresholdMs,
+        windowMinutes,
+        minRuns,
+        observedRuns: p99Values.length,
+        runsAboveThreshold,
+        ratioAboveThreshold,
+        latestP99Ms: p99Values.length > 0 ? p99Values[0] : 0,
+        minObservedP99Ms: p99Values.length > 0 ? Math.min(...p99Values) : 0,
+        maxObservedP99Ms: p99Values.length > 0 ? Math.max(...p99Values) : 0,
+        windowStartMs,
+        windowEndMs: nowMs
+      };
     };
 
     const days = parseBoundedInt(req.query?.days, 14, 1, 90);
@@ -727,9 +937,13 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         retries: toFiniteNumber(data.retries, 0),
         maxQueueLagMs: toFiniteNumber(data.maxQueueLagMs, 0),
         maxCycleDurationMs: toFiniteNumber(data.maxCycleDurationMs, 0),
+        maxTelemetryAgeMs: toFiniteNumber(data.maxTelemetryAgeMs, 0),
+        p95CycleDurationMs: toFiniteNumber(data.p95CycleDurationMs, 0),
+        p99CycleDurationMs: toFiniteNumber(data.p99CycleDurationMs, 0),
         avgCycleDurationMs: data.avgCycleDurationSamples > 0
           ? toFiniteNumber(data.avgCycleDurationTotalMs, 0) / toFiniteNumber(data.avgCycleDurationSamples, 1)
           : 0,
+        phaseTimingsMaxMs: sanitizePhaseTimingMaxMs(data.phaseTimingsMaxMs),
         skipped: {
           disabledOrBlackout: toFiniteNumber(data.skipped?.disabledOrBlackout, 0),
           idempotent: toFiniteNumber(data.skipped?.idempotent, 0),
@@ -737,6 +951,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           tooSoon: toFiniteNumber(data.skipped?.tooSoon, 0)
         },
         failureByType: sanitizeFailureByType(data.failureByType),
+        telemetryPauseReasons: sanitizeFailureByType(data.telemetryPauseReasons),
         slo: sanitizeSloSnapshot(data.slo),
         updatedAtMs: toFiniteNumber(data.lastRunAtMs, 0)
       });
@@ -752,13 +967,18 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       retries: 0,
       maxQueueLagMs: 0,
       maxCycleDurationMs: 0,
+      maxTelemetryAgeMs: 0,
+      p95CycleDurationMs: 0,
+      p99CycleDurationMs: 0,
+      phaseTimingsMaxMs: sanitizePhaseTimingMaxMs(null),
       skipped: {
         disabledOrBlackout: 0,
         idempotent: 0,
         locked: 0,
         tooSoon: 0
       },
-      failureByType: {}
+      failureByType: {},
+      telemetryPauseReasons: {}
     };
 
     for (const day of dailyDesc) {
@@ -771,11 +991,24 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       summary.retries += day.retries;
       summary.maxQueueLagMs = Math.max(summary.maxQueueLagMs, day.maxQueueLagMs);
       summary.maxCycleDurationMs = Math.max(summary.maxCycleDurationMs, day.maxCycleDurationMs);
+      summary.maxTelemetryAgeMs = Math.max(summary.maxTelemetryAgeMs, day.maxTelemetryAgeMs);
+      summary.p95CycleDurationMs = Math.max(summary.p95CycleDurationMs, day.p95CycleDurationMs);
+      summary.p99CycleDurationMs = Math.max(summary.p99CycleDurationMs, day.p99CycleDurationMs);
+      for (const phaseKey of phaseTimingKeys) {
+        summary.phaseTimingsMaxMs[phaseKey] = Math.max(
+          toFiniteNumber(summary.phaseTimingsMaxMs[phaseKey], 0),
+          toFiniteNumber(day.phaseTimingsMaxMs?.[phaseKey], 0)
+        );
+      }
       summary.skipped.disabledOrBlackout += day.skipped.disabledOrBlackout;
       summary.skipped.idempotent += day.skipped.idempotent;
       summary.skipped.locked += day.skipped.locked;
       summary.skipped.tooSoon += day.skipped.tooSoon;
       summary.failureByType = mergeFailureByType(summary.failureByType, day.failureByType);
+      summary.telemetryPauseReasons = mergeFailureByType(
+        summary.telemetryPauseReasons,
+        day.telemetryPauseReasons
+      );
     }
 
     const soak = buildSchedulerSoakSummary({
@@ -801,6 +1034,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         recentRuns.push({
           runId: data.runId || doc.id,
           schedulerId: data.schedulerId || null,
+          workerId: data.workerId || null,
           dayKey: data.dayKey || null,
           startedAtMs: toFiniteNumber(data.startedAtMs, 0),
           completedAtMs: toFiniteNumber(data.completedAtMs, 0),
@@ -811,18 +1045,10 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           deadLetters: toFiniteNumber(data.deadLetters, 0),
           errors: toFiniteNumber(data.errors, 0),
           retries: toFiniteNumber(data.retries, 0),
-          queueLagMs: {
-            avgMs: toFiniteNumber(data.queueLagMs?.avgMs, 0),
-            count: toFiniteNumber(data.queueLagMs?.count, 0),
-            maxMs: toFiniteNumber(data.queueLagMs?.maxMs, 0),
-            minMs: toFiniteNumber(data.queueLagMs?.minMs, 0)
-          },
-          cycleDurationMs: {
-            avgMs: toFiniteNumber(data.cycleDurationMs?.avgMs, 0),
-            count: toFiniteNumber(data.cycleDurationMs?.count, 0),
-            maxMs: toFiniteNumber(data.cycleDurationMs?.maxMs, 0),
-            minMs: toFiniteNumber(data.cycleDurationMs?.minMs, 0)
-          },
+          queueLagMs: sanitizeDurationStats(data.queueLagMs),
+          cycleDurationMs: sanitizeDurationStats(data.cycleDurationMs),
+          telemetryAgeMs: sanitizeDurationStats(data.telemetryAgeMs),
+          phaseTimingsMs: sanitizePhaseTimingStats(data.phaseTimingsMs),
           skipped: {
             disabledOrBlackout: toFiniteNumber(data.skipped?.disabledOrBlackout, 0),
             idempotent: toFiniteNumber(data.skipped?.idempotent, 0),
@@ -830,9 +1056,57 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
             tooSoon: toFiniteNumber(data.skipped?.tooSoon, 0)
           },
           failureByType: sanitizeFailureByType(data.failureByType),
-          slo: sanitizeSloSnapshot(data.slo)
+          telemetryPauseReasons: sanitizeFailureByType(data.telemetryPauseReasons),
+          slo: sanitizeSloSnapshot(data.slo),
+          slowCycleSamples: sanitizeSlowCycleSamples(data.slowCycleSamples)
         });
       });
+    }
+
+    const latestRun = recentRuns.length > 0 ? recentRuns[0] : null;
+    const latestRunPhaseTimingsMaxMs = latestRun
+      ? sanitizePhaseTimingMaxMs(extractPhaseTimingRunMaxMs(latestRun.phaseTimingsMs))
+      : sanitizePhaseTimingMaxMs(null);
+
+    let outlierRun = null;
+    if (recentRuns.length > 0) {
+      outlierRun = recentRuns
+        .slice()
+        .sort((a, b) => toFiniteNumber(b.cycleDurationMs?.maxMs, 0) - toFiniteNumber(a.cycleDurationMs?.maxMs, 0))[0] || null;
+      if (outlierRun) {
+        const slowestCycle = Array.isArray(outlierRun.slowCycleSamples) && outlierRun.slowCycleSamples.length
+          ? outlierRun.slowCycleSamples[0]
+          : null;
+        outlierRun = {
+          runId: outlierRun.runId,
+          schedulerId: outlierRun.schedulerId,
+          workerId: outlierRun.workerId || null,
+          startedAtMs: outlierRun.startedAtMs,
+          startedAtIso: outlierRun.startedAtMs ? new Date(outlierRun.startedAtMs).toISOString() : null,
+          maxCycleDurationMs: toFiniteNumber(outlierRun.cycleDurationMs?.maxMs, 0),
+          p95CycleDurationMs: toFiniteNumber(outlierRun.cycleDurationMs?.p95Ms, 0),
+          p99CycleDurationMs: toFiniteNumber(outlierRun.cycleDurationMs?.p99Ms, 0),
+          queueLagMaxMs: toFiniteNumber(outlierRun.queueLagMs?.maxMs, 0),
+          retries: toFiniteNumber(outlierRun.retries, 0),
+          errors: toFiniteNumber(outlierRun.errors, 0),
+          deadLetters: toFiniteNumber(outlierRun.deadLetters, 0),
+          skipped: outlierRun.skipped,
+          failureByType: outlierRun.failureByType,
+          likelyCauses: buildLikelyCauseTags(outlierRun),
+          slowestCycle: slowestCycle
+            ? {
+                userId: slowestCycle.userId,
+                cycleKey: slowestCycle.cycleKey,
+                durationMs: slowestCycle.cycleDurationMs,
+                queueLagMs: slowestCycle.queueLagMs,
+                retriesUsed: slowestCycle.retriesUsed,
+                failureType: slowestCycle.failureType,
+                startedAtMs: slowestCycle.startedAtMs,
+                completedAtMs: slowestCycle.completedAtMs
+              }
+            : null
+        };
+      }
     }
 
     let currentAlert = null;
@@ -844,6 +1118,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           dayKey: alertData.dayKey || null,
           runId: alertData.runId || null,
           schedulerId: alertData.schedulerId || null,
+          workerId: alertData.workerId || null,
           status: sanitizeSloSnapshot({ status: alertData.status }).status,
           breachedMetrics: Array.isArray(alertData.breachedMetrics)
             ? alertData.breachedMetrics.map((entry) => String(entry || '').trim()).filter(Boolean)
@@ -856,7 +1131,12 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
             errorRatePct: toFiniteNumber(alertData.thresholds?.errorRatePct, 0),
             deadLetterRatePct: toFiniteNumber(alertData.thresholds?.deadLetterRatePct, 0),
             maxQueueLagMs: toFiniteNumber(alertData.thresholds?.maxQueueLagMs, 0),
-            maxCycleDurationMs: toFiniteNumber(alertData.thresholds?.maxCycleDurationMs, 0)
+            maxCycleDurationMs: toFiniteNumber(alertData.thresholds?.maxCycleDurationMs, 0),
+            maxTelemetryAgeMs: toFiniteNumber(alertData.thresholds?.maxTelemetryAgeMs, 0),
+            p99CycleDurationMs: toFiniteNumber(alertData.thresholds?.p99CycleDurationMs, 0),
+            tailP99CycleDurationMs: toFiniteNumber(alertData.thresholds?.tailP99CycleDurationMs, 0),
+            tailWindowMinutes: toFiniteNumber(alertData.thresholds?.tailWindowMinutes, 0),
+            tailMinRuns: toFiniteNumber(alertData.thresholds?.tailMinRuns, 0)
           },
           measurements: {
             cyclesRun: toFiniteNumber(alertData.measurements?.cyclesRun, 0),
@@ -865,13 +1145,28 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
             errorRatePct: toFiniteNumber(alertData.measurements?.errorRatePct, 0),
             deadLetterRatePct: toFiniteNumber(alertData.measurements?.deadLetterRatePct, 0),
             maxQueueLagMs: toFiniteNumber(alertData.measurements?.maxQueueLagMs, 0),
-            maxCycleDurationMs: toFiniteNumber(alertData.measurements?.maxCycleDurationMs, 0)
-          }
+            maxCycleDurationMs: toFiniteNumber(alertData.measurements?.maxCycleDurationMs, 0),
+            maxTelemetryAgeMs: toFiniteNumber(alertData.measurements?.maxTelemetryAgeMs, 0),
+            p95CycleDurationMs: toFiniteNumber(alertData.measurements?.p95CycleDurationMs, 0),
+            p99CycleDurationMs: toFiniteNumber(alertData.measurements?.p99CycleDurationMs, 0),
+            latestRunP99CycleDurationMs: toFiniteNumber(alertData.measurements?.latestRunP99CycleDurationMs, 0)
+          },
+          tailLatency: sanitizeTailLatency(alertData.tailLatency)
         };
       }
     } catch (alertError) {
       console.warn('[Admin] scheduler-metrics current alert lookup failed:', alertError.message || alertError);
     }
+
+    const tailThresholdMs = toFiniteNumber(
+      currentAlert?.thresholds?.tailP99CycleDurationMs,
+      toFiniteNumber(currentAlert?.thresholds?.p99CycleDurationMs, 10000)
+    );
+    const tailWindowMinutes = Math.max(1, toFiniteNumber(currentAlert?.thresholds?.tailWindowMinutes, 15));
+    const tailMinRuns = Math.max(1, toFiniteNumber(currentAlert?.thresholds?.tailMinRuns, 10));
+    const tailLatency = currentAlert && currentAlert.tailLatency
+      ? currentAlert.tailLatency
+      : buildTailLatencyFromRuns(recentRuns, tailThresholdMs, tailWindowMinutes, tailMinRuns);
 
     res.json({
       errno: 0,
@@ -887,6 +1182,16 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         daily: dailyDesc.slice().reverse(),
         recentRuns,
         currentAlert,
+        diagnostics: {
+          tailLatency,
+          outlierRun,
+          telemetryPauseReasons: summary.telemetryPauseReasons,
+          phaseTimings: {
+            latestRunStartedAtMs: toFiniteNumber(latestRun?.startedAtMs, 0),
+            latestRunMaxMs: latestRunPhaseTimingsMaxMs,
+            windowMaxMs: sanitizePhaseTimingMaxMs(summary.phaseTimingsMaxMs)
+          }
+        },
         updatedAt: new Date().toISOString()
       }
     });
@@ -1018,15 +1323,139 @@ app.post('/api/admin/users/:uid/delete', authenticateUser, requireAdmin, async (
 app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (req, res) => {
   try {
     const { uid } = req.params;
-    
+    const KNOWN_INVERTER_METRIC_KEYS = new Set(['foxess', 'sungrow', 'sigenergy', 'alphaess']);
+    const KNOWN_NON_INVERTER_METRIC_KEYS = new Set(['amber', 'weather', 'updatedAt']);
+    const PROVIDER_KEYS = ['foxess', 'sungrow', 'sigenergy', 'alphaess'];
+
+    const toCounter = (value) => {
+      const n = Number(value);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+
+    const normalizeProvider = (providerRaw, config = null) => {
+      const provider = String(providerRaw || '').toLowerCase().trim();
+      if (provider) return provider;
+      if (config && typeof config === 'object') {
+        if (config.sungrowUsername || config.sungrowDeviceSn) return 'sungrow';
+        if (config.sigenUsername || config.sigenStationId || config.sigenDeviceSn) return 'sigenergy';
+        if (config.alphaessSystemSn || config.alphaessSysSn || config.alphaessAppId || config.alphaessAppSecret) return 'alphaess';
+      }
+      return 'foxess';
+    };
+
+    const buildProviderFlags = (config = {}, secrets = {}) => {
+      const provider = normalizeProvider(config.deviceProvider, config);
+      const hasAlphaEssAppSecret = !!(config.alphaessAppSecret || secrets.alphaessAppSecret);
+      return {
+        provider,
+        hasDeviceSn: !!config.deviceSn,
+        hasFoxessToken: !!config.foxessToken,
+        hasAmberApiKey: !!config.amberApiKey,
+        hasAlphaEssSystemSn: !!(config.alphaessSystemSn || config.alphaessSysSn),
+        hasAlphaEssAppId: !!config.alphaessAppId,
+        hasAlphaEssAppSecret,
+        hasSungrowUsername: !!config.sungrowUsername,
+        hasSungrowDeviceSn: !!(config.sungrowDeviceSn || (provider === 'sungrow' && config.deviceSn)),
+        hasSigenUsername: !!config.sigenUsername,
+        hasSigenDeviceSn: !!(config.sigenDeviceSn || config.sigenStationId || (provider === 'sigenergy' && config.deviceSn)),
+        hasSigenStationId: !!config.sigenStationId
+      };
+    };
+
+    const isProviderConfigured = (provider, flags) => {
+      switch (provider) {
+      case 'sungrow':
+        return !!(flags.hasSungrowDeviceSn && flags.hasSungrowUsername);
+      case 'sigenergy':
+        return !!flags.hasSigenUsername;
+      case 'alphaess':
+        return !!(flags.hasAlphaEssSystemSn && flags.hasAlphaEssAppId && flags.hasAlphaEssAppSecret);
+      case 'foxess':
+      default:
+        return !!(flags.hasDeviceSn && flags.hasFoxessToken);
+      }
+    };
+
+    const hasAnyProviderConfigured = (flags) =>
+      PROVIDER_KEYS.some((providerKey) => isProviderConfigured(providerKey, flags));
+
+    const buildProviderAccessSummary = (provider, flags) => {
+      switch (provider) {
+      case 'sungrow':
+        return {
+          identifierLabel: 'Device SN',
+          hasIdentifier: !!flags.hasSungrowDeviceSn,
+          credentialLabel: 'iSolarCloud Login',
+          hasCredential: !!flags.hasSungrowUsername
+        };
+      case 'sigenergy':
+        return {
+          identifierLabel: 'Station / Device ID',
+          hasIdentifier: !!(flags.hasSigenStationId || flags.hasSigenDeviceSn),
+          credentialLabel: 'Account Login',
+          hasCredential: !!flags.hasSigenUsername
+        };
+      case 'alphaess':
+        return {
+          identifierLabel: 'System SN',
+          hasIdentifier: !!flags.hasAlphaEssSystemSn,
+          credentialLabel: 'App Credentials',
+          hasCredential: !!(flags.hasAlphaEssAppId && flags.hasAlphaEssAppSecret)
+        };
+      case 'foxess':
+      default:
+        return {
+          identifierLabel: 'Device SN',
+          hasIdentifier: !!flags.hasDeviceSn,
+          credentialLabel: 'API Token',
+          hasCredential: !!flags.hasFoxessToken
+        };
+      }
+    };
+
     // 1. Gather last 30 days of per-user API metrics
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const metricsSnap = await db.collection('users').doc(uid)
       .collection('metrics').orderBy('updatedAt', 'desc').limit(30).get();
     const metrics = {};
     metricsSnap.forEach(doc => {
-      metrics[doc.id] = { foxess: doc.data().foxess || 0, amber: doc.data().amber || 0, weather: doc.data().weather || 0 };
+      const rawMetrics = doc.data() || {};
+      const inverterByProvider = {};
+      let inverterTotal = 0;
+
+      for (const providerKey of PROVIDER_KEYS) {
+        inverterByProvider[providerKey] = toCounter(rawMetrics[providerKey]);
+      }
+
+      const aggregateInverterCounter = toCounter(rawMetrics.inverter);
+      if (aggregateInverterCounter) {
+        inverterTotal = aggregateInverterCounter;
+      } else {
+        Object.entries(rawMetrics).forEach(([metricKey, metricValue]) => {
+          if (metricKey === 'inverter' || KNOWN_NON_INVERTER_METRIC_KEYS.has(metricKey)) return;
+          const counter = toCounter(metricValue);
+          if (!counter) return;
+
+          if (KNOWN_INVERTER_METRIC_KEYS.has(metricKey)) {
+            inverterTotal += counter;
+            return;
+          }
+
+          // Future provider counters should roll into inverter totals automatically.
+          inverterTotal += counter;
+        });
+      }
+
+      metrics[doc.id] = {
+        inverter: inverterTotal,
+        inverterByProvider,
+        amber: toCounter(rawMetrics.amber),
+        weather: toCounter(rawMetrics.weather),
+        // Legacy keys retained for compatibility with older admin clients.
+        foxess: inverterByProvider.foxess,
+        sungrow: inverterByProvider.sungrow,
+        sigenergy: inverterByProvider.sigenergy,
+        alphaess: inverterByProvider.alphaess
+      };
     });
 
     // 2. Automation state
@@ -1046,9 +1475,19 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
     // 4. Config summary (no secrets)
     let configSummary = {};
     try {
-      const configDoc = await db.collection('users').doc(uid).collection('config').doc('main').get();
+      const [configDoc, secretsDoc] = await Promise.all([
+        db.collection('users').doc(uid).collection('config').doc('main').get(),
+        db.collection('users').doc(uid).collection('secrets').doc('credentials').get().catch(() => ({
+          exists: false,
+          data: () => ({})
+        }))
+      ]);
       if (configDoc.exists) {
         const c = configDoc.data();
+        const secrets = secretsDoc.exists ? (secretsDoc.data() || {}) : {};
+        const providerFlags = buildProviderFlags(c, secrets);
+        const provider = providerFlags.provider;
+        const providerAccess = buildProviderAccessSummary(provider, providerFlags);
 
         const rawSystemTopology = c.systemTopology || c.topology || null;
         let resolvedCoupling = normalizeCouplingValue(
@@ -1075,10 +1514,20 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
         };
 
         configSummary = {
-          configured: !!(c.setupComplete === true || (c.deviceSn && c.foxessToken)),
-          hasDeviceSn: !!c.deviceSn,
-          hasFoxessToken: !!c.foxessToken,
-          hasAmberApiKey: !!c.amberApiKey,
+          configured: !!(c.setupComplete === true || isProviderConfigured(provider, providerFlags) || hasAnyProviderConfigured(providerFlags)),
+          deviceProvider: provider,
+          providerAccess,
+          hasDeviceSn: providerFlags.hasDeviceSn,
+          hasFoxessToken: providerFlags.hasFoxessToken,
+          hasAmberApiKey: providerFlags.hasAmberApiKey,
+          hasAlphaEssSystemSn: providerFlags.hasAlphaEssSystemSn,
+          hasAlphaEssAppId: providerFlags.hasAlphaEssAppId,
+          hasAlphaEssAppSecret: providerFlags.hasAlphaEssAppSecret,
+          hasSungrowUsername: providerFlags.hasSungrowUsername,
+          hasSungrowDeviceSn: providerFlags.hasSungrowDeviceSn,
+          hasSigenUsername: providerFlags.hasSigenUsername,
+          hasSigenDeviceSn: providerFlags.hasSigenDeviceSn,
+          hasSigenStationId: providerFlags.hasSigenStationId,
           inverterCapacityW: Number.isFinite(Number(c.inverterCapacityW)) ? Number(c.inverterCapacityW) : null,
           batteryCapacityKWh: Number.isFinite(Number(c.batteryCapacityKWh)) ? Number(c.batteryCapacityKWh) : null,
           location: c.location || null,

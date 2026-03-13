@@ -34,6 +34,9 @@ function buildAlertText(alert = {}, status = 'healthy') {
   const deadRate = toFiniteNumber(measured.deadLetterRatePct, 0).toFixed(2);
   const queueLag = Math.round(toFiniteNumber(measured.maxQueueLagMs, 0));
   const cycleDuration = Math.round(toFiniteNumber(measured.maxCycleDurationMs, 0));
+  const telemetryAge = Math.round(toFiniteNumber(measured.maxTelemetryAgeMs, 0));
+  const p99CycleDuration = Math.round(toFiniteNumber(measured.p99CycleDurationMs, 0));
+  const latestRunP99CycleDuration = Math.round(toFiniteNumber(measured.latestRunP99CycleDurationMs, 0));
   const breached = sanitizeMetricList(alert.breachedMetrics);
   const watched = sanitizeMetricList(alert.watchMetrics);
   const metricTags = [
@@ -41,7 +44,19 @@ function buildAlertText(alert = {}, status = 'healthy') {
     ...watched.map((metric) => `watch:${metric}`)
   ];
   const metricSuffix = metricTags.length > 0 ? ` [${metricTags.join(', ')}]` : '';
-  return `[SchedulerSLO] ${severity}${metricSuffix} scheduler=${schedulerId} error=${errorRate}% dead=${deadRate}% queueLagMs=${queueLag} cycleDurationMs=${cycleDuration}`;
+  const tail = alert.tailLatency && typeof alert.tailLatency === 'object'
+    ? alert.tailLatency
+    : null;
+  const tailRunsAboveThreshold = toFiniteNumber(tail?.runsAboveThreshold, 0);
+  const tailObservedRuns = toFiniteNumber(tail?.observedRuns, 0);
+  const tailMinRuns = toFiniteNumber(tail?.minRuns, 0);
+  const tailSuffix = tail
+    ? ` tail=${String(tail.status || 'healthy').toUpperCase()}(${tailRunsAboveThreshold}/${tailObservedRuns}>${Math.round(toFiniteNumber(tail.thresholdMs, 0))}ms,min=${tailMinRuns})`
+    : '';
+  const latestRunSuffix = latestRunP99CycleDuration > 0
+    ? ` latestRunP99CycleDurationMs=${latestRunP99CycleDuration}`
+    : '';
+  return `[SchedulerSLO] ${severity}${metricSuffix} scheduler=${schedulerId} error=${errorRate}% dead=${deadRate}% queueLagMs=${queueLag} cycleDurationMs=${cycleDuration} telemetryAgeMs=${telemetryAge} p99CycleDurationMs=${p99CycleDuration}${tailSuffix}${latestRunSuffix}`;
 }
 
 function createSchedulerSloAlertNotifier(deps = {}) {
@@ -105,7 +120,10 @@ function createSchedulerSloAlertNotifier(deps = {}) {
           : {},
         thresholds: alert.thresholds && typeof alert.thresholds === 'object'
           ? alert.thresholds
-          : {}
+          : {},
+        tailLatency: alert.tailLatency && typeof alert.tailLatency === 'object'
+          ? alert.tailLatency
+          : null
       }
     };
 

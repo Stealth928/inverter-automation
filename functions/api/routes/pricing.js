@@ -1,5 +1,33 @@
 'use strict';
 
+const DEFAULT_PRICING_PROVIDER = 'amber';
+
+function normalizeProvider(value) {
+  const normalized = String(value || DEFAULT_PRICING_PROVIDER).trim().toLowerCase();
+  return normalized || DEFAULT_PRICING_PROVIDER;
+}
+
+function getRequestedProvider(req) {
+  return normalizeProvider(req?.query?.provider);
+}
+
+function rejectUnsupportedProvider(req, res) {
+  const provider = getRequestedProvider(req);
+  if (provider !== DEFAULT_PRICING_PROVIDER) {
+    res.status(400).json({
+      errno: 400,
+      error: `Unsupported pricing provider: ${provider}`,
+      result: []
+    });
+    return true;
+  }
+  return false;
+}
+
+function registerGetAliases(app, routes, ...handlers) {
+  routes.forEach((route) => app.get(route, ...handlers));
+}
+
 function registerPricingRoutes(app, deps = {}) {
   const amberAPI = deps.amberAPI;
   const amberPricesInFlight = deps.amberPricesInFlight;
@@ -28,8 +56,10 @@ function registerPricingRoutes(app, deps = {}) {
     throw new Error('registerPricingRoutes requires tryAttachUser()');
   }
 
-  // Amber sites (allow unauthenticated calls - return empty list when no user)
-  app.get('/api/amber/sites', async (req, res) => {
+  // Sites endpoint (allow unauthenticated calls - return empty list when no user)
+  const sitesHandler = async (req, res) => {
+    if (rejectUnsupportedProvider(req, res)) return;
+
     try {
       // Attach optional user if provided, but don't require auth
       await tryAttachUser(req);
@@ -94,11 +124,12 @@ function registerPricingRoutes(app, deps = {}) {
       if (req.query.debug === 'true') response._debug = `Exception: ${e?.message || String(e)}`;
       return res.json(response);
     }
-  });
+  };
 
-  // Public-friendly endpoint for current prices (mirror of /api/amber/prices but accepts
-  // the '/current' path which the frontend sometimes uses). Returns safe JSON when unauthenticated.
-  app.get('/api/amber/prices/current', async (req, res) => {
+  // Public-friendly endpoint for current prices. Returns safe JSON when unauthenticated.
+  const currentPricesHandler = async (req, res) => {
+    if (rejectUnsupportedProvider(req, res)) return;
+
     try {
       await tryAttachUser(req);
       const userId = req.user?.uid;
@@ -173,10 +204,12 @@ function registerPricingRoutes(app, deps = {}) {
       console.error('[Amber] /prices/current error (pre-auth):', e && e.message ? e.message : e);
       return res.json({ errno: 0, result: [] });
     }
-  });
+  };
 
-  // Amber prices (standard endpoint) - Allow unauthenticated access (returns empty if no user)
-  app.get('/api/amber/prices', async (req, res) => {
+  // Prices endpoint - allow unauthenticated access (returns empty if no user)
+  const pricesHandler = async (req, res) => {
+    if (rejectUnsupportedProvider(req, res)) return;
+
     try {
       await tryAttachUser(req);
       const userId = req.user?.uid;
@@ -244,14 +277,16 @@ function registerPricingRoutes(app, deps = {}) {
       console.warn('[Amber] Error fetching prices:', error.message);
       return res.status(500).json({ errno: 500, error: error.message });
     }
-  });
+  };
 
   /**
    * Get actual (settled) Amber prices for a specific timestamp
    * Used by ROI calculator to get accurate prices for completed rules
    * Only works for timestamps within last 7 days (Amber API limitation)
    */
-  app.get('/api/amber/prices/actual', authenticateUser, async (req, res) => {
+  const actualPricesHandler = async (req, res) => {
+    if (rejectUnsupportedProvider(req, res)) return;
+
     try {
       const userId = req.user.uid;
       const userConfig = await getUserConfig(userId);
@@ -362,7 +397,12 @@ function registerPricingRoutes(app, deps = {}) {
       console.warn('[Amber Actual] Error in route handler:', error.message);
       return res.status(500).json({ errno: 500, error: error.message });
     }
-  });
+  };
+
+  registerGetAliases(app, ['/api/pricing/sites', '/api/amber/sites'], sitesHandler);
+  registerGetAliases(app, ['/api/pricing/current', '/api/amber/prices/current'], currentPricesHandler);
+  registerGetAliases(app, ['/api/pricing/prices', '/api/amber/prices'], pricesHandler);
+  registerGetAliases(app, ['/api/pricing/actual', '/api/amber/prices/actual'], authenticateUser, actualPricesHandler);
 }
 
 module.exports = {

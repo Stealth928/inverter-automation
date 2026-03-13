@@ -527,46 +527,110 @@
             const trend = Array.isArray(data.result?.trend) ? data.result.trend : [];
             const warnings = Array.isArray(data.result?.warnings) ? data.result.warnings : [];
 
+            const docOpsEstimatedCostUsd = firestore.estimatedDocOpsCostUsd;
+            const docOpsBreakdown = Array.isArray(firestore.estimatedDocOpsBreakdown) ? firestore.estimatedDocOpsBreakdown : [];
+            const hasDocOpsEstimatedCost = docOpsEstimatedCostUsd !== null && docOpsEstimatedCostUsd !== undefined && Number.isFinite(Number(docOpsEstimatedCostUsd));
             const hasStorage = firestore.storageGb !== null && firestore.storageGb !== undefined && Number.isFinite(Number(firestore.storageGb));
-            const hasEstimatedCost = billing.estimatedMtdCostUsd !== null && billing.estimatedMtdCostUsd !== undefined && Number.isFinite(Number(billing.estimatedMtdCostUsd));
-            const isCostEstimate = billing.isEstimate === true;
+            const projectMtdCostUsd = (billing.projectMtdCostUsd !== undefined) ? billing.projectMtdCostUsd : billing.estimatedMtdCostUsd;
+            const projectServices = Array.isArray(billing.projectServices) ? billing.projectServices : billing.services;
+            const projectCostIsEstimate = (billing.projectCostIsEstimate !== undefined) ? (billing.projectCostIsEstimate === true) : (billing.isEstimate === true);
+            const projectCostSourceRaw = (billing.projectCostSource !== undefined) ? billing.projectCostSource : billing.costSource;
+            const projectCostSource = String(projectCostSourceRaw || '').toLowerCase();
+            const hasProjectCost = projectMtdCostUsd !== null && projectMtdCostUsd !== undefined && Number.isFinite(Number(projectMtdCostUsd));
+            const shouldFallbackToDocOps = !hasProjectCost && hasDocOpsEstimatedCost;
+            const effectiveProjectCostUsd = hasProjectCost
+                ? Number(projectMtdCostUsd)
+                : (shouldFallbackToDocOps ? Number(docOpsEstimatedCostUsd) : null);
+            const effectiveProjectCostSource = hasProjectCost
+                ? projectCostSource
+                : (shouldFallbackToDocOps ? 'firestore-doc-ops-estimate' : projectCostSource);
+            const hasEffectiveProjectCost = Number.isFinite(effectiveProjectCostUsd);
+            const isDocOpsOnlyProjectCost = effectiveProjectCostSource === 'firestore-doc-ops-estimate';
+            const projectCostApproximate = projectCostIsEstimate || shouldFallbackToDocOps || isDocOpsOnlyProjectCost;
 
             document.getElementById('firestoreReadsMtd').textContent = formatCompactNumber(firestore.readsMtd || 0);
             document.getElementById('firestoreWritesMtd').textContent = formatCompactNumber(firestore.writesMtd || 0);
             document.getElementById('firestoreDeletesMtd').textContent = formatCompactNumber(firestore.deletesMtd || 0);
-            document.getElementById('firestoreStorageGb').textContent = hasStorage
-                ? Number(firestore.storageGb).toFixed(3)
-                : 'N/A';
-            const costEl = document.getElementById('firestoreMtdCost');
-            if (hasEstimatedCost) {
-                const prefix = isCostEstimate ? '~' : '';
-                costEl.textContent = `${prefix}$${Number(billing.estimatedMtdCostUsd).toFixed(2)}`;
-                costEl.title = isCostEstimate
-                    ? 'Estimated from Firestore read/write/delete counts × GCP pricing. Excludes Functions, Auth, storage, egress.'
-                    : 'Actual MTD cost from Cloud Billing API';
-            } else {
-                costEl.textContent = 'N/A';
-                costEl.title = '';
+            const storageEl = document.getElementById('firestoreStorageGb');
+            if (storageEl) {
+                storageEl.textContent = hasStorage
+                    ? Number(firestore.storageGb).toFixed(3)
+                    : 'Unavailable';
+                storageEl.title = hasStorage
+                    ? 'Approximate Firestore storage from Cloud Monitoring.'
+                    : 'Firestore storage metric unavailable for this project/region.';
+            }
+            const projectCostEl = document.getElementById('firestoreProjectMtdCost');
+            const projectBreakdownEl = document.getElementById('firestoreProjectServiceBreakdown');
+            if (projectCostEl) {
+                if (hasEffectiveProjectCost) {
+                    const prefix = projectCostApproximate ? '~' : '';
+                    const suffix = isDocOpsOnlyProjectCost ? '*' : '';
+                    projectCostEl.textContent = `${prefix}$${Number(effectiveProjectCostUsd).toFixed(2)}${suffix}`;
+                    projectCostEl.title = isDocOpsOnlyProjectCost
+                        ? 'Firestore doc-op-only estimate (reads/writes/deletes). Excludes storage, egress, Functions, and other services.'
+                        : (projectCostApproximate
+                            ? 'Estimated/derived project-level MTD cost (Cloud Monitoring fallback may be delayed and approximate).'
+                            : 'Project-level MTD cost from Cloud Billing API.');
+                } else {
+                    projectCostEl.textContent = 'Unavailable';
+                    projectCostEl.title = 'Project-level billing metrics unavailable for this project.';
+                }
             }
 
-            // Per-service cost breakdown
-            const breakdownEl = document.getElementById('firestoreServiceBreakdown');
-            if (breakdownEl) {
-                if (hasEstimatedCost && Array.isArray(billing.services) && billing.services.length > 0) {
-                    const parts = billing.services
+            if (projectBreakdownEl) {
+                if (isDocOpsOnlyProjectCost && hasEffectiveProjectCost) {
+                    projectBreakdownEl.textContent = '* Firestore doc-op estimate only (reads/writes/deletes).';
+                    projectBreakdownEl.style.display = '';
+                } else if (hasEffectiveProjectCost && Array.isArray(projectServices) && projectServices.length > 0) {
+                    const parts = projectServices
                         .sort((a, b) => b.costUsd - a.costUsd)
-                        .map(s => {
-                            const label = s.service
+                        .map((entry) => {
+                            const label = String(entry.service || '')
                                 .replace('Cloud Firestore', 'Firestore')
                                 .replace('Cloud Functions', 'Functions')
                                 .replace(/^Cloud /, '');
-                            return `${label}: $${Number(s.costUsd).toFixed(2)}`;
+                            return `${label}: $${Number(entry.costUsd || 0).toFixed(2)}`;
                         });
-                    breakdownEl.textContent = parts.join(' · ');
-                    breakdownEl.style.display = '';
-                } else if (!hasEstimatedCost) {
-                    breakdownEl.textContent = '';
-                    breakdownEl.style.display = 'none';
+                    projectBreakdownEl.textContent = parts.join(' · ');
+                    projectBreakdownEl.style.display = '';
+                } else {
+                    projectBreakdownEl.textContent = '';
+                    projectBreakdownEl.style.display = 'none';
+                }
+            }
+
+            const docOpsCostEl = document.getElementById('firestoreDocOpsCost');
+            const docOpsBreakdownEl = document.getElementById('firestoreDocOpsBreakdown');
+            const docOpsTileEl = docOpsCostEl ? docOpsCostEl.closest('.firestore-kpi') : null;
+            if (docOpsTileEl) {
+                docOpsTileEl.style.display = isDocOpsOnlyProjectCost ? 'none' : '';
+            }
+            if (docOpsCostEl) {
+                if (hasDocOpsEstimatedCost) {
+                    docOpsCostEl.textContent = `~$${Number(docOpsEstimatedCostUsd).toFixed(2)}`;
+                    docOpsCostEl.title = 'Firestore read/write/delete estimate only. Excludes storage, egress, Functions, and other services.';
+                } else {
+                    docOpsCostEl.textContent = 'Unavailable';
+                    docOpsCostEl.title = 'Firestore doc-op estimate unavailable.';
+                }
+            }
+
+            if (docOpsBreakdownEl) {
+                if (hasDocOpsEstimatedCost && docOpsBreakdown.length > 0) {
+                    const parts = docOpsBreakdown
+                        .sort((a, b) => b.costUsd - a.costUsd)
+                        .map((entry) => {
+                            const label = String(entry.service || '')
+                                .replace('Cloud Firestore', 'Firestore')
+                                .replace(/^Firestore /, '');
+                            return `${label}: $${Number(entry.costUsd || 0).toFixed(2)}`;
+                        });
+                    docOpsBreakdownEl.textContent = parts.join(' · ');
+                    docOpsBreakdownEl.style.display = '';
+                } else {
+                    docOpsBreakdownEl.textContent = '';
+                    docOpsBreakdownEl.style.display = 'none';
                 }
             }
 
@@ -612,6 +676,15 @@
         return `${minutes}m ${remSeconds}s`;
     }
 
+    function escapeHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function computeWeightedRunAverageMs(runs, statsKey) {
         const list = Array.isArray(runs) ? runs : [];
         let weightedTotalMs = 0;
@@ -655,37 +728,69 @@
         const deadLetterRatePct = cyclesRun > 0 ? (deadLetters / cyclesRun) * 100 : 0;
         const maxQueueLagMs = Number(summary?.maxQueueLagMs || 0);
         const maxCycleDurationMs = Number(summary?.maxCycleDurationMs || 0);
+        const maxTelemetryAgeMs = Number(summary?.maxTelemetryAgeMs || 0);
+        const p99CycleDurationMs = Number(summary?.p99CycleDurationMs || 0);
         const avgQueueLagMs = Number(options?.avgQueueLagMs || 0);
         const avgCycleDurationMs = Number(options?.avgCycleDurationMs || 0);
+        const thresholds = options?.thresholds && typeof options.thresholds === 'object'
+            ? options.thresholds
+            : {};
+        const queueLagTargetMs = Number(thresholds.maxQueueLagMs || 120000);
+        const cycleDurationTargetMs = Number(thresholds.maxCycleDurationMs || 20000);
+        const telemetryAgeTargetMs = Number(thresholds.maxTelemetryAgeMs || (30 * 60 * 1000));
+        const p99TargetMs = Number(thresholds.p99CycleDurationMs || 10000);
+        const tailWindowMinutes = Math.max(1, Number(thresholds.tailWindowMinutes || 15));
+        const tailInfo = options?.tailLatency && typeof options.tailLatency === 'object'
+            ? options.tailLatency
+            : null;
+        const tailStatus = String(tailInfo?.status || 'healthy').toUpperCase();
+        const tailRunsAbove = Number(tailInfo?.runsAboveThreshold || 0);
+        const tailObservedRuns = Number(tailInfo?.observedRuns || 0);
+        const tailMinRuns = Math.max(1, Number(tailInfo?.minRuns || thresholds.tailMinRuns || 10));
+        const tailThresholdMs = Number(tailInfo?.thresholdMs || p99TargetMs);
 
         const cards = [
             {
                 id: 'schedulerSloErrorRate',
                 value: errorRatePct,
-                target: 1.0,
+                target: Number(thresholds.errorRatePct || 1.0),
                 display: `${errorRatePct.toFixed(2)}%`,
-                targetDisplay: 'Target <= 1.00%'
+                targetDisplay: `Target <= ${Number(thresholds.errorRatePct || 1.0).toFixed(2)}%`
             },
             {
                 id: 'schedulerSloDeadLetterRate',
                 value: deadLetterRatePct,
-                target: 0.2,
+                target: Number(thresholds.deadLetterRatePct || 0.2),
                 display: `${deadLetterRatePct.toFixed(2)}%`,
-                targetDisplay: 'Target <= 0.20%'
+                targetDisplay: `Target <= ${Number(thresholds.deadLetterRatePct || 0.2).toFixed(2)}%`
             },
             {
                 id: 'schedulerSloQueueLag',
                 value: maxQueueLagMs,
-                target: 120000,
+                target: queueLagTargetMs,
                 display: `${formatDurationMs(avgQueueLagMs)} avg / ${formatDurationMs(maxQueueLagMs)} max`,
-                targetDisplay: `Target avg <= ${formatDurationMs(120000)}, max <= ${formatDurationMs(120000)}`
+                targetDisplay: `Target avg <= ${formatDurationMs(queueLagTargetMs)}, max <= ${formatDurationMs(queueLagTargetMs)}`
             },
             {
                 id: 'schedulerSloCycleDuration',
                 value: maxCycleDurationMs,
-                target: 60000,
+                target: cycleDurationTargetMs,
                 display: `${formatDurationMs(avgCycleDurationMs)} avg / ${formatDurationMs(maxCycleDurationMs)} max`,
-                targetDisplay: `Target avg <= ${formatDurationMs(60000)}, max <= ${formatDurationMs(60000)}`
+                targetDisplay: `Target avg <= ${formatDurationMs(cycleDurationTargetMs)}, max <= ${formatDurationMs(cycleDurationTargetMs)}`
+            },
+            {
+                id: 'schedulerSloTelemetryAge',
+                value: maxTelemetryAgeMs,
+                target: telemetryAgeTargetMs,
+                display: `${formatDurationMs(maxTelemetryAgeMs)} max`,
+                targetDisplay: `Target max <= ${formatDurationMs(telemetryAgeTargetMs)}`
+            },
+            {
+                id: 'schedulerSloCycleTailP99',
+                value: p99CycleDurationMs,
+                target: p99TargetMs,
+                display: `${formatDurationMs(p99CycleDurationMs)} p99`,
+                targetDisplay: `Target p99 <= ${formatDurationMs(p99TargetMs)} · sustained ${tailStatus} (${tailRunsAbove}/${tailObservedRuns} above ${formatDurationMs(tailThresholdMs)} in ${tailWindowMinutes}m, min ${tailMinRuns})`
             }
         ];
 
@@ -721,6 +826,10 @@
         const retries = daily.map((point) => Number(point.retries || 0));
         const avgCycleSec = daily.map((point) => {
             const ms = Number(point.avgCycleDurationMs || 0);
+            return ms > 0 ? Math.round(ms / 100) / 10 : null;
+        });
+        const p99CycleSec = daily.map((point) => {
+            const ms = Number(point.p99CycleDurationMs || 0);
             return ms > 0 ? Math.round(ms / 100) / 10 : null;
         });
 
@@ -774,6 +883,18 @@
                         borderDash: [4, 3],
                         pointRadius: 2,
                         tension: 0.3,
+                        spanGaps: true
+                    },
+                    {
+                        type: 'line',
+                        label: 'P99 Cycle (s)',
+                        data: p99CycleSec,
+                        yAxisID: 'y1',
+                        borderColor: 'rgba(250, 204, 21, 0.92)',
+                        backgroundColor: 'rgba(250, 204, 21, 0.2)',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        tension: 0.2,
                         spanGaps: true
                     }
                 ]
@@ -835,23 +956,123 @@
         body.innerHTML = runs.map((run) => {
             const startedAt = run.startedAtMs ? new Date(Number(run.startedAtMs)).toLocaleString('en-AU') : '-';
             const schedulerId = run.schedulerId || '-';
+            const workerId = run.workerId || '-';
             const candidates = Number(run.cycleCandidates || 0);
             const cyclesRun = Number(run.cyclesRun || 0);
             const errors = Number(run.errors || 0);
             const deadLetters = Number(run.deadLetters || 0);
             const locked = Number(run.skipped?.locked || 0);
             const idempotent = Number(run.skipped?.idempotent || 0);
+            const p99Cycle = formatDurationMs(run.cycleDurationMs?.p99Ms || 0);
+            const maxCycle = formatDurationMs(run.cycleDurationMs?.maxMs || 0);
+            const title = `run=${run.runId || '-'} worker=${workerId}`;
             return `<tr>
                 <td>${startedAt}</td>
-                <td title="${schedulerId}">${schedulerId}</td>
+                <td title="${escapeHtml(title)}">${escapeHtml(schedulerId)}</td>
                 <td>${candidates}</td>
                 <td>${cyclesRun}</td>
                 <td>${errors}</td>
                 <td>${deadLetters}</td>
                 <td>${locked}</td>
                 <td>${idempotent}</td>
+                <td>${p99Cycle}</td>
+                <td>${maxCycle}</td>
             </tr>`;
         }).join('');
+    }
+
+    function renderSchedulerDiagnostics(diagnostics) {
+        const el = document.getElementById('schedulerDiagnostics');
+        if (!el) return;
+
+        const diag = diagnostics && typeof diagnostics === 'object' ? diagnostics : {};
+        const outlier = diag.outlierRun && typeof diag.outlierRun === 'object' ? diag.outlierRun : null;
+        const tail = diag.tailLatency && typeof diag.tailLatency === 'object' ? diag.tailLatency : null;
+        const phaseTimings = diag.phaseTimings && typeof diag.phaseTimings === 'object'
+            ? diag.phaseTimings
+            : null;
+        const phaseRows = [
+            { key: 'dataFetchMs', label: 'Fetch' },
+            { key: 'ruleEvalMs', label: 'Eval' },
+            { key: 'actionApplyMs', label: 'Apply' },
+            { key: 'curtailmentMs', label: 'Curtail' }
+        ];
+        const telemetryPauseReasons = diag.telemetryPauseReasons && typeof diag.telemetryPauseReasons === 'object'
+            ? diag.telemetryPauseReasons
+            : {};
+        const telemetryPauseReasonEntries = Object.entries(telemetryPauseReasons)
+            .map(([reason, count]) => ({
+                reason: String(reason || '').trim(),
+                count: Number(count || 0)
+            }))
+            .filter((entry) => entry.reason && entry.count > 0)
+            .sort((a, b) => b.count - a.count);
+        const telemetryText = telemetryPauseReasonEntries.length > 0
+            ? telemetryPauseReasonEntries
+                .slice(0, 5)
+                .map((entry) => `${entry.reason}=${entry.count}`)
+                .join(', ')
+            : 'none observed in window';
+        const phaseComparison = phaseRows
+            .map(({ key, label }) => {
+                const latestMs = Number(phaseTimings?.latestRunMaxMs?.[key] || 0);
+                const windowMaxMs = Number(phaseTimings?.windowMaxMs?.[key] || 0);
+                return `${label} ${formatDurationMs(latestMs)} / ${formatDurationMs(windowMaxMs)}`;
+            })
+            .join(' | ');
+        const phaseStartedAt = phaseTimings?.latestRunStartedAtMs
+            ? new Date(Number(phaseTimings.latestRunStartedAtMs)).toLocaleString('en-AU')
+            : '-';
+
+        if (!outlier && !phaseTimings && telemetryPauseReasonEntries.length === 0) {
+            el.textContent = 'No scheduler outlier diagnostics available yet.';
+            return;
+        }
+        if (!outlier && phaseTimings) {
+            const tailRunsAboveOnly = Number(tail?.runsAboveThreshold || 0);
+            const tailObservedOnly = Number(tail?.observedRuns || 0);
+            const tailMinOnly = Math.max(1, Number(tail?.minRuns || 1));
+            const tailTextOnly = tail
+                ? `${String(tail.status || 'healthy').toUpperCase()} (${tailRunsAboveOnly}/${tailObservedOnly} runs above ${formatDurationMs(tail.thresholdMs || 0)} in ${Math.max(1, Number(tail.windowMinutes || 15))}m window; min ${tailMinOnly})`
+                : 'No sustained tail data';
+            el.innerHTML = `
+                <div><strong>Phase Timings:</strong> latest run @ ${escapeHtml(phaseStartedAt)} maxes (latest / window): ${escapeHtml(phaseComparison)}</div>
+                <div><strong>Sustained Tail Signal:</strong> ${escapeHtml(tailTextOnly)}</div>
+                <div><strong>Telemetry Fail-safe Reasons:</strong> ${escapeHtml(telemetryText)}</div>
+            `;
+            return;
+        }
+        if (!outlier) {
+            el.innerHTML = `
+                <div><strong>Telemetry Fail-safe Reasons:</strong> ${escapeHtml(telemetryText)}</div>
+            `;
+            return;
+        }
+
+        const startedAt = outlier?.startedAtMs ? new Date(Number(outlier.startedAtMs)).toLocaleString('en-AU') : '-';
+        const slowest = outlier?.slowestCycle && typeof outlier.slowestCycle === 'object' ? outlier.slowestCycle : null;
+        const causes = Array.isArray(outlier?.likelyCauses) ? outlier.likelyCauses : [];
+        const causeText = causes.length ? causes.join(', ') : 'no_clear_cause_from_scheduler_metrics';
+        const tailRunsAbove = Number(tail?.runsAboveThreshold || 0);
+        const tailObservedRuns = Number(tail?.observedRuns || 0);
+        const tailMinRuns = Math.max(1, Number(tail?.minRuns || 1));
+        const tailText = tail
+            ? `${String(tail.status || 'healthy').toUpperCase()} (${tailRunsAbove}/${tailObservedRuns} runs above ${formatDurationMs(tail.thresholdMs || 0)} in ${Math.max(1, Number(tail.windowMinutes || 15))}m window; min ${tailMinRuns})`
+            : 'No sustained tail data';
+
+        const slowestText = slowest
+            ? `slowestCycle user=${escapeHtml(slowest.userId || '-')} duration=${formatDurationMs(slowest.durationMs || 0)} queue=${formatDurationMs(slowest.queueLagMs || 0)} retries=${Number(slowest.retriesUsed || 0)} failure=${escapeHtml(slowest.failureType || 'none')}`
+            : 'slowestCycle unavailable';
+
+        el.innerHTML = `
+            <div><strong>Outlier Run:</strong> ${escapeHtml(outlier?.runId || '-')} @ ${escapeHtml(startedAt)} (scheduler=${escapeHtml(outlier?.schedulerId || '-')}, worker=${escapeHtml(outlier?.workerId || '-')})</div>
+            <div><strong>Tail:</strong> p95=${formatDurationMs(outlier?.p95CycleDurationMs || 0)}, p99=${formatDurationMs(outlier?.p99CycleDurationMs || 0)}, max=${formatDurationMs(outlier?.maxCycleDurationMs || 0)}, queueMax=${formatDurationMs(outlier?.queueLagMaxMs || 0)}</div>
+            <div><strong>Phase Timings:</strong> latest run @ ${escapeHtml(phaseStartedAt)} maxes (latest / window): ${escapeHtml(phaseComparison)}</div>
+            <div><strong>Likely Causes:</strong> ${escapeHtml(causeText)}</div>
+            <div><strong>Slowest Cycle:</strong> ${slowestText}</div>
+            <div><strong>Sustained Tail Signal:</strong> ${escapeHtml(tailText)}</div>
+            <div><strong>Telemetry Fail-safe Reasons:</strong> ${escapeHtml(telemetryText)}</div>
+        `;
     }
 
     function formatSchedulerAlertMessage(currentAlert) {
@@ -859,15 +1080,11 @@
         if (!alert) return '';
         const status = String(alert.status || '').toLowerCase();
         const severity = status === 'breach' ? 'BREACH' : 'WATCH';
-        const measuredErrorRate = Number(alert.measurements?.errorRatePct || 0).toFixed(2);
-        const measuredDeadRate = Number(alert.measurements?.deadLetterRatePct || 0).toFixed(2);
-        const queueLag = formatDurationMs(alert.measurements?.maxQueueLagMs || 0);
-        const cycleDuration = formatDurationMs(alert.measurements?.maxCycleDurationMs || 0);
         const breached = Array.isArray(alert.breachedMetrics) ? alert.breachedMetrics : [];
         const watched = Array.isArray(alert.watchMetrics) ? alert.watchMetrics : [];
-        const metricList = [...breached, ...watched];
+        const metricList = status === 'breach' ? breached : watched;
         const metricHint = metricList.length ? ` [${metricList.join(', ')}]` : '';
-        return `Scheduler SLO ${severity}${metricHint}: error=${measuredErrorRate}%, dead=${measuredDeadRate}%, queue=${queueLag}, cycle=${cycleDuration}`;
+        return `Scheduler SLO ${severity}${metricHint}. See SLO cards and diagnostics for details.`;
     }
 
     async function loadSchedulerMetrics() {
@@ -884,7 +1101,7 @@
         try {
             const days = 14;
             const includeRuns = true;
-            const runLimit = 100;
+            const runLimit = 30;
             let data;
             if (typeof adminApiClient.getAdminSchedulerMetrics === 'function') {
                 data = await adminApiClient.getAdminSchedulerMetrics(days, includeRuns, runLimit);
@@ -919,6 +1136,17 @@
             const currentAlert = result.currentAlert && typeof result.currentAlert === 'object'
                 ? result.currentAlert
                 : null;
+            const diagnostics = result.diagnostics && typeof result.diagnostics === 'object'
+                ? result.diagnostics
+                : {};
+            const tailLatency = diagnostics.tailLatency && typeof diagnostics.tailLatency === 'object'
+                ? diagnostics.tailLatency
+                : (currentAlert?.tailLatency && typeof currentAlert.tailLatency === 'object'
+                    ? currentAlert.tailLatency
+                    : null);
+            const sloThresholds = currentAlert?.thresholds && typeof currentAlert.thresholds === 'object'
+                ? currentAlert.thresholds
+                : {};
 
             document.getElementById('schedulerRuns').textContent = formatCompactNumber(summary.runs || 0);
             document.getElementById('schedulerCyclesRun').textContent = formatCompactNumber(summary.cyclesRun || 0);
@@ -928,18 +1156,30 @@
                 `${formatCompactNumber(summary.retries || 0)} / ${formatCompactNumber(summary.deadLetters || 0)}`;
             document.getElementById('schedulerLockIdempotentSkips').textContent =
                 `${formatCompactNumber(summary.skipped?.locked || 0)} / ${formatCompactNumber(summary.skipped?.idempotent || 0)}`;
+            const p95El = document.getElementById('schedulerTailP95');
+            const p99El = document.getElementById('schedulerTailP99');
+            if (p95El) p95El.textContent = formatDurationMs(summary.p95CycleDurationMs || 0);
+            if (p99El) p99El.textContent = formatDurationMs(summary.p99CycleDurationMs || 0);
             renderSchedulerSloCards(summary, {
                 avgQueueLagMs: queueLagAverage.avgMs,
-                avgCycleDurationMs: cycleDurationAverage.avgMs
+                avgCycleDurationMs: cycleDurationAverage.avgMs,
+                thresholds: sloThresholds,
+                tailLatency
             });
 
             renderSchedulerMetricsChart(daily);
             renderSchedulerRecentRuns(recentRuns.slice(0, 20));
+            renderSchedulerDiagnostics({
+                outlierRun: diagnostics.outlierRun || null,
+                tailLatency,
+                phaseTimings: diagnostics.phaseTimings || null,
+                telemetryPauseReasons: diagnostics.telemetryPauseReasons || summary.telemetryPauseReasons || {}
+            });
 
             const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
-            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} - ${daily.length} day(s)`;
+            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} · window has ${daily.length} day(s) with data`;
 
-            if (currentAlert && ['watch', 'breach'].includes(String(currentAlert.status || '').toLowerCase())) {
+            if (currentAlert && String(currentAlert.status || '').toLowerCase() === 'breach') {
                 warningEl.style.display = '';
                 warningEl.textContent = formatSchedulerAlertMessage(currentAlert);
             }
@@ -949,6 +1189,11 @@
             warningEl.textContent = e.message || String(e);
             renderSchedulerSloCards(null);
             renderSchedulerRecentRuns([]);
+            renderSchedulerDiagnostics(null);
+            const p95El = document.getElementById('schedulerTailP95');
+            const p99El = document.getElementById('schedulerTailP99');
+            if (p95El) p95El.textContent = '-';
+            if (p99El) p99El.textContent = '-';
             showMessage('warning', `Failed to load scheduler metrics: ${e.message || e}`);
         } finally {
             if (refreshBtn) refreshBtn.disabled = false;
@@ -1077,10 +1322,125 @@
         }
     }
 
+    const PROVIDER_LABELS = {
+        foxess: 'FoxESS',
+        sungrow: 'Sungrow',
+        sigenergy: 'SigenEnergy',
+        alphaess: 'AlphaESS'
+    };
+
+    function normalizeProvider(providerRaw, cfg = null) {
+        const provider = String(providerRaw || '').toLowerCase().trim();
+        if (provider) return provider;
+        if (cfg && typeof cfg === 'object') {
+            if (cfg.hasSungrowUsername || cfg.hasSungrowDeviceSn) return 'sungrow';
+            if (cfg.hasSigenUsername || cfg.hasSigenStationId || cfg.hasSigenDeviceSn) return 'sigenergy';
+            if (cfg.hasAlphaEssSystemSn || cfg.hasAlphaEssAppId || cfg.hasAlphaEssAppSecret) return 'alphaess';
+        }
+        return 'foxess';
+    }
+
+    function providerLabel(providerRaw) {
+        const rawProvider = String(providerRaw || '').toLowerCase().trim();
+        if (!rawProvider) return 'Unknown';
+        const provider = normalizeProvider(rawProvider);
+        if (PROVIDER_LABELS[provider]) return PROVIDER_LABELS[provider];
+        return provider ? `${provider.charAt(0).toUpperCase()}${provider.slice(1)}` : 'Unknown';
+    }
+
+    function toCounter(value) {
+        const n = Number(value);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+
+    function getProviderAccessSummary(cfg = {}, provider = 'foxess') {
+        const providedSummary = cfg.providerAccess;
+        if (providedSummary && typeof providedSummary === 'object') {
+            return {
+                identifierLabel: providedSummary.identifierLabel || 'Device ID',
+                hasIdentifier: !!providedSummary.hasIdentifier,
+                credentialLabel: providedSummary.credentialLabel || 'Credentials',
+                hasCredential: !!providedSummary.hasCredential
+            };
+        }
+
+        switch (provider) {
+            case 'sungrow':
+                return {
+                    identifierLabel: 'Device SN',
+                    hasIdentifier: !!cfg.hasSungrowDeviceSn,
+                    credentialLabel: 'iSolarCloud Login',
+                    hasCredential: !!cfg.hasSungrowUsername
+                };
+            case 'sigenergy':
+                return {
+                    identifierLabel: 'Station / Device ID',
+                    hasIdentifier: !!(cfg.hasSigenStationId || cfg.hasSigenDeviceSn),
+                    credentialLabel: 'Account Login',
+                    hasCredential: !!cfg.hasSigenUsername
+                };
+            case 'alphaess':
+                return {
+                    identifierLabel: 'System SN',
+                    hasIdentifier: !!cfg.hasAlphaEssSystemSn,
+                    credentialLabel: 'App Credentials',
+                    hasCredential: !!(cfg.hasAlphaEssAppId && cfg.hasAlphaEssAppSecret)
+                };
+            case 'foxess':
+            default:
+                return {
+                    identifierLabel: 'Device SN',
+                    hasIdentifier: !!cfg.hasDeviceSn,
+                    credentialLabel: 'API Token',
+                    hasCredential: !!cfg.hasFoxessToken
+                };
+        }
+    }
+
+    function summarizeInverterUsage(dayMetrics = {}) {
+        const byProvider = {};
+        const providerSource = (dayMetrics.inverterByProvider && typeof dayMetrics.inverterByProvider === 'object')
+            ? dayMetrics.inverterByProvider
+            : {};
+
+        Object.entries(providerSource).forEach(([providerKey, value]) => {
+            const count = toCounter(value);
+            if (!count) return;
+            byProvider[normalizeProvider(providerKey)] = count;
+        });
+
+        ['foxess', 'sungrow', 'sigenergy', 'alphaess'].forEach((providerKey) => {
+            if (Object.prototype.hasOwnProperty.call(byProvider, providerKey)) return;
+            const count = toCounter(dayMetrics[providerKey]);
+            if (!count) return;
+            byProvider[providerKey] = count;
+        });
+
+        let inverter = toCounter(dayMetrics.inverter);
+        if (!inverter) {
+            inverter = Object.values(byProvider).reduce((sum, count) => sum + count, 0);
+            Object.entries(dayMetrics).forEach(([metricKey, metricValue]) => {
+                if (metricKey === 'inverter' || metricKey === 'inverterByProvider' || metricKey === 'amber' || metricKey === 'weather' || metricKey === 'updatedAt') return;
+                if (Object.prototype.hasOwnProperty.call(byProvider, normalizeProvider(metricKey))) return;
+                inverter += toCounter(metricValue);
+            });
+        }
+
+        const breakdown = Object.entries(byProvider)
+            .sort((a, b) => b[1] - a[1])
+            .map(([providerKey, count]) => `${providerLabel(providerKey)}: ${count}`)
+            .join(', ');
+
+        return { inverter, breakdown };
+    }
+
     function renderStats(stats) {
         const body = document.getElementById('statsDrawerBody');
         const cfg = stats.configSummary || {};
         const autoState = stats.automationState || {};
+        const provider = normalizeProvider(cfg.deviceProvider, cfg);
+        const providerName = providerLabel(provider);
+        const providerAccess = getProviderAccessSummary(cfg, provider);
         const inverterCapacityW = Number(cfg.inverterCapacityW);
         const batteryCapacityKWh = Number(cfg.batteryCapacityKWh);
         const inverterLabel = Number.isFinite(inverterCapacityW) && inverterCapacityW > 0
@@ -1109,12 +1469,16 @@
                     <div class="stat-subsection-title">Access & Integrations</div>
                     <div class="stat-grid">
                         <div class="stat-item">
-                            <div class="label">Device SN</div>
-                            <div class="value small">${cfg.hasDeviceSn ? '✅ Configured' : '❌ Missing'}</div>
+                            <div class="label">Inverter Provider</div>
+                            <div class="value small">${providerName}</div>
                         </div>
                         <div class="stat-item">
-                            <div class="label">FoxESS Token</div>
-                            <div class="value small">${cfg.hasFoxessToken ? '✅ Set' : '❌ Missing'}</div>
+                            <div class="label">${providerAccess.identifierLabel}</div>
+                            <div class="value small">${providerAccess.hasIdentifier ? '✅ Configured' : '❌ Missing'}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">${providerAccess.credentialLabel}</div>
+                            <div class="value small">${providerAccess.hasCredential ? '✅ Set' : '❌ Missing'}</div>
                         </div>
                         <div class="stat-item">
                             <div class="label">Amber API Key</div>
@@ -1181,8 +1545,9 @@
         const days = Object.keys(metrics).sort().reverse().slice(0, 14); // Last 14 days
         let maxTotal = 1;
         days.forEach(day => {
-            const m = metrics[day];
-            const total = (m.foxess || 0) + (m.amber || 0) + (m.weather || 0);
+            const m = metrics[day] || {};
+            const inverterUsage = summarizeInverterUsage(m);
+            const total = inverterUsage.inverter + toCounter(m.amber) + toCounter(m.weather);
             if (total > maxTotal) maxTotal = total;
         });
 
@@ -1191,21 +1556,25 @@
             metricsHtml += '<p style="color: var(--text-secondary); font-size: 13px;">No metrics data available</p>';
         } else {
             metricsHtml += `<div class="metrics-legend">
-                <span class="foxess">FoxESS</span>
+                <span class="inverter">Inverter</span>
                 <span class="amber">Amber</span>
                 <span class="weather">Weather</span>
             </div>`;
             days.forEach(day => {
-                const m = metrics[day];
-                const foxess = m.foxess || 0;
-                const amber = m.amber || 0;
-                const weather = m.weather || 0;
-                const total = foxess + amber + weather;
+                const m = metrics[day] || {};
+                const inverterUsage = summarizeInverterUsage(m);
+                const inverter = inverterUsage.inverter;
+                const amber = toCounter(m.amber);
+                const weather = toCounter(m.weather);
+                const total = inverter + amber + weather;
                 const barScale = 200; // max bar width in px
+                const inverterTitle = inverterUsage.breakdown
+                    ? `Inverter: ${inverter} (${inverterUsage.breakdown})`
+                    : `Inverter: ${inverter}`;
                 metricsHtml += `<div class="metrics-day">
                     <span class="date">${day.slice(5)}</span>
                     <div class="metrics-bar-group">
-                        <div class="metrics-bar foxess" style="width: ${Math.max(2, foxess / maxTotal * barScale)}px;" title="FoxESS: ${foxess}"></div>
+                        <div class="metrics-bar inverter" style="width: ${Math.max(2, inverter / maxTotal * barScale)}px;" title="${inverterTitle}"></div>
                         <div class="metrics-bar amber" style="width: ${Math.max(2, amber / maxTotal * barScale)}px;" title="Amber: ${amber}"></div>
                         <div class="metrics-bar weather" style="width: ${Math.max(2, weather / maxTotal * barScale)}px;" title="Weather: ${weather}"></div>
                     </div>

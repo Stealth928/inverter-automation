@@ -38,6 +38,26 @@ function createVehiclesRepository(deps = {}) {
     return vehicleRef(userId, vehicleId).collection('commands');
   }
 
+  async function deleteDocumentTreeFallback(docRef) {
+    if (!docRef || typeof docRef.listCollections !== 'function') {
+      await docRef?.delete?.().catch(() => {});
+      return;
+    }
+
+    const subcollections = await docRef.listCollections();
+    for (const subcollection of subcollections) {
+      let snapshot = await subcollection.limit(100).get();
+      while (!snapshot.empty) {
+        for (const doc of snapshot.docs) {
+          await deleteDocumentTreeFallback(doc.ref);
+        }
+        snapshot = await subcollection.limit(100).get();
+      }
+    }
+
+    await docRef.delete().catch(() => {});
+  }
+
   // ---------------------------------------------------------------------------
   // Vehicle registration
   // ---------------------------------------------------------------------------
@@ -107,7 +127,12 @@ function createVehiclesRepository(deps = {}) {
    * @returns {Promise<void>}
    */
   async function deleteVehicle(userId, vehicleId) {
-    await vehicleRef(userId, vehicleId).delete();
+    const ref = vehicleRef(userId, vehicleId);
+    if (typeof db.recursiveDelete === 'function') {
+      await db.recursiveDelete(ref);
+    } else {
+      await deleteDocumentTreeFallback(ref);
+    }
     logger.debug('VehiclesRepo', `deleteVehicle: removed vehicle ${vehicleId} for user ${userId}`);
   }
 

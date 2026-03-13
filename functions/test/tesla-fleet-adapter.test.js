@@ -6,6 +6,7 @@ const {
   exchangeTeslaAuthCode,
   normalizeTeslaVehicleData,
   TESLA_AUTH_BASE,
+  TESLA_AUTH_BASE_CN,
   TESLA_FLEET_REGIONS,
   TESLA_REQUIRED_SCOPES
 } = require('../lib/adapters/tesla-fleet-adapter');
@@ -66,6 +67,11 @@ describe('TeslaFleetAdapter — constructor', () => {
     expect(adapter._fleetBase).toBe(TESLA_FLEET_REGIONS.eu);
   });
 
+  test('accepts China region', () => {
+    const adapter = new TeslaFleetAdapter({ httpClient: makeHttpClient(), region: 'cn' });
+    expect(adapter._fleetBase).toBe(TESLA_FLEET_REGIONS.cn);
+  });
+
   test('unknown region falls back to NA', () => {
     const adapter = new TeslaFleetAdapter({ httpClient: makeHttpClient(), region: 'ap' });
     expect(adapter._region).toBe('na');
@@ -80,6 +86,102 @@ describe('TeslaFleetAdapter — EVAdapter contract', () => {
   test('passes validateEVAdapter', () => {
     const adapter = new TeslaFleetAdapter({ httpClient: makeHttpClient() });
     expect(validateEVAdapter(adapter)).toBe(true);
+  });
+});
+
+describe('TeslaFleetAdapter — getCommandReadiness', () => {
+  test('returns vin_required when VIN is missing or invalid', async () => {
+    const adapter = new TeslaFleetAdapter({ httpClient: makeHttpClient() });
+    const readiness = await adapter.getCommandReadiness('legacy-vehicle-id', makeContext());
+
+    expect(readiness.readyForCommands).toBe(false);
+    expect(readiness.protocolRequired).toBeNull();
+    expect(readiness.blockingReasons).toContain('vin_required');
+  });
+
+  test('reports not ready when protocol is required but signing client is unavailable', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/fleet_status`]: {
+        status: 200,
+        data: {
+          response: {
+            vehicle_info: {
+              '5YJ3E1EA7JF000001': {
+                vehicle_command_protocol_required: true
+              }
+            },
+            key_paired_vins: [],
+            unpaired_vins: ['5YJ3E1EA7JF000001']
+          }
+        }
+      }
+    });
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+    const readiness = await adapter.getCommandReadiness('5YJ3E1EA7JF000001', makeContext());
+
+    expect(readiness.readyForCommands).toBe(false);
+    expect(readiness.protocolRequired).toBe(true);
+    expect(readiness.supportsSignedCommands).toBe(false);
+    expect(readiness.blockingReasons).toContain('signed_command_required');
+  });
+
+  test('reports not ready when protocol is required, signing exists, but virtual key is unpaired', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/fleet_status`]: {
+        status: 200,
+        data: {
+          response: {
+            vehicle_info: {
+              '5YJ3E1EA7JF000001': {
+                vehicle_command_protocol_required: true
+              }
+            },
+            key_paired_vins: [],
+            unpaired_vins: ['5YJ3E1EA7JF000001']
+          }
+        }
+      }
+    });
+    const adapter = new TeslaFleetAdapter({
+      httpClient: http,
+      signedCommandClient: { sendCommand: jest.fn(async () => ({ result: true })) }
+    });
+    const readiness = await adapter.getCommandReadiness('5YJ3E1EA7JF000001', makeContext());
+
+    expect(readiness.readyForCommands).toBe(false);
+    expect(readiness.protocolRequired).toBe(true);
+    expect(readiness.supportsSignedCommands).toBe(true);
+    expect(readiness.keyPaired).toBe(false);
+    expect(readiness.blockingReasons).toContain('virtual_key_not_paired');
+  });
+
+  test('reports ready when protocol is required and key is paired with signing support', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/fleet_status`]: {
+        status: 200,
+        data: {
+          response: {
+            vehicle_info: {
+              '5YJ3E1EA7JF000001': {
+                vehicle_command_protocol_required: true
+              }
+            },
+            key_paired_vins: ['5YJ3E1EA7JF000001'],
+            unpaired_vins: []
+          }
+        }
+      }
+    });
+    const adapter = new TeslaFleetAdapter({
+      httpClient: http,
+      signedCommandClient: { sendCommand: jest.fn(async () => ({ result: true })) }
+    });
+    const readiness = await adapter.getCommandReadiness('5YJ3E1EA7JF000001', makeContext());
+
+    expect(readiness.readyForCommands).toBe(true);
+    expect(readiness.protocolRequired).toBe(true);
+    expect(readiness.keyPaired).toBe(true);
+    expect(readiness.blockingReasons).toEqual([]);
   });
 });
 
@@ -101,13 +203,13 @@ describe('TeslaFleetAdapter — getVehicleStatus', () => {
       vehicle_state: { homelink_nearby: true }
     };
     const http = makeHttpClient({
-      [`GET ${FLEET_NA_BASE}/api/1/vehicles/vin123/vehicle_data`]: {
+      [`GET ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/vehicle_data`]: {
         status: 200,
         data: { response: teslaResponse }
       }
     });
     const adapter = new TeslaFleetAdapter({ httpClient: http });
-    const status = await adapter.getVehicleStatus('vin123', makeContext());
+    const status = await adapter.getVehicleStatus('5YJ3E1EA7JF000001', makeContext());
 
     expect(status.socPct).toBe(72);
     expect(status.chargingState).toBe('charging');
@@ -123,13 +225,76 @@ describe('TeslaFleetAdapter — getVehicleStatus', () => {
 
   test('throws on 401 HTTP error', async () => {
     const http = makeHttpClient({
-      [`GET ${FLEET_NA_BASE}/api/1/vehicles/vin123/vehicle_data`]: {
+      [`GET ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/vehicle_data`]: {
         status: 401,
         data: { error: { message: 'Unauthorized' } }
       }
     });
     const adapter = new TeslaFleetAdapter({ httpClient: http });
-    await expect(adapter.getVehicleStatus('vin123', makeContext())).rejects.toThrow(/Unauthorized/);
+    await expect(
+      adapter.getVehicleStatus('5YJ3E1EA7JF000001', { credentials: { accessToken: 'test-access-token' } })
+    ).rejects.toThrow(/Unauthorized/);
+  });
+
+  test('refreshes expired token on 401 and retries request once', async () => {
+    const teslaResponse = {
+      charge_state: { battery_level: 65, charging_state: 'Charging', charge_limit_soc: 85, charge_port_door_open: true, est_battery_range: 200 },
+      drive_state: { speed: null, active_route_destination: null },
+      vehicle_state: { homelink_nearby: true }
+    };
+
+    const http = jest.fn(async (method, url, opts = {}) => {
+      if (method === 'GET' && url === `${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/vehicle_data`) {
+        if (opts.headers.Authorization === 'Bearer old-token') {
+          return { status: 401, data: { error: { message: 'Unauthorized' } }, headers: {} };
+        }
+        if (opts.headers.Authorization === 'Bearer new-token') {
+          return { status: 200, data: { response: teslaResponse }, headers: {} };
+        }
+      }
+
+      if (method === 'POST' && /\/oauth2\/v3\/token$/.test(url)) {
+        return {
+          status: 200,
+          data: {
+            access_token: 'new-token',
+            refresh_token: 'new-refresh',
+            expires_in: 3600,
+            token_type: 'Bearer',
+            scope: 'openid offline_access'
+          },
+          headers: {}
+        };
+      }
+
+      return { status: 500, data: { error: 'unexpected test request' }, headers: {} };
+    });
+
+    const persistCredentials = jest.fn(async () => {});
+    const context = {
+      credentials: {
+        accessToken: 'old-token',
+        refreshToken: 'old-refresh',
+        clientId: 'client123',
+        clientSecret: 'secret123'
+      },
+      persistCredentials
+    };
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+    const status = await adapter.getVehicleStatus('5YJ3E1EA7JF000001', context);
+
+    expect(status.socPct).toBe(65);
+    expect(context.credentials.accessToken).toBe('new-token');
+    expect(context.credentials.refreshToken).toBe('new-refresh');
+    expect(persistCredentials).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: 'new-token',
+        refreshToken: 'new-refresh',
+        tokenType: 'Bearer',
+        scope: 'openid offline_access'
+      })
+    );
+    expect(http).toHaveBeenCalled();
   });
 });
 
@@ -140,28 +305,51 @@ describe('TeslaFleetAdapter — getVehicleStatus', () => {
 describe('TeslaFleetAdapter — startCharging', () => {
   test('calls charge_start command and returns confirmed result', async () => {
     const http = makeHttpClient({
-      [`POST ${FLEET_NA_BASE}/api/1/vehicles/vin123/command/charge_start`]: {
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/command/charge_start`]: {
         status: 200,
         data: { response: { result: true, reason: '' } }
       }
     });
     const adapter = new TeslaFleetAdapter({ httpClient: http });
-    const result = await adapter.startCharging('vin123', makeContext());
+    const result = await adapter.startCharging('5YJ3E1EA7JF000001', makeContext());
     expect(result.status).toBe('confirmed');
     expect(result.commandId).toMatch(/^tesla-charge_start-/);
   });
 
   test('returns failed when Tesla result=false', async () => {
     const http = makeHttpClient({
-      [`POST ${FLEET_NA_BASE}/api/1/vehicles/vin123/command/charge_start`]: {
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/command/charge_start`]: {
         status: 200,
         data: { response: { result: false, reason: 'already_charging' } }
       }
     });
     const adapter = new TeslaFleetAdapter({ httpClient: http });
-    const result = await adapter.startCharging('vin123', makeContext());
+    const result = await adapter.startCharging('5YJ3E1EA7JF000001', makeContext());
     expect(result.status).toBe('failed');
     expect(result.providerRef).toBe('already_charging');
+  });
+
+  test('uses signed command transport when command readiness requires protocol', async () => {
+    const sendCommand = jest.fn(async () => ({ result: true, reason: '' }));
+    const adapter = new TeslaFleetAdapter({
+      httpClient: makeHttpClient(),
+      signedCommandClient: { sendCommand }
+    });
+
+    const result = await adapter.startCharging(
+      'legacy-id',
+      {
+        ...makeContext(),
+        vehicleVin: '5YJ3E1EA7JF000001',
+        commandReadiness: { protocolRequired: true }
+      }
+    );
+
+    expect(result.status).toBe('confirmed');
+    expect(sendCommand).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'charge_start',
+      vehicleVin: '5YJ3E1EA7JF000001'
+    }));
   });
 });
 
@@ -172,13 +360,13 @@ describe('TeslaFleetAdapter — startCharging', () => {
 describe('TeslaFleetAdapter — stopCharging', () => {
   test('calls charge_stop and returns confirmed', async () => {
     const http = makeHttpClient({
-      [`POST ${FLEET_NA_BASE}/api/1/vehicles/vin123/command/charge_stop`]: {
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/command/charge_stop`]: {
         status: 200,
         data: { response: { result: true, reason: '' } }
       }
     });
     const adapter = new TeslaFleetAdapter({ httpClient: http });
-    const result = await adapter.stopCharging('vin123', makeContext());
+    const result = await adapter.stopCharging('5YJ3E1EA7JF000001', makeContext());
     expect(result.status).toBe('confirmed');
   });
 });
@@ -190,13 +378,13 @@ describe('TeslaFleetAdapter — stopCharging', () => {
 describe('TeslaFleetAdapter — setChargeLimit', () => {
   test('calls set_charge_limit with correct percent body', async () => {
     const http = makeHttpClient({
-      [`POST ${FLEET_NA_BASE}/api/1/vehicles/vin123/command/set_charge_limit`]: {
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/command/set_charge_limit`]: {
         status: 200,
         data: { response: { result: true, reason: '' } }
       }
     });
     const adapter = new TeslaFleetAdapter({ httpClient: http });
-    const result = await adapter.setChargeLimit('vin123', makeContext(), 80);
+    const result = await adapter.setChargeLimit('5YJ3E1EA7JF000001', makeContext(), 80);
     expect(result.status).toBe('confirmed');
 
     const call = http.calls.find((c) => c.url.includes('set_charge_limit'));
@@ -217,7 +405,7 @@ describe('TeslaFleetAdapter — setChargeLimit', () => {
 describe('TeslaFleetAdapter — wakeVehicle', () => {
   test('returns woken=true immediately when wake_up responds with online state', async () => {
     const http = makeHttpClient({
-      [`POST ${FLEET_NA_BASE}/api/1/vehicles/vin123/wake_up`]: {
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/wake_up`]: {
         status: 200,
         data: { response: { state: 'online' } }
       }
@@ -226,19 +414,19 @@ describe('TeslaFleetAdapter — wakeVehicle', () => {
       httpClient: http,
       sleep: async () => {}
     });
-    const result = await adapter.wakeVehicle('vin123', makeContext());
+    const result = await adapter.wakeVehicle('5YJ3E1EA7JF000001', makeContext());
     expect(result.woken).toBe(true);
-    expect(result.vehicleId).toBe('vin123');
+    expect(result.vehicleId).toBe('5YJ3E1EA7JF000001');
   });
 
   test('polls status and resolves when vehicle comes online', async () => {
     let pollCount = 0;
     const http = makeHttpClient({
-      [`POST ${FLEET_NA_BASE}/api/1/vehicles/vin123/wake_up`]: {
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/wake_up`]: {
         status: 200,
         data: { response: { state: 'asleep' } }
       },
-      [`GET ${FLEET_NA_BASE}/api/1/vehicles/vin123`]: () => {
+      [`GET ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001`]: () => {
         pollCount++;
         if (pollCount >= 2) {
           return { status: 200, data: { response: { state: 'online' } } };
@@ -251,7 +439,7 @@ describe('TeslaFleetAdapter — wakeVehicle', () => {
       httpClient: http,
       sleep: async (ms) => { sleepCalls.push(ms); }
     });
-    const result = await adapter.wakeVehicle('vin123', makeContext());
+    const result = await adapter.wakeVehicle('5YJ3E1EA7JF000001', makeContext());
     expect(result.woken).toBe(true);
     expect(pollCount).toBeGreaterThanOrEqual(2);
   });
@@ -369,6 +557,8 @@ describe('TeslaFleetAdapter — refreshAccessToken', () => {
     expect(result.accessToken).toBe('new-access');
     expect(result.refreshToken).toBe('new-refresh');
     expect(result.expiresAtMs).toBeGreaterThan(Date.now());
+    const tokenCall = http.calls.find((call) => /\/token$/.test(call.url));
+    expect(tokenCall.opts.body.audience).toBe(TESLA_FLEET_REGIONS.na);
   });
 
   test('throws when refreshToken is missing', async () => {
@@ -429,6 +619,15 @@ describe('buildTeslaAuthUrl', () => {
     }, 'eu');
     expect(url).toContain(encodeURIComponent(TESLA_FLEET_REGIONS.eu));
   });
+
+  test('uses China auth host and audience when region=cn', () => {
+    const url = buildTeslaAuthUrl({
+      clientId: 'c',
+      redirectUri: 'https://localhost/cb'
+    }, 'cn');
+    expect(url).toContain(`${TESLA_AUTH_BASE_CN}/authorize`);
+    expect(url).toContain(encodeURIComponent(TESLA_FLEET_REGIONS.cn));
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -450,6 +649,8 @@ describe('exchangeTeslaAuthCode', () => {
     expect(result.accessToken).toBe('acc');
     expect(result.refreshToken).toBe('ref');
     expect(result.expiresAtMs).toBeGreaterThan(Date.now());
+    const tokenCall = http.calls.find((call) => /\/token$/.test(call.url));
+    expect(tokenCall.opts.body.audience).toBe(TESLA_FLEET_REGIONS.na);
   });
 
   test('throws on missing params', async () => {
@@ -464,6 +665,23 @@ describe('exchangeTeslaAuthCode', () => {
     });
     await expect(exchangeTeslaAuthCode({ clientId: 'c', redirectUri: 'r', code: 'x' }, http))
       .rejects.toThrow(/token exchange failed/);
+  });
+
+  test('uses China auth host when region=cn', async () => {
+    const http = makeHttpClient({
+      [`POST ${TESLA_AUTH_BASE_CN}/token`]: {
+        status: 200,
+        data: { access_token: 'acc-cn', refresh_token: 'ref-cn', expires_in: 3600 }
+      }
+    });
+    const result = await exchangeTeslaAuthCode(
+      { clientId: 'c', redirectUri: 'https://localhost/cb', code: 'authcode', region: 'cn' },
+      http
+    );
+    expect(result.accessToken).toBe('acc-cn');
+    const tokenCall = http.calls.find((call) => /\/token$/.test(call.url));
+    expect(tokenCall.url).toBe(`${TESLA_AUTH_BASE_CN}/token`);
+    expect(tokenCall.opts.body.audience).toBe(TESLA_FLEET_REGIONS.cn);
   });
 });
 
@@ -498,3 +716,4 @@ describe('normalizeTeslaVehicleData', () => {
     expect(result.chargingState).toBe('unknown');
   });
 });
+

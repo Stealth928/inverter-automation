@@ -3,7 +3,7 @@
  * Tests geocoding functionality and location resolution
  */
 
-const fetch = require('node-fetch');
+const fetch = global.fetch;
 
 describe('Weather API - Geocoding', () => {
   const baseGeoUrl = 'https://geocoding-api.open-meteo.com/v1/search';

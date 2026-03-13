@@ -51,6 +51,7 @@ const { registerSchedulerReadRoutes } = require('./api/routes/scheduler-read');
 const { registerSchedulerMutationRoutes } = require('./api/routes/scheduler-mutations');
 const { registerAutomationMutationRoutes } = require('./api/routes/automation-mutations');
 const { registerAutomationCycleRoute } = require('./api/routes/automation-cycle');
+const { registerEVRoutes } = require('./api/routes/ev');
 const { runAutomationSchedulerCycle } = require('./lib/services/automation-scheduler-service');
 const { createAutomationSchedulerMetricsSink } = require('./lib/services/automation-scheduler-metrics-sink');
 const { createApiMetricsService } = require('./lib/services/api-metrics-service');
@@ -64,6 +65,7 @@ const { parseAutomationTelemetry } = require('./lib/device-telemetry');
 const { getCurrentAmberPrices } = require('./lib/pricing-normalization');
 const { createAutomationStateRepository } = require('./lib/repositories/automation-state-repository');
 const { createUserAutomationRepository } = require('./lib/repositories/user-automation-repository');
+const { createVehiclesRepository } = require('./lib/repositories/vehicles-repository');
 const {
   addMinutes,
   getAutomationTimezone: getAutomationTimezoneWithFallback,
@@ -174,10 +176,24 @@ const sigenEnergyAPI = sigenEnergyModule.init({
   incrementApiCount: null // Will be defined below
 });
 
+const alphaEssModule = require('./api/alphaess');
+const alphaEssAPI = alphaEssModule.init({
+  db,
+  logger: null, // Will be defined below
+  getConfig: null, // Will be defined below
+  incrementApiCount: null // Will be defined below
+});
+
 const { createAdapterRegistry } = require('./lib/adapters/adapter-registry');
 const { createFoxessDeviceAdapter } = require('./lib/adapters/foxess-adapter');
 const { createSungrowDeviceAdapter } = require('./lib/adapters/sungrow-adapter');
 const { createSigenEnergyDeviceAdapter } = require('./lib/adapters/sigenergy-adapter');
+const { createAlphaEssDeviceAdapter } = require('./lib/adapters/alphaess-adapter');
+const {
+  TeslaFleetAdapter,
+  createTeslaHttpClient,
+  createTeslaSignedCommandClient
+} = require('./lib/adapters/tesla-fleet-adapter');
 // adapterRegistry populated once all deps (logger, getConfig) are reinitialized
 const adapterRegistry = createAdapterRegistry();
 
@@ -219,6 +235,11 @@ const getConfig = () => {
     },
     sigenergy: {
       defaultRegion: process.env.SIGENERGY_REGION || 'apac'
+    },
+    alphaess: {
+      appId: process.env.ALPHAESS_APP_ID || '',
+      appSecret: process.env.ALPHAESS_APP_SECRET || '',
+      baseUrl: process.env.ALPHAESS_BASE_URL || 'https://openapi.alphaess.com'
     },
     automation: {
       intervalMs: 60000,
@@ -290,6 +311,12 @@ const {
   saveQuickControlState,
   saveUserAutomationState
 } = createAutomationStateRepository({ db });
+
+const vehiclesRepo = createVehiclesRepository({
+  db,
+  logger,
+  serverTimestamp
+});
 
 const {
   getAusDateKey,
@@ -387,7 +414,19 @@ const {
       process.env.AUTOMATION_SCHEDULER_SLO_MAX_QUEUE_LAG_MS,
     maxCycleDurationMs:
       schedulerSloThresholdConfig.maxCycleDurationMs ||
-      process.env.AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS
+      process.env.AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS,
+    p99CycleDurationMs:
+      schedulerSloThresholdConfig.p99CycleDurationMs ||
+      process.env.AUTOMATION_SCHEDULER_SLO_P99_CYCLE_DURATION_MS,
+    tailP99CycleDurationMs:
+      schedulerSloThresholdConfig.tailP99CycleDurationMs ||
+      process.env.AUTOMATION_SCHEDULER_SLO_TAIL_P99_CYCLE_DURATION_MS,
+    tailWindowMinutes:
+      schedulerSloThresholdConfig.tailWindowMinutes ||
+      process.env.AUTOMATION_SCHEDULER_SLO_TAIL_WINDOW_MINUTES,
+    tailMinRuns:
+      schedulerSloThresholdConfig.tailMinRuns ||
+      process.env.AUTOMATION_SCHEDULER_SLO_TAIL_MIN_RUNS
   },
   serverTimestamp
 });
@@ -522,6 +561,12 @@ async function addAutomationAuditEntry(userId, cycleData) {
       // Cache info
       inverterCacheHit: cycleData.inverterCacheHit || false,
       inverterCacheAgeMs: cycleData.inverterCacheAgeMs || null,
+      telemetryTimestampMs: cycleData.telemetryTimestampMs || null,
+      telemetryAgeMs: Number.isFinite(Number(cycleData.telemetryAgeMs))
+        ? Number(cycleData.telemetryAgeMs)
+        : null,
+      telemetryStatus: cycleData.telemetryStatus || null,
+      telemetryPauseReason: cycleData.telemetryPauseReason || null,
       
       // Timing
       cycleDurationMs: cycleData.cycleDurationMs || 0,
@@ -607,6 +652,19 @@ const {
   requireAdmin,
   SEED_ADMIN_EMAIL
 } = createAdminAccess({ db, logger: console });
+const teslaHttpClient = createTeslaHttpClient();
+const teslaSignedCommandClient = createTeslaSignedCommandClient({
+  endpoint: process.env.TESLA_SIGNED_COMMAND_PROXY_URL || '',
+  authToken: process.env.TESLA_SIGNED_COMMAND_PROXY_TOKEN || '',
+  httpClient: teslaHttpClient,
+  logger
+});
+const teslaFleetAdapter = new TeslaFleetAdapter({
+  httpClient: teslaHttpClient,
+  region: process.env.TESLA_FLEET_REGION || 'na',
+  signedCommandClient: teslaSignedCommandClient,
+  logger
+});
 
 registerHealthRoutes(app, {
   getUserConfig,
@@ -614,6 +672,7 @@ registerHealthRoutes(app, {
 });
 
 registerSetupPublicRoutes(app, {
+  alphaEssAPI,
   db,
   foxessAPI,
   getConfig,
@@ -689,6 +748,13 @@ registerAuthLifecycleRoutes(app, {
   setUserConfig
 });
 
+registerEVRoutes(app, {
+  adapterRegistry,
+  authenticateUser,
+  teslaHttpClient,
+  vehiclesRepo
+});
+
 // ==================== HELPER FUNCTIONS ====================
 
 // ==================== FOXESS API MODULE ====================
@@ -758,6 +824,7 @@ registerUserSelfRoutes(app, {
 registerAutomationMutationRoutes(app, {
   addAutomationAuditEntry,
   addHistoryEntry,
+  adapterRegistry,
   applyRuleAction,
   clearRulesLastTriggered,
   compareValue,
@@ -917,10 +984,19 @@ Object.assign(sigenEnergyAPI, sigenEnergyModule.init({
   incrementApiCount
 }));
 
+Object.assign(alphaEssAPI, alphaEssModule.init({
+  db,
+  logger,
+  getConfig,
+  incrementApiCount
+}));
+
 // Register device adapters now that foxessAPI, sungrowAPI, and sigenEnergyAPI are fully initialised
 adapterRegistry.registerDeviceProvider('foxess', createFoxessDeviceAdapter({ foxessAPI, logger }));
 adapterRegistry.registerDeviceProvider('sungrow', createSungrowDeviceAdapter({ sungrowAPI, logger }));
 adapterRegistry.registerDeviceProvider('sigenergy', createSigenEnergyDeviceAdapter({ sigenEnergyAPI, logger }));
+adapterRegistry.registerDeviceProvider('alphaess', createAlphaEssDeviceAdapter({ alphaEssAPI, logger }));
+adapterRegistry.registerEVProvider('tesla', teslaFleetAdapter);
 
 Object.assign(authAPI, authModule.init({
   admin,
@@ -1016,7 +1092,5 @@ exports.runAutomation = onSchedule(
   },
   runAutomationHandler
 );
-
-
 
 

@@ -4,6 +4,7 @@ function registerMetricsRoutes(app, deps = {}) {
   const db = deps.db;
   const getAusDateKey = deps.getAusDateKey;
   const tryAttachUser = deps.tryAttachUser;
+  const KNOWN_INVERTER_PROVIDER_KEYS = ['foxess', 'sungrow', 'sigenergy', 'alphaess'];
 
   if (!app || typeof app.get !== 'function') {
     throw new Error('registerMetricsRoutes requires an Express app');
@@ -14,6 +15,68 @@ function registerMetricsRoutes(app, deps = {}) {
   if (typeof tryAttachUser !== 'function') {
     throw new Error('registerMetricsRoutes requires tryAttachUser()');
   }
+
+  const toCounter = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+
+  const normalizeMetricKey = (metricKey) => String(metricKey || '').toLowerCase().trim();
+
+  const buildMetricsEnvelope = (rawDoc = {}) => {
+    const metricsDoc = (rawDoc && typeof rawDoc === 'object') ? rawDoc : {};
+    const providerBreakdown = {};
+
+    const addProviderCount = (providerKey, value) => {
+      const key = normalizeMetricKey(providerKey);
+      if (!key) return;
+      const count = toCounter(value);
+      if (!count) return;
+      providerBreakdown[key] = Math.max(providerBreakdown[key] || 0, count);
+    };
+
+    KNOWN_INVERTER_PROVIDER_KEYS.forEach((providerKey) => {
+      addProviderCount(providerKey, metricsDoc[providerKey]);
+    });
+
+    if (metricsDoc.inverterByProvider && typeof metricsDoc.inverterByProvider === 'object') {
+      Object.entries(metricsDoc.inverterByProvider).forEach(([providerKey, value]) => {
+        addProviderCount(providerKey, value);
+      });
+    }
+
+    Object.entries(metricsDoc).forEach(([metricKey, metricValue]) => {
+      const key = normalizeMetricKey(metricKey);
+      if (!key || key === 'inverter' || key === 'inverterbyprovider' || key === 'amber' || key === 'weather' || key === 'updatedat') {
+        return;
+      }
+      if (Object.prototype.hasOwnProperty.call(providerBreakdown, key)) return;
+      addProviderCount(key, metricValue);
+    });
+
+    const inverterByProvider = {};
+    KNOWN_INVERTER_PROVIDER_KEYS.forEach((providerKey) => {
+      inverterByProvider[providerKey] = providerBreakdown[providerKey] || 0;
+    });
+    Object.entries(providerBreakdown).forEach(([providerKey, count]) => {
+      if (Object.prototype.hasOwnProperty.call(inverterByProvider, providerKey)) return;
+      inverterByProvider[providerKey] = count;
+    });
+
+    const explicitInverter = toCounter(metricsDoc.inverter);
+    const inverter = explicitInverter || Object.values(providerBreakdown).reduce((sum, count) => sum + count, 0);
+
+    return {
+      inverter,
+      inverterByProvider,
+      foxess: inverterByProvider.foxess || 0,
+      sungrow: inverterByProvider.sungrow || 0,
+      sigenergy: inverterByProvider.sigenergy || 0,
+      alphaess: inverterByProvider.alphaess || 0,
+      amber: toCounter(metricsDoc.amber),
+      weather: toCounter(metricsDoc.weather)
+    };
+  };
 
   // Metrics (platform global or per-user). Allow unauthenticated callers to read global metrics by default.
   app.get('/api/metrics/api-calls', async (req, res) => {
@@ -33,7 +96,7 @@ function registerMetricsRoutes(app, deps = {}) {
           const d = new Date(endDate);
           d.setDate(d.getDate() - i);
           const key = getAusDateKey(d);
-          result[key] = { foxess: 0, amber: 0, weather: 0 };
+          result[key] = buildMetricsEnvelope({});
         }
         return res.json({ errno: 0, result });
       }
@@ -56,12 +119,10 @@ function registerMetricsRoutes(app, deps = {}) {
         const result = {};
         const allDocs = [];
         metricsSnapshot.forEach((doc) => {
-          const d = doc.data() || {};
+          const d = buildMetricsEnvelope(doc.data() || {});
           allDocs.push({
             id: doc.id,
-            foxess: Number(d.foxess || 0),
-            amber: Number(d.amber || 0),
-            weather: Number(d.weather || 0)
+            metrics: d
           });
         });
 
@@ -70,11 +131,7 @@ function registerMetricsRoutes(app, deps = {}) {
 
         // Take only the most recent N days
         allDocs.slice(0, days).forEach((doc) => {
-          result[doc.id] = {
-            foxess: doc.foxess,
-            amber: doc.amber,
-            weather: doc.weather
-          };
+          result[doc.id] = doc.metrics;
         });
 
         // Fill in missing days with zeros (Australia/Sydney local date)
@@ -82,7 +139,7 @@ function registerMetricsRoutes(app, deps = {}) {
           const d = new Date(endDate);
           d.setDate(d.getDate() - i);
           const key = getAusDateKey(d);
-          if (!result[key]) result[key] = { foxess: 0, amber: 0, weather: 0 };
+          if (!result[key]) result[key] = buildMetricsEnvelope({});
         }
 
         return res.json({ errno: 0, result });
@@ -97,11 +154,7 @@ function registerMetricsRoutes(app, deps = {}) {
 
         const doc = await db.collection('metrics').doc(key).get();
         const data = doc.exists ? doc.data() : null;
-        result[key] = {
-          foxess: Number(data?.foxess || 0),
-          amber: Number(data?.amber || 0),
-          weather: Number(data?.weather || 0)
-        };
+        result[key] = buildMetricsEnvelope(data || {});
       }
 
       return res.json({ errno: 0, result });
@@ -113,7 +166,7 @@ function registerMetricsRoutes(app, deps = {}) {
         const d = new Date(endDate);
         d.setDate(d.getDate() - i);
         const key = getAusDateKey(d);
-        result[key] = { foxess: 0, amber: 0, weather: 0 };
+        result[key] = buildMetricsEnvelope({});
       }
       return res.json({ errno: 0, result });
     }

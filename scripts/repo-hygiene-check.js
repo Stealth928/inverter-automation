@@ -8,6 +8,7 @@ const path = require('path');
 const REQUIRED_GITIGNORE_ENTRIES = [
   '*.log',
   '*.pid',
+  'logs/',
   'tmp*',
   '.firebase_logs.txt',
   'firebase.local.json'
@@ -29,6 +30,10 @@ const FORBIDDEN_TRACKED_FILE_PATTERNS = [
   {
     pattern: /(^|\/)tmp[^/]*\.txt$/i,
     reason: 'Tracked temporary dump files are not allowed.'
+  },
+  {
+    pattern: /^logs\/.+/i,
+    reason: 'Tracked logs/ artifacts are not allowed.'
   },
   {
     pattern: /^\.firebase_logs\.txt$/i,
@@ -109,6 +114,21 @@ function checkRootMarkdownFiles(trackedFiles, violations) {
     });
 }
 
+function checkFrontendLockfileConsistency(repoRoot, trackedFiles, violations) {
+  const frontendLockfile = 'frontend/package-lock.json';
+  if (!trackedFiles.includes(frontendLockfile)) {
+    return;
+  }
+
+  const frontendPackageJsonPath = path.join(repoRoot, 'frontend', 'package.json');
+  if (!fs.existsSync(frontendPackageJsonPath)) {
+    violations.push({
+      scope: frontendLockfile,
+      message: 'frontend/package-lock.json must not be tracked without frontend/package.json.'
+    });
+  }
+}
+
 function main() {
   const repoRoot = resolveRepoRoot();
   const trackedFiles = getTrackedFiles(repoRoot);
@@ -117,6 +137,7 @@ function main() {
   checkGitignore(repoRoot, violations);
   checkTrackedArtifacts(trackedFiles, violations);
   checkRootMarkdownFiles(trackedFiles, violations);
+  checkFrontendLockfileConsistency(repoRoot, trackedFiles, violations);
 
   if (violations.length > 0) {
     console.error('[Hygiene] FAILED');

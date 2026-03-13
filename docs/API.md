@@ -42,7 +42,13 @@ Unauthenticated health check.
 
 **Response:**
 ```json
-{ "ok": true }
+{
+  "errno": 0,
+  "result": { "status": "OK" },
+  "ok": true,
+  "FOXESS_TOKEN": false,
+  "AMBER_API_KEY": false
+}
 ```
 
 ### Authenticated Health Check
@@ -204,9 +210,19 @@ Content-Type: application/json
 }
 ```
 
+**AlphaESS provider fields:**
+```json
+{
+  "alphaess_system_sn": "ALP123456789",
+  "alphaess_app_id": "app-id-from-alphaess-openapi",
+  "alphaess_app_secret": "app-secret-from-alphaess-openapi",
+  "amber_api_key": "xxx"
+}
+```
+
 - `sigenergy_region`: one of `apac` (Asia-Pacific), `eu` (Europe), `cn` (China), `us` (North America). Defaults to `apac`.
 
-Validates credentials (and for Sungrow/SigenEnergy, performs a live login). On success saves config with `deviceProvider` set to the detected provider. Passwords are stored separately in a write-only secrets subcollection — they cannot be read back via the API.
+Validates credentials (for Sungrow/SigenEnergy it performs a live login; for AlphaESS it validates app credentials by listing systems). On success saves config with `deviceProvider` set to the detected provider. Passwords/secrets are stored separately in a write-only secrets subcollection — they cannot be read back via the API.
 
 **Response:**
 ```json
@@ -230,6 +246,8 @@ Checks if user has completed initial setup, and returns the active device provid
     "hasAmber": true,
     "setupComplete": true,
     "deviceProvider": "foxess",
+    "hasAlphaEssSystemSn": false,
+    "hasAlphaEssAppId": false,
     "hasSungrowUsername": false,
     "hasSungrowDeviceSn": false,
     "hasSigenUsername": false,
@@ -239,7 +257,8 @@ Checks if user has completed initial setup, and returns the active device provid
 }
 ```
 
-- `deviceProvider`: one of `foxess`, `sungrow`, `sigenergy`
+- `deviceProvider`: one of `foxess`, `sungrow`, `sigenergy`, `alphaess`
+- `hasAlphaEssSystemSn` / `hasAlphaEssAppId`: credential presence flags for AlphaESS
 - `hasSungrowUsername` / `hasSungrowDeviceSn`: credential presence flags for Sungrow
 - `hasSigenUsername` / `hasSigenDeviceSn` / `sigenRegion`: credential presence flags for SigenEnergy
 
@@ -482,7 +501,7 @@ Content-Type: application/json
 
 ## Inverter Endpoints (FoxESS only)
 
-> **Provider restriction**: The endpoints in this section proxy directly to the FoxESS Open API and only work when `deviceProvider` is `foxess`. Requests from Sungrow or SigenEnergy users will receive `400 { errno: 400, error: "Not supported for provider: <provider>" }`.
+> **Provider restriction**: The endpoints in this section proxy directly to the FoxESS Open API and only work when `deviceProvider` is `foxess`. Requests from Sungrow, SigenEnergy, or AlphaESS users will receive `400 { errno: 400, error: "Not supported for provider: <provider>" }`.
 
 ### List Devices
 ```
@@ -788,4 +807,3 @@ FoxESS, Sungrow, and SigenEnergy upstream errors are proxied in the `errno` fiel
 | FoxESS (History) | ~60 req/hour | 30 minutes | `users/{uid}/cache/history_*` (per 24h chunk) |
 | Amber (Prices) | ~100 req/hour | 24 hours | `amber_prices/{siteId}` (global, shared) |
 | Open-Meteo (Weather) | Unlimited | 30 minutes | `users/{uid}/cache/weather` |
-

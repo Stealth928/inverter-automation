@@ -145,6 +145,59 @@ function warnLog(logger, message) {
   }
 }
 
+function resolveSchedulerWorkerId() {
+  const service = String(process.env.K_SERVICE || process.env.FUNCTION_TARGET || '').trim();
+  const revision = String(process.env.K_REVISION || '').trim();
+  const host = String(process.env.HOSTNAME || '').trim();
+  const parts = [service || 'scheduler', revision, host].filter(Boolean);
+  return parts.length > 0 ? parts.join(':') : 'scheduler-worker';
+}
+
+const PHASE_TIMING_KEYS = Object.freeze([
+  'dataFetchMs',
+  'ruleEvalMs',
+  'actionApplyMs',
+  'curtailmentMs'
+]);
+
+function createEmptyPhaseTimings() {
+  return {
+    dataFetchMs: 0,
+    ruleEvalMs: 0,
+    actionApplyMs: 0,
+    curtailmentMs: 0
+  };
+}
+
+function sanitizePhaseTimingSample(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const out = createEmptyPhaseTimings();
+  for (const key of PHASE_TIMING_KEYS) {
+    out[key] = Math.max(0, toFiniteNumber(source[key], 0));
+  }
+  return out;
+}
+
+function readPhaseTimingsFromCycleResult(cycleResult) {
+  return sanitizePhaseTimingSample(cycleResult?.result?.phaseTimingsMs);
+}
+
+function readTelemetryFromCycleResult(cycleResult) {
+  const telemetry = cycleResult?.result?.telemetry;
+  const pauseReason = telemetry && telemetry.pauseReason
+    ? String(telemetry.pauseReason)
+    : null;
+  const status = telemetry && telemetry.status
+    ? String(telemetry.status)
+    : 'unknown';
+  const ageMs = toFiniteNumber(telemetry?.ageMs, NaN);
+  return {
+    ageMs: Number.isFinite(ageMs) ? Math.max(0, ageMs) : NaN,
+    status,
+    pauseReason
+  };
+}
+
 function createLockRef(db, userId) {
   return db.collection('users').doc(userId).collection('automation').doc('lock');
 }
@@ -422,6 +475,27 @@ function classifyFailureType(error, cycleResult) {
   return 'unknown_error';
 }
 
+function computePercentile(sortedValues, percentile) {
+  const safeSortedValues = Array.isArray(sortedValues) ? sortedValues : [];
+  if (!safeSortedValues.length) {
+    return 0;
+  }
+  if (safeSortedValues.length === 1) {
+    return safeSortedValues[0];
+  }
+  const boundedPercentile = Math.max(0, Math.min(1, toFiniteNumber(percentile, 0)));
+  const rank = boundedPercentile * (safeSortedValues.length - 1);
+  const lowerIndex = Math.floor(rank);
+  const upperIndex = Math.ceil(rank);
+  if (lowerIndex === upperIndex) {
+    return safeSortedValues[lowerIndex];
+  }
+  const lowerValue = safeSortedValues[lowerIndex];
+  const upperValue = safeSortedValues[upperIndex];
+  const interpolation = rank - lowerIndex;
+  return lowerValue + ((upperValue - lowerValue) * interpolation);
+}
+
 function buildDurationStats(values) {
   const safeValues = (Array.isArray(values) ? values : [])
     .map((value) => toFiniteNumber(value, NaN))
@@ -431,7 +505,9 @@ function buildDurationStats(values) {
       avgMs: 0,
       count: 0,
       maxMs: 0,
-      minMs: 0
+      minMs: 0,
+      p95Ms: 0,
+      p99Ms: 0
     };
   }
 
@@ -443,13 +519,51 @@ function buildDurationStats(values) {
     if (value < min) min = value;
     if (value > max) max = value;
   }
+  const sortedValues = safeValues.slice().sort((a, b) => a - b);
 
   return {
     avgMs: Math.round(sum / safeValues.length),
     count: safeValues.length,
     maxMs: Math.round(max),
-    minMs: Math.round(min)
+    minMs: Math.round(min),
+    p95Ms: Math.round(computePercentile(sortedValues, 0.95)),
+    p99Ms: Math.round(computePercentile(sortedValues, 0.99))
   };
+}
+
+function buildPhaseTimingStats(entries) {
+  const safeEntries = Array.isArray(entries) ? entries : [];
+  const executedEntries = safeEntries.filter((entry) => entry && entry.executed === true);
+  const stats = {};
+  for (const phaseKey of PHASE_TIMING_KEYS) {
+    const phaseValues = executedEntries.map((entry) => toFiniteNumber(entry.phaseTimingsMs?.[phaseKey], NaN));
+    stats[phaseKey] = buildDurationStats(phaseValues);
+  }
+  return stats;
+}
+
+function buildSlowCycleSamples(entries, limit = 3) {
+  const safeEntries = Array.isArray(entries) ? entries : [];
+  return safeEntries
+    .filter((entry) => entry && entry.executed === true)
+    .map((entry) => ({
+      userId: entry.userId || null,
+      cycleKey: entry.cycleKey || null,
+      success: entry.success === true,
+      failureType: entry.failureType || null,
+      queueLagMs: Math.max(0, toFiniteNumber(entry.queueLagMs, 0)),
+      cycleDurationMs: Math.max(0, toFiniteNumber(entry.cycleDurationMs, 0)),
+      retriesUsed: Math.max(0, toFiniteNumber(entry.retriesUsed, 0)),
+      startedAtMs: toFiniteNumber(entry.startedAtMs, 0),
+      completedAtMs: toFiniteNumber(entry.completedAtMs, 0)
+    }))
+    .filter((entry) => entry.cycleDurationMs > 0)
+    .sort((a, b) => b.cycleDurationMs - a.cycleDurationMs)
+    .slice(0, Math.max(1, Math.floor(toFiniteNumber(limit, 3))))
+    .map((entry, index) => ({
+      rank: index + 1,
+      ...entry
+    }));
 }
 
 function tallyFailureTypes(entries) {
@@ -461,6 +575,17 @@ function tallyFailureTypes(entries) {
     }
   }
   return failureByType;
+}
+
+function tallyTelemetryPauseReasons(entries) {
+  const pauseReasons = {};
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (!entry || entry.executed !== true) continue;
+    const reason = entry.telemetryPauseReason ? String(entry.telemetryPauseReason).trim() : '';
+    if (!reason) continue;
+    pauseReasons[reason] = (pauseReasons[reason] || 0) + 1;
+  }
+  return pauseReasons;
 }
 
 async function invokeAutomationCycleHandler(options = {}) {
@@ -511,6 +636,8 @@ async function runCycleWithRetry(options = {}) {
       userId
     });
     if (invokeResult.success) {
+      const phaseTimingsMs = readPhaseTimingsFromCycleResult(invokeResult.cycleResult);
+      const telemetry = readTelemetryFromCycleResult(invokeResult.cycleResult);
       if (invokeResult.cycleResult?.result?.triggered) {
         logger.log(`[Scheduler] User ${userId}: Rule '${invokeResult.cycleResult.result.rule?.name}' triggered`);
       } else if (invokeResult.cycleResult?.result?.skipped) {
@@ -521,7 +648,11 @@ async function runCycleWithRetry(options = {}) {
         attempts,
         cycleResult: invokeResult.cycleResult,
         durationMs: Date.now() - runStartMs,
-        failureType: null
+        failureType: null,
+        phaseTimingsMs,
+        telemetryAgeMs: telemetry.ageMs,
+        telemetryStatus: telemetry.status,
+        telemetryPauseReason: telemetry.pauseReason
       };
     }
 
@@ -536,7 +667,11 @@ async function runCycleWithRetry(options = {}) {
         cycleResult: lastCycleResult,
         error: lastError,
         durationMs: Date.now() - runStartMs,
-        failureType: classifyFailureType(lastError, lastCycleResult)
+        failureType: classifyFailureType(lastError, lastCycleResult),
+        phaseTimingsMs: readPhaseTimingsFromCycleResult(lastCycleResult),
+        telemetryAgeMs: readTelemetryFromCycleResult(lastCycleResult).ageMs,
+        telemetryStatus: readTelemetryFromCycleResult(lastCycleResult).status,
+        telemetryPauseReason: readTelemetryFromCycleResult(lastCycleResult).pauseReason
       };
     }
 
@@ -556,7 +691,11 @@ async function runCycleWithRetry(options = {}) {
     cycleResult: lastCycleResult,
     error: lastError || new Error('Unknown scheduler retry failure'),
     durationMs: Date.now() - runStartMs,
-    failureType: classifyFailureType(lastError, lastCycleResult)
+    failureType: classifyFailureType(lastError, lastCycleResult),
+    phaseTimingsMs: readPhaseTimingsFromCycleResult(lastCycleResult),
+    telemetryAgeMs: readTelemetryFromCycleResult(lastCycleResult).ageMs,
+    telemetryStatus: readTelemetryFromCycleResult(lastCycleResult).status,
+    telemetryPauseReason: readTelemetryFromCycleResult(lastCycleResult).pauseReason
   };
 }
 
@@ -588,6 +727,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
 
   const schedulerStartTime = Date.now();
   const schedId = `${schedulerStartTime}_${Math.random().toString(36).slice(2, 11)}`;
+  const workerId = resolveSchedulerWorkerId();
   logger.log(`[Scheduler] ========== Background check ${schedId} START ==========`);
 
   try {
@@ -673,54 +813,79 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
     let skippedDisabled = 0;
     let skippedTooSoon = 0;
     const now = Date.now();
+    const cycleEligibility = await mapWithConcurrency(
+      userDataAll,
+      schedulerOptions.maxConcurrentUsers,
+      async (userData) => {
+        if (!userData.ready) {
+          return { reason: 'disabled_or_invalid' };
+        }
 
-    for (const userData of userDataAll) {
-      if (!userData.ready) {
+        const { userId, state, userConfig } = userData;
+        const userIntervalMs = userConfig?.automation?.intervalMs || defaultIntervalMs;
+        const lastCheck = state?.lastCheck || 0;
+        if ((now - lastCheck) < userIntervalMs) {
+          return { reason: 'too_soon' };
+        }
+
+        try {
+          const userRules = await getUserRules(userId);
+          const blackoutWindows = userRules?.blackoutWindows || [];
+          let inBlackout = false;
+          if (Array.isArray(blackoutWindows) && blackoutWindows.length > 0) {
+            const userTz = userConfig?.timezone || 'UTC';
+            const userNow = getTimeInTimezone(userTz);
+            const dayOfWeek = userNow.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
+            const currentTime = userNow.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+            for (const window of blackoutWindows) {
+              if (window.enabled === false) continue;
+              const applicableDays = window.days || [];
+              if (applicableDays.length > 0 && !applicableDays.includes(dayOfWeek)) {
+                continue;
+              }
+              if (isTimeInRange(currentTime, window.start, window.end)) {
+                inBlackout = true;
+                break;
+              }
+            }
+          }
+
+          if (inBlackout) {
+            return { reason: 'disabled_or_invalid' };
+          }
+        } catch (rulesError) {
+          warnLog(
+            logger,
+            `[Scheduler] User ${userId}: failed to load/evaluate blackout rules: ${rulesError.message}`
+          );
+          return { reason: 'disabled_or_invalid' };
+        }
+
+        return {
+          reason: 'candidate',
+          value: {
+            userId,
+            cycleKey: buildCycleKey(userId, now, userIntervalMs),
+            state,
+            userConfig
+          }
+        };
+      }
+    );
+
+    for (const entry of cycleEligibility) {
+      if (!entry || entry.reason === 'disabled_or_invalid') {
         skippedDisabled++;
         continue;
       }
-
-      const { userId, state, userConfig } = userData;
-      const userIntervalMs = userConfig?.automation?.intervalMs || defaultIntervalMs;
-      const lastCheck = state?.lastCheck || 0;
-      if ((now - lastCheck) < userIntervalMs) {
+      if (entry.reason === 'too_soon') {
         skippedTooSoon++;
         continue;
       }
-
-      const userRules = await getUserRules(userId);
-      const blackoutWindows = userRules?.blackoutWindows || [];
-      let inBlackout = false;
-      if (Array.isArray(blackoutWindows) && blackoutWindows.length > 0) {
-        const userTz = userConfig?.timezone || 'UTC';
-        const userNow = getTimeInTimezone(userTz);
-        const dayOfWeek = userNow.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
-        const currentTime = userNow.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-
-        for (const window of blackoutWindows) {
-          if (window.enabled === false) continue;
-          const applicableDays = window.days || [];
-          if (applicableDays.length > 0 && !applicableDays.includes(dayOfWeek)) {
-            continue;
-          }
-          if (isTimeInRange(currentTime, window.start, window.end)) {
-            inBlackout = true;
-            break;
-          }
-        }
+      if (entry.reason === 'candidate' && entry.value) {
+        cycleCandidates.push(entry.value);
       }
-
-      if (inBlackout) {
-        skippedDisabled++;
-        continue;
-      }
-
-      cycleCandidates.push({
-        userId,
-        cycleKey: buildCycleKey(userId, now, userIntervalMs),
-        state,
-        userConfig
-      });
     }
 
     let cyclesRun = 0;
@@ -731,7 +896,11 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
     let totalRetries = 0;
     let queueLagStats = buildDurationStats([]);
     let cycleDurationStats = buildDurationStats([]);
+    let phaseTimingStats = buildPhaseTimingStats([]);
+    let telemetryAgeStats = buildDurationStats([]);
     let failureByType = {};
+    let telemetryPauseReasons = {};
+    let slowCycleSamples = [];
     if (cycleCandidates.length > 0) {
       const cycleResults = await mapWithConcurrency(
         cycleCandidates,
@@ -749,7 +918,12 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
           });
           if (!lockHandle || lockHandle.acquired !== true) {
             logger.log(`[Scheduler] User ${userId}: skipped due to active lock`);
+            const completedAtMs = Date.now();
             return {
+              userId,
+              cycleKey,
+              startedAtMs: cycleStartMs,
+              completedAtMs,
               executed: false,
               success: true,
               skippedLocked: 1,
@@ -758,7 +932,12 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               retriesUsed: 0,
               failureType: null,
               queueLagMs,
-              cycleDurationMs: Date.now() - cycleStartMs
+              cycleDurationMs: completedAtMs - cycleStartMs,
+              attempts: 0,
+              phaseTimingsMs: createEmptyPhaseTimings(),
+              telemetryAgeMs: NaN,
+              telemetryStatus: 'unknown',
+              telemetryPauseReason: null
             };
           }
 
@@ -771,7 +950,12 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
           });
           if (!shouldRun) {
             logger.log(`[Scheduler] User ${userId}: skipped due to idempotency key ${cycleKey}`);
+            const completedAtMs = Date.now();
             return {
+              userId,
+              cycleKey,
+              startedAtMs: cycleStartMs,
+              completedAtMs,
               executed: false,
               success: true,
               skippedLocked: 0,
@@ -780,7 +964,12 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               retriesUsed: 0,
               failureType: null,
               queueLagMs,
-              cycleDurationMs: Date.now() - cycleStartMs
+              cycleDurationMs: completedAtMs - cycleStartMs,
+              attempts: 0,
+              phaseTimingsMs: createEmptyPhaseTimings(),
+              telemetryAgeMs: NaN,
+              telemetryStatus: 'unknown',
+              telemetryPauseReason: null
             };
           }
 
@@ -817,7 +1006,12 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
                 },
                 userId
             });
+            const completedAtMs = Date.now();
             return {
+              userId,
+              cycleKey,
+              startedAtMs: cycleStartMs,
+              completedAtMs,
               executed: true,
               success: false,
               skippedLocked: 0,
@@ -826,11 +1020,21 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
               retriesUsed: Math.max(0, cycleExecution.attempts - 1),
               failureType: cycleExecution.failureType || 'unknown_error',
               queueLagMs,
-              cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, Date.now() - cycleStartMs)
+              cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, completedAtMs - cycleStartMs),
+              attempts: Math.max(1, toFiniteNumber(cycleExecution.attempts, 1)),
+              phaseTimingsMs: sanitizePhaseTimingSample(cycleExecution.phaseTimingsMs),
+              telemetryAgeMs: toFiniteNumber(cycleExecution.telemetryAgeMs, NaN),
+              telemetryStatus: cycleExecution.telemetryStatus || 'unknown',
+              telemetryPauseReason: cycleExecution.telemetryPauseReason || null
             };
           }
 
+          const completedAtMs = Date.now();
           return {
+            userId,
+            cycleKey,
+            startedAtMs: cycleStartMs,
+            completedAtMs,
             executed: true,
             success: true,
             skippedLocked: 0,
@@ -839,11 +1043,21 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
             retriesUsed: Math.max(0, cycleExecution.attempts - 1),
             failureType: null,
             queueLagMs,
-            cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, Date.now() - cycleStartMs)
+            cycleDurationMs: toFiniteNumber(cycleExecution.durationMs, completedAtMs - cycleStartMs),
+            attempts: Math.max(1, toFiniteNumber(cycleExecution.attempts, 1)),
+            phaseTimingsMs: sanitizePhaseTimingSample(cycleExecution.phaseTimingsMs),
+            telemetryAgeMs: toFiniteNumber(cycleExecution.telemetryAgeMs, NaN),
+            telemetryStatus: cycleExecution.telemetryStatus || 'unknown',
+            telemetryPauseReason: cycleExecution.telemetryPauseReason || null
           };
         } catch (error) {
           logger.error(`[Scheduler] User ${userId}: Exception: ${error.message}`);
+          const completedAtMs = Date.now();
           return {
+            userId,
+            cycleKey,
+            startedAtMs: cycleStartMs,
+            completedAtMs,
             executed: false,
             success: false,
             skippedLocked: 0,
@@ -852,7 +1066,12 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
             retriesUsed: 0,
             failureType: classifyFailureType(error, null),
             queueLagMs,
-            cycleDurationMs: Date.now() - cycleStartMs
+            cycleDurationMs: completedAtMs - cycleStartMs,
+            attempts: 0,
+            phaseTimingsMs: createEmptyPhaseTimings(),
+            telemetryAgeMs: NaN,
+            telemetryStatus: 'unknown',
+            telemetryPauseReason: null
           };
         } finally {
           try {
@@ -876,12 +1095,17 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
       totalRetries = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.retriesUsed, 0), 0);
       queueLagStats = buildDurationStats(cycleResults.map((entry) => entry.queueLagMs));
       cycleDurationStats = buildDurationStats(cycleResults.map((entry) => entry.cycleDurationMs));
+      phaseTimingStats = buildPhaseTimingStats(cycleResults);
+      telemetryAgeStats = buildDurationStats(cycleResults.map((entry) => entry.telemetryAgeMs));
       failureByType = tallyFailureTypes(cycleResults);
+      telemetryPauseReasons = tallyTelemetryPauseReasons(cycleResults);
+      slowCycleSamples = buildSlowCycleSamples(cycleResults);
     }
 
     const duration = Date.now() - schedulerStartTime;
     const schedulerMetrics = {
       schedulerId: schedId,
+      workerId,
       startedAtMs: schedulerStartTime,
       completedAtMs: schedulerStartTime + duration,
       durationMs: duration,
@@ -893,20 +1117,24 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
       retries: totalRetries,
       queueLagMs: queueLagStats,
       cycleDurationMs: cycleDurationStats,
+      phaseTimingsMs: phaseTimingStats,
+      telemetryAgeMs: telemetryAgeStats,
       skipped: {
         disabledOrBlackout: skippedDisabled,
         idempotent: skippedIdempotent,
         locked: skippedLocked,
         tooSoon: skippedTooSoon
       },
-      failureByType
+      failureByType,
+      telemetryPauseReasons,
+      slowCycleSamples
     };
     logger.log(`[Scheduler] ========== Background check ${schedId} COMPLETE ==========`);
     logger.log(
       `[Scheduler] ${totalEnabled} enabled users: ${cyclesRun} cycles, ${skippedTooSoon} too soon, ${skippedDisabled} skipped, ${skippedLocked} locked, ${skippedIdempotent} idempotent, ${errors} errors, ${deadLetters} dead-letter, ${totalRetries} retries (${duration}ms)`
     );
     logger.log(
-      `[SchedulerMetrics] queueLag avg=${queueLagStats.avgMs}ms max=${queueLagStats.maxMs}ms; cycleDuration avg=${cycleDurationStats.avgMs}ms max=${cycleDurationStats.maxMs}ms; failureTypes=${JSON.stringify(failureByType)}`
+      `[SchedulerMetrics] queueLag avg=${queueLagStats.avgMs}ms max=${queueLagStats.maxMs}ms; cycleDuration avg=${cycleDurationStats.avgMs}ms max=${cycleDurationStats.maxMs}ms; telemetryAge avg=${telemetryAgeStats.avgMs}ms max=${telemetryAgeStats.maxMs}ms; failureTypes=${JSON.stringify(failureByType)}`
     );
     if (typeof emitSchedulerMetrics === 'function') {
       try {

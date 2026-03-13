@@ -58,29 +58,46 @@
 
         function applyProviderSelection(provider) {
             const foxessFields    = document.getElementById('foxessFields');
+            const alphaessFields  = document.getElementById('alphaessFields');
             const sungrowFields   = document.getElementById('sungrowFields');
             const sigenenergyFields = document.getElementById('sigenenergyFields');
             const foxessOption    = document.getElementById('providerFoxessOption');
+            const alphaessOption  = document.getElementById('providerAlphaEssOption');
             const sungrowOption   = document.getElementById('providerSungrowOption');
             const sigenenergyOption = document.getElementById('providerSigenEnergyOption');
             if (provider === 'sungrow') {
                 foxessFields.style.display    = 'none';
+                alphaessFields.style.display  = 'none';
                 sungrowFields.style.display   = '';
                 sigenenergyFields.style.display = 'none';
                 foxessOption.classList.remove('provider-option--selected');
+                if (alphaessOption) alphaessOption.classList.remove('provider-option--selected');
                 sungrowOption.classList.add('provider-option--selected');
+                if (sigenenergyOption) sigenenergyOption.classList.remove('provider-option--selected');
+            } else if (provider === 'alphaess') {
+                foxessFields.style.display    = 'none';
+                alphaessFields.style.display  = '';
+                sungrowFields.style.display   = 'none';
+                sigenenergyFields.style.display = 'none';
+                foxessOption.classList.remove('provider-option--selected');
+                if (alphaessOption) alphaessOption.classList.add('provider-option--selected');
+                sungrowOption.classList.remove('provider-option--selected');
                 if (sigenenergyOption) sigenenergyOption.classList.remove('provider-option--selected');
             } else if (provider === 'sigenergy') {
                 foxessFields.style.display    = 'none';
+                alphaessFields.style.display  = 'none';
                 sungrowFields.style.display   = 'none';
                 sigenenergyFields.style.display = '';
                 foxessOption.classList.remove('provider-option--selected');
+                if (alphaessOption) alphaessOption.classList.remove('provider-option--selected');
                 sungrowOption.classList.remove('provider-option--selected');
                 if (sigenenergyOption) sigenenergyOption.classList.add('provider-option--selected');
             } else {
                 foxessFields.style.display    = '';
+                alphaessFields.style.display  = 'none';
                 sungrowFields.style.display   = 'none';
                 sigenenergyFields.style.display = 'none';
+                if (alphaessOption) alphaessOption.classList.remove('provider-option--selected');
                 sungrowOption.classList.remove('provider-option--selected');
                 if (sigenenergyOption) sigenenergyOption.classList.remove('provider-option--selected');
                 foxessOption.classList.add('provider-option--selected');
@@ -161,6 +178,28 @@
                     sungrow_username:  sungrowUsername,
                     sungrow_password:  sungrowPassword
                 };
+            } else if (provider === 'alphaess') {
+                const alphaessSystemSn = sanitizeInput(document.getElementById('alphaessSystemSn').value);
+                const alphaessAppId = sanitizeInput(document.getElementById('alphaessAppId').value);
+                const alphaessAppSecret = sanitizeInput(document.getElementById('alphaessAppSecret').value);
+
+                if (!alphaessSystemSn) {
+                    setFieldError('alphaessSystemSn', 'AlphaESS system SN is required');
+                    return;
+                }
+                if (!alphaessAppId) {
+                    setFieldError('alphaessAppId', 'AlphaESS App ID is required');
+                    return;
+                }
+                if (!alphaessAppSecret) {
+                    setFieldError('alphaessAppSecret', 'AlphaESS App Secret is required');
+                    return;
+                }
+                requestBody = {
+                    alphaess_system_sn: alphaessSystemSn,
+                    alphaess_app_id: alphaessAppId,
+                    alphaess_app_secret: alphaessAppSecret
+                };
             } else {
                 const deviceSn    = sanitizeInput(document.getElementById('deviceSn').value);
                 const foxessToken = sanitizeInput(document.getElementById('foxessToken').value);
@@ -220,6 +259,9 @@
                                 'device_sn':           'deviceSn',
                                 'foxess_token':        'foxessToken',
                                 'amber_api_key':       'amberApiKey',
+                                'alphaess_system_sn':  'alphaessSystemSn',
+                                'alphaess_app_id':     'alphaessAppId',
+                                'alphaess_app_secret': 'alphaessAppSecret',
                                 'sungrow_device_sn':   'sungrowDeviceSn',
                                 'sungrow_username':    'sungrowUsername',
                                 'sungrow_password':    'sungrowPassword',
@@ -233,7 +275,11 @@
                             }
                         });
                     } else {
-                        const firstField = provider === 'sungrow' ? 'sungrowDeviceSn' : 'deviceSn';
+                        const firstField = provider === 'sigenergy'
+                            ? 'sigenenergyUsername'
+                            : (provider === 'sungrow'
+                                ? 'sungrowDeviceSn'
+                                : (provider === 'alphaess' ? 'alphaessSystemSn' : 'deviceSn'));
                         setFieldError(firstField, data?.msg || data?.error || 'Validation failed. Please check your credentials.');
                     }
                     submitBtn.disabled = false;
@@ -245,6 +291,10 @@
                 if (provider === 'sigenergy') {
                     setFieldSuccess('sigenenergyUsername');
                     setFieldSuccess('sigenenergyPassword');
+                } else if (provider === 'alphaess') {
+                    setFieldSuccess('alphaessSystemSn');
+                    setFieldSuccess('alphaessAppId');
+                    setFieldSuccess('alphaessAppSecret');
                 } else if (provider === 'sungrow') {
                     setFieldSuccess('sungrowDeviceSn');
                     setFieldSuccess('sungrowUsername');
@@ -263,6 +313,9 @@
                 if (provider === 'sigenergy') {
                     const username = sanitizeInput(document.getElementById('sigenenergyUsername').value);
                     localStorage.setItem('sigenergy_setup_username', username);
+                } else if (provider === 'alphaess') {
+                    const sn = sanitizeInput(document.getElementById('alphaessSystemSn').value);
+                    localStorage.setItem('alphaess_setup_system_sn', sn);
                 } else if (provider === 'sungrow') {
                     const sn = sanitizeInput(document.getElementById('sungrowDeviceSn').value);
                     localStorage.setItem('sungrow_setup_device_sn', sn);
@@ -284,7 +337,11 @@
 
             } catch (error) {
                 console.error('Validation error:', error);
-                const firstField = provider === 'sigenergy' ? 'sigenenergyUsername' : (provider === 'sungrow' ? 'sungrowDeviceSn' : 'deviceSn');
+                const firstField = provider === 'sigenergy'
+                    ? 'sigenenergyUsername'
+                    : (provider === 'sungrow'
+                        ? 'sungrowDeviceSn'
+                        : (provider === 'alphaess' ? 'alphaessSystemSn' : 'deviceSn'));
                 // Only expose the message if it looks like a user-facing API/network error,
                 // not an internal TypeError or similar programming error.
                 const isInternalError = error instanceof TypeError || error instanceof ReferenceError;
@@ -343,6 +400,16 @@
                 }
             }
 
+            // AlphaESS key issues
+            if (fieldId === 'alphaessAppId' || fieldId === 'alphaessAppSecret') {
+                if (msg.includes('sign check error') || msg.includes('signature')) {
+                    return 'AlphaESS app credentials failed signature check. Confirm App ID/App Secret from the AlphaESS OpenAPI developer portal.';
+                }
+                if (msg.includes('appid') || msg.includes('secret') || msg.includes('auth')) {
+                    return 'AlphaESS App ID/App Secret is invalid or not authorized.';
+                }
+            }
+
             // Amber key issues
             if (fieldId === 'amberApiKey') {
                 if (msg.includes('401') || msg.includes('unauthori') || (msg.includes('invalid') && msg.includes('key'))) {
@@ -391,6 +458,18 @@
                 inverterValid = !!(sgSn?.value.trim()   && !sgSn.closest('.form-group')?.classList.contains('error') &&
                                    sgUser?.value.trim() && !sgUser.closest('.form-group')?.classList.contains('error') &&
                                    sgPass?.value.trim() && !sgPass.closest('.form-group')?.classList.contains('error'));
+            } else if (provider === 'alphaess') {
+                const alphaSn = document.getElementById('alphaessSystemSn');
+                const alphaId = document.getElementById('alphaessAppId');
+                const alphaSecret = document.getElementById('alphaessAppSecret');
+                inverterValid = !!(alphaSn?.value.trim() && !alphaSn.closest('.form-group')?.classList.contains('error') &&
+                                   alphaId?.value.trim() && !alphaId.closest('.form-group')?.classList.contains('error') &&
+                                   alphaSecret?.value.trim() && !alphaSecret.closest('.form-group')?.classList.contains('error'));
+            } else if (provider === 'sigenergy') {
+                const sigenUser = document.getElementById('sigenenergyUsername');
+                const sigenPass = document.getElementById('sigenenergyPassword');
+                inverterValid = !!(sigenUser?.value.trim() && !sigenUser.closest('.form-group')?.classList.contains('error') &&
+                                   sigenPass?.value.trim() && !sigenPass.closest('.form-group')?.classList.contains('error'));
             } else {
                 const deviceSn    = document.getElementById('deviceSn');
                 const foxessToken = document.getElementById('foxessToken');
@@ -447,6 +526,18 @@
             clearFieldState('foxessToken');
             updateProgress();
         });
+        document.getElementById('alphaessSystemSn').addEventListener('input', () => {
+            clearFieldState('alphaessSystemSn');
+            updateProgress();
+        });
+        document.getElementById('alphaessAppId').addEventListener('input', () => {
+            clearFieldState('alphaessAppId');
+            updateProgress();
+        });
+        document.getElementById('alphaessAppSecret').addEventListener('input', () => {
+            clearFieldState('alphaessAppSecret');
+            updateProgress();
+        });
         document.getElementById('sungrowDeviceSn').addEventListener('input', () => {
             clearFieldState('sungrowDeviceSn');
             updateProgress();
@@ -457,6 +548,14 @@
         });
         document.getElementById('sungrowPassword').addEventListener('input', () => {
             clearFieldState('sungrowPassword');
+            updateProgress();
+        });
+        document.getElementById('sigenenergyUsername').addEventListener('input', () => {
+            clearFieldState('sigenenergyUsername');
+            updateProgress();
+        });
+        document.getElementById('sigenenergyPassword').addEventListener('input', () => {
+            clearFieldState('sigenenergyPassword');
             updateProgress();
         });
         document.getElementById('weatherPlace').addEventListener('input', () => {

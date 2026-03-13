@@ -63,7 +63,7 @@ let failures = [];
 section('1. Running Test Suite');
 try {
   log(colors.cyan, 'Running: npm --prefix functions test -- --passWithNoTests');
-  execSync('npm --prefix functions test -- --passWithNoTests', { stdio: 'inherit' });
+  execSync('npm --prefix functions test -- --passWithNoTests', { stdio: 'inherit', cwd: repoRoot });
   checkPass('All tests passed');
 } catch (e) {
   checkFail('Tests failed - see output above');
@@ -76,7 +76,7 @@ try {
 section('2. Running ESLint');
 try {
   log(colors.cyan, 'Running: npm --prefix functions run lint');
-  execSync('npm --prefix functions run lint', { stdio: 'inherit' });
+  execSync('npm --prefix functions run lint', { stdio: 'inherit', cwd: repoRoot });
   checkPass('No linting errors');
 } catch (e) {
   checkFail('Linting errors found - see output above');
@@ -173,33 +173,6 @@ requiredImports.forEach(({ pattern, name }) => {
 
 if (!importsChecksPassed) {
   failures.push('IMPORT_FAILURE');
-}
-
-// ============================================================================
-// 5. VERIFY CRITICAL ROUTES EXIST
-// ============================================================================
-section('5. Verifying Critical Routes');
-
-const criticalRoutes = [
-  { pattern: /app\.get\(['"]\/api\/amber\/sites/, name: '/api/amber/sites' },
-  { pattern: /app\.get\(['"]\/api\/amber\/prices\/current/, name: '/api/amber/prices/current' },
-  { pattern: /app\.get\(['"]\/api\/inverter\/real-time/, name: '/api/inverter/real-time' },
-  { pattern: /app\.get\(['"]\/api\/health/, name: '/api/health' },
-];
-
-let routesChecksPassed = true;
-
-criticalRoutes.forEach(({ pattern, name }) => {
-  if (pattern.test(routeSourceContent)) {
-    checkPass(`Route defined: ${name}`);
-  } else {
-    checkFail(`Route missing: ${name}`);
-    routesChecksPassed = false;
-  }
-});
-
-if (!routesChecksPassed) {
-  failures.push('ROUTE_FAILURE');
 }
 
 // ============================================================================

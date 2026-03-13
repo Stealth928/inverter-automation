@@ -1,5 +1,22 @@
 'use strict';
 
+const WRITE_ONLY_SECRET_FIELDS = Object.freeze([
+  'alphaessAppSecret',
+  'sungrowPassword',
+  'sigenPassword'
+]);
+
+function sanitizeConfigForClient(userConfig) {
+  if (!userConfig || typeof userConfig !== 'object') return {};
+  const sanitized = { ...userConfig };
+  WRITE_ONLY_SECRET_FIELDS.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(sanitized, field)) {
+      delete sanitized[field];
+    }
+  });
+  return sanitized;
+}
+
 function registerConfigReadStatusRoutes(app, deps = {}) {
   const authenticateUser = deps.authenticateUser;
   const db = deps.db;
@@ -83,10 +100,12 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
         }
       };
 
+      const configResponse = sanitizeConfigForClient(userConfig);
+
       // Set cache headers: revalidate on every request but allow 304 Not Modified responses
       // This means browser will check with server each time, but gets instant 304 if unchanged
       res.set('Cache-Control', 'no-cache, must-revalidate');
-      res.json({ errno: 0, result: { ...userConfig, config } });
+      res.json({ errno: 0, result: { ...configResponse, config } });
     } catch (error) {
       console.error('[Config] Error getting user config:', error.message);
       // Return safe empty config instead of 500 error

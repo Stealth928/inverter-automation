@@ -166,6 +166,59 @@ describe('config mutation route module', () => {
     expect(savedConfig.preferences.weatherPlace).toBe('Melbourne');
   });
 
+  test('config save strips write-only provider secrets from persisted config', async () => {
+    const deps = buildDeps({
+      getUserConfig: jest.fn(async () => ({
+        location: 'Sydney',
+        alphaessAppSecret: 'SECRET-OLD',
+        sungrowPassword: 'SG-PASS',
+        sigenPassword: 'SIG-PASS'
+      }))
+    });
+    deps.deepMerge.mockReturnValue({
+      location: 'Brisbane',
+      preferences: { weatherPlace: 'Brisbane' },
+      timezone: 'Australia/Brisbane',
+      alphaessAppSecret: 'SECRET-NEW',
+      sungrowPassword: 'SG-PASS-NEW',
+      sigenPassword: 'SIG-PASS-NEW'
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-config' };
+        next();
+      });
+      registerConfigMutationRoutes(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/config')
+      .send({
+        config: {
+          browserTimezone: 'Australia/Brisbane',
+          location: 'Brisbane'
+        }
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result).toEqual({
+      location: 'Brisbane',
+      preferences: { weatherPlace: 'Brisbane' },
+      timezone: 'Australia/Brisbane'
+    });
+    expect(deps.setUserConfig).toHaveBeenCalledWith(
+      'u-config',
+      {
+        location: 'Brisbane',
+        preferences: { weatherPlace: 'Brisbane' },
+        timezone: 'Australia/Brisbane'
+      },
+      { merge: true }
+    );
+  });
+
   test('clear credentials route enforces authenticate middleware', async () => {
     const deps = buildDeps({
       authenticateUser: (req, res, next) => {
@@ -214,6 +267,10 @@ describe('config mutation route module', () => {
     expect(response.body).toEqual({ errno: 0, msg: 'Credentials cleared successfully' });
     expect(deps.updateUserConfig).toHaveBeenCalledWith('u-config', {
       amberApiKey: '__DELETE__',
+      alphaessAppId: '__DELETE__',
+      alphaessAppSecret: '__DELETE__',
+      alphaessSysSn: '__DELETE__',
+      alphaessSystemSn: '__DELETE__',
       deviceProvider: 'foxess',
       deviceSn: '__DELETE__',
       foxessToken: '__DELETE__',

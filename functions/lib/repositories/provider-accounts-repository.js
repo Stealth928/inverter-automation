@@ -18,7 +18,8 @@ const PROVIDER_TYPES = Object.freeze({
   AMBER: 'amber',
   FOXESS: 'foxess',
   SUNGROW: 'sungrow',
-  SIGENERGY: 'sigenergy'
+  SIGENERGY: 'sigenergy',
+  ALPHAESS: 'alphaess'
 });
 
 function toSafeString(value) {
@@ -40,6 +41,10 @@ function deriveSungrowAccountId() {
 
 function deriveSigenEnergyAccountId() {
   return 'sigenergy_default';
+}
+
+function deriveAlphaEssAccountId() {
+  return 'alphaess_default';
 }
 
 /**
@@ -105,6 +110,21 @@ function buildLegacySigenEnergyAccount(userConfig) {
     defaultStationId: toSafeString(userConfig?.sigenStationId) || null,
     defaultDeviceSn:  toSafeString(userConfig?.sigenDeviceSn) || null,
     region:           toSafeString(userConfig?.sigenRegion) || 'apac',
+    _source: 'legacy-config'
+  };
+}
+
+/**
+ * Build a virtual alphaess providerAccount document from legacy flat config fields.
+ */
+function buildLegacyAlphaEssAccount(userConfig) {
+  const appId = toSafeString(userConfig?.alphaessAppId);
+  if (!appId) return null;
+  return {
+    id: deriveAlphaEssAccountId(),
+    providerType: PROVIDER_TYPES.ALPHAESS,
+    credentials: { appId },
+    defaultSystemSn: toSafeString(userConfig?.alphaessSystemSn) || null,
     _source: 'legacy-config'
   };
 }
@@ -293,6 +313,8 @@ function createProviderAccountsRepository(deps = {}) {
     if (sungrowAccount) legacyAccounts.push(sungrowAccount);
     const sigenEnergyAccount = buildLegacySigenEnergyAccount(userConfig);
     if (sigenEnergyAccount) legacyAccounts.push(sigenEnergyAccount);
+    const alphaEssAccount = buildLegacyAlphaEssAccount(userConfig);
+    if (alphaEssAccount) legacyAccounts.push(alphaEssAccount);
     return legacyAccounts;
   }
 
@@ -375,9 +397,11 @@ function createProviderAccountsRepository(deps = {}) {
 module.exports = {
   PROVIDER_TYPES,
   buildLegacyAmberAccount,
+  buildLegacyAlphaEssAccount,
   buildLegacyFoxessAccount,
   buildLegacySungrowAccount,
   buildLegacySigenEnergyAccount,
+  deriveAlphaEssAccountId,
   deriveSigenEnergyAccountId,
   createProviderAccountsRepository
 };

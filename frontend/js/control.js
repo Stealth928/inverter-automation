@@ -22,7 +22,7 @@
           if (socCard) socCard.style.display = 'none';
           if (fcCard) fcCard.style.display = 'none';
         }
-        if (provider === 'sigenergy') {
+        if (provider === 'sigenergy' || provider === 'alphaess') {
           // SigenEnergy does not support Backup work mode
           const backupOpt = document.querySelector('select[name="workMode"] option[data-foxess-sungrow-only]');
           if (backupOpt) backupOpt.remove();
@@ -357,7 +357,10 @@
         const dateObj = new Date(todayKey);
         const formatted = dateObj.toLocaleDateString('en-AU', { month: 'short', day: 'numeric', year: 'numeric' });
         document.getElementById('metricsDate').textContent = formatted;
-        document.getElementById('countFox').textContent = today.foxess ?? 0;
+        const inverterCount = (typeof getInverterApiCount === 'function')
+          ? getInverterApiCount(today)
+          : (today.inverter ?? today.foxess ?? 0);
+        document.getElementById('countFox').textContent = inverterCount;
         document.getElementById('countAmber').textContent = today.amber ?? 0;
         document.getElementById('countWeather').textContent = today.weather ?? 0;
       } catch (e) {

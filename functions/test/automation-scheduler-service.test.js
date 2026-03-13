@@ -121,7 +121,24 @@ describe('automation scheduler service', () => {
         res.json({ errno: 429, error: 'Too many requests' });
         return;
       }
-      res.json({ errno: 0, result: { skipped: true, reason: 'No rules configured' } });
+      res.json({
+        errno: 0,
+        result: {
+          skipped: true,
+          reason: 'stale_telemetry',
+          telemetry: {
+            status: 'paused',
+            pauseReason: 'stale_telemetry',
+            ageMs: 31 * 60 * 1000
+          },
+          phaseTimingsMs: {
+            dataFetchMs: 9,
+            ruleEvalMs: 4,
+            actionApplyMs: 2,
+            curtailmentMs: 1
+          }
+        }
+      });
     });
     const { deps } = buildSchedulerDeps({
       automationCycleHandler,
@@ -149,12 +166,51 @@ describe('automation scheduler service', () => {
     expect(metrics.failureByType).toEqual(expect.objectContaining({
       api_rate_limit: 1
     }));
+    expect(typeof metrics.workerId).toBe('string');
+    expect(metrics.workerId.length).toBeGreaterThan(0);
     expect(metrics.queueLagMs).toEqual(expect.objectContaining({
-      count: 2
+      count: 2,
+      p95Ms: expect.any(Number),
+      p99Ms: expect.any(Number)
     }));
     expect(metrics.cycleDurationMs).toEqual(expect.objectContaining({
-      count: 2
+      count: 2,
+      p95Ms: expect.any(Number),
+      p99Ms: expect.any(Number)
     }));
+    expect(metrics.phaseTimingsMs).toEqual(expect.objectContaining({
+      dataFetchMs: expect.objectContaining({
+        count: 2,
+        maxMs: 9
+      }),
+      ruleEvalMs: expect.objectContaining({
+        count: 2,
+        maxMs: 4
+      }),
+      actionApplyMs: expect.objectContaining({
+        count: 2,
+        maxMs: 2
+      }),
+      curtailmentMs: expect.objectContaining({
+        count: 2,
+        maxMs: 1
+      })
+    }));
+    expect(metrics.telemetryAgeMs).toEqual(expect.objectContaining({
+      count: 1,
+      maxMs: 31 * 60 * 1000
+    }));
+    expect(metrics.telemetryPauseReasons).toEqual(expect.objectContaining({
+      stale_telemetry: 1
+    }));
+    expect(Array.isArray(metrics.slowCycleSamples)).toBe(true);
+    if (metrics.slowCycleSamples.length > 0) {
+      expect(metrics.slowCycleSamples[0]).toEqual(expect.objectContaining({
+        userId: expect.any(String),
+        cycleDurationMs: expect.any(Number),
+        queueLagMs: expect.any(Number)
+      }));
+    }
   });
 
   test('limits user cycle execution with bounded concurrency', async () => {
@@ -183,6 +239,35 @@ describe('automation scheduler service', () => {
 
     expect(automationCycleHandler).toHaveBeenCalledTimes(4);
     expect(maxInFlight).toBeLessThanOrEqual(2);
+  });
+
+  test('loads user blackout rules with bounded concurrency during candidate evaluation', async () => {
+    let inFlightRuleLoads = 0;
+    let maxInFlightRuleLoads = 0;
+    const getUserRules = jest.fn(async () => {
+      inFlightRuleLoads += 1;
+      maxInFlightRuleLoads = Math.max(maxInFlightRuleLoads, inFlightRuleLoads);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      inFlightRuleLoads -= 1;
+      return {};
+    });
+
+    const { deps } = buildSchedulerDeps({
+      getUserRules,
+      schedulerOptions: {
+        maxConcurrentUsers: 3,
+        retryAttempts: 1,
+        retryBaseDelayMs: 0,
+        retryJitterMs: 0
+      },
+      userIds: ['u-1', 'u-2', 'u-3', 'u-4', 'u-5', 'u-6']
+    });
+
+    await runAutomationSchedulerCycle({}, deps);
+
+    expect(getUserRules).toHaveBeenCalledTimes(6);
+    expect(maxInFlightRuleLoads).toBeGreaterThan(1);
+    expect(maxInFlightRuleLoads).toBeLessThanOrEqual(3);
   });
 
   test('retries transient failures and succeeds before dead-letter', async () => {

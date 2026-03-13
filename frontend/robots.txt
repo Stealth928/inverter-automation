@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Keep API endpoints and Firebase internal handlers out of crawl budget.
+Disallow: /api/
+Disallow: /__/
+
+Sitemap: https://socratesautomation.com/sitemap.xml

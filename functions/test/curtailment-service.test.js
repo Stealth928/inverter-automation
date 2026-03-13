@@ -211,4 +211,35 @@ describe('curtailment service', () => {
       threshold: 0
     });
   });
+
+  test('returns unsupported state and clears active flag for non-FoxESS providers', async () => {
+    const fixture = createServiceFixture({
+      initialState: { active: true, lastPrice: -5 },
+      getCurrentAmberPrices: () => ({ feedInPrice: -10 }),
+      now: () => 2026
+    });
+
+    const result = await fixture.service.checkAndApplyCurtailment('u-curtail', {
+      deviceProvider: 'alphaess',
+      alphaessSystemSn: 'ALPHA-CURTAIL-1',
+      curtailment: { enabled: true, priceThreshold: 0 }
+    }, [{ channelType: 'feedIn' }]);
+
+    expect(result).toEqual({
+      enabled: false,
+      triggered: false,
+      priceThreshold: null,
+      currentPrice: null,
+      action: 'unsupported_provider',
+      error: null,
+      stateChanged: true
+    });
+    expect(fixture.foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
+    expect(fixture.getState()).toEqual({
+      active: false,
+      disabledByProvider: 'alphaess',
+      lastDeactivated: 2026,
+      lastPrice: null
+    });
+  });
 });

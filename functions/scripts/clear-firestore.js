@@ -2,7 +2,9 @@
 // Deletes seeded emulator test data from Auth and Firestore.
 const admin = require('firebase-admin');
 const {
+  TEST_USERS,
   TEST_USER,
+  LEGACY_TEST_USERS,
   getProjectId,
   assertEmulatorEnvironment
 } = require('./emulator-test-user');
@@ -47,20 +49,38 @@ async function main() {
     console.log('Deleting shared/serverConfig...');
     await db.collection('shared').doc('serverConfig').delete().catch(() => {});
 
-    console.log(`Deleting Firestore user tree for uid=${TEST_USER.uid}...`);
-    await deleteDocumentTree(db.collection('users').doc(TEST_USER.uid));
+    const cleanupUsers = [
+      ...(Array.isArray(TEST_USERS) ? TEST_USERS : []),
+      ...(Array.isArray(LEGACY_TEST_USERS) ? LEGACY_TEST_USERS : []),
+      TEST_USER
+    ].filter(Boolean);
+    const seenUids = new Set();
+    const seenEmails = new Set();
 
-    console.log(`Deleting auth user by uid=${TEST_USER.uid}...`);
-    await auth.deleteUser(TEST_USER.uid).catch(() => {});
+    for (const user of cleanupUsers) {
+      const uid = String(user.uid || '').trim();
+      const email = String(user.email || '').trim();
+      if (!uid && !email) continue;
 
-    // Handle any legacy user with same email but different uid.
-    const byEmail = await getUserByEmailOrNull(auth, TEST_USER.email);
-    if (byEmail) {
-      console.log(`Deleting legacy auth user by email: ${byEmail.uid}`);
-      await auth.deleteUser(byEmail.uid).catch(() => {});
+      if (uid && !seenUids.has(uid)) {
+        seenUids.add(uid);
+        console.log(`Deleting Firestore user tree for uid=${uid}...`);
+        await deleteDocumentTree(db.collection('users').doc(uid));
+        console.log(`Deleting auth user by uid=${uid}...`);
+        await auth.deleteUser(uid).catch(() => {});
+      }
+
+      if (email && !seenEmails.has(email)) {
+        seenEmails.add(email);
+        const byEmail = await getUserByEmailOrNull(auth, email);
+        if (byEmail) {
+          console.log(`Deleting auth user by email: ${byEmail.uid} (${email})`);
+          await auth.deleteUser(byEmail.uid).catch(() => {});
+        }
+      }
     }
 
-    console.log('Cleanup complete.');
+    console.log(`Cleanup complete. Removed/checked ${seenUids.size} UID(s), ${seenEmails.size} email(s).`);
     process.exit(0);
   } catch (err) {
     console.error('Error clearing emulator data:', err && err.stack ? err.stack : err);

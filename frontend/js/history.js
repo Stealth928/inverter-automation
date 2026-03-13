@@ -1125,7 +1125,8 @@
                 const today = data.result[todayKey] || {};
 
                 document.getElementById('metricsDate').textContent = formatDate(new Date(todayKey), false);
-                document.getElementById('countFox').textContent = today.foxess ?? 0;
+                const inverterCount = (typeof getInverterApiCount === 'function') ? getInverterApiCount(today) : (today.inverter ?? today.foxess ?? 0);
+                document.getElementById('countFox').textContent = inverterCount;
                 document.getElementById('countAmber').textContent = today.amber ?? 0;
                 document.getElementById('countWeather').textContent = today.weather ?? 0;
             } catch (e) {
@@ -1265,7 +1266,7 @@
                 
                 if (sites.length === 0) {
                     // Try to get more debug info
-                    const debugResp = await apiClient.fetch('/api/amber/sites?debug=true');
+                    const debugResp = await apiClient.fetch('/api/pricing/sites?debug=true');
                     const debugJson = await debugResp.json();
                     console.log('[Prices] Debug response:', debugJson);
                     throw new Error('No Amber sites available. Please configure your Amber API key in Settings → Integrations → Amber API.');

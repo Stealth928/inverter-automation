@@ -3,7 +3,7 @@
 ## Quick Start
 
 ### Prerequisites
-- Node.js 20+ installed
+- Node.js 22+ installed
 - Firebase CLI: `npm install -g firebase-tools`
 - A Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
 
@@ -88,7 +88,7 @@ Edit `.firebaserc`:
 
 ## External API Keys
 
-Users configure their own API keys in the Settings page after login. The system supports three battery inverter providers — configure credentials for whichever provider you use.
+Users configure their own API keys in the Settings page after login. The system supports four battery inverter providers (FoxESS, Sungrow, SigenEnergy, AlphaESS) — configure credentials for whichever provider you use.
 
 ### FoxESS Cloud API
 1. Go to [FoxESS Cloud](https://www.foxesscloud.com)
@@ -113,11 +113,30 @@ Users configure their own API keys in the Settings page after login. The system 
 
 > **Note:** SigenEnergy scheduler and history features are in limited beta — work mode control and real-time status are fully supported.
 
+### AlphaESS OpenAPI
+1. Sign in to the AlphaESS OpenAPI portal and create/get your app credentials
+2. Collect your `appId`, `appSecret`, and target `system SN (sysSn)`
+3. Enter these credentials in the Settings page to validate and save them
+
+> **Note:** AlphaESS is currently disabled in the first-run Setup selector (coming soon), but credential onboarding is available from Settings.
+
 ### Amber Electric API
 1. Go to [Amber Developer Portal](https://app.amber.com.au/developers)
 2. Login with your Amber account
 3. Generate API token
 4. Copy the token (shown once)
+
+### Tesla Fleet API (EV Integration)
+1. Create/configure a Tesla developer app for Fleet OAuth.
+2. Add your app redirect URI to Tesla exactly as shown in `Settings > Tesla EV Integration` (`https://<your-host>/settings.html`).
+3. Configure allowed origins/top-level domains in Tesla developer app.
+4. Host Tesla public key metadata at `/.well-known/appspecific/com.tesla.3p.public-key.pem`.
+5. Note your Tesla Fleet `client_id` (and optional `client_secret`).
+6. Get vehicle VIN (17-char) for each vehicle you want to control.
+7. In app Settings, use `Tesla EV Integration` -> fill client/VIN fields -> click `Connect Tesla`.
+8. For command support on modern vehicles, complete virtual-key pairing and signed-command setup (see onboarding guide).
+
+Detailed user flow: `docs/guides/TESLA_ONBOARDING.md`.
 
 ### Scheduler SLO Alert Channel (Optional but Recommended)
 
@@ -127,7 +146,11 @@ Configure environment variables for operational alerting and threshold overrides
 AUTOMATION_SCHEDULER_SLO_ERROR_RATE_PCT=1.0
 AUTOMATION_SCHEDULER_SLO_DEAD_LETTER_RATE_PCT=0.2
 AUTOMATION_SCHEDULER_SLO_MAX_QUEUE_LAG_MS=120000
-AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS=60000
+AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS=20000
+AUTOMATION_SCHEDULER_SLO_P99_CYCLE_DURATION_MS=10000
+AUTOMATION_SCHEDULER_SLO_TAIL_P99_CYCLE_DURATION_MS=10000
+AUTOMATION_SCHEDULER_SLO_TAIL_WINDOW_MINUTES=15
+AUTOMATION_SCHEDULER_SLO_TAIL_MIN_RUNS=10
 AUTOMATION_SCHEDULER_SLO_ALERT_WEBHOOK_URL=https://your-alert-endpoint.example.com
 AUTOMATION_SCHEDULER_SLO_ALERT_COOLDOWN_MS=300000
 ```
@@ -239,12 +262,13 @@ inverter-automation/
 │
 ├── functions/              # Cloud Functions
 │   ├── package.json
-│   └── index.js            # All API endpoints
+│   └── index.js            # Composition root + function exports
 │
 └── docs/                   # Documentation
     ├── AUTOMATION.md       # Automation rules documentation
     ├── API.md              # API reference
-    └── SETUP.md            # This file
+    ├── SETUP.md            # This file
+    └── evidence/           # Historical execution logs/evidence
 ```
 
 ---

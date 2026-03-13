@@ -115,6 +115,97 @@ describe('admin route module', () => {
     });
   });
 
+  test('firestore-metrics returns separate project cost and firestore doc-ops estimate fields', async () => {
+    const deps = createDeps({
+      googleApis: {
+        auth: {
+          GoogleAuth: jest.fn(() => ({}))
+        },
+        monitoring: jest.fn(() => ({}))
+      },
+      listMonitoringTimeSeries: jest.fn(async () => []),
+      sumSeriesValues: jest.fn(() => 0),
+      fetchCloudBillingCost: jest.fn(async () => ({
+        services: [
+          { service: 'Cloud Functions', costUsd: 2.24 },
+          { service: 'Cloud Firestore', costUsd: 1.98 },
+          { service: 'Non-Firebase Services', costUsd: 0.01 }
+        ],
+        totalUsd: 4.23,
+        accountId: '123ABC',
+        raw: {}
+      })),
+      estimateFirestoreCostFromUsage: jest.fn(() => ({
+        totalUsd: 1.98,
+        isEstimate: true,
+        services: [
+          { service: 'Cloud Firestore reads', costUsd: 0.49 },
+          { service: 'Cloud Firestore writes', costUsd: 1.45 },
+          { service: 'Cloud Firestore deletes', costUsd: 0.04 }
+        ]
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/firestore-metrics')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.firestore.estimatedDocOpsCostUsd).toBeCloseTo(1.98);
+    expect(response.body.result.firestore.estimatedDocOpsBreakdown).toHaveLength(3);
+    expect(response.body.result.billing.projectMtdCostUsd).toBeCloseTo(4.23);
+    expect(response.body.result.billing.projectServices).toHaveLength(3);
+    expect(response.body.result.billing.projectBillingAccountId).toBe('123ABC');
+    // Backward-compatible fields retained
+    expect(response.body.result.billing.estimatedMtdCostUsd).toBeCloseTo(4.23);
+    expect(response.body.result.billing.services).toHaveLength(3);
+  });
+
+  test('firestore-metrics falls back to firestore doc-ops estimate when project billing is unavailable', async () => {
+    const deps = createDeps({
+      googleApis: {
+        auth: {
+          GoogleAuth: jest.fn(() => ({}))
+        },
+        monitoring: jest.fn(() => ({}))
+      },
+      listMonitoringTimeSeries: jest.fn(async () => []),
+      sumSeriesValues: jest.fn(() => 0),
+      fetchCloudBillingCost: jest.fn(async () => {
+        const err = new Error('billing reports unavailable');
+        err.isBillingReportsUnavailable = true;
+        throw err;
+      }),
+      estimateFirestoreCostFromUsage: jest.fn(() => ({
+        totalUsd: 1.62,
+        isEstimate: true,
+        services: [
+          { service: 'Cloud Firestore reads', costUsd: 1.25 },
+          { service: 'Cloud Firestore writes', costUsd: 0.37 }
+        ]
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/firestore-metrics')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.firestore.estimatedDocOpsCostUsd).toBeCloseTo(1.62);
+    expect(response.body.result.billing.projectMtdCostUsd).toBeCloseTo(1.62);
+    expect(response.body.result.billing.projectCostIsEstimate).toBe(true);
+    expect(response.body.result.billing.projectCostSource).toBe('firestore-doc-ops-estimate');
+    expect(response.body.result.billing.estimatedMtdCostUsd).toBeCloseTo(1.62);
+    expect(response.body.result.billing.costSource).toBe('firestore-doc-ops-estimate');
+    expect(response.body.result.warnings).toContain(
+      'Project-level billing unavailable. Showing Firestore doc-op estimate only for reads/writes/deletes.'
+    );
+  });
+
   test('scheduler-metrics returns aggregate daily view with optional recent runs', async () => {
     const buildSnapshot = (docs) => ({
       size: docs.length,
@@ -136,6 +227,15 @@ describe('admin route module', () => {
           retries: 2,
           maxQueueLagMs: 120,
           maxCycleDurationMs: 400,
+          maxTelemetryAgeMs: 1900000,
+          p95CycleDurationMs: 320,
+          p99CycleDurationMs: 390,
+          phaseTimingsMaxMs: {
+            dataFetchMs: 70,
+            ruleEvalMs: 45,
+            actionApplyMs: 120,
+            curtailmentMs: 35
+          },
           skipped: {
             disabledOrBlackout: 1,
             idempotent: 1,
@@ -143,6 +243,7 @@ describe('admin route module', () => {
             tooSoon: 2
           },
           failureByType: { api_rate_limit: 1 },
+          telemetryPauseReasons: { stale_telemetry: 2, frozen_telemetry: 1 },
           slo: {
             status: 'breach'
           }
@@ -161,6 +262,15 @@ describe('admin route module', () => {
           retries: 1,
           maxQueueLagMs: 100,
           maxCycleDurationMs: 300,
+          maxTelemetryAgeMs: 1700000,
+          p95CycleDurationMs: 260,
+          p99CycleDurationMs: 280,
+          phaseTimingsMaxMs: {
+            dataFetchMs: 60,
+            ruleEvalMs: 40,
+            actionApplyMs: 90,
+            curtailmentMs: 20
+          },
           skipped: {
             disabledOrBlackout: 0,
             idempotent: 0,
@@ -168,6 +278,7 @@ describe('admin route module', () => {
             tooSoon: 2
           },
           failureByType: { api_timeout: 2 },
+          telemetryPauseReasons: { stale_telemetry: 1 },
           slo: {
             status: 'healthy'
           }
@@ -181,6 +292,7 @@ describe('admin route module', () => {
         data: () => ({
           runId: 'run-1',
           schedulerId: 'sched-1',
+          workerId: 'worker-1',
           dayKey: '2026-03-06',
           startedAtMs: 1000,
           completedAtMs: 1200,
@@ -193,8 +305,28 @@ describe('admin route module', () => {
           retries: 1,
           skipped: { disabledOrBlackout: 0, idempotent: 1, locked: 0, tooSoon: 0 },
           failureByType: { api_timeout: 1 },
-          queueLagMs: { avgMs: 10, count: 3, maxMs: 20, minMs: 1 },
-          cycleDurationMs: { avgMs: 40, count: 3, maxMs: 80, minMs: 10 }
+          queueLagMs: { avgMs: 10, count: 3, maxMs: 20, minMs: 1, p95Ms: 18, p99Ms: 19 },
+          cycleDurationMs: { avgMs: 40, count: 3, maxMs: 80, minMs: 10, p95Ms: 70, p99Ms: 79 },
+          telemetryAgeMs: { avgMs: 1200000, count: 3, maxMs: 1900000, minMs: 600000, p95Ms: 1800000, p99Ms: 1900000 },
+          telemetryPauseReasons: { stale_telemetry: 1 },
+          phaseTimingsMs: {
+            dataFetchMs: { avgMs: 18, count: 3, maxMs: 30, minMs: 10, p95Ms: 28, p99Ms: 29 },
+            ruleEvalMs: { avgMs: 9, count: 3, maxMs: 16, minMs: 4, p95Ms: 15, p99Ms: 15 },
+            actionApplyMs: { avgMs: 7, count: 3, maxMs: 12, minMs: 2, p95Ms: 11, p99Ms: 11 },
+            curtailmentMs: { avgMs: 4, count: 3, maxMs: 9, minMs: 1, p95Ms: 8, p99Ms: 8 }
+          },
+          slowCycleSamples: [
+            {
+              userId: 'u-1',
+              cycleKey: 'u-1_1',
+              queueLagMs: 10,
+              cycleDurationMs: 80,
+              retriesUsed: 1,
+              startedAtMs: 1000,
+              completedAtMs: 1080,
+              success: true
+            }
+          ]
         })
       }
     ];
@@ -215,7 +347,12 @@ describe('admin route module', () => {
           errorRatePct: 1,
           deadLetterRatePct: 0.2,
           maxQueueLagMs: 120000,
-          maxCycleDurationMs: 60000
+          maxCycleDurationMs: 20000,
+          maxTelemetryAgeMs: 1800000,
+          p99CycleDurationMs: 10000,
+          tailP99CycleDurationMs: 10000,
+          tailWindowMinutes: 15,
+          tailMinRuns: 10
         },
         measurements: {
           cyclesRun: 9,
@@ -224,7 +361,20 @@ describe('admin route module', () => {
           errorRatePct: 11.11,
           deadLetterRatePct: 11.11,
           maxQueueLagMs: 120,
-          maxCycleDurationMs: 400
+          maxCycleDurationMs: 400,
+          maxTelemetryAgeMs: 1900000,
+          p95CycleDurationMs: 320,
+          p99CycleDurationMs: 390
+        },
+        tailLatency: {
+          metric: 'sustainedP99CycleDurationMs',
+          status: 'watch',
+          thresholdMs: 10000,
+          windowMinutes: 15,
+          minRuns: 10,
+          observedRuns: 10,
+          runsAboveThreshold: 8,
+          ratioAboveThreshold: 0.8
         }
       })
     }));
@@ -296,6 +446,15 @@ describe('admin route module', () => {
       retries: 3,
       maxQueueLagMs: 120,
       maxCycleDurationMs: 400,
+      maxTelemetryAgeMs: 1900000,
+      p95CycleDurationMs: 320,
+      p99CycleDurationMs: 390,
+      phaseTimingsMaxMs: {
+        dataFetchMs: 70,
+        ruleEvalMs: 45,
+        actionApplyMs: 120,
+        curtailmentMs: 35
+      },
       errorRatePct: 11.11
     }));
     expect(response.body.result.summary.skipped).toEqual({
@@ -307,6 +466,10 @@ describe('admin route module', () => {
     expect(response.body.result.summary.failureByType).toEqual({
       api_rate_limit: 1,
       api_timeout: 2
+    });
+    expect(response.body.result.summary.telemetryPauseReasons).toEqual({
+      stale_telemetry: 3,
+      frozen_telemetry: 1
     });
     expect(response.body.result.soak).toEqual(expect.objectContaining({
       daysRequested: 14,
@@ -330,13 +493,61 @@ describe('admin route module', () => {
     expect(response.body.result.recentRuns).toHaveLength(1);
     expect(response.body.result.recentRuns[0]).toEqual(expect.objectContaining({
       runId: 'run-1',
-      schedulerId: 'sched-1'
+      schedulerId: 'sched-1',
+      workerId: 'worker-1',
+      cycleDurationMs: expect.objectContaining({
+        p95Ms: 70,
+        p99Ms: 79
+      }),
+      telemetryAgeMs: expect.objectContaining({
+        maxMs: 1900000
+      }),
+      phaseTimingsMs: expect.objectContaining({
+        dataFetchMs: expect.objectContaining({ maxMs: 30 }),
+        actionApplyMs: expect.objectContaining({ maxMs: 12 })
+      })
     }));
     expect(response.body.result.currentAlert).toEqual(expect.objectContaining({
       status: 'breach',
       runId: 'run-1',
       schedulerId: 'sched-1',
-      breachedMetrics: ['errorRatePct']
+      breachedMetrics: ['errorRatePct'],
+      thresholds: expect.objectContaining({
+        maxTelemetryAgeMs: 1800000
+      }),
+      measurements: expect.objectContaining({
+        maxTelemetryAgeMs: 1900000
+      }),
+      tailLatency: expect.objectContaining({
+        status: 'watch'
+      })
+    }));
+    expect(response.body.result.diagnostics).toEqual(expect.objectContaining({
+      tailLatency: expect.objectContaining({
+        status: 'watch'
+      }),
+      outlierRun: expect.objectContaining({
+        runId: 'run-1',
+        workerId: 'worker-1',
+        likelyCauses: expect.arrayContaining(['external_api_slowness_or_retries'])
+      }),
+      telemetryPauseReasons: expect.objectContaining({
+        stale_telemetry: 3,
+        frozen_telemetry: 1
+      }),
+      phaseTimings: expect.objectContaining({
+        latestRunStartedAtMs: 1000,
+        latestRunMaxMs: expect.objectContaining({
+          dataFetchMs: 30,
+          actionApplyMs: 12
+        }),
+        windowMaxMs: expect.objectContaining({
+          dataFetchMs: 70,
+          ruleEvalMs: 45,
+          actionApplyMs: 120,
+          curtailmentMs: 35
+        })
+      })
     }));
     expect(dailyGet).toHaveBeenCalledTimes(1);
     expect(runsGet).toHaveBeenCalledTimes(1);
@@ -416,6 +627,110 @@ describe('admin route module', () => {
     expect(response.body.result.soak.readiness.readyForCloseout).toBe(false);
     expect(dailyGet).toHaveBeenCalledTimes(1);
     expect(runsGet).not.toHaveBeenCalled();
+  });
+
+  test('user stats resolves AlphaESS credential presence from secrets doc', async () => {
+    const metricsGet = jest.fn(async () => ({
+      size: 0,
+      docs: [],
+      forEach: () => {}
+    }));
+    const automationGet = jest.fn(async () => ({
+      exists: true,
+      data: () => ({ enabled: false })
+    }));
+    const rulesGet = jest.fn(async () => ({ size: 0 }));
+    const configGet = jest.fn(async () => ({
+      exists: true,
+      data: () => ({
+        deviceProvider: 'alphaess',
+        alphaessSystemSn: 'ALPHA-SN-1',
+        alphaessAppId: 'alpha-app-id',
+        setupComplete: false
+      })
+    }));
+    const secretsGet = jest.fn(async () => ({
+      exists: true,
+      data: () => ({
+        alphaessAppSecret: 'super-secret'
+      })
+    }));
+
+    const userDocRef = {
+      collection: jest.fn((subName) => {
+        if (subName === 'metrics') {
+          return {
+            orderBy: jest.fn(() => ({
+              limit: jest.fn(() => ({
+                get: metricsGet
+              }))
+            }))
+          };
+        }
+        if (subName === 'automation') {
+          return {
+            doc: jest.fn(() => ({
+              get: automationGet
+            }))
+          };
+        }
+        if (subName === 'rules') {
+          return {
+            get: rulesGet
+          };
+        }
+        if (subName === 'config') {
+          return {
+            doc: jest.fn((docId) => {
+              if (docId !== 'main') throw new Error(`Unexpected config doc: ${docId}`);
+              return { get: configGet };
+            })
+          };
+        }
+        if (subName === 'secrets') {
+          return {
+            doc: jest.fn((docId) => {
+              if (docId !== 'credentials') throw new Error(`Unexpected secrets doc: ${docId}`);
+              return { get: secretsGet };
+            })
+          };
+        }
+        throw new Error(`Unexpected user subcollection: ${subName}`);
+      })
+    };
+
+    const deps = createDeps({
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') {
+            throw new Error(`Unexpected collection: ${name}`);
+          }
+          return {
+            doc: jest.fn(() => userDocRef)
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/users/user-alpha/stats')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.configSummary).toEqual(expect.objectContaining({
+      deviceProvider: 'alphaess',
+      hasAlphaEssAppId: true,
+      hasAlphaEssAppSecret: true
+    }));
+    expect(response.body.result.configSummary.providerAccess).toEqual(expect.objectContaining({
+      credentialLabel: 'App Credentials',
+      hasCredential: true
+    }));
+    expect(response.body.result.configSummary.alphaessAppSecret).toBeUndefined();
+    expect(configGet).toHaveBeenCalledTimes(1);
+    expect(secretsGet).toHaveBeenCalledTimes(1);
   });
 
   test('role update validates allowed roles', async () => {

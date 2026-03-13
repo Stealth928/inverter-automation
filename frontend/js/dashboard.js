@@ -16,6 +16,7 @@
         // Defaults match legacy hard-coded values so existing users see no change.
         let _batteryCapacityKwh = 41.93; // kWh; overridden from user config on load
         let _inverterCapacityW  = 10000; // Watts; overridden from user config on load
+        let _userProvider       = '';    // 'foxess' | 'alphaess' | 'sungrow' | etc; overridden on load
 
         // apiClient is declared in api-client.js and initialized after Firebase auth is ready
 
@@ -697,11 +698,11 @@
                 const meterPower2KW = normalizeTopologyPower(meterPower2);
                 const isLikelyACCoupled =
                     (pvTotalKW === null || Math.abs(pvTotalKW) < 0.05) &&
-                    (meterPower2KW !== null && meterPower2KW > 0.05);
+                    (meterPower2KW !== null && Math.abs(meterPower2KW) > 0.05);
 
                 let finalSolar = null;
                 if (isLikelyACCoupled) {
-                    finalSolar = meterPower2KW;
+                    finalSolar = Math.abs(meterPower2KW);
                 } else if (pvTotal !== null && pvTotal !== undefined && !isNaN(Number(pvTotal))) {
                     finalSolar = pvTotal;
                 } else {
@@ -968,9 +969,25 @@
                 }
 
                 // Pull real-time temperatures if present
-                const batTempVal = findValue(items, ['batTemperature','bat_temperature','batterytemperature','batTemp','batteryTemp','battemperation']);
-                const ambTempVal = findValue(items, ['ambientTemperation','ambienttemperature','ambient_temp','ambientTemp','ambTemperature']);
-                const invTempVal = findValue(items, ['invTemperation','invtemperature','invertertemperature','invTemp','inverterTemp']);
+                let batTempVal = findValue(items, ['batTemperature','bat_temperature','batterytemperature','batTemp','batteryTemp','battemperation']);
+                let ambTempVal = findValue(items, ['ambientTemperation','ambienttemperature','ambient_temp','ambientTemp','ambTemperature']);
+                let invTempVal = findValue(items, ['invTemperation','invtemperature','invertertemperature','invTemp','inverterTemp']);
+
+                const isAlphaProvider = String(_userProvider || '').toLowerCase() === 'alphaess';
+                const batTempNum = Number(batTempVal);
+                const ambTempNum = Number(ambTempVal);
+                const invTempNum = Number(invTempVal);
+                const alphaTempsLikelyUnavailable = isAlphaProvider
+                    && Number.isFinite(batTempNum)
+                    && Number.isFinite(ambTempNum)
+                    && batTempNum === 0
+                    && ambTempNum === 0
+                    && (!Number.isFinite(invTempNum) || invTempNum === 0);
+                if (alphaTempsLikelyUnavailable) {
+                    batTempVal = null;
+                    ambTempVal = null;
+                    invTempVal = null;
+                }
 
                 function fmtTemp(v) { if (v === null || v === undefined || v === '-') return '-'; const n = Number(v); if (isNaN(n)) return '-'; return n.toFixed(1) + '°C'; }
 
@@ -1059,6 +1076,9 @@
                         <div class="label">Inverter Temp</div>
                     </div>
                 </div>`;
+                const tempNoticeHtml = alphaTempsLikelyUnavailable
+                    ? `<div style="margin-top:6px;font-size:11px;color:var(--text-secondary);text-align:center;">AlphaESS is currently not reporting temperature sensors.</div>`
+                    : '';
                 // Debug raw view removed for stable inverter status
                 const rawHtml = '';
 
@@ -1094,9 +1114,9 @@
                         </div>`;
                     });
                     pvHtml += '</div>';
-                    card.innerHTML = html + pvHtml;
+                    card.innerHTML = html + tempNoticeHtml + pvHtml;
                 } else {
-                    card.innerHTML = html;
+                    card.innerHTML = html + tempNoticeHtml;
                 }
             } else if (name === 'Battery SoC' && data.result) {
                 const r = data.result;
@@ -1946,7 +1966,7 @@
             }
             
             try {
-                let url = '/api/amber/sites';
+                let url = '/api/pricing/sites';
                 if (forceRefresh) {
                     url += '?forceRefresh=true';
                 }
@@ -2053,7 +2073,7 @@
                 if (mockMode) {
                     data = { errno: 0, result: getMockAmberPrices(next, siteId), mock: true };
                 } else {
-                    let url = `/api/amber/prices/current?siteId=${siteId}&next=${next}`;
+                    let url = `/api/pricing/current?siteId=${siteId}&next=${next}`;
                     // Add forceRefresh if force flag is set
                     if (force) {
                         url += '&forceRefresh=true';
@@ -2182,7 +2202,7 @@
                     s = yesterday.toISOString().slice(0,10);
                     e = today.toISOString().slice(0,10);
                 }
-                const resp = await authenticatedFetch(`/api/amber/prices?siteId=${siteId}&startDate=${s}&endDate=${e}`);
+                const resp = await authenticatedFetch(`/api/pricing/prices?siteId=${siteId}&startDate=${s}&endDate=${e}`);
                 const data = await resp.json();
                 renderAmberCard(data);
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
@@ -2716,6 +2736,544 @@
                 warningDiv.style.display = 'none';
             }
         }
+
+        // ============================================================
+        // EV Overview
+        // ============================================================
+
+        const evDashboardState = {
+            vehicles: [],
+            selectedVehicleId: '',
+            statusByVehicleId: {},
+            statusMetaByVehicleId: {},
+            readinessByVehicleId: {},
+            loadingVehicles: false,
+            loadingStatusByVehicleId: {},
+            commandInFlight: false
+        };
+
+        function getEVVehicleDisplayName(vehicle) {
+            const preferred = String(vehicle?.displayName || '').trim();
+            if (preferred) return preferred;
+            return String(vehicle?.vehicleId || 'Unknown vehicle');
+        }
+
+        function formatEVChargingState(state) {
+            const normalized = String(state || 'unknown').toLowerCase();
+            if (normalized === 'charging') return 'Charging';
+            if (normalized === 'complete') return 'Complete';
+            if (normalized === 'stopped') return 'Stopped';
+            if (normalized === 'disconnected') return 'Disconnected';
+            return 'Unknown';
+        }
+
+        function formatEVBoolean(value) {
+            if (value === true) return 'Yes';
+            if (value === false) return 'No';
+            return 'Unknown';
+        }
+
+        function formatEVRangeKm(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) return '—';
+            return `${Math.round(numeric)} km`;
+        }
+
+        function formatEVSoc(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) return '—';
+            return `${Math.round(numeric)}%`;
+        }
+
+        function formatEVLastUpdatedLabel(meta = {}, status = {}) {
+            const asOfIso = status?.asOfIso || null;
+            if (asOfIso) {
+                const asOfMs = Date.parse(asOfIso);
+                if (Number.isFinite(asOfMs)) {
+                    const ageMs = Date.now() - asOfMs;
+                    if (ageMs >= 0) {
+                        return `${formatMsToReadable(ageMs)} ago`;
+                    }
+                }
+            }
+            if (meta.loadedAtMs) {
+                const ageMs = Date.now() - Number(meta.loadedAtMs || 0);
+                if (ageMs >= 0) {
+                    return `${formatMsToReadable(ageMs)} ago`;
+                }
+            }
+            return '—';
+        }
+
+        function setEVOverviewMessage(kind, text) {
+            const messageEl = document.getElementById('evOverviewMessage');
+            if (!messageEl) return;
+            if (!text) {
+                messageEl.className = 'ev-message';
+                messageEl.textContent = '';
+                return;
+            }
+            const safeKind = ['info', 'success', 'warning', 'error'].includes(kind) ? kind : 'info';
+            messageEl.className = `ev-message ${safeKind}`;
+            messageEl.textContent = text;
+        }
+
+        function updateEVVehicleCountBadge() {
+            const badge = document.getElementById('evVehicleCountBadge');
+            if (!badge) return;
+            const count = evDashboardState.vehicles.length;
+            badge.textContent = `${count} vehicle${count === 1 ? '' : 's'}`;
+        }
+
+        function getSelectedEVVehicle() {
+            const selectedId = String(evDashboardState.selectedVehicleId || '');
+            if (!selectedId) return null;
+            return evDashboardState.vehicles.find((vehicle) => String(vehicle.vehicleId) === selectedId) || null;
+        }
+
+        function getSelectedEVStatusError() {
+            const selectedId = String(evDashboardState.selectedVehicleId || '');
+            if (!selectedId) return '';
+            const meta = evDashboardState.statusMetaByVehicleId[selectedId] || {};
+            return String(meta.error || '');
+        }
+
+        function getSelectedEVReadiness() {
+            const selectedId = String(evDashboardState.selectedVehicleId || '');
+            if (!selectedId) return null;
+            return evDashboardState.readinessByVehicleId[selectedId] || null;
+        }
+
+        function getEVReadinessDescriptor(readiness, statusError = '') {
+            if (statusError && /credential/i.test(statusError)) {
+                return {
+                    kind: 'error',
+                    label: 'Credentials Missing',
+                    detail: 'Connect Tesla in Settings to enable EV commands'
+                };
+            }
+
+            if (!readiness) {
+                return {
+                    kind: 'warn',
+                    label: 'Readiness Unknown',
+                    detail: 'Preflight runs when command is sent'
+                };
+            }
+
+            if (readiness.readyForCommands === true) {
+                return {
+                    kind: 'ok',
+                    label: 'Ready',
+                    detail: 'Commands available'
+                };
+            }
+
+            const reasons = Array.isArray(readiness.blockingReasons) ? readiness.blockingReasons : [];
+            if (reasons.includes('vin_required')) {
+                return {
+                    kind: 'warn',
+                    label: 'VIN Required',
+                    detail: 'Reconnect Tesla with VIN in Settings before sending commands'
+                };
+            }
+            if (reasons.includes('signed_command_required')) {
+                return {
+                    kind: 'warn',
+                    label: 'Signed Command Required',
+                    detail: 'Set up Tesla signed-command key before sending commands'
+                };
+            }
+            if (reasons.includes('virtual_key_not_paired')) {
+                return {
+                    kind: 'warn',
+                    label: 'Virtual Key Unpaired',
+                    detail: 'Pair virtual key with vehicle in Tesla app'
+                };
+            }
+
+            return {
+                kind: 'warn',
+                label: 'Not Ready',
+                detail: 'Vehicle command readiness check failed'
+            };
+        }
+
+        function renderEVVehicleTabs() {
+            const tabsEl = document.getElementById('evVehicleTabs');
+            if (!tabsEl) return;
+            tabsEl.innerHTML = '';
+
+            if (evDashboardState.loadingVehicles && evDashboardState.vehicles.length === 0) {
+                const loading = document.createElement('div');
+                loading.style.fontSize = '12px';
+                loading.style.color = 'var(--text-secondary)';
+                loading.textContent = 'Loading vehicles...';
+                tabsEl.appendChild(loading);
+                return;
+            }
+
+            if (evDashboardState.vehicles.length === 0) {
+                const empty = document.createElement('div');
+                empty.style.fontSize = '12px';
+                empty.style.color = 'var(--text-secondary)';
+                empty.innerHTML = 'No EV vehicles connected yet. Connect a Tesla vehicle in <a href="/settings.html" style="color:var(--accent-blue);text-decoration:none;">Settings</a>.';
+                tabsEl.appendChild(empty);
+                return;
+            }
+
+            evDashboardState.vehicles.forEach((vehicle) => {
+                const vehicleId = String(vehicle.vehicleId || '');
+                const status = evDashboardState.statusByVehicleId[vehicleId] || null;
+                const socText = formatEVSoc(status?.socPct);
+                const chargingText = formatEVChargingState(status?.chargingState);
+
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `ev-vehicle-tab${evDashboardState.selectedVehicleId === vehicleId ? ' active' : ''}`;
+                button.textContent = `${getEVVehicleDisplayName(vehicle)} • ${socText} • ${chargingText}`;
+                button.addEventListener('click', () => {
+                    selectEVVehicle(vehicleId);
+                });
+                tabsEl.appendChild(button);
+            });
+        }
+
+        function renderEVSelectedSummary() {
+            const summaryEl = document.getElementById('evSelectedSummary');
+            const pillsEl = document.getElementById('evSelectedStatusPills');
+            if (!summaryEl || !pillsEl) return;
+
+            summaryEl.innerHTML = '';
+            pillsEl.innerHTML = '';
+
+            const selectedVehicle = getSelectedEVVehicle();
+            if (!selectedVehicle) {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'ev-summary-stat';
+                const label = document.createElement('div');
+                label.className = 'ev-summary-label';
+                label.textContent = 'Vehicle';
+                const value = document.createElement('div');
+                value.className = 'ev-summary-value';
+                value.textContent = 'No vehicle selected';
+                placeholder.appendChild(label);
+                placeholder.appendChild(value);
+                summaryEl.appendChild(placeholder);
+                return;
+            }
+
+            const vehicleId = String(selectedVehicle.vehicleId || '');
+            const status = evDashboardState.statusByVehicleId[vehicleId] || {};
+            const meta = evDashboardState.statusMetaByVehicleId[vehicleId] || {};
+            const readiness = getSelectedEVReadiness();
+            const statusError = getSelectedEVStatusError();
+            const readinessDescriptor = getEVReadinessDescriptor(readiness, statusError);
+
+            const readinessPill = document.createElement('span');
+            readinessPill.className = `ev-status-pill ${readinessDescriptor.kind}`;
+            readinessPill.title = readinessDescriptor.detail;
+            readinessPill.textContent = readinessDescriptor.label;
+            pillsEl.appendChild(readinessPill);
+
+            if (meta.source) {
+                const sourcePill = document.createElement('span');
+                sourcePill.className = 'ev-status-pill';
+                sourcePill.textContent = `Source: ${String(meta.source).toUpperCase()}`;
+                pillsEl.appendChild(sourcePill);
+            }
+
+            const stats = [
+                ['Vehicle', getEVVehicleDisplayName(selectedVehicle)],
+                ['SoC', formatEVSoc(status.socPct)],
+                ['Charging', formatEVChargingState(status.chargingState)],
+                ['Plugged', formatEVBoolean(status.isPluggedIn)],
+                ['At Home', formatEVBoolean(status.isHome)],
+                ['Range', formatEVRangeKm(status.rangeKm)],
+                ['Updated', formatEVLastUpdatedLabel(meta, status)]
+            ];
+
+            stats.forEach(([label, value]) => {
+                const card = document.createElement('div');
+                card.className = 'ev-summary-stat';
+                const labelEl = document.createElement('div');
+                labelEl.className = 'ev-summary-label';
+                labelEl.textContent = label;
+                const valueEl = document.createElement('div');
+                valueEl.className = 'ev-summary-value';
+                valueEl.textContent = value;
+                card.appendChild(labelEl);
+                card.appendChild(valueEl);
+                summaryEl.appendChild(card);
+            });
+        }
+
+        function updateEVCommandControls() {
+            const startBtn = document.getElementById('evStartBtn');
+            const stopBtn = document.getElementById('evStopBtn');
+            const setLimitBtn = document.getElementById('evSetLimitBtn');
+            const limitInput = document.getElementById('evChargeLimitInput');
+            if (!startBtn || !stopBtn || !setLimitBtn || !limitInput) return;
+
+            const selectedVehicle = getSelectedEVVehicle();
+            const statusError = getSelectedEVStatusError();
+            const readiness = getSelectedEVReadiness();
+            const loadingStatus = !!evDashboardState.loadingStatusByVehicleId[String(evDashboardState.selectedVehicleId || '')];
+            const hasBlockingReadiness = readiness && readiness.readyForCommands === false;
+            const credentialsMissing = /credential/i.test(statusError);
+            const shouldDisable = !selectedVehicle || evDashboardState.commandInFlight || loadingStatus || credentialsMissing || hasBlockingReadiness;
+
+            startBtn.disabled = shouldDisable;
+            stopBtn.disabled = shouldDisable;
+            setLimitBtn.disabled = shouldDisable;
+            limitInput.disabled = shouldDisable;
+        }
+
+        function renderEVOverview() {
+            updateEVVehicleCountBadge();
+            renderEVVehicleTabs();
+            renderEVSelectedSummary();
+            updateEVCommandControls();
+        }
+
+        function updateEVChargeLimitLabel(value) {
+            const label = document.getElementById('evChargeLimitLabel');
+            if (!label) return;
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) {
+                label.textContent = '—';
+                return;
+            }
+            label.textContent = `${Math.round(numeric)}%`;
+        }
+
+        async function fetchEVVehicleStatus(vehicleId, options = {}) {
+            const live = options.live === true;
+            const silent = options.silent === true;
+            const selectedId = String(vehicleId || '');
+            if (!selectedId) return null;
+
+            evDashboardState.loadingStatusByVehicleId[selectedId] = true;
+            if (!silent) renderEVOverview();
+
+            try {
+                const query = live ? '?live=1' : '';
+                const response = await authenticatedFetch(`/api/ev/vehicles/${encodeURIComponent(selectedId)}/status${query}`);
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch {
+                    data = null;
+                }
+
+                if (response.ok && data && data.errno === 0 && data.result) {
+                    evDashboardState.statusByVehicleId[selectedId] = data.result;
+                    evDashboardState.statusMetaByVehicleId[selectedId] = {
+                        source: data.source || (live ? 'live' : 'cache'),
+                        loadedAtMs: Date.now(),
+                        error: ''
+                    };
+                    return data.result;
+                }
+
+                const errorMessage = String(data?.error || `Failed to load status (HTTP ${response.status})`);
+                evDashboardState.statusMetaByVehicleId[selectedId] = {
+                    source: '',
+                    loadedAtMs: Date.now(),
+                    error: errorMessage
+                };
+                return null;
+            } catch (error) {
+                evDashboardState.statusMetaByVehicleId[selectedId] = {
+                    source: '',
+                    loadedAtMs: Date.now(),
+                    error: String(error?.message || 'Failed to load status')
+                };
+                return null;
+            } finally {
+                delete evDashboardState.loadingStatusByVehicleId[selectedId];
+                renderEVOverview();
+            }
+        }
+
+        async function selectEVVehicle(vehicleId, options = {}) {
+            const selectedId = String(vehicleId || '');
+            if (!selectedId) return;
+            evDashboardState.selectedVehicleId = selectedId;
+            renderEVOverview();
+
+            const forceLive = options.forceLive === true;
+            await fetchEVVehicleStatus(selectedId, { live: forceLive, silent: true });
+
+            const status = evDashboardState.statusByVehicleId[selectedId];
+            const limitInput = document.getElementById('evChargeLimitInput');
+            if (limitInput) {
+                const currentLimit = Number(status?.chargeLimitPct);
+                if (Number.isFinite(currentLimit) && currentLimit >= 1 && currentLimit <= 100) {
+                    limitInput.value = String(Math.round(currentLimit));
+                    updateEVChargeLimitLabel(limitInput.value);
+                } else {
+                    updateEVChargeLimitLabel(limitInput.value);
+                }
+            }
+        }
+
+        function clearStaleEVState() {
+            const validIds = new Set(evDashboardState.vehicles.map((vehicle) => String(vehicle.vehicleId || '')));
+
+            Object.keys(evDashboardState.statusByVehicleId).forEach((vehicleId) => {
+                if (!validIds.has(vehicleId)) delete evDashboardState.statusByVehicleId[vehicleId];
+            });
+            Object.keys(evDashboardState.statusMetaByVehicleId).forEach((vehicleId) => {
+                if (!validIds.has(vehicleId)) delete evDashboardState.statusMetaByVehicleId[vehicleId];
+            });
+            Object.keys(evDashboardState.readinessByVehicleId).forEach((vehicleId) => {
+                if (!validIds.has(vehicleId)) delete evDashboardState.readinessByVehicleId[vehicleId];
+            });
+        }
+
+        async function loadEVOverviewData(forceLiveSelected = false) {
+            const currentSelected = String(evDashboardState.selectedVehicleId || '');
+            evDashboardState.loadingVehicles = true;
+            renderEVOverview();
+
+            try {
+                const response = await authenticatedFetch('/api/ev/vehicles');
+                const data = await response.json();
+
+                if (!response.ok || data?.errno !== 0 || !Array.isArray(data?.result)) {
+                    const errorText = String(data?.error || `Failed to load vehicles (HTTP ${response.status})`);
+                    setEVOverviewMessage('warning', errorText);
+                    evDashboardState.vehicles = [];
+                    evDashboardState.selectedVehicleId = '';
+                    clearStaleEVState();
+                    renderEVOverview();
+                    return;
+                }
+
+                evDashboardState.vehicles = data.result;
+                clearStaleEVState();
+
+                if (evDashboardState.vehicles.length === 0) {
+                    evDashboardState.selectedVehicleId = '';
+                    setEVOverviewMessage('info', 'No EV vehicles connected yet. Connect your Tesla vehicle in Settings.');
+                    renderEVOverview();
+                    return;
+                }
+
+                const hasPreviousSelection = evDashboardState.vehicles.some((vehicle) => String(vehicle.vehicleId) === currentSelected);
+                evDashboardState.selectedVehicleId = hasPreviousSelection
+                    ? currentSelected
+                    : String(evDashboardState.vehicles[0].vehicleId || '');
+
+                setEVOverviewMessage('', '');
+                renderEVOverview();
+
+                const statusFetches = evDashboardState.vehicles.map((vehicle) => {
+                    const vehicleId = String(vehicle.vehicleId || '');
+                    const live = forceLiveSelected && vehicleId === evDashboardState.selectedVehicleId;
+                    return fetchEVVehicleStatus(vehicleId, { live, silent: true });
+                });
+                await Promise.all(statusFetches);
+            } catch (error) {
+                const message = String(error?.message || 'Failed to load EV overview');
+                setEVOverviewMessage('warning', message);
+            } finally {
+                evDashboardState.loadingVehicles = false;
+                renderEVOverview();
+            }
+        }
+
+        async function refreshEVOverview(forceLiveSelected = false) {
+            await loadEVOverviewData(forceLiveSelected === true);
+        }
+
+        async function issueSelectedEVCommand(command, payload = {}) {
+            const selectedVehicle = getSelectedEVVehicle();
+            if (!selectedVehicle) {
+                setEVOverviewMessage('warning', 'Select a vehicle first');
+                return;
+            }
+
+            const vehicleId = String(selectedVehicle.vehicleId || '');
+            evDashboardState.commandInFlight = true;
+            renderEVOverview();
+
+            try {
+                const body = {
+                    command,
+                    commandId: `ev-ui-${command}-${Date.now()}`,
+                    ...(payload || {})
+                };
+
+                const response = await authenticatedFetch(
+                    `/api/ev/vehicles/${encodeURIComponent(vehicleId)}/command`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    }
+                );
+
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch {
+                    data = null;
+                }
+
+                if (response.ok && data && data.errno === 0) {
+                    delete evDashboardState.readinessByVehicleId[vehicleId];
+                    setEVOverviewMessage('success', `${command} sent successfully`);
+                    await fetchEVVehicleStatus(vehicleId, { live: true, silent: true });
+                    return;
+                }
+
+                const errorMessage = String(data?.error || `Command failed (HTTP ${response.status})`);
+                if (response.status === 412 && data?.result?.readiness) {
+                    evDashboardState.readinessByVehicleId[vehicleId] = data.result.readiness;
+                }
+                if (response.status === 400 && /credential/i.test(errorMessage)) {
+                    evDashboardState.statusMetaByVehicleId[vehicleId] = {
+                        ...(evDashboardState.statusMetaByVehicleId[vehicleId] || {}),
+                        error: errorMessage,
+                        loadedAtMs: Date.now()
+                    };
+                }
+                setEVOverviewMessage('warning', errorMessage);
+            } catch (error) {
+                setEVOverviewMessage('error', String(error?.message || 'Failed to send EV command'));
+            } finally {
+                evDashboardState.commandInFlight = false;
+                renderEVOverview();
+            }
+        }
+
+        async function startSelectedEVCharging() {
+            await issueSelectedEVCommand('startCharging');
+        }
+
+        async function stopSelectedEVCharging() {
+            await issueSelectedEVCommand('stopCharging');
+        }
+
+        async function setSelectedEVChargeLimit() {
+            const limitInput = document.getElementById('evChargeLimitInput');
+            const targetSocPct = Number(limitInput?.value);
+            if (!Number.isFinite(targetSocPct) || targetSocPct < 1 || targetSocPct > 100) {
+                setEVOverviewMessage('warning', 'Charge limit must be between 1 and 100');
+                return;
+            }
+            await issueSelectedEVCommand('setChargeLimit', { targetSocPct: Math.round(targetSocPct) });
+        }
+
+        // Expose EV handlers for inline dashboard controls.
+        window.refreshEVOverview = refreshEVOverview;
+        window.selectEVVehicle = selectEVVehicle;
+        window.startSelectedEVCharging = startSelectedEVCharging;
+        window.stopSelectedEVCharging = stopSelectedEVCharging;
+        window.setSelectedEVChargeLimit = setSelectedEVChargeLimit;
+        window.updateEVChargeLimitLabel = updateEVChargeLimitLabel;
         
         // ============================================================
         // Quick Controls
@@ -2817,6 +3375,23 @@
             const msg = String(error?.message || error || '').toLowerCase();
             return msg.includes('not authenticated') || msg.includes('401');
         }
+
+        function applyProviderNoticeToQCForm(provider) {
+            const noticeEl = document.getElementById('quickControlProviderNotice');
+            if (!noticeEl) return;
+            const p = String(provider || '').toLowerCase();
+            if (p === 'alphaess') {
+                noticeEl.style.display = 'block';
+                noticeEl.innerHTML =
+                    '<strong style="color:var(--accent-blue);">ℹ️ AlphaESS Note</strong><br>' +
+                    '• <strong>Time windows are rounded to 15-minute slots</strong> — a 5-min charge will use the nearest 15-min window.<br>' +
+                    '• <strong>Power setting is advisory</strong> — AlphaESS controls the actual charge/discharge rate within the window.<br>' +
+                    '• Allow <strong>~30–60 seconds</strong> for your inverter to pick up the new schedule.';
+            } else {
+                noticeEl.style.display = 'none';
+                noticeEl.innerHTML = '';
+            }
+        }
         
         async function refreshQuickControlStatus(showFeedback = false) {
             if (showFeedback) {
@@ -2833,6 +3408,11 @@
                 const data = await resp.json();
                 
                 if (data.errno === 0 && data.result) {
+                    // Update form notice if provider is known from status (before config may load)
+                    if (data.result.provider && !_userProvider) {
+                        _userProvider = String(data.result.provider).toLowerCase();
+                    }
+                    applyProviderNoticeToQCForm(data.result.provider || _userProvider);
                     updateQuickControlUI(data.result);
                     
                     // Check automation status for warning
@@ -2961,6 +3541,15 @@
                 statusDiv.style.background = 'rgba(46,160,67,0.15)';
                 statusDiv.style.borderColor = 'rgba(46,160,67,0.4)';
                 statusDiv.style.color = 'var(--color-success)';
+                const isAlphaEss = (status.provider || _userProvider) === 'alphaess';
+                const secondsActive = Math.floor((Date.now() - status.startedAt) / 1000);
+                const alphaEssHint = isAlphaEss ? `
+                    <div style="margin-bottom:12px;padding:8px 10px;background:rgba(56,139,253,0.1);border:1px solid rgba(56,139,253,0.3);border-radius:5px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                        <strong style="color:var(--accent-blue);">ℹ️ AlphaESS</strong> — 
+                        Time window rounded to nearest 15-min slot.
+                        Power is advisory; your inverter sets the actual rate.
+                        ${secondsActive < 90 ? '<strong style="color:var(--color-orange);">Allow ~30–60s for the inverter to apply this schedule.</strong>' : ''}
+                    </div>` : '';
                 statusDiv.innerHTML = `
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                         <div style="font-weight:600;">${typeIcon} ${typeText} at ${powerKW} kW</div>
@@ -2970,6 +3559,7 @@
                         Started: ${new Date(status.startedAt).toLocaleTimeString()} • 
                         Ends: ${new Date(status.expiresAt).toLocaleTimeString()}
                     </div>
+                    ${alphaEssHint}
                     <div style="display:flex;gap:8px;">
                         <button class="btn" onclick="stopQuickControl()" style="background:var(--color-danger);border-color:var(--color-danger);flex:1;font-size:12px;padding:8px;font-weight:600;">
                             ⏹️ Stop Now
@@ -3525,6 +4115,7 @@
             try { if (amberRefreshTimer) clearInterval(amberRefreshTimer); } catch(e){}
             try { if (inverterRefreshTimer) clearInterval(inverterRefreshTimer); } catch(e){}
             try { if (weatherRefreshTimer) clearInterval(weatherRefreshTimer); } catch(e){}
+            try { if (evRefreshTimer) clearInterval(evRefreshTimer); } catch(e){}
             try { if (lastUpdateTicker) clearInterval(lastUpdateTicker); } catch(e){}
         });
 
@@ -3808,6 +4399,7 @@
             inverter: true,
             prices: true,
             weather: true,
+            ev: true,
             quickControls: true,
             scheduler: true
         };
@@ -3897,11 +4489,12 @@
                 card.classList.toggle('is-hidden-preference', !isVisible);
             });
 
-            const priorityRow = document.getElementById('priorityRow');
-            if (priorityRow) {
-                const hasVisibleCards = !!priorityRow.querySelector('[data-dashboard-card]:not(.is-hidden-preference)');
-                priorityRow.classList.toggle('is-hidden-preference', !hasVisibleCards);
-            }
+            ['priorityRow', 'operationsRow'].forEach((rowId) => {
+                const row = document.getElementById(rowId);
+                if (!row) return;
+                const hasVisibleCards = !!row.querySelector('[data-dashboard-card]:not(.is-hidden-preference)');
+                row.classList.toggle('is-hidden-preference', !hasVisibleCards);
+            });
 
             syncDashboardCardVisibilityToggles();
         }
@@ -3965,6 +4558,8 @@
         let amberRefreshTimer = null;
         let inverterRefreshTimer = null;
         let weatherRefreshTimer = null;
+        let evRefreshTimer = null;
+        let evRefreshTick = 0;
 
         // Auto-refresh control: pause when tab hidden or after idle timeout
         const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes of no interaction
@@ -4015,6 +4610,11 @@
                 clearInterval(weatherRefreshTimer);
                 weatherRefreshTimer = null;
             }
+            if (evRefreshTimer) {
+                clearInterval(evRefreshTimer);
+                evRefreshTimer = null;
+                evRefreshTick = 0;
+            }
             if (window.metricsRefreshTimer) {
                 clearInterval(window.metricsRefreshTimer);
                 window.metricsRefreshTimer = null;
@@ -4057,6 +4657,17 @@
                 weatherRefreshTimer = setInterval(() => {
                     getWeather(true);
                 }, REFRESH.weatherMs);
+            }
+
+            // EV: refresh selected vehicle status every 90s (cached path)
+            if (!evRefreshTimer) {
+                evRefreshTimer = setInterval(() => {
+                    const selectedId = String(evDashboardState.selectedVehicleId || '');
+                    if (!selectedId) return;
+                    evRefreshTick += 1;
+                    const shouldForceLive = (evRefreshTick % 2) === 0;
+                    fetchEVVehicleStatus(selectedId, { live: shouldForceLive, silent: true });
+                }, 90000);
             }
 
             // API call metrics: every 30 seconds
@@ -4276,7 +4887,20 @@
             let html = '';
             
             if (result.skipped) {
-                html += `<span style="color:var(--color-orange);font-size:11px">⏭️ Skipped: ${result.reason || 'Unknown'}</span>`;
+                const reason = String(result.reason || 'Unknown');
+                let reasonText = reason;
+                if (reason === 'stale_telemetry') {
+                    const ageMs = Number(result?.telemetry?.ageMs);
+                    const ageLabel = Number.isFinite(ageMs) ? formatMsToReadable(ageMs) : 'unknown age';
+                    reasonText = `Inverter telemetry stale (${ageLabel} old)`;
+                } else if (reason === 'stale_telemetry_missing_timestamp') {
+                    reasonText = 'Inverter telemetry timestamp missing';
+                } else if (reason === 'frozen_telemetry') {
+                    const ageMs = Number(result?.telemetry?.ageMs);
+                    const ageLabel = Number.isFinite(ageMs) ? formatMsToReadable(ageMs) : 'unknown age';
+                    reasonText = `Inverter telemetry frozen (${ageLabel})`;
+                }
+                html += `<span style="color:var(--color-orange);font-size:11px">⏭️ Skipped: ${reasonText}</span>`;
                 return html;
             }
             
@@ -4644,6 +5268,10 @@
             // Suppress auto-opening of the right-panel while the page initializes
             window.suppressPanelAutoOpen = true;
             try { initSmartTooltips(); } catch (e) { console.warn('initSmartTooltips failed', e); }
+            try {
+                const initialLimit = document.getElementById('evChargeLimitInput')?.value || '80';
+                updateEVChargeLimitLabel(initialLimit);
+            } catch (e) {}
 
             initDashboardCardVisibilityPreferences();
             initDashboardVisibilityCollapse();
@@ -4827,6 +5455,11 @@
                     if (typeof cfg.result.batteryCapacityKWh === 'number' && cfg.result.batteryCapacityKWh > 0) {
                         _batteryCapacityKwh = cfg.result.batteryCapacityKWh;
                     }
+                    // Store inverter provider for provider-specific UI hints (e.g. AlphaESS notices)
+                    if (cfg.result.deviceProvider) {
+                        _userProvider = String(cfg.result.deviceProvider).toLowerCase();
+                        applyProviderNoticeToQCForm(_userProvider);
+                    }
                     applyInverterCapacityToUI(_inverterCapacityW);
                 }
             } catch (e) { console.warn('Failed to load backend config', e); }
@@ -4870,18 +5503,25 @@
                 document.getElementById('weatherDays').addEventListener('input', updateWeatherRequestedLabel);
                 getWeather(isPageReload);  // Bypass cache on page reload
             } catch(e) { console.warn('Failed to initialize weather:', e); }
-            
-            // 4) Load automation rules from localStorage
+
+            // 4) Load EV overview data
+            try {
+                loadEVOverviewData(false);
+            } catch (e) {
+                console.warn('Failed to initialize EV overview:', e);
+            }
+
+            // 5) Load automation rules from localStorage
             try { loadAutomationRules(); } catch (e) { console.error('Error loading automation rules:', e); }
-            
-            // 5) Load backend automation status
+
+            // 6) Load backend automation status
             try { 
                 // Initialize curtailment state variable
                 window.curtailmentState = { active: false, enabled: false, triggered: false };
                 setTimeout(() => { loadBackendAutomationStatus(); }, 300); 
             } catch(e) { console.warn('Failed to load automation status:', e); }
-            
-            // 6) Load API call metrics
+
+            // 7) Load API call metrics
             try { loadApiMetrics(1); } catch(e) { console.warn('Failed to load API metrics:', e); }
             
             // Now allow user-triggered API calls to open the panel
@@ -4977,6 +5617,20 @@
                 const masterEnabled = status.enabled;
                 const inBlackout = status.inBlackout || false;
                 const blackoutWindow = status.currentBlackoutWindow;
+                const telemetryFailsafePaused = masterEnabled && status.telemetryFailsafePaused === true;
+                const telemetryPauseReason = String(status.telemetryFailsafePauseReason || '').trim();
+                const telemetryAgeMs = Number(status.telemetryAgeMs);
+                const telemetryAgeText = Number.isFinite(telemetryAgeMs)
+                    ? formatMsToReadable(telemetryAgeMs)
+                    : 'unknown age';
+                let telemetryPauseText = '';
+                if (telemetryPauseReason === 'stale_telemetry') {
+                    telemetryPauseText = `Automation paused: inverter telemetry is stale (${telemetryAgeText} old).`;
+                } else if (telemetryPauseReason === 'stale_telemetry_missing_timestamp') {
+                    telemetryPauseText = 'Automation paused: inverter telemetry timestamp missing or unreadable.';
+                } else if (telemetryPauseReason === 'frozen_telemetry') {
+                    telemetryPauseText = `Automation paused: inverter telemetry appears frozen (unchanged for ${telemetryAgeText}).`;
+                }
                 // Normalize lastCheck (handle Firestore Timestamp shapes and seconds/ms ambiguity)
                 let lastCheckRaw = status.lastCheck;
                 let lastCheck = Date.now();
@@ -5001,14 +5655,26 @@
                 const nextCheckIn = Math.max(0, automationIntervalSec - Math.floor((Date.now() - lastCheck) / 1000));
                 
                 // Determine effective state: blackout overrides master enabled
-                const effectivelyPaused = !masterEnabled || inBlackout;
-                const statusText = inBlackout ? 'BLACKOUT' : (masterEnabled ? 'ACTIVE' : 'PAUSED');
-                const statusColor = inBlackout ? 'var(--color-orange)' : (masterEnabled ? 'var(--color-success)' : 'var(--color-danger)');
-                const countdownText = inBlackout ? 'BLACKOUT' : (masterEnabled ? nextCheckIn + 's' : 'PAUSED');
+                const effectivelyPaused = !masterEnabled || inBlackout || telemetryFailsafePaused;
+                const statusText = inBlackout
+                    ? 'BLACKOUT'
+                    : (telemetryFailsafePaused ? 'FAILSAFE' : (masterEnabled ? 'ACTIVE' : 'PAUSED'));
+                const statusColor = inBlackout
+                    ? 'var(--color-orange)'
+                    : (telemetryFailsafePaused ? 'var(--color-danger)' : (masterEnabled ? 'var(--color-success)' : 'var(--color-danger)'));
+                const countdownText = inBlackout
+                    ? 'BLACKOUT'
+                    : (!effectivelyPaused ? (nextCheckIn + 's') : 'PAUSED');
                 const subtitleText = inBlackout 
                     ? `⏸️ Blackout window: ${blackoutWindow?.start || '??'} - ${blackoutWindow?.end || '??'}`
-                    : (masterEnabled ? `Auto-refreshes every ${automationIntervalSec} seconds` : 'Enable master switch to activate');
-                const gradientColors = inBlackout ? '#f0883e 0%, #da3633 100%' : (masterEnabled ? '#1f6feb 0%, #238636 100%' : '#6e7681 0%, #8b949e 100%');
+                    : (telemetryFailsafePaused
+                        ? telemetryPauseText
+                        : (masterEnabled ? `Auto-refreshes every ${automationIntervalSec} seconds` : 'Enable master switch to activate'));
+                const gradientColors = inBlackout
+                    ? '#f0883e 0%, #da3633 100%'
+                    : (telemetryFailsafePaused
+                        ? '#da3633 0%, #b62324 100%'
+                        : (masterEnabled ? '#1f6feb 0%, #238636 100%' : '#6e7681 0%, #8b949e 100%'));
             
             let html = `
                 <!-- Unified Countdown Timer + Master Switch -->
@@ -5027,6 +5693,7 @@
                     </div>
                     <div style="font-size:10px;color:rgba(255,255,255,0.75);text-align:center;margin-top:8px;font-weight:500">${subtitleText}</div>
                 </div>
+                ${telemetryFailsafePaused ? `<div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:rgba(248,81,73,0.16);border:1px solid rgba(248,81,73,0.55);color:var(--color-danger);font-size:12px;font-weight:600">⚠️ ${telemetryPauseText || 'Automation paused by telemetry fail-safe.'}</div>` : ''}
                 <!-- Compact Add Rule button placed under master section for quick access -->
                 <div style="display:flex;justify-content:flex-start;gap:8px;margin-bottom:12px">
                     <button class="btn btn-primary btn-sm" onclick="showAddRuleModal()" style="padding:6px 10px;font-size:12px">➕ Add Rule</button>
@@ -5242,9 +5909,10 @@
             })();
             window.automationEnabled = !!status.enabled;
             window.automationInBlackout = !!status.inBlackout;
+            window.automationFailsafePaused = !!status.enabled && !!status.telemetryFailsafePaused;
             
             // Start countdown timer if not already running (or restart if state changed)
-            const shouldRun = window.automationEnabled && !window.automationInBlackout;
+            const shouldRun = window.automationEnabled && !window.automationInBlackout && !window.automationFailsafePaused;
             const wasRunning = !!window.automationCountdownInterval;
             const stateChanged = (shouldRun !== wasRunning) || !window.automationCountdownStarted;
             
@@ -5279,7 +5947,7 @@
                         const remaining = Math.max(0, intervalSec - elapsed);
                         countdownEl.textContent = remaining + 's';
                         // Only trigger cycle if: automation is enabled, not in blackout, and timer reached 0
-                        if (remaining === 0 && window.automationEnabled && !window.automationInBlackout && !window.automationCycleRunning) {
+                        if (remaining === 0 && window.automationEnabled && !window.automationInBlackout && !window.automationFailsafePaused && !window.automationCycleRunning) {
                             // Run the actual automation cycle on the backend
                             runAutomationCycle();
                         }
@@ -5378,6 +6046,18 @@
                             }
                         }
                     } else if (data.result?.skipped) {
+                        const skipReason = String(data.result.reason || '');
+                        if (skipReason === 'stale_telemetry' || skipReason === 'stale_telemetry_missing_timestamp' || skipReason === 'frozen_telemetry') {
+                            const ageMs = Number(data.result?.telemetry?.ageMs);
+                            const ageLabel = Number.isFinite(ageMs) ? formatMsToReadable(ageMs) : 'unknown age';
+                            if (skipReason === 'stale_telemetry') {
+                                showMessage('warning', `Automation paused: inverter telemetry is stale (${ageLabel} old).`, 6000);
+                            } else if (skipReason === 'stale_telemetry_missing_timestamp') {
+                                showMessage('warning', 'Automation paused: inverter telemetry timestamp missing or unreadable.', 6000);
+                            } else {
+                                showMessage('warning', `Automation paused: inverter telemetry appears frozen (${ageLabel}).`, 6000);
+                            }
+                        }
                     } else {
                     }
                     
@@ -7452,6 +8132,9 @@
                 }
                 if (typeof refreshQuickControlStatus === 'function') {
                     refreshQuickControlStatus();
+                }
+                if (typeof refreshEVOverview === 'function') {
+                    refreshEVOverview(false);
                 }
             }
         });

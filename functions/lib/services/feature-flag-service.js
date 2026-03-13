@@ -32,11 +32,9 @@
 function hashString(str) {
   let hash = 5381;
   for (let i = 0; i < str.length; i++) {
-    // eslint-disable-next-line no-bitwise
     hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
   }
   // Unsigned 32-bit so result is always non-negative
-  // eslint-disable-next-line no-bitwise
   return hash >>> 0;
 }
 

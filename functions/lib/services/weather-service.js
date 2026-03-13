@@ -1,13 +1,17 @@
 ﻿'use strict';
 
-const fetch = require('node-fetch');
+const defaultFetch = global.fetch;
+
+if (typeof defaultFetch !== 'function') {
+  throw new Error('Global fetch is not available in this runtime.');
+}
 
 function createWeatherService(deps = {}) {
   const db = deps.db;
   const getConfig = deps.getConfig;
   const incrementApiCount = deps.incrementApiCount;
   const setUserConfig = deps.setUserConfig;
-  const fetchImpl = deps.fetchImpl || fetch;
+  const fetchImpl = deps.fetchImpl || defaultFetch;
   const logger = deps.logger || console;
 
   if (!db || typeof db.collection !== 'function') {

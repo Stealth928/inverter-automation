@@ -1,6 +1,10 @@
 ﻿'use strict';
 
-const fetch = require('node-fetch');
+const fetch = global.fetch;
+
+if (typeof fetch !== 'function') {
+  throw new Error('Global fetch is not available in this runtime.');
+}
 
 function getRuntimeProjectId(admin) {
   try {

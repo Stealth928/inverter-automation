@@ -11,22 +11,41 @@ function hasNestedDatasFrame(payload) {
   return !!payload?.result?.[0]?.datas;
 }
 
+function pushNumericTelemetry(datas, variable, rawValue) {
+  const value = Number(rawValue);
+  if (!Number.isFinite(value)) {
+    return;
+  }
+  datas.push({ variable, value });
+}
+
 function toAutomationTelemetryFrame(status = {}) {
   const datas = [];
 
-  if (status.socPct !== undefined && status.socPct !== null) {
-    datas.push({ variable: 'SoC', value: Number(status.socPct) });
-  }
-  if (status.batteryTempC !== undefined && status.batteryTempC !== null) {
-    datas.push({ variable: 'batTemperature', value: Number(status.batteryTempC) });
-  }
-  if (status.ambientTempC !== undefined && status.ambientTempC !== null) {
-    datas.push({ variable: 'ambientTemperation', value: Number(status.ambientTempC) });
-  }
+  pushNumericTelemetry(datas, 'SoC', status.socPct);
+  pushNumericTelemetry(datas, 'batTemperature', status.batteryTempC);
+  pushNumericTelemetry(datas, 'ambientTemperation', status.ambientTempC);
+  pushNumericTelemetry(datas, 'pvPower', status.pvPowerW);
+  pushNumericTelemetry(datas, 'loadsPower', status.loadPowerW);
+  pushNumericTelemetry(datas, 'gridConsumptionPower', status.gridPowerW);
+  pushNumericTelemetry(datas, 'feedinPower', status.feedInPowerW);
+
+  const gridPower = Number(status.gridPowerW);
+  const feedInPower = Number(status.feedInPowerW);
+  const meterPower = Number.isFinite(gridPower) && gridPower > 0
+    ? gridPower
+    : Number.isFinite(feedInPower) && feedInPower > 0
+      ? -feedInPower
+      : NaN;
+  pushNumericTelemetry(datas, 'meterPower2', meterPower);
 
   return {
     errno: 0,
-    result: [{ datas }],
+    result: [{
+      // Keep provider status observation time in frame for freshness checks.
+      time: status.observedAtIso || new Date().toISOString(),
+      datas
+    }],
     __cacheHit: false,
     __providerAdapter: true
   };

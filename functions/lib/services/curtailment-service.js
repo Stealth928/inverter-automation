@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveProviderDeviceId } = require('../provider-device-id');
+
 function createCurtailmentService(deps = {}) {
   const db = deps.db;
   const foxessAPI = deps.foxessAPI;
@@ -29,12 +31,20 @@ function createCurtailmentService(deps = {}) {
     await getStateDocRef(userId).set(payload);
   }
 
-  async function setExportLimit(userId, userConfig, value) {
+  function resolveCurtailmentTarget(userConfig = {}) {
+    const resolved = resolveProviderDeviceId(userConfig);
+    return {
+      provider: String(resolved.provider || 'foxess').toLowerCase().trim(),
+      deviceSN: resolved.deviceId || null
+    };
+  }
+
+  async function setExportLimit(userId, userConfig, deviceSN, value) {
     return foxessAPI.callFoxESSAPI(
       '/op/v0/device/setting/set',
       'POST',
       {
-        sn: userConfig.deviceSn,
+        sn: deviceSN,
         key: 'ExportLimit',
         value
       },
@@ -55,15 +65,34 @@ function createCurtailmentService(deps = {}) {
     };
 
     try {
+      const target = resolveCurtailmentTarget(userConfig);
+
+      if (target.provider !== 'foxess') {
+        // Curtailment uses FoxESS-specific ExportLimit control; mark as unsupported for other providers.
+        result.enabled = false;
+        result.action = 'unsupported_provider';
+        const existingState = await loadCurtailmentState(userId, { active: false });
+        if (existingState.active) {
+          result.stateChanged = true;
+          await saveCurtailmentState(userId, {
+            active: false,
+            lastPrice: null,
+            lastDeactivated: now(),
+            disabledByProvider: target.provider
+          });
+        }
+        return result;
+      }
+
       if (!userConfig?.curtailment?.enabled) {
         result.enabled = false;
 
-        if (userConfig?.deviceSn) {
+        if (target.deviceSN) {
           const curtailmentState = await loadCurtailmentState(userId, { active: false });
 
           if (curtailmentState.active) {
             console.log('[Curtailment] Restoring power (was active, now disabled)');
-            const setResult = await setExportLimit(userId, userConfig, 12000);
+            const setResult = await setExportLimit(userId, userConfig, target.deviceSN, 12000);
 
             if (setResult?.errno === 0) {
               result.action = 'deactivated_by_disable';
@@ -105,12 +134,12 @@ function createCurtailmentService(deps = {}) {
 
       if (shouldCurtail && !curtailmentState.active) {
         console.log(`[Curtailment] Activating (price ${result.currentPrice.toFixed(2)}c < ${result.priceThreshold}c)`);
-        if (!userConfig?.deviceSn) {
+        if (!target.deviceSN) {
           result.error = 'No device SN configured';
           return result;
         }
 
-        const setResult = await setExportLimit(userId, userConfig, 0);
+        const setResult = await setExportLimit(userId, userConfig, target.deviceSN, 0);
         if (setResult?.errno === 0) {
           result.action = 'activated';
           result.stateChanged = true;
@@ -125,12 +154,12 @@ function createCurtailmentService(deps = {}) {
         }
       } else if (!shouldCurtail && curtailmentState.active) {
         console.log(`[Curtailment] Deactivating (price ${result.currentPrice.toFixed(2)}c >= ${result.priceThreshold}c)`);
-        if (!userConfig?.deviceSn) {
+        if (!target.deviceSN) {
           result.error = 'No device SN configured';
           return result;
         }
 
-        const setResult = await setExportLimit(userId, userConfig, 12000);
+        const setResult = await setExportLimit(userId, userConfig, target.deviceSN, 12000);
         if (setResult?.errno === 0) {
           result.action = 'deactivated';
           result.stateChanged = true;

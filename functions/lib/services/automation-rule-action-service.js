@@ -1,5 +1,6 @@
 'use strict';
 
+const { resolveProviderDeviceId } = require('../provider-device-id');
 const {
   applySegmentToGroups,
   buildAutomationSchedulerSegment,
@@ -8,6 +9,10 @@ const {
 
 const VALID_RULE_WORK_MODES = new Set(['SelfUse', 'ForceDischarge', 'ForceCharge', 'Feedin', 'Backup']);
 const POWER_REQUIRED_WORK_MODES = new Set(['ForceDischarge', 'ForceCharge', 'Feedin']);
+const PROVIDER_WORK_MODE_BLACKLIST = Object.freeze({
+  alphaess: new Set(['Backup']),
+  sigenergy: new Set(['Backup'])
+});
 
 function getEffectiveInverterCapacityW(userConfig) {
   const capacity = Number(userConfig?.inverterCapacityW);
@@ -25,6 +30,12 @@ function validateRuleActionForUser(action, userConfig) {
   const workMode = action.workMode || 'SelfUse';
   if (!VALID_RULE_WORK_MODES.has(workMode)) {
     return `Invalid action.workMode: ${workMode}. Valid modes: ${Array.from(VALID_RULE_WORK_MODES).join(', ')}`;
+  }
+
+  const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
+  const disallowedModes = PROVIDER_WORK_MODE_BLACKLIST[provider];
+  if (disallowedModes && disallowedModes.has(workMode)) {
+    return `action.workMode ${workMode} is not supported for provider ${provider}`;
   }
 
   if (action.durationMinutes !== undefined && action.durationMinutes !== null) {
@@ -108,11 +119,7 @@ function createAutomationRuleActionService(deps = {}) {
   async function applyRuleActionViaAdapter(userId, rule, userConfig, deviceAdapter) {
     console.log(`[SegmentSend] START applyRuleAction (adapter) for '${rule.name}'`);
     const action = rule.action || {};
-    // Resolve device identifier across all supported providers:
-    //   FoxESS/generic → deviceSn
-    //   Sungrow         → sungrowDeviceSn
-    //   SigenEnergy     → sigenStationId (stationId is the scheduling key, not a device SN)
-    const deviceSN = userConfig?.sungrowDeviceSn || userConfig?.sigenStationId || userConfig?.deviceSn;
+    const deviceSN = resolveProviderDeviceId(userConfig).deviceId;
 
     if (!deviceSN) {
       console.error(`[SegmentSend] No deviceSN configured for user ${userId}`);

@@ -1,132 +1,123 @@
 # Testing Guide
 
-## Overview
+Purpose: canonical test execution reference.
+Last verified: 2026-03-13
 
-This repository has two test tracks:
-- **Backend (Jest)**: All Cloud Functions tests in `functions/test/*.test.js`
-- **Frontend (Playwright)**: UI tests in `tests/frontend/*.spec.js`
+## 1. Test Tracks
 
-**Last verified:** 2026-03-04  
-**Current inventory commands:**
+- Backend: Jest (`functions/test/*.test.js`)
+- Frontend: Playwright (`tests/frontend/*.spec.js`)
+
+Current snapshot (2026-03-13):
+- Jest test files: 103
+- Backend run (`--runInBand`): 103 suites, 1406 tests passing
+- Playwright spec files: 13
+- Playwright listed tests: 201
+
+Refresh inventory:
+
 ```bash
 npm --prefix functions test -- --listTests
 npx playwright test --list
 ```
-Current inventory at verification time:
-- Backend Jest files: 31
-- Frontend Playwright tests: 176 (11 spec files)
 
-**Coverage command:**
-```bash
-npm --prefix functions test -- --coverage --collectCoverageFrom="**/*.js" --collectCoverageFrom="!**/test/**" --collectCoverageFrom="!**/node_modules/**"
-```
+## 2. Backend (Jest)
 
-Note: there are no standalone `functions/integration-test.js` or `functions/e2e-tests.js` scripts in this repo right now. Any docs or scripts that reference them are outdated.
+Run all backend tests:
 
----
-
-## 1. Backend Tests (Jest)
-
-**Location:** `functions/test/*.test.js`  
-**What they cover:**
-- Automation logic, edge cases, and scheduler behavior
-- API integrations (FoxESS, Amber, Weather)
-- Auth flows and middleware
-- Route integration tests via supertest
-
-**Run all backend tests:**
 ```bash
 npm --prefix functions test
 ```
 
-**Run a single file:**
+Run deterministically in one process (good for release checks):
+
+```bash
+npm --prefix functions test -- --runInBand
+```
+
+Run one file:
+
 ```bash
 npm --prefix functions test -- routes-integration.test.js
 ```
 
-**Coverage (example output format):**
-```
-Overall: Lines 10.84% (335/3091) | Functions 10.14% (28/276) | Branches 5.58% (132/2365)
-root:    Lines 10.63% (273/2569) | Functions  9.13% (20/219) | Branches 5.15% (108/2099)
-api:     Lines 13.25% ( 62/468)  | Functions 15.38% ( 8/52)  | Branches 9.64% ( 24/249)
-scripts: Lines 0.00% (  0/54)    | Functions  0.00% ( 0/5)   | Branches 0.00% (  0/17)
-```
+Coverage:
 
-The coverage report is generated at `functions/coverage/index.html`.
-
----
-
-## 2. Auth Flow Tests (Jest + Emulator)
-
-Some auth tests require the Firebase emulator:
 ```bash
-npm run emu:start
+npm --prefix functions test -- --coverage
 ```
 
-Run just the auth suite:
+## 3. Frontend (Playwright)
+
+Run all:
+
 ```bash
-npm --prefix functions test -- auth-flows.test.js
+npm run test:e2e:frontend
 ```
 
----
+Run one spec:
 
-## 3. Frontend Tests (Playwright)
-
-**Location:** `tests/frontend/*.spec.js`  
-**Run all UI tests:**
-```bash
-npx playwright test
-```
-
-**Run a single spec file:**
 ```bash
 npx playwright test tests/frontend/control.spec.js
 ```
 
-To list tests:
+List tests:
+
 ```bash
 npx playwright test --list
 ```
 
----
+## 4. PowerShell Runner
 
-## 4. Test Runner Script (PowerShell)
+File: `run-tests.ps1`
 
-**File:** `run-tests.ps1`
+Supported modes:
 
 ```powershell
 .\run-tests.ps1
-.\run-tests.ps1 -Type unit
+.\run-tests.ps1 -Type backend
 .\run-tests.ps1 -Type frontend
+.\run-tests.ps1 -Type unit
+.\run-tests.ps1 -Type auth
+.\run-tests.ps1 -Type backend -Coverage
 ```
 
-Note: the `-Type e2e` and `-Type integration` modes currently reference missing scripts and will fail until those scripts are added.
+Notes:
+- `unit` is an alias for backend Jest tests.
+- `auth` tests require emulators.
 
----
+## 5. Emulator-Dependent Auth Tests
 
-## CI/CD
+Start emulators first:
 
-Example workflow steps:
-```yaml
-- name: Install backend deps
-  run: npm --prefix functions install
-
-- name: Run backend tests
-  run: npm --prefix functions test
-
-- name: Run frontend tests
-  run: npx playwright test
+```bash
+npm run emu:start
 ```
 
----
+Then run auth flows:
 
-## Troubleshooting
+```bash
+npm --prefix functions test -- auth-flows.test.js
+```
 
-- **Auth tests fail**: ensure the emulator is running and reachable.
-- **Emulators fail to start on macOS with `Unable to locate a Java Runtime`**:
-  - Firestore/PubSub need Java. Use Homebrew OpenJDK in your shell:
-    - `export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"`
-    - `export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"`
-  - Then restart emulators in a persistent terminal session.
-- **Playwright fails to launch**: install browsers with `npx playwright install`.
-- **Coverage looks low**: coverage includes all JS files under `functions/`, including scripts.
+## 6. CI Alignment
+
+Minimum CI checks for merges to `main`:
+- `npm --prefix functions run lint`
+- `npm --prefix functions test`
+- `npm run api:contract:check`
+- `npm run openapi:check`
+- `npm run hygiene:check`
+
+When frontend is changed, include:
+- `npm run test:e2e:frontend`
+
+## 7. Troubleshooting
+
+- Emulator startup fails with Java runtime errors on macOS:
+  - `export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"`
+  - `export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"`
+- Playwright browser missing:
+  - `npx playwright install`
+- Flaky local state:
+  - use deterministic reset: `npm run emu:reset`

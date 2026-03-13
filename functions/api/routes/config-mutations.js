@@ -1,5 +1,22 @@
 'use strict';
 
+const WRITE_ONLY_SECRET_FIELDS = Object.freeze([
+  'alphaessAppSecret',
+  'sungrowPassword',
+  'sigenPassword'
+]);
+
+function stripWriteOnlySecrets(config) {
+  if (!config || typeof config !== 'object') return config;
+  const sanitized = { ...config };
+  WRITE_ONLY_SECRET_FIELDS.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(sanitized, field)) {
+      delete sanitized[field];
+    }
+  });
+  return sanitized;
+}
+
 function registerConfigMutationRoutes(app, deps = {}) {
   const authenticateUser = deps.authenticateUser;
   const callWeatherAPI = deps.callWeatherAPI;
@@ -149,10 +166,11 @@ function registerConfigMutationRoutes(app, deps = {}) {
       // Firestore's merge: true only works at top level, not for nested objects
       // This prevents accidentally clearing blackoutWindows or curtailment settings
       const mergedConfig = existingConfig ? deepMerge(existingConfig, newConfig) : newConfig;
+      const sanitizedMergedConfig = stripWriteOnlySecrets(mergedConfig);
 
       // Persist to Firestore under user's config/main
-      await setUserConfig(userId, mergedConfig, { merge: true });
-      return res.json({ errno: 0, msg: 'Config saved', result: mergedConfig });
+      await setUserConfig(userId, sanitizedMergedConfig, { merge: true });
+      return res.json({ errno: 0, msg: 'Config saved', result: sanitizedMergedConfig });
     } catch (error) {
       console.error('[API] /api/config save error:', error && error.stack ? error.stack : String(error));
       return res.status(500).json({ errno: 500, error: error.message || String(error) });
@@ -165,6 +183,10 @@ function registerConfigMutationRoutes(app, deps = {}) {
       const updates = {
         deviceSn: deleteField(),
         foxessToken: deleteField(),
+        alphaessSystemSn: deleteField(),
+        alphaessSysSn: deleteField(),
+        alphaessAppId: deleteField(),
+        alphaessAppSecret: deleteField(),
         sungrowUsername: deleteField(),
         sungrowPassword: deleteField(),
         sungrowToken: deleteField(),

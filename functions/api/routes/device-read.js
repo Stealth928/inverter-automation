@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
+
 function registerDeviceReadRoutes(app, deps = {}) {
   const authenticateUser = deps.authenticateUser;
   const foxessAPI = deps.foxessAPI;
@@ -208,7 +210,7 @@ function registerDeviceReadRoutes(app, deps = {}) {
         if (provider !== 'foxess') {
           const adapter = adapterRegistry.getDeviceProvider(provider);
           if (adapter && typeof adapter.getWorkMode === 'function') {
-            const sn = req.query.sn || userConfig?.sigenStationId || userConfig?.sungrowDeviceSn;
+            const sn = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
             const adapterResult = await adapter.getWorkMode({ deviceSN: sn, userConfig, userId: req.user.uid });
             // Add numeric `value` field so the frontend (which expects result.result.value) keeps working
             if (adapterResult.errno === 0 && adapterResult.result?.workMode !== undefined) {

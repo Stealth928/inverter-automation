@@ -1,36 +1,20 @@
 #!/usr/bin/env pwsh
 # Comprehensive test runner for inverter automation system
 # Usage:
-#   .\run-tests.ps1                # Run all tests (backend + frontend)
+#   .\run-tests.ps1                # Run backend + frontend tests
 #   .\run-tests.ps1 -Type backend  # Run all backend tests
 #   .\run-tests.ps1 -Type frontend # Run Playwright UI tests
-#   .\run-tests.ps1 -Type unit     # Run only unit tests
-#   .\run-tests.ps1 -Type unit -Coverage   # Run unit tests with coverage
-#   .\run-tests.ps1 -Type e2e -Prod -AuthToken "your-token-here"  # E2E with auth
-#   .\run-tests.ps1 -Type integration -Prod  # Run integration tests against prod
-#
-# HOW TO GET AUTH TOKEN:
-#   1. Open app in browser and login
-#   2. Open DevTools Console
-#   3. Run: firebase.auth().currentUser.getIdToken().then(t => console.log(t))
-#   4. Copy the token and use with -AuthToken parameter
+#   .\run-tests.ps1 -Type unit     # Alias for backend tests
+#   .\run-tests.ps1 -Type auth     # Run auth flow tests (emulator required)
+#   .\run-tests.ps1 -Type backend -Coverage  # Backend with coverage
 
 param(
     [Parameter()]
-    [ValidateSet('all', 'backend', 'frontend', 'unit', 'integration', 'e2e', 'auth')]
+    [ValidateSet('all', 'backend', 'frontend', 'unit', 'auth')]
     [string]$Type = 'all',
-    
+
     [Parameter()]
-    [switch]$Coverage,
-    
-    [Parameter()]
-    [switch]$Prod,
-    
-    [Parameter()]
-    [string]$AuthToken = $null,
-    
-    [Parameter()]
-    [switch]$SkipAuth
+    [switch]$Coverage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,130 +25,67 @@ Write-Host " INVERTER AUTOMATION TEST SUITE" -ForegroundColor Cyan
 Write-Host "============================================================`n" -ForegroundColor Cyan
 
 try {
-    # Run frontend tests
+    # Frontend tests
     if ($Type -eq 'all' -or $Type -eq 'frontend') {
         Write-Host "Running Frontend UI Tests (Playwright)..." -ForegroundColor Yellow
         Write-Host "------------------------------------------------------------" -ForegroundColor Gray
-        
+
         Push-Location $PSScriptRoot
         npx playwright test
         Pop-Location
-        
+
         if ($LASTEXITCODE -ne 0) {
             Write-Host "`nFrontend tests FAILED" -ForegroundColor Red
             $testsFailed = $true
         } else {
             Write-Host "`nFrontend tests PASSED" -ForegroundColor Green
         }
-        
+
         Write-Host ""
     }
 
-    # Change to functions directory for backend tests
     Push-Location "$PSScriptRoot\functions"
 
-    # Run unit tests
+    # Backend / Unit tests
     if ($Type -eq 'all' -or $Type -eq 'backend' -or $Type -eq 'unit') {
-        Write-Host "Running Unit Tests..." -ForegroundColor Yellow
+        Write-Host "Running Backend Jest Tests..." -ForegroundColor Yellow
         Write-Host "------------------------------------------------------------" -ForegroundColor Gray
-        
+
         if ($Coverage) {
             npm test -- --coverage
         } else {
             npm test
         }
-        
+
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "`nUnit tests FAILED" -ForegroundColor Red
+            Write-Host "`nBackend tests FAILED" -ForegroundColor Red
             $testsFailed = $true
         } else {
-            Write-Host "`nUnit tests PASSED" -ForegroundColor Green
+            Write-Host "`nBackend tests PASSED" -ForegroundColor Green
         }
-        
+
         Write-Host ""
     }
-    
-    # Run E2E tests
-    if ($Type -eq 'all' -or $Type -eq 'backend' -or $Type -eq 'e2e') {
-        Write-Host "Running E2E Tests..." -ForegroundColor Yellow
-        Write-Host "------------------------------------------------------------" -ForegroundColor Gray
-        
-        if ($Prod) {
-            Write-Host "   Testing against: PRODUCTION" -ForegroundColor Magenta
-            $env:TEST_ENV = "prod"
-        } else {
-            Write-Host "   Testing against: EMULATOR (localhost)" -ForegroundColor Cyan
-        }
-        
-        if ($AuthToken) {
-            Write-Host "   Authentication: TOKEN PROVIDED" -ForegroundColor Green
-            $env:TEST_AUTH_TOKEN = $AuthToken
-        } elseif ($SkipAuth) {
-            Write-Host "   Authentication: SKIPPED" -ForegroundColor Yellow
-            $env:SKIP_AUTH_TESTS = "true"
-        } else {
-            Write-Host "   Authentication: NONE (limited tests)" -ForegroundColor Yellow
-        }
-        
-        node e2e-tests.js
-        
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "`nE2E tests FAILED" -ForegroundColor Red
-            $testsFailed = $true
-        } else {
-            Write-Host "`nE2E tests PASSED" -ForegroundColor Green
-        }
-        
-        Write-Host ""
-    }
-    
-    # Run auth flow tests
+
+    # Auth flow tests
     if ($Type -eq 'auth') {
         Write-Host "Running Authentication Flow Tests..." -ForegroundColor Yellow
         Write-Host "------------------------------------------------------------" -ForegroundColor Gray
-        Write-Host "   Note: Requires Firebase Auth emulator" -ForegroundColor Gray
-        Write-Host "   Start with: firebase emulators:start --only auth,firestore,functions" -ForegroundColor Gray
+        Write-Host "   Requires emulators. Start with: npm run emu:start" -ForegroundColor Gray
         Write-Host ""
-        
+
         npm test -- test/auth-flows.test.js
-        
+
         if ($LASTEXITCODE -ne 0) {
             Write-Host "`nAuth flow tests FAILED" -ForegroundColor Red
             $testsFailed = $true
         } else {
             Write-Host "`nAuth flow tests PASSED" -ForegroundColor Green
         }
-        
+
         Write-Host ""
     }
-    
-    # Run integration tests
-    if ($Type -eq 'all' -or $Type -eq 'backend' -or $Type -eq 'integration') {
-        Write-Host "Running Integration Tests..." -ForegroundColor Yellow
-        Write-Host "------------------------------------------------------------" -ForegroundColor Gray
-        
-        if ($Prod) {
-            Write-Host "   Testing against: PRODUCTION" -ForegroundColor Magenta
-            $env:TEST_PROD = "true"
-        } else {
-            Write-Host "   Testing against: EMULATOR (localhost)" -ForegroundColor Cyan
-            Write-Host "   Note: Start emulator first with: npm run serve" -ForegroundColor Gray
-            Write-Host ""
-        }
-        
-        node integration-test.js
-        
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "`nIntegration tests FAILED" -ForegroundColor Red
-            $testsFailed = $true
-        } else {
-            Write-Host "`nIntegration tests PASSED" -ForegroundColor Green
-        }
-        
-        Write-Host ""
-    }
-    
-    # Final summary
+
     Write-Host "============================================================" -ForegroundColor Cyan
     if ($testsFailed) {
         Write-Host " TESTS FAILED - See errors above" -ForegroundColor Red
@@ -175,7 +96,7 @@ try {
         Write-Host "============================================================`n" -ForegroundColor Cyan
         exit 0
     }
-    
-} finally {
+}
+finally {
     Pop-Location
 }

@@ -482,7 +482,7 @@
                     }
                 } catch (e) { /* ignore */ }
 
-                // If still missing, try persisted user config before hitting /api/amber/sites
+                // If still missing, try persisted user config before hitting /api/pricing/sites
                 if (!siteId && fetchAmber) {
                     try {
                         const cfgResp = await authenticatedFetch('/api/config');
@@ -503,8 +503,8 @@
                 // If no stored siteId and Amber fetch requested, try to get from Amber sites endpoint
                 if (!siteId && fetchAmber) {
                     try {
-                        console.log('[Fetch] No stored siteId, attempting to fetch from /api/amber/sites');
-                        const sitesResp = await authenticatedFetch('/api/amber/sites');
+                        console.log('[Fetch] No stored siteId, attempting to fetch from /api/pricing/sites');
+                        const sitesResp = await authenticatedFetch('/api/pricing/sites');
                         if (sitesResp.ok) {
                             const sites = await sitesResp.json();
                             const sitesList = Array.isArray(sites) ? sites : (sites.result || []);
@@ -566,7 +566,7 @@
                 if (fetchAmber) {
                     try {
                         if (siteId) {
-                            const amberResp = await authenticatedFetch(`/api/amber/prices/current?siteId=${siteId}&next=48`);
+                            const amberResp = await authenticatedFetch(`/api/pricing/current?siteId=${siteId}&next=48`);
                             if (amberResp.ok) {
                                 const amberData = await amberResp.json();
                                 let prices = [];
