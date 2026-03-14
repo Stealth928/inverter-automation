@@ -416,6 +416,13 @@
                 };
             }
             if (state === 'setup_required') {
+                if (String(readiness?.reasonCode || '').trim() === 'tesla_permission_denied') {
+                    return {
+                        key: 'reconnect_required',
+                        label: 'Review Tesla Setup',
+                        detail: 'Tesla denied access for this vehicle. Confirm the Tesla developer app has vehicle data and charging permissions, then reconnect Tesla.'
+                    };
+                }
                 return {
                     key: 'reconnect_required',
                     label: 'Reconnect Tesla',
@@ -490,9 +497,10 @@
                     if (resp && resp.errno === 0 && resp.result) {
                         return [vehicleId, resp.result];
                     }
+                    const reasonCode = String(resp?.result?.reasonCode || '').trim();
                     return [vehicleId, {
-                        state: resp?.result?.reasonCode === 'tesla_reconnect_required' ? 'setup_required' : 'read_only',
-                        reasonCode: resp?.result?.reasonCode || '',
+                        state: reasonCode === 'tesla_reconnect_required' || reasonCode === 'tesla_permission_denied' ? 'setup_required' : 'read_only',
+                        reasonCode,
                         source: 'settings_api'
                     }];
                 } catch (error) {

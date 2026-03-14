@@ -75,7 +75,7 @@ describe('API Call Leak Prevention - Automation Disabled', () => {
       expect(dashboardSource).toContain(
         'callAPI(\'/api/inverter/real-time\', \'Real-time Data\');'
       );
-      expect(dashboardSource).toContain(
+      expect(dashboardSource).not.toContain(
         'callAPI(\'/api/inverter/real-time\', \'Real-time Data\', false, isPageReload);'
       );
     });

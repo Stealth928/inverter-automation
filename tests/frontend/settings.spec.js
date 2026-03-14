@@ -408,6 +408,32 @@ test.describe('Settings Page', () => {
     await expect(page.locator('#teslaVehicleStatusCounts')).toContainText(/Action Needed/i);
   });
 
+  test('should show Tesla setup review guidance when Tesla denies app permissions', async ({ page }) => {
+    apiMock.setVehicles([
+      {
+        vehicleId: '5YJ3E1EA7JF000013',
+        vin: '5YJ3E1EA7JF000013',
+        provider: 'tesla',
+        displayName: 'Model S Permissions',
+        hasCredentials: true
+      }
+    ]);
+    apiMock.setCommandReadiness('5YJ3E1EA7JF000013', {
+      errno: 403,
+      error: 'Tesla denied command-readiness access for this vehicle. Confirm your Tesla app permissions and vehicle approval, then reconnect Tesla in Settings.',
+      result: {
+        reasonCode: 'tesla_permission_denied'
+      }
+    });
+
+    await page.locator('#teslaRefreshVehiclesBtn').click();
+
+    await expect(page.locator('#teslaOnboardingBadge')).toContainText(/Action Needed/i);
+    await expect(page.locator('#teslaVehiclesList')).toContainText(/Review Tesla Setup/i);
+    await expect(page.locator('#teslaVehiclesList')).toContainText(/vehicle data and charging permissions/i);
+    await expect(page.getByRole('button', { name: /Reconnect/i })).toBeVisible();
+  });
+
   test('should prefill Tesla form when reconnecting a vehicle from the list', async ({ page }) => {
     apiMock.setVehicles([
       {

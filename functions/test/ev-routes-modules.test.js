@@ -724,6 +724,30 @@ describe('GET /api/ev/vehicles/:vehicleId/command-readiness', () => {
     expect(res.body.error).toMatch(/reconnect tesla/i);
     expect(res.body.result.reasonCode).toBe('tesla_reconnect_required');
   });
+
+  test('returns 403 with setup guidance when Tesla command readiness is forbidden for app permissions', async () => {
+    const providerError = new Error('Forbidden: missing vehicle_charging_cmds scope');
+    providerError.status = 403;
+    const adapter = makeAdapter({
+      getCommandReadiness: jest.fn(async () => {
+        throw providerError;
+      })
+    });
+    const deps = makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' }))
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app)
+      .get('/api/ev/vehicles/v1/command-readiness')
+      .set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error).toMatch(/permissions|vehicle approval|reconnect tesla/i);
+    expect(res.body.result.reasonCode).toBe('tesla_permission_denied');
+  });
 });
 
 describe('POST /api/ev/vehicles/:vehicleId/wake', () => {

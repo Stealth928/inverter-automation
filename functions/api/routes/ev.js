@@ -79,11 +79,21 @@ function registerEVRoutes(app, deps = {}) {
 
   function isTeslaReconnectError(error) {
     const status = extractErrorStatus(error);
-    if (status === 401 || status === 403) return true;
     const message = extractErrorMessage(error);
+    if (status === 401) return true;
     if (!message) return false;
-    if (status === 400 && /invalid.?grant|invalid.?token/.test(message)) return true;
-    return /unauthor|forbidden|invalid.?token|expired|access denied/.test(message);
+    if (status === 400 && /invalid.?grant|invalid.?token|expired|revoked/.test(message)) return true;
+    if (status === 403 && /unauthori[sz]ed|invalid.?token|expired|revoked|access denied/.test(message)) return true;
+    return /invalid.?grant|invalid.?token|token expired|token revoked|unauthori[sz]ed/.test(message);
+  }
+
+  function isTeslaPermissionDeniedError(error) {
+    const status = extractErrorStatus(error);
+    const message = extractErrorMessage(error);
+    if (status !== 403) return false;
+    if (!message) return true;
+    return /forbidden|insufficient|scope|permission|not allowed|not authorized|requires.*scope|access to this resource/.test(message)
+      && !isTeslaReconnectError(error);
   }
 
   function isTeslaRateLimitError(error) {
@@ -846,6 +856,25 @@ function registerEVRoutes(app, deps = {}) {
             });
           }
 
+          if (isTeslaPermissionDeniedError(err)) {
+            if (cachedFallback) {
+              return res.json({
+                errno: 0,
+                result: cachedFallback,
+                source: 'cache_permission_denied',
+                actionRequired: true,
+                reasonCode: 'tesla_permission_denied'
+              });
+            }
+            return res.status(403).json({
+              errno: 403,
+              error: 'Tesla denied access for this vehicle. Confirm your Tesla app permissions and vehicle approval, then reconnect Tesla in Settings.',
+              result: {
+                reasonCode: 'tesla_permission_denied'
+              }
+            });
+          }
+
           if (isTeslaVehicleLookupError(err)) {
             if (cachedFallback) {
               return res.json({
@@ -980,6 +1009,16 @@ function registerEVRoutes(app, deps = {}) {
             }
           });
         }
+
+        if (isTeslaPermissionDeniedError(err)) {
+          return res.status(403).json({
+            errno: 403,
+            error: 'Tesla denied wake access for this vehicle. Confirm your Tesla app permissions and vehicle approval, then reconnect Tesla in Settings.',
+            result: {
+              reasonCode: 'tesla_permission_denied'
+            }
+          });
+        }
         return res.status(500).json({ errno: 500, error: err.message });
       }
     }
@@ -1086,6 +1125,16 @@ function registerEVRoutes(app, deps = {}) {
               error: 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings.',
               result: {
                 reasonCode: 'tesla_reconnect_required'
+              }
+            });
+          }
+
+          if (isTeslaPermissionDeniedError(err)) {
+            return res.status(403).json({
+              errno: 403,
+              error: 'Tesla denied command-readiness access for this vehicle. Confirm your Tesla app permissions and vehicle approval, then reconnect Tesla in Settings.',
+              result: {
+                reasonCode: 'tesla_permission_denied'
               }
             });
           }
@@ -1263,6 +1312,16 @@ function registerEVRoutes(app, deps = {}) {
               error: 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings.',
               result: {
                 reasonCode: 'tesla_reconnect_required'
+              }
+            });
+          }
+
+          if (isTeslaPermissionDeniedError(err)) {
+            return res.status(403).json({
+              errno: 403,
+              error: 'Tesla denied this charging command. Confirm your Tesla app permissions and vehicle approval, then reconnect Tesla in Settings.',
+              result: {
+                reasonCode: 'tesla_permission_denied'
               }
             });
           }
