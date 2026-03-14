@@ -1,23 +1,25 @@
+const fs = require('fs');
+const path = require('path');
+
 /**
- * Test suite to verify the fix for API call leaks when automation is disabled
+ * Test suite to verify the fix for avoidable automatic inverter API call inflation
  * 
- * Issue: 570 FoxESS API calls overnight while automation was disabled
- * Root Cause: /api/inverter/real-time endpoint didn't check automation state
- * Fix: Added automation state check before making API calls
+ * Issue: Dashboard polling forced live FoxESS reads during normal page use.
+ * Root Cause: Automatic dashboard loads used forceRefresh=true, bypassing cache.
+ * Fix: Automatic dashboard refresh timers use the cached path; manual and initial live refreshes stay available.
  */
 
 describe('API Call Leak Prevention - Automation Disabled', () => {
   describe('Issue Documentation', () => {
     test('documents the problem and fix for future reference', () => {
-      // Issue discovered: 2024-12-19
-      // 570 FoxESS API calls made overnight while automation was disabled
-      // Root cause: Dashboard polling /api/inverter/real-time without checking automation state
+      // Issue discovered during production metrics investigation.
+      // Automatic dashboard refreshes were forcing live /api/inverter/real-time reads.
+      // That bypassed the shared Firestore cache and inflated FoxESS counts.
       // 
       // Fix implemented:
-      // 1. Frontend: Check localStorage.automationEnabled before polling
-      // 2. Backend: /api/inverter/real-time checks automation state before API calls
-      // 3. Returns cached data only when automation disabled
-      // 4. Returns 503 error if no cache available and automation disabled
+      // 1. Frontend auto-refresh uses cached /api/inverter/real-time
+      // 2. Initial dashboard load may still force refresh on explicit reload
+      // 3. Manual refresh remains the explicit live-refresh path
       
       expect(true).toBe(true);
     });
@@ -61,14 +63,21 @@ describe('API Call Leak Prevention - Automation Disabled', () => {
   });
 
   describe('Frontend polling behavior', () => {
-    test('should check localStorage.automationEnabled before polling', () => {
-      // Frontend timer now checks:
-      // const automationEnabled = localStorage.getItem('automationEnabled') === 'true';
-      // if (automationEnabled) { callAPI(...); }
-      // 
-      // This is the primary defense against API leaks
-      
-      expect(true).toBe(true); // Verified in E2E tests
+    test('automatic dashboard refresh does not force live inverter reads', () => {
+      const dashboardSource = fs.readFileSync(
+        path.join(__dirname, '..', '..', 'frontend', 'js', 'dashboard.js'),
+        'utf8'
+      );
+
+      expect(dashboardSource).not.toContain(
+        "callAPI('/api/inverter/real-time', 'Real-time Data', false, true);"
+      );
+      expect(dashboardSource).toContain(
+        "callAPI('/api/inverter/real-time', 'Real-time Data');"
+      );
+      expect(dashboardSource).toContain(
+        "callAPI('/api/inverter/real-time', 'Real-time Data', false, isPageReload);"
+      );
     });
 
     test('polling interval remains 5 minutes', () => {
@@ -122,10 +131,10 @@ describe('API Call Leak Prevention - Automation Disabled', () => {
 
   describe('Defense-in-depth strategy', () => {
     test('multiple layers of protection', () => {
-      // Layer 1: Frontend checks automation state before polling
-      // Layer 2: Backend checks automation state before API calls
-      // Layer 3: Returns cached data when disabled (graceful degradation)
-      // Layer 4: Clear error when no cache and disabled (user feedback)
+      // Layer 1: Automatic dashboard reads use shared cache
+      // Layer 2: Manual refresh remains explicit and intentional
+      // Layer 3: Backend cache TTL still rate-limits upstream reads
+      // Layer 4: Shared Firestore cache reduces duplicate multi-tab reads
       
       expect(true).toBe(true);
     });
@@ -149,15 +158,15 @@ describe('API Call Leak Prevention - Automation Disabled', () => {
     });
 
     test('documents expected API call patterns', () => {
-      // Expected pattern when automation ENABLED:
-      // - Frontend polls every 5 minutes
-      // - Backend makes fresh API call when cache expires
-      // - Counter increments once per actual API call
+      // Expected pattern for automatic dashboard activity:
+      // - Frontend polls on the configured interval using cached reads
+      // - Backend makes a fresh API call only when cache has expired
+      // - Counter increments once per actual upstream API call
       //
-      // Expected pattern when automation DISABLED:
-      // - Frontend skips polling
-      // - Backend returns cached data only
-      // - Counter does NOT increment
+      // Expected pattern for manual or page-reload refresh:
+      // - User explicitly requests forceRefresh=true
+      // - Backend bypasses cache and performs a live read
+      // - Counter increments for that intentional live call
       //
       // Expected call count over 9.5 hours (570 minutes):
       // - Enabled: ~114 calls (570 / 5 = 114)

@@ -110,12 +110,8 @@ function getInverterApiCount(dayMetrics = {}) {
         });
     }
 
-    Object.entries(metrics).forEach(([metricKey, value]) => {
-        const key = String(metricKey || '').toLowerCase().trim();
-        if (!key || key === 'inverter' || key === 'inverterbyprovider' || key === 'amber' || key === 'weather' || key === 'ev' || key === 'tesla' || key === 'teslafleet' || key === 'updatedat') return;
-        if (Object.prototype.hasOwnProperty.call(providerBuckets, key)) return;
-        addProviderCount(key, value);
-    });
+    // Do not infer inverter providers from arbitrary keys.
+    // Some responses include non-inverter dotted counters (e.g. teslaFleet.calls.total).
 
     return Math.round(Object.values(providerBuckets).reduce((sum, count) => sum + count, 0));
 }

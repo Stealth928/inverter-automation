@@ -441,6 +441,38 @@
             };
         }
 
+        function shouldTeslaCommandStatusCountAsActionNeeded(commandStatus = null) {
+            const key = String(commandStatus?.key || '').trim();
+            return key === 'reconnect_required' || key === 'proxy_required' || key === 'read_only';
+        }
+
+        function updateTeslaOnboardingSummary(summary = {}, vehicleCount = 0, preserveStatus = false) {
+            if (preserveStatus) return;
+
+            const connectedCount = Number(summary.connected || 0);
+            const setupRequiredCount = Number(summary.setup_required || 0);
+            const actionNeededCount = Number(summary.action_needed || 0);
+
+            if (vehicleCount <= 0) {
+                setTeslaOnboardingBadge('Setup Required', 'modified');
+                setTeslaOnboardingStatus('No Tesla vehicles connected yet. Complete the Tesla app setup above, then use Connect with Tesla.', 'warning');
+                return;
+            }
+
+            if (setupRequiredCount > 0 || actionNeededCount > 0) {
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                const issues = setupRequiredCount + actionNeededCount;
+                setTeslaOnboardingStatus(`${connectedCount} Tesla vehicle(s) connected, but ${issues} vehicle(s) need attention before dashboard charging controls are fully ready. Review the vehicle list below for reconnect or command-readiness details.`, 'warning');
+                return;
+            }
+
+            setTeslaOnboardingBadge('Connected', 'sync');
+            const suffix = vehicleCount > 1
+                ? 'Use Add another vehicle to onboard more Teslas.'
+                : 'Use Add another vehicle when you are ready for the next Tesla.';
+            setTeslaOnboardingStatus(`${vehicleCount} Tesla vehicle(s) listed. ${suffix}`, 'success');
+        }
+
         async function loadTeslaCommandReadinessMap(vehicles = []) {
             if (!window.apiClient || typeof window.apiClient.getEVVehicleCommandReadiness !== 'function') {
                 return {};
@@ -479,7 +511,7 @@
 
         function renderTeslaVehicles(vehicles, readinessByVehicleId = {}) {
             const { vehiclesList } = getTeslaOnboardingElements();
-            if (!vehiclesList) return;
+            if (!vehiclesList) return { connected: 0, setup_required: 0, action_needed: 0 };
             vehiclesList.innerHTML = '';
             const list = Array.isArray(vehicles) ? vehicles : [];
             const pending = readTeslaPendingOAuth();
@@ -492,7 +524,7 @@
                 empty.style.fontSize = '12px';
                 empty.textContent = 'No Tesla vehicles connected yet.';
                 vehiclesList.appendChild(empty);
-                return;
+                return statusSummary;
             }
             list.forEach((vehicle) => {
                 const vehicleVin = normalizeTeslaVin(vehicle?.vin || vehicle?.vehicleId || '');
@@ -505,6 +537,9 @@
                 const commandReadiness = readinessByVehicleId[vehicleId] || readinessByVehicleId[primaryKey] || null;
                 const commandStatus = describeTeslaCommandReadiness(commandReadiness, vehicleStatus.key);
                 statusSummary[vehicleStatus.key] = Number(statusSummary[vehicleStatus.key] || 0) + 1;
+                if (vehicleStatus.key === 'connected' && shouldTeslaCommandStatusCountAsActionNeeded(commandStatus)) {
+                    statusSummary.action_needed = Number(statusSummary.action_needed || 0) + 1;
+                }
                 const isRecent = isTeslaRecentConnection(vehicleVin || vehicleId);
 
                 const row = document.createElement('div');
@@ -559,6 +594,7 @@
                 vehiclesList.appendChild(row);
             });
             renderTeslaVehicleStatusCounts(statusSummary);
+            return statusSummary;
         }
 
         async function loadTeslaVehicles(options = {}) {
@@ -575,19 +611,8 @@
                 const allVehicles = Array.isArray(resp.result) ? resp.result : [];
                 const teslaVehicles = allVehicles.filter((vehicle) => String(vehicle?.provider || '').toLowerCase() === 'tesla');
                 const readinessByVehicleId = await loadTeslaCommandReadinessMap(teslaVehicles);
-                renderTeslaVehicles(teslaVehicles, readinessByVehicleId);
-                if (!preserveStatus) {
-                    if (teslaVehicles.length > 0) {
-                        setTeslaOnboardingBadge('Connected', 'sync');
-                        const suffix = teslaVehicles.length > 1
-                            ? 'Use Add another vehicle to onboard more Teslas.'
-                            : 'Use Add another vehicle when you are ready for the next Tesla.';
-                        setTeslaOnboardingStatus(`${teslaVehicles.length} Tesla vehicle(s) listed. ${suffix}`, 'success');
-                    } else {
-                        setTeslaOnboardingBadge('Setup Required', 'modified');
-                        setTeslaOnboardingStatus('No Tesla vehicles connected yet. Complete the Tesla app setup above, then use Connect with Tesla.', 'warning');
-                    }
-                }
+                const statusSummary = renderTeslaVehicles(teslaVehicles, readinessByVehicleId);
+                updateTeslaOnboardingSummary(statusSummary, teslaVehicles.length, preserveStatus);
                 return teslaVehicles;
             } catch (error) {
                 renderTeslaVehicles([]);

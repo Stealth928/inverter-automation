@@ -5,14 +5,6 @@ function registerMetricsRoutes(app, deps = {}) {
   const getAusDateKey = deps.getAusDateKey;
   const tryAttachUser = deps.tryAttachUser;
   const KNOWN_INVERTER_PROVIDER_KEYS = ['foxess', 'sungrow', 'sigenergy', 'alphaess'];
-  const KNOWN_NON_INVERTER_METRIC_KEYS = new Set([
-    'amber',
-    'weather',
-    'ev',
-    'tesla',
-    'teslafleet',
-    'updatedat'
-  ]);
 
   if (!app || typeof app.get !== 'function') {
     throw new Error('registerMetricsRoutes requires an Express app');
@@ -93,24 +85,14 @@ function registerMetricsRoutes(app, deps = {}) {
       });
     }
 
-    Object.entries(metricsDoc).forEach(([metricKey, metricValue]) => {
-      const key = normalizeMetricKey(metricKey);
-      if (!key || key === 'inverter' || key === 'inverterbyprovider' || KNOWN_NON_INVERTER_METRIC_KEYS.has(key)) {
-        return;
-      }
-      if (Object.prototype.hasOwnProperty.call(providerBreakdown, key)) return;
-      addProviderCount(key, metricValue);
-    });
+    // Do not infer provider counters from arbitrary top-level keys.
+    // Some metrics docs include flat dotted keys (e.g. teslaFleet.calls.total)
+    // that are non-inverter counters and would otherwise inflate inverter totals.
 
     const inverterByProvider = {};
     KNOWN_INVERTER_PROVIDER_KEYS.forEach((providerKey) => {
       inverterByProvider[providerKey] = providerBreakdown[providerKey] || 0;
     });
-    Object.entries(providerBreakdown).forEach(([providerKey, count]) => {
-      if (Object.prototype.hasOwnProperty.call(inverterByProvider, providerKey)) return;
-      inverterByProvider[providerKey] = count;
-    });
-
     const explicitInverter = toCounter(metricsDoc.inverter);
     const inverter = explicitInverter || Object.values(providerBreakdown).reduce((sum, count) => sum + count, 0);
 

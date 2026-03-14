@@ -5449,10 +5449,11 @@
                 }, REFRESH.amberPricesMs);
             }
 
-            // Inverter real-time data: every 5 minutes (with cache bypass)
+            // Inverter real-time data: auto-refresh via cached path.
+            // Manual refresh remains the only cache-bypassing action.
             if (!inverterRefreshTimer) {
                 inverterRefreshTimer = setInterval(() => {
-                    callAPI('/api/inverter/real-time', 'Real-time Data', false, true);
+                    callAPI('/api/inverter/real-time', 'Real-time Data');
                 }, REFRESH.inverterMs);
             }
 

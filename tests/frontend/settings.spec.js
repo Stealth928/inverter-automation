@@ -382,6 +382,32 @@ test.describe('Settings Page', () => {
     await expect(page.locator('#teslaVehiclesList')).toContainText(/requires signed commands/i);
   });
 
+  test('should show Action Needed in Tesla summary when a connected vehicle requires reconnect', async ({ page }) => {
+    apiMock.setVehicles([
+      {
+        vehicleId: '5YJ3E1EA7JF000011',
+        vin: '5YJ3E1EA7JF000011',
+        provider: 'tesla',
+        displayName: 'Model 3 Reconnect',
+        hasCredentials: true
+      }
+    ]);
+    apiMock.setCommandReadiness('5YJ3E1EA7JF000011', {
+      errno: 400,
+      error: 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings.',
+      result: {
+        reasonCode: 'tesla_reconnect_required'
+      }
+    });
+
+    await page.locator('#teslaRefreshVehiclesBtn').click();
+
+    await expect(page.locator('#teslaOnboardingBadge')).toContainText(/Action Needed/i);
+    await expect(page.locator('#teslaOnboardingStatus')).toContainText(/need attention|reconnect|command-readiness/i);
+    await expect(page.locator('#teslaVehiclesList')).toContainText(/Reconnect Tesla/i);
+    await expect(page.locator('#teslaVehicleStatusCounts')).toContainText(/Action Needed/i);
+  });
+
   test('should keep Tesla integration at the bottom of settings', async ({ page }) => {
     const isPositionedAtBottom = await page.evaluate(() => {
       const teslaSection = document.querySelector('#teslaOnboardingSection');
