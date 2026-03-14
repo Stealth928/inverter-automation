@@ -346,7 +346,7 @@ function createEvUsageControlService(deps = {}) {
     const statusCode = Number.isFinite(Number(status)) ? Number(status) : 0;
     const isBillable = typeof billable === 'boolean'
       ? billable
-      : (statusCode > 0 && statusCode < 500);
+      : (statusCode >= 200 && statusCode < 300);
     const date = new Date(now());
     const dayKey = normalizeDateKey(date);
     const monthKey = normalizeMonthKey(date);

@@ -202,6 +202,11 @@ function toFiniteInt(value, fallback = null) {
   return Math.round(numeric);
 }
 
+function isTeslaBillableStatus(statusCode) {
+  const numeric = Number(statusCode);
+  return Number.isFinite(numeric) && numeric >= 200 && numeric < 300;
+}
+
 function extractFleetStatusEntry(payload, vehicleVin) {
   const normalizedVin = normalizeTeslaVin(vehicleVin);
   const candidates = [];
@@ -605,14 +610,18 @@ class TeslaFleetAdapter extends EVAdapter {
       });
     } catch (error) {
       this._logger.warn('TeslaFleetAdapter', `Command readiness lookup failed for ${vehicleRef.vin}: ${error?.message || error}`);
+      if (this._isAuthError(error) || Number(error?.status) === 429 || Number(error?.status) >= 500 || isProxyFailureError(error)) {
+        throw error;
+      }
       return {
-        state: 'ready_direct',
-        transport: 'direct',
-        source: 'assumed_fleet_status_unavailable',
+        state: 'read_only',
+        transport: 'none',
+        source: 'fleet_status_unavailable',
         vehicleVin: vehicleRef.vin,
         vehicleCommandProtocolRequired: null,
         totalNumberOfKeys: null,
         firmwareVersion: null,
+        reasonCode: 'command_readiness_unavailable',
         warning: String(error?.message || 'fleet_status_unavailable')
       };
     }
@@ -838,7 +847,7 @@ class TeslaFleetAdapter extends EVAdapter {
       try {
         const response = await this._http(method, url, opts);
         const statusCode = Number(response?.status) || 0;
-        const billable = statusCode > 0 && statusCode < 500;
+        const billable = isTeslaBillableStatus(statusCode);
         this._emitApiCallMetric(opts, {
           category,
           method: String(method || '').toUpperCase(),
@@ -879,7 +888,7 @@ class TeslaFleetAdapter extends EVAdapter {
         }
         if (!error.__teslaCallMetricLogged) {
           const statusCode = Number(error?.status) || 0;
-          const billable = statusCode > 0 && statusCode < 500;
+          const billable = isTeslaBillableStatus(statusCode);
           this._emitApiCallMetric(opts, {
             category,
             method: String(method || '').toUpperCase(),

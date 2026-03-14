@@ -2994,6 +2994,13 @@
             return String(meta.error || '');
         }
 
+        function getSelectedEVReadinessError() {
+            const selectedId = String(evDashboardState.selectedVehicleId || '');
+            if (!selectedId) return '';
+            const meta = evDashboardState.readinessMetaByVehicleId[selectedId] || {};
+            return String(meta.error || '');
+        }
+
         function getSelectedEVCommandReadiness() {
             const selectedId = String(evDashboardState.selectedVehicleId || '');
             if (!selectedId) return null;
@@ -3004,6 +3011,10 @@
             const reasonCode = String(status?.reasonCode || '').trim().toLowerCase();
             const errorText = String(statusError || '').trim().toLowerCase();
             return reasonCode === 'vehicle_offline' || /vehicle.*(offline|asleep|unavailable)|\boffline\b|\basleep\b|wake the vehicle/.test(errorText);
+        }
+
+        function isEVReconnectRequiredError(errorText = '') {
+            return /credential|reconnect tesla|authorization expired|invalid.?token|expired/.test(String(errorText || '').trim().toLowerCase());
         }
 
         function getEVConnectionDescriptor(statusError = '') {
@@ -3039,7 +3050,7 @@
             return 'Checking Tesla command readiness';
         }
 
-        function describeEVCommandAvailability(selectedVehicle, readiness, status = {}, statusError = '') {
+        function describeEVCommandAvailability(selectedVehicle, readiness, status = {}, statusError = '', readinessError = '') {
             if (!selectedVehicle) {
                 return {
                     kind: 'info',
@@ -3060,11 +3071,11 @@
                 };
             }
 
-            if (statusError && /credential|reconnect tesla|authorization expired/i.test(statusError)) {
+            if (isEVReconnectRequiredError(statusError) || isEVReconnectRequiredError(readinessError)) {
                 return {
                     kind: 'warn',
                     label: 'Setup Required',
-                    detail: 'Finish Tesla OAuth in Settings before charging controls can be enabled.',
+                    detail: 'Reconnect Tesla in Settings before charging controls can be enabled.',
                     canControl: false,
                     canWake: false
                 };
@@ -3122,6 +3133,15 @@
                     kind: 'warn',
                     label: 'Read Only',
                     detail: 'Status visibility is available, but charging controls are not ready for this vehicle yet.',
+                    canControl: false,
+                    canWake: false
+                };
+            }
+            if (readinessError) {
+                return {
+                    kind: 'warn',
+                    label: 'Commands Unavailable',
+                    detail: 'Refresh Tesla command readiness first, then retry charging controls.',
                     canControl: false,
                     canWake: false
                 };
@@ -3246,8 +3266,9 @@
             const readiness = evDashboardState.commandReadinessByVehicleId[vehicleId] || null;
             const readinessMeta = evDashboardState.readinessMetaByVehicleId[vehicleId] || {};
             const statusError = getSelectedEVStatusError();
+            const readinessError = String(readinessMeta.error || '');
             const connectionDescriptor = getEVConnectionDescriptor(statusError);
-            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusError);
+            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusError, readinessError);
 
             const connectionPill = document.createElement('span');
             connectionPill.className = `ev-status-pill ${connectionDescriptor.kind}`;
@@ -3377,7 +3398,7 @@
             const ampsBtn = document.getElementById('evSetChargingAmpsBtn');
             if (!controlsEl || !hintEl) return;
 
-            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusError);
+            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusError, String(readinessMeta?.error || ''));
             const canControl = commandDescriptor.canControl === true;
             const canWake = commandDescriptor.canWake === true;
             const inFlight = evDashboardState.commandInFlight === true || evDashboardState.wakeInFlight === true;
@@ -3809,7 +3830,8 @@
             const readiness = getSelectedEVCommandReadiness();
             const status = getSelectedEVStatus();
             const statusError = getSelectedEVStatusError();
-            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusError);
+            const readinessError = getSelectedEVReadinessError();
+            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusError, readinessError);
             if (commandDescriptor.canControl !== true) {
                 setEVCommandHint('warning', commandDescriptor.detail);
                 renderEVOverview();
@@ -3868,16 +3890,40 @@
                             ? 'Tesla charging stop request accepted.'
                             : 'Tesla charging start request accepted.';
                 setEVOverviewMessage('success', successMessage);
-                await fetchEVVehicleCommandReadiness(vehicleId, { silent: true });
+                if (data?.result?.readiness) {
+                    evDashboardState.commandReadinessByVehicleId[vehicleId] = data.result.readiness;
+                    evDashboardState.readinessMetaByVehicleId[vehicleId] = {
+                        ...(evDashboardState.readinessMetaByVehicleId[vehicleId] || {}),
+                        source: data.result.readiness.source || data.result.readiness.transport || 'command',
+                        loadedAtMs: Date.now(),
+                        error: '',
+                        loading: false
+                    };
+                }
                 await fetchEVVehicleStatus(vehicleId, { live: true, silent: true });
                 return data?.result || null;
             } catch (error) {
                 const message = String(error?.message || 'Tesla command failed');
                 setEVOverviewMessage('error', message);
+                if (isEVReconnectRequiredError(message)) {
+                    delete evDashboardState.commandReadinessByVehicleId[vehicleId];
+                    evDashboardState.readinessMetaByVehicleId[vehicleId] = {
+                        ...(evDashboardState.readinessMetaByVehicleId[vehicleId] || {}),
+                        source: 'command_guard',
+                        loadedAtMs: Date.now(),
+                        error: 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings.',
+                        loading: false
+                    };
+                    setEVCommandHint('warning', 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings before retrying charging controls.');
+                }
                 if (/virtual key|missing_virtual_key/i.test(message)) {
                     setEVCommandHint('warning', 'Tesla virtual-key pairing is required before charging controls can be used. Finish pairing in Settings, then retry.');
                 }
                 if (/offline|asleep|wake the vehicle/i.test(message)) {
+                    evDashboardState.statusByVehicleId[vehicleId] = {
+                        ...(evDashboardState.statusByVehicleId[vehicleId] || {}),
+                        reasonCode: 'vehicle_offline'
+                    };
                     evDashboardState.statusMetaByVehicleId[vehicleId] = {
                         ...(evDashboardState.statusMetaByVehicleId[vehicleId] || {}),
                         source: (evDashboardState.statusMetaByVehicleId[vehicleId] || {}).source || 'command_guard',
@@ -3945,7 +3991,6 @@
                 };
                 setEVOverviewMessage('success', 'Manual Tesla wake request accepted. Refreshing live status now.');
                 await fetchEVVehicleStatus(vehicleId, { live: true, silent: true });
-                await fetchEVVehicleCommandReadiness(vehicleId, { silent: true });
                 setEVCommandHint('success', 'Vehicle wake requested. If Tesla still reports asleep, wait a few seconds and retry.');
                 return data?.result || null;
             } catch (error) {

@@ -283,6 +283,41 @@ describe('TeslaFleetAdapter — getCommandReadiness', () => {
       reasonCode: 'signed_command_proxy_unavailable'
     });
   });
+
+  test('returns read_only when fleet_status is unavailable for non-auth failures', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/fleet_status`]: {
+        status: 408,
+        data: { error: 'vehicle offline' },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+
+    const readiness = await adapter.getCommandReadiness('5YJ3E1EA7JF000001', makeContext());
+
+    expect(readiness).toMatchObject({
+      state: 'read_only',
+      transport: 'none',
+      source: 'fleet_status_unavailable',
+      reasonCode: 'command_readiness_unavailable'
+    });
+  });
+
+  test('throws when fleet_status returns auth failure so callers can block commands', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/fleet_status`]: {
+        status: 401,
+        data: { error: { message: 'Unauthorized' } },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+
+    await expect(adapter.getCommandReadiness('5YJ3E1EA7JF000001', {
+      credentials: { accessToken: 'test-access-token' }
+    })).rejects.toThrow(/unauthorized/i);
+  });
 });
 
 describe('TeslaFleetAdapter — charging commands', () => {
@@ -632,5 +667,29 @@ describe('normalizeTeslaVehicleData', () => {
       isPluggedIn: false,
       isHome: true
     });
+  });
+});
+
+describe('TeslaFleetAdapter — billing classification', () => {
+  test('marks 4xx Tesla responses as non-billable in emitted metrics', async () => {
+    const recordTeslaApiCall = jest.fn(async () => {});
+    const http = makeHttpClient({
+      [`GET ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/vehicle_data`]: {
+        status: 408,
+        data: { error: 'vehicle offline' },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+
+    await expect(adapter.getVehicleStatus('5YJ3E1EA7JF000001', {
+      ...makeContext(),
+      recordTeslaApiCall
+    })).rejects.toThrow(/vehicle offline/i);
+
+    expect(recordTeslaApiCall).toHaveBeenCalledWith(expect.objectContaining({
+      status: 408,
+      billable: false
+    }));
   });
 });

@@ -80,12 +80,18 @@ async function mockEvApis(page, options = {}) {
   });
 
   await page.route('**/api/ev/vehicles/*/status*', async (route) => {
+    if (typeof options.onStatusRequest === 'function') {
+      await options.onStatusRequest(route.request());
+    }
     const vehicleId = extractVehicleIdFromUrl(route.request().url());
     const mocked = statusByVehicleId[vehicleId] || defaultStatus;
     await route.fulfill(jsonResponse(mocked.body, mocked.status));
   });
 
   await page.route('**/api/ev/vehicles/*/command-readiness', async (route) => {
+    if (typeof options.onReadinessRequest === 'function') {
+      await options.onReadinessRequest(route.request());
+    }
     const vehicleId = extractVehicleIdFromUrl(route.request().url());
     const mocked = readinessByVehicleId[vehicleId] || defaultReadiness;
     await route.fulfill(jsonResponse(mocked.body, mocked.status));
@@ -519,6 +525,8 @@ test.describe('Dashboard Page', () => {
 
   test('should show Tesla charging controls and submit command payloads for command-ready vehicles', async ({ page }) => {
     const commandRequests = [];
+    const readinessRequests = [];
+    const statusRequests = [];
 
     await mockEvApis(page, {
       vehicles: [{ vehicleId: 'veh-model-y', displayName: 'Model Y LR', hasCredentials: true }],
@@ -554,6 +562,12 @@ test.describe('Dashboard Page', () => {
           }
         }
       },
+      onReadinessRequest: async (request) => {
+        readinessRequests.push(request.url());
+      },
+      onStatusRequest: async (request) => {
+        statusRequests.push(request.url());
+      },
       onCommandRequest: async (request) => {
         commandRequests.push(request.postDataJSON());
       }
@@ -577,6 +591,8 @@ test.describe('Dashboard Page', () => {
 
     await expect(page.locator('#evOverviewMessage')).toContainText(/charge limit updated to 85%/i);
     expect(commandRequests).toContainEqual({ command: 'setChargeLimit', targetSocPct: 85 });
+    expect(readinessRequests).toHaveLength(1);
+    expect(statusRequests).toHaveLength(2);
   });
 
   test('should show a manual wake button when Tesla reports the vehicle asleep and send a wake request explicitly', async ({ page }) => {
@@ -661,6 +677,74 @@ test.describe('Dashboard Page', () => {
     await expect(page.locator('#evControls')).toBeHidden();
     await expect(page.locator('#evCommandHint')).toContainText(/requires signed commands/i);
     await expect(page.locator('#evSelectedStatusPills')).toContainText(/Proxy Required/i);
+  });
+
+  test('should disable charging controls after Tesla reconnect error to avoid repeat command calls', async ({ page }) => {
+    const commandRequests = [];
+
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-expired', displayName: 'Model 3', hasCredentials: true }],
+      statusByVehicleId: {
+        'veh-expired': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache',
+            result: {
+              socPct: 58,
+              chargingState: 'stopped',
+              isPluggedIn: true,
+              rangeKm: 280,
+              chargeLimitPct: 80,
+              asOfIso: '2026-03-14T00:00:00.000Z'
+            }
+          }
+        }
+      },
+      readinessByVehicleId: {
+        'veh-expired': {
+          status: 200,
+          body: {
+            errno: 0,
+            result: {
+              state: 'ready_direct',
+              transport: 'direct',
+              source: 'fleet_status',
+              vehicleCommandProtocolRequired: false
+            }
+          }
+        }
+      },
+      commandByVehicleId: {
+        'veh-expired': {
+          status: 400,
+          body: {
+            errno: 400,
+            error: 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings.',
+            result: {
+              reasonCode: 'tesla_reconnect_required'
+            }
+          }
+        }
+      },
+      onCommandRequest: async (request) => {
+        commandRequests.push(request.postDataJSON());
+      }
+    });
+
+    await page.reload();
+
+    await page.locator('#evChargeLimitInput').evaluate((element) => {
+      element.value = '84';
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.locator('#evSetChargeLimitBtn').click();
+
+    await expect(page.locator('#evOverviewMessage')).toContainText(/authorization expired/i);
+    await expect(page.locator('#evCommandHint')).toContainText(/reconnect tesla in settings/i);
+    await expect(page.locator('#evControls')).toBeHidden();
+    await expect(page.locator('#evSelectedStatusPills')).toContainText(/Setup Required/i);
+    expect(commandRequests).toHaveLength(1);
   });
 
   test('window.sharedUtils exposes getStoredAmberSiteId and setStoredAmberSiteId', async ({ page }) => {
