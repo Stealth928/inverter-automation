@@ -12,6 +12,7 @@
 
 const {
   EVAdapter,
+  normalizeCommandResult,
   normalizeVehicleStatus
 } = require('./ev-adapter');
 
@@ -30,8 +31,23 @@ const TESLA_REQUIRED_SCOPES = Object.freeze([
   'openid',
   'email',
   'offline_access',
-  'vehicle_device_data'
+  'vehicle_device_data',
+  'vehicle_charging_cmds'
 ]);
+
+const TESLA_DIRECT_CHARGING_COMMANDS = Object.freeze({
+  startCharging: 'charge_start',
+  stopCharging: 'charge_stop',
+  setChargeLimit: 'set_charge_limit',
+  setChargingAmps: 'set_charging_amps'
+});
+
+const TESLA_COMMAND_NOOP_REASONS = Object.freeze({
+  charge_start: new Set(['complete', 'is_charging', 'requested']),
+  charge_stop: new Set(['not_charging']),
+  set_charge_limit: new Set(['already_set']),
+  set_charging_amps: new Set(['already_set'])
+});
 
 const DEFAULT_RETRY_COUNT = 1;
 const DEFAULT_RETRY_DELAY_MS = 1000;
@@ -167,10 +183,113 @@ function classifyTeslaApiCallCategory(method, url, categoryHint = '') {
   }
   const path = String(pathname || '').toLowerCase();
 
+  if (/\/api\/1\/vehicles\/[^/]+\/command\//.test(path)) return 'command';
+  if (path.endsWith('/wake_up')) return 'wake';
+  if (path.endsWith('/fleet_status')) return 'data_request';
   if (path.endsWith('/vehicle_data')) return 'data_request';
   if (normalizedMethod === 'GET' && /\/api\/1\/vehicles\/[^/]+$/.test(path)) return 'data_request';
   if (path.includes('/oauth2/v3/token')) return 'auth';
   return 'other';
+}
+
+function normalizeTeslaCommandReason(reason) {
+  return String(reason || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function toFiniteInt(value, fallback = null) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.round(numeric);
+}
+
+function extractFleetStatusEntry(payload, vehicleVin) {
+  const normalizedVin = normalizeTeslaVin(vehicleVin);
+  const candidates = [];
+
+  if (Array.isArray(payload)) {
+    candidates.push(...payload);
+  }
+  if (Array.isArray(payload?.response)) {
+    candidates.push(...payload.response);
+  }
+  if (Array.isArray(payload?.results)) {
+    candidates.push(...payload.results);
+  }
+  if (Array.isArray(payload?.vehicles)) {
+    candidates.push(...payload.vehicles);
+  }
+  if (normalizedVin && payload && typeof payload === 'object' && payload[normalizedVin] && typeof payload[normalizedVin] === 'object') {
+    candidates.push(payload[normalizedVin]);
+  }
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    candidates.push(payload);
+    if (payload.response && typeof payload.response === 'object' && !Array.isArray(payload.response)) {
+      candidates.push(payload.response);
+    }
+  }
+
+  const matchingEntry = candidates.find((entry) => {
+    const candidateVin = normalizeTeslaVin(entry?.vin || entry?.vehicle_vin || entry?.vehicleId || '');
+    return normalizedVin && candidateVin === normalizedVin;
+  });
+  return matchingEntry || candidates.find((entry) => entry && typeof entry === 'object') || null;
+}
+
+function buildTeslaCommandReadiness(raw = {}, options = {}) {
+  const hasSignedCommandProxy = Boolean(options?.hasSignedCommandProxy);
+  const vehicleCommandProtocolRequired = raw?.vehicle_command_protocol_required === true;
+  const vehicleVin = normalizeTeslaVin(raw?.vin || options?.vehicleVin || '');
+  const totalNumberOfKeys = toFiniteInt(raw?.total_number_of_keys, null);
+  const firmwareVersion = String(raw?.firmware_version || '').trim() || null;
+  const source = String(options?.source || 'fleet_status').trim() || 'fleet_status';
+
+  let state = 'ready_direct';
+  let transport = 'direct';
+  let reasonCode = '';
+
+  if (vehicleCommandProtocolRequired) {
+    transport = 'signed';
+    if (!vehicleVin) {
+      state = 'read_only';
+      reasonCode = 'vin_required_for_signed_commands';
+    } else if (!hasSignedCommandProxy) {
+      state = 'proxy_unavailable';
+      reasonCode = 'signed_command_proxy_unavailable';
+    } else {
+      state = 'ready_signed';
+    }
+  }
+
+  return {
+    state,
+    transport,
+    source,
+    vehicleVin: vehicleVin || null,
+    vehicleCommandProtocolRequired,
+    totalNumberOfKeys,
+    firmwareVersion,
+    ...(reasonCode ? { reasonCode } : {})
+  };
+}
+
+function isVehicleCommandProtocolRequiredError(error) {
+  const message = String(error?.message || error?.cause?.message || '').toLowerCase();
+  return (
+    Number(error?.status) === 422 ||
+    /vehicle_command_protocol_required/.test(message) ||
+    /not_a_json_request/.test(message) ||
+    /use the vehicle command protocol/.test(message) ||
+    /requires signed command/.test(message)
+  );
+}
+
+function isVirtualKeyMissingError(error) {
+  const message = String(error?.message || error?.cause?.message || '').toLowerCase();
+  return /missing_key|public key has not been paired|no private key available|key has not been paired/.test(message);
+}
+
+function isProxyFailureError(error) {
+  return Boolean(error?.isProxyFailure) || /proxy/.test(String(error?.message || '').toLowerCase());
 }
 
 function getTeslaAuthorizeBase(region = TESLA_DEFAULT_REGION) {
@@ -302,6 +421,24 @@ class TeslaFleetAdapter extends EVAdapter {
     this._logger = deps.logger || { debug: () => {}, warn: () => {}, error: () => {} };
     this._sleep = deps.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this._onApiCall = typeof deps.onApiCall === 'function' ? deps.onApiCall : null;
+    this._signedCommandProxyUrl = String(
+      deps.signedCommandProxyUrl ||
+      process.env.TESLA_SIGNED_COMMAND_PROXY_URL ||
+      ''
+    ).trim().replace(/\/+$/, '');
+    this._signedCommandProxyToken = String(
+      deps.signedCommandProxyToken ||
+      process.env.TESLA_SIGNED_COMMAND_PROXY_TOKEN ||
+      ''
+    ).trim();
+  }
+
+  supportsCommands() {
+    return true;
+  }
+
+  supportsChargingCommands() {
+    return true;
   }
 
   _fleetBaseForContext(context) {
@@ -421,6 +558,236 @@ class TeslaFleetAdapter extends EVAdapter {
 
     const vehicleData = response.data?.response || response.data || {};
     return normalizeTeslaVehicleData(vehicleData);
+  }
+
+  _hasSignedCommandProxy() {
+    return Boolean(this._signedCommandProxyUrl);
+  }
+
+  async getCommandReadiness(vehicleId, context = {}) {
+    const vehicleRef = resolveVehicleReference(vehicleId, context);
+    const fleetBase = this._fleetBaseForContext(context);
+    if (!vehicleRef.vin) {
+      return {
+        state: 'ready_direct',
+        transport: 'direct',
+        source: 'assumed_no_vin',
+        vehicleVin: null,
+        vehicleCommandProtocolRequired: null,
+        totalNumberOfKeys: null,
+        firmwareVersion: null
+      };
+    }
+
+    const url = `${fleetBase}/api/1/vehicles/fleet_status`;
+    try {
+      const response = await this._requestWithAuthRefresh(
+        context,
+        (headers) => this._makeRequest('POST', url, {
+          headers: {
+            ...headers,
+            'Content-Type': 'application/json'
+          },
+          body: { vins: [vehicleRef.vin] },
+          categoryHint: 'data_request',
+          onApiCall: context?.recordTeslaApiCall
+        })
+      );
+      const entry = extractFleetStatusEntry(response.data?.response ?? response.data, vehicleRef.vin) || {};
+      return buildTeslaCommandReadiness(entry, {
+        source: 'fleet_status',
+        vehicleVin: vehicleRef.vin,
+        hasSignedCommandProxy: this._hasSignedCommandProxy()
+      });
+    } catch (error) {
+      this._logger.warn('TeslaFleetAdapter', `Command readiness lookup failed for ${vehicleRef.vin}: ${error?.message || error}`);
+      return {
+        state: 'ready_direct',
+        transport: 'direct',
+        source: 'assumed_fleet_status_unavailable',
+        vehicleVin: vehicleRef.vin,
+        vehicleCommandProtocolRequired: null,
+        totalNumberOfKeys: null,
+        firmwareVersion: null,
+        warning: String(error?.message || 'fleet_status_unavailable')
+      };
+    }
+  }
+
+  _normalizeCommandResponse(commandPath, rawResponse, transport, readiness) {
+    const response = rawResponse?.response || rawResponse || {};
+    const reasonText = String(response?.reason || response?.error || '').trim();
+    const reasonCode = normalizeTeslaCommandReason(reasonText);
+    const noopReasons = TESLA_COMMAND_NOOP_REASONS[commandPath] || null;
+    const isNoop = response?.result !== true && noopReasons && noopReasons.has(reasonCode);
+
+    if (response?.result !== true && !isNoop) {
+      const error = new Error(reasonText || `${commandPath} failed`);
+      error.reasonCode = reasonCode || 'command_failed';
+      error.transport = transport;
+      error.commandPath = commandPath;
+      error.readinessState = readiness?.state || '';
+      if (isVehicleCommandProtocolRequiredError(error)) {
+        error.isVehicleCommandProtocolRequired = true;
+      }
+      if (isVirtualKeyMissingError(error)) {
+        error.isVirtualKeyMissing = true;
+      }
+      throw error;
+    }
+
+    return normalizeCommandResult({
+      accepted: true,
+      command: commandPath,
+      status: isNoop ? 'noop' : 'confirmed',
+      provider: 'tesla',
+      transport,
+      noop: isNoop,
+      providerRef: reasonText,
+      ...(reasonCode ? { reasonCode } : {}),
+      readinessState: readiness?.state,
+      vehicleCommandProtocolRequired: readiness?.vehicleCommandProtocolRequired
+    });
+  }
+
+  _proxyHeaders(baseHeaders = {}) {
+    return {
+      ...baseHeaders,
+      ...(this._signedCommandProxyToken
+        ? { 'X-Tesla-Proxy-Token': this._signedCommandProxyToken }
+        : {})
+    };
+  }
+
+  async _sendDirectCommand(commandPath, vehicleId, context = {}, payload = {}, readiness = null) {
+    const vehicleRef = resolveVehicleReference(vehicleId, context);
+    const fleetBase = this._fleetBaseForContext(context);
+    const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}/command/${commandPath}`;
+    const response = await this._requestWithAuthRefresh(
+      context,
+      (headers) => this._makeRequest('POST', url, {
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
+        },
+        body: payload,
+        categoryHint: 'command',
+        onApiCall: context?.recordTeslaApiCall
+      })
+    );
+    return this._normalizeCommandResponse(commandPath, response.data, 'direct', readiness);
+  }
+
+  async _sendSignedCommand(commandPath, vehicleId, context = {}, payload = {}, readiness = null) {
+    if (!this._hasSignedCommandProxy()) {
+      const error = new Error('Tesla signed command proxy is not configured');
+      error.status = 503;
+      error.reasonCode = 'signed_command_proxy_unavailable';
+      error.isProxyFailure = true;
+      throw error;
+    }
+
+    const vehicleRef = resolveVehicleReference(vehicleId, context);
+    if (!vehicleRef.vin) {
+      const error = new Error('Tesla VIN is required for signed commands');
+      error.status = 400;
+      error.reasonCode = 'vin_required_for_signed_commands';
+      throw error;
+    }
+
+    const url = `${this._signedCommandProxyUrl}/api/1/vehicles/${encodeURIComponent(vehicleRef.vin)}/command/${commandPath}`;
+    try {
+      const response = await this._requestWithAuthRefresh(
+        context,
+        (headers) => this._makeRequest('POST', url, {
+          headers: this._proxyHeaders({
+            ...headers,
+            'Content-Type': 'application/json'
+          }),
+          body: payload,
+          categoryHint: 'command',
+          onApiCall: context?.recordTeslaApiCall
+        })
+      );
+      return this._normalizeCommandResponse(commandPath, response.data, 'signed', readiness);
+    } catch (error) {
+      error.isProxyFailure = isProxyFailureError(error) || Number(error?.status) >= 500;
+      throw error;
+    }
+  }
+
+  async _executeChargingCommand(commandName, vehicleId, context = {}, payload = {}) {
+    const commandPath = TESLA_DIRECT_CHARGING_COMMANDS[commandName];
+    if (!commandPath) {
+      throw new Error(`TeslaFleetAdapter: unsupported command ${commandName}`);
+    }
+
+    const readiness = context?.commandReadiness || await this.getCommandReadiness(vehicleId, context);
+
+    if (readiness?.state === 'proxy_unavailable') {
+      const error = new Error('Tesla vehicle requires signed commands, but the signed-command proxy is not configured');
+      error.status = 503;
+      error.reasonCode = readiness.reasonCode || 'signed_command_proxy_unavailable';
+      error.isProxyFailure = true;
+      throw error;
+    }
+
+    if (readiness?.state === 'read_only') {
+      const error = new Error('Tesla charging commands are not ready for this vehicle');
+      error.status = 409;
+      error.reasonCode = readiness.reasonCode || 'tesla_command_not_ready';
+      throw error;
+    }
+
+    if (readiness?.transport === 'signed') {
+      return this._sendSignedCommand(commandPath, vehicleId, context, payload, readiness);
+    }
+
+    try {
+      return await this._sendDirectCommand(commandPath, vehicleId, context, payload, readiness);
+    } catch (error) {
+      if (this._hasSignedCommandProxy() && isVehicleCommandProtocolRequiredError(error)) {
+        return this._sendSignedCommand(commandPath, vehicleId, context, payload, {
+          ...readiness,
+          state: 'ready_signed',
+          transport: 'signed',
+          vehicleCommandProtocolRequired: true
+        });
+      }
+      if (isVehicleCommandProtocolRequiredError(error)) {
+        error.reasonCode = error.reasonCode || 'signed_command_proxy_required';
+        error.isProxyFailure = true;
+      }
+      if (isVirtualKeyMissingError(error)) {
+        error.reasonCode = error.reasonCode || 'missing_virtual_key';
+        error.isVirtualKeyMissing = true;
+      }
+      throw error;
+    }
+  }
+
+  async startCharging(vehicleId, context = {}) {
+    return this._executeChargingCommand('startCharging', vehicleId, context, {});
+  }
+
+  async stopCharging(vehicleId, context = {}) {
+    return this._executeChargingCommand('stopCharging', vehicleId, context, {});
+  }
+
+  async setChargeLimit(vehicleId, limitPct, context = {}) {
+    const limit = Math.round(Number(limitPct));
+    if (!Number.isFinite(limit) || limit < 50 || limit > 100) {
+      throw new Error(`TeslaFleetAdapter.setChargeLimit: invalid limit ${limitPct}`);
+    }
+    return this._executeChargingCommand('setChargeLimit', vehicleId, context, { percent: limit });
+  }
+
+  async setChargingAmps(vehicleId, chargingAmps, context = {}) {
+    const amps = Math.round(Number(chargingAmps));
+    if (!Number.isFinite(amps) || amps < 1 || amps > 48) {
+      throw new Error(`TeslaFleetAdapter.setChargingAmps: invalid charging amps ${chargingAmps}`);
+    }
+    return this._executeChargingCommand('setChargingAmps', vehicleId, context, { charging_amps: amps });
   }
 
   normalizeProviderError(error) {

@@ -638,6 +638,165 @@ Returns ALL real-time data for a device without variable filtering. Used for top
 
 ---
 
+## EV Endpoints
+
+### List EV Vehicles
+```
+GET /api/ev/vehicles
+Authorization: Bearer <token>
+```
+
+Returns registered EVs for the current user. Tesla vehicles expose `hasCredentials` so the frontend can distinguish fully connected vehicles from those still waiting on OAuth completion.
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": [
+    {
+      "vehicleId": "5YJ3E1EA7JF000001",
+      "provider": "tesla",
+      "displayName": "Model Y Home",
+      "region": "na",
+      "hasCredentials": true
+    }
+  ]
+}
+```
+
+### Get EV Status
+```
+GET /api/ev/vehicles/:vehicleId/status?live=1
+Authorization: Bearer <token>
+```
+
+Returns the latest cached or live EV status for the selected vehicle.
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "source": "live",
+  "result": {
+    "socPct": 74,
+    "chargingState": "charging",
+    "isPluggedIn": true,
+    "isHome": true,
+    "rangeKm": 410,
+    "chargeLimitPct": 90,
+    "asOfIso": "2026-03-14T00:00:00.000Z"
+  },
+  "audit": {
+    "routeName": "status",
+    "teslaApiCalls": 1,
+    "teslaBillableApiCalls": 1
+  }
+}
+```
+
+### Get EV Command Readiness
+```
+GET /api/ev/vehicles/:vehicleId/command-readiness
+Authorization: Bearer <token>
+```
+
+Returns whether Tesla charging controls can be shown for the selected vehicle.
+
+Typical readiness states:
+
+- `ready_direct`: direct Tesla Fleet charging commands are available
+- `ready_signed`: the vehicle is command-ready but must use signed commands
+- `proxy_unavailable`: the vehicle requires signed commands and the proxy is not configured
+- `read_only`: status visibility is available but charging controls are not ready
+- `setup_required`: Tesla OAuth credentials are missing or need to be refreshed
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": {
+    "state": "ready_signed",
+    "transport": "signed",
+    "source": "fleet_status",
+    "vehicleVin": "5YJ3E1EA7JF000001",
+    "vehicleCommandProtocolRequired": true,
+    "totalNumberOfKeys": 4,
+    "firmwareVersion": "2026.2.1"
+  },
+  "audit": {
+    "routeName": "command_readiness",
+    "teslaApiCalls": 1,
+    "teslaBillableApiCalls": 1
+  }
+}
+```
+
+### Send EV Charging Command
+```
+POST /api/ev/vehicles/:vehicleId/command
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Supported Tesla commands:
+
+- `startCharging`
+- `stopCharging`
+- `setChargeLimit`
+- `setChargingAmps`
+
+**Request:**
+```json
+{
+  "command": "setChargeLimit",
+  "targetSocPct": 80,
+  "commandId": "cmd-123"
+}
+```
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": {
+    "accepted": true,
+    "command": "setChargeLimit",
+    "provider": "tesla",
+    "vehicleId": "5YJ3E1EA7JF000001",
+    "transport": "direct",
+    "status": "confirmed",
+    "targetSocPct": 80,
+    "asOfIso": "2026-03-14T00:00:00.000Z"
+  },
+  "audit": {
+    "routeName": "command_setChargeLimit",
+    "teslaApiCalls": 1,
+    "teslaBillableApiCalls": 1
+  }
+}
+```
+
+**Command Validation Errors:**
+```json
+{
+  "errno": 400,
+  "error": "targetSocPct must be between 50 and 100"
+}
+```
+
+**Readiness / Infrastructure Errors:**
+```json
+{
+  "errno": 503,
+  "error": "Tesla vehicle requires signed commands, but the signed-command proxy is not configured.",
+  "result": {
+    "reasonCode": "signed_command_proxy_unavailable"
+  }
+}
+```
+
+---
+
 ## Amber Endpoints
 
 ### List Sites

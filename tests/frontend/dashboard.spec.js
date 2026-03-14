@@ -17,7 +17,7 @@ function jsonResponse(payload, status = 200) {
 function extractVehicleIdFromUrl(url) {
   try {
     const pathname = new URL(url).pathname;
-    const match = pathname.match(/\/api\/ev\/vehicles\/([^/]+)\/(?:status|command)$/i);
+    const match = pathname.match(/\/api\/ev\/vehicles\/([^/]+)\/(?:status|command|command-readiness)$/i);
     return match ? decodeURIComponent(match[1]) : '';
   } catch (e) {
     return '';
@@ -27,6 +27,7 @@ function extractVehicleIdFromUrl(url) {
 async function mockEvApis(page, options = {}) {
   const vehicles = Array.isArray(options.vehicles) ? options.vehicles : [];
   const statusByVehicleId = options.statusByVehicleId || {};
+  const readinessByVehicleId = options.readinessByVehicleId || {};
   const commandByVehicleId = options.commandByVehicleId || {};
   const defaultStatus = options.defaultStatus || {
     status: 200,
@@ -48,6 +49,18 @@ async function mockEvApis(page, options = {}) {
     status: 200,
     body: { errno: 0, result: { accepted: true } }
   };
+  const defaultReadiness = options.defaultReadiness || {
+    status: 200,
+    body: {
+      errno: 0,
+      result: {
+        state: 'ready_direct',
+        transport: 'direct',
+        source: 'test',
+        vehicleCommandProtocolRequired: false
+      }
+    }
+  };
 
   await page.route('**/api/ev/vehicles', async (route) => {
     await route.fulfill(jsonResponse({ errno: 0, result: vehicles }, 200));
@@ -56,6 +69,12 @@ async function mockEvApis(page, options = {}) {
   await page.route('**/api/ev/vehicles/*/status*', async (route) => {
     const vehicleId = extractVehicleIdFromUrl(route.request().url());
     const mocked = statusByVehicleId[vehicleId] || defaultStatus;
+    await route.fulfill(jsonResponse(mocked.body, mocked.status));
+  });
+
+  await page.route('**/api/ev/vehicles/*/command-readiness', async (route) => {
+    const vehicleId = extractVehicleIdFromUrl(route.request().url());
+    const mocked = readinessByVehicleId[vehicleId] || defaultReadiness;
     await route.fulfill(jsonResponse(mocked.body, mocked.status));
   });
 
@@ -382,7 +401,7 @@ test.describe('Dashboard Page', () => {
 
   test('should show Tesla setup required when vehicle credentials are missing', async ({ page }) => {
     await mockEvApis(page, {
-      vehicles: [{ vehicleId: 'veh-missing-creds', displayName: 'Model S Plaid' }],
+      vehicles: [{ vehicleId: 'veh-missing-creds', displayName: 'Model S Plaid', hasCredentials: false }],
       statusByVehicleId: {
         'veh-missing-creds': {
           status: 400,
@@ -397,7 +416,7 @@ test.describe('Dashboard Page', () => {
     await page.reload();
 
     await expect(page.locator('#evSelectedStatusPills')).toContainText('Setup Required');
-    await expect(page.locator('#evControls')).toHaveCount(0);
+    await expect(page.locator('#evControls')).toBeHidden();
   });
 
   test('should skip EV status fetch for vehicles pending Tesla auth and show setup required', async ({ page }) => {
@@ -426,7 +445,7 @@ test.describe('Dashboard Page', () => {
 
     await page.reload();
     await expect(page.locator('#evVehicleTabs')).toContainText('No EV vehicles connected yet');
-    await expect(page.locator('#evControls')).toHaveCount(0);
+    await expect(page.locator('#evControls')).toBeHidden();
   });
 
   test('should render EV vehicle names as plain text to avoid HTML injection', async ({ page }) => {
@@ -440,6 +459,123 @@ test.describe('Dashboard Page', () => {
 
     await expect(page.locator('#evVehicleTabs .ev-vehicle-tab').first()).toContainText('<img src=x');
     await expect(page.locator('#evVehicleTabs img')).toHaveCount(0);
+  });
+
+  test('should render EV summary with SoC battery icon and range immediately after SoC', async ({ page }) => {
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-model-y', displayName: 'Model Y LR' }],
+      statusByVehicleId: {
+        'veh-model-y': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache',
+            result: {
+              socPct: 58,
+              chargingState: 'charging',
+              isPluggedIn: true,
+              isHome: true,
+              rangeKm: 322,
+              chargeLimitPct: 83,
+              asOfIso: '2026-03-13T00:00:00.000Z'
+            }
+          }
+        }
+      }
+    });
+
+    await page.reload();
+
+    const summaryCards = page.locator('#evSelectedSummary .ev-summary-stat');
+    await expect(summaryCards.nth(0)).toContainText('Vehicle');
+    await expect(summaryCards.nth(1)).toContainText('SoC');
+    await expect(summaryCards.nth(2)).toContainText('Range');
+    await expect(summaryCards.nth(1).locator('.ev-summary-battery')).toHaveCount(1);
+    await expect(summaryCards.nth(1)).toContainText('58%');
+    await expect(summaryCards.nth(2)).toContainText('322 km');
+  });
+
+  test('should show Tesla charging controls and submit command payloads for command-ready vehicles', async ({ page }) => {
+    const commandRequests = [];
+
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-model-y', displayName: 'Model Y LR', hasCredentials: true }],
+      statusByVehicleId: {
+        'veh-model-y': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache',
+            result: {
+              socPct: 61,
+              chargingState: 'charging',
+              isPluggedIn: true,
+              isHome: true,
+              rangeKm: 311,
+              chargeLimitPct: 82,
+              asOfIso: '2026-03-13T00:00:00.000Z'
+            }
+          }
+        }
+      },
+      readinessByVehicleId: {
+        'veh-model-y': {
+          status: 200,
+          body: {
+            errno: 0,
+            result: {
+              state: 'ready_direct',
+              transport: 'direct',
+              source: 'fleet_status',
+              vehicleCommandProtocolRequired: false
+            }
+          }
+        }
+      },
+      onCommandRequest: async (request) => {
+        commandRequests.push(request.postDataJSON());
+      }
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evControls')).toBeVisible();
+    await expect(page.locator('#evSelectedStatusPills')).toContainText('Charging Ready');
+    await expect(page.locator('#evControlsTransportHint')).toContainText(/Direct Tesla commands/i);
+    await expect(page.locator('#evChargeLimitInput')).toHaveValue('82');
+
+    await page.locator('#evChargeLimitInput').fill('85');
+    await page.locator('#evSetChargeLimitBtn').click();
+
+    await expect(page.locator('#evOverviewMessage')).toContainText(/charge limit updated to 85%/i);
+    expect(commandRequests).toContainEqual({ command: 'setChargeLimit', targetSocPct: 85 });
+  });
+
+  test('should keep charging controls disabled and show proxy guidance when Tesla signed proxy is unavailable', async ({ page }) => {
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-model-s', displayName: 'Model S', hasCredentials: true }],
+      readinessByVehicleId: {
+        'veh-model-s': {
+          status: 200,
+          body: {
+            errno: 0,
+            result: {
+              state: 'proxy_unavailable',
+              transport: 'signed',
+              source: 'fleet_status',
+              reasonCode: 'signed_command_proxy_unavailable',
+              vehicleCommandProtocolRequired: true
+            }
+          }
+        }
+      }
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evControls')).toBeHidden();
+    await expect(page.locator('#evCommandHint')).toContainText(/requires signed commands/i);
+    await expect(page.locator('#evSelectedStatusPills')).toContainText(/Proxy Required/i);
   });
 
   test('window.sharedUtils exposes getStoredAmberSiteId and setStoredAmberSiteId', async ({ page }) => {

@@ -25,7 +25,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/firebase-auth.js"></script>
-    <script src="js/api-client.js"></script>
+    <script src="js/api-client.js?v=2"></script>
     <script src="js/shared-utils.js"></script>
     <script src="js/app-shell.js?v=12"></script>
     <script src="js/tour.js?v=29"></script>
@@ -521,6 +521,26 @@
         .tesla-vehicle-status.status-new {
             border-color: color-mix(in srgb, var(--accent-blue) 35%, var(--border-primary));
             color: var(--accent-blue);
+        }
+        .tesla-vehicle-status.status-charging_ready {
+            border-color: color-mix(in srgb, var(--color-success) 35%, var(--border-primary));
+            color: var(--color-success);
+        }
+        .tesla-vehicle-status.status-signed_ready {
+            border-color: color-mix(in srgb, var(--accent-blue) 35%, var(--border-primary));
+            color: var(--accent-blue);
+        }
+        .tesla-vehicle-status.status-read_only {
+            border-color: color-mix(in srgb, var(--text-secondary) 35%, var(--border-primary));
+            color: var(--text-secondary);
+        }
+        .tesla-vehicle-status.status-proxy_required {
+            border-color: color-mix(in srgb, var(--color-warning) 35%, var(--border-primary));
+            color: var(--color-warning);
+        }
+        .tesla-vehicle-status.status-reconnect_required {
+            border-color: color-mix(in srgb, var(--color-danger) 35%, var(--border-primary));
+            color: var(--color-danger);
         }
         .tesla-vehicle-right button {
             border: 0;
@@ -1567,7 +1587,7 @@
                 <div>
                     <div class="tesla-onboarding-kicker">What you need before you connect</div>
                     <h3>Set up the Tesla app once, then finish sign-in here.</h3>
-                    <p>Tesla requires your own Tesla developer app and an exact redirect URI match before OAuth will succeed. After sign-in, status data will work immediately. This product currently uses Tesla for connection and status visibility only.</p>
+                    <p>Tesla requires your own Tesla developer app and an exact redirect URI match before OAuth will succeed. After sign-in, status data usually works immediately. Charging controls may also require Tesla virtual-key pairing and, on some vehicles, signed-command proxy readiness before the dashboard will enable them.</p>
                     <div class="tesla-onboarding-tags">
                         <span class="tesla-onboarding-tag">Tesla developer app</span>
                         <span class="tesla-onboarding-tag">Vehicle VIN</span>
@@ -1684,7 +1704,7 @@
         </div>
     </div>
 
-    <script src="js/settings.js"></script>
+    <script src="js/settings.js?v=2"></script>
 </body>
 </html>
 

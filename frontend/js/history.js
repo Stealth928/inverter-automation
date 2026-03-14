@@ -11,6 +11,7 @@
         let lastRawData = null;
         let historyVariables = null;
         let deviceSn = null;
+        let deviceProvider = '';
         let cachedTopologyContext = null;
         let cachedTopologyFetchedAt = 0;
 
@@ -55,6 +56,9 @@
             try {
                 const resp = await authenticatedFetch('/api/config');
                 const data = await resp.json();
+                if (data.errno === 0 && data.result?.deviceProvider) {
+                    deviceProvider = String(data.result.deviceProvider).toLowerCase();
+                }
                 if (data.errno === 0 && data.result?.deviceSn) {
                     deviceSn = data.result.deviceSn;
                     try { localStorage.setItem('deviceSn', deviceSn); } catch (e) {}
@@ -62,6 +66,10 @@
             } catch (e) {
                 console.warn('Could not load device SN:', e);
             }
+        }
+
+        function isAlphaEssProvider() {
+            return String(deviceProvider || '').toLowerCase() === 'alphaess';
         }
 
         // Load Chart.js on demand
@@ -227,6 +235,12 @@
                 return {
                     isLikelyAcCoupled: stored.isLikelyAcCoupled,
                     source: 'stored-manual'
+                };
+            }
+            if (isAlphaEssProvider()) {
+                return {
+                    isLikelyAcCoupled: false,
+                    source: stored?.hasStoredCoupling ? 'alphaess-no-auto-detect' : 'alphaess-default'
                 };
             }
             if (stored?.hasStoredCoupling && !stored.isStale) {
@@ -444,13 +458,14 @@
             const maxAbs = (arr) => arr.length ? Math.max(...arr.map(d => Math.abs(Number(d?.value) || 0))) : 0;
             const pvPeak = maxAbs(pvData);
             const meter2Peak = maxAbs(meter2Data);
+            const canUseMeterPower2AsSolar = !isAlphaEssProvider();
 
             let genData = [];
             let solarSource = 'generationPower';
             if (pvData.length > 0 && pvPeak >= 0.05) {
                 genData = pvData;
                 solarSource = 'pvPower';
-            } else if (meter2Data.length > 0 && meter2Peak >= 0.05) {
+            } else if (canUseMeterPower2AsSolar && meter2Data.length > 0 && meter2Peak >= 0.05) {
                 genData = meter2Data;
                 solarSource = 'meterPower2';
             } else {

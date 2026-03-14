@@ -56,6 +56,7 @@ function authInitScript(uid, email) {
 async function mockSettingsApi(page, config = BASE_CONFIG) {
   const state = cloneConfig(config);
   const evVehicles = [];
+  const readinessByVehicleId = {};
   const oauthStartRequests = [];
   const oauthCallbackRequests = [];
 
@@ -98,6 +99,19 @@ async function mockSettingsApi(page, config = BASE_CONFIG) {
         evVehicles.push(payload);
       }
       body = { errno: 0, result: payload };
+    } else if (/^\/api\/ev\/vehicles\/[^/]+\/command-readiness$/.test(path) && method === 'GET') {
+      const segments = path.split('/');
+      const vehicleId = decodeURIComponent(segments[segments.length - 2] || '');
+      const readiness = readinessByVehicleId[vehicleId] || {
+        errno: 0,
+        result: {
+          state: 'ready_direct',
+          transport: 'direct',
+          source: 'test',
+          vehicleCommandProtocolRequired: false
+        }
+      };
+      body = readiness;
     } else if (path.startsWith('/api/ev/vehicles/') && method === 'DELETE') {
       const vehicleId = decodeURIComponent(path.split('/').pop() || '');
       const next = evVehicles.filter((vehicle) => String(vehicle.vehicleId) !== String(vehicleId));
@@ -132,6 +146,9 @@ async function mockSettingsApi(page, config = BASE_CONFIG) {
 
   return {
     getVehicles: () => evVehicles.map((vehicle) => ({ ...vehicle })),
+    setCommandReadiness: (vehicleId, readiness) => {
+      readinessByVehicleId[String(vehicleId)] = readiness;
+    },
     setVehicles: (vehicles = []) => {
       const next = Array.isArray(vehicles) ? vehicles : [];
       evVehicles.splice(0, evVehicles.length, ...next.map((vehicle) => ({ ...vehicle })));
@@ -296,6 +313,7 @@ test.describe('Settings Page', () => {
     await expect(page.locator('#teslaAddVehicleBtn')).toBeVisible();
     await expect(page.locator('#teslaVehicleStatusCounts')).toBeVisible();
     await expect(page.locator('#teslaVehiclesList')).toBeVisible();
+    await expect(page.getByText(/Charging controls may also require Tesla virtual-key pairing/i)).toBeVisible();
   });
 
   test('should show per-vehicle Tesla status rows and count chips', async ({ page }) => {
@@ -315,6 +333,15 @@ test.describe('Settings Page', () => {
         hasCredentials: false
       }
     ]);
+    apiMock.setCommandReadiness('5YJ3E1EA7JF000001', {
+      errno: 0,
+      result: {
+        state: 'ready_signed',
+        transport: 'signed',
+        source: 'fleet_status',
+        vehicleCommandProtocolRequired: true
+      }
+    });
 
     await page.locator('#teslaRefreshVehiclesBtn').click();
 
@@ -322,9 +349,37 @@ test.describe('Settings Page', () => {
     await expect(page.locator('#teslaVehiclesList')).toContainText('Model 3 Work');
     await expect(page.locator('#teslaVehiclesList')).toContainText(/Connected/i);
     await expect(page.locator('#teslaVehiclesList')).toContainText(/Setup Required/i);
+    await expect(page.locator('#teslaVehiclesList')).toContainText(/Signed Commands Ready/i);
     await expect(page.locator('#teslaVehicleStatusCounts')).toContainText(/Connected/i);
     await expect(page.locator('#teslaVehicleStatusCounts')).toContainText(/Setup Required/i);
     await expect(page.locator('#teslaVehicleStatusCounts')).toContainText(/Action Needed/i);
+  });
+
+  test('should show Tesla proxy-required guidance for connected vehicles that are not command-ready', async ({ page }) => {
+    apiMock.setVehicles([
+      {
+        vehicleId: '5YJ3E1EA7JF000010',
+        vin: '5YJ3E1EA7JF000010',
+        provider: 'tesla',
+        displayName: 'Model X Travel',
+        hasCredentials: true
+      }
+    ]);
+    apiMock.setCommandReadiness('5YJ3E1EA7JF000010', {
+      errno: 0,
+      result: {
+        state: 'proxy_unavailable',
+        transport: 'signed',
+        source: 'fleet_status',
+        reasonCode: 'signed_command_proxy_unavailable',
+        vehicleCommandProtocolRequired: true
+      }
+    });
+
+    await page.locator('#teslaRefreshVehiclesBtn').click();
+
+    await expect(page.locator('#teslaVehiclesList')).toContainText(/Proxy Required/i);
+    await expect(page.locator('#teslaVehiclesList')).toContainText(/requires signed commands/i);
   });
 
   test('should keep Tesla integration at the bottom of settings', async ({ page }) => {

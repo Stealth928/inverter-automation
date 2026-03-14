@@ -64,6 +64,7 @@ Avoid these claims:
 
 ## Related Docs
 
+- `docs/guides/TESLA_CHARGING_IMPLEMENTATION_PLAN.md`
 - `docs/guides/PRODUCT_GUIDE.md`
 - `docs/guides/TESLA_ONBOARDING.md`
 - `docs/API.md`

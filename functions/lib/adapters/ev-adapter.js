@@ -63,6 +63,26 @@ function normalizeVehicleStatus(raw = {}, observedAtIso = null) {
   };
 }
 
+function normalizeCommandResult(raw = {}, observedAtIso = null) {
+  const asOfIso = observedAtIso || raw.asOfIso || new Date().toISOString();
+  const accepted = raw.accepted !== false;
+  return {
+    accepted,
+    command: String(raw.command || '').trim(),
+    status: String(raw.status || (accepted ? 'confirmed' : 'failed')).trim() || (accepted ? 'confirmed' : 'failed'),
+    provider: String(raw.provider || 'ev').trim() || 'ev',
+    transport: String(raw.transport || 'direct').trim() || 'direct',
+    noop: raw.noop === true,
+    asOfIso,
+    ...(raw.providerRef ? { providerRef: String(raw.providerRef) } : {}),
+    ...(raw.reasonCode ? { reasonCode: String(raw.reasonCode) } : {}),
+    ...(raw.readinessState ? { readinessState: String(raw.readinessState) } : {}),
+    ...(typeof raw.vehicleCommandProtocolRequired === 'boolean'
+      ? { vehicleCommandProtocolRequired: raw.vehicleCommandProtocolRequired }
+      : {})
+  };
+}
+
 /**
  * Validate that an adapter object implements all required EVAdapter methods.
  * Throws if any method is missing; returns true on success.
@@ -85,6 +105,14 @@ function validateEVAdapter(adapter) {
  * and override each method.  Direct instantiation throws.
  */
 class EVAdapter {
+  supportsCommands() {
+    return false;
+  }
+
+  supportsChargingCommands() {
+    return false;
+  }
+
   /**
    * Retrieve the current status of the vehicle.
    * @param {string} vehicleId
@@ -107,12 +135,38 @@ class EVAdapter {
       provider: 'ev'
     };
   }
+
+  async getCommandReadiness(_vehicleId, _context) {
+    return {
+      state: 'read_only',
+      transport: 'none',
+      source: 'unsupported',
+      vehicleCommandProtocolRequired: null
+    };
+  }
+
+  async startCharging(_vehicleId, _context) {
+    throw new Error('EVAdapter.startCharging not implemented');
+  }
+
+  async stopCharging(_vehicleId, _context) {
+    throw new Error('EVAdapter.stopCharging not implemented');
+  }
+
+  async setChargeLimit(_vehicleId, _limitPct, _context) {
+    throw new Error('EVAdapter.setChargeLimit not implemented');
+  }
+
+  async setChargingAmps(_vehicleId, _chargingAmps, _context) {
+    throw new Error('EVAdapter.setChargingAmps not implemented');
+  }
 }
 
 module.exports = {
   EVAdapter,
   EV_ADAPTER_REQUIRED_METHODS,
   EV_CHARGING_STATES,
+  normalizeCommandResult,
   normalizeVehicleStatus,
   normalizeChargingState,
   validateEVAdapter

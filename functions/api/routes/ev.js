@@ -9,6 +9,8 @@
  *   POST   /api/ev/vehicles                           — register a vehicle
  *   DELETE /api/ev/vehicles/:vehicleId                — remove a vehicle
  *   GET    /api/ev/vehicles/:vehicleId/status         — current vehicle status
+ *   GET    /api/ev/vehicles/:vehicleId/command-readiness — current command readiness
+ *   POST   /api/ev/vehicles/:vehicleId/command        — issue charging commands
  *   GET    /api/ev/oauth/start                        — begin OAuth2 flow
  *   POST   /api/ev/oauth/callback                     — exchange auth code for tokens
  */
@@ -111,6 +113,40 @@ function registerEVRoutes(app, deps = {}) {
     return /timeout|timed out|network|enotfound|econnreset|ehostunreach|gateway|service unavailable|http\s*5\d\d/.test(message);
   }
 
+  function isTeslaProxyFailureError(error) {
+    if (error?.isProxyFailure === true) return true;
+    const status = extractErrorStatus(error);
+    const message = extractErrorMessage(error);
+    return status === 502 || /proxy|signed command proxy|not_a_json_request|signed_command_proxy/.test(message);
+  }
+
+  function isTeslaVirtualKeyMissingError(error) {
+    if (error?.isVirtualKeyMissing === true) return true;
+    const message = extractErrorMessage(error);
+    return /missing_key|public key has not been paired|key has not been paired|no private key available/.test(message);
+  }
+
+  function isTeslaCommandConflictError(error) {
+    const status = extractErrorStatus(error);
+    const message = extractErrorMessage(error);
+    return status === 409 || /\bis_charging\b|\bnot_charging\b|\balready_set\b|\bdisconnected\b|\bno_power\b|\bcomplete\b|\brequested\b/.test(message);
+  }
+
+  function normalizeTeslaCommandReasonCode(error) {
+    const explicit = String(error?.reasonCode || '').trim();
+    if (explicit) return explicit;
+    const message = extractErrorMessage(error);
+    if (!message) return 'tesla_command_failed';
+    if (/is charging/.test(message)) return 'is_charging';
+    if (/not charging/.test(message)) return 'not_charging';
+    if (/already set/.test(message)) return 'already_set';
+    if (/disconnected/.test(message)) return 'disconnected';
+    if (/no power/.test(message)) return 'no_power';
+    if (/complete/.test(message)) return 'complete';
+    if (/requested/.test(message)) return 'requested';
+    return message.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'tesla_command_failed';
+  }
+
   function extractErrorStatus(error) {
     const candidates = [
       error?.status,
@@ -163,6 +199,10 @@ function registerEVRoutes(app, deps = {}) {
   const EV_TESLA_STATUS_CACHE_MIN_AGE_MS = 120000;
   const EV_TESLA_STATUS_CACHE_MAX_AGE_MS = 10000000;
   const EV_TESLA_STATUS_CACHE_DEFAULT_AGE_MS = 600000;
+  const EV_TESLA_COMMAND_COOLDOWN_MS = Math.max(1000, Number(process.env.EV_TESLA_COMMAND_COOLDOWN_MS || 5000));
+  const EV_TESLA_COMMAND_DEDUP_TTL_MS = Math.max(EV_TESLA_COMMAND_COOLDOWN_MS, Number(process.env.EV_TESLA_COMMAND_DEDUP_TTL_MS || 60000));
+  const recentTeslaCommandAttempts = new Map();
+  const recentTeslaCommandResults = new Map();
 
   function normalizeTeslaStatusCacheTtlMs(value, fallbackMs = EV_TESLA_STATUS_CACHE_DEFAULT_AGE_MS) {
     const parsedFallback = Number(fallbackMs);
@@ -260,6 +300,110 @@ function registerEVRoutes(app, deps = {}) {
 
   function parseBooleanQueryFlag(value) {
     return value === '1' || value === 'true' || value === 1 || value === true;
+  }
+
+  function normalizeCommandId(value) {
+    const normalized = String(value || '').trim();
+    return normalized || '';
+  }
+
+  function getTeslaCommandCooldownKey(uid, vehicleId, command) {
+    return `${String(uid || '').trim()}::${String(vehicleId || '').trim()}::${String(command || '').trim()}`;
+  }
+
+  function getTeslaCommandDedupKey(uid, vehicleId, commandId) {
+    return `${String(uid || '').trim()}::${String(vehicleId || '').trim()}::${String(commandId || '').trim()}`;
+  }
+
+  function pruneRecentTeslaCommandState() {
+    const nowMs = Date.now();
+    for (const [key, timestamp] of recentTeslaCommandAttempts.entries()) {
+      if ((nowMs - Number(timestamp || 0)) > EV_TESLA_COMMAND_COOLDOWN_MS) {
+        recentTeslaCommandAttempts.delete(key);
+      }
+    }
+    for (const [key, entry] of recentTeslaCommandResults.entries()) {
+      if ((nowMs - Number(entry?.savedAtMs || 0)) > EV_TESLA_COMMAND_DEDUP_TTL_MS) {
+        recentTeslaCommandResults.delete(key);
+      }
+    }
+  }
+
+  function claimTeslaCommandExecution(uid, vehicleId, command) {
+    pruneRecentTeslaCommandState();
+    const key = getTeslaCommandCooldownKey(uid, vehicleId, command);
+    const lastAttemptMs = Number(recentTeslaCommandAttempts.get(key) || 0);
+    const nowMs = Date.now();
+    const remainingMs = EV_TESLA_COMMAND_COOLDOWN_MS - (nowMs - lastAttemptMs);
+    if (remainingMs > 0) {
+      return {
+        allowed: false,
+        retryAfterSeconds: Math.max(1, Math.ceil(remainingMs / 1000))
+      };
+    }
+    recentTeslaCommandAttempts.set(key, nowMs);
+    return {
+      allowed: true,
+      retryAfterSeconds: 0
+    };
+  }
+
+  function getCachedTeslaCommandResult(uid, vehicleId, commandId) {
+    const normalizedCommandId = normalizeCommandId(commandId);
+    if (!normalizedCommandId) return null;
+    pruneRecentTeslaCommandState();
+    const entry = recentTeslaCommandResults.get(getTeslaCommandDedupKey(uid, vehicleId, normalizedCommandId)) || null;
+    return entry && entry.result ? entry.result : null;
+  }
+
+  function storeTeslaCommandResult(uid, vehicleId, commandId, result) {
+    const normalizedCommandId = normalizeCommandId(commandId);
+    if (!normalizedCommandId) return;
+    recentTeslaCommandResults.set(getTeslaCommandDedupKey(uid, vehicleId, normalizedCommandId), {
+      savedAtMs: Date.now(),
+      result
+    });
+  }
+
+  function parseRequiredInteger(value, fieldName) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      throw new Error(`${fieldName} must be a number`);
+    }
+    return Math.round(numeric);
+  }
+
+  function validateTeslaCommandPayload(body = {}) {
+    const allowedCommands = new Set(['startCharging', 'stopCharging', 'setChargeLimit', 'setChargingAmps']);
+    const command = String(body?.command || '').trim();
+    if (!allowedCommands.has(command)) {
+      throw new Error('command must be one of: startCharging, stopCharging, setChargeLimit, setChargingAmps');
+    }
+
+    const commandId = normalizeCommandId(body?.commandId);
+    const validated = { command, commandId };
+
+    if (command === 'setChargeLimit') {
+      const targetSocPct = parseRequiredInteger(body?.targetSocPct, 'targetSocPct');
+      if (targetSocPct < 50 || targetSocPct > 100) {
+        throw new Error('targetSocPct must be between 50 and 100');
+      }
+      validated.targetSocPct = targetSocPct;
+    } else if (body?.targetSocPct !== undefined) {
+      throw new Error('targetSocPct is only valid for setChargeLimit');
+    }
+
+    if (command === 'setChargingAmps') {
+      const chargingAmps = parseRequiredInteger(body?.chargingAmps, 'chargingAmps');
+      if (chargingAmps < 1 || chargingAmps > 48) {
+        throw new Error('chargingAmps must be between 1 and 48');
+      }
+      validated.chargingAmps = chargingAmps;
+    } else if (body?.chargingAmps !== undefined) {
+      throw new Error('chargingAmps is only valid for setChargingAmps');
+    }
+
+    return validated;
   }
 
   function createTeslaApiAuditTracker({ uid, vehicleId, routeName }) {
@@ -729,6 +873,314 @@ function registerEVRoutes(app, deps = {}) {
         }
 
         return res.status(500).json({ errno: 500, error: err.message });
+      }
+    }
+  );
+
+  app.get(
+    '/api/ev/vehicles/:vehicleId/command-readiness',
+    authenticateUser,
+    async (req, res) => {
+      const uid = req.user.uid;
+      const { vehicleId } = req.params;
+
+      try {
+        const vehicle = await vehiclesRepo.getVehicle(uid, vehicleId);
+        if (!vehicle) {
+          return res.status(404).json({ errno: 404, error: 'Vehicle not found' });
+        }
+
+        const evAdapter = adapterRegistry.getEVProvider(vehicle.provider);
+        if (!evAdapter) {
+          return res.status(400).json({ errno: 400, error: `No EV provider registered for '${vehicle.provider}'` });
+        }
+
+        const credentials = await vehiclesRepo.getVehicleCredentials(uid, vehicleId);
+        if (!credentials || !credentials.accessToken) {
+          return res.json({
+            errno: 0,
+            result: {
+              state: 'setup_required',
+              transport: 'none',
+              source: 'missing_credentials',
+              vehicleCommandProtocolRequired: null,
+              reasonCode: 'vehicle_credentials_not_configured'
+            }
+          });
+        }
+
+        if (typeof evAdapter.getCommandReadiness !== 'function') {
+          return res.json({
+            errno: 0,
+            result: {
+              state: 'read_only',
+              transport: 'none',
+              source: 'adapter_does_not_expose_command_readiness',
+              vehicleCommandProtocolRequired: null,
+              reasonCode: 'command_readiness_not_supported'
+            }
+          });
+        }
+
+        const teslaVehicleContext = resolveTeslaVehicleContext(vehicleId, vehicle, credentials);
+        const readinessAudit = createTeslaApiAuditTracker({
+          uid,
+          vehicleId,
+          routeName: 'command_readiness'
+        });
+        const readiness = await evAdapter.getCommandReadiness(vehicleId, {
+          credentials,
+          userId: uid,
+          vehicleId,
+          recordTeslaApiCall: readinessAudit.recordTeslaApiCall,
+          region: vehicle.region || credentials.region || 'na',
+          vehicleVin: teslaVehicleContext.vehicleVin,
+          teslaVehicleId: teslaVehicleContext.teslaVehicleId,
+          persistCredentials: buildPersistCredentialsFn({
+            uid,
+            vehicleId,
+            vehicle,
+            credentials
+          })
+        });
+
+        return res.json({
+          errno: 0,
+          result: readiness,
+          audit: readinessAudit.snapshot()
+        });
+      } catch (err) {
+        if (isTeslaReconnectError(err)) {
+          return res.status(400).json({
+            errno: 400,
+            error: 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings.',
+            result: {
+              reasonCode: 'tesla_reconnect_required'
+            }
+          });
+        }
+        return res.status(500).json({ errno: 500, error: err.message });
+      }
+    }
+  );
+
+  // ── Vehicle Commands ──────────────────────────────────────────────────────
+
+  app.post(
+    '/api/ev/vehicles/:vehicleId/command',
+    authenticateUser,
+    createTeslaUsageGuardMiddleware(() => 'command'),
+    async (req, res) => {
+      const uid = req.user.uid;
+      const { vehicleId } = req.params;
+      let vehicle = null;
+
+      try {
+        const payload = validateTeslaCommandPayload(req.body || {});
+        const cachedResult = getCachedTeslaCommandResult(uid, vehicleId, payload.commandId);
+        if (cachedResult) {
+          return res.json({ errno: 0, result: { ...cachedResult, duplicate: true } });
+        }
+
+        vehicle = req.evVehicle || await vehiclesRepo.getVehicle(uid, vehicleId);
+        if (!vehicle) {
+          return res.status(404).json({ errno: 404, error: 'Vehicle not found' });
+        }
+
+        const evAdapter = adapterRegistry.getEVProvider(vehicle.provider);
+        if (!evAdapter) {
+          return res.status(400).json({ errno: 400, error: `No EV provider registered for '${vehicle.provider}'` });
+        }
+        if (typeof evAdapter.supportsChargingCommands === 'function' && evAdapter.supportsChargingCommands() !== true) {
+          return res.status(501).json({ errno: 501, error: 'Charging commands are not supported for this EV provider' });
+        }
+
+        const credentials = await vehiclesRepo.getVehicleCredentials(uid, vehicleId);
+        if (!credentials || !credentials.accessToken) {
+          return res.status(400).json({ errno: 400, error: 'Vehicle credentials not configured' });
+        }
+
+        const cooldown = claimTeslaCommandExecution(uid, vehicleId, payload.command);
+        if (!cooldown.allowed) {
+          res.set('Retry-After', String(cooldown.retryAfterSeconds));
+          return res.status(429).json({
+            errno: 429,
+            error: 'Tesla command cooldown in effect. Retry shortly.',
+            result: {
+              reasonCode: 'command_cooldown_active',
+              retryAfterSeconds: cooldown.retryAfterSeconds
+            }
+          });
+        }
+
+        const teslaVehicleContext = resolveTeslaVehicleContext(vehicleId, vehicle, credentials);
+        const teslaApiAudit = createTeslaApiAuditTracker({
+          uid,
+          vehicleId,
+          routeName: `command_${payload.command}`
+        });
+        const baseContext = {
+          credentials,
+          userId: uid,
+          vehicleId,
+          recordTeslaApiCall: teslaApiAudit.recordTeslaApiCall,
+          region: vehicle.region || credentials.region || 'na',
+          vehicleVin: teslaVehicleContext.vehicleVin,
+          teslaVehicleId: teslaVehicleContext.teslaVehicleId,
+          persistCredentials: buildPersistCredentialsFn({
+            uid,
+            vehicleId,
+            vehicle,
+            credentials
+          })
+        };
+
+        const readiness = typeof evAdapter.getCommandReadiness === 'function'
+          ? await evAdapter.getCommandReadiness(vehicleId, baseContext)
+          : {
+            state: 'ready_direct',
+            transport: 'direct',
+            source: 'assumed',
+            vehicleCommandProtocolRequired: null
+          };
+
+        if (readiness?.state === 'proxy_unavailable') {
+          return res.status(503).json({
+            errno: 503,
+            error: 'Tesla vehicle requires signed commands, but the signed-command proxy is not configured.',
+            result: {
+              reasonCode: readiness.reasonCode || 'signed_command_proxy_unavailable',
+              readiness
+            }
+          });
+        }
+
+        const commandContext = {
+          ...baseContext,
+          commandReadiness: readiness
+        };
+
+        let adapterResult;
+        if (payload.command === 'startCharging') {
+          adapterResult = await evAdapter.startCharging(vehicleId, commandContext);
+        } else if (payload.command === 'stopCharging') {
+          adapterResult = await evAdapter.stopCharging(vehicleId, commandContext);
+        } else if (payload.command === 'setChargeLimit') {
+          adapterResult = await evAdapter.setChargeLimit(vehicleId, payload.targetSocPct, commandContext);
+        } else {
+          adapterResult = await evAdapter.setChargingAmps(vehicleId, payload.chargingAmps, commandContext);
+        }
+
+        const result = {
+          accepted: adapterResult?.accepted !== false,
+          command: payload.command,
+          provider: 'tesla',
+          vehicleId,
+          commandId: payload.commandId || undefined,
+          transport: adapterResult?.transport || readiness?.transport || 'direct',
+          status: adapterResult?.status || 'confirmed',
+          noop: adapterResult?.noop === true,
+          readiness,
+          ...(payload.command === 'setChargeLimit' ? { targetSocPct: payload.targetSocPct } : {}),
+          ...(payload.command === 'setChargingAmps' ? { chargingAmps: payload.chargingAmps } : {}),
+          asOfIso: adapterResult?.asOfIso || new Date().toISOString()
+        };
+
+        storeTeslaCommandResult(uid, vehicleId, payload.commandId, result);
+
+        return res.json({
+          errno: 0,
+          result,
+          audit: teslaApiAudit.snapshot()
+        });
+      } catch (err) {
+        if (String(vehicle?.provider || '').toLowerCase().trim() === 'tesla') {
+          if (isTeslaRateLimitError(err)) {
+            const retryAfterSeconds = Number(err?.retryAfterMs) > 0
+              ? Math.max(1, Math.ceil(Number(err.retryAfterMs) / 1000))
+              : 30;
+            res.set('Retry-After', String(retryAfterSeconds));
+            return res.status(429).json({
+              errno: 429,
+              error: 'Tesla command rate limit reached. Please retry shortly.',
+              result: {
+                reasonCode: normalizeTeslaCommandReasonCode(err),
+                retryAfterSeconds
+              }
+            });
+          }
+
+          if (isTeslaReconnectError(err)) {
+            return res.status(400).json({
+              errno: 400,
+              error: 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings.',
+              result: {
+                reasonCode: 'tesla_reconnect_required'
+              }
+            });
+          }
+
+          if (isTeslaVirtualKeyMissingError(err)) {
+            return res.status(409).json({
+              errno: 409,
+              error: 'Tesla virtual key pairing is required before charging commands can be used.',
+              result: {
+                reasonCode: 'missing_virtual_key'
+              }
+            });
+          }
+
+          if (isTeslaProxyFailureError(err)) {
+            return res.status(Number(extractErrorStatus(err) || 502)).json({
+              errno: Number(extractErrorStatus(err) || 502),
+              error: 'Tesla signed-command proxy is unavailable or rejected the request.',
+              result: {
+                reasonCode: normalizeTeslaCommandReasonCode(err)
+              }
+            });
+          }
+
+          if (isTeslaCommandConflictError(err)) {
+            return res.status(409).json({
+              errno: 409,
+              error: String(err?.message || 'Tesla command could not be applied in the current vehicle state'),
+              result: {
+                reasonCode: normalizeTeslaCommandReasonCode(err)
+              }
+            });
+          }
+
+          if (isTeslaVehicleOfflineError(err)) {
+            return res.status(408).json({
+              errno: 408,
+              error: 'Tesla vehicle is offline or asleep. Wake the vehicle and retry.',
+              result: {
+                reasonCode: 'vehicle_offline'
+              }
+            });
+          }
+
+          if (isTeslaUpstreamServiceError(err)) {
+            const retryAfterSeconds = Number(err?.retryAfterMs) > 0
+              ? Math.max(1, Math.ceil(Number(err.retryAfterMs) / 1000))
+              : 30;
+            res.set('Retry-After', String(retryAfterSeconds));
+            return res.status(503).json({
+              errno: 503,
+              error: 'Tesla command service is temporarily unavailable.',
+              result: {
+                reasonCode: normalizeTeslaCommandReasonCode(err),
+                retryAfterSeconds
+              }
+            });
+          }
+        }
+
+        const message = String(err?.message || 'Invalid Tesla command request');
+        if (/must be one of|only valid|required|must be between|must be a number/i.test(message)) {
+          return res.status(400).json({ errno: 400, error: message });
+        }
+        return res.status(500).json({ errno: 500, error: message });
       }
     }
   );

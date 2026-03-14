@@ -2858,10 +2858,14 @@
             vehicles: [],
             selectedVehicleId: '',
             statusByVehicleId: {},
+            commandReadinessByVehicleId: {},
             statusMetaByVehicleId: {},
+            readinessMetaByVehicleId: {},
             loadingVehicles: false,
             loadingStatusByVehicleId: {},
-            commandInFlight: false
+            loadingReadinessByVehicleId: {},
+            commandInFlight: false,
+            controlsBound: false
         };
 
         function getEVVehicleDisplayName(vehicle) {
@@ -2940,6 +2944,27 @@
             messageEl.textContent = text;
         }
 
+        function setEVCommandHint(kind, text) {
+            const messageEl = document.getElementById('evCommandHint');
+            if (!messageEl) return;
+            if (!text) {
+                messageEl.className = 'ev-message ev-command-hint';
+                messageEl.textContent = '';
+                return;
+            }
+            const safeKind = ['info', 'success', 'warning', 'error'].includes(kind) ? kind : 'info';
+            messageEl.className = `ev-message ev-command-hint is-visible ${safeKind}`;
+            messageEl.textContent = text;
+        }
+
+        function extractEVApiErrorMessage(payload, fallback) {
+            const direct = String(payload?.error || payload?.msg || '').trim();
+            if (direct) return direct;
+            const nested = String(payload?.result?.error || payload?.result?.reasonCode || '').trim();
+            if (nested) return nested;
+            return String(fallback || 'Tesla request failed');
+        }
+
         function updateEVVehicleCountBadge() {
             const badge = document.getElementById('evVehicleCountBadge');
             if (!badge) return;
@@ -2958,6 +2983,12 @@
             if (!selectedId) return '';
             const meta = evDashboardState.statusMetaByVehicleId[selectedId] || {};
             return String(meta.error || '');
+        }
+
+        function getSelectedEVCommandReadiness() {
+            const selectedId = String(evDashboardState.selectedVehicleId || '');
+            if (!selectedId) return null;
+            return evDashboardState.commandReadinessByVehicleId[selectedId] || null;
         }
 
         function getEVConnectionDescriptor(statusError = '') {
@@ -2981,6 +3012,100 @@
                 kind: 'ok',
                 label: 'Connected',
                 detail: 'Vehicle connection and status reads are available'
+            };
+        }
+
+        function formatEVTransport(readiness = {}) {
+            const state = String(readiness?.state || '').trim();
+            if (state === 'ready_signed') return 'Signed Tesla commands';
+            if (state === 'ready_direct') return 'Direct Tesla commands';
+            if (state === 'proxy_unavailable') return 'Signed Tesla commands unavailable';
+            if (state === 'read_only') return 'Read-only Tesla connection';
+            return 'Checking Tesla command readiness';
+        }
+
+        function describeEVCommandAvailability(selectedVehicle, readiness, statusError = '') {
+            if (!selectedVehicle) {
+                return {
+                    kind: 'info',
+                    label: 'No Command Target',
+                    detail: 'Select a Tesla vehicle to use charging controls.',
+                    canControl: false
+                };
+            }
+
+            if (!hasEVVehicleCredentialsConfigured(selectedVehicle)) {
+                return {
+                    kind: 'warn',
+                    label: 'Setup Required',
+                    detail: 'Finish Tesla OAuth in Settings before charging controls can be enabled.',
+                    canControl: false
+                };
+            }
+
+            if (statusError && /credential|reconnect tesla|authorization expired/i.test(statusError)) {
+                return {
+                    kind: 'warn',
+                    label: 'Setup Required',
+                    detail: 'Finish Tesla OAuth in Settings before charging controls can be enabled.',
+                    canControl: false
+                };
+            }
+
+            const state = String(readiness?.state || '').trim();
+            if (state === 'ready_direct') {
+                return {
+                    kind: 'ok',
+                    label: 'Charging Ready',
+                    detail: 'Tesla direct charging commands are available for this vehicle.',
+                    canControl: true
+                };
+            }
+            if (state === 'ready_signed') {
+                return {
+                    kind: 'ok',
+                    label: 'Charging Ready',
+                    detail: 'Tesla signed charging commands are available for this vehicle.',
+                    canControl: true
+                };
+            }
+            if (state === 'proxy_unavailable') {
+                return {
+                    kind: 'warn',
+                    label: 'Proxy Required',
+                    detail: 'This Tesla requires signed commands. Configure the signed-command proxy before charging controls can be enabled.',
+                    canControl: false
+                };
+            }
+            if (state === 'setup_required') {
+                return {
+                    kind: 'warn',
+                    label: 'Setup Required',
+                    detail: 'Reconnect Tesla in Settings before charging controls can be enabled.',
+                    canControl: false
+                };
+            }
+            if (state === 'read_only') {
+                return {
+                    kind: 'warn',
+                    label: 'Read Only',
+                    detail: 'Status visibility is available, but charging controls are not ready for this vehicle yet.',
+                    canControl: false
+                };
+            }
+            if (statusError) {
+                return {
+                    kind: 'warn',
+                    label: 'Status Unavailable',
+                    detail: 'Refresh Tesla status first, then retry charging controls.',
+                    canControl: false
+                };
+            }
+            return {
+                kind: 'info',
+                label: 'Checking Commands',
+                detail: 'Checking Tesla command readiness for this vehicle.',
+                canControl: false
             };
         }
 
@@ -3049,20 +3174,30 @@
                 placeholder.appendChild(label);
                 placeholder.appendChild(value);
                 summaryEl.appendChild(placeholder);
+                renderEVCommandControls(null, {}, null, {}, '');
                 return;
             }
 
             const vehicleId = String(selectedVehicle.vehicleId || '');
             const status = evDashboardState.statusByVehicleId[vehicleId] || {};
             const meta = evDashboardState.statusMetaByVehicleId[vehicleId] || {};
+            const readiness = evDashboardState.commandReadinessByVehicleId[vehicleId] || null;
+            const readinessMeta = evDashboardState.readinessMetaByVehicleId[vehicleId] || {};
             const statusError = getSelectedEVStatusError();
             const connectionDescriptor = getEVConnectionDescriptor(statusError);
+            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, statusError);
 
             const connectionPill = document.createElement('span');
             connectionPill.className = `ev-status-pill ${connectionDescriptor.kind}`;
             connectionPill.title = connectionDescriptor.detail;
             connectionPill.textContent = connectionDescriptor.label;
             pillsEl.appendChild(connectionPill);
+
+            const commandPill = document.createElement('span');
+            commandPill.className = `ev-status-pill ${commandDescriptor.kind}`;
+            commandPill.title = commandDescriptor.detail;
+            commandPill.textContent = commandDescriptor.label;
+            pillsEl.appendChild(commandPill);
 
             if (meta.source) {
                 const sourcePill = document.createElement('span');
@@ -3071,29 +3206,165 @@
                 pillsEl.appendChild(sourcePill);
             }
 
+            if (readinessMeta.source || readiness?.transport) {
+                const readinessPill = document.createElement('span');
+                readinessPill.className = 'ev-status-pill';
+                readinessPill.textContent = `Commands: ${String(readinessMeta.source || readiness?.transport || 'checking').toUpperCase()}`;
+                pillsEl.appendChild(readinessPill);
+            }
+
             const stats = [
-                ['Vehicle', getEVVehicleDisplayName(selectedVehicle)],
-                ['SoC', formatEVSoc(status.socPct)],
-                ['Charging', formatEVChargingState(status.chargingState)],
-                ['Plugged', formatEVBoolean(status.isPluggedIn)],
-                ['At Home', formatEVBoolean(status.isHome)],
-                ['Range', formatEVRangeKm(status.rangeKm)],
-                ['Updated', formatEVLastUpdatedLabel(meta, status)]
+                { label: 'Vehicle', value: getEVVehicleDisplayName(selectedVehicle) },
+                {
+                    label: 'SoC',
+                    value: formatEVSoc(status.socPct),
+                    type: 'battery',
+                    socPct: status.socPct,
+                    chargingState: status.chargingState
+                },
+                { label: 'Range', value: formatEVRangeKm(status.rangeKm) },
+                { label: 'Charging', value: formatEVChargingState(status.chargingState) },
+                { label: 'Plugged', value: formatEVBoolean(status.isPluggedIn) },
+                { label: 'At Home', value: formatEVBoolean(status.isHome) },
+                { label: 'Updated', value: formatEVLastUpdatedLabel(meta, status) }
             ];
 
-            stats.forEach(([label, value]) => {
+            function getEVBatteryFillColor(socPct) {
+                const numericSoc = Number(socPct);
+                if (!Number.isFinite(numericSoc)) return 'rgba(255,255,255,0.08)';
+                if (numericSoc >= 50) return 'var(--color-success-dark)';
+                if (numericSoc >= 25) return 'var(--color-warning)';
+                return 'var(--color-danger)';
+            }
+
+            function createEVSocValueElement(socPct, chargingState, value) {
+                const wrap = document.createElement('div');
+                wrap.className = 'ev-summary-value ev-summary-value--with-icon';
+
+                const numericSoc = Number(socPct);
+                const normalizedSoc = Number.isFinite(numericSoc)
+                    ? Math.max(0, Math.min(100, numericSoc))
+                    : null;
+                const fillHeight = normalizedSoc === null ? 0 : Math.round((normalizedSoc / 100) * 18);
+                const fillY = 3 + (18 - fillHeight);
+                const fillColor = getEVBatteryFillColor(normalizedSoc);
+                const battery = document.createElement('div');
+                battery.className = `ev-summary-battery${String(chargingState || '').toLowerCase() === 'charging' ? ' charging' : ''}`;
+                battery.setAttribute('aria-hidden', 'true');
+                battery.innerHTML = `
+                    <svg viewBox="0 0 24 32" focusable="false">
+                        <rect x="3" y="3" width="16" height="18" rx="3" ry="3" fill="var(--battery-shell-bg)"></rect>
+                        <rect x="3" y="3" width="16" height="18" rx="3" ry="3" fill="none" stroke="var(--battery-shell-color)" stroke-width="1.5"></rect>
+                        <rect x="3" y="${fillY}" width="16" height="${fillHeight}" rx="2" ry="2" class="level" fill="${fillColor}"></rect>
+                        <rect x="8" y="0.5" width="6" height="2" rx="1" ry="1" fill="var(--battery-shell-color)"></rect>
+                    </svg>`;
+
+                const text = document.createElement('div');
+                text.className = 'ev-summary-value-main';
+                const valueEl = document.createElement('span');
+                valueEl.textContent = value;
+                text.appendChild(valueEl);
+                if (normalizedSoc !== null) {
+                    const suffix = document.createElement('span');
+                    suffix.className = 'ev-summary-value-suffix';
+                    suffix.textContent = normalizedSoc >= 50 ? 'healthy' : (normalizedSoc >= 25 ? 'mid' : 'low');
+                    text.appendChild(suffix);
+                }
+
+                wrap.appendChild(battery);
+                wrap.appendChild(text);
+                return wrap;
+            }
+
+            stats.forEach((stat) => {
                 const card = document.createElement('div');
                 card.className = 'ev-summary-stat';
                 const labelEl = document.createElement('div');
                 labelEl.className = 'ev-summary-label';
-                labelEl.textContent = label;
-                const valueEl = document.createElement('div');
-                valueEl.className = 'ev-summary-value';
-                valueEl.textContent = value;
+                labelEl.textContent = stat.label;
                 card.appendChild(labelEl);
-                card.appendChild(valueEl);
+
+                if (stat.type === 'battery') {
+                    card.appendChild(createEVSocValueElement(stat.socPct, stat.chargingState, stat.value));
+                } else {
+                    const valueEl = document.createElement('div');
+                    valueEl.className = 'ev-summary-value';
+                    valueEl.textContent = stat.value;
+                    card.appendChild(valueEl);
+                }
+
                 summaryEl.appendChild(card);
             });
+
+            renderEVCommandControls(selectedVehicle, status, readiness, readinessMeta, statusError);
+        }
+
+        function renderEVCommandControls(selectedVehicle, status = {}, readiness = null, readinessMeta = {}, statusError = '') {
+            const controlsEl = document.getElementById('evControls');
+            const transportHintEl = document.getElementById('evControlsTransportHint');
+            const hintEl = document.getElementById('evCommandHint');
+            const startBtn = document.getElementById('evStartChargingBtn');
+            const stopBtn = document.getElementById('evStopChargingBtn');
+            const limitInput = document.getElementById('evChargeLimitInput');
+            const limitBtn = document.getElementById('evSetChargeLimitBtn');
+            const ampsInput = document.getElementById('evChargingAmpsInput');
+            const ampsBtn = document.getElementById('evSetChargingAmpsBtn');
+            if (!controlsEl || !hintEl) return;
+
+            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, statusError);
+            const canControl = commandDescriptor.canControl === true;
+            const inFlight = evDashboardState.commandInFlight === true;
+            const isCharging = String(status?.chargingState || '').toLowerCase() === 'charging';
+
+            controlsEl.classList.toggle('is-visible', canControl);
+            controlsEl.style.display = canControl ? 'block' : 'none';
+            if (transportHintEl) {
+                transportHintEl.textContent = canControl ? formatEVTransport(readiness) : '';
+            }
+
+            if (canControl) {
+                const currentHint = String(hintEl.textContent || '').trim();
+                if (/checking tesla command readiness/i.test(currentHint)) {
+                    setEVCommandHint('', '');
+                }
+            } else if (selectedVehicle) {
+                const hintKind = commandDescriptor.kind === 'error' ? 'error' : (commandDescriptor.kind === 'info' ? 'info' : 'warning');
+                setEVCommandHint(hintKind, commandDescriptor.detail);
+            } else {
+                setEVCommandHint('', '');
+            }
+
+            if (!selectedVehicle) return;
+
+            if (limitInput && document.activeElement !== limitInput) {
+                const currentLimit = Number(status?.chargeLimitPct);
+                limitInput.value = Number.isFinite(currentLimit)
+                    ? String(Math.max(50, Math.min(100, Math.round(currentLimit))))
+                    : (String(limitInput.value || '').trim() || '80');
+            }
+
+            if (ampsInput && document.activeElement !== ampsInput && !String(ampsInput.value || '').trim()) {
+                ampsInput.value = '16';
+            }
+
+            [startBtn, stopBtn, limitInput, limitBtn, ampsInput, ampsBtn].forEach((element) => {
+                if (!element) return;
+                element.disabled = !canControl || inFlight;
+            });
+
+            if (startBtn) {
+                startBtn.textContent = inFlight ? 'Sending...' : 'Start charging';
+            }
+            if (stopBtn) {
+                stopBtn.textContent = inFlight ? 'Sending...' : 'Stop charging';
+                stopBtn.disabled = !canControl || inFlight || !isCharging;
+            }
+            if (ampsBtn) {
+                ampsBtn.disabled = !canControl || inFlight || !isCharging;
+            }
+            if (readinessMeta.loading === true && !canControl) {
+                setEVCommandHint('info', 'Checking Tesla command readiness for this vehicle.');
+            }
         }
 
         function renderEVOverview() {
@@ -3102,11 +3373,111 @@
             renderEVSelectedSummary();
         }
 
+        async function fetchEVVehicleCommandReadiness(vehicleId, options = {}) {
+            const silent = options.silent === true;
+            const selectedId = String(vehicleId || '');
+            if (!selectedId) return null;
+
+            const selectedVehicle = evDashboardState.vehicles.find((vehicle) => String(vehicle.vehicleId || '') === selectedId) || null;
+            if (!selectedVehicle || !hasEVVehicleCredentialsConfigured(selectedVehicle)) {
+                delete evDashboardState.commandReadinessByVehicleId[selectedId];
+                evDashboardState.readinessMetaByVehicleId[selectedId] = {
+                    source: 'setup',
+                    loadedAtMs: Date.now(),
+                    error: 'Vehicle credentials not configured. Connect Tesla in Settings to finish setup.',
+                    loading: false
+                };
+                if (!silent) renderEVOverview();
+                return null;
+            }
+
+            if (isDashboardLocalMockEnabled()) {
+                const readiness = {
+                    state: 'ready_direct',
+                    transport: 'direct',
+                    source: 'mock',
+                    vehicleCommandProtocolRequired: false
+                };
+                evDashboardState.commandReadinessByVehicleId[selectedId] = readiness;
+                evDashboardState.readinessMetaByVehicleId[selectedId] = {
+                    source: 'mock',
+                    loadedAtMs: Date.now(),
+                    error: '',
+                    loading: false
+                };
+                if (!silent) renderEVOverview();
+                return readiness;
+            }
+
+            evDashboardState.loadingReadinessByVehicleId[selectedId] = true;
+            evDashboardState.readinessMetaByVehicleId[selectedId] = {
+                source: '',
+                loadedAtMs: Date.now(),
+                error: '',
+                loading: true
+            };
+            if (!silent) renderEVOverview();
+
+            try {
+                const response = await authenticatedFetch(`/api/ev/vehicles/${encodeURIComponent(selectedId)}/command-readiness`);
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch {
+                    data = null;
+                }
+
+                if (response.ok && data && data.errno === 0 && data.result) {
+                    evDashboardState.commandReadinessByVehicleId[selectedId] = data.result;
+                    evDashboardState.readinessMetaByVehicleId[selectedId] = {
+                        source: data.result.source || 'readiness',
+                        loadedAtMs: Date.now(),
+                        error: '',
+                        loading: false
+                    };
+                    return data.result;
+                }
+
+                delete evDashboardState.commandReadinessByVehicleId[selectedId];
+                evDashboardState.readinessMetaByVehicleId[selectedId] = {
+                    source: '',
+                    loadedAtMs: Date.now(),
+                    error: extractEVApiErrorMessage(data, `Failed to load command readiness (HTTP ${response.status})`),
+                    loading: false
+                };
+                return null;
+            } catch (error) {
+                delete evDashboardState.commandReadinessByVehicleId[selectedId];
+                evDashboardState.readinessMetaByVehicleId[selectedId] = {
+                    source: '',
+                    loadedAtMs: Date.now(),
+                    error: String(error?.message || 'Failed to load command readiness'),
+                    loading: false
+                };
+                return null;
+            } finally {
+                delete evDashboardState.loadingReadinessByVehicleId[selectedId];
+                renderEVOverview();
+            }
+        }
+
         async function fetchEVVehicleStatus(vehicleId, options = {}) {
             const live = options.live === true;
             const silent = options.silent === true;
             const selectedId = String(vehicleId || '');
             if (!selectedId) return null;
+
+            if (isDashboardLocalMockEnabled()) {
+                const status = getMockEVStatus(selectedId);
+                evDashboardState.statusByVehicleId[selectedId] = status;
+                evDashboardState.statusMetaByVehicleId[selectedId] = {
+                    source: 'mock',
+                    loadedAtMs: Date.now(),
+                    error: ''
+                };
+                if (silent) renderEVOverview();
+                return status;
+            }
 
             evDashboardState.loadingStatusByVehicleId[selectedId] = true;
             if (!silent) renderEVOverview();
@@ -3164,12 +3535,20 @@
                     loadedAtMs: Date.now(),
                     error: 'Vehicle credentials not configured. Connect Tesla in Settings to finish setup.'
                 };
+                delete evDashboardState.commandReadinessByVehicleId[selectedId];
+                evDashboardState.readinessMetaByVehicleId[selectedId] = {
+                    source: 'setup',
+                    loadedAtMs: Date.now(),
+                    error: 'Vehicle credentials not configured. Connect Tesla in Settings to finish setup.',
+                    loading: false
+                };
                 renderEVOverview();
                 return;
             }
 
             const forceLive = options.forceLive === true;
             await fetchEVVehicleStatus(selectedId, { live: forceLive, silent: true });
+            await fetchEVVehicleCommandReadiness(selectedId, { silent: true });
 
         }
 
@@ -3182,6 +3561,12 @@
             Object.keys(evDashboardState.statusMetaByVehicleId).forEach((vehicleId) => {
                 if (!validIds.has(vehicleId)) delete evDashboardState.statusMetaByVehicleId[vehicleId];
             });
+            Object.keys(evDashboardState.commandReadinessByVehicleId).forEach((vehicleId) => {
+                if (!validIds.has(vehicleId)) delete evDashboardState.commandReadinessByVehicleId[vehicleId];
+            });
+            Object.keys(evDashboardState.readinessMetaByVehicleId).forEach((vehicleId) => {
+                if (!validIds.has(vehicleId)) delete evDashboardState.readinessMetaByVehicleId[vehicleId];
+            });
         }
 
         async function loadEVOverviewData(forceLiveSelected = false) {
@@ -3190,6 +3575,46 @@
             renderEVOverview();
 
             try {
+                if (isDashboardLocalMockEnabled()) {
+                    evDashboardState.vehicles = getMockEVVehicles();
+                    const firstId = String(evDashboardState.vehicles[0]?.vehicleId || '');
+                    evDashboardState.selectedVehicleId = currentSelected && evDashboardState.vehicles.some((v) => String(v.vehicleId) === currentSelected)
+                        ? currentSelected
+                        : firstId;
+
+                    evDashboardState.statusByVehicleId = {};
+                    evDashboardState.commandReadinessByVehicleId = {};
+                    evDashboardState.statusMetaByVehicleId = {};
+                    evDashboardState.readinessMetaByVehicleId = {};
+
+                    evDashboardState.vehicles.forEach((vehicle) => {
+                        const vehicleId = String(vehicle.vehicleId || '');
+                        if (!vehicleId) return;
+                        evDashboardState.statusByVehicleId[vehicleId] = getMockEVStatus(vehicleId);
+                        evDashboardState.commandReadinessByVehicleId[vehicleId] = {
+                            state: 'ready_direct',
+                            transport: 'direct',
+                            source: 'mock',
+                            vehicleCommandProtocolRequired: false
+                        };
+                        evDashboardState.statusMetaByVehicleId[vehicleId] = {
+                            source: 'mock',
+                            loadedAtMs: Date.now(),
+                            error: ''
+                        };
+                        evDashboardState.readinessMetaByVehicleId[vehicleId] = {
+                            source: 'mock',
+                            loadedAtMs: Date.now(),
+                            error: '',
+                            loading: false
+                        };
+                    });
+
+                    setEVOverviewMessage('', '');
+                    renderEVOverview();
+                    return;
+                }
+
                 const response = await authenticatedFetch('/api/ev/vehicles');
                 const data = await response.json();
 
@@ -3239,6 +3664,10 @@
                     return fetchEVVehicleStatus(vehicleId, { live, silent: true });
                 });
                 await Promise.all(statusFetches);
+
+                if (evDashboardState.selectedVehicleId) {
+                    await fetchEVVehicleCommandReadiness(evDashboardState.selectedVehicleId, { silent: true });
+                }
             } catch (error) {
                 const message = String(error?.message || 'Failed to load EV overview');
                 setEVOverviewMessage('warning', message);
@@ -3250,6 +3679,116 @@
 
         async function refreshEVOverview(forceLiveSelected = false) {
             await loadEVOverviewData(forceLiveSelected === true);
+        }
+
+        async function submitEVVehicleCommand(command, extraPayload = {}) {
+            const selectedVehicle = getSelectedEVVehicle();
+            const vehicleId = String(selectedVehicle?.vehicleId || '');
+            if (!vehicleId) {
+                setEVOverviewMessage('warning', 'Select a Tesla vehicle before sending charging commands.');
+                return null;
+            }
+
+            const readiness = getSelectedEVCommandReadiness();
+            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, getSelectedEVStatusError());
+            if (commandDescriptor.canControl !== true) {
+                setEVCommandHint('warning', commandDescriptor.detail);
+                renderEVOverview();
+                return null;
+            }
+
+            evDashboardState.commandInFlight = true;
+            setEVOverviewMessage('info', `Sending ${command} to Tesla...`);
+            renderEVOverview();
+
+            try {
+                let data = null;
+                if (isDashboardLocalMockEnabled()) {
+                    data = {
+                        errno: 0,
+                        result: {
+                            accepted: true,
+                            command,
+                            vehicleId,
+                            transport: 'direct',
+                            asOfIso: new Date().toISOString()
+                        }
+                    };
+                } else {
+                    const response = await authenticatedFetch(`/api/ev/vehicles/${encodeURIComponent(vehicleId)}/command`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ command, ...extraPayload })
+                    });
+                    try {
+                        data = await response.json();
+                    } catch {
+                        data = null;
+                    }
+                    if (!response.ok || !data || data.errno !== 0) {
+                        throw new Error(extractEVApiErrorMessage(data, `Tesla command failed (HTTP ${response.status})`));
+                    }
+                }
+
+                const successMessage = command === 'setChargeLimit'
+                    ? `Tesla charge limit updated to ${extraPayload.targetSocPct}%.`
+                    : command === 'setChargingAmps'
+                        ? `Tesla charging amps updated to ${extraPayload.chargingAmps}A.`
+                        : command === 'stopCharging'
+                            ? 'Tesla charging stop request accepted.'
+                            : 'Tesla charging start request accepted.';
+                setEVOverviewMessage('success', successMessage);
+                await fetchEVVehicleCommandReadiness(vehicleId, { silent: true });
+                await fetchEVVehicleStatus(vehicleId, { live: true, silent: true });
+                return data?.result || null;
+            } catch (error) {
+                const message = String(error?.message || 'Tesla command failed');
+                setEVOverviewMessage('error', message);
+                if (/virtual key|missing_virtual_key/i.test(message)) {
+                    setEVCommandHint('warning', 'Tesla virtual-key pairing is required before charging controls can be used. Finish pairing in Settings, then retry.');
+                }
+                return null;
+            } finally {
+                evDashboardState.commandInFlight = false;
+                renderEVOverview();
+            }
+        }
+
+        async function handleEVSetChargeLimit() {
+            const input = document.getElementById('evChargeLimitInput');
+            const targetSocPct = Math.round(Number(input?.value));
+            if (!Number.isFinite(targetSocPct) || targetSocPct < 50 || targetSocPct > 100) {
+                setEVOverviewMessage('warning', 'Charge limit must be between 50 and 100.');
+                return;
+            }
+            await submitEVVehicleCommand('setChargeLimit', { targetSocPct });
+        }
+
+        async function handleEVSetChargingAmps() {
+            const input = document.getElementById('evChargingAmpsInput');
+            const chargingAmps = Math.round(Number(input?.value));
+            if (!Number.isFinite(chargingAmps) || chargingAmps < 1 || chargingAmps > 48) {
+                setEVOverviewMessage('warning', 'Charging amps must be between 1 and 48.');
+                return;
+            }
+            await submitEVVehicleCommand('setChargingAmps', { chargingAmps });
+        }
+
+        function bindEVOverviewControls() {
+            if (evDashboardState.controlsBound) return;
+            const startBtn = document.getElementById('evStartChargingBtn');
+            const stopBtn = document.getElementById('evStopChargingBtn');
+            const limitBtn = document.getElementById('evSetChargeLimitBtn');
+            const ampsBtn = document.getElementById('evSetChargingAmpsBtn');
+            if (!startBtn || !stopBtn || !limitBtn || !ampsBtn) return;
+
+            startBtn.addEventListener('click', () => submitEVVehicleCommand('startCharging'));
+            stopBtn.addEventListener('click', () => submitEVVehicleCommand('stopCharging'));
+            limitBtn.addEventListener('click', () => handleEVSetChargeLimit());
+            ampsBtn.addEventListener('click', () => handleEVSetChargingAmps());
+            evDashboardState.controlsBound = true;
         }
 
         // Expose EV handlers for inline dashboard controls.
@@ -4359,6 +4898,32 @@
                     datas
                 }],
                 mock: true
+            };
+        }
+
+        function getMockEVVehicles() {
+            return [
+                { vehicleId: 'MOCK-1', displayName: 'Teslamock Model 3', hasCredentials: true },
+                { vehicleId: 'MOCK-2', displayName: 'Teslamock Model Y', hasCredentials: true }
+            ];
+        }
+
+        function getMockEVStatus(vehicleId) {
+            const now = new Date();
+            const t = (now.getMinutes() + now.getSeconds() / 60) / 60;
+            const soc = Math.max(12, Math.min(98, Math.round(55 + Math.sin(t * Math.PI * 2) * 18)));
+            const isCharging = soc < 92;
+            const chargingState = isCharging ? 'Charging' : 'Complete';
+            const rangeKm = Math.round(250 + Math.sin(t * Math.PI * 2) * 35);
+            return {
+                asOfIso: now.toISOString(),
+                socPct: soc,
+                rangeKm,
+                chargingState,
+                isPluggedIn: true,
+                isHome: true,
+                odometerKm: 18250,
+                estimatedRemainingKm: rangeKm
             };
         }
 
@@ -8095,6 +8660,7 @@
             onReady: () => {
                 try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch(e) {}
                 try { 
+                    bindEVOverviewControls();
                     refreshDashboardCardVisibilityPreferencesForCurrentUser();
                     initializePageData(); 
                     checkAutomationStatusForScheduler(); // Check automation status for scheduler warning

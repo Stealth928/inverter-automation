@@ -24,7 +24,7 @@
     <!-- Firebase Auth Configuration -->
     <script src="js/firebase-config.js"></script>
     <script src="js/firebase-auth.js"></script>
-    <script src="js/api-client.js"></script>
+    <script src="js/api-client.js?v=2"></script>
     <script src="js/shared-utils.js?v=12"></script>
     <script src="js/app-shell.js?v=12"></script>
     <script src="js/tour.js?v=29"></script>
@@ -269,6 +269,42 @@
             color: var(--text-primary);
             word-break: break-word;
         }
+        .ev-summary-value.ev-summary-value--with-icon {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 28px;
+        }
+        .ev-summary-value-main {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 4px;
+            min-width: 0;
+        }
+        .ev-summary-battery {
+            width: 20px;
+            height: 26px;
+            flex: 0 0 auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .ev-summary-battery svg {
+            width: 20px;
+            height: 26px;
+            display: block;
+        }
+        .ev-summary-battery .level {
+            transition: all 600ms cubic-bezier(.2,.9,.2,1);
+        }
+        .ev-summary-battery.charging {
+            animation: batt-pulse 1.2s infinite ease-in-out;
+        }
+        .ev-summary-value-suffix {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
         .ev-status-pill {
             display: inline-flex;
             align-items: center;
@@ -299,6 +335,87 @@
             grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
             gap: 8px;
             margin-bottom: 10px;
+        }
+        .ev-controls-panel {
+            display: none;
+            margin-top: 8px;
+            padding: 10px;
+            border: 1px solid var(--border-primary);
+            border-radius: 10px;
+            background: color-mix(in srgb, var(--bg-input) 84%, transparent);
+        }
+        .ev-controls-panel.is-visible {
+            display: block;
+        }
+        .ev-controls-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .ev-controls-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .ev-controls-subtitle {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .ev-control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .ev-control-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .ev-control-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .ev-control-input {
+            width: 100%;
+            min-width: 0;
+            border-radius: 8px;
+            border: 1px solid var(--border-primary);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding: 8px 10px;
+            font-size: 13px;
+        }
+        .ev-control-row .btn,
+        .ev-control-row .btn-secondary {
+            width: auto;
+            margin: 0;
+            white-space: nowrap;
+        }
+        .ev-command-hint {
+            display: none;
+            margin-top: 8px;
+        }
+        .ev-command-hint.is-visible {
+            display: block;
+        }
+        @media (max-width: 900px) {
+            .ev-controls-header {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+            .ev-control-row {
+                align-items: stretch;
+            }
+            .ev-control-row .btn,
+            .ev-control-row .btn-secondary {
+                width: 100%;
+            }
         }
         .ev-message {
             display: none;
@@ -2177,9 +2294,41 @@
                     <div id="evVehicleTabs" class="ev-vehicle-tabs"></div>
                     <div id="evSelectedStatusPills" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>
                     <div id="evSelectedSummary" class="ev-summary-grid"></div>
+                    <div id="evControls" class="ev-controls-panel">
+                        <div class="ev-controls-header">
+                            <div>
+                                <div class="ev-controls-title">Charging Controls</div>
+                                <div class="ev-controls-subtitle" id="evControlsTransportHint"></div>
+                            </div>
+                        </div>
+                        <div class="ev-controls-grid">
+                            <div class="ev-control-group">
+                                <div class="ev-control-label">Session</div>
+                                <div class="ev-control-row">
+                                    <button class="btn" type="button" id="evStartChargingBtn">Start charging</button>
+                                    <button class="btn-secondary" type="button" id="evStopChargingBtn">Stop charging</button>
+                                </div>
+                            </div>
+                            <div class="ev-control-group">
+                                <label class="ev-control-label" for="evChargeLimitInput">Charge limit</label>
+                                <div class="ev-control-row">
+                                    <input class="ev-control-input" type="number" id="evChargeLimitInput" min="50" max="100" step="1" inputmode="numeric">
+                                    <button class="btn-secondary" type="button" id="evSetChargeLimitBtn">Apply limit</button>
+                                </div>
+                            </div>
+                            <div class="ev-control-group">
+                                <label class="ev-control-label" for="evChargingAmpsInput">Charging amps</label>
+                                <div class="ev-control-row">
+                                    <input class="ev-control-input" type="number" id="evChargingAmpsInput" min="1" max="48" step="1" inputmode="numeric">
+                                    <button class="btn-secondary" type="button" id="evSetChargingAmpsBtn">Apply amps</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="evCommandHint" class="ev-message ev-command-hint"></div>
 
                     <div style="margin-top:12px;font-size:12px;color:var(--text-secondary);line-height:1.5;">
-                        Add or connect vehicles in <a href="/settings.html" style="color:var(--accent-blue);text-decoration:none;">Settings</a>. The dashboard currently supports Tesla connection and status visibility only.
+                        Add or connect vehicles in <a href="/settings.html" style="color:var(--accent-blue);text-decoration:none;">Settings</a>. Charging controls appear only when Tesla reports the selected vehicle is command-ready.
                     </div>
                 </div>
             </div>
@@ -2702,6 +2851,6 @@
             </div>
         </div>
 
-    <script src="js/dashboard.js"></script>
+    <script src="js/dashboard.js?v=2"></script>
 </body>
 </html>

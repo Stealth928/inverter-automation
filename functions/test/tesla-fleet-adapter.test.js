@@ -65,6 +65,12 @@ describe('TeslaFleetAdapter — EVAdapter contract', () => {
     const adapter = new TeslaFleetAdapter({ httpClient: makeHttpClient() });
     expect(validateEVAdapter(adapter)).toBe(true);
   });
+
+  test('reports charging command support', () => {
+    const adapter = new TeslaFleetAdapter({ httpClient: makeHttpClient() });
+    expect(adapter.supportsCommands()).toBe(true);
+    expect(adapter.supportsChargingCommands()).toBe(true);
+  });
 });
 
 describe('TeslaFleetAdapter — getVehicleStatus', () => {
@@ -214,6 +220,231 @@ describe('TeslaFleetAdapter — normalizeProviderError', () => {
   });
 });
 
+describe('TeslaFleetAdapter — getCommandReadiness', () => {
+  test('returns signed readiness when fleet_status requires Vehicle Command Protocol and proxy is configured', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/fleet_status`]: {
+        status: 200,
+        data: {
+          response: [
+            {
+              vin: '5YJ3E1EA7JF000001',
+              vehicle_command_protocol_required: true,
+              total_number_of_keys: 4,
+              firmware_version: '2026.2.1'
+            }
+          ]
+        },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({
+      httpClient: http,
+      signedCommandProxyUrl: 'https://tesla-proxy.example.com'
+    });
+
+    const readiness = await adapter.getCommandReadiness('5YJ3E1EA7JF000001', makeContext());
+
+    expect(readiness).toMatchObject({
+      state: 'ready_signed',
+      transport: 'signed',
+      source: 'fleet_status',
+      vehicleCommandProtocolRequired: true,
+      totalNumberOfKeys: 4,
+      firmwareVersion: '2026.2.1'
+    });
+    expect(http.calls[0].opts.body).toEqual({ vins: ['5YJ3E1EA7JF000001'] });
+  });
+
+  test('returns proxy_unavailable when VCP is required but no proxy is configured', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/fleet_status`]: {
+        status: 200,
+        data: {
+          response: [
+            {
+              vin: '5YJ3E1EA7JF000001',
+              vehicle_command_protocol_required: true
+            }
+          ]
+        },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+
+    const readiness = await adapter.getCommandReadiness('5YJ3E1EA7JF000001', makeContext());
+
+    expect(readiness).toMatchObject({
+      state: 'proxy_unavailable',
+      transport: 'signed',
+      vehicleCommandProtocolRequired: true,
+      reasonCode: 'signed_command_proxy_unavailable'
+    });
+  });
+});
+
+describe('TeslaFleetAdapter — charging commands', () => {
+  test('startCharging calls direct charge_start endpoint and returns confirmed result', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/fleet_status`]: {
+        status: 404,
+        data: { error: 'missing route stub' },
+        headers: {}
+      },
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/command/charge_start`]: {
+        status: 200,
+        data: { response: { result: true, reason: '' } },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+
+    const result = await adapter.startCharging('5YJ3E1EA7JF000001', {
+      ...makeContext(),
+      commandReadiness: {
+        state: 'ready_direct',
+        transport: 'direct',
+        source: 'test',
+        vehicleCommandProtocolRequired: false
+      }
+    });
+
+    expect(result).toMatchObject({
+      accepted: true,
+      command: 'charge_start',
+      status: 'confirmed',
+      transport: 'direct',
+      provider: 'tesla'
+    });
+  });
+
+  test('startCharging retries through signed proxy when direct command reports VCP requirement', async () => {
+    const proxyBase = 'https://tesla-proxy.example.com';
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/command/charge_start`]: {
+        status: 422,
+        data: { error: { message: 'vehicle_command_protocol_required' } },
+        headers: {}
+      },
+      [`POST ${proxyBase}/api/1/vehicles/5YJ3E1EA7JF000001/command/charge_start`]: {
+        status: 200,
+        data: { response: { result: true, reason: '' } },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({
+      httpClient: http,
+      signedCommandProxyUrl: proxyBase
+    });
+
+    const result = await adapter.startCharging('5YJ3E1EA7JF000001', {
+      ...makeContext(),
+      vehicleVin: '5YJ3E1EA7JF000001',
+      commandReadiness: {
+        state: 'ready_direct',
+        transport: 'direct',
+        source: 'assumed_fleet_status_unavailable',
+        vehicleCommandProtocolRequired: null
+      }
+    });
+
+    expect(result).toMatchObject({
+      accepted: true,
+      transport: 'signed',
+      command: 'charge_start'
+    });
+    expect(http.calls.map((call) => call.url)).toEqual([
+      `${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/command/charge_start`,
+      `${proxyBase}/api/1/vehicles/5YJ3E1EA7JF000001/command/charge_start`
+    ]);
+  });
+
+  test('stopCharging treats Tesla not_charging result as noop success', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/command/charge_stop`]: {
+        status: 200,
+        data: { response: { result: false, reason: 'not_charging' } },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+
+    const result = await adapter.stopCharging('5YJ3E1EA7JF000001', {
+      ...makeContext(),
+      commandReadiness: {
+        state: 'ready_direct',
+        transport: 'direct',
+        source: 'test',
+        vehicleCommandProtocolRequired: false
+      }
+    });
+
+    expect(result).toMatchObject({
+      accepted: true,
+      status: 'noop',
+      noop: true,
+      command: 'charge_stop'
+    });
+  });
+
+  test('setChargeLimit sends percent body and validates Tesla range', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/command/set_charge_limit`]: {
+        status: 200,
+        data: { response: { result: true, reason: '' } },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+
+    const result = await adapter.setChargeLimit('5YJ3E1EA7JF000001', 80, {
+      ...makeContext(),
+      commandReadiness: {
+        state: 'ready_direct',
+        transport: 'direct',
+        source: 'test',
+        vehicleCommandProtocolRequired: false
+      }
+    });
+
+    expect(result.status).toBe('confirmed');
+    const call = http.calls.find((entry) => entry.url.includes('set_charge_limit'));
+    expect(call.opts.body).toEqual({ percent: 80 });
+    await expect(
+      adapter.setChargeLimit('5YJ3E1EA7JF000001', 49, makeContext())
+    ).rejects.toThrow(/invalid limit/i);
+  });
+
+  test('setChargingAmps sends charging_amps body and validates range', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/command/set_charging_amps`]: {
+        status: 200,
+        data: { response: { result: true, reason: '' } },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+
+    const result = await adapter.setChargingAmps('5YJ3E1EA7JF000001', 16, {
+      ...makeContext(),
+      commandReadiness: {
+        state: 'ready_direct',
+        transport: 'direct',
+        source: 'test',
+        vehicleCommandProtocolRequired: false
+      }
+    });
+
+    expect(result.status).toBe('confirmed');
+    const call = http.calls.find((entry) => entry.url.includes('set_charging_amps'));
+    expect(call.opts.body).toEqual({ charging_amps: 16 });
+    await expect(
+      adapter.setChargingAmps('5YJ3E1EA7JF000001', 0, makeContext())
+    ).rejects.toThrow(/invalid charging amps/i);
+  });
+});
+
 describe('TeslaFleetAdapter — rate-limit retry', () => {
   test('retries on 429 and succeeds on next attempt', async () => {
     let callCount = 0;
@@ -315,8 +546,8 @@ describe('buildTeslaAuthUrl', () => {
     });
     expect(url).toContain('vehicle_device_data');
     expect(url).not.toContain('vehicle_cmds');
-    expect(url).not.toContain('vehicle_charging_cmds');
-    expect(TESLA_REQUIRED_SCOPES).toEqual(['openid', 'email', 'offline_access', 'vehicle_device_data']);
+    expect(url).toContain('vehicle_charging_cmds');
+    expect(TESLA_REQUIRED_SCOPES).toEqual(['openid', 'email', 'offline_access', 'vehicle_device_data', 'vehicle_charging_cmds']);
   });
 
   test('uses China auth base for cn region', () => {

@@ -386,7 +386,98 @@
             };
         }
 
-        function renderTeslaVehicles(vehicles) {
+        function describeTeslaCommandReadiness(readiness, vehicleStatusKey) {
+            if (vehicleStatusKey !== 'connected') {
+                return null;
+            }
+
+            const state = String(readiness?.state || '').trim();
+            if (state === 'ready_direct') {
+                return {
+                    key: 'charging_ready',
+                    label: 'Charging Ready',
+                    detail: 'Dashboard charging controls can use Tesla direct commands for this vehicle.'
+                };
+            }
+            if (state === 'ready_signed') {
+                return {
+                    key: 'signed_ready',
+                    label: 'Signed Commands Ready',
+                    detail: 'Dashboard charging controls can use Tesla signed commands for this vehicle.'
+                };
+            }
+            if (state === 'proxy_unavailable') {
+                return {
+                    key: 'proxy_required',
+                    label: 'Proxy Required',
+                    detail: 'This Tesla requires signed commands. Configure the signed-command proxy before charging controls can be enabled.'
+                };
+            }
+            if (state === 'setup_required') {
+                return {
+                    key: 'reconnect_required',
+                    label: 'Reconnect Tesla',
+                    detail: 'Reconnect Tesla OAuth for this vehicle before charging controls can be enabled.'
+                };
+            }
+            if (state === 'read_only') {
+                return {
+                    key: 'read_only',
+                    label: 'Read Only',
+                    detail: 'Status visibility is available, but Tesla charging controls are not ready for this vehicle yet.'
+                };
+            }
+            if (state) {
+                return {
+                    key: 'read_only',
+                    label: 'Checking Commands',
+                    detail: 'Tesla command readiness is still being verified for this vehicle.'
+                };
+            }
+            return {
+                key: 'read_only',
+                label: 'Command Check Pending',
+                detail: 'Tesla command readiness has not been loaded for this vehicle yet.'
+            };
+        }
+
+        async function loadTeslaCommandReadinessMap(vehicles = []) {
+            if (!window.apiClient || typeof window.apiClient.getEVVehicleCommandReadiness !== 'function') {
+                return {};
+            }
+
+            const readinessEntries = await Promise.all((Array.isArray(vehicles) ? vehicles : []).map(async (vehicle) => {
+                const vehicleId = String(vehicle?.vehicleId || '').trim();
+                if (!vehicleId || vehicle?.hasCredentials === false) {
+                    return [vehicleId, null];
+                }
+                try {
+                    const resp = await window.apiClient.getEVVehicleCommandReadiness(vehicleId);
+                    if (resp && resp.errno === 0 && resp.result) {
+                        return [vehicleId, resp.result];
+                    }
+                    return [vehicleId, {
+                        state: resp?.result?.reasonCode === 'tesla_reconnect_required' ? 'setup_required' : 'read_only',
+                        reasonCode: resp?.result?.reasonCode || '',
+                        source: 'settings_api'
+                    }];
+                } catch (error) {
+                    return [vehicleId, {
+                        state: 'read_only',
+                        source: 'settings_api_error',
+                        warning: String(error?.message || error || 'Command readiness unavailable')
+                    }];
+                }
+            }));
+
+            return readinessEntries.reduce((acc, entry) => {
+                const [vehicleId, readiness] = entry;
+                if (vehicleId) acc[vehicleId] = readiness;
+                return acc;
+            }, {});
+        }
+
+        function renderTeslaVehicles(vehicles, readinessByVehicleId = {}) {
             const { vehiclesList } = getTeslaOnboardingElements();
             if (!vehiclesList) return;
             vehiclesList.innerHTML = '';
@@ -411,6 +502,8 @@
                 const displayName = String(vehicle?.displayName || primaryKey);
                 const idLabel = vehicleVin || vehicleId;
                 const vehicleStatus = resolveTeslaVehicleUiStatus(vehicle, pendingVin);
+                const commandReadiness = readinessByVehicleId[vehicleId] || readinessByVehicleId[primaryKey] || null;
+                const commandStatus = describeTeslaCommandReadiness(commandReadiness, vehicleStatus.key);
                 statusSummary[vehicleStatus.key] = Number(statusSummary[vehicleStatus.key] || 0) + 1;
                 const isRecent = isTeslaRecentConnection(vehicleVin || vehicleId);
 
@@ -427,7 +520,9 @@
                 idEl.textContent = idLabel;
                 const detail = document.createElement('div');
                 detail.className = 'tesla-vehicle-subtext';
-                detail.textContent = vehicleStatus.detail;
+                detail.textContent = commandStatus
+                    ? `${vehicleStatus.detail} ${commandStatus.detail}`
+                    : vehicleStatus.detail;
                 main.appendChild(title);
                 main.appendChild(idEl);
                 main.appendChild(detail);
@@ -439,6 +534,13 @@
                 statusPill.className = `tesla-vehicle-status status-${vehicleStatus.key}`;
                 statusPill.textContent = vehicleStatus.label;
                 right.appendChild(statusPill);
+
+                if (commandStatus) {
+                    const commandPill = document.createElement('span');
+                    commandPill.className = `tesla-vehicle-status status-${commandStatus.key}`;
+                    commandPill.textContent = commandStatus.label;
+                    right.appendChild(commandPill);
+                }
 
                 if (isRecent) {
                     const newPill = document.createElement('span');
@@ -472,7 +574,8 @@
                 }
                 const allVehicles = Array.isArray(resp.result) ? resp.result : [];
                 const teslaVehicles = allVehicles.filter((vehicle) => String(vehicle?.provider || '').toLowerCase() === 'tesla');
-                renderTeslaVehicles(teslaVehicles);
+                const readinessByVehicleId = await loadTeslaCommandReadinessMap(teslaVehicles);
+                renderTeslaVehicles(teslaVehicles, readinessByVehicleId);
                 if (!preserveStatus) {
                     if (teslaVehicles.length > 0) {
                         setTeslaOnboardingBadge('Connected', 'sync');

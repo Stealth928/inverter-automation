@@ -16,6 +16,9 @@ and what must be configured with Tesla for production operation.
 For product-level and marketing-level positioning, see:
 - `docs/guides/TESLA_EV_INTEGRATION.md`
 
+For command-capable Tesla charging implementation scope and architecture, see:
+- `docs/guides/TESLA_CHARGING_IMPLEMENTATION_PLAN.md`
+
 ## Prerequisites
 
 Before connecting Tesla in-app, you need:

@@ -6,7 +6,8 @@
             exportLimitKey: null,
             exportLimitValue: null,
             keysProbed: {},
-            deviceSn: null
+            deviceSn: null,
+            deviceProvider: ''
         };
 
         // ===== LOGGING =====
@@ -24,6 +25,9 @@
             try {
                 const resp = await authenticatedFetch('/api/config');
                 const data = await resp.json();
+                if (data.errno === 0 && data.result?.deviceProvider) {
+                    discoveryState.deviceProvider = String(data.result.deviceProvider).toLowerCase();
+                }
                 if (data.errno === 0 && data.result?.deviceSn) {
                     discoveryState.deviceSn = data.result.deviceSn;
                     addLog(`Device SN: ${discoveryState.deviceSn}`, 'success');
@@ -87,6 +91,7 @@
 
             const result = inverterData[0];
             const datas = result?.datas || [];
+            const provider = String(discoveryState.deviceProvider || '').toLowerCase();
             const getVar = (name) => datas.find(d => d.variable === name)?.value ?? 0;
 
             const toKW = (raw) => {
@@ -99,13 +104,14 @@
             const meterPower2 = toKW(getVar('meterPower2'));
             const feedinPower = toKW(getVar('feedinPower'));
             const generationPower = toKW(getVar('generationPower'));
+            const allowMeterPower2SolarHeuristic = provider !== 'alphaess';
 
             // Daytime detection (simplified)
             const isDaylight = new Date().getHours() >= 6 && new Date().getHours() <= 18;
 
             // AC-coupled indicators
             const hasFeedinButNoPV = feedinPower > 0.5 && pvPower < 0.1;
-            const meter2SuggestsExternalPV = meterPower2 > 0.5 && pvPower < 0.1;
+            const meter2SuggestsExternalPV = allowMeterPower2SolarHeuristic && meterPower2 > 0.5 && pvPower < 0.1;
             const isLikelyACCoupled = isDaylight && (hasFeedinButNoPV || meter2SuggestsExternalPV);
 
             // DC-coupled indicators
@@ -147,7 +153,8 @@
 
                 const pvPower = toKW(getVar('pvPower'));
                 const meterPower2 = toKW(getVar('meterPower2'));
-                const effectiveSolar = (topology === 'ac-coupled' && meterPower2 > 0.05) ? meterPower2 : pvPower;
+                const canUseMeterPower2AsSolar = String(discoveryState.deviceProvider || '').toLowerCase() !== 'alphaess';
+                const effectiveSolar = (canUseMeterPower2AsSolar && topology === 'ac-coupled' && meterPower2 > 0.05) ? meterPower2 : pvPower;
                 const feedinPower = toKW(getVar('feedinPower'));
                 const loadsPower = toKW(getVar('loadsPower'));
 
