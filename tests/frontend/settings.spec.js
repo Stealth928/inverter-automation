@@ -408,6 +408,34 @@ test.describe('Settings Page', () => {
     await expect(page.locator('#teslaVehicleStatusCounts')).toContainText(/Action Needed/i);
   });
 
+  test('should prefill Tesla form when reconnecting a vehicle from the list', async ({ page }) => {
+    apiMock.setVehicles([
+      {
+        vehicleId: '5YJ3E1EA7JF000012',
+        vin: '5YJ3E1EA7JF000012',
+        provider: 'tesla',
+        displayName: 'Model Y Reconnect',
+        region: 'eu',
+        hasCredentials: true
+      }
+    ]);
+    apiMock.setCommandReadiness('5YJ3E1EA7JF000012', {
+      errno: 400,
+      error: 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings.',
+      result: {
+        reasonCode: 'tesla_reconnect_required'
+      }
+    });
+
+    await page.locator('#teslaRefreshVehiclesBtn').click();
+    await page.getByRole('button', { name: /Reconnect/i }).click();
+
+    await expect(page.locator('#teslaVehicleId')).toHaveValue('5YJ3E1EA7JF000012');
+    await expect(page.locator('#teslaDisplayName')).toHaveValue('Model Y Reconnect');
+    await expect(page.locator('#teslaRegion')).toHaveValue('eu');
+    await expect(page.locator('#teslaOnboardingStatus')).toContainText(/reviewing the VIN details below|click Connect with Tesla/i);
+  });
+
   test('should keep Tesla integration at the bottom of settings', async ({ page }) => {
     const isPositionedAtBottom = await page.evaluate(() => {
       const teslaSection = document.querySelector('#teslaOnboardingSection');
@@ -445,7 +473,7 @@ test.describe('Settings Page', () => {
     const resetBtn = page.locator('#teslaClearPendingBtn');
     await expect(resetBtn).toBeVisible();
     await expect(resetBtn).toBeDisabled();
-    await expect(resetBtn).toContainText(/No Pending Tesla Login/i);
+    await expect(resetBtn).toContainText(/No Tesla Login Pending/i);
   });
 
   test('should clear pending Tesla OAuth session when reset login button is clicked', async ({ page }) => {
@@ -474,7 +502,7 @@ test.describe('Settings Page', () => {
 
     await expect(page.locator('#teslaOnboardingStatus')).toContainText(/reset tesla login state|start a fresh login/i);
     await expect(resetBtn).toBeDisabled();
-    await expect(resetBtn).toContainText(/No Pending Tesla Login/i);
+    await expect(resetBtn).toContainText(/No Tesla Login Pending/i);
 
     const pendingRaw = await page.evaluate(() => sessionStorage.getItem('teslaOauthPending'));
     expect(pendingRaw).toBeNull();

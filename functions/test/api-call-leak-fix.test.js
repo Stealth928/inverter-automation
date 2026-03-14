@@ -70,13 +70,13 @@ describe('API Call Leak Prevention - Automation Disabled', () => {
       );
 
       expect(dashboardSource).not.toContain(
-        "callAPI('/api/inverter/real-time', 'Real-time Data', false, true);"
+        'callAPI(\'/api/inverter/real-time\', \'Real-time Data\', false, true);'
       );
       expect(dashboardSource).toContain(
-        "callAPI('/api/inverter/real-time', 'Real-time Data');"
+        'callAPI(\'/api/inverter/real-time\', \'Real-time Data\');'
       );
       expect(dashboardSource).toContain(
-        "callAPI('/api/inverter/real-time', 'Real-time Data', false, isPageReload);"
+        'callAPI(\'/api/inverter/real-time\', \'Real-time Data\', false, isPageReload);'
       );
     });
 

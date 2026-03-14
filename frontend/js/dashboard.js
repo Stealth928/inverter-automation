@@ -6266,8 +6266,8 @@
             // 1) Load Amber sites / prices (bypass cache if page reload)
             try { loadAmberSites(isPageReload); } catch(e) { console.warn('Failed to load Amber sites:', e); }
             
-            // 2) Fetch inverter real-time data immediately (bypass cache if page reload)
-            try { callAPI('/api/inverter/real-time', 'Real-time Data', false, isPageReload); } catch(e) { console.warn('Failed to load inverter data:', e); }
+            // 2) Fetch inverter real-time data immediately via the cached path.
+            try { callAPI('/api/inverter/real-time', 'Real-time Data'); } catch(e) { console.warn('Failed to load inverter data:', e); }
             
             // 3) Set up weather request (bypass cache if page reload)
             try {

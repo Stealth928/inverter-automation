@@ -375,6 +375,12 @@
             margin-top: 16px;
             flex-wrap: wrap;
         }
+            .tesla-pending-status.is-idle {
+                border-color: color-mix(in srgb, var(--border-primary) 82%, transparent);
+                background: color-mix(in srgb, var(--bg-tertiary) 72%, transparent);
+                color: var(--text-secondary);
+                cursor: default;
+            }
         .tesla-onboarding-status {
             font-size: 13px;
             color: var(--text-secondary);
@@ -1723,7 +1729,7 @@
             <div class="tesla-onboarding-actions">
                 <button class="btn-primary" type="button" id="teslaConnectBtn">Connect with Tesla</button>
                 <button class="btn-secondary" type="button" id="teslaAddVehicleBtn">Add another vehicle</button>
-                <button class="btn-secondary" type="button" id="teslaClearPendingBtn">No Pending Tesla Login</button>
+                <button class="btn-secondary tesla-pending-status is-idle" type="button" id="teslaClearPendingBtn">No Tesla Login Pending</button>
                 <div id="teslaOnboardingStatus" class="tesla-onboarding-status">Start with Step 1 in Tesla Developer Dashboard, then return here to connect.</div>
             </div>
             <div class="tesla-vehicles-wrap">

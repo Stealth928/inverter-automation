@@ -51,6 +51,7 @@
         let teslaOnboardingHandlersBound = false;
         let teslaRecentlyConnectedVin = '';
         let teslaRecentlyConnectedAtMs = 0;
+        let teslaVehiclesState = [];
 
         function normalizeTeslaVin(vin) {
             const normalized = String(vin || '').trim().toUpperCase();
@@ -230,10 +231,11 @@
             const pending = readTeslaPendingOAuth();
             const hasPending = Boolean(pending);
             clearPendingBtn.disabled = !hasPending;
-            clearPendingBtn.textContent = hasPending ? 'Reset Tesla Login' : 'No Pending Tesla Login';
+            clearPendingBtn.textContent = hasPending ? 'Reset Tesla Login' : 'No Tesla Login Pending';
             clearPendingBtn.title = hasPending
                 ? 'Clear the pending Tesla OAuth session and restart login.'
                 : 'No Tesla OAuth login session is currently pending.';
+            clearPendingBtn.classList.toggle('is-idle', !hasPending);
             if (addVehicleBtn) {
                 addVehicleBtn.disabled = hasPending;
                 addVehicleBtn.title = hasPending
@@ -584,6 +586,15 @@
                     right.appendChild(newPill);
                 }
 
+                if (commandStatus?.key === 'reconnect_required') {
+                    const reconnectBtn = document.createElement('button');
+                    reconnectBtn.type = 'button';
+                    reconnectBtn.setAttribute('data-tesla-reconnect-id', primaryKey);
+                    reconnectBtn.title = `Reconnect ${displayName}`;
+                    reconnectBtn.textContent = 'Reconnect';
+                    right.appendChild(reconnectBtn);
+                }
+
                 const removeBtn = document.createElement('button');
                 removeBtn.type = 'button';
                 removeBtn.setAttribute('data-tesla-remove-id', primaryKey);
@@ -610,11 +621,13 @@
                 }
                 const allVehicles = Array.isArray(resp.result) ? resp.result : [];
                 const teslaVehicles = allVehicles.filter((vehicle) => String(vehicle?.provider || '').toLowerCase() === 'tesla');
+                teslaVehiclesState = teslaVehicles;
                 const readinessByVehicleId = await loadTeslaCommandReadinessMap(teslaVehicles);
                 const statusSummary = renderTeslaVehicles(teslaVehicles, readinessByVehicleId);
                 updateTeslaOnboardingSummary(statusSummary, teslaVehicles.length, preserveStatus);
                 return teslaVehicles;
             } catch (error) {
+                teslaVehiclesState = [];
                 renderTeslaVehicles([]);
                 if (!preserveStatus) {
                     setTeslaOnboardingBadge('Error', 'modified');
@@ -891,6 +904,39 @@
             showMessage('info', 'Ready to add another Tesla vehicle');
         }
 
+        function prepareTeslaReconnectFlow(vehicle) {
+            const pending = readTeslaPendingOAuth();
+            if (pending) {
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus('Finish or reset the current Tesla sign-in before reconnecting this vehicle.', 'warning');
+                showMessage('warning', 'Finish or reset the current Tesla login before reconnecting this vehicle');
+                return;
+            }
+            const {
+                vehicleIdInput,
+                displayNameInput,
+                regionInput
+            } = getTeslaOnboardingElements();
+            const vehicleId = normalizeTeslaVin(vehicle?.vin || vehicle?.vehicleId || '');
+            const displayName = String(vehicle?.displayName || vehicleId || '').trim();
+            const region = String(vehicle?.region || TESLA_REGION_DEFAULT).trim() || TESLA_REGION_DEFAULT;
+
+            if (vehicleIdInput) {
+                vehicleIdInput.value = vehicleId;
+                vehicleIdInput.focus();
+            }
+            if (displayNameInput) {
+                displayNameInput.value = displayName;
+            }
+            if (regionInput) {
+                regionInput.value = region;
+            }
+            updateTeslaRegionHelp();
+            setTeslaOnboardingBadge('Action Needed', 'modified');
+            setTeslaOnboardingStatus(`Reconnect ${displayName || vehicleId} by reviewing the VIN details below, then click Connect with Tesla.`, 'warning');
+            showMessage('info', `Reconnect ready for ${displayName || vehicleId}. Click Connect with Tesla when you are ready.`);
+        }
+
         function bindTeslaOnboardingHandlers() {
             if (teslaOnboardingHandlersBound) return;
             teslaOnboardingHandlersBound = true;
@@ -938,6 +984,18 @@
                 vehiclesList.addEventListener('click', (event) => {
                     const target = event?.target;
                     if (!(target instanceof Element)) return;
+                    const reconnectId = target.getAttribute('data-tesla-reconnect-id');
+                    if (reconnectId) {
+                        const normalizedReconnectId = normalizeTeslaVin(reconnectId);
+                        const vehicle = teslaVehiclesState.find((entry) => {
+                            const vehicleKey = normalizeTeslaVin(entry?.vin || entry?.vehicleId || '');
+                            return vehicleKey === normalizedReconnectId;
+                        });
+                        if (vehicle) {
+                            prepareTeslaReconnectFlow(vehicle);
+                        }
+                        return;
+                    }
                     const removeId = target.getAttribute('data-tesla-remove-id');
                     if (!removeId) return;
                     removeTeslaVehicle(removeId);
