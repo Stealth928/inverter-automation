@@ -70,6 +70,7 @@ describe('TeslaFleetAdapter — EVAdapter contract', () => {
     const adapter = new TeslaFleetAdapter({ httpClient: makeHttpClient() });
     expect(adapter.supportsCommands()).toBe(true);
     expect(adapter.supportsChargingCommands()).toBe(true);
+    expect(adapter.supportsWake()).toBe(true);
   });
 });
 
@@ -442,6 +443,29 @@ describe('TeslaFleetAdapter — charging commands', () => {
     await expect(
       adapter.setChargingAmps('5YJ3E1EA7JF000001', 0, makeContext())
     ).rejects.toThrow(/invalid charging amps/i);
+  });
+});
+
+describe('TeslaFleetAdapter — wakeVehicle', () => {
+  test('calls wake_up endpoint and reports wake state', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/5YJ3E1EA7JF000001/wake_up`]: {
+        status: 200,
+        data: { response: { state: 'online' } },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({ httpClient: http });
+
+    const result = await adapter.wakeVehicle('5YJ3E1EA7JF000001', makeContext());
+
+    expect(result).toMatchObject({
+      accepted: true,
+      command: 'wakeVehicle',
+      status: 'online',
+      wakeState: 'online',
+      transport: 'direct'
+    });
   });
 });
 

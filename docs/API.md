@@ -731,6 +731,32 @@ Typical readiness states:
 }
 ```
 
+### Wake EV Vehicle Manually
+```
+POST /api/ev/vehicles/:vehicleId/wake
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Requests a manual Tesla wake for a sleeping or offline vehicle. This endpoint is intentionally separate from charging commands so the app never auto-wakes a vehicle during refreshes or automation.
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": {
+    "accepted": true,
+    "command": "wakeVehicle",
+    "provider": "tesla",
+    "vehicleId": "5YJ3E1EA7JF000001",
+    "transport": "direct",
+    "status": "online",
+    "wakeState": "online",
+    "asOfIso": "2026-03-14T00:00:00.000Z"
+  }
+}
+```
+
 ### Send EV Charging Command
 ```
 POST /api/ev/vehicles/:vehicleId/command

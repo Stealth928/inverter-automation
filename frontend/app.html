@@ -330,43 +330,111 @@
             background: color-mix(in srgb, var(--color-danger) 16%, transparent);
             color: var(--color-danger);
         }
-        .ev-controls-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        .ev-controls-body {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .ev-session-section {
+            display: flex;
+            flex-direction: column;
             gap: 8px;
-            margin-bottom: 10px;
+        }
+        .ev-section-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--accent-blue);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .ev-session-btns {
+            display: flex;
+            gap: 10px;
+        }
+        .ev-session-btns .ev-action-btn {
+            flex: 1;
+            min-width: 0;
+        }
+        .ev-adjustments-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            padding-top: 12px;
+            border-top: 1px solid color-mix(in srgb, var(--border-primary) 60%, transparent);
+        }
+        .ev-adjustment-card {
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border-primary);
+            background: color-mix(in srgb, var(--bg-primary) 55%, transparent);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .ev-adjustment-card .ev-apply-btn {
+            min-width: 0;
+            width: 100%;
+            margin-top: auto;
+            background: color-mix(in srgb, var(--accent-blue) 12%, var(--bg-input));
+            border-color: color-mix(in srgb, var(--accent-blue) 30%, transparent);
+            color: var(--accent-blue);
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .ev-adjustment-card .ev-apply-btn:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--accent-blue) 22%, var(--bg-input));
         }
         .ev-controls-panel {
             display: none;
             margin-top: 8px;
-            padding: 10px;
+            padding: 14px;
             border: 1px solid var(--border-primary);
-            border-radius: 10px;
-            background: color-mix(in srgb, var(--bg-input) 84%, transparent);
+            border-radius: 14px;
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--bg-input) 92%, transparent), color-mix(in srgb, var(--bg-primary) 90%, transparent)),
+                radial-gradient(circle at top left, color-mix(in srgb, var(--accent-blue) 10%, transparent), transparent 45%);
+            box-shadow: inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
         }
         .ev-controls-panel.is-visible {
             display: block;
         }
         .ev-controls-header {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: space-between;
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: 14px;
+            margin-bottom: 14px;
         }
         .ev-controls-title {
-            font-size: 12px;
-            font-weight: 600;
+            font-size: 13px;
+            font-weight: 700;
             color: var(--text-primary);
         }
         .ev-controls-subtitle {
             font-size: 11px;
             color: var(--text-secondary);
         }
+        .ev-controls-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+        }
+        .ev-controls-note {
+            max-width: 230px;
+            font-size: 11px;
+            line-height: 1.5;
+            color: var(--text-secondary);
+            text-align: right;
+        }
         .ev-control-group {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 8px;
+            min-width: 0;
+        }
+        .ev-control-group.is-hidden {
+            display: none;
         }
         .ev-control-label {
             font-size: 11px;
@@ -375,27 +443,92 @@
             text-transform: uppercase;
             letter-spacing: 0.04em;
         }
+        .ev-control-heading {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .ev-control-value {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            white-space: nowrap;
+        }
         .ev-control-row {
             display: flex;
             align-items: center;
             gap: 8px;
             flex-wrap: wrap;
         }
-        .ev-control-input {
-            width: 100%;
+        .ev-control-slider-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
             min-width: 0;
-            border-radius: 8px;
-            border: 1px solid var(--border-primary);
-            background: var(--bg-primary);
+        }
+        .ev-control-slider-edge {
+            font-size: 11px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        .ev-control-slider {
+            flex: 1;
+            min-width: 0;
+        }
+        .ev-action-btn {
+            position: relative;
+            min-width: 140px;
+            padding: 11px 14px;
+            border-radius: 10px;
+            border-width: 1px;
+            box-shadow: inset 0 1px 0 color-mix(in srgb, white 8%, transparent), 0 8px 20px color-mix(in srgb, black 16%, transparent);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+        }
+        .ev-action-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: inset 0 1px 0 color-mix(in srgb, white 12%, transparent), 0 12px 24px color-mix(in srgb, black 22%, transparent);
+        }
+        .ev-action-btn:disabled {
+            opacity: 0.55;
+            box-shadow: none;
+            transform: none;
+        }
+        .ev-action-btn.ev-action-btn--start {
+            background: linear-gradient(135deg, color-mix(in srgb, var(--color-success) 78%, black 6%), color-mix(in srgb, var(--color-success-dark) 92%, black 12%));
+            border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
+            color: white;
+            font-weight: 600;
+        }
+        .ev-action-btn.ev-action-btn--stop {
+            background: linear-gradient(135deg, color-mix(in srgb, var(--color-danger) 78%, black 6%), color-mix(in srgb, #a01010 92%, black 12%));
+            border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+            color: white;
+            font-weight: 600;
+        }
+        .ev-action-btn--wake {
+            min-width: 0;
+            width: auto;
+            padding: 9px 12px;
+            background: linear-gradient(135deg, color-mix(in srgb, var(--accent-blue) 22%, transparent), color-mix(in srgb, var(--bg-primary) 82%, black 8%));
+            border-color: color-mix(in srgb, var(--accent-blue) 36%, transparent);
             color: var(--text-primary);
-            padding: 8px 10px;
-            font-size: 13px;
         }
         .ev-control-row .btn,
         .ev-control-row .btn-secondary {
             width: auto;
             margin: 0;
             white-space: nowrap;
+        }
+        .ev-apply-btn {
+            min-width: 118px;
+        }
+        .ev-summary-stat.is-charging {
+            background: color-mix(in srgb, var(--color-success) 12%, var(--bg-input));
+            border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
+        }
+        .ev-summary-stat.is-charging .ev-summary-value {
+            color: var(--color-success);
         }
         .ev-command-hint {
             display: none;
@@ -409,12 +542,19 @@
                 align-items: flex-start;
                 flex-direction: column;
             }
-            .ev-control-row {
+            .ev-controls-actions {
+                width: 100%;
                 align-items: stretch;
             }
-            .ev-control-row .btn,
-            .ev-control-row .btn-secondary {
-                width: 100%;
+            .ev-controls-note {
+                max-width: none;
+                text-align: left;
+            }
+            .ev-action-btn {
+                min-width: 0;
+            }
+            .ev-adjustments-grid {
+                grid-template-columns: 1fr;
             }
         }
         .ev-message {
@@ -2300,27 +2440,43 @@
                                 <div class="ev-controls-title">Charging Controls</div>
                                 <div class="ev-controls-subtitle" id="evControlsTransportHint"></div>
                             </div>
+                            <div class="ev-controls-actions">
+                                <button class="btn-secondary ev-action-btn ev-action-btn--wake" type="button" id="evWakeVehicleBtn" style="display:none;">Manual wake</button>
+                                <div class="ev-controls-note" id="evWakeVehicleNote" style="display:none;">Manual only. Tesla wake requests are never triggered automatically by dashboard refreshes or automations.</div>
+                            </div>
                         </div>
-                        <div class="ev-controls-grid">
-                            <div class="ev-control-group">
-                                <div class="ev-control-label">Session</div>
-                                <div class="ev-control-row">
-                                    <button class="btn" type="button" id="evStartChargingBtn">Start charging</button>
-                                    <button class="btn-secondary" type="button" id="evStopChargingBtn">Stop charging</button>
+                        <div class="ev-controls-body">
+                            <div class="ev-session-section ev-control-group" id="evSessionControlGroup">
+                                <div class="ev-section-label">Session</div>
+                                <div class="ev-session-btns">
+                                    <button class="btn ev-action-btn ev-action-btn--start" type="button" id="evStartChargingBtn">Start charging</button>
+                                    <button class="btn ev-action-btn ev-action-btn--stop" type="button" id="evStopChargingBtn">Stop charging</button>
                                 </div>
                             </div>
-                            <div class="ev-control-group">
-                                <label class="ev-control-label" for="evChargeLimitInput">Charge limit</label>
-                                <div class="ev-control-row">
-                                    <input class="ev-control-input" type="number" id="evChargeLimitInput" min="50" max="100" step="1" inputmode="numeric">
-                                    <button class="btn-secondary" type="button" id="evSetChargeLimitBtn">Apply limit</button>
+                            <div class="ev-adjustments-grid">
+                                <div class="ev-adjustment-card ev-control-group" id="evChargeLimitGroup">
+                                    <div class="ev-control-heading">
+                                        <label class="ev-section-label" for="evChargeLimitInput">Charge limit</label>
+                                        <span class="ev-control-value" id="evChargeLimitDisplay">80%</span>
+                                    </div>
+                                    <div class="ev-control-slider-wrap">
+                                        <span class="ev-control-slider-edge">50%</span>
+                                        <input class="ev-control-slider" type="range" id="evChargeLimitInput" min="50" max="100" step="1" value="80">
+                                        <span class="ev-control-slider-edge">100%</span>
+                                    </div>
+                                    <button class="btn-secondary ev-apply-btn" type="button" id="evSetChargeLimitBtn">Apply limit</button>
                                 </div>
-                            </div>
-                            <div class="ev-control-group">
-                                <label class="ev-control-label" for="evChargingAmpsInput">Charging amps</label>
-                                <div class="ev-control-row">
-                                    <input class="ev-control-input" type="number" id="evChargingAmpsInput" min="1" max="48" step="1" inputmode="numeric">
-                                    <button class="btn-secondary" type="button" id="evSetChargingAmpsBtn">Apply amps</button>
+                                <div class="ev-adjustment-card ev-control-group" id="evChargingAmpsGroup">
+                                    <div class="ev-control-heading">
+                                        <label class="ev-section-label" for="evChargingAmpsInput">Charging amps</label>
+                                        <span class="ev-control-value" id="evChargingAmpsDisplay">16A</span>
+                                    </div>
+                                    <div class="ev-control-slider-wrap">
+                                        <span class="ev-control-slider-edge">1A</span>
+                                        <input class="ev-control-slider" type="range" id="evChargingAmpsInput" min="1" max="48" step="1" value="16">
+                                        <span class="ev-control-slider-edge">48A</span>
+                                    </div>
+                                    <button class="btn-secondary ev-apply-btn" type="button" id="evSetChargingAmpsBtn">Apply amps</button>
                                 </div>
                             </div>
                         </div>

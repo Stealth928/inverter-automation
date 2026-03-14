@@ -776,8 +776,31 @@
             text-align: left;
         }
 
+        /* Blackout window row */
+        .blackout-window-row {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        .blackout-window-times {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            flex: 1;
+            min-width: 0;
+        }
+
         @media (max-width: 768px) {
             .settings-grid--automation-refresh {
+                grid-template-columns: 1fr;
+            }
+
+            .settings-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -841,6 +864,21 @@
             .section-header button {
                 max-width: 100%;
                 white-space: normal;
+            }
+
+            .blackout-window-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .blackout-window-row .blackout-window-times {
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            .blackout-window-row > button {
+                align-self: flex-start;
             }
 
             .setting-input {
@@ -1343,10 +1381,10 @@
                 </div>
             </div>
 
-            <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+            <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 <button class="btn-primary" onclick="saveCredentials()" id="credentialsSaveBtn">💾 Save Credentials</button>
                 <button class="btn-secondary" onclick="clearCredentials()">🧹 Clear Credentials</button>
-                <div style="margin-left:12px;color:var(--muted);font-size:13px" id="credentialsStatus">Checking...</div>
+                <div style="color:var(--muted);font-size:13px;min-width:0;flex-shrink:1;" id="credentialsStatus">Checking...</div>
             </div>
         </div>
 

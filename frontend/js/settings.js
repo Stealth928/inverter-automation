@@ -1798,14 +1798,14 @@
                 // Store the entire original object in a data attribute so getBlackoutWindowsFromUI can preserve all properties
                 const windowData = JSON.stringify(w);
                 html += `
-                    <div class="setting-item" style="display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px;margin-bottom:8px;flex-wrap:nowrap" data-window-idx="${idx}" data-window-original="${windowData.replace(/"/g, '&quot;')}">
-                        <div style="display:flex;align-items:center;gap:12px;min-width:0;flex-shrink:1;flex:1">
-                            <input type="time" class="blackout-start" value="${w.start || '00:00'}" style="background:var(--bg-input);border:1px solid var(--border-primary);color:var(--text-primary);padding:6px;border-radius:4px;flex-shrink:0">
-                            <span style="color:var(--text-secondary);white-space:nowrap;flex-shrink:0">to</span>
-                            <input type="time" class="blackout-end" value="${w.end || '23:59'}" style="background:var(--bg-input);border:1px solid var(--border-primary);color:var(--text-primary);padding:6px;border-radius:4px;flex-shrink:0">
-                            <span style="color:var(--text-secondary);font-size:12px;white-space:nowrap;flex-shrink:0">(${daysStr})</span>
+                    <div class="setting-item blackout-window-row" data-window-idx="${idx}" data-window-original="${windowData.replace(/"/g, '&quot;')}">
+                        <div class="blackout-window-times">
+                            <input type="time" class="blackout-start" value="${w.start || '00:00'}" style="background:var(--bg-input);border:1px solid var(--border-primary);color:var(--text-primary);padding:6px;border-radius:4px;">
+                            <span style="color:var(--text-secondary);white-space:nowrap;">to</span>
+                            <input type="time" class="blackout-end" value="${w.end || '23:59'}" style="background:var(--bg-input);border:1px solid var(--border-primary);color:var(--text-primary);padding:6px;border-radius:4px;">
+                            <span style="color:var(--text-secondary);font-size:12px;white-space:nowrap;">(${daysStr})</span>
                         </div>
-                        <button onclick="removeBlackoutWindow(${idx})" style="background:var(--color-danger-bg);border:1px solid var(--color-danger);color:var(--color-danger);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:12px;flex-shrink:0;white-space:nowrap;margin-left:auto">🗑️ Remove</button>
+                        <button onclick="removeBlackoutWindow(${idx})" style="background:var(--color-danger-bg);border:1px solid var(--color-danger);color:var(--color-danger);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;white-space:nowrap;">🗑️ Remove</button>
                     </div>
                 `;
             });

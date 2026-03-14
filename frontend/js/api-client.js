@@ -624,6 +624,10 @@ class APIClient {
     });
   }
 
+  async wakeEVVehicle(vehicleId) {
+    return this.post(`/api/ev/vehicles/${encodeURIComponent(vehicleId)}/wake`, {});
+  }
+
   async getEVOAuthStartUrl(clientId, redirectUri, codeChallenge, region, state = '') {
     return this.get('/api/ev/oauth/start', { clientId, redirectUri, codeChallenge, region, state: state || undefined });
   }

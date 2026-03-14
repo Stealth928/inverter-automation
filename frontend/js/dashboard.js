@@ -2865,6 +2865,7 @@
             loadingStatusByVehicleId: {},
             loadingReadinessByVehicleId: {},
             commandInFlight: false,
+            wakeInFlight: false,
             controlsBound: false
         };
 
@@ -2902,7 +2903,9 @@
         function formatEVRangeKm(value) {
             const numeric = Number(value);
             if (!Number.isFinite(numeric)) return '—';
-            return `${Math.round(numeric)} km`;
+            const km = Math.round(numeric);
+            const mi = Math.round(numeric * 0.621371);
+            return `${km} km / ${mi} mi`;
         }
 
         function formatEVSoc(value) {
@@ -2978,6 +2981,12 @@
             return evDashboardState.vehicles.find((vehicle) => String(vehicle.vehicleId) === selectedId) || null;
         }
 
+        function getSelectedEVStatus() {
+            const selectedId = String(evDashboardState.selectedVehicleId || '');
+            if (!selectedId) return {};
+            return evDashboardState.statusByVehicleId[selectedId] || {};
+        }
+
         function getSelectedEVStatusError() {
             const selectedId = String(evDashboardState.selectedVehicleId || '');
             if (!selectedId) return '';
@@ -2989,6 +2998,12 @@
             const selectedId = String(evDashboardState.selectedVehicleId || '');
             if (!selectedId) return null;
             return evDashboardState.commandReadinessByVehicleId[selectedId] || null;
+        }
+
+        function isEVVehicleOfflineStatus(status = {}, statusError = '') {
+            const reasonCode = String(status?.reasonCode || '').trim().toLowerCase();
+            const errorText = String(statusError || '').trim().toLowerCase();
+            return reasonCode === 'vehicle_offline' || /vehicle.*(offline|asleep|unavailable)|\boffline\b|\basleep\b|wake the vehicle/.test(errorText);
         }
 
         function getEVConnectionDescriptor(statusError = '') {
@@ -3024,13 +3039,14 @@
             return 'Checking Tesla command readiness';
         }
 
-        function describeEVCommandAvailability(selectedVehicle, readiness, statusError = '') {
+        function describeEVCommandAvailability(selectedVehicle, readiness, status = {}, statusError = '') {
             if (!selectedVehicle) {
                 return {
                     kind: 'info',
                     label: 'No Command Target',
                     detail: 'Select a Tesla vehicle to use charging controls.',
-                    canControl: false
+                    canControl: false,
+                    canWake: false
                 };
             }
 
@@ -3039,7 +3055,8 @@
                     kind: 'warn',
                     label: 'Setup Required',
                     detail: 'Finish Tesla OAuth in Settings before charging controls can be enabled.',
-                    canControl: false
+                    canControl: false,
+                    canWake: false
                 };
             }
 
@@ -3048,7 +3065,18 @@
                     kind: 'warn',
                     label: 'Setup Required',
                     detail: 'Finish Tesla OAuth in Settings before charging controls can be enabled.',
-                    canControl: false
+                    canControl: false,
+                    canWake: false
+                };
+            }
+
+            if (isEVVehicleOfflineStatus(status, statusError)) {
+                return {
+                    kind: 'warn',
+                    label: 'Wake Required',
+                    detail: 'Tesla reports this vehicle is asleep or offline. Use the manual wake button, then retry charging controls. Wake requests are never automatic.',
+                    canControl: false,
+                    canWake: true
                 };
             }
 
@@ -3058,7 +3086,8 @@
                     kind: 'ok',
                     label: 'Charging Ready',
                     detail: 'Tesla direct charging commands are available for this vehicle.',
-                    canControl: true
+                    canControl: true,
+                    canWake: false
                 };
             }
             if (state === 'ready_signed') {
@@ -3066,7 +3095,8 @@
                     kind: 'ok',
                     label: 'Charging Ready',
                     detail: 'Tesla signed charging commands are available for this vehicle.',
-                    canControl: true
+                    canControl: true,
+                    canWake: false
                 };
             }
             if (state === 'proxy_unavailable') {
@@ -3074,7 +3104,8 @@
                     kind: 'warn',
                     label: 'Proxy Required',
                     detail: 'This Tesla requires signed commands. Configure the signed-command proxy before charging controls can be enabled.',
-                    canControl: false
+                    canControl: false,
+                    canWake: false
                 };
             }
             if (state === 'setup_required') {
@@ -3082,7 +3113,8 @@
                     kind: 'warn',
                     label: 'Setup Required',
                     detail: 'Reconnect Tesla in Settings before charging controls can be enabled.',
-                    canControl: false
+                    canControl: false,
+                    canWake: false
                 };
             }
             if (state === 'read_only') {
@@ -3090,7 +3122,8 @@
                     kind: 'warn',
                     label: 'Read Only',
                     detail: 'Status visibility is available, but charging controls are not ready for this vehicle yet.',
-                    canControl: false
+                    canControl: false,
+                    canWake: false
                 };
             }
             if (statusError) {
@@ -3098,15 +3131,44 @@
                     kind: 'warn',
                     label: 'Status Unavailable',
                     detail: 'Refresh Tesla status first, then retry charging controls.',
-                    canControl: false
+                    canControl: false,
+                    canWake: false
                 };
             }
             return {
                 kind: 'info',
                 label: 'Checking Commands',
                 detail: 'Checking Tesla command readiness for this vehicle.',
-                canControl: false
+                canControl: false,
+                canWake: false
             };
+        }
+
+        function updateEVSliderFill(slider, minValue, maxValue, accentColor) {
+            if (!slider) return;
+            const currentValue = Number(slider.value);
+            const min = Number(minValue);
+            const max = Number(maxValue);
+            const ratio = Number.isFinite(currentValue) && Number.isFinite(min) && Number.isFinite(max) && max > min
+                ? ((currentValue - min) / (max - min)) * 100
+                : 0;
+            slider.style.background = `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${ratio}%, var(--border-primary) ${ratio}%, var(--border-primary) 100%)`;
+        }
+
+        function syncEVRangeSliderState() {
+            const limitInput = document.getElementById('evChargeLimitInput');
+            const ampsInput = document.getElementById('evChargingAmpsInput');
+            const limitDisplay = document.getElementById('evChargeLimitDisplay');
+            const ampsDisplay = document.getElementById('evChargingAmpsDisplay');
+
+            if (limitInput && limitDisplay) {
+                limitDisplay.textContent = `${limitInput.value}%`;
+                updateEVSliderFill(limitInput, 50, 100, 'var(--accent-blue)');
+            }
+            if (ampsInput && ampsDisplay) {
+                ampsDisplay.textContent = `${ampsInput.value}A`;
+                updateEVSliderFill(ampsInput, 1, 48, 'var(--color-success-dark)');
+            }
         }
 
         function renderEVVehicleTabs() {
@@ -3185,7 +3247,7 @@
             const readinessMeta = evDashboardState.readinessMetaByVehicleId[vehicleId] || {};
             const statusError = getSelectedEVStatusError();
             const connectionDescriptor = getEVConnectionDescriptor(statusError);
-            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, statusError);
+            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusError);
 
             const connectionPill = document.createElement('span');
             connectionPill.className = `ev-status-pill ${connectionDescriptor.kind}`;
@@ -3223,9 +3285,8 @@
                     chargingState: status.chargingState
                 },
                 { label: 'Range', value: formatEVRangeKm(status.rangeKm) },
-                { label: 'Charging', value: formatEVChargingState(status.chargingState) },
+                { label: 'Charging', value: formatEVChargingState(status.chargingState), highlight: String(status.chargingState || '').toLowerCase() === 'charging' },
                 { label: 'Plugged', value: formatEVBoolean(status.isPluggedIn) },
-                { label: 'At Home', value: formatEVBoolean(status.isHome) },
                 { label: 'Updated', value: formatEVLastUpdatedLabel(meta, status) }
             ];
 
@@ -3278,7 +3339,7 @@
 
             stats.forEach((stat) => {
                 const card = document.createElement('div');
-                card.className = 'ev-summary-stat';
+                card.className = `ev-summary-stat${stat.highlight ? ' is-charging' : ''}`;
                 const labelEl = document.createElement('div');
                 labelEl.className = 'ev-summary-label';
                 labelEl.textContent = stat.label;
@@ -3303,6 +3364,11 @@
             const controlsEl = document.getElementById('evControls');
             const transportHintEl = document.getElementById('evControlsTransportHint');
             const hintEl = document.getElementById('evCommandHint');
+            const wakeBtn = document.getElementById('evWakeVehicleBtn');
+            const wakeNote = document.getElementById('evWakeVehicleNote');
+            const sessionGroup = document.getElementById('evSessionControlGroup');
+            const limitGroup = document.getElementById('evChargeLimitGroup');
+            const ampsGroup = document.getElementById('evChargingAmpsGroup');
             const startBtn = document.getElementById('evStartChargingBtn');
             const stopBtn = document.getElementById('evStopChargingBtn');
             const limitInput = document.getElementById('evChargeLimitInput');
@@ -3311,16 +3377,31 @@
             const ampsBtn = document.getElementById('evSetChargingAmpsBtn');
             if (!controlsEl || !hintEl) return;
 
-            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, statusError);
+            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusError);
             const canControl = commandDescriptor.canControl === true;
-            const inFlight = evDashboardState.commandInFlight === true;
+            const canWake = commandDescriptor.canWake === true;
+            const inFlight = evDashboardState.commandInFlight === true || evDashboardState.wakeInFlight === true;
             const isCharging = String(status?.chargingState || '').toLowerCase() === 'charging';
 
-            controlsEl.classList.toggle('is-visible', canControl);
-            controlsEl.style.display = canControl ? 'block' : 'none';
+            controlsEl.classList.toggle('is-visible', canControl || canWake);
+            controlsEl.style.display = (canControl || canWake) ? 'block' : 'none';
             if (transportHintEl) {
-                transportHintEl.textContent = canControl ? formatEVTransport(readiness) : '';
+                transportHintEl.textContent = canControl
+                    ? formatEVTransport(readiness)
+                    : (canWake ? 'Manual Tesla wake required before charging commands can run' : '');
             }
+            if (wakeBtn) {
+                wakeBtn.style.display = canWake ? '' : 'none';
+                wakeBtn.disabled = !canWake || inFlight;
+                wakeBtn.textContent = evDashboardState.wakeInFlight ? 'Waking...' : 'Manual wake';
+            }
+            if (wakeNote) {
+                wakeNote.style.display = canWake ? '' : 'none';
+            }
+            [sessionGroup, limitGroup, ampsGroup].forEach((element) => {
+                if (!element) return;
+                element.classList.toggle('is-hidden', !canControl);
+            });
 
             if (canControl) {
                 const currentHint = String(hintEl.textContent || '').trim();
@@ -3343,9 +3424,14 @@
                     : (String(limitInput.value || '').trim() || '80');
             }
 
-            if (ampsInput && document.activeElement !== ampsInput && !String(ampsInput.value || '').trim()) {
-                ampsInput.value = '16';
+            if (ampsInput && document.activeElement !== ampsInput) {
+                const currentAmps = Number(status?.chargingAmps || ampsInput.value || 16);
+                ampsInput.value = Number.isFinite(currentAmps)
+                    ? String(Math.max(1, Math.min(48, Math.round(currentAmps))))
+                    : '16';
             }
+
+            syncEVRangeSliderState();
 
             [startBtn, stopBtn, limitInput, limitBtn, ampsInput, ampsBtn].forEach((element) => {
                 if (!element) return;
@@ -3354,6 +3440,7 @@
 
             if (startBtn) {
                 startBtn.textContent = inFlight ? 'Sending...' : 'Start charging';
+                startBtn.disabled = !canControl || inFlight || isCharging;
             }
             if (stopBtn) {
                 stopBtn.textContent = inFlight ? 'Sending...' : 'Stop charging';
@@ -3677,6 +3764,36 @@
             }
         }
 
+        function guardEVCommand(command, status = {}) {
+            const chargingState = String(status?.chargingState || '').toLowerCase();
+            const isPluggedIn = status?.isPluggedIn;
+            const asOfIso = status?.asOfIso;
+
+            if (command === 'startCharging') {
+                if (isPluggedIn === false) {
+                    return { blocked: true, message: 'Car is not plugged in. Connect the charging cable before starting a session.' };
+                }
+                if (chargingState === 'charging') {
+                    return { blocked: true, message: 'Car is already charging. Stop the current session first, or adjust the charge limit / amps instead.' };
+                }
+            }
+
+            if (command === 'stopCharging') {
+                if (chargingState && chargingState !== 'charging' && chargingState !== 'unknown') {
+                    return { blocked: true, message: `Car is not currently charging (status: ${formatEVChargingState(status?.chargingState)}). Nothing to stop.` };
+                }
+            }
+
+            if (asOfIso) {
+                const ageMs = Date.now() - Date.parse(asOfIso);
+                if (Number.isFinite(ageMs) && ageMs > 10 * 60 * 1000) {
+                    return { blocked: false, staleWarning: true, message: `Vehicle status is ${Math.round(ageMs / 60000)} min old — the car's state may have changed. Sending command anyway.` };
+                }
+            }
+
+            return { blocked: false };
+        }
+
         async function refreshEVOverview(forceLiveSelected = false) {
             await loadEVOverviewData(forceLiveSelected === true);
         }
@@ -3690,11 +3807,22 @@
             }
 
             const readiness = getSelectedEVCommandReadiness();
-            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, getSelectedEVStatusError());
+            const status = getSelectedEVStatus();
+            const statusError = getSelectedEVStatusError();
+            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusError);
             if (commandDescriptor.canControl !== true) {
                 setEVCommandHint('warning', commandDescriptor.detail);
                 renderEVOverview();
                 return null;
+            }
+
+            const guard = guardEVCommand(command, status);
+            if (guard.blocked) {
+                setEVOverviewMessage('warning', guard.message);
+                return null;
+            }
+            if (guard.staleWarning) {
+                setEVOverviewMessage('warning', guard.message);
             }
 
             evDashboardState.commandInFlight = true;
@@ -3749,9 +3877,84 @@
                 if (/virtual key|missing_virtual_key/i.test(message)) {
                     setEVCommandHint('warning', 'Tesla virtual-key pairing is required before charging controls can be used. Finish pairing in Settings, then retry.');
                 }
+                if (/offline|asleep|wake the vehicle/i.test(message)) {
+                    evDashboardState.statusMetaByVehicleId[vehicleId] = {
+                        ...(evDashboardState.statusMetaByVehicleId[vehicleId] || {}),
+                        source: (evDashboardState.statusMetaByVehicleId[vehicleId] || {}).source || 'command_guard',
+                        loadedAtMs: Date.now(),
+                        error: 'Tesla vehicle is offline or asleep. Use the manual wake button, then retry.'
+                    };
+                    setEVCommandHint('warning', 'Tesla reports this vehicle is asleep or offline. Use the manual wake button, then retry charging controls.');
+                }
                 return null;
             } finally {
                 evDashboardState.commandInFlight = false;
+                renderEVOverview();
+            }
+        }
+
+        async function submitEVVehicleWake() {
+            const selectedVehicle = getSelectedEVVehicle();
+            const vehicleId = String(selectedVehicle?.vehicleId || '');
+            if (!vehicleId) {
+                setEVOverviewMessage('warning', 'Select a Tesla vehicle before sending a wake request.');
+                return null;
+            }
+
+            evDashboardState.wakeInFlight = true;
+            setEVOverviewMessage('info', 'Sending manual Tesla wake request...');
+            setEVCommandHint('info', 'Manual wake in progress. Charging controls will stay disabled until the vehicle responds.');
+            renderEVOverview();
+
+            try {
+                let data = null;
+                if (isDashboardLocalMockEnabled()) {
+                    data = {
+                      errno: 0,
+                      result: {
+                        accepted: true,
+                        command: 'wakeVehicle',
+                        vehicleId,
+                        wakeState: 'online',
+                        status: 'online',
+                        asOfIso: new Date().toISOString()
+                      }
+                    };
+                } else {
+                    const response = await authenticatedFetch(`/api/ev/vehicles/${encodeURIComponent(vehicleId)}/wake`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({})
+                    });
+                    try {
+                        data = await response.json();
+                    } catch {
+                        data = null;
+                    }
+                    if (!response.ok || !data || data.errno !== 0) {
+                        throw new Error(extractEVApiErrorMessage(data, `Tesla wake failed (HTTP ${response.status})`));
+                    }
+                }
+
+                evDashboardState.statusMetaByVehicleId[vehicleId] = {
+                    ...(evDashboardState.statusMetaByVehicleId[vehicleId] || {}),
+                    loadedAtMs: Date.now(),
+                    error: ''
+                };
+                setEVOverviewMessage('success', 'Manual Tesla wake request accepted. Refreshing live status now.');
+                await fetchEVVehicleStatus(vehicleId, { live: true, silent: true });
+                await fetchEVVehicleCommandReadiness(vehicleId, { silent: true });
+                setEVCommandHint('success', 'Vehicle wake requested. If Tesla still reports asleep, wait a few seconds and retry.');
+                return data?.result || null;
+            } catch (error) {
+                const message = String(error?.message || 'Tesla wake failed');
+                setEVOverviewMessage('error', message);
+                setEVCommandHint('warning', 'Manual wake did not complete. Retry only when needed because wake requests are rate-limited.');
+                return null;
+            } finally {
+                evDashboardState.wakeInFlight = false;
                 renderEVOverview();
             }
         }
@@ -3778,16 +3981,22 @@
 
         function bindEVOverviewControls() {
             if (evDashboardState.controlsBound) return;
+            const wakeBtn = document.getElementById('evWakeVehicleBtn');
             const startBtn = document.getElementById('evStartChargingBtn');
             const stopBtn = document.getElementById('evStopChargingBtn');
             const limitBtn = document.getElementById('evSetChargeLimitBtn');
             const ampsBtn = document.getElementById('evSetChargingAmpsBtn');
-            if (!startBtn || !stopBtn || !limitBtn || !ampsBtn) return;
+            const limitInput = document.getElementById('evChargeLimitInput');
+            const ampsInput = document.getElementById('evChargingAmpsInput');
+            if (!wakeBtn || !startBtn || !stopBtn || !limitBtn || !ampsBtn || !limitInput || !ampsInput) return;
 
+            wakeBtn.addEventListener('click', () => submitEVVehicleWake());
             startBtn.addEventListener('click', () => submitEVVehicleCommand('startCharging'));
             stopBtn.addEventListener('click', () => submitEVVehicleCommand('stopCharging'));
             limitBtn.addEventListener('click', () => handleEVSetChargeLimit());
             ampsBtn.addEventListener('click', () => handleEVSetChargingAmps());
+            limitInput.addEventListener('input', () => syncEVRangeSliderState());
+            ampsInput.addEventListener('input', () => syncEVRangeSliderState());
             evDashboardState.controlsBound = true;
         }
 

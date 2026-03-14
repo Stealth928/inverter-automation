@@ -54,12 +54,14 @@ function makeAdapter(overrides = {}) {
   return {
     getVehicleStatus: jest.fn(async () => STUB_STATUS),
     supportsChargingCommands: jest.fn(() => true),
+    supportsWake: jest.fn(() => true),
     getCommandReadiness: jest.fn(async () => ({
       state: 'ready_direct',
       transport: 'direct',
       source: 'test',
       vehicleCommandProtocolRequired: false
     })),
+    wakeVehicle: jest.fn(async () => ({ accepted: true, status: 'online', wakeState: 'online', transport: 'direct', asOfIso: '2025-01-01T00:00:00.000Z' })),
     startCharging: jest.fn(async () => ({ accepted: true, status: 'confirmed', transport: 'direct', asOfIso: '2025-01-01T00:00:00.000Z' })),
     stopCharging: jest.fn(async () => ({ accepted: true, status: 'confirmed', transport: 'direct', asOfIso: '2025-01-01T00:00:00.000Z' })),
     setChargeLimit: jest.fn(async () => ({ accepted: true, status: 'confirmed', transport: 'direct', asOfIso: '2025-01-01T00:00:00.000Z' })),
@@ -721,6 +723,71 @@ describe('GET /api/ev/vehicles/:vehicleId/command-readiness', () => {
     expect(res.statusCode).toBe(400);
     expect(res.body.error).toMatch(/reconnect tesla/i);
     expect(res.body.result.reasonCode).toBe('tesla_reconnect_required');
+  });
+});
+
+describe('POST /api/ev/vehicles/:vehicleId/wake', () => {
+  test('wakes a Tesla vehicle manually and returns audit metadata', async () => {
+    const adapter = makeAdapter({
+      wakeVehicle: jest.fn(async (_vehicleId, context) => {
+        await context.recordTeslaApiCall({ category: 'wake', status: 200, billable: true });
+        return { accepted: true, status: 'online', wakeState: 'online', transport: 'direct', asOfIso: '2025-01-01T00:00:00.000Z' };
+      })
+    });
+    const deps = makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla', region: 'na', vin: '5YJ3E1EA7JF000001' }))
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+
+    const res = await request(app)
+      .post('/api/ev/vehicles/v1/wake')
+      .set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.result).toMatchObject({
+      accepted: true,
+      command: 'wakeVehicle',
+      provider: 'tesla',
+      vehicleId: 'v1',
+      wakeState: 'online'
+    });
+    expect(res.body.audit).toMatchObject({
+      routeName: 'wake_vehicle',
+      teslaApiCalls: 1,
+      teslaBillableApiCalls: 1,
+      teslaApiCallsByCategory: {
+        wake: 1
+      }
+    });
+    expect(adapter.wakeVehicle).toHaveBeenCalledWith(
+      'v1',
+      expect.objectContaining({
+        region: 'na',
+        vehicleVin: '5YJ3E1EA7JF000001'
+      })
+    );
+  });
+
+  test('applies a stricter cooldown to repeated wake requests', async () => {
+    const app = buildApp(makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' }))
+      })
+    }));
+
+    const first = await request(app)
+      .post('/api/ev/vehicles/v1/wake')
+      .set('Authorization', 'Bearer tok');
+    const second = await request(app)
+      .post('/api/ev/vehicles/v1/wake')
+      .set('Authorization', 'Bearer tok');
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(429);
+    expect(second.body.result.reasonCode).toBe('wake_cooldown_active');
   });
 });
 

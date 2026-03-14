@@ -441,6 +441,10 @@ class TeslaFleetAdapter extends EVAdapter {
     return true;
   }
 
+  supportsWake() {
+    return true;
+  }
+
   _fleetBaseForContext(context) {
     const regionFromContext = context?.region || context?.credentials?.region || null;
     return getFleetBase(regionFromContext || this._region);
@@ -788,6 +792,32 @@ class TeslaFleetAdapter extends EVAdapter {
       throw new Error(`TeslaFleetAdapter.setChargingAmps: invalid charging amps ${chargingAmps}`);
     }
     return this._executeChargingCommand('setChargingAmps', vehicleId, context, { charging_amps: amps });
+  }
+
+  async wakeVehicle(vehicleId, context = {}) {
+    const vehicleRef = resolveVehicleReference(vehicleId, context);
+    const fleetBase = this._fleetBaseForContext(context);
+    const url = `${fleetBase}/api/1/vehicles/${encodeURIComponent(vehicleRef.id)}/wake_up`;
+    const response = await this._requestWithAuthRefresh(
+      context,
+      (headers) => this._makeRequest('POST', url, {
+        headers,
+        categoryHint: 'wake',
+        onApiCall: context?.recordTeslaApiCall
+      })
+    );
+
+    const payload = response.data?.response || response.data || {};
+    const wakeState = String(payload?.state || payload?.vehicle_state || '').trim().toLowerCase();
+    return {
+      accepted: true,
+      command: 'wakeVehicle',
+      status: wakeState === 'online' ? 'online' : 'requested',
+      provider: 'tesla',
+      transport: 'direct',
+      wakeState: wakeState || 'requested',
+      asOfIso: new Date().toISOString()
+    };
   }
 
   normalizeProviderError(error) {

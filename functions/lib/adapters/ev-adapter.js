@@ -113,6 +113,10 @@ class EVAdapter {
     return false;
   }
 
+  supportsWake() {
+    return false;
+  }
+
   /**
    * Retrieve the current status of the vehicle.
    * @param {string} vehicleId
@@ -159,6 +163,10 @@ class EVAdapter {
 
   async setChargingAmps(_vehicleId, _chargingAmps, _context) {
     throw new Error('EVAdapter.setChargingAmps not implemented');
+  }
+
+  async wakeVehicle(_vehicleId, _context) {
+    throw new Error('EVAdapter.wakeVehicle not implemented');
   }
 }
 

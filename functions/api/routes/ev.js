@@ -10,6 +10,7 @@
  *   DELETE /api/ev/vehicles/:vehicleId                — remove a vehicle
  *   GET    /api/ev/vehicles/:vehicleId/status         — current vehicle status
  *   GET    /api/ev/vehicles/:vehicleId/command-readiness — current command readiness
+ *   POST   /api/ev/vehicles/:vehicleId/wake           — manually wake a sleeping vehicle
  *   POST   /api/ev/vehicles/:vehicleId/command        — issue charging commands
  *   GET    /api/ev/oauth/start                        — begin OAuth2 flow
  *   POST   /api/ev/oauth/callback                     — exchange auth code for tokens
@@ -201,6 +202,7 @@ function registerEVRoutes(app, deps = {}) {
   const EV_TESLA_STATUS_CACHE_DEFAULT_AGE_MS = 600000;
   const EV_TESLA_COMMAND_COOLDOWN_MS = Math.max(1000, Number(process.env.EV_TESLA_COMMAND_COOLDOWN_MS || 5000));
   const EV_TESLA_COMMAND_DEDUP_TTL_MS = Math.max(EV_TESLA_COMMAND_COOLDOWN_MS, Number(process.env.EV_TESLA_COMMAND_DEDUP_TTL_MS || 60000));
+  const EV_TESLA_WAKE_COOLDOWN_MS = Math.max(EV_TESLA_COMMAND_COOLDOWN_MS, Number(process.env.EV_TESLA_WAKE_COOLDOWN_MS || 30000));
   const recentTeslaCommandAttempts = new Map();
   const recentTeslaCommandResults = new Map();
 
@@ -335,6 +337,25 @@ function registerEVRoutes(app, deps = {}) {
     const lastAttemptMs = Number(recentTeslaCommandAttempts.get(key) || 0);
     const nowMs = Date.now();
     const remainingMs = EV_TESLA_COMMAND_COOLDOWN_MS - (nowMs - lastAttemptMs);
+    if (remainingMs > 0) {
+      return {
+        allowed: false,
+        retryAfterSeconds: Math.max(1, Math.ceil(remainingMs / 1000))
+      };
+    }
+    recentTeslaCommandAttempts.set(key, nowMs);
+    return {
+      allowed: true,
+      retryAfterSeconds: 0
+    };
+  }
+
+  function claimTeslaWakeExecution(uid, vehicleId) {
+    pruneRecentTeslaCommandState();
+    const key = getTeslaCommandCooldownKey(uid, vehicleId, 'wakeVehicle');
+    const lastAttemptMs = Number(recentTeslaCommandAttempts.get(key) || 0);
+    const nowMs = Date.now();
+    const remainingMs = EV_TESLA_WAKE_COOLDOWN_MS - (nowMs - lastAttemptMs);
     if (remainingMs > 0) {
       return {
         allowed: false,
@@ -960,6 +981,132 @@ function registerEVRoutes(app, deps = {}) {
           });
         }
         return res.status(500).json({ errno: 500, error: err.message });
+      }
+    }
+  );
+
+  app.post(
+    '/api/ev/vehicles/:vehicleId/wake',
+    authenticateUser,
+    createTeslaUsageGuardMiddleware(() => 'wake'),
+    async (req, res) => {
+      const uid = req.user.uid;
+      const { vehicleId } = req.params;
+      let vehicle = null;
+
+      try {
+        vehicle = req.evVehicle || await vehiclesRepo.getVehicle(uid, vehicleId);
+        if (!vehicle) {
+          return res.status(404).json({ errno: 404, error: 'Vehicle not found' });
+        }
+
+        const evAdapter = adapterRegistry.getEVProvider(vehicle.provider);
+        if (!evAdapter) {
+          return res.status(400).json({ errno: 400, error: `No EV provider registered for '${vehicle.provider}'` });
+        }
+        if (typeof evAdapter.supportsWake === 'function' && evAdapter.supportsWake() !== true) {
+          return res.status(501).json({ errno: 501, error: 'Manual wake is not supported for this EV provider' });
+        }
+
+        const credentials = await vehiclesRepo.getVehicleCredentials(uid, vehicleId);
+        if (!credentials || !credentials.accessToken) {
+          return res.status(400).json({ errno: 400, error: 'Vehicle credentials not configured' });
+        }
+
+        const cooldown = claimTeslaWakeExecution(uid, vehicleId);
+        if (!cooldown.allowed) {
+          res.set('Retry-After', String(cooldown.retryAfterSeconds));
+          return res.status(429).json({
+            errno: 429,
+            error: 'Tesla wake cooldown in effect. Retry shortly.',
+            result: {
+              reasonCode: 'wake_cooldown_active',
+              retryAfterSeconds: cooldown.retryAfterSeconds
+            }
+          });
+        }
+
+        const teslaVehicleContext = resolveTeslaVehicleContext(vehicleId, vehicle, credentials);
+        const teslaApiAudit = createTeslaApiAuditTracker({
+          uid,
+          vehicleId,
+          routeName: 'wake_vehicle'
+        });
+
+        const result = await evAdapter.wakeVehicle(vehicleId, {
+          credentials,
+          userId: uid,
+          vehicleId,
+          recordTeslaApiCall: teslaApiAudit.recordTeslaApiCall,
+          region: vehicle.region || credentials.region || 'na',
+          vehicleVin: teslaVehicleContext.vehicleVin,
+          teslaVehicleId: teslaVehicleContext.teslaVehicleId,
+          persistCredentials: buildPersistCredentialsFn({
+            uid,
+            vehicleId,
+            vehicle,
+            credentials
+          })
+        });
+
+        return res.json({
+          errno: 0,
+          result: {
+            accepted: result?.accepted !== false,
+            command: 'wakeVehicle',
+            provider: 'tesla',
+            vehicleId,
+            transport: result?.transport || 'direct',
+            status: result?.status || 'requested',
+            wakeState: String(result?.wakeState || result?.status || 'requested'),
+            asOfIso: result?.asOfIso || new Date().toISOString()
+          },
+          audit: teslaApiAudit.snapshot()
+        });
+      } catch (err) {
+        if (String(vehicle?.provider || '').toLowerCase().trim() === 'tesla') {
+          if (isTeslaRateLimitError(err)) {
+            const retryAfterSeconds = Number(err?.retryAfterMs) > 0
+              ? Math.max(1, Math.ceil(Number(err.retryAfterMs) / 1000))
+              : 30;
+            res.set('Retry-After', String(retryAfterSeconds));
+            return res.status(429).json({
+              errno: 429,
+              error: 'Tesla wake rate limit reached. Please retry shortly.',
+              result: {
+                reasonCode: 'wake_rate_limited',
+                retryAfterSeconds
+              }
+            });
+          }
+
+          if (isTeslaReconnectError(err)) {
+            return res.status(400).json({
+              errno: 400,
+              error: 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings.',
+              result: {
+                reasonCode: 'tesla_reconnect_required'
+              }
+            });
+          }
+
+          if (isTeslaUpstreamServiceError(err)) {
+            const retryAfterSeconds = Number(err?.retryAfterMs) > 0
+              ? Math.max(1, Math.ceil(Number(err.retryAfterMs) / 1000))
+              : 30;
+            res.set('Retry-After', String(retryAfterSeconds));
+            return res.status(503).json({
+              errno: 503,
+              error: 'Tesla wake service is temporarily unavailable.',
+              result: {
+                reasonCode: 'tesla_wake_unavailable',
+                retryAfterSeconds
+              }
+            });
+          }
+        }
+
+        return res.status(500).json({ errno: 500, error: String(err?.message || 'Tesla wake failed') });
       }
     }
   );

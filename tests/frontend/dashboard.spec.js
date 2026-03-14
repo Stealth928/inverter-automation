@@ -17,7 +17,7 @@ function jsonResponse(payload, status = 200) {
 function extractVehicleIdFromUrl(url) {
   try {
     const pathname = new URL(url).pathname;
-    const match = pathname.match(/\/api\/ev\/vehicles\/([^/]+)\/(?:status|command|command-readiness)$/i);
+    const match = pathname.match(/\/api\/ev\/vehicles\/([^/]+)\/(?:status|command|command-readiness|wake)$/i);
     return match ? decodeURIComponent(match[1]) : '';
   } catch (e) {
     return '';
@@ -29,6 +29,7 @@ async function mockEvApis(page, options = {}) {
   const statusByVehicleId = options.statusByVehicleId || {};
   const readinessByVehicleId = options.readinessByVehicleId || {};
   const commandByVehicleId = options.commandByVehicleId || {};
+  const wakeByVehicleId = options.wakeByVehicleId || {};
   const defaultStatus = options.defaultStatus || {
     status: 200,
     body: {
@@ -61,6 +62,18 @@ async function mockEvApis(page, options = {}) {
       }
     }
   };
+  const defaultWake = options.defaultWake || {
+    status: 200,
+    body: {
+      errno: 0,
+      result: {
+        accepted: true,
+        command: 'wakeVehicle',
+        wakeState: 'online',
+        status: 'online'
+      }
+    }
+  };
 
   await page.route('**/api/ev/vehicles', async (route) => {
     await route.fulfill(jsonResponse({ errno: 0, result: vehicles }, 200));
@@ -84,6 +97,15 @@ async function mockEvApis(page, options = {}) {
     }
     const vehicleId = extractVehicleIdFromUrl(route.request().url());
     const mocked = commandByVehicleId[vehicleId] || defaultCommand;
+    await route.fulfill(jsonResponse(mocked.body, mocked.status));
+  });
+
+  await page.route('**/api/ev/vehicles/*/wake', async (route) => {
+    if (typeof options.onWakeRequest === 'function') {
+      await options.onWakeRequest(route.request());
+    }
+    const vehicleId = extractVehicleIdFromUrl(route.request().url());
+    const mocked = wakeByVehicleId[vehicleId] || defaultWake;
     await route.fulfill(jsonResponse(mocked.body, mocked.status));
   });
 }
@@ -542,13 +564,76 @@ test.describe('Dashboard Page', () => {
     await expect(page.locator('#evControls')).toBeVisible();
     await expect(page.locator('#evSelectedStatusPills')).toContainText('Charging Ready');
     await expect(page.locator('#evControlsTransportHint')).toContainText(/Direct Tesla commands/i);
+    await expect(page.locator('#evChargeLimitInput')).toHaveAttribute('type', 'range');
+    await expect(page.locator('#evChargingAmpsInput')).toHaveAttribute('type', 'range');
     await expect(page.locator('#evChargeLimitInput')).toHaveValue('82');
+    await expect(page.locator('#evChargeLimitDisplay')).toHaveText('82%');
 
-    await page.locator('#evChargeLimitInput').fill('85');
+    await page.locator('#evChargeLimitInput').evaluate((element) => {
+      element.value = '85';
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     await page.locator('#evSetChargeLimitBtn').click();
 
     await expect(page.locator('#evOverviewMessage')).toContainText(/charge limit updated to 85%/i);
     expect(commandRequests).toContainEqual({ command: 'setChargeLimit', targetSocPct: 85 });
+  });
+
+  test('should show a manual wake button when Tesla reports the vehicle asleep and send a wake request explicitly', async ({ page }) => {
+    const wakeRequests = [];
+
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-sleeping', displayName: 'Model 3', hasCredentials: true }],
+      statusByVehicleId: {
+        'veh-sleeping': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache_vehicle_offline',
+            reasonCode: 'vehicle_offline',
+            result: {
+              socPct: 63,
+              chargingState: 'unknown',
+              isPluggedIn: true,
+              isHome: true,
+              rangeKm: 300,
+              chargeLimitPct: 80,
+              asOfIso: '2026-03-14T00:00:00.000Z',
+              reasonCode: 'vehicle_offline'
+            }
+          }
+        }
+      },
+      readinessByVehicleId: {
+        'veh-sleeping': {
+          status: 200,
+          body: {
+            errno: 0,
+            result: {
+              state: 'ready_direct',
+              transport: 'direct',
+              source: 'fleet_status',
+              vehicleCommandProtocolRequired: false
+            }
+          }
+        }
+      },
+      onWakeRequest: async (request) => {
+        wakeRequests.push(request.postDataJSON());
+      }
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evSelectedStatusPills')).toContainText(/Wake Required/i);
+    await expect(page.locator('#evWakeVehicleBtn')).toBeVisible();
+    await expect(page.locator('#evWakeVehicleNote')).toContainText(/never triggered automatically/i);
+    await expect(page.locator('#evSessionControlGroup')).toHaveClass(/is-hidden/);
+
+    await page.locator('#evWakeVehicleBtn').click();
+
+    await expect(page.locator('#evOverviewMessage')).toContainText(/wake request accepted/i);
+    expect(wakeRequests).toContainEqual({});
   });
 
   test('should keep charging controls disabled and show proxy guidance when Tesla signed proxy is unavailable', async ({ page }) => {
