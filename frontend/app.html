@@ -26,8 +26,9 @@
     <script src="js/firebase-auth.js"></script>
     <script src="js/api-client.js?v=5"></script>
     <script src="js/shared-utils.js?v=13"></script>
+    <script src="js/preview-session.js?v=1"></script>
     <script src="js/app-shell.js?v=15"></script>
-    <script src="js/tour.js?v=30"></script>
+    <script src="js/tour.js?v=31"></script>
     <script src="js/theme-init.js"></script>
     <link rel="stylesheet" href="css/shared-styles.css?v=9" />
     <link rel="stylesheet" href="css/tour.css?v=4" />
@@ -677,6 +678,145 @@
         }
         .card-title .icon {
             font-size: 18px;
+        }
+        .preview-banner {
+            display: grid;
+            gap: 14px;
+            margin: 0 0 16px 0;
+            padding: 16px 18px;
+            border-radius: 16px;
+            border: 1px solid rgba(88, 166, 255, 0.24);
+            background: linear-gradient(135deg, rgba(88, 166, 255, 0.16), rgba(255, 138, 61, 0.12));
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+        }
+        .preview-banner__top {
+            display: flex;
+            justify-content: space-between;
+            align-items: end;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .preview-banner__copy {
+            display: grid;
+            gap: 8px;
+            min-width: 260px;
+            flex: 1 1 520px;
+        }
+        .preview-banner__eyebrow {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--accent-blue);
+        }
+        .preview-banner__title {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--text-primary);
+            line-height: 1.2;
+        }
+        .preview-banner__description {
+            font-size: 13px;
+            line-height: 1.55;
+            color: var(--text-secondary);
+            max-width: 760px;
+        }
+        .preview-banner__meta {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .preview-banner__pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: rgba(13, 17, 23, 0.26);
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .preview-banner__controls {
+            display: flex;
+            align-items: end;
+            justify-content: flex-end;
+            gap: 12px;
+            flex-wrap: wrap;
+            flex: 0 1 auto;
+        }
+        .preview-banner__field {
+            display: grid;
+            gap: 6px;
+            min-width: 220px;
+        }
+        .preview-banner__field-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+        .preview-banner__select {
+            min-width: 220px;
+            height: 40px;
+            padding: 0 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border-primary);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        .preview-banner__buttons {
+            display: flex;
+            align-items: end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .preview-banner__btn {
+            width: auto;
+            min-height: 40px;
+            padding: 0 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+        .preview-banner__btn--primary {
+            background: color-mix(in srgb, var(--accent-blue) 14%, var(--bg-primary));
+            border-color: color-mix(in srgb, var(--accent-blue) 34%, transparent);
+        }
+        .preview-banner__btn--warning {
+            border-color: var(--color-warning);
+            color: var(--color-warning);
+        }
+        .preview-banner__hint {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        @media (max-width: 900px) {
+            .preview-banner__top {
+                align-items: start;
+            }
+            .preview-banner__controls {
+                width: 100%;
+                justify-content: flex-start;
+            }
+        }
+        @media (max-width: 640px) {
+            .preview-banner {
+                padding: 14px;
+            }
+            .preview-banner__copy,
+            .preview-banner__field,
+            .preview-banner__select {
+                min-width: 0;
+                width: 100%;
+            }
+            .preview-banner__buttons {
+                width: 100%;
+            }
+            .preview-banner__btn {
+                flex: 1 1 150px;
+            }
         }
         .app-overview-icon {
             --icon-glyph: #9fcfff;

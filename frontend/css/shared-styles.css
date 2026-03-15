@@ -681,6 +681,18 @@ body.has-fixed-nav {
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.26);
 }
 
+body.preview-tour-nav-locked .nav-main .nav-link,
+body.preview-tour-nav-locked .nav-main .nav-toggle {
+    pointer-events: none;
+    opacity: 0.45;
+    filter: saturate(0.4);
+}
+
+body.preview-tour-nav-locked .nav-main .nav-links,
+body.preview-tour-nav-locked .nav-main .nav-toggle {
+    cursor: not-allowed;
+}
+
 .nav-link[data-nav-icon="overview"] .nav-link__icon { --nav-icon-glyph: #8ed0ff; }
 .nav-link[data-nav-icon="library"] .nav-link__icon { --nav-icon-glyph: #9be8ff; }
 .nav-link[data-nav-icon="roi"] .nav-link__icon { --nav-icon-glyph: #7af0b0; }

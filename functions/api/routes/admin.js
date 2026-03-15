@@ -566,6 +566,7 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
     const inverterSizeCounts = new Map();
     const batterySizeCounts = new Map();
     const couplingCounts = new Map();
+    const tourStatusCounts = new Map();
 
     const loadDetailedUser = async (rosterEntry) => {
       const { uid, data, authMetadata, email, joinedAt } = rosterEntry;
@@ -626,6 +627,8 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
 
       incrementCount(providerCounts, deviceProvider || 'unknown');
       incrementCount(couplingCounts, coupling || 'unknown');
+      const tourStatus = configMain === null ? 'no_config' : (configMain.tourComplete ? 'watched' : 'not_watched');
+      incrementCount(tourStatusCounts, tourStatus);
       if (location) {
         incrementNamedCount(locationCounts, location.toLowerCase(), location);
       }
@@ -696,6 +699,12 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
         couplingBreakdown: mapCountsToRows(couplingCounts, (key) => {
           if (key === 'ac') return 'AC Coupled';
           if (key === 'dc') return 'DC Coupled';
+          return 'Unknown';
+        }),
+        tourStatusBreakdown: mapCountsToRows(tourStatusCounts, (key) => {
+          if (key === 'watched') return 'Watched';
+          if (key === 'not_watched') return 'Not watched';
+          if (key === 'no_config') return 'No config';
           return 'Unknown';
         }),
         notes: [

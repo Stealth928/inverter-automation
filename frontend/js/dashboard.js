@@ -111,6 +111,178 @@
             button.innerHTML = `${overviewIconChipHtml('play', 'app-overview-icon--sm')}<span>Start Quick Control</span>`;
         }
 
+        const PREVIEW_SCENARIO_OPTIONS = Object.freeze([
+            { value: 'solar-surplus', label: 'Solar Surplus' },
+            { value: 'evening-peak', label: 'Evening Peak' },
+            { value: 'storm-watch', label: 'Storm Watch' },
+            { value: 'ev-charge', label: 'EV Charge Night' }
+        ]);
+        const PREVIEW_READONLY_MESSAGE = 'Preview mode is read-only. Connect your system in Setup to enable real controls.';
+        const PREVIEW_WEATHER_LOCATION = 'Pyrmont, Australia';
+
+        function isPreviewMode() {
+            try {
+                return !!(window.PreviewSession && typeof window.PreviewSession.isActive === 'function' && window.PreviewSession.isActive());
+            } catch (error) {
+                return false;
+            }
+        }
+
+        function getPreviewScenario() {
+            try {
+                if (window.PreviewSession && typeof window.PreviewSession.getScenario === 'function') {
+                    return window.PreviewSession.getScenario();
+                }
+            } catch (error) { /* ignore */ }
+            return 'solar-surplus';
+        }
+
+        function createJsonResponse(payload, status = 200) {
+            return new Response(JSON.stringify(payload), {
+                status,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+
+        function getPreviewRequestPath(url) {
+            try {
+                const parsed = new URL(String(url || ''), window.location.origin);
+                return `${parsed.pathname}${parsed.search}`;
+            } catch (error) {
+                return String(url || '');
+            }
+        }
+
+        function getPreviewInterceptResponse(url, options = {}) {
+            if (!isPreviewMode()) return null;
+
+            const method = String(options.method || 'GET').toUpperCase();
+            const path = getPreviewRequestPath(url);
+
+            if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+                return createJsonResponse({ errno: 403, error: PREVIEW_READONLY_MESSAGE, msg: PREVIEW_READONLY_MESSAGE, preview: true }, 403);
+            }
+
+            if (path.startsWith('/api/metrics/api-calls')) {
+                return createJsonResponse(getMockApiMetricsResponse());
+            }
+
+            if (path.startsWith('/api/scheduler/v1/get')) {
+                return createJsonResponse({ errno: 0, result: { groups: getMockSchedulerGroups() }, preview: true });
+            }
+
+            return null;
+        }
+
+        function wrapPreviewFetch(target, methodName, installedFlagName) {
+            if (!target || typeof target[methodName] !== 'function' || target[installedFlagName]) return;
+
+            const baseFetch = target[methodName].bind(target);
+            target[installedFlagName] = true;
+
+            target[methodName] = async function previewWrappedFetch(url, options = {}) {
+                const intercepted = getPreviewInterceptResponse(url, options);
+                if (intercepted) {
+                    return intercepted;
+                }
+                return baseFetch(url, options);
+            };
+        }
+
+        function installPreviewFetchGuard() {
+            wrapPreviewFetch(window, 'authenticatedFetch', '__dashboardPreviewFetchGuardInstalled');
+            wrapPreviewFetch(window.firebaseAuth, 'fetchWithAuth', '__dashboardPreviewFirebaseFetchGuardInstalled');
+            wrapPreviewFetch(window.apiClient, 'fetch', '__dashboardPreviewApiClientFetchGuardInstalled');
+        }
+
+        function renderPreviewModeBanner() {
+            if (!isPreviewMode()) return;
+
+            const mainContent = document.querySelector('.main-content');
+            if (!mainContent) return;
+
+            let banner = document.getElementById('previewModeBanner');
+            if (!banner) {
+                banner = document.createElement('section');
+                banner.id = 'previewModeBanner';
+                banner.className = 'preview-banner';
+                const visibilityCard = mainContent.querySelector('.dashboard-visibility-card');
+                if (visibilityCard && visibilityCard.parentNode === mainContent) {
+                    mainContent.insertBefore(banner, visibilityCard.nextSibling);
+                } else {
+                    mainContent.insertBefore(banner, mainContent.firstChild);
+                }
+            }
+
+            const scenario = getPreviewScenario();
+            const scenarioOptions = PREVIEW_SCENARIO_OPTIONS.map((option) => `<option value="${option.value}" ${option.value === scenario ? 'selected' : ''}>${option.label}</option>`).join('');
+            banner.innerHTML = `
+                <div class="preview-banner__top">
+                    <div class="preview-banner__copy">
+                        <div class="preview-banner__eyebrow">Preview Mode</div>
+                        <div class="preview-banner__title">Sample dashboard tour with read-only data</div>
+                        <div class="preview-banner__description">Switch scenarios to see different sample conditions, then launch the guided tour or return to Setup when you're ready to connect real devices.</div>
+                        <div class="preview-banner__meta">
+                            <span class="preview-banner__pill">Read-only controls</span>
+                            <span class="preview-banner__pill">Sample inverter, pricing, weather, EV, and automation data</span>
+                        </div>
+                    </div>
+                    <div class="preview-banner__controls">
+                        <label class="preview-banner__field">
+                            <span class="preview-banner__field-label">Scenario</span>
+                            <select id="previewScenarioSelect" class="preview-banner__select">${scenarioOptions}</select>
+                        </label>
+                        <div class="preview-banner__buttons">
+                            <button type="button" id="previewRestartTourBtn" class="btn preview-banner__btn preview-banner__btn--primary">Start Tour</button>
+                            <button type="button" id="previewExitBtn" class="btn preview-banner__btn preview-banner__btn--warning">Back to Setup</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="preview-banner__hint">Quick control, EV commands, automation edits, and scheduler writes are disabled while preview mode is active.</div>
+            `;
+
+            const scenarioSelect = document.getElementById('previewScenarioSelect');
+            if (scenarioSelect && scenarioSelect.dataset.bound !== '1') {
+                scenarioSelect.dataset.bound = '1';
+                scenarioSelect.addEventListener('change', (event) => {
+                    try {
+                        window.PreviewSession.setScenario(event.target.value);
+                    } catch (error) { /* ignore */ }
+                    window.location.reload();
+                });
+            }
+
+            const restartTourBtn = document.getElementById('previewRestartTourBtn');
+            if (restartTourBtn && restartTourBtn.dataset.bound !== '1') {
+                restartTourBtn.dataset.bound = '1';
+                restartTourBtn.addEventListener('click', () => {
+                    try { sessionStorage.setItem('tourAutoLaunch', '1'); } catch (error) { /* ignore */ }
+                    if (window.TourEngine && typeof window.TourEngine.start === 'function') {
+                        window.TourEngine.start(0);
+                    }
+                });
+            }
+
+            const exitBtn = document.getElementById('previewExitBtn');
+            if (exitBtn && exitBtn.dataset.bound !== '1') {
+                exitBtn.dataset.bound = '1';
+                exitBtn.addEventListener('click', () => {
+                    try {
+                        if (window.PreviewSession) {
+                            window.PreviewSession.clear();
+                        }
+                    } catch (error) { /* ignore */ }
+                    if (typeof safeRedirect === 'function') {
+                        safeRedirect('/setup.html');
+                    } else {
+                        window.location.href = '/setup.html';
+                    }
+                });
+            }
+        }
+
+        installPreviewFetchGuard();
+
         // default collapsed state for right response panel; value persisted in localStorage
         let panelCollapsed = false;
         // When true, suppress auto-opening the right response panel (used during init)
@@ -1303,6 +1475,16 @@
                     days = Number(primaryEl.value);
                 }
             } catch (e) { /* use CONFIG value */ }
+
+            if (isPreviewMode()) {
+                const previewWeather = getMockWeatherData(place, days);
+                renderWeatherCard(previewWeather);
+                setLastUpdated('weather');
+                document.getElementById('result').textContent = JSON.stringify({ errno: 0, result: previewWeather, preview: true }, null, 2);
+                document.getElementById('status-bar').style.display = 'flex';
+                document.getElementById('status-bar').querySelector('.endpoint').textContent = `Weather Preview - ${previewWeather.place.resolvedName}`;
+                return;
+            }
             
             // Check if cached weather is still fresh (30 minutes TTL matches backend)
             // IMPORTANT: Cache key must include the requested days so we don't return stale cache
@@ -3697,12 +3879,7 @@
                         const vehicleId = String(vehicle.vehicleId || '');
                         if (!vehicleId) return;
                         evDashboardState.statusByVehicleId[vehicleId] = getMockEVStatus(vehicleId);
-                        evDashboardState.commandReadinessByVehicleId[vehicleId] = {
-                            state: 'ready_direct',
-                            transport: 'direct',
-                            source: 'mock',
-                            vehicleCommandProtocolRequired: false
-                        };
+                        evDashboardState.commandReadinessByVehicleId[vehicleId] = getMockEVCommandReadiness(vehicleId);
                         evDashboardState.statusMetaByVehicleId[vehicleId] = {
                             source: 'mock',
                             loadedAtMs: Date.now(),
@@ -4175,6 +4352,20 @@
                     messageEl.textContent = '🔄 Refreshing...';
                 }
             }
+
+            if (isPreviewMode()) {
+                updateQuickControlUI(getMockQuickControlStatus());
+                checkQuickControlAutomationWarning();
+                if (showFeedback) {
+                    const messageEl = document.getElementById('quickControlMessage');
+                    if (messageEl) {
+                        messageEl.style.background = 'color-mix(in srgb, var(--accent-blue) 18%, transparent)';
+                        messageEl.textContent = 'Preview data refreshed';
+                        setTimeout(() => { messageEl.style.display = 'none'; }, 1500);
+                    }
+                }
+                return;
+            }
             
             try {
                 const resp = await authenticatedFetch('/api/quickcontrol/status');
@@ -4223,6 +4414,11 @@
         async function checkQuickControlAutomationWarning() {
             const warningDiv = document.getElementById('quickControlAutomationWarning');
             if (!warningDiv) return;
+
+            if (isPreviewMode()) {
+                warningDiv.style.display = 'block';
+                return;
+            }
             
             try {
                 const resp = await authenticatedFetch('/api/automation/status');
@@ -4996,6 +5192,7 @@
         }
 
         function isDashboardLocalMockEnabled() {
+            if (isPreviewMode()) return true;
             if (!isLocalHostEnv()) return false;
             const pref = getStoredLocalMockPreference();
             if (pref === 'on') return true;
@@ -5005,16 +5202,17 @@
 
         function updateDataSourceBadges() {
             const mock = isDashboardLocalMockEnabled();
+            const preview = isPreviewMode();
             const inverterBadge = document.getElementById('inverterSourceBadge');
             const amberBadge = document.getElementById('amberSourceBadge');
 
             if (inverterBadge) {
-                inverterBadge.textContent = mock ? 'Mock' : 'Live';
+                inverterBadge.textContent = preview ? 'Preview' : (mock ? 'Mock' : 'Live');
                 inverterBadge.style.background = mock ? 'color-mix(in srgb, var(--color-warning) 22%, transparent)' : '';
                 inverterBadge.style.color = mock ? 'var(--color-warning)' : '';
             }
             if (amberBadge) {
-                amberBadge.textContent = mock ? 'Mock' : 'Amber';
+                amberBadge.textContent = preview ? 'Preview' : (mock ? 'Mock' : 'Amber');
                 amberBadge.style.background = mock ? 'color-mix(in srgb, var(--color-warning) 22%, transparent)' : '';
                 amberBadge.style.color = mock ? 'var(--color-warning)' : '';
             }
@@ -5042,6 +5240,379 @@
             }
         }
 
+        function getPreviewScenarioDescriptor() {
+            const scenario = getPreviewScenario();
+            if (scenario === 'evening-peak') {
+                return {
+                    solarBase: 0.35,
+                    solarVariance: 0.2,
+                    houseLoadBase: 3.8,
+                    houseLoadVariance: 0.8,
+                    socBase: 62,
+                    socVariance: 6,
+                    amberBuyOffset: 15,
+                    amberFeedOffset: -3.5,
+                    renewablesBase: 28,
+                    renewablesVariance: 12,
+                    weatherCode: 3,
+                    temperatureBase: 24,
+                    cloudBase: 72,
+                    radiationBase: 140,
+                    evCharging: false,
+                    activeRule: 'High Feed-in Export',
+                    currentRuleMode: 'ForceDischarge'
+                };
+            }
+            if (scenario === 'storm-watch') {
+                return {
+                    solarBase: 0.18,
+                    solarVariance: 0.12,
+                    houseLoadBase: 2.7,
+                    houseLoadVariance: 0.5,
+                    socBase: 81,
+                    socVariance: 4,
+                    amberBuyOffset: 6,
+                    amberFeedOffset: -1.8,
+                    renewablesBase: 18,
+                    renewablesVariance: 8,
+                    weatherCode: 95,
+                    temperatureBase: 19,
+                    cloudBase: 92,
+                    radiationBase: 65,
+                    evCharging: false,
+                    activeRule: 'Rainy Week Battery Saver',
+                    currentRuleMode: 'SelfUse'
+                };
+            }
+            if (scenario === 'ev-charge') {
+                return {
+                    solarBase: 0.1,
+                    solarVariance: 0.08,
+                    houseLoadBase: 1.9,
+                    houseLoadVariance: 0.4,
+                    socBase: 54,
+                    socVariance: 7,
+                    amberBuyOffset: -6,
+                    amberFeedOffset: -1.2,
+                    renewablesBase: 46,
+                    renewablesVariance: 10,
+                    weatherCode: 1,
+                    temperatureBase: 17,
+                    cloudBase: 25,
+                    radiationBase: 90,
+                    evCharging: true,
+                    activeRule: 'Morning Commute Pre-charge',
+                    currentRuleMode: 'ForceCharge'
+                };
+            }
+            return {
+                solarBase: 4.6,
+                solarVariance: 1.4,
+                houseLoadBase: 1.8,
+                houseLoadVariance: 0.45,
+                socBase: 74,
+                socVariance: 7,
+                amberBuyOffset: -2,
+                amberFeedOffset: -5,
+                renewablesBase: 76,
+                renewablesVariance: 16,
+                weatherCode: 0,
+                temperatureBase: 27,
+                cloudBase: 18,
+                radiationBase: 640,
+                evCharging: false,
+                activeRule: 'Solar Surplus — Charge Everything',
+                currentRuleMode: 'SelfUse'
+            };
+        }
+
+        function getMockWeatherData(place = PREVIEW_WEATHER_LOCATION, days = 6) {
+            const descriptor = getPreviewScenarioDescriptor();
+            const totalDays = Math.max(1, Math.min(10, Number(days) || 6));
+            const now = new Date();
+            const hourTimes = [];
+            const radiation = [];
+            const cloudcover = [];
+            const temperature = [];
+
+            for (let index = 0; index < totalDays * 24; index++) {
+                const tick = new Date(now.getTime() + (index * 60 * 60 * 1000));
+                const hour = tick.getHours();
+                const daylightFactor = Math.max(0, Math.sin(((hour - 6) / 12) * Math.PI));
+                hourTimes.push(tick.toISOString().slice(0, 16));
+                radiation.push(Math.round((descriptor.radiationBase * daylightFactor) + Math.sin(index / 3) * 35));
+                cloudcover.push(Math.max(4, Math.min(100, Math.round(descriptor.cloudBase + Math.cos(index / 4) * 9))));
+                temperature.push(Number((descriptor.temperatureBase + Math.sin(index / 6) * 3.4).toFixed(1)));
+            }
+
+            const daily = {
+                time: [],
+                weathercode: [],
+                temperature_2m_max: [],
+                temperature_2m_min: [],
+                precipitation_sum: [],
+                sunrise: [],
+                sunset: []
+            };
+
+            for (let dayIndex = 0; dayIndex < totalDays; dayIndex++) {
+                const day = new Date(now.getTime() + (dayIndex * 24 * 60 * 60 * 1000));
+                const isoDay = day.toISOString().slice(0, 10);
+                daily.time.push(isoDay);
+                daily.weathercode.push(descriptor.weatherCode);
+                daily.temperature_2m_max.push(Number((descriptor.temperatureBase + 5 + Math.sin(dayIndex / 2) * 2).toFixed(1)));
+                daily.temperature_2m_min.push(Number((descriptor.temperatureBase - 6 + Math.cos(dayIndex / 2) * 2).toFixed(1)));
+                daily.precipitation_sum.push(descriptor.weatherCode === 95 ? Number((12 + dayIndex * 0.6).toFixed(1)) : Number((Math.max(0, 1.2 + Math.sin(dayIndex) * 1.4)).toFixed(1)));
+                daily.sunrise.push(`${isoDay}T06:18`);
+                daily.sunset.push(`${isoDay}T18:02`);
+            }
+
+            return {
+                place: {
+                    query: PREVIEW_WEATHER_LOCATION,
+                    resolvedName: 'Pyrmont',
+                    country: 'Australia',
+                    latitude: -33.8698,
+                    longitude: 151.1949
+                },
+                source: 'preview-mock',
+                current: {
+                    time: now.toISOString().slice(0, 16),
+                    temperature: Number((descriptor.temperatureBase + Math.sin(now.getHours() / 4) * 2.2).toFixed(1)),
+                    weathercode: descriptor.weatherCode,
+                    windspeed: Number((13 + Math.cos(now.getHours() / 3) * 4).toFixed(1)),
+                    winddirection: 135,
+                    shortwave_radiation: Math.max(0, Math.round(descriptor.radiationBase * 0.72)),
+                    cloudcover: Math.max(4, Math.min(100, Math.round(descriptor.cloudBase)))
+                },
+                hourly: {
+                    time: hourTimes,
+                    shortwave_radiation: radiation,
+                    cloudcover,
+                    temperature_2m: temperature
+                },
+                daily
+            };
+        }
+
+        function getMockAutomationRules() {
+            const descriptor = getPreviewScenarioDescriptor();
+            const now = Date.now();
+            const templateRules = [
+                {
+                    name: 'High Feed-in Export',
+                    priority: 2,
+                    cooldownMinutes: 15,
+                    conditions: {
+                        feedInPrice: { enabled: true, operator: '>=', value: 30, value2: null },
+                        buyPrice: { enabled: false },
+                        soc: { enabled: true, operator: '>=', value: 40, value2: null },
+                        temperature: { enabled: false },
+                        solarRadiation: { enabled: false },
+                        cloudCover: { enabled: false },
+                        forecastPrice: { enabled: false },
+                        time: { enabled: false }
+                    },
+                    action: {
+                        workMode: 'ForceDischarge',
+                        durationMinutes: 30,
+                        fdPwr: 5000,
+                        fdSoc: 20,
+                        minSocOnGrid: 20,
+                        maxSoc: 100
+                    }
+                },
+                {
+                    name: 'Cheap Import Charging',
+                    priority: 3,
+                    cooldownMinutes: 30,
+                    conditions: {
+                        feedInPrice: { enabled: false },
+                        buyPrice: { enabled: true, operator: '<=', value: 5, value2: null },
+                        soc: { enabled: true, operator: '<=', value: 70, value2: null },
+                        temperature: { enabled: false },
+                        solarRadiation: { enabled: false },
+                        cloudCover: { enabled: false },
+                        forecastPrice: { enabled: false },
+                        time: { enabled: false }
+                    },
+                    action: {
+                        workMode: 'ForceCharge',
+                        durationMinutes: 60,
+                        fdPwr: 0,
+                        fdSoc: 100,
+                        minSocOnGrid: 20,
+                        maxSoc: 100
+                    }
+                },
+                {
+                    name: 'Rainy Week Battery Saver',
+                    priority: 7,
+                    cooldownMinutes: 360,
+                    conditions: {
+                        feedInPrice: { enabled: false },
+                        buyPrice: { enabled: false },
+                        soc: { enabled: false },
+                        temperature: { enabled: false },
+                        solarRadiation: { enabled: true, checkType: 'average', operator: '<=', value: 150, lookAhead: 7, lookAheadUnit: 'days' },
+                        cloudCover: { enabled: true, checkType: 'average', operator: '>=', value: 85, lookAhead: 7, lookAheadUnit: 'days' },
+                        forecastPrice: { enabled: false },
+                        time: { enabled: false }
+                    },
+                    action: {
+                        workMode: 'SelfUse',
+                        durationMinutes: 360,
+                        fdPwr: 0,
+                        fdSoc: 30,
+                        minSocOnGrid: 30,
+                        maxSoc: 100
+                    }
+                },
+                {
+                    name: 'Morning Commute Pre-charge',
+                    priority: 4,
+                    cooldownMinutes: 360,
+                    conditions: {
+                        feedInPrice: { enabled: false },
+                        buyPrice: { enabled: true, operator: '<=', value: 15, value2: null },
+                        soc: { enabled: true, operator: '<=', value: 75, value2: null },
+                        temperature: { enabled: false },
+                        solarRadiation: { enabled: false },
+                        cloudCover: { enabled: false },
+                        forecastPrice: { enabled: false },
+                        time: { enabled: true, startTime: '00:00', endTime: '06:00', days: [] }
+                    },
+                    action: {
+                        workMode: 'ForceCharge',
+                        durationMinutes: 180,
+                        fdPwr: 0,
+                        fdSoc: 90,
+                        minSocOnGrid: 20,
+                        maxSoc: 100
+                    }
+                },
+                {
+                    name: 'Evening Return Battery Reserve',
+                    priority: 3,
+                    cooldownMinutes: 60,
+                    conditions: {
+                        feedInPrice: { enabled: false },
+                        buyPrice: { enabled: true, operator: '>=', value: 20, value2: null },
+                        soc: { enabled: true, operator: '>=', value: 30, value2: null },
+                        temperature: { enabled: false },
+                        solarRadiation: { enabled: false },
+                        cloudCover: { enabled: false },
+                        forecastPrice: { enabled: false },
+                        time: { enabled: true, startTime: '18:00', endTime: '23:00', days: [] }
+                    },
+                    action: {
+                        workMode: 'SelfUse',
+                        durationMinutes: 300,
+                        fdPwr: 0,
+                        fdSoc: 40,
+                        minSocOnGrid: 40,
+                        maxSoc: 100
+                    }
+                },
+                {
+                    name: 'Solar Surplus — Charge Everything',
+                    priority: 6,
+                    cooldownMinutes: 90,
+                    conditions: {
+                        feedInPrice: { enabled: true, operator: '<=', value: 8, value2: null },
+                        buyPrice: { enabled: false },
+                        soc: { enabled: true, operator: '>=', value: 70, value2: null },
+                        temperature: { enabled: false },
+                        solarRadiation: { enabled: true, checkType: 'average', operator: '>=', value: 700, lookAhead: 4, lookAheadUnit: 'hours' },
+                        cloudCover: { enabled: false },
+                        forecastPrice: { enabled: false },
+                        time: { enabled: false }
+                    },
+                    action: {
+                        workMode: 'SelfUse',
+                        durationMinutes: 120,
+                        fdPwr: 0,
+                        fdSoc: 20,
+                        minSocOnGrid: 20,
+                        maxSoc: 85
+                    }
+                }
+            ];
+
+            return templateRules.reduce((accumulator, template, index) => {
+                const isActive = template.name === descriptor.activeRule;
+                accumulator[template.name] = {
+                    name: template.name,
+                    priority: template.priority,
+                    enabled: true,
+                    cooldownMinutes: template.cooldownMinutes,
+                    conditions: JSON.parse(JSON.stringify(template.conditions)),
+                    action: JSON.parse(JSON.stringify(template.action)),
+                    lastTriggered: isActive ? now - (9 * 60 * 1000) : now - ((index + 2) * 37 * 60 * 1000)
+                };
+                return accumulator;
+            }, {});
+        }
+
+        function getMockAutomationStatus() {
+            const descriptor = getPreviewScenarioDescriptor();
+            const lastCheck = Date.now() - 18000;
+            const rules = getMockAutomationRules();
+
+            return {
+                enabled: true,
+                inBlackout: false,
+                telemetryFailsafePaused: false,
+                telemetryAgeMs: 45000,
+                lastCheck,
+                activeRule: descriptor.activeRule,
+                activeRuleName: descriptor.activeRule,
+                currentRuleMode: descriptor.currentRuleMode,
+                activeSegmentEnabled: true,
+                lastTriggered: Date.now() - 9 * 60 * 1000,
+                userTimezone: 'Australia/Sydney',
+                rules
+            };
+        }
+
+        function getMockQuickControlStatus() {
+            return {
+                active: false,
+                provider: 'foxess'
+            };
+        }
+
+        function getMockApiMetricsResponse() {
+            const today = new Date().toISOString().slice(0, 10);
+            return {
+                errno: 0,
+                result: {
+                    [today]: {
+                        inverter: 143,
+                        amber: 88,
+                        weather: 36,
+                        teslaFleet: { calls: { total: 41, billable: 33 } }
+                    }
+                },
+                preview: true
+            };
+        }
+
+        function getMockSchedulerGroups() {
+            return Array.from({ length: 6 }, () => ({
+                enable: 0,
+                workMode: 'SelfUse',
+                startHour: 0,
+                startMinute: 0,
+                endHour: 0,
+                endMinute: 0,
+                minSocOnGrid: 10,
+                fdSoc: 10,
+                fdPwr: 0,
+                maxSoc: 100
+            }));
+        }
+
         function getMockAmberSites() {
             return [{
                 id: 'mock-site-local-1',
@@ -5055,12 +5626,13 @@
         }
 
         function getMockAmberPrices(next = 12, siteId = 'mock-site-local-1') {
+            const descriptor = getPreviewScenarioDescriptor();
             const count = Math.max(12, Math.min(500, Number(next) || 12));
             const now = new Date();
             const base = new Date(now);
             base.setSeconds(0, 0);
             base.setMinutes(base.getMinutes() < 30 ? 0 : 30);
-            const siteOffset = String(siteId) === 'mock-site-local-2' ? 3.5 : 0;
+            const siteOffset = (String(siteId) === 'mock-site-local-2' ? 3.5 : 0) + descriptor.amberBuyOffset;
 
             function renewDescriptor(renewables) {
                 if (renewables >= 70) return 'best';
@@ -5076,8 +5648,8 @@
                 const phase = i / 3;
                 const buy = Number(Math.max(6, 18 + siteOffset + Math.sin(phase) * 7 + (i % 8 === 0 ? 4 : 0)).toFixed(2));
                 // Amber feed-in values are negative when you are paid.
-                const feed = Number((-Math.max(2, (9 - (siteOffset * 0.45)) + Math.cos(phase) * 4)).toFixed(2));
-                const renewables = Math.max(15, Math.min(95, Math.round(62 + Math.sin(i / 4) * 22)));
+                const feed = Number((-Math.max(2, (9 - (siteOffset * 0.45)) + descriptor.amberFeedOffset + Math.cos(phase) * 4)).toFixed(2));
+                const renewables = Math.max(10, Math.min(95, Math.round(descriptor.renewablesBase + Math.sin(i / 4) * descriptor.renewablesVariance)));
                 const type = i === 0 ? 'CurrentInterval' : 'ForecastInterval';
                 const spikeStatus = buy >= 28 ? 'high' : 'none';
 
@@ -5120,16 +5692,27 @@
         }
 
         function getMockInverterRealtimeData() {
+            const descriptor = getPreviewScenarioDescriptor();
             const now = new Date();
             const t = (now.getMinutes() + (now.getSeconds() / 60)) / 60;
 
-            const solar = Math.max(0.2, 3.6 + Math.sin(t * Math.PI * 2) * 1.3);
-            const houseLoad = Math.max(0.5, 2.1 + Math.cos(t * Math.PI * 2) * 0.45);
+            const solar = Math.max(0.05, descriptor.solarBase + Math.sin(t * Math.PI * 2) * descriptor.solarVariance);
+            const houseLoad = Math.max(0.4, descriptor.houseLoadBase + Math.cos(t * Math.PI * 2) * descriptor.houseLoadVariance);
             const batteryDischarge = Math.max(0, houseLoad - solar + 0.35);
             const batteryCharge = Math.max(0, solar - houseLoad - 0.45);
             const feedIn = Math.max(0, solar - houseLoad - batteryCharge);
             const gridImport = Math.max(0, houseLoad - solar - batteryDischarge + batteryCharge);
-            const soc = Math.max(22, Math.min(92, Math.round(64 + Math.sin((t + 0.15) * Math.PI * 2) * 8)));
+            const soc = Math.max(18, Math.min(96, Math.round(descriptor.socBase + Math.sin((t + 0.15) * Math.PI * 2) * descriptor.socVariance)));
+            const pvRatios = [0.31, 0.27, 0.23, 0.19];
+            const pvPowers = pvRatios.map((ratio, index) => {
+                if (index === pvRatios.length - 1) {
+                    const priorTotal = pvRatios.slice(0, index).reduce((sum, priorRatio) => sum + (solar * priorRatio), 0);
+                    return Math.max(0.01, solar - priorTotal);
+                }
+                return Math.max(0.01, solar * ratio);
+            });
+            const pvVolts = [382, 366, 351, 337].map((base, index) => Number((base + Math.sin((t + (index * 0.11)) * Math.PI * 2) * 8).toFixed(1)));
+            const pvCurrents = pvPowers.map((power, index) => Number(((power * 1000) / Math.max(1, pvVolts[index])).toFixed(1)));
 
             const datas = [
                 { variable: 'pvPower', value: Number(solar.toFixed(2)), unit: 'kW' },
@@ -5144,6 +5727,13 @@
                 { variable: 'invTemperation', value: Number((36 + Math.sin((t + 0.3) * Math.PI * 2) * 2.6).toFixed(1)), unit: '°C' }
             ];
 
+            pvPowers.forEach((power, index) => {
+                const pvIndex = index + 1;
+                datas.push({ variable: `pv${pvIndex}power`, value: Number(power.toFixed(2)), unit: 'kW' });
+                datas.push({ variable: `pv${pvIndex}volt`, value: pvVolts[index], unit: 'V' });
+                datas.push({ variable: `pv${pvIndex}current`, value: pvCurrents[index], unit: 'A' });
+            });
+
             return {
                 errno: 0,
                 result: [{
@@ -5156,18 +5746,21 @@
 
         function getMockEVVehicles() {
             return [
-                { vehicleId: 'MOCK-1', displayName: 'Teslamock Model 3', hasCredentials: true },
-                { vehicleId: 'MOCK-2', displayName: 'Teslamock Model Y', hasCredentials: true }
+                { vehicleId: 'MOCK-1', displayName: 'Tesla Model 3 Long Range', hasCredentials: true },
+                { vehicleId: 'MOCK-2', displayName: 'Tesla Model Y Performance', hasCredentials: true }
             ];
         }
 
         function getMockEVStatus(vehicleId) {
+            const descriptor = getPreviewScenarioDescriptor();
             const now = new Date();
             const t = (now.getMinutes() + now.getSeconds() / 60) / 60;
-            const soc = Math.max(12, Math.min(98, Math.round(55 + Math.sin(t * Math.PI * 2) * 18)));
-            const isCharging = soc < 92;
-            const chargingState = isCharging ? 'Charging' : 'Complete';
-            const rangeKm = Math.round(250 + Math.sin(t * Math.PI * 2) * 35);
+            const isPrimaryVehicle = String(vehicleId) === 'MOCK-1';
+            const socBase = isPrimaryVehicle ? (descriptor.evCharging ? 34 : 42) : 81;
+            const socVariance = isPrimaryVehicle ? 5 : 3;
+            const soc = Math.max(12, Math.min(98, Math.round(socBase + Math.sin((t + (isPrimaryVehicle ? 0.08 : 0.21)) * Math.PI * 2) * socVariance)));
+            const chargingState = isPrimaryVehicle ? 'Charging' : 'Stopped';
+            const rangeKm = Math.round((isPrimaryVehicle ? 172 : 438) + Math.sin((t + (isPrimaryVehicle ? 0.05 : 0.18)) * Math.PI * 2) * (isPrimaryVehicle ? 18 : 12));
             return {
                 asOfIso: now.toISOString(),
                 socPct: soc,
@@ -5175,8 +5768,18 @@
                 chargingState,
                 isPluggedIn: true,
                 isHome: true,
-                odometerKm: 18250,
+                odometerKm: isPrimaryVehicle ? 18250 : 27440,
                 estimatedRemainingKm: rangeKm
+            };
+        }
+
+        function getMockEVCommandReadiness(vehicleId) {
+            const isPrimaryVehicle = String(vehicleId) === 'MOCK-1';
+            return {
+                state: isPrimaryVehicle ? 'ready_signed' : 'ready_direct',
+                transport: isPrimaryVehicle ? 'signed' : 'direct',
+                source: 'mock',
+                vehicleCommandProtocolRequired: isPrimaryVehicle
             };
         }
 
@@ -6139,6 +6742,8 @@
         // This function is called ONLY after user is authenticated
         // It loads all data that requires Firebase auth tokens
         async function initializePageData() {
+            renderPreviewModeBanner();
+            installPreviewFetchGuard();
             updateDataSourceBadges();
             
             // Declare cfg at function scope so it's accessible to all steps
@@ -6156,7 +6761,9 @@
                     } catch (e) { /* ignore and use default */ }
                     const wInput = document.getElementById('weatherPlace');
                     // Backend now keeps location and preferences.weatherPlace in sync - check location first (primary source)
-                    const preferredWeather = cfg.result.location || (cfg.result.preferences && cfg.result.preferences.weatherPlace) || cfg.result.weatherPlace;
+                    const preferredWeather = isPreviewMode()
+                        ? PREVIEW_WEATHER_LOCATION
+                        : (cfg.result.location || (cfg.result.preferences && cfg.result.preferences.weatherPlace) || cfg.result.weatherPlace);
                     // On page load, ALWAYS update from server config (it's the source of truth)
                     // Only exception: if user manually typed during this active session
                     if (wInput && preferredWeather && String(preferredWeather).trim() !== '' && preferredWeather !== 'undefined') {
@@ -6373,6 +6980,10 @@
 
         // Load backend automation status and sync UI
         async function loadBackendAutomationStatus() {
+            if (isPreviewMode()) {
+                updateBackendAutomationUI(getMockAutomationStatus());
+                return;
+            }
             try {
                 const container = document.getElementById('backendAutomationStatus');
                 if (!container) {
@@ -6454,20 +7065,25 @@
                 
                 // Determine effective state: blackout overrides master enabled
                 const effectivelyPaused = !masterEnabled || inBlackout || telemetryFailsafePaused;
+                const previewMode = isPreviewMode();
                 const statusText = inBlackout
                     ? 'BLACKOUT'
                     : (telemetryFailsafePaused ? 'FAILSAFE' : (masterEnabled ? 'ACTIVE' : 'PAUSED'));
                 const statusColor = inBlackout
                     ? 'var(--color-orange)'
                     : (telemetryFailsafePaused ? 'var(--color-danger)' : (masterEnabled ? 'var(--color-success)' : 'var(--color-danger)'));
-                const countdownText = inBlackout
+                const countdownText = previewMode
+                    ? 'DEMO'
+                    : (inBlackout
                     ? 'BLACKOUT'
-                    : (!effectivelyPaused ? (nextCheckIn + 's') : 'PAUSED');
+                    : (!effectivelyPaused ? (nextCheckIn + 's') : 'PAUSED'));
                 const subtitleText = inBlackout 
                     ? `⏸️ Blackout window: ${blackoutWindow?.start || '??'} - ${blackoutWindow?.end || '??'}`
+                    : (previewMode
+                        ? 'Preview mode shows sample rules and outcomes only. Live automation stays disabled until setup is complete.'
                     : (telemetryFailsafePaused
                         ? telemetryPauseText
-                        : (masterEnabled ? `Auto-refreshes every ${automationIntervalSec} seconds` : 'Enable master switch to activate'));
+                        : (masterEnabled ? `Auto-refreshes every ${automationIntervalSec} seconds` : 'Enable master switch to activate')));
                 const gradientColors = inBlackout
                     ? '#f0883e 0%, #da3633 100%'
                     : (telemetryFailsafePaused
@@ -6710,7 +7326,7 @@
             window.automationFailsafePaused = !!status.enabled && !!status.telemetryFailsafePaused;
             
             // Start countdown timer if not already running (or restart if state changed)
-            const shouldRun = window.automationEnabled && !window.automationInBlackout && !window.automationFailsafePaused;
+            const shouldRun = !previewMode && window.automationEnabled && !window.automationInBlackout && !window.automationFailsafePaused;
             const wasRunning = !!window.automationCountdownInterval;
             const stateChanged = (shouldRun !== wasRunning) || !window.automationCountdownStarted;
             

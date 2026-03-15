@@ -14,7 +14,7 @@ const STATIC_ASSETS = [
   '/admin.html',
   '/css/shared-styles.css?v=9',
   '/css/tour.css?v=4',
-  '/js/tour.js?v=30',
+  '/js/tour.js?v=31',
   '/js/firebase-config.js',
   '/js/firebase-auth.js',
   '/js/api-client.js?v=5',

@@ -80,6 +80,26 @@
         }, 400);
     }
 
+    function isPreviewModeActive() {
+        try {
+            return !!(window.PreviewSession && typeof window.PreviewSession.isActive === 'function' && window.PreviewSession.isActive());
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function isPreviewAllowedForCurrentPage() {
+        if (!isPreviewModeActive()) return false;
+        try {
+            if (window.PreviewSession && typeof window.PreviewSession.isAllowedPath === 'function') {
+                return window.PreviewSession.isAllowedPath(window.location.pathname);
+            }
+        } catch (error) {
+            return false;
+        }
+        return false;
+    }
+
     function shouldSkipProfileInit() {
         const impersonation = getImpersonationState();
         return Boolean(impersonation && impersonation.uid && impersonation.mode);
@@ -128,6 +148,17 @@
     async function ensureSetupComplete() {
         if (!state.options.checkSetup) return true;
         if (state.options.pageName === 'setup') return true;
+        if (isPreviewModeActive()) {
+            if (isPreviewAllowedForCurrentPage()) {
+                return true;
+            }
+            if (typeof safeRedirect === 'function') {
+                safeRedirect('/setup.html');
+            } else {
+                window.location.href = '/setup.html';
+            }
+            return false;
+        }
         try {
             const client = window.apiClient || await waitForAPIClient(4000);
             const initOk = await ensureUserProfileInitialized(client);
@@ -640,12 +671,31 @@
             tourBtn.textContent = 'Take a Tour';
             tourBtn.addEventListener('click', () => {
                 dropdown.classList.remove('show');
-                // Don't offer the tour on the setup page — user must finish setup first
                 if (window.location.pathname.includes('setup')) {
-                    if (typeof showMessage === 'function') {
-                        showMessage('info', '✨ Finish setting up your account first — the tour will launch automatically when you\'re done!');
+                    try {
+                        const form = document.getElementById('setupForm');
+                        if (window.PreviewSession) {
+                            if (form && typeof window.PreviewSession.saveSetupDraft === 'function') {
+                                window.PreviewSession.saveSetupDraft(form);
+                            }
+                            if (typeof window.PreviewSession.enterDashboardPreview === 'function') {
+                                window.PreviewSession.enterDashboardPreview({
+                                    source: 'profile-menu',
+                                    scenario: 'solar-surplus',
+                                    allowedPaths: ['/app.html']
+                                });
+                            }
+                        } else {
+                            try { sessionStorage.removeItem('lastRedirect'); } catch (e) {}
+                            try { sessionStorage.setItem('tourAutoLaunch', '1'); } catch (e) {}
+                        }
+                    } catch (e) {
+                        console.warn('[AppShell] Failed to enter preview mode from setup profile menu', e);
+                    }
+                    if (typeof safeRedirect === 'function') {
+                        safeRedirect('/app.html');
                     } else {
-                        alert('Please complete setup first. The tour will launch automatically once you\'re finished.');
+                        window.location.href = '/app.html';
                     }
                     return;
                 }
@@ -655,7 +705,7 @@
                     // TourEngine not loaded on this page — navigate to dashboard and start there
                     try {
                         sessionStorage.setItem('tourStep', '0');
-                        sessionStorage.setItem('tourStepVersion', 'tour-v2026-03-04-theme-preview-step');
+                        sessionStorage.setItem('tourStepVersion', 'tour-v2026-03-15-ev-step');
                         sessionStorage.setItem('tourStepAt', String(Date.now()));
                     } catch (e) {}
                     if (typeof safeRedirect === 'function') {

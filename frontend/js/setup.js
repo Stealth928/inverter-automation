@@ -30,12 +30,61 @@
             }
         }
 
+        function bindPreviewLaunchButton() {
+            const previewBtn = document.getElementById('previewLaunchBtn');
+            if (!previewBtn || previewBtn.dataset.bound === '1') return;
+            previewBtn.dataset.bound = '1';
+            previewBtn.addEventListener('click', () => {
+                const form = document.getElementById('setupForm');
+                try {
+                    if (window.PreviewSession) {
+                        window.PreviewSession.saveSetupDraft(form);
+                        window.PreviewSession.enterDashboardPreview({
+                            source: 'setup',
+                            scenario: 'solar-surplus',
+                            allowedPaths: ['/app.html']
+                        });
+                    } else {
+                        sessionStorage.setItem('tourAutoLaunch', '1');
+                        try { sessionStorage.removeItem('lastRedirect'); } catch (error) { /* ignore */ }
+                    }
+                } catch (error) {
+                    console.warn('[Setup] Failed to start preview mode', error);
+                }
+                safeRedirect('/app.html');
+            });
+        }
+
+        function clearPreviewModeOnSetupEntry() {
+            try {
+                if (window.PreviewSession && typeof window.PreviewSession.isActive === 'function' && window.PreviewSession.isActive()) {
+                    window.PreviewSession.clear();
+                }
+            } catch (error) {
+                console.warn('[Setup] Failed to clear preview mode on setup entry', error);
+            }
+        }
+
+        function restorePreviewSetupDraft() {
+            const form = document.getElementById('setupForm');
+            if (!form || !window.PreviewSession || typeof window.PreviewSession.applySetupDraft !== 'function') return;
+            const restored = window.PreviewSession.applySetupDraft(form);
+            if (restored) {
+                clearAllFieldStates();
+                applyProviderSelection(getSelectedProvider());
+                updateProgress();
+            }
+        }
+
         updateProgress();
 
         AppShell.init({
             pageName: 'setup',
             checkSetup: false,
             onReady: () => {
+                restorePreviewSetupDraft();
+                clearPreviewModeOnSetupEntry();
+                bindPreviewLaunchButton();
                 ensureSetupStillRequired();
             }
         });
@@ -325,6 +374,11 @@
                 }
                 if (amberApiKey) {
                     localStorage.setItem('foxess_setup_amber_api_key', amberApiKey);
+                }
+
+                if (window.PreviewSession) {
+                    window.PreviewSession.clear();
+                    window.PreviewSession.clearSetupDraft();
                 }
 
                 // Flag tour auto-launch for first-time users

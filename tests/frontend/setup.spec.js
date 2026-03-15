@@ -9,6 +9,22 @@ const { test, expect } = require('@playwright/test');
 test.describe('Setup Wizard Page', () => {
   
   test.beforeEach(async ({ page }) => {
+    await page.route('**/api/config/setup-status', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ errno: 0, result: { setupComplete: false } })
+      });
+    });
+
+    await page.route('**/api/user/init-profile', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ errno: 0, result: { initialized: true } })
+      });
+    });
+
     // Mock Firebase auth for authenticated setup and prevent redirects
     await page.addInitScript(() => {
       window.mockFirebaseAuth = {
@@ -255,6 +271,55 @@ test.describe('Setup Wizard Page', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.waitForLoadState('networkidle');
     await expect(page.locator('body')).toBeVisible();
+  });
+
+  test('should still launch preview after returning from dashboard to setup', async ({ page }) => {
+    await page.evaluate(() => {
+      window.__redirectTargets = [];
+      window.safeRedirect = function (target) {
+        window.__redirectTargets.push(target);
+      };
+      sessionStorage.setItem('lastRedirect', JSON.stringify({ from: '/app.html', to: '/setup.html', ts: Date.now() }));
+    });
+
+    await page.evaluate(() => {
+      document.getElementById('previewLaunchBtn').click();
+    });
+
+    const result = await page.evaluate(() => ({
+      redirectTargets: window.__redirectTargets || [],
+      previewSession: window.PreviewSession ? window.PreviewSession.get() : null,
+      lastRedirect: sessionStorage.getItem('lastRedirect')
+    }));
+
+    expect(result.redirectTargets).toContain('/app.html');
+    expect(result.previewSession && result.previewSession.active).toBeTruthy();
+    expect(result.previewSession && result.previewSession.allowedPaths).toContain('/app.html');
+    expect(result.lastRedirect).toBeNull();
+  });
+
+  test('should launch preview tour from the profile menu on setup', async ({ page }) => {
+    await page.evaluate(() => {
+      window.__redirectTargets = [];
+      window.safeRedirect = function (target) {
+        window.__redirectTargets.push(target);
+      };
+    });
+
+    await page.locator('[data-user-avatar]').click();
+    await page.evaluate(() => {
+      document.querySelector('[data-take-tour]').click();
+    });
+
+    const result = await page.evaluate(() => ({
+      redirectTargets: window.__redirectTargets || [],
+      previewSession: window.PreviewSession ? window.PreviewSession.get() : null,
+      autoLaunch: sessionStorage.getItem('tourAutoLaunch')
+    }));
+
+    expect(result.redirectTargets).toContain('/app.html');
+    expect(result.previewSession && result.previewSession.active).toBeTruthy();
+    expect(result.autoLaunch).toBe('1');
   });
 
   test('should show documentation links', async ({ page }) => {

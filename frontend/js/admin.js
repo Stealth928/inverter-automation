@@ -100,6 +100,7 @@
     let usersInverterSizeChart = null;
     let usersBatterySizeChart = null;
     let usersCouplingChart = null;
+    let usersTourChart = null;
     let activeTab = 'overview';
     let tabsLoaded = { overview: false, scheduler: false, users: false };
 
@@ -250,10 +251,10 @@
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.font = `800 ${label.valueSize || 20}px system-ui, sans-serif`;
-            ctx.fillStyle = label.valueColor || '#e2e8f0';
+            ctx.fillStyle = label.valueColor || palette.textPrimary;
             ctx.fillText(label.value, cx, cy - 9);
             ctx.font = `500 ${label.subSize || 10}px system-ui, sans-serif`;
-            ctx.fillStyle = '#8b949e';
+            ctx.fillStyle = palette.textSecondary;
             ctx.fillText(label.sub || '', cx, cy + 10);
             ctx.restore();
         }
@@ -289,6 +290,10 @@
         if (usersCouplingChart) {
             usersCouplingChart.destroy();
             usersCouplingChart = null;
+        }
+        if (usersTourChart) {
+            usersTourChart.destroy();
+            usersTourChart = null;
         }
     }
 
@@ -384,6 +389,7 @@
 
     const DOUGHNUT_PROVIDER_COLORS = ['#3b9eff', '#22d3a0', '#fb923c', '#f472b6', '#64748b', '#a78bfa'];
     const DOUGHNUT_COUPLING_COLORS = ['#3b9eff', '#22d3a0', '#64748b'];
+    const DOUGHNUT_TOUR_COLORS = ['#22d3a0', '#64748b', '#3b9eff'];
 
     function createDoughnutLegendHTML(entries, colors, total) {
         return entries.map((entry, i) => {
@@ -427,6 +433,31 @@
             plugins: [doughnutPercentagePlugin, doughnutCenterPlugin]
         });
         insertChartLegend(canvas, createDoughnutLegendHTML(entries, DOUGHNUT_PROVIDER_COLORS, total));
+    }
+
+    function renderUsersTourChart(entries) {
+        const canvas = document.getElementById('usersTourChart');
+        if (!canvas || typeof Chart === 'undefined' || !Array.isArray(entries) || !entries.length) return;
+        const total = entries.reduce((s, e) => s + Number(e.count || 0), 0);
+        const options = createDoughnutOptions(entries);
+        options.plugins.centerLabel = { value: String(total), sub: 'users' };
+        usersTourChart = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels: entries.map((e) => e.label),
+                datasets: [{
+                    data: entries.map((e) => Number(e.count || 0)),
+                    backgroundColor: DOUGHNUT_TOUR_COLORS.slice(0, entries.length),
+                    borderColor: 'transparent',
+                    borderWidth: 0,
+                    hoverOffset: 12,
+                    spacing: 4
+                }]
+            },
+            options,
+            plugins: [doughnutPercentagePlugin, doughnutCenterPlugin]
+        });
+        insertChartLegend(canvas, createDoughnutLegendHTML(entries, DOUGHNUT_TOUR_COLORS, total));
     }
 
     function renderUsersCouplingChart(entries) {
@@ -587,6 +618,7 @@
         const inverterSizeDistribution = Array.isArray(summary.inverterSizeDistribution) ? summary.inverterSizeDistribution : [];
         const batterySizeDistribution = Array.isArray(summary.batterySizeDistribution) ? summary.batterySizeDistribution : [];
         const couplingBreakdown = Array.isArray(summary.couplingBreakdown) ? summary.couplingBreakdown : [];
+        const tourStatusBreakdown = Array.isArray(summary.tourStatusBreakdown) ? summary.tourStatusBreakdown : [];
         const notes = Array.isArray(summary.notes) ? summary.notes.filter(Boolean) : [];
         const configuredPct = totalUsers > 0 ? Math.round((Number(summary.configured?.count || 0) / totalUsers) * 100) : 0;
         const automationPct = totalUsers > 0 ? Math.round((Number(summary.automationActive?.count || 0) / totalUsers) * 100) : 0;
@@ -636,10 +668,14 @@
                     ${evAvailable ? `<div class="kpi-progress"><div class="kpi-progress-fill" style="width:${evPct}%"></div></div>` : ''}
                 </div>
             </div>
-            <div class="users-summary-grid-2">
+            <div class="users-summary-grid-3">
                 <section class="users-summary-panel">
                     <div class="users-summary-panel-title"><span class="panel-title-icon">📡</span>Inverter Providers</div>
-                    ${providerBreakdown.length ? '<div class="users-summary-chart"><canvas id="usersProviderChart"></canvas></div>' : '<div class="users-summary-empty">No provider data yet.</div>'}
+                    ${providerBreakdown.length ? '<div class="users-summary-chart users-summary-chart-compact"><canvas id="usersProviderChart"></canvas></div>' : '<div class="users-summary-empty">No provider data yet.</div>'}
+                </section>
+                <section class="users-summary-panel">
+                    <div class="users-summary-panel-title"><span class="panel-title-icon">🗺️</span>Tour Status</div>
+                    ${tourStatusBreakdown.length ? '<div class="users-summary-chart users-summary-chart-compact"><canvas id="usersTourChart"></canvas></div>' : '<div class="users-summary-empty">No tour data yet.</div>'}
                 </section>
                 <section class="users-summary-panel">
                     <div class="users-summary-panel-title"><span class="panel-title-icon">📍</span>Top 5 Locations</div>
@@ -673,6 +709,7 @@
         `;
 
         renderUsersProviderChart(providerBreakdown);
+        renderUsersTourChart(tourStatusBreakdown);
         renderUsersInverterSizeChart(inverterSizeDistribution);
         renderUsersBatterySizeChart(batterySizeDistribution);
         renderUsersCouplingChart(couplingBreakdown);

@@ -179,6 +179,24 @@ test.describe('Dashboard Page', () => {
     expect(hasStatus).toBeTruthy();
   });
 
+  test('should disable top navigation while preview tour is active', async ({ page }) => {
+    await page.evaluate(() => {
+      window.PreviewSession = {
+        isActive: () => true,
+        getScenario: () => 'solar-surplus'
+      };
+      window.TourEngine.start(0);
+    });
+
+    await expect(page.locator('body')).toHaveClass(/preview-tour-nav-locked/);
+    await expect(page.locator('.nav-main .nav-link').first()).toHaveAttribute('aria-disabled', 'true');
+
+    await page.locator('#_tourSkip').click();
+
+    await expect(page.locator('body')).not.toHaveClass(/preview-tour-nav-locked/);
+    await expect(page.locator('.nav-main .nav-link').first()).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
   test('should display inverter data section', async ({ page }) => {
     // Look for inverter-related content
     const hasInverterData = await page.getByText(/inverter|battery|soc|power/i).count() > 0;

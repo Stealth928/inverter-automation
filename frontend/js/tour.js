@@ -21,10 +21,11 @@
   var _active    = false;
   var _currentStep = 0;
   var _themeOverrideState = null;
+  var _previewNavLockSnapshot = [];
   var TOUR_STEP_KEY = 'tourStep';
   var TOUR_STEP_VERSION_KEY = 'tourStepVersion';
   var TOUR_STEP_AT_KEY = 'tourStepAt';
-  var TOUR_FLOW_VERSION = 'tour-v2026-03-04-theme-preview-step';
+  var TOUR_FLOW_VERSION = 'tour-v2026-03-15-ev-step';
   var TOUR_PENDING_MAX_AGE_MS = 5 * 60 * 1000;
 
   /* ------------------------------------------------------------------ */
@@ -124,7 +125,25 @@
       }
     },
 
-    /* 7 — Dashboard customisation */
+    /* 7 — EV overview */
+    {
+      page: '/app.html',
+      selector: '[data-dashboard-card="ev"]',
+      position: 'top',
+      title: '🚗 EV Overview',
+      body: 'See connected vehicles, current charging state, live status and Tesla charging controls in one place. Pick a vehicle tab to inspect its summary, then use the controls when Tesla reports the car is command-ready.',
+      beforeShow: function () {
+        try {
+          var evCard = document.querySelector('[data-dashboard-card="ev"]');
+          if (evCard && evCard.classList.contains('is-hidden-preference')) {
+            evCard.classList.remove('is-hidden-preference');
+            evCard.style.display = '';
+          }
+        } catch (e) { /* ignore */ }
+      }
+    },
+
+    /* 8 — Dashboard customisation */
     {
       page: '/app.html',
       selector: '.dashboard-visibility-card',
@@ -141,7 +160,7 @@
       }
     },
 
-    /* 8 — Rules Library intro */
+    /* 9 — Rules Library intro */
     {
       page: '/rules-library.html',
       selector: '.toolbar',
@@ -150,7 +169,7 @@
       body: 'Browse ready-made recipes by category and difficulty. Treat them as a starting point — after import, you can edit thresholds, actions and priorities to suit your setup.'
     },
 
-    /* 9 — Rules Library import capabilities */
+    /* 10 — Rules Library import capabilities */
     {
       page: '/rules-library.html',
       selector: '#rulesGrid .rule-card',
@@ -172,7 +191,7 @@
       }
     },
 
-    /* 9 — Work mode control */
+    /* 11 — Work mode control */
     {
       page: '/control.html',
       selector: '#form-workMode',
@@ -181,7 +200,7 @@
       body: 'Directly set the inverter work mode: SelfUse, ForceCharge, ForceDischarge or Backup. Changes take effect immediately and persist until another rule or manual action overrides them.'
     },
 
-    /* 10 — Battery SoC settings */
+    /* 12 — Battery SoC settings */
     {
       page: '/control.html',
       selector: '#form-batterySoc',
@@ -190,7 +209,7 @@
       body: 'Set the minimum state-of-charge the inverter must maintain. "Min SoC on Grid" is the threshold while grid-connected; the inverter will not discharge below this level.'
     },
 
-    /* 11 — Credentials */
+    /* 13 — Credentials */
     {
       page: '/settings.html',
       selector: '#credentialsSection',
@@ -199,7 +218,7 @@
       body: 'Your FoxESS device serial, API token and Amber Electric key live here. Update them at any time — keys are stored securely in Firestore and never exposed client-side.'
     },
 
-    /* 12 — Blackout windows */
+    /* 14 — Blackout windows */
     {
       page: '/settings.html',
       selector: '#blackoutSection',
@@ -208,7 +227,7 @@
       body: 'Blackout windows pause the automation engine on specific days and times — e.g. every weekday morning to avoid discharging during your commute. Automation resumes automatically after the window ends.'
     },
 
-    /* 13 — Solar Curtailment */
+    /* 15 — Solar Curtailment */
     {
       page: '/settings.html',
       selector: '#curtailmentSection',
@@ -217,7 +236,7 @@
       body: 'Solar curtailment automatically limits your inverter\u2019s grid export when the Amber feed-in price drops below your chosen threshold — protecting against zero or negative feed-in rates. Toggle it on and set the price threshold to activate it.'
     },
 
-    /* 14 — Automation lab inputs */
+    /* 16 — Automation lab inputs */
     {
       page: '/test.html',
       selector: '#simConditionsCard',
@@ -226,7 +245,7 @@
       body: 'The Automation Lab lets you test what your rules would do given any hypothetical price, SoC, time or weather. No commands are sent to the inverter — it\'s a completely safe sandbox.'
     },
 
-    /* 15 — Run test button */
+    /* 17 — Run test button */
     {
       page: '/test.html',
       selector: '#simRunActions',
@@ -235,7 +254,7 @@
       body: 'Click "Run Automation Test" to see which rule (if any) would fire given the conditions above. The result shows which conditions matched, the action that would be taken, and why other rules were skipped.'
     },
 
-    /* 16 — History / reports */
+    /* 18 — History / reports */
     {
       page: '/history.html',
       selector: '#btnFetchHistory',
@@ -244,7 +263,7 @@
       body: 'The History page lets you fetch inverter time-series data (up to 7 days), view aggregated energy reports by month or year, and browse historical Amber prices. All data is loaded on-demand to preserve your API quota.'
     },
 
-    /* 17 — ROI */
+    /* 19 — ROI */
     {
       page: '/roi.html',
       selector: '#btnCalculateROI',
@@ -253,7 +272,7 @@
       body: 'Track the financial value of your automation. The ROI calculator estimates grid import savings, feed-in revenue gains and avoided peak costs over a date range you choose.'
     },
 
-    /* 18 — Light / Dark theme */
+    /* 20 — Light / Dark theme */
     {
       page: '/app.html',
       selector: null,
@@ -263,7 +282,7 @@
       themeOverride: 'light'
     },
 
-    /* 19 — Outro splash */
+    /* 21 — Outro splash */
     {
       page: '/app.html',
       selector: null,
@@ -284,6 +303,20 @@
     return p;
   }
 
+  function isPreviewMode() {
+    try {
+      return !!(window.PreviewSession && typeof window.PreviewSession.isActive === 'function' && window.PreviewSession.isActive());
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function isStepSkipped(step) {
+    if (!step) return false;
+    if (step.skipIf && step.skipIf()) return true;
+    return isPreviewMode() && step.page !== '/app.html';
+  }
+
   /** Return true if the current page matches the step's target page */
   function onStepPage(step) {
     var cp = currentPage();
@@ -295,7 +328,7 @@
   /** Total visible steps (none have a skipIf in this build — kept for future use) */
   function totalVisible() {
     return STEPS.filter(function (s) {
-      return !s.skipIf || !s.skipIf();
+      return !isStepSkipped(s);
     }).length;
   }
 
@@ -303,7 +336,7 @@
   function visibleIndex(rawIndex) {
     var count = 0;
     for (var i = 0; i <= rawIndex && i < STEPS.length; i++) {
-      if (!STEPS[i].skipIf || !STEPS[i].skipIf()) count++;
+      if (!isStepSkipped(STEPS[i])) count++;
     }
     return count;
   }
@@ -379,7 +412,7 @@
     var step = STEPS[index];
 
     /* skip if predicate */
-    if (step.skipIf && step.skipIf()) {
+    if (isStepSkipped(step)) {
       _currentStep = index + 1;
       renderStep(_currentStep);
       return;
@@ -466,6 +499,38 @@
     } catch (e) {}
   }
 
+  function setPreviewTourNavLock(locked) {
+    var body = document.body;
+    if (!body) return;
+
+    var controls = Array.prototype.slice.call(document.querySelectorAll('.nav-main .nav-link, .nav-main .nav-toggle'));
+
+    if (locked) {
+      body.classList.add('preview-tour-nav-locked');
+      _previewNavLockSnapshot = controls.map(function (el) {
+        var record = {
+          el: el,
+          tabindex: el.getAttribute('tabindex'),
+          ariaDisabled: el.getAttribute('aria-disabled')
+        };
+        el.setAttribute('aria-disabled', 'true');
+        el.setAttribute('tabindex', '-1');
+        return record;
+      });
+      return;
+    }
+
+    body.classList.remove('preview-tour-nav-locked');
+    _previewNavLockSnapshot.forEach(function (record) {
+      if (!record || !record.el) return;
+      if (record.tabindex === null) record.el.removeAttribute('tabindex');
+      else record.el.setAttribute('tabindex', record.tabindex);
+      if (record.ariaDisabled === null) record.el.removeAttribute('aria-disabled');
+      else record.el.setAttribute('aria-disabled', record.ariaDisabled);
+    });
+    _previewNavLockSnapshot = [];
+  }
+
   /* ------------------------------------------------------------------ */
   /*  Overlay                                                             */
   /* ------------------------------------------------------------------ */
@@ -496,6 +561,7 @@
   }
 
   function showOverlay() {
+    if (isPreviewMode()) setPreviewTourNavLock(true);
     lockBodyScroll();
     if (!_overlay) {
       _overlay = document.createElement('div');
@@ -564,6 +630,7 @@
     /* build progress dots */
     var dots = '';
     for (var d = 0; d < STEPS.length; d++) {
+      if (isStepSkipped(STEPS[d])) continue;
       var cls = 'tour-dot';
       if (d < index) cls += ' done';
       else if (d === index) cls += ' active';
@@ -739,6 +806,7 @@
 
   function cleanAll() {
     clearThemeOverride();
+    setPreviewTourNavLock(false);
     cleanTooltip();
     if (_overlay) {
       try { _overlay.remove(); } catch (e) {}
@@ -760,7 +828,7 @@
   function complete() {
     cleanAll();
     /* persist tourComplete flag to Firestore via API */
-    if (_apiClient) {
+    if (_apiClient && !isPreviewMode()) {
       try {
         _apiClient.fetch('/api/config/tour-status', {
           method:  'POST',
