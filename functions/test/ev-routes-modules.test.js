@@ -1502,17 +1502,26 @@ describe('POST /api/ev/oauth/callback', () => {
 function makeDb(initialData = {}) {
   const store = {};
   for (const [k, v] of Object.entries(initialData)) store[k] = v;
+  const deleteSentinel = Symbol('deleteField');
   return {
+    __get: (path) => store[path] ? { ...store[path] } : undefined,
+    deleteSentinel,
     doc: jest.fn((path) => ({
       get: jest.fn(async () => {
         const data = store[path];
         return { exists: !!data, data: () => (data ? { ...data } : {}) };
       }),
       set: jest.fn(async (payload, options) => {
+        const normalizedPayload = { ...(payload || {}) };
+        for (const [key, value] of Object.entries(normalizedPayload)) {
+          if (value === deleteSentinel) {
+            delete normalizedPayload[key];
+          }
+        }
         if (options && options.merge) {
-          store[path] = { ...(store[path] || {}), ...payload };
+          store[path] = { ...(store[path] || {}), ...normalizedPayload };
         } else {
-          store[path] = payload;
+          store[path] = normalizedPayload;
         }
       })
     }))
@@ -1578,7 +1587,7 @@ describe('GET /api/ev/tesla-app-config', () => {
 describe('POST /api/ev/tesla-app-config', () => {
   test('admin can save shared config', async () => {
     const db = makeDb();
-    const app = buildApp(makeDeps({ db, requireAdmin: makeRequireAdmin(true) }));
+    const app = buildApp(makeDeps({ db, deleteField: () => db.deleteSentinel, requireAdmin: makeRequireAdmin(true) }));
     const res = await request(app)
       .post('/api/ev/tesla-app-config')
       .set('Authorization', 'Bearer tok')
@@ -1588,6 +1597,14 @@ describe('POST /api/ev/tesla-app-config', () => {
       errno: 0,
       result: { saved: true, clientId: 'new-client', domain: 'mydomain.com' }
     });
+    expect(db.__get('shared/teslaAppConfig')).toEqual(expect.objectContaining({
+      clientId: 'new-client',
+      domain: 'mydomain.com'
+    }));
+    expect(db.__get('shared/teslaAppConfig').clientSecret).toBeUndefined();
+    expect(db.__get('sharedPrivate/teslaAppSecret')).toEqual(expect.objectContaining({
+      clientSecret: 'new-secret'
+    }));
   });
 
   test('non-admin gets 403', async () => {
@@ -1639,7 +1656,8 @@ describe('shared Tesla app config fallback', () => {
 
   test('POST /api/ev/oauth/callback uses shared credentials when not in body', async () => {
     const db = makeDb({
-      'shared/teslaAppConfig': { clientId: 'shared-client', clientSecret: 'shared-secret' }
+      'shared/teslaAppConfig': { clientId: 'shared-client' },
+      'sharedPrivate/teslaAppSecret': { clientSecret: 'shared-secret' }
     });
     const setVehicleCredentials = jest.fn(async () => {});
     const httpClient = makeTeslaTokenHttpClient();
@@ -1670,6 +1688,42 @@ describe('shared Tesla app config fallback', () => {
       expect.objectContaining({
         clientId: 'shared-client',
         clientSecret: 'shared-secret'
+      })
+    );
+  });
+
+  test('POST /api/ev/oauth/callback still supports legacy shared Firestore secret fallback', async () => {
+    const db = makeDb({
+      'shared/teslaAppConfig': { clientId: 'shared-client', clientSecret: 'legacy-shared-secret' }
+    });
+    const setVehicleCredentials = jest.fn(async () => {});
+    const httpClient = makeTeslaTokenHttpClient();
+    const app = buildApp(makeDeps({
+      db,
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla', region: 'na' })),
+        setVehicleCredentials
+      }),
+      httpClient
+    }));
+
+    const res = await request(app)
+      .post('/api/ev/oauth/callback')
+      .set('Authorization', 'Bearer tok')
+      .send({
+        vehicleId: 'v1',
+        redirectUri: 'https://example.com/callback',
+        code: 'auth-code',
+        codeVerifier: 'verifier'
+      });
+
+    expect(res.statusCode).toBe(200);
+    expect(setVehicleCredentials).toHaveBeenCalledWith(
+      'u-test',
+      'v1',
+      expect.objectContaining({
+        clientId: 'shared-client',
+        clientSecret: 'legacy-shared-secret'
       })
     );
   });

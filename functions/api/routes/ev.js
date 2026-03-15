@@ -36,6 +36,7 @@ function registerEVRoutes(app, deps = {}) {
   const incrementApiCount = typeof deps.incrementApiCount === 'function' ? deps.incrementApiCount : null;
   const logger = deps.logger || console;
   const db = deps.db || null;
+  const deleteField = typeof deps.deleteField === 'function' ? deps.deleteField : null;
   const requireAdmin = typeof deps.requireAdmin === 'function' ? deps.requireAdmin : null;
   const evUsageControl = deps.evUsageControl || createEvUsageControlService({
     admin: deps.admin || null,
@@ -1459,6 +1460,7 @@ function registerEVRoutes(app, deps = {}) {
   // ── Shared Tesla App Config ──────────────────────────────────────────────
 
   const TESLA_APP_CONFIG_DOC = 'shared/teslaAppConfig';
+  const TESLA_APP_SECRET_DOC = 'sharedPrivate/teslaAppSecret';
 
   async function getSharedTeslaAppConfig() {
     if (!db) return null;
@@ -1469,6 +1471,36 @@ function registerEVRoutes(app, deps = {}) {
       logger.warn?.('[EV] Failed to read shared Tesla app config:', err.message || err);
       return null;
     }
+  }
+
+  async function getSharedTeslaAppSecret() {
+    if (!db) return '';
+    try {
+      const doc = await db.doc(TESLA_APP_SECRET_DOC).get();
+      if (doc.exists) {
+        const secret = String(doc.data()?.clientSecret || '').trim();
+        if (secret) return secret;
+      }
+
+      const legacyConfig = await getSharedTeslaAppConfig();
+      return String(legacyConfig?.clientSecret || '').trim();
+    } catch (err) {
+      logger.warn?.('[EV] Failed to read shared Tesla app secret:', err.message || err);
+      return '';
+    }
+  }
+
+  async function getSharedTeslaAppCredentials() {
+    const config = await getSharedTeslaAppConfig();
+    if (!config) {
+      return null;
+    }
+
+    const clientSecret = await getSharedTeslaAppSecret();
+    return {
+      ...config,
+      ...(clientSecret ? { clientSecret } : {})
+    };
   }
 
   /**
@@ -1501,7 +1533,7 @@ function registerEVRoutes(app, deps = {}) {
 
   /**
    * POST /api/ev/tesla-app-config
-   * Admin-only: save the shared Tesla Fleet app credentials.
+  * Admin-only: save the shared Tesla Fleet app configuration.
    * Body: { clientId, clientSecret, domain? }
    */
   if (requireAdmin && db) {
@@ -1516,13 +1548,20 @@ function registerEVRoutes(app, deps = {}) {
           updatedAt: new Date().toISOString(),
           updatedBy: req.user.uid
         };
-        if (clientSecret) {
-          payload.clientSecret = String(clientSecret).trim();
-        }
         if (domain) {
           payload.domain = String(domain).trim().toLowerCase();
         }
+        if (clientSecret && deleteField) {
+          payload.clientSecret = deleteField();
+        }
         await db.doc(TESLA_APP_CONFIG_DOC).set(payload, { merge: true });
+        if (clientSecret) {
+          await db.doc(TESLA_APP_SECRET_DOC).set({
+            clientSecret: String(clientSecret).trim(),
+            updatedAt: payload.updatedAt,
+            updatedBy: req.user.uid
+          }, { merge: true });
+        }
         logger.info?.('[EV] Shared Tesla app config updated', { uid: req.user.uid, domain: payload.domain });
         return res.json({
           errno: 0,
@@ -1568,7 +1607,7 @@ function registerEVRoutes(app, deps = {}) {
     let { clientId, clientSecret, redirectUri, domain, region } = req.body || {};
 
     if (!clientId || !clientSecret) {
-      const shared = await getSharedTeslaAppConfig();
+      const shared = await getSharedTeslaAppCredentials();
       if (shared) {
         if (!clientId && shared.clientId) clientId = shared.clientId;
         if (!clientSecret && shared.clientSecret) clientSecret = shared.clientSecret;
@@ -1641,7 +1680,7 @@ function registerEVRoutes(app, deps = {}) {
     let { clientId, clientSecret, redirectUri, domain, region } = req.body || {};
 
     if (!clientId || !clientSecret) {
-      const shared = await getSharedTeslaAppConfig();
+      const shared = await getSharedTeslaAppCredentials();
       if (shared) {
         if (!clientId && shared.clientId) clientId = shared.clientId;
         if (!clientSecret && shared.clientSecret) clientSecret = shared.clientSecret;
@@ -1759,7 +1798,7 @@ function registerEVRoutes(app, deps = {}) {
 
     // Fall back to shared Tesla app credentials when not supplied by the user
     if (!clientId || !clientSecret) {
-      const shared = await getSharedTeslaAppConfig();
+      const shared = await getSharedTeslaAppCredentials();
       if (shared) {
         if (!clientId && shared.clientId) clientId = shared.clientId;
         if (!clientSecret && shared.clientSecret) clientSecret = shared.clientSecret;

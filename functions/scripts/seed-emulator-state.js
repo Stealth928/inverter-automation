@@ -223,8 +223,9 @@ async function main() {
       const cfg = verifyConfigSnap.data() || {};
       validateRequiredConfig(seedUser, cfg);
 
-      if (!verifyAuth.customClaims || verifyAuth.customClaims.admin !== true) {
-        throw new Error(`Missing admin custom claim for seeded user "${seedUser.uid}"`);
+      const expectedAdmin = seedUser.role === 'admin';
+      if (!verifyAuth.customClaims || verifyAuth.customClaims.admin !== expectedAdmin) {
+        throw new Error(`Unexpected admin custom claim for seeded user "${seedUser.uid}"`);
       }
     }
 

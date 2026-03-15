@@ -991,6 +991,7 @@ registerEVRoutes(app, {
   adapterRegistry,
   authenticateUser,
   db,
+  deleteField,
   getConfig,
   getUserConfig,
   incrementApiCount,

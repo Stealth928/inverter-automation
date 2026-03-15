@@ -358,6 +358,121 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
  */
 app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => {
   try {
+    const PROVIDER_KEYS = ['foxess', 'sungrow', 'sigenergy', 'alphaess'];
+    const providerLabelMap = {
+      foxess: 'FoxESS',
+      sungrow: 'Sungrow',
+      sigenergy: 'Sigenergy',
+      alphaess: 'AlphaESS'
+    };
+
+    const toPercent = (count, total) => {
+      if (!Number.isFinite(count) || !Number.isFinite(total) || total <= 0) return 0;
+      return Math.round((count / total) * 100);
+    };
+
+    const normalizeProvider = (providerRaw, config = null) => {
+      const provider = String(providerRaw || '').toLowerCase().trim();
+      if (provider) return provider;
+      if (config && typeof config === 'object') {
+        if (config.sungrowUsername || config.sungrowDeviceSn) return 'sungrow';
+        if (config.sigenUsername || config.sigenStationId || config.sigenDeviceSn) return 'sigenergy';
+        if (config.alphaessSystemSn || config.alphaessSysSn || config.alphaessAppId || config.alphaessAppSecret) return 'alphaess';
+      }
+      return 'foxess';
+    };
+
+    const buildProviderFlags = (config = {}, secrets = {}) => {
+      const provider = normalizeProvider(config.deviceProvider, config);
+      return {
+        provider,
+        hasDeviceSn: !!config.deviceSn,
+        hasFoxessToken: !!config.foxessToken,
+        hasAmberApiKey: !!config.amberApiKey,
+        hasAlphaEssSystemSn: !!(config.alphaessSystemSn || config.alphaessSysSn),
+        hasAlphaEssAppId: !!config.alphaessAppId,
+        hasAlphaEssAppSecret: !!(config.alphaessAppSecret || secrets.alphaessAppSecret),
+        hasSungrowUsername: !!config.sungrowUsername,
+        hasSungrowDeviceSn: !!(config.sungrowDeviceSn || (provider === 'sungrow' && config.deviceSn)),
+        hasSigenUsername: !!config.sigenUsername,
+        hasSigenDeviceSn: !!(config.sigenDeviceSn || config.sigenStationId || (provider === 'sigenergy' && config.deviceSn)),
+        hasSigenStationId: !!config.sigenStationId
+      };
+    };
+
+    const isProviderConfigured = (provider, flags) => {
+      switch (provider) {
+      case 'sungrow':
+        return !!(flags.hasSungrowDeviceSn && flags.hasSungrowUsername);
+      case 'sigenergy':
+        return !!flags.hasSigenUsername;
+      case 'alphaess':
+        return !!(flags.hasAlphaEssSystemSn && flags.hasAlphaEssAppId && flags.hasAlphaEssAppSecret);
+      case 'foxess':
+      default:
+        return !!(flags.hasDeviceSn && flags.hasFoxessToken);
+      }
+    };
+
+    const hasAnyProviderConfigured = (flags) =>
+      PROVIDER_KEYS.some((providerKey) => isProviderConfigured(providerKey, flags));
+
+    const resolveCoupling = (config = {}) => {
+      const rawSystemTopology = config.systemTopology || config.topology || null;
+      let resolvedCoupling = normalizeCouplingValue(
+        rawSystemTopology?.coupling ||
+        config.coupling ||
+        config.systemCoupling ||
+        config.topologyCoupling
+      );
+
+      const legacyAcHint =
+        (typeof rawSystemTopology?.isLikelyAcCoupled === 'boolean')
+          ? rawSystemTopology.isLikelyAcCoupled
+          : ((typeof config.isLikelyAcCoupled === 'boolean') ? config.isLikelyAcCoupled : null);
+
+      if (resolvedCoupling === 'unknown' && legacyAcHint !== null) {
+        resolvedCoupling = legacyAcHint ? 'ac' : 'dc';
+      }
+
+      return resolvedCoupling || 'unknown';
+    };
+
+    const normalizeLocation = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+
+    const formatInverterSizeLabel = (capacityW) => {
+      const roundedKw = Math.round((Number(capacityW) / 1000) * 10) / 10;
+      return `${Number.isInteger(roundedKw) ? roundedKw.toFixed(0) : roundedKw.toFixed(1)} kW`;
+    };
+
+    const formatBatterySizeLabel = (capacityKWh) => {
+      const roundedKWh = Math.round(Number(capacityKWh) * 10) / 10;
+      return `${Number.isInteger(roundedKWh) ? roundedKWh.toFixed(0) : roundedKWh.toFixed(1)} kWh`;
+    };
+
+    const incrementCount = (map, key) => {
+      if (!key) return;
+      map.set(key, (map.get(key) || 0) + 1);
+    };
+
+    const incrementNamedCount = (map, key, label) => {
+      if (!key || !label) return;
+      const existing = map.get(key) || { key, label, count: 0 };
+      existing.count += 1;
+      map.set(key, existing);
+    };
+
+    const mapCountsToRows = (map, labelResolver = null) => Array.from(map.entries())
+      .map(([key, count]) => ({
+        key,
+        label: typeof labelResolver === 'function' ? labelResolver(key) : key,
+        count
+      }))
+      .sort((a, b) => b.count - a.count || String(a.label).localeCompare(String(b.label)));
+
+    const mapNamedCountsToRows = (map) => Array.from(map.values())
+      .sort((a, b) => b.count - a.count || String(a.label).localeCompare(String(b.label)));
+
     const usersSnap = await db.collection('users').get();
     const profileByUid = new Map();
     usersSnap.docs.forEach((doc) => {
@@ -381,36 +496,145 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
     }
 
     const allUids = new Set([...profileByUid.keys(), ...authByUid.keys()]);
+    const parseBooleanQuery = (value, defaultValue = false) => {
+      if (value === undefined || value === null || value === '') return defaultValue;
+      const normalized = String(value).trim().toLowerCase();
+      return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'all';
+    };
+    const toMs = (value) => {
+      if (!value) return 0;
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') {
+        const parsed = Date.parse(value);
+        return Number.isNaN(parsed) ? 0 : parsed;
+      }
+      if (typeof value.toDate === 'function') {
+        const d = value.toDate();
+        return d && d.getTime ? d.getTime() : 0;
+      }
+      if (Number.isFinite(value._seconds)) return value._seconds * 1000;
+      if (Number.isFinite(value.seconds)) return value.seconds * 1000;
+      return 0;
+    };
 
-    const users = await Promise.all(Array.from(allUids).map(async (uid) => {
+    const requestedPageSizeRaw = Number(req.query?.limit);
+    const requestedPageRaw = Number(req.query?.page);
+    const showAll = parseBooleanQuery(req.query?.all, false);
+    const includeSummary = parseBooleanQuery(req.query?.includeSummary, true);
+    const pageSize = showAll
+      ? Math.max(1, allUids.size)
+      : (Number.isFinite(requestedPageSizeRaw)
+        ? Math.max(1, Math.min(100, Math.floor(requestedPageSizeRaw)))
+        : 50);
+
+    const roster = Array.from(allUids).map((uid) => {
       const data = profileByUid.get(uid) || {};
       const authUser = authByUid.get(uid) || null;
       const authMetadata = authUser && authUser.metadata ? authUser.metadata : null;
+      const email = data.email || (authUser && authUser.email ? authUser.email : '');
+      const joinedAt = (authMetadata && authMetadata.creationTime) ? authMetadata.creationTime : (data.createdAt || null);
+      const lastSignedInAt = (authMetadata && authMetadata.lastSignInTime) ? authMetadata.lastSignInTime : null;
+
+      return {
+        uid,
+        data,
+        authUser,
+        authMetadata,
+        email,
+        joinedAt,
+        lastSignedInAt,
+        lastSignedInAtMs: toMs(lastSignedInAt),
+        joinedAtMs: toMs(joinedAt)
+      };
+    }).sort((a, b) => {
+      if (b.lastSignedInAtMs !== a.lastSignedInAtMs) return b.lastSignedInAtMs - a.lastSignedInAtMs;
+      if (b.joinedAtMs !== a.joinedAtMs) return b.joinedAtMs - a.joinedAtMs;
+      const emailCmp = String(a.email || '').localeCompare(String(b.email || ''));
+      if (emailCmp !== 0) return emailCmp;
+      return String(a.uid).localeCompare(String(b.uid));
+    });
+
+    const totalUsers = roster.length;
+    const totalPages = showAll ? 1 : Math.max(1, Math.ceil(totalUsers / pageSize));
+    const requestedPage = Number.isFinite(requestedPageRaw) ? Math.max(1, Math.floor(requestedPageRaw)) : 1;
+    const page = showAll ? 1 : Math.min(requestedPage, totalPages);
+    const pageStart = showAll ? 0 : ((page - 1) * pageSize);
+    const selectedRoster = showAll ? roster : roster.slice(pageStart, pageStart + pageSize);
+
+    const providerCounts = new Map();
+    const locationCounts = new Map();
+    const inverterSizeCounts = new Map();
+    const batterySizeCounts = new Map();
+    const couplingCounts = new Map();
+
+    const loadDetailedUser = async (rosterEntry) => {
+      const { uid, data, authMetadata, email, joinedAt } = rosterEntry;
 
       let rulesCount = 0;
       let configMain = null;
+      let hasEVConfigured = false;
       try {
-        const [rulesSnap, configDoc] = await Promise.all([
+        const vehiclesCollectionRef = db.collection('users').doc(uid).collection('vehicles');
+        const vehiclesGet = (vehiclesCollectionRef && typeof vehiclesCollectionRef.limit === 'function')
+          ? vehiclesCollectionRef.limit(1).get()
+          : vehiclesCollectionRef.get();
+
+        const [rulesSnap, configDoc, vehiclesSnap] = await Promise.all([
           db.collection('users').doc(uid).collection('rules').get(),
-          db.collection('users').doc(uid).collection('config').doc('main').get()
+          db.collection('users').doc(uid).collection('config').doc('main').get(),
+          vehiclesGet
         ]);
         rulesCount = rulesSnap.size;
         configMain = configDoc.exists ? (configDoc.data() || {}) : null;
+        hasEVConfigured = !!(vehiclesSnap && ((typeof vehiclesSnap.size === 'number' && vehiclesSnap.size > 0)
+          || (Array.isArray(vehiclesSnap.docs) && vehiclesSnap.docs.length > 0)
+          || vehiclesSnap.empty === false));
       } catch (e) {
         // Ignore per-user failures and keep endpoint resilient
       }
 
-      // Joined date: prefer Firebase Auth creation time (source of truth),
-      // then fall back to Firestore createdAt for backward compatibility.
-      const joinedAt = (authMetadata && authMetadata.creationTime) ? authMetadata.creationTime : (data.createdAt || null);
-      const email = data.email || (authUser && authUser.email ? authUser.email : '');
       const emailLc = String(email || '').toLowerCase();
       const isSeedAdmin = emailLc === SEED_ADMIN_EMAIL;
+
+      let secrets = {};
+      if (configMain) {
+        const provider = normalizeProvider(configMain.deviceProvider, configMain);
+        const needsAlphaEssSecret = provider === 'alphaess'
+          && !!(configMain.alphaessSystemSn || configMain.alphaessSysSn || configMain.alphaessAppId)
+          && !configMain.alphaessAppSecret;
+
+        if (needsAlphaEssSecret) {
+          try {
+            const secretsDoc = await db.collection('users').doc(uid).collection('secrets').doc('credentials').get();
+            secrets = secretsDoc.exists ? (secretsDoc.data() || {}) : {};
+          } catch (e) {
+            // Ignore private-secret lookup failures and keep endpoint resilient.
+          }
+        }
+      }
 
       const hasDeviceSn = !!configMain?.deviceSn;
       const hasFoxessToken = !!configMain?.foxessToken;
       const hasAmberApiKey = !!configMain?.amberApiKey;
-      const configured = !!(configMain?.setupComplete === true || (hasDeviceSn && hasFoxessToken));
+      const providerFlags = buildProviderFlags(configMain || {}, secrets);
+      const configured = !!(configMain?.setupComplete === true || isProviderConfigured(providerFlags.provider, providerFlags) || hasAnyProviderConfigured(providerFlags));
+      const deviceProvider = providerFlags.provider;
+      const inverterCapacityW = Number.isFinite(Number(configMain?.inverterCapacityW)) ? Number(configMain.inverterCapacityW) : null;
+      const batteryCapacityKWh = Number.isFinite(Number(configMain?.batteryCapacityKWh)) ? Number(configMain.batteryCapacityKWh) : null;
+      const coupling = resolveCoupling(configMain || {});
+      const location = normalizeLocation(configMain?.location);
+
+      incrementCount(providerCounts, deviceProvider || 'unknown');
+      incrementCount(couplingCounts, coupling || 'unknown');
+      if (location) {
+        incrementNamedCount(locationCounts, location.toLowerCase(), location);
+      }
+      if (inverterCapacityW) {
+        incrementCount(inverterSizeCounts, formatInverterSizeLabel(inverterCapacityW));
+      }
+      if (batteryCapacityKWh) {
+        incrementCount(batterySizeCounts, formatBatterySizeLabel(batteryCapacityKWh));
+      }
 
       return {
         uid,
@@ -420,9 +644,10 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
         hasDeviceSn,
         hasFoxessToken,
         hasAmberApiKey,
-        inverterCapacityW: Number.isFinite(Number(configMain?.inverterCapacityW)) ? Number(configMain.inverterCapacityW) : null,
-        batteryCapacityKWh: Number.isFinite(Number(configMain?.batteryCapacityKWh)) ? Number(configMain.batteryCapacityKWh) : null,
+        inverterCapacityW,
+        batteryCapacityKWh,
         automationEnabled: !!data.automationEnabled,
+        hasEVConfigured,
         createdAt: data.createdAt || null,
         joinedAt,
         lastSignedInAt: (authMetadata && authMetadata.lastSignInTime) ? authMetadata.lastSignInTime : null,
@@ -430,9 +655,74 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
         profileInitialized: profileByUid.has(uid),
         lastUpdated: data.lastUpdated || null
       };
-    }));
+    };
 
-    res.json({ errno: 0, result: { users } });
+    let summary = null;
+    let users = [];
+
+    if (includeSummary) {
+      const allDetailedUsers = await Promise.all(roster.map(loadDetailedUser));
+      users = showAll ? allDetailedUsers : allDetailedUsers.slice(pageStart, pageStart + pageSize);
+
+      const configuredUsers = allDetailedUsers.filter((user) => user.configured).length;
+      const automationActiveUsers = allDetailedUsers.filter((user) => user.automationEnabled).length;
+      const amberConfiguredUsers = allDetailedUsers.filter((user) => user.hasAmberApiKey).length;
+      const evConfiguredUsers = allDetailedUsers.filter((user) => user.hasEVConfigured).length;
+
+      summary = {
+        totalUsers,
+        configured: {
+          count: configuredUsers,
+          percentage: toPercent(configuredUsers, totalUsers)
+        },
+        automationActive: {
+          count: automationActiveUsers,
+          percentage: toPercent(automationActiveUsers, totalUsers)
+        },
+        amberConfigured: {
+          count: amberConfiguredUsers,
+          percentage: toPercent(amberConfiguredUsers, totalUsers)
+        },
+        evConfigured: {
+          available: true,
+          count: evConfiguredUsers,
+          percentage: toPercent(evConfiguredUsers, totalUsers),
+          note: 'Computed with a single-document existence probe per user from the vehicles subcollection.'
+        },
+        providerBreakdown: mapCountsToRows(providerCounts, (key) => providerLabelMap[key] || String(key || 'Unknown')),
+        topLocations: mapNamedCountsToRows(locationCounts).slice(0, 5),
+        inverterSizeDistribution: mapCountsToRows(inverterSizeCounts),
+        batterySizeDistribution: mapCountsToRows(batterySizeCounts),
+        couplingBreakdown: mapCountsToRows(couplingCounts, (key) => {
+          if (key === 'ac') return 'AC Coupled';
+          if (key === 'dc') return 'DC Coupled';
+          return 'Unknown';
+        }),
+        notes: [
+          'Computed from the existing admin user scan with no extra aggregate query.',
+          'EV-linked percentage uses a single-document existence probe per user rather than a full vehicle scan.'
+        ]
+      };
+    } else {
+      users = await Promise.all(selectedRoster.map(loadDetailedUser));
+    }
+
+    res.json({
+      errno: 0,
+      result: {
+        users,
+        summary,
+        pagination: {
+          page,
+          pageSize,
+          totalUsers,
+          totalPages,
+          showAll,
+          sortBase: 'lastSignedInAt',
+          sortingScope: showAll ? 'all-loaded' : 'current-page'
+        }
+      }
+    });
   } catch (error) {
     console.error('[Admin] Error listing users:', error);
     res.status(500).json({ errno: 500, error: error.message });

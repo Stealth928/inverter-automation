@@ -56,6 +56,15 @@
         let teslaIsAdmin = false;
         let teslaSharedAppConfig = null; // { configured, clientId, domain, domainRegistered }
 
+        function getTeslaAppShellAdminState() {
+            try {
+                const isAdmin = window.appShell?.state?.isAdmin;
+                return typeof isAdmin === 'boolean' ? isAdmin : null;
+            } catch (error) {
+                return null;
+            }
+        }
+
         function normalizeTeslaVin(vin) {
             const normalized = String(vin || '').trim().toUpperCase();
             return TESLA_VIN_REGEX.test(normalized) ? normalized : '';
@@ -85,7 +94,6 @@
                 adminTools: document.getElementById('teslaAdminTools'),
                 adminQuickSteps: document.getElementById('teslaAdminQuickSteps'),
                 userQuickSteps: document.getElementById('teslaUserQuickSteps'),
-                notConfiguredBanner: document.getElementById('teslaNotConfiguredBanner'),
                 saveAppConfigBtn: document.getElementById('teslaSaveAppConfigBtn'),
                 saveAppConfigStatus: document.getElementById('teslaSaveAppConfigStatus'),
                 vehiclePanelStep: document.getElementById('teslaVehiclePanelStep')
@@ -112,8 +120,9 @@
         async function fetchTeslaAdminStatusAndSharedConfig() {
             // Check admin status — prefer AppShell cached state, then fall back to API call
             try {
-                if (window.appShell && window.appShell.state && window.appShell.state.isAdmin === true) {
-                    teslaIsAdmin = true;
+                const appShellAdminState = getTeslaAppShellAdminState();
+                if (appShellAdminState !== null) {
+                    teslaIsAdmin = appShellAdminState;
                 } else {
                     const client = window.apiClient;
                     if (client && typeof client.checkAdminAccess === 'function') {
@@ -141,6 +150,8 @@
 
         function applyTeslaAdminUserVisibility() {
             const els = getTeslaOnboardingElements();
+            const appShellAdminState = getTeslaAppShellAdminState();
+            if (appShellAdminState !== null) teslaIsAdmin = appShellAdminState;
             const isAdmin = teslaIsAdmin;
             const hasSharedConfig = teslaSharedAppConfig && teslaSharedAppConfig.configured;
 
@@ -149,11 +160,6 @@
             if (els.adminTools) els.adminTools.style.display = isAdmin ? '' : 'none';
             if (els.adminQuickSteps) els.adminQuickSteps.style.display = isAdmin ? '' : 'none';
             if (els.userQuickSteps) els.userQuickSteps.style.display = isAdmin ? 'none' : (hasSharedConfig ? '' : 'none');
-
-            // Not-configured banner: show only for non-admins when no shared config
-            if (els.notConfiguredBanner) {
-                els.notConfiguredBanner.style.display = (!isAdmin && !hasSharedConfig) ? '' : 'none';
-            }
 
             // Vehicle panel step label — admins see "Step 2" (after admin panel), non-admins see just "Vehicle"
             if (els.vehiclePanelStep) {
@@ -166,10 +172,8 @@
                 vehiclePanel.style.gridColumn = isAdmin ? '' : '1 / -1';
             }
 
-            // Connect button: always enabled for admins; non-admins need shared config
-            if (els.connectBtn) {
-                els.connectBtn.disabled = (!isAdmin && !hasSharedConfig);
-            }
+            const adminFaqsEl = document.getElementById('teslaAdminFaqs');
+            if (adminFaqsEl) adminFaqsEl.style.display = isAdmin ? '' : 'none';
 
             // Pre-fill admin panel with shared config values if available
             if (isAdmin && hasSharedConfig && els.clientIdInput) {
@@ -1067,14 +1071,13 @@
                 connectBtn
             } = getTeslaOnboardingElements();
 
+            await fetchTeslaAdminStatusAndSharedConfig();
+            applyTeslaAdminUserVisibility();
+
             const form = getTeslaOnboardingFormValues();
-            if (!form.clientId) {
+            if (teslaIsAdmin && !form.clientId) {
                 setTeslaOnboardingBadge('Action Needed', 'modified');
-                if (teslaIsAdmin) {
-                    setTeslaOnboardingStatus('Open Tesla Developer Dashboard, copy your Tesla Client ID, then paste it here.', 'warning');
-                } else {
-                    setTeslaOnboardingStatus('Tesla integration has not been configured yet. An administrator needs to save the shared Tesla app credentials first.', 'warning');
-                }
+                setTeslaOnboardingStatus('Tesla Fleet Client ID is missing. Save the shared Tesla app config above, then try again.', 'warning');
                 showMessage('warning', 'Tesla Fleet Client ID is required');
                 return;
             }

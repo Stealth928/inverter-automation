@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -16,8 +16,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="SoCrates">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="stylesheet" href="css/shared-styles.css?v=8" />
-    <link rel="stylesheet" href="css/tour.css?v=3" />
+    <link rel="stylesheet" href="css/shared-styles.css?v=9" />
+    <link rel="stylesheet" href="css/tour.css?v=4" />
     <script src="js/theme-init.js"></script>
     <!-- Firebase SDK (compat) - must load before firebase-auth.js -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -25,10 +25,10 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/firebase-auth.js"></script>
-    <script src="js/api-client.js?v=4"></script>
-    <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=13"></script>
-    <script src="js/tour.js?v=29"></script>
+    <script src="js/api-client.js?v=5"></script>
+    <script src="js/shared-utils.js?v=13"></script>
+    <script src="js/app-shell.js?v=15"></script>
+    <script src="js/tour.js?v=30"></script>
     <style>
         /* Page-specific styles */
         .container {
@@ -1879,13 +1879,6 @@
                 <input type="text" id="teslaOnboardingUsernameHint" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
             </form>
 
-            <!-- Not configured banner (shown when no shared Tesla app config exists and user is not admin) -->
-            <div id="teslaNotConfiguredBanner" style="display:none;padding:20px;text-align:center;color:var(--text-secondary);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:16px;">
-                <div style="font-size:32px;margin-bottom:8px;">🔧</div>
-                <div style="font-weight:600;margin-bottom:4px;">Tesla integration is not configured yet</div>
-                <div style="font-size:13px;">An administrator needs to set up the shared Tesla Fleet app before vehicles can be connected.</div>
-            </div>
-
             <!-- Admin quick-start steps (only visible to admins) -->
             <div class="tesla-quick-steps" id="teslaAdminQuickSteps" style="display:none;">
                 <div class="tesla-quick-step">
@@ -2003,56 +1996,46 @@
             </div>
             <div class="faq-section" style="margin-top: 16px;">
                 <div class="faq-toggle" onclick="toggleFaq(this)">
-                    <span>Tesla Setup FAQ</span>
+                    <span>Tesla FAQ</span>
                     <span class="arrow">▼</span>
                 </div>
                 <div class="faq-content">
                     <div class="faq-item">
                         <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                            <span>Detailed step-by-step setup guide</span>
+                            <span>Where do I find my 17-character VIN?</span>
                             <span class="icon">▼</span>
                         </div>
                         <div class="faq-answer">
-                            <strong>1. Create your Tesla Fleet app</strong> — In <a href="https://developer.tesla.com/" target="_blank" rel="noreferrer">Tesla Developer Dashboard</a>, create a Fleet app using <em>Authorization Code and Machine-to-Machine</em>. Set Allowed Origin to <code data-tesla-origin-url>this site's origin</code> and Redirect URI to <code data-tesla-redirect-url>this page's redirect URI</code>. Enable scopes: <em>Vehicle Information</em>, <em>Vehicle Commands</em>, and <em>Vehicle Charging Management</em>. Copy the Client ID and Client Secret.<br><br>
-                            <strong>2. Enter details &amp; connect</strong> — Paste the Tesla Client ID, Client Secret, 17-char VIN, choose region, and click <em>Connect with Tesla</em>. SoCrates automatically registers your domain with Tesla then redirects you to approve access.<br><br>
-                            <strong>3. Pair virtual key (2021+ vehicles)</strong> — On your phone with the Tesla app, open <a data-tesla-pair-link href="#" target="_blank" rel="noreferrer">loading pairing link…</a>, approve the key in the Tesla app, then confirm on the vehicle screen. Required for charging controls.
-                            <div class="faq-tip">Your Tesla Fleet app must use the exact origin and redirect URI shown on this page. Each domain needs its own Tesla Fleet app and keypair — do not reuse an app created for a different domain.</div>
+                            Your VIN is in the <strong>Tesla mobile app</strong> under your vehicle card, on the touchscreen under <strong>Controls → Software</strong>, on your registration documents, or on a sticker inside the driver's door frame. Enter the full 17-character code, not the model name.
                         </div>
                     </div>
                     <div class="faq-item">
                         <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                            <span>Which Tesla API scopes does SoCrates need?</span>
+                            <span>Which region should I select?</span>
                             <span class="icon">▼</span>
                         </div>
                         <div class="faq-answer">
-                            Turn on <strong>Vehicle Information</strong>, <strong>Vehicle Commands</strong>, and <strong>Vehicle Charging Management</strong> in Tesla Developer Dashboard. Those map to the Tesla scopes needed for dashboard status plus charging controls. <strong>Vehicle Location</strong> is optional for SoCrates today.
+                            <strong>North America + Asia-Pacific</strong> covers the US, Canada, Australia, New Zealand, Japan, South Korea, and most accounts outside Europe and China. <strong>Europe, Middle East + Africa</strong> covers EU, UK, and nearby regions. <strong>China</strong> is only for Tesla accounts created on Tesla's Chinese platform.<br><br>
+                            If you are unsure, start with <strong>North America + Asia-Pacific</strong>. That is correct for most users.
                         </div>
                     </div>
                     <div class="faq-item">
                         <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                            <span>What exact Tesla app URLs should I enter?</span>
+                            <span>What does "Connect with Tesla" actually do?</span>
                             <span class="icon">▼</span>
                         </div>
                         <div class="faq-answer">
-                            Use <code data-tesla-origin-url>this site's origin</code> as the <strong>Allowed Origin URL</strong>. Use <code data-tesla-redirect-url>this page's redirect URI</code> as the <strong>Allowed Redirect URI</strong>. If Tesla asks for an optional returned URL, use the same <code data-tesla-redirect-url>this page's redirect URI</code> value.
+                            Clicking <strong>Connect with Tesla</strong> starts a secure OAuth sign-in through Tesla's own website. You are redirected to Tesla to approve access, and no Tesla password is stored here. Once approved, Tesla returns a token that lets SoCrates read vehicle status and send charging commands.
                         </div>
                     </div>
                     <div class="faq-item">
                         <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                            <span>Why does Tesla phone pairing say the third party is not registered?</span>
+                            <span>What is virtual key pairing and do I need it?</span>
                             <span class="icon">▼</span>
                         </div>
                         <div class="faq-answer">
-                            That message usually means your Tesla Fleet app has not yet registered the <code data-tesla-domain>current domain</code> domain with Tesla. Keep the Tesla <strong>Client Secret</strong> filled in during connect so SoCrates can attempt the partner-domain registration automatically, and verify the Tesla public key is hosted at <code>https://<span data-tesla-domain>your-domain</span>/.well-known/appspecific/com.tesla.3p.public-key.pem</code>.
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                            <span>What does Tesla mean by “Public key hash has already been taken”?</span>
-                            <span class="icon">▼</span>
-                        </div>
-                        <div class="faq-answer">
-                            Tesla is saying the public key hosted for <code data-tesla-domain>this domain</code> is already registered to another Tesla Fleet app. Keep using the Tesla app that originally registered this domain. If you need a separate Tesla app, move SoCrates to a separate domain with a separate Tesla keypair.
+                            Tesla 2021+ vehicles require a <strong>virtual key</strong> before third-party apps can send charging commands. After connecting, open <a data-tesla-pair-link href="#" target="_blank" rel="noreferrer">the pairing link</a> on a phone with the Tesla app installed, approve the key in the Tesla app, then confirm on the vehicle touchscreen. Without pairing, status can work while commands fail.
+                            <div class="faq-tip">Older vehicles generally use a simpler token-only flow and do not need this step.</div>
                         </div>
                     </div>
                     <div class="faq-item">
@@ -2061,54 +2044,84 @@
                             <span class="icon">▼</span>
                         </div>
                         <div class="faq-answer">
-                            Tesla can grant enough access for read-only vehicle status without granting full command access. Charging controls on newer vehicles require both the Tesla OAuth <strong>Vehicle Commands</strong> permission and the separate virtual-key pairing step.
+                            Tesla can allow read-only vehicle status without granting full command access. Charging controls on newer vehicles require both Tesla OAuth approval and the separate virtual key pairing step.
                         </div>
                     </div>
                     <div class="faq-item">
                         <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                            <span>Should I create a brand new Tesla Fleet app or reuse my existing one?</span>
+                            <span>My vehicle shows "Setup Required". What should I do?</span>
                             <span class="icon">▼</span>
                         </div>
                         <div class="faq-answer">
-                            In most cases you should <strong>reuse the Tesla Fleet app that already works for this site domain</strong>. Creating a second Tesla app for the same domain can fail with Tesla errors such as <code>Public key hash has already been taken</code>.
-                            <div class="faq-tip">Each SoCrates domain has its own keypair. Reuse the Tesla Fleet app you created for <strong data-tesla-domain>this domain</strong>. If you need to start fresh, generate a new keypair and register the domain again.</div>
+                            Tesla access tokens expire periodically. When that happens, click <strong>Connect with Tesla</strong> again and approve access on Tesla's site to refresh the token. You do not need to re-enter your VIN.
                         </div>
                     </div>
-                    <div class="faq-item">
-                        <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                            <span>Why is Tesla asking for a card or billing limit?</span>
-                            <span class="icon">▼</span>
+                    <div id="teslaAdminFaqs" style="display:none;">
+                        <div class="faq-item" style="border-top:1px dashed var(--border-primary);margin-top:4px;padding-top:4px;">
+                            <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+                                <span>Admin: How do I create and configure the shared Tesla Fleet app?</span>
+                                <span class="icon">▼</span>
+                            </div>
+                            <div class="faq-answer">
+                                In <a href="https://developer.tesla.com/" target="_blank" rel="noreferrer">Tesla Developer Dashboard</a>, create a Fleet app using <em>Authorization Code and Machine-to-Machine</em>. Set Allowed Origin to <code data-tesla-origin-url>this site's origin</code> and Redirect URI to <code data-tesla-redirect-url>this page's redirect URI</code>. Enable <em>Vehicle Information</em>, <em>Vehicle Commands</em>, and <em>Vehicle Charging Management</em>. Copy the Client ID and Client Secret into the <strong>Shared Tesla Fleet App</strong> panel above, then click <strong>Save App Config</strong> followed by <strong>Register Domain</strong>.
+                                <div class="faq-tip">The origin and redirect URI must match this page exactly. Each domain needs its own Tesla Fleet app and keypair.</div>
+                            </div>
                         </div>
-                        <div class="faq-answer">
-                            Tesla Fleet API uses usage-based billing on Tesla's side. That billing screen belongs to Tesla Developer Dashboard, not SoCrates. Creating the app or adding a card does <strong>not</strong> mean SoCrates will immediately charge you. It only sets up Tesla's account for any future API usage.
+                        <div class="faq-item">
+                            <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+                                <span>Admin: Which Tesla API scopes does SoCrates need?</span>
+                                <span class="icon">▼</span>
+                            </div>
+                            <div class="faq-answer">
+                                Enable <strong>Vehicle Information</strong>, <strong>Vehicle Commands</strong>, and <strong>Vehicle Charging Management</strong>. <strong>Vehicle Location</strong> is optional.
+                            </div>
                         </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                            <span>Will I be charged immediately just for connecting SoCrates?</span>
-                            <span class="icon">▼</span>
+                        <div class="faq-item">
+                            <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+                                <span>Admin: What exact URLs should I enter?</span>
+                                <span class="icon">▼</span>
+                            </div>
+                            <div class="faq-answer">
+                                <strong>Allowed Origin URL:</strong> <code data-tesla-origin-url>this site's origin</code><br>
+                                <strong>Allowed Redirect URI:</strong> <code data-tesla-redirect-url>this page's redirect URI</code><br><br>
+                                If Tesla asks for an optional returned URL, use the same Redirect URI value.
+                            </div>
                         </div>
-                        <div class="faq-answer">
-                            Not automatically. Tesla bills based on actual Fleet API usage such as status requests, commands, wakes, and streaming. Tesla's developer site also states that each account receives a monthly discount for personal use, which can cover modest personal automation usage.
+                        <div class="faq-item">
+                            <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+                                <span>Admin: Why does pairing say "third party is not registered"?</span>
+                                <span class="icon">▼</span>
+                            </div>
+                            <div class="faq-answer">
+                                The domain has not been registered with Tesla yet. Use <strong>Register Domain</strong> in the admin tools, or verify the public key is reachable at <code>https://<span data-tesla-domain>your-domain</span>/.well-known/appspecific/com.tesla.3p.public-key.pem</code>.
+                            </div>
                         </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                            <span>What should I do on the Tesla billing screen?</span>
-                            <span class="icon">▼</span>
+                        <div class="faq-item">
+                            <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+                                <span>Admin: What does "Public key hash has already been taken" mean?</span>
+                                <span class="icon">▼</span>
+                            </div>
+                            <div class="faq-answer">
+                                Tesla is saying the public key for <code data-tesla-domain>this domain</code> is already registered under a different Fleet app. Keep using the Fleet app that originally registered this domain and do not create a second app for it.
+                            </div>
                         </div>
-                        <div class="faq-answer">
-                            For most personal SoCrates setups, choose <strong>Personal</strong>. If Tesla allows <strong>Skip and Submit</strong> and you prefer to avoid adding a card immediately, use that option. If Tesla requires billing details, add your card and keep the billing protection conservative by choosing a <strong>Custom Limit</strong> with a low cap that you are comfortable with.
-                            <div class="faq-tip">A low custom limit is a sensible safety rail for first-time setup. You can raise it later if you decide to use the Tesla integration more heavily.</div>
+                        <div class="faq-item">
+                            <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+                                <span>Admin: Should I reuse my existing Fleet app or create a new one?</span>
+                                <span class="icon">▼</span>
+                            </div>
+                            <div class="faq-answer">
+                                <strong>Reuse the existing app</strong> created for this domain. Creating a second app for the same domain causes the same public-key conflict. Only create a new app when you are starting on a new domain.
+                            </div>
                         </div>
-                    </div>
-                    <div class="faq-item">
-                        <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-                            <span>Do all users need to do the pairing step?</span>
-                            <span class="icon">▼</span>
-                        </div>
-                        <div class="faq-answer">
-                            Users with 2021+ vehicles should assume yes. Open <a data-tesla-pair-link href="#" target="_blank" rel="noreferrer">loading pairing link…</a> on a phone with the Tesla app installed, approve the key in the Tesla app, then confirm it on the vehicle screen.
+                        <div class="faq-item">
+                            <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+                                <span>Admin: Why is Tesla asking for billing or a card?</span>
+                                <span class="icon">▼</span>
+                            </div>
+                            <div class="faq-answer">
+                                Tesla Fleet API uses usage-based billing in Tesla Developer Dashboard. Adding a card does <strong>not</strong> trigger immediate charges. For personal setups choose <strong>Personal</strong>, or use <strong>Skip and Submit</strong> if Tesla offers it.
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2179,6 +2192,12 @@
         }
 
         if (nav) {
+            function getNavScrollTargetY(target) {
+                var OFFSET = 110;
+                var y = window.scrollY + target.getBoundingClientRect().top - OFFSET;
+                return Math.max(0, y);
+            }
+
             // Scroll to section on link click; close burger on mobile
             nav.addEventListener('click', function(e) {
                 var link = e.target.closest('.section-nav-link');
@@ -2193,7 +2212,13 @@
                 // Close burger menu on mobile after link tap
                 nav.classList.remove('is-open');
                 if (burgerBtn) burgerBtn.setAttribute('aria-expanded', 'false');
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                window.scrollTo({ top: getNavScrollTargetY(target), behavior: 'smooth' });
+                links.forEach(function(l) {
+                    l.classList.toggle('active', l === link);
+                    if (l === link && burgerLabel) {
+                        burgerLabel.textContent = l.textContent.trim();
+                    }
+                });
             });
 
             // Close burger when clicking outside the nav
@@ -2215,10 +2240,19 @@
             var ticking = false;
             function updateActiveNav() {
                 var active = sectionIds[0];
+                var nearBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 4);
                 for (var i = 0; i < sectionIds.length; i++) {
                     var el = document.getElementById(sectionIds[i]);
                     if (el && el.getBoundingClientRect().top <= OFFSET) {
                         active = sectionIds[i];
+                    }
+                }
+                if (nearBottom) {
+                    for (var j = sectionIds.length - 1; j >= 0; j--) {
+                        if (document.getElementById(sectionIds[j])) {
+                            active = sectionIds[j];
+                            break;
+                        }
                     }
                 }
                 links.forEach(function(l) {
@@ -2246,7 +2280,7 @@
     })();
     </script>
 
-    <script src="js/settings.js?v=4"></script>
+    <script src="js/settings.js?v=5"></script>
 </body>
 </html>
 

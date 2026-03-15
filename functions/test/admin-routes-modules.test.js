@@ -733,6 +733,218 @@ describe('admin route module', () => {
     expect(secretsGet).toHaveBeenCalledTimes(1);
   });
 
+  test('admin users summary includes EV configured coverage from vehicle existence probes', async () => {
+    const userProfiles = {
+      'user-1': { email: 'one@example.com', role: 'user', automationEnabled: true },
+      'user-2': { email: 'two@example.com', role: 'user', automationEnabled: false }
+    };
+    const configByUid = {
+      'user-1': {
+        deviceProvider: 'foxess',
+        deviceSn: 'FOX-1',
+        foxessToken: 'tok-1',
+        amberApiKey: 'amber-1',
+        inverterCapacityW: 5000,
+        location: 'Adelaide, Australia',
+        systemTopology: { coupling: 'dc' }
+      },
+      'user-2': {
+        deviceProvider: 'sungrow',
+        sungrowUsername: 'sungrow-user',
+        sungrowDeviceSn: 'SUN-1',
+        inverterCapacityW: 8000,
+        location: 'Melbourne, Australia',
+        systemTopology: { coupling: 'ac' }
+      }
+    };
+    const vehicleCountByUid = { 'user-1': 1, 'user-2': 0 };
+
+    const makeQuerySnapshot = (docs = []) => ({
+      docs,
+      size: docs.length,
+      empty: docs.length === 0,
+      forEach: (fn) => docs.forEach(fn)
+    });
+
+    const deps = createDeps({
+      admin: {
+        auth: jest.fn(() => ({
+          listUsers: jest.fn(async () => ({
+            users: [
+              { uid: 'user-1', email: 'one@example.com', metadata: { creationTime: '2026-01-01T00:00:00.000Z', lastSignInTime: '2026-03-01T08:00:00.000Z' } },
+              { uid: 'user-2', email: 'two@example.com', metadata: { creationTime: '2026-01-02T00:00:00.000Z', lastSignInTime: '2026-03-02T08:00:00.000Z' } }
+            ],
+            pageToken: undefined
+          }))
+        }))
+      },
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') {
+            throw new Error(`Unexpected collection: ${name}`);
+          }
+
+          return {
+            get: jest.fn(async () => makeQuerySnapshot(Object.entries(userProfiles).map(([uid, data]) => ({
+              id: uid,
+              data: () => data
+            })))),
+            doc: jest.fn((uid) => ({
+              collection: jest.fn((subName) => {
+                if (subName === 'rules') {
+                  return {
+                    get: jest.fn(async () => makeQuerySnapshot([]))
+                  };
+                }
+                if (subName === 'config') {
+                  return {
+                    doc: jest.fn((docId) => {
+                      if (docId !== 'main') throw new Error(`Unexpected config doc: ${docId}`);
+                      return {
+                        get: jest.fn(async () => ({
+                          exists: true,
+                          data: () => configByUid[uid]
+                        }))
+                      };
+                    })
+                  };
+                }
+                if (subName === 'vehicles') {
+                  return {
+                    limit: jest.fn(() => ({
+                      get: jest.fn(async () => makeQuerySnapshot(
+                        vehicleCountByUid[uid] > 0
+                          ? [{ id: `vehicle-${uid}`, data: () => ({ provider: 'tesla' }) }]
+                          : []
+                      ))
+                    }))
+                  };
+                }
+                if (subName === 'secrets') {
+                  return {
+                    doc: jest.fn(() => ({
+                      get: jest.fn(async () => ({ exists: false, data: () => ({}) }))
+                    }))
+                  };
+                }
+                throw new Error(`Unexpected subcollection: ${subName}`);
+              })
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/users')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.summary.evConfigured).toEqual(expect.objectContaining({
+      available: true,
+      count: 1,
+      percentage: 50
+    }));
+    expect(response.body.result.summary.notes).toContain(
+      'EV-linked percentage uses a single-document existence probe per user rather than a full vehicle scan.'
+    );
+    expect(response.body.result.users).toEqual(expect.arrayContaining([
+      expect.objectContaining({ uid: 'user-1', hasEVConfigured: true }),
+      expect.objectContaining({ uid: 'user-2', hasEVConfigured: false })
+    ]));
+  });
+
+  test('admin users route paginates table rows by last sign-in without recomputing summary', async () => {
+    const makeQuerySnapshot = (docs = []) => ({
+      docs,
+      size: docs.length,
+      empty: docs.length === 0,
+      forEach: (fn) => docs.forEach(fn)
+    });
+    const userProfiles = {
+      'user-a': { email: 'a@example.com', role: 'user', automationEnabled: false },
+      'user-b': { email: 'b@example.com', role: 'user', automationEnabled: false },
+      'user-c': { email: 'c@example.com', role: 'user', automationEnabled: false }
+    };
+    const lastSignIns = {
+      'user-a': '2026-03-01T08:00:00.000Z',
+      'user-b': '2026-03-03T08:00:00.000Z',
+      'user-c': '2026-03-02T08:00:00.000Z'
+    };
+
+    const deps = createDeps({
+      admin: {
+        auth: jest.fn(() => ({
+          listUsers: jest.fn(async () => ({
+            users: Object.keys(userProfiles).map((uid) => ({
+              uid,
+              email: userProfiles[uid].email,
+              metadata: {
+                creationTime: '2026-01-01T00:00:00.000Z',
+                lastSignInTime: lastSignIns[uid]
+              }
+            })),
+            pageToken: undefined
+          }))
+        }))
+      },
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') throw new Error(`Unexpected collection: ${name}`);
+          return {
+            get: jest.fn(async () => makeQuerySnapshot(Object.entries(userProfiles).map(([uid, data]) => ({ id: uid, data: () => data })))),
+            doc: jest.fn((uid) => ({
+              collection: jest.fn((subName) => {
+                if (subName === 'rules') {
+                  return { get: jest.fn(async () => makeQuerySnapshot([])) };
+                }
+                if (subName === 'config') {
+                  return {
+                    doc: jest.fn(() => ({
+                      get: jest.fn(async () => ({ exists: true, data: () => ({ deviceProvider: 'foxess' }) }))
+                    }))
+                  };
+                }
+                if (subName === 'vehicles') {
+                  return {
+                    limit: jest.fn(() => ({ get: jest.fn(async () => makeQuerySnapshot([])) }))
+                  };
+                }
+                if (subName === 'secrets') {
+                  return {
+                    doc: jest.fn(() => ({ get: jest.fn(async () => ({ exists: false, data: () => ({}) })) }))
+                  };
+                }
+                throw new Error(`Unexpected subcollection: ${subName}`);
+              })
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/users?limit=1&page=2&includeSummary=0')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.summary).toBeNull();
+    expect(response.body.result.pagination).toEqual(expect.objectContaining({
+      page: 2,
+      pageSize: 1,
+      totalUsers: 3,
+      totalPages: 3,
+      showAll: false,
+      sortingScope: 'current-page'
+    }));
+    expect(response.body.result.users).toHaveLength(1);
+    expect(response.body.result.users[0]).toEqual(expect.objectContaining({ uid: 'user-c' }));
+  });
+
   test('role update validates allowed roles', async () => {
     const deps = createDeps();
     const app = buildApp(deps);

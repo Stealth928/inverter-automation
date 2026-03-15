@@ -151,12 +151,36 @@ describe('Admin API', () => {
       expect(res.body.errno).toBe(0);
       expect(Array.isArray(res.body.result.users)).toBe(true);
       expect(res.body.result.users.length).toBe(3);
+      expect(res.body.result).toHaveProperty('summary');
+      expect(res.body.result).toHaveProperty('pagination');
       expect(res.body.result.users[0]).toHaveProperty('uid');
       expect(res.body.result.users[0]).toHaveProperty('email');
       expect(res.body.result.users[0]).toHaveProperty('role');
       expect(res.body.result.users[0]).toHaveProperty('configured');
       expect(res.body.result.users[0]).toHaveProperty('inverterCapacityW');
       expect(res.body.result.users[0]).toHaveProperty('batteryCapacityKWh');
+      expect(res.body.result.summary).toEqual(expect.objectContaining({
+        totalUsers: 3,
+        configured: expect.objectContaining({ count: expect.any(Number), percentage: expect.any(Number) }),
+        automationActive: expect.objectContaining({ count: expect.any(Number), percentage: expect.any(Number) }),
+        amberConfigured: expect.objectContaining({ count: expect.any(Number), percentage: expect.any(Number) }),
+        evConfigured: expect.objectContaining({ available: true, count: expect.any(Number), percentage: expect.any(Number) }),
+        providerBreakdown: expect.any(Array),
+        topLocations: expect.any(Array),
+        inverterSizeDistribution: expect.any(Array),
+        batterySizeDistribution: expect.any(Array),
+        couplingBreakdown: expect.any(Array),
+        notes: expect.any(Array)
+      }));
+      expect(res.body.result.pagination).toEqual(expect.objectContaining({
+        page: 1,
+        pageSize: 50,
+        totalUsers: 3,
+        totalPages: 1,
+        showAll: false,
+        sortBase: 'lastSignedInAt',
+        sortingScope: 'current-page'
+      }));
 
       const onboardingOnly = res.body.result.users.find(u => u.uid === 'onboarding-uid-3');
       expect(onboardingOnly).toBeTruthy();

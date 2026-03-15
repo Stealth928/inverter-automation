@@ -97,7 +97,7 @@ const TEST_USERS = Object.freeze([
     email: 'seed.sigenergy.admin@example.com',
     password: TEST_PASSWORD,
     displayName: 'Seed Admin SigenEnergy',
-    role: 'admin',
+    role: 'user',
     provider: 'sigenergy',
     config: Object.freeze({
       deviceProvider: 'sigenergy',

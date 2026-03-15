@@ -1119,7 +1119,38 @@
         }
 
         const register = () => {
-            navigator.serviceWorker.register('/sw.js').catch((error) => {
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (refreshing) return;
+                refreshing = true;
+                window.location.reload();
+            });
+
+            navigator.serviceWorker.register('/sw.js?v=50').then((registration) => {
+                if (typeof registration.update === 'function') {
+                    registration.update().catch(() => {});
+                }
+
+                const promoteWaitingWorker = () => {
+                    if (registration.waiting) {
+                        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                };
+
+                if (registration.waiting) {
+                    promoteWaitingWorker();
+                }
+
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    if (!newWorker) return;
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            promoteWaitingWorker();
+                        }
+                    });
+                });
+            }).catch((error) => {
                 console.warn('[AppShell] Service worker registration failed', error);
             });
         };

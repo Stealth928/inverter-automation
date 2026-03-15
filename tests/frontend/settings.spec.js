@@ -59,6 +59,8 @@ async function mockSettingsApi(page, config = BASE_CONFIG) {
   const readinessByVehicleId = {};
   const oauthStartRequests = [];
   const oauthCallbackRequests = [];
+  let adminState = false;
+  let teslaAppConfig = { configured: false, clientId: '', clientSecretStored: false };
 
   await page.route('**/api/**', async (route) => {
     const requestUrl = new URL(route.request().url());
@@ -80,9 +82,19 @@ async function mockSettingsApi(page, config = BASE_CONFIG) {
     } else if (path === '/api/user/init-profile') {
       body = { errno: 0, result: { initialized: true } };
     } else if (path === '/api/admin/check') {
-      body = { errno: 0, result: { isAdmin: false } };
+      body = { errno: 0, result: { isAdmin: adminState } };
     } else if (path === '/api/config/validate-keys') {
       body = { errno: 0, result: { valid: true } };
+    } else if (path === '/api/ev/tesla-app-config' && method === 'GET') {
+      body = { errno: 0, result: { ...teslaAppConfig } };
+    } else if (path === '/api/ev/tesla-app-config' && method === 'POST') {
+      const postData = route.request().postDataJSON ? route.request().postDataJSON() : {};
+      teslaAppConfig = {
+        configured: true,
+        clientId: String(postData?.clientId || '').trim(),
+        clientSecretStored: !!String(postData?.clientSecret || '').trim()
+      };
+      body = { errno: 0, result: { ...teslaAppConfig } };
     } else if (path === '/api/ev/vehicles' && method === 'GET') {
       body = { errno: 0, result: evVehicles.slice() };
     } else if (path === '/api/ev/vehicles' && method === 'POST') {
@@ -146,6 +158,16 @@ async function mockSettingsApi(page, config = BASE_CONFIG) {
 
   return {
     getVehicles: () => evVehicles.map((vehicle) => ({ ...vehicle })),
+    setAdmin: (value) => {
+      adminState = !!value;
+    },
+    setTeslaAppConfig: (value = {}) => {
+      teslaAppConfig = {
+        configured: !!value.configured,
+        clientId: String(value.clientId || ''),
+        clientSecretStored: !!value.clientSecretStored
+      };
+    },
     setCommandReadiness: (vehicleId, readiness) => {
       readinessByVehicleId[String(vehicleId)] = readiness;
     },
@@ -325,17 +347,16 @@ test.describe('Settings Page', () => {
 
   test('should render Tesla onboarding controls in settings', async ({ page }) => {
     await expect(page.locator('#teslaOnboardingSection')).toBeVisible();
-    await expect(page.locator('#teslaClientId')).toBeVisible();
     await expect(page.locator('#teslaVehicleId')).toBeVisible();
     await expect(page.locator('#teslaOnboardingSection .setting-label').filter({ hasText: 'Vehicle VIN' })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Tesla Developer Dashboard/i })).toBeVisible();
-    await expect(page.locator('#teslaCopyRedirectBtn')).toBeVisible();
     await expect(page.locator('#teslaConnectBtn')).toBeVisible();
+    await expect(page.locator('#teslaConnectBtn')).toBeEnabled();
     await expect(page.locator('#teslaAddVehicleBtn')).toBeVisible();
     await expect(page.locator('#teslaVehicleStatusCounts')).toBeVisible();
     await expect(page.locator('#teslaVehiclesList')).toBeVisible();
-    // Quick-start steps should be visible
-    await expect(page.locator('.tesla-quick-steps')).toBeVisible();
+    await expect(page.locator('#teslaAdminPanel')).toBeHidden();
+    await expect(page.locator('#teslaAdminTools')).toBeHidden();
+    await expect(page.locator('#teslaNotConfiguredBanner')).toHaveCount(0);
   });
 
   test('should show per-vehicle Tesla status rows and count chips', async ({ page }) => {
@@ -518,6 +539,9 @@ test.describe('Settings Page', () => {
   });
 
   test('should disable Tesla reset login button when there is no pending OAuth session', async ({ page }) => {
+    apiMock.setAdmin(true);
+    await page.reload();
+
     const resetBtn = page.locator('#teslaClearPendingBtn');
     await expect(resetBtn).toBeVisible();
     await expect(resetBtn).toBeDisabled();
@@ -525,6 +549,8 @@ test.describe('Settings Page', () => {
   });
 
   test('should clear pending Tesla OAuth session when reset login button is clicked', async ({ page }) => {
+    apiMock.setAdmin(true);
+
     const pending = {
       vehicleId: '5YJ3E1EA7JF000001',
       vin: '5YJ3E1EA7JF000001',

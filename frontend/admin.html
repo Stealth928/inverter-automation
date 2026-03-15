@@ -16,7 +16,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="SoCrates">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="stylesheet" href="css/shared-styles.css?v=8" />
+    <link rel="stylesheet" href="css/shared-styles.css?v=9" />
     <script src="js/theme-init.js"></script>
     <!-- Firebase SDK (compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -24,9 +24,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/firebase-auth.js"></script>
-    <script src="js/api-client.js"></script>
-    <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=13"></script>
+    <script src="js/api-client.js?v=5"></script>
+    <script src="js/shared-utils.js?v=13"></script>
+    <script src="js/app-shell.js?v=15"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         .container {
@@ -357,6 +357,292 @@
         .chart-wrap {
             position: relative;
             height: 280px;
+        }
+
+        .users-summary-card {
+            margin-bottom: 20px;
+        }
+        .users-summary-note {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .users-summary-loading {
+            padding: 16px;
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+        .users-summary-kpis {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .users-summary-kpi {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-lg);
+            padding: 12px 14px 10px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.18s, box-shadow 0.18s;
+        }
+        .users-summary-kpi::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: var(--kpi-accent, var(--accent-blue));
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+            opacity: 0.9;
+        }
+        .users-summary-kpi:hover {
+            border-color: color-mix(in srgb, var(--kpi-accent, var(--accent-blue)) 40%, var(--border-primary));
+            box-shadow: 0 4px 16px -6px color-mix(in srgb, var(--kpi-accent, var(--accent-blue)) 28%, transparent);
+        }
+        .users-summary-kpi .kpi-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        .users-summary-kpi .kpi-icon {
+            font-size: 18px;
+            line-height: 1;
+            opacity: 0.8;
+            flex-shrink: 0;
+        }
+        .users-summary-kpi .label {
+            font-size: 10px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.45px;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+        .users-summary-kpi .value {
+            font-size: 26px;
+            font-weight: 800;
+            line-height: 1;
+            color: var(--kpi-color, var(--text-primary));
+            margin-bottom: 4px;
+        }
+        .users-summary-kpi .meta {
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+            flex: 1;
+        }
+        .users-summary-kpi .kpi-progress {
+            height: 4px;
+            border-radius: 2px;
+            background: color-mix(in srgb, var(--border-primary) 70%, transparent);
+            overflow: hidden;
+            margin-top: auto;
+        }
+        .users-summary-kpi .kpi-progress-fill {
+            height: 100%;
+            border-radius: 2px;
+            background: var(--kpi-accent, var(--accent-blue));
+            transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .users-summary-kpi.kpi-configured {
+            --kpi-accent: var(--accent-blue);
+            --kpi-color: var(--accent-blue);
+        }
+        .users-summary-kpi.kpi-automation {
+            --kpi-accent: var(--color-success);
+            --kpi-color: var(--color-success);
+        }
+        .users-summary-kpi.kpi-amber {
+            --kpi-accent: #f5a35b;
+            --kpi-color: #f5a35b;
+        }
+        .users-summary-kpi.kpi-ev {
+            --kpi-accent: #a78bfa;
+            --kpi-color: #a78bfa;
+        }
+        .users-summary-grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .users-summary-grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+        .users-summary-panel {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-lg);
+            padding: 14px;
+        }
+        .users-summary-panel-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: 0.15px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .panel-title-icon {
+            font-size: 15px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .users-summary-chart {
+            position: relative;
+            height: 200px;
+        }
+        .users-summary-chart-compact {
+            height: 150px;
+        }
+        .rank-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .rank-row {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 8px 10px;
+            border-radius: var(--radius-md);
+            background: color-mix(in srgb, var(--bg-secondary) 52%, transparent);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 35%, transparent);
+            transition: background 0.14s;
+        }
+        .rank-row:hover {
+            background: color-mix(in srgb, var(--accent-blue) 5%, var(--bg-secondary));
+        }
+        .rank-num {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            opacity: 0.6;
+            min-width: 18px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .rank-label {
+            flex: 1;
+            font-size: 13px;
+            color: var(--text-primary);
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .rank-bar-track {
+            flex: 0 0 44px;
+            height: 5px;
+            border-radius: 3px;
+            background: color-mix(in srgb, var(--accent-blue) 14%, transparent);
+            overflow: hidden;
+        }
+        .rank-bar {
+            height: 100%;
+            border-radius: 3px;
+            background: var(--accent-blue);
+            min-width: 3px;
+        }
+        .rank-badge {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            background: var(--bg-overlay);
+            border: 1px solid var(--border-primary);
+            border-radius: 20px;
+            padding: 2px 8px;
+            white-space: nowrap;
+            min-width: 50px;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+        .users-summary-empty {
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+        .users-summary-footnote {
+            margin-top: 10px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .chart-html-legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 5px 14px;
+            margin-top: 10px;
+        }
+        .chart-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            line-height: 1.4;
+            user-select: none;
+        }
+        .chart-legend-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .chart-legend-text {
+            color: #c8d3e0;
+            font-weight: 500;
+        }
+        .chart-legend-pct {
+            color: #8b949e;
+            font-size: 11px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .users-card-header-main {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .users-table-note {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .users-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .users-table-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 14px;
+            border-top: 1px solid var(--border-primary);
+            flex-wrap: wrap;
+        }
+        .users-table-meta {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .users-pagination {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .users-pagination-status {
+            font-size: 11px;
+            color: var(--text-secondary);
+            min-width: 110px;
+            text-align: center;
         }
 
         .firestore-metrics-card {
@@ -765,6 +1051,14 @@
             .users-table td { padding: 8px 10px; font-size: 12px; }
             .actions-cell { flex-direction: column; }
             .chart-wrap { height: 200px; }
+            .users-summary-kpis,
+            .users-summary-grid-2,
+            .users-summary-grid-3 {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .users-table-footer {
+                align-items: flex-start;
+            }
             .firestore-kpis {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
@@ -1107,11 +1401,26 @@
         </div><!-- /tab-scheduler -->
 
         <div id="tab-users" class="tab-panel">
+        <div class="card users-summary-card" id="usersSummaryCard" style="display: none;">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">📈</span> User Summary</div>
+                <div class="users-summary-note" id="usersSummaryNote"></div>
+            </div>
+            <div class="card-body">
+                <div id="usersSummaryContent" class="users-summary-loading">Loading summary...</div>
+            </div>
+        </div>
+
         <!-- User Management Card -->
         <div class="card" style="margin-bottom: 20px;">
             <div class="card-header">
-                <div class="card-title"><span class="icon">👥</span> User Management</div>
-                <button class="action-btn" onclick="refreshAdminData()" id="refreshBtn">🔄 Refresh</button>
+                <div class="users-card-header-main">
+                    <div class="card-title"><span class="icon">👥</span> User Management</div>
+                    <div class="users-table-note" id="usersTableScopeNote">Top 50 by last sign-in. Column sorting applies to the loaded page unless you choose Show all.</div>
+                </div>
+                <div class="users-header-actions">
+                    <button class="action-btn" onclick="refreshAdminData()" id="refreshBtn">🔄 Refresh</button>
+                </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <div id="usersLoading" class="loading-spinner">Loading users...</div>
@@ -1128,6 +1437,15 @@
                         </thead>
                         <tbody id="usersTableBody"></tbody>
                     </table>
+                </div>
+                <div class="users-table-footer" id="usersTableFooter" style="display: none;">
+                    <div class="users-table-meta" id="usersPaginationMeta"></div>
+                    <div class="users-pagination">
+                        <button class="action-btn" id="usersPrevPageBtn" onclick="goToUsersPage(-1)">← Prev</button>
+                        <div class="users-pagination-status" id="usersPaginationStatus">Page 1 of 1</div>
+                        <button class="action-btn" id="usersNextPageBtn" onclick="goToUsersPage(1)">Next →</button>
+                        <button class="action-btn" id="usersToggleAllBtn" onclick="toggleAllUsers()">Show all</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1146,6 +1464,6 @@
         </div>
     </div>
 
-    <script src="js/admin.js"></script>
+    <script src="js/admin.js?v=5"></script>
 </body>
 </html>

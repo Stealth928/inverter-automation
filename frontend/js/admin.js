@@ -4,12 +4,102 @@
         return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     }
 
+    function getThemeColor(name, fallback) {
+        const value = cssVar(name);
+        return value || fallback;
+    }
+
+    function withAlpha(hexOrRgb, alpha) {
+        if (!hexOrRgb) return `rgba(255, 255, 255, ${alpha})`;
+        if (hexOrRgb.startsWith('rgba(') || hexOrRgb.startsWith('rgb(')) {
+            return hexOrRgb.replace(/rgba?\(([^)]+)\)/, (_match, inner) => {
+                const parts = inner.split(',').map((part) => part.trim()).slice(0, 3);
+                return `rgba(${parts.join(', ')}, ${alpha})`;
+            });
+        }
+        const hex = hexOrRgb.replace('#', '').trim();
+        if (hex.length !== 6) return `rgba(255, 255, 255, ${alpha})`;
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function drawLabelPill(ctx, x, y, text, options = {}) {
+        const paddingX = options.paddingX ?? 6;
+        const paddingY = options.paddingY ?? 3;
+        const radius = options.radius ?? 8;
+        const metrics = ctx.measureText(text);
+        const width = metrics.width + (paddingX * 2);
+        const height = (options.height ?? 18);
+        const left = x - (width / 2);
+        const top = y - (height / 2);
+
+        ctx.save();
+        ctx.fillStyle = options.background || 'rgba(15, 23, 42, 0.82)';
+        ctx.strokeStyle = options.border || 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(left + radius, top);
+        ctx.lineTo(left + width - radius, top);
+        ctx.quadraticCurveTo(left + width, top, left + width, top + radius);
+        ctx.lineTo(left + width, top + height - radius);
+        ctx.quadraticCurveTo(left + width, top + height, left + width - radius, top + height);
+        ctx.lineTo(left + radius, top + height);
+        ctx.quadraticCurveTo(left, top + height, left, top + height - radius);
+        ctx.lineTo(left, top + radius);
+        ctx.quadraticCurveTo(left, top, left + radius, top);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = options.color || '#f8fafc';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, x, y + 0.5);
+        ctx.restore();
+    }
+
+    function createVerticalGradient(canvas, topColor, bottomColor) {
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height || 220);
+        gradient.addColorStop(0, topColor);
+        gradient.addColorStop(1, bottomColor);
+        return gradient;
+    }
+
+    function getChartPalette() {
+        // CSS-var lookups with guaranteed dark-theme fallbacks.
+        // Hardcoded fallbacks ensure charts never render with invisible/black text
+        // even when CSS vars haven't resolved yet (lazy tab load timing).
+        const t = (v, fb) => { const r = cssVar(v); return r || fb; };
+        return {
+            textPrimary:   t('--text-primary',   '#e2e8f0'),
+            textSecondary: t('--text-secondary', '#94a3b8'),
+            surface:       t('--bg-secondary',   '#161b22'),
+            border:        'rgba(148, 163, 184, 0.12)',
+            // Vivid, high-contrast accent colours for dark backgrounds
+            accentBlue:   '#3b9eff',
+            accentGreen:  '#22d3a0',
+            accentOrange: '#fb923c',
+            accentPink:   '#f472b6',
+            accentSlate:  '#64748b',
+            accentPurple: '#a78bfa',
+            accentTeal:   '#2dd4bf',
+        };
+    }
+
     let currentUsers = [];
+    let currentUsersPagination = { page: 1, pageSize: 50, totalUsers: 0, totalPages: 1, showAll: false, sortingScope: 'current-page' };
+    let currentUsersSummary = null;
     let adminApiClient = null;
     let currentSort = { key: 'lastSignedInAt', direction: 'desc' };
     let platformTrendChart = null;
     let firestoreMetricsChart = null;
     let schedulerMetricsChart = null;
+    let usersProviderChart = null;
+    let usersInverterSizeChart = null;
+    let usersBatterySizeChart = null;
+    let usersCouplingChart = null;
     let activeTab = 'overview';
     let tabsLoaded = { overview: false, scheduler: false, users: false };
 
@@ -41,6 +131,551 @@
                 minute: '2-digit'
             });
         } catch { return '-'; }
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function formatSummaryRatio(metric, totalUsers) {
+        if (!metric || !Number.isFinite(Number(metric.count))) {
+            return { value: 'N/A', meta: 'Not available' };
+        }
+        const count = Number(metric.count || 0);
+        const percentage = Number.isFinite(Number(metric.percentage))
+            ? Number(metric.percentage)
+            : (totalUsers > 0 ? Math.round((count / totalUsers) * 100) : 0);
+        return {
+            value: `${percentage}%`,
+            meta: `${count} of ${totalUsers}`
+        };
+    }
+
+    function calculatePercentage(value, total) {
+        const num = Number(value || 0);
+        const denom = Number(total || 0);
+        if (!Number.isFinite(num) || !Number.isFinite(denom) || denom <= 0) return 0;
+        return Math.round((num / denom) * 100);
+    }
+
+    const doughnutPercentagePlugin = {
+        id: 'usersDoughnutPercentagePlugin',
+        afterDatasetsDraw(chart) {
+            if (chart.config.type !== 'doughnut') return;
+            const dataset = chart.data?.datasets?.[0];
+            const data = Array.isArray(dataset?.data) ? dataset.data.map((value) => Number(value || 0)) : [];
+            const total = data.reduce((sum, value) => sum + value, 0);
+            if (!total) return;
+
+            const ctx = chart.ctx;
+            const meta = chart.getDatasetMeta(0);
+            const palette = getChartPalette();
+            ctx.save();
+            ctx.font = '700 11px sans-serif';
+
+            meta.data.forEach((arc, index) => {
+                const value = data[index];
+                const percentage = calculatePercentage(value, total);
+                if (!percentage) return;
+                const circumference = arc.circumference || 0;
+                if (circumference < 0.35) return;
+                const angle = arc.startAngle + (circumference / 2);
+                const radius = arc.innerRadius + ((arc.outerRadius - arc.innerRadius) * 0.52);
+                const x = arc.x + (Math.cos(angle) * radius);
+                const y = arc.y + (Math.sin(angle) * radius);
+                // Use hardcoded pill colours so labels are always legible
+                // regardless of CSS-var resolution timing
+                drawLabelPill(ctx, x, y, `${percentage}%`, {
+                    background: 'rgba(8, 14, 28, 0.82)',
+                    border: 'rgba(255,255,255,0.12)',
+                    color: '#f1f5f9',
+                    height: 20,
+                    radius: 10
+                });
+            });
+            ctx.restore();
+        }
+    };
+
+    const barPercentagePlugin = {
+        id: 'usersBarPercentagePlugin',
+        afterDatasetsDraw(chart) {
+            if (chart.config.type !== 'bar') return;
+            const dataset = chart.data?.datasets?.[0];
+            const data = Array.isArray(dataset?.data) ? dataset.data.map((value) => Number(value || 0)) : [];
+            const total = data.reduce((sum, value) => sum + value, 0);
+            if (!total) return;
+
+            const ctx = chart.ctx;
+            const meta = chart.getDatasetMeta(0);
+            const palette = getChartPalette();
+            ctx.save();
+            ctx.font = '700 10px sans-serif';
+
+            meta.data.forEach((bar, index) => {
+                const percentage = calculatePercentage(data[index], total);
+                if (!percentage) return;
+                drawLabelPill(ctx, bar.x, Math.max(12, bar.y - 10), `${percentage}%`, {
+                    background: withAlpha(palette.surface, 0.94),
+                    border: withAlpha(palette.textSecondary, 0.18),
+                    color: palette.textPrimary,
+                    height: 18,
+                    radius: 9,
+                    paddingX: 5,
+                    paddingY: 2
+                });
+            });
+            ctx.restore();
+        }
+    };
+
+    const doughnutCenterPlugin = {
+        id: 'doughnutCenterPlugin',
+        afterDatasetsDraw(chart) {
+            if (chart.config.type !== 'doughnut') return;
+            const label = chart.options?.plugins?.centerLabel;
+            if (!label) return;
+            const meta = chart.getDatasetMeta(0);
+            const arc = meta?.data?.[0];
+            if (!arc) return;
+            const { x: cx, y: cy } = arc;
+            const palette = getChartPalette();
+            const ctx = chart.ctx;
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `800 ${label.valueSize || 20}px system-ui, sans-serif`;
+            ctx.fillStyle = label.valueColor || '#e2e8f0';
+            ctx.fillText(label.value, cx, cy - 9);
+            ctx.font = `500 ${label.subSize || 10}px system-ui, sans-serif`;
+            ctx.fillStyle = '#8b949e';
+            ctx.fillText(label.sub || '', cx, cy + 10);
+            ctx.restore();
+        }
+    };
+
+    function updatePlatformStatsFromSummary(summary) {
+        if (!summary) return;
+        const totalUsers = Number(summary.totalUsers || 0);
+        const configuredCount = Number(summary.configured?.count || 0);
+        const automationActiveCount = Number(summary.automationActive?.count || 0);
+
+        const totalEl = document.getElementById('statTotalUsers');
+        const configuredEl = document.getElementById('statConfigured');
+        const automationEl = document.getElementById('statAutomationActive');
+        if (totalEl) totalEl.textContent = totalUsers;
+        if (configuredEl) configuredEl.textContent = configuredCount;
+        if (automationEl) automationEl.textContent = automationActiveCount;
+    }
+
+    function destroyUsersSummaryCharts() {
+        if (usersProviderChart) {
+            usersProviderChart.destroy();
+            usersProviderChart = null;
+        }
+        if (usersInverterSizeChart) {
+            usersInverterSizeChart.destroy();
+            usersInverterSizeChart = null;
+        }
+        if (usersBatterySizeChart) {
+            usersBatterySizeChart.destroy();
+            usersBatterySizeChart = null;
+        }
+        if (usersCouplingChart) {
+            usersCouplingChart.destroy();
+            usersCouplingChart = null;
+        }
+    }
+
+    function setUsersSummaryLoading() {
+        const card = document.getElementById('usersSummaryCard');
+        const note = document.getElementById('usersSummaryNote');
+        const content = document.getElementById('usersSummaryContent');
+        if (!card || !note || !content) return;
+        destroyUsersSummaryCharts();
+        card.style.display = '';
+        note.textContent = 'Computed from the existing admin users scan.';
+        content.innerHTML = '<div class="users-summary-loading">Loading summary...</div>';
+    }
+
+    function updateUsersScopeNote() {
+        const note = document.getElementById('usersTableScopeNote');
+        if (!note) return;
+        const scope = currentUsersPagination.showAll ? 'all loaded users' : 'the loaded page';
+        note.textContent = `Top ${currentUsersPagination.showAll ? currentUsersPagination.totalUsers : currentUsersPagination.pageSize} by last sign-in. Column sorting applies to ${scope}.`;
+    }
+
+    function buildUsersQuery({ page, pageSize, showAll, includeSummary }) {
+        const params = new URLSearchParams();
+        params.set('page', String(page || 1));
+        params.set('limit', String(pageSize || 50));
+        params.set('all', showAll ? '1' : '0');
+        params.set('includeSummary', includeSummary ? '1' : '0');
+        return params.toString();
+    }
+
+    function renderUsersPagination(pagination) {
+        const footer = document.getElementById('usersTableFooter');
+        const meta = document.getElementById('usersPaginationMeta');
+        const status = document.getElementById('usersPaginationStatus');
+        const prevBtn = document.getElementById('usersPrevPageBtn');
+        const nextBtn = document.getElementById('usersNextPageBtn');
+        const toggleBtn = document.getElementById('usersToggleAllBtn');
+        if (!footer || !meta || !status || !prevBtn || !nextBtn || !toggleBtn) return;
+
+        const info = pagination || currentUsersPagination;
+        footer.style.display = '';
+        meta.textContent = info.showAll
+            ? `Showing all ${info.totalUsers} users. Server default order is last sign-in.`
+            : `Showing page ${info.page} of ${info.totalPages}. Default page order is by last sign-in.`;
+        status.textContent = info.showAll ? `All ${info.totalUsers}` : `Page ${info.page} of ${info.totalPages}`;
+        prevBtn.disabled = info.showAll || info.page <= 1;
+        nextBtn.disabled = info.showAll || info.page >= info.totalPages;
+        toggleBtn.textContent = info.showAll ? 'Back to top 50' : 'Show all';
+        updateUsersScopeNote();
+    }
+
+    function createDoughnutOptions(_entries) {
+        // Legend is replaced by a custom HTML legend (see createDoughnutLegendHTML),
+        // so we disable Chart.js's built-in renderer entirely — this avoids
+        // CSS-var colour resolution issues that caused black/unreadable text.
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '60%',
+            radius: '88%',
+            layout: {
+                padding: { top: 8, right: 8, bottom: 8, left: 8 }
+            },
+            animation: {
+                animateRotate: true,
+                duration: 750,
+                easing: 'easeOutQuart'
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    // Hardcoded dark-themed tooltip — no CSS var dependency
+                    backgroundColor: 'rgba(15, 23, 42, 0.96)',
+                    titleColor: '#e2e8f0',
+                    bodyColor: '#94a3b8',
+                    borderColor: 'rgba(148, 163, 184, 0.18)',
+                    borderWidth: 1,
+                    padding: 10,
+                    cornerRadius: 8,
+                    callbacks: {
+                        label(context) {
+                            const data = context.dataset.data.map((v) => Number(v || 0));
+                            const total = data.reduce((s, v) => s + v, 0);
+                            const count = Number(context.raw || 0);
+                            const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                            return ` ${context.label}: ${count}  (${pct}%)`;
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    const DOUGHNUT_PROVIDER_COLORS = ['#3b9eff', '#22d3a0', '#fb923c', '#f472b6', '#64748b', '#a78bfa'];
+    const DOUGHNUT_COUPLING_COLORS = ['#3b9eff', '#22d3a0', '#64748b'];
+
+    function createDoughnutLegendHTML(entries, colors, total) {
+        return entries.map((entry, i) => {
+            const count = Number(entry.count || 0);
+            const pct = calculatePercentage(count, total);
+            const color = colors[i % colors.length];
+            const label = String(entry.label || 'Unknown').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return `<span class="chart-legend-item"><span class="chart-legend-dot" style="background:${color}"></span><span class="chart-legend-text">${label}</span><span class="chart-legend-pct">${pct}%</span></span>`;
+        }).join('');
+    }
+
+    function insertChartLegend(canvas, html) {
+        const existing = canvas.parentElement.parentElement.querySelector('.chart-html-legend');
+        if (existing) existing.remove();
+        const div = document.createElement('div');
+        div.className = 'chart-html-legend';
+        div.innerHTML = html;
+        canvas.parentElement.insertAdjacentElement('afterend', div);
+    }
+
+    function renderUsersProviderChart(entries) {
+        const canvas = document.getElementById('usersProviderChart');
+        if (!canvas || typeof Chart === 'undefined' || !Array.isArray(entries) || !entries.length) return;
+        const total = entries.reduce((s, e) => s + Number(e.count || 0), 0);
+        const options = createDoughnutOptions(entries);
+        options.plugins.centerLabel = { value: String(total), sub: 'users' };
+        usersProviderChart = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels: entries.map((e) => e.label),
+                datasets: [{
+                    data: entries.map((e) => Number(e.count || 0)),
+                    backgroundColor: DOUGHNUT_PROVIDER_COLORS.slice(0, entries.length),
+                    borderColor: 'transparent',
+                    borderWidth: 0,
+                    hoverOffset: 12,
+                    spacing: 4
+                }]
+            },
+            options,
+            plugins: [doughnutPercentagePlugin, doughnutCenterPlugin]
+        });
+        insertChartLegend(canvas, createDoughnutLegendHTML(entries, DOUGHNUT_PROVIDER_COLORS, total));
+    }
+
+    function renderUsersCouplingChart(entries) {
+        const canvas = document.getElementById('usersCouplingChart');
+        if (!canvas || typeof Chart === 'undefined' || !Array.isArray(entries) || !entries.length) return;
+        const total = entries.reduce((s, e) => s + Number(e.count || 0), 0);
+        const options = createDoughnutOptions(entries);
+        options.plugins.centerLabel = { value: String(total), sub: 'systems' };
+        usersCouplingChart = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels: entries.map((e) => e.label),
+                datasets: [{
+                    data: entries.map((e) => Number(e.count || 0)),
+                    backgroundColor: DOUGHNUT_COUPLING_COLORS.slice(0, entries.length),
+                    borderColor: 'transparent',
+                    borderWidth: 0,
+                    hoverOffset: 12,
+                    spacing: 4
+                }]
+            },
+            options,
+            plugins: [doughnutPercentagePlugin, doughnutCenterPlugin]
+        });
+        insertChartLegend(canvas, createDoughnutLegendHTML(entries, DOUGHNUT_COUPLING_COLORS, total));
+    }
+
+    function createDistributionChart(canvasId, entries, label, colors) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || typeof Chart === 'undefined' || !Array.isArray(entries) || !entries.length) return;
+        const palette = getChartPalette();
+        const backgroundGradient = createVerticalGradient(canvas, colors.top, colors.bottom);
+
+        return new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: entries.map((entry) => entry.label),
+                datasets: [{
+                    label,
+                    data: entries.map((entry) => Number(entry.count || 0)),
+                    backgroundColor: backgroundGradient,
+                    borderColor: colors.border,
+                    borderWidth: 1,
+                    borderRadius: 14,
+                    borderSkipped: false,
+                    barPercentage: 0.8,
+                    categoryPercentage: 0.84,
+                    maxBarThickness: 64,
+                    hoverBackgroundColor: colors.hover,
+                    clip: 20
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: {
+                    padding: { top: 24, right: 8, bottom: 0, left: 0 }
+                },
+                animation: {
+                    duration: 650,
+                    easing: 'easeOutQuart'
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: withAlpha(palette.surface, 0.96),
+                        titleColor: palette.textPrimary,
+                        bodyColor: palette.textSecondary,
+                        borderColor: withAlpha(palette.textSecondary, 0.14),
+                        borderWidth: 1,
+                        padding: 10,
+                        callbacks: {
+                            label(context) {
+                                const values = context.dataset.data.map((value) => Number(value || 0));
+                                const total = values.reduce((sum, value) => sum + value, 0);
+                                const count = Number(context.raw || 0);
+                                const percentage = calculatePercentage(count, total);
+                                return `${count} users (${percentage}%)`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            color: palette.textSecondary,
+                            maxRotation: 0,
+                            minRotation: 0,
+                            font: { size: 11 }
+                        },
+                        grid: { display: false },
+                        border: { display: false }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grace: '18%',
+                        ticks: {
+                            color: palette.textSecondary,
+                            precision: 0,
+                            padding: 8,
+                            stepSize: 1
+                        },
+                        grid: {
+                            color: withAlpha(palette.textSecondary, 0.08),
+                            drawBorder: false
+                        },
+                        border: { display: false }
+                    }
+                }
+            },
+            plugins: [barPercentagePlugin]
+        });
+    }
+
+    function renderUsersInverterSizeChart(entries) {
+        usersInverterSizeChart = createDistributionChart('usersInverterSizeChart', entries, 'Inverter users', {
+            top: 'rgba(116, 188, 255, 0.95)',
+            bottom: 'rgba(62, 124, 204, 0.72)',
+            border: 'rgba(125, 196, 255, 0.95)',
+            hover: 'rgba(135, 203, 255, 0.98)'
+        });
+    }
+
+    function renderUsersBatterySizeChart(entries) {
+        usersBatterySizeChart = createDistributionChart('usersBatterySizeChart', entries, 'Battery users', {
+            top: 'rgba(140, 229, 151, 0.95)',
+            bottom: 'rgba(79, 153, 88, 0.72)',
+            border: 'rgba(155, 238, 165, 0.95)',
+            hover: 'rgba(156, 240, 167, 0.98)'
+        });
+    }
+
+    function renderUsersSummary(summary) {
+        const card = document.getElementById('usersSummaryCard');
+        const note = document.getElementById('usersSummaryNote');
+        const content = document.getElementById('usersSummaryContent');
+        if (!card || !note || !content) return;
+
+        destroyUsersSummaryCharts();
+
+        if (!summary) {
+            card.style.display = 'none';
+            content.innerHTML = '';
+            note.textContent = '';
+            return;
+        }
+
+        const totalUsers = Number(summary.totalUsers || 0);
+        const configured = formatSummaryRatio(summary.configured, totalUsers);
+        const automationActive = formatSummaryRatio(summary.automationActive, totalUsers);
+        const amberConfigured = formatSummaryRatio(summary.amberConfigured, totalUsers);
+        const evConfigured = summary.evConfigured && summary.evConfigured.available
+            ? formatSummaryRatio(summary.evConfigured, totalUsers)
+            : { value: 'N/A', meta: summary.evConfigured?.note || 'Not available in low-cost mode' };
+
+        const providerBreakdown = Array.isArray(summary.providerBreakdown) ? summary.providerBreakdown : [];
+        const topLocations = Array.isArray(summary.topLocations) ? summary.topLocations : [];
+        const inverterSizeDistribution = Array.isArray(summary.inverterSizeDistribution) ? summary.inverterSizeDistribution : [];
+        const batterySizeDistribution = Array.isArray(summary.batterySizeDistribution) ? summary.batterySizeDistribution : [];
+        const couplingBreakdown = Array.isArray(summary.couplingBreakdown) ? summary.couplingBreakdown : [];
+        const notes = Array.isArray(summary.notes) ? summary.notes.filter(Boolean) : [];
+        const configuredPct = totalUsers > 0 ? Math.round((Number(summary.configured?.count || 0) / totalUsers) * 100) : 0;
+        const automationPct = totalUsers > 0 ? Math.round((Number(summary.automationActive?.count || 0) / totalUsers) * 100) : 0;
+        const amberPct = totalUsers > 0 ? Math.round((Number(summary.amberConfigured?.count || 0) / totalUsers) * 100) : 0;
+        const evPct = (summary.evConfigured?.available && totalUsers > 0) ? Math.round((Number(summary.evConfigured?.count || 0) / totalUsers) * 100) : 0;
+        const evAvailable = !!(summary.evConfigured?.available);
+        const topLocationsMaxCount = topLocations.length > 0 ? Math.max(1, Number(topLocations[0]?.count || 1)) : 1;
+
+        note.textContent = notes[0] || 'Computed from the existing admin users scan.';
+        card.style.display = '';
+        content.innerHTML = `
+            <div class="users-summary-kpis">
+                <div class="users-summary-kpi kpi-configured">
+                    <div class="kpi-top">
+                        <div class="label">Configured</div>
+                        <span class="kpi-icon">🔧</span>
+                    </div>
+                    <div class="value">${escapeHtml(configured.value)}</div>
+                    <div class="meta">${escapeHtml(configured.meta)}</div>
+                    <div class="kpi-progress"><div class="kpi-progress-fill" style="width:${configuredPct}%"></div></div>
+                </div>
+                <div class="users-summary-kpi kpi-automation">
+                    <div class="kpi-top">
+                        <div class="label">Automation Active</div>
+                        <span class="kpi-icon">⚡</span>
+                    </div>
+                    <div class="value">${escapeHtml(automationActive.value)}</div>
+                    <div class="meta">${escapeHtml(automationActive.meta)}</div>
+                    <div class="kpi-progress"><div class="kpi-progress-fill" style="width:${automationPct}%"></div></div>
+                </div>
+                <div class="users-summary-kpi kpi-amber">
+                    <div class="kpi-top">
+                        <div class="label">Amber Configured</div>
+                        <span class="kpi-icon">🟡</span>
+                    </div>
+                    <div class="value">${escapeHtml(amberConfigured.value)}</div>
+                    <div class="meta">${escapeHtml(amberConfigured.meta)}</div>
+                    <div class="kpi-progress"><div class="kpi-progress-fill" style="width:${amberPct}%"></div></div>
+                </div>
+                <div class="users-summary-kpi kpi-ev">
+                    <div class="kpi-top">
+                        <div class="label">EV Linked</div>
+                        <span class="kpi-icon">🚗</span>
+                    </div>
+                    <div class="value">${escapeHtml(evConfigured.value)}</div>
+                    <div class="meta">${escapeHtml(evConfigured.meta)}</div>
+                    ${evAvailable ? `<div class="kpi-progress"><div class="kpi-progress-fill" style="width:${evPct}%"></div></div>` : ''}
+                </div>
+            </div>
+            <div class="users-summary-grid-2">
+                <section class="users-summary-panel">
+                    <div class="users-summary-panel-title"><span class="panel-title-icon">📡</span>Inverter Providers</div>
+                    ${providerBreakdown.length ? '<div class="users-summary-chart"><canvas id="usersProviderChart"></canvas></div>' : '<div class="users-summary-empty">No provider data yet.</div>'}
+                </section>
+                <section class="users-summary-panel">
+                    <div class="users-summary-panel-title"><span class="panel-title-icon">📍</span>Top 5 Locations</div>
+                    ${topLocations.length === 0 ? '<div class="users-summary-empty">No location data yet.</div>' : `
+                        <div class="rank-list">
+                            ${topLocations.map((row, idx) => {
+                                const cnt = Number(row.count || 0);
+                                const bw = topLocationsMaxCount > 0 ? Math.round((cnt / topLocationsMaxCount) * 100) : 0;
+                                const cntLabel = cnt + ' user' + (cnt === 1 ? '' : 's');
+                                return '<div class="rank-row"><span class="rank-num">' + String(idx + 1).padStart(2, '0') + '</span><span class="rank-label">' + escapeHtml(row.label || row.key || 'Unknown') + '</span><div class="rank-bar-track"><div class="rank-bar" style="width:' + bw + '%"></div></div><span class="rank-badge">' + escapeHtml(cntLabel) + '</span></div>';
+                            }).join('')}
+                        </div>
+                    `}
+                </section>
+            </div>
+            <div class="users-summary-grid-3">
+                <section class="users-summary-panel">
+                    <div class="users-summary-panel-title"><span class="panel-title-icon">⚡</span>Inverter Sizes</div>
+                    ${inverterSizeDistribution.length ? '<div class="users-summary-chart users-summary-chart-compact"><canvas id="usersInverterSizeChart"></canvas></div>' : '<div class="users-summary-empty">No inverter size data yet.</div>'}
+                </section>
+                <section class="users-summary-panel">
+                    <div class="users-summary-panel-title"><span class="panel-title-icon">🔋</span>Battery Sizes</div>
+                    ${batterySizeDistribution.length ? '<div class="users-summary-chart users-summary-chart-compact"><canvas id="usersBatterySizeChart"></canvas></div>' : '<div class="users-summary-empty">No battery size data yet.</div>'}
+                </section>
+                <section class="users-summary-panel">
+                    <div class="users-summary-panel-title"><span class="panel-title-icon">🔗</span>Coupling</div>
+                    ${couplingBreakdown.length ? '<div class="users-summary-chart users-summary-chart-compact"><canvas id="usersCouplingChart"></canvas></div>' : '<div class="users-summary-empty">No coupling data yet.</div>'}
+                </section>
+            </div>
+            ${notes[1] ? `<div class="users-summary-footnote">${escapeHtml(notes[1])}</div>` : ''}
+        `;
+
+        renderUsersProviderChart(providerBreakdown);
+        renderUsersInverterSizeChart(inverterSizeDistribution);
+        renderUsersBatterySizeChart(batterySizeDistribution);
+        renderUsersCouplingChart(couplingBreakdown);
     }
 
     function toComparableTimestamp(value) {
@@ -106,6 +741,7 @@
             currentSort.direction = 'asc';
         }
         renderUsersTable(currentUsers);
+        renderUsersPagination(currentUsersPagination);
     }
 
     function sortIcon(key) {
@@ -152,32 +788,67 @@
     }
 
     // ==================== Load Users ====================
-    async function loadUsers() {
+    async function loadUsers(options = {}) {
         const loading = document.getElementById('usersLoading');
         const tableWrapper = document.getElementById('usersTableWrapper');
+        const footer = document.getElementById('usersTableFooter');
+        const includeSummary = options.includeSummary ?? !currentUsersSummary;
+        const showAll = options.showAll ?? currentUsersPagination.showAll ?? false;
+        const page = options.page ?? currentUsersPagination.page ?? 1;
+        const pageSize = options.pageSize ?? currentUsersPagination.pageSize ?? 50;
         loading.style.display = '';
         tableWrapper.style.display = 'none';
+        if (footer) footer.style.display = 'none';
+        if (includeSummary || !currentUsersSummary) {
+            setUsersSummaryLoading();
+        }
 
         try {
-            const resp = await adminApiClient.fetch('/api/admin/users');
+            const query = buildUsersQuery({ page, pageSize, showAll, includeSummary });
+            const resp = await adminApiClient.fetch(`/api/admin/users?${query}`);
             const data = await resp.json();
             if (data.errno !== 0) throw new Error(data.error || 'Failed to load users');
 
             currentUsers = data.result.users || [];
+            currentUsersPagination = data.result.pagination || { page: 1, pageSize: 50, totalUsers: currentUsers.length, totalPages: 1, showAll, sortingScope: showAll ? 'all-loaded' : 'current-page' };
+            if (data.result.summary) {
+                currentUsersSummary = data.result.summary;
+                renderUsersSummary(currentUsersSummary);
+                updatePlatformStatsFromSummary(currentUsersSummary);
+            } else if (currentUsersSummary) {
+                renderUsersSummary(currentUsersSummary);
+            }
             renderUsersTable(currentUsers);
-            updatePlatformStats(currentUsers);
+            renderUsersPagination(currentUsersPagination);
 
             loading.style.display = 'none';
             tableWrapper.style.display = '';
         } catch (e) {
             console.error('[Admin] Failed to load users:', e);
+            if (!currentUsersSummary) {
+                renderUsersSummary(null);
+            }
             loading.innerHTML = `<span style="color: var(--color-danger);">Failed to load users: ${e.message}</span>`;
         }
     }
 
     function refreshAdminData() {
         tabsLoaded[activeTab] = false;
+        currentUsersPagination = { page: 1, pageSize: 50, totalUsers: 0, totalPages: 1, showAll: false, sortingScope: 'current-page' };
+        currentUsersSummary = null;
         switchTab(activeTab);
+    }
+
+    function goToUsersPage(direction) {
+        if (currentUsersPagination.showAll) return;
+        const nextPage = Math.max(1, Math.min(currentUsersPagination.totalPages, currentUsersPagination.page + Number(direction || 0)));
+        if (nextPage === currentUsersPagination.page) return;
+        loadUsers({ page: nextPage, pageSize: currentUsersPagination.pageSize, showAll: false, includeSummary: false });
+    }
+
+    function toggleAllUsers() {
+        const nextShowAll = !currentUsersPagination.showAll;
+        loadUsers({ page: 1, pageSize: 50, showAll: nextShowAll, includeSummary: false });
     }
 
     async function loadPlatformStats() {

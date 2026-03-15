@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'socrates-v47';
+const CACHE_VERSION = 'socrates-v50';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const STATIC_ASSETS = [
@@ -11,14 +11,16 @@ const STATIC_ASSETS = [
   '/history.html',
   '/roi.html',
   '/curtailment-discovery.html',
-  '/css/shared-styles.css?v=8',
-  '/css/tour.css?v=3',
-  '/js/tour.js?v=29',
+  '/admin.html',
+  '/css/shared-styles.css?v=9',
+  '/css/tour.css?v=4',
+  '/js/tour.js?v=30',
   '/js/firebase-config.js',
   '/js/firebase-auth.js',
-  '/js/api-client.js',
-  '/js/shared-utils.js',
-  '/js/app-shell.js?v=12',
+  '/js/api-client.js?v=5',
+  '/js/shared-utils.js?v=13',
+  '/js/app-shell.js?v=15',
+  '/js/admin.js?v=5',
   '/favicon.ico',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
@@ -45,6 +47,12 @@ self.addEventListener('activate', (event) => {
     )
   );
   self.clients.claim();
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
@@ -92,6 +100,9 @@ self.addEventListener('fetch', (event) => {
   const isCriticalShellAsset =
     requestUrl.pathname === '/js/tour.js' ||
     requestUrl.pathname === '/js/app-shell.js' ||
+    requestUrl.pathname === '/js/admin.js' ||
+    requestUrl.pathname === '/js/api-client.js' ||
+    requestUrl.pathname === '/js/shared-utils.js' ||
     requestUrl.pathname === '/css/shared-styles.css' ||
     requestUrl.pathname === '/css/tour.css';
 

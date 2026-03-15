@@ -20,7 +20,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    <link rel="stylesheet" href="css/shared-styles.css?v=8" />
+    <link rel="stylesheet" href="css/shared-styles.css?v=9" />
     <script src="js/theme-init.js"></script>
     <style>
         /* Page-specific styles */
@@ -65,49 +65,231 @@
             background: var(--gradient-card);
             border: 1px solid var(--border-secondary);
             border-radius: 16px;
-            box-shadow: var(--shadow-xl);
+            box-shadow: var(--shadow-xl), 0 0 80px rgba(88,166,255,0.07);
             overflow: hidden;
         }
 
+        /* ════ Setup page header ════ */
         .setup-header {
-            background: linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 8%, transparent) 0%, transparent 100%);
-            padding: 36px 32px 28px;
+            position: relative;
+            isolation: isolate;
+            background: var(--bg-primary, #0d1117);
+            padding: 38px 32px 26px;
             border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
             text-align: center;
+            overflow: hidden;
         }
 
+        /* Background layer: animated colour orbs + dot grid */
+        .setup-hdr-bg {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .setup-hdr-orb {
+            position: absolute;
+            border-radius: 999px;
+            will-change: transform;
+        }
+
+        .setup-hdr-orb--1 {
+            width: 320px;
+            height: 320px;
+            top: -140px;
+            left: -80px;
+            background: radial-gradient(circle, rgba(88, 166, 255, 0.22) 0%, transparent 66%);
+            animation: orbDrift1 20s ease-in-out infinite;
+        }
+
+        .setup-hdr-orb--2 {
+            width: 280px;
+            height: 280px;
+            top: -50px;
+            right: -90px;
+            background: radial-gradient(circle, rgba(255, 138, 61, 0.18) 0%, transparent 66%);
+            animation: orbDrift2 15s ease-in-out infinite;
+        }
+
+        .setup-hdr-orb--3 {
+            width: 240px;
+            height: 240px;
+            bottom: -70px;
+            left: 22%;
+            background: radial-gradient(circle, rgba(120, 75, 162, 0.16) 0%, transparent 66%);
+            animation: orbDrift3 22s ease-in-out infinite;
+        }
+
+        /* Subtle dot grid fading toward bottom */
+        .setup-hdr-grid {
+            position: absolute;
+            inset: 0;
+            background-image: radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px);
+            background-size: 24px 24px;
+            -webkit-mask-image: radial-gradient(ellipse 100% 100% at 50% 0%, black 0%, transparent 75%);
+            mask-image: radial-gradient(ellipse 100% 100% at 50% 0%, black 0%, transparent 75%);
+        }
+
+        /* All header content floats above the bg layer */
+        .setup-header-inner {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Logo: pulsing glow + spinning gradient ring */
         .setup-header .logo {
-            width: 72px;
-            height: 72px;
-            margin: 0 auto 20px;
-            background: linear-gradient(135deg, rgba(88, 166, 255, 0.15), rgba(120, 75, 162, 0.1));
-            border-radius: 16px;
+            position: relative;
+            width: 68px;
+            height: 68px;
+            margin: 0 auto 18px;
+            background: linear-gradient(145deg, rgba(88, 166, 255, 0.18), rgba(255, 138, 61, 0.12));
+            border-radius: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 36px;
-            box-shadow: 0 4px 24px rgba(88, 166, 255, 0.15);
+            font-size: 34px;
+            border: 1px solid rgba(88, 166, 255, 0.22);
+            box-shadow:
+                0 0 0 4px rgba(88, 166, 255, 0.10),
+                0 14px 38px rgba(88, 166, 255, 0.18),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            animation: logoPulse 4.5s ease-in-out infinite;
         }
 
-        .setup-header h1 {
-            font-size: 22px;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: var(--text-primary);
+        /* Spinning gradient border ring */
+        .setup-header .logo::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 21px;
+            padding: 2px;
+            background: conic-gradient(from 0deg, rgba(88,166,255,0.80), rgba(255,138,61,0.70), rgba(120,75,162,0.60), rgba(88,166,255,0.80));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: destination-out;
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask-composite: exclude;
+            animation: spinRing 7s linear infinite;
         }
 
-        .setup-header p {
-            font-size: 14px;
-            color: var(--text-secondary);
-            line-height: 1.5;
+        /* Kicker pill with shimmer sweep */
+        .setup-kicker {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 16px;
+            padding: 7px 16px;
+            border: 1px solid rgba(88, 166, 255, 0.30);
+            border-radius: 999px;
+            background: linear-gradient(135deg, rgba(88,166,255,0.12), rgba(255,138,61,0.07));
+            color: rgba(230, 237, 243, 0.90);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            overflow: hidden;
         }
 
+        .setup-kicker::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 55%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.20), transparent);
+            animation: shimmer 5s ease-in-out infinite;
+            animation-delay: 1.5s;
+        }
+
+        /* Hero title */
+        .setup-hero-title {
+            max-width: 520px;
+            margin: 0 auto 10px;
+            font-size: 24px;
+            font-weight: 800;
+            line-height: 1.2;
+            letter-spacing: -0.03em;
+        }
+
+        .setup-hero-line {
+            display: block;
+            color: rgba(230, 237, 243, 0.92);
+        }
+
+        .setup-hero-line--accent {
+            font-size: 1.07em;
+            background: linear-gradient(95deg, #73b8ff 0%, #a8d4ff 28%, #ffb580 62%, #ff8a3d 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            filter: drop-shadow(0 2px 16px rgba(88, 166, 255, 0.18));
+        }
+
+        /* Tagline */
         .setup-tagline {
-            font-size: 15px !important;
-            color: var(--text-primary) !important;
-            opacity: 0.82;
-            font-weight: 400;
+            max-width: 400px;
+            margin: 0 auto 20px;
+            font-size: 14px !important;
+            color: rgba(139, 148, 158, 0.95) !important;
+            font-weight: 500;
             letter-spacing: 0.01em;
+            opacity: 1 !important;
+        }
+
+        /* Trust pills - compact interactive row */
+        .setup-trust-strip {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .setup-trust-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 13px;
+            border: 1px solid rgba(48, 54, 61, 0.90);
+            border-radius: 999px;
+            background: rgba(22, 27, 34, 0.72);
+            backdrop-filter: blur(8px);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+            cursor: default;
+            transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+            animation: trustIn 0.45s ease backwards;
+        }
+
+        .setup-trust-item:nth-child(1) { animation-delay: 0.35s; }
+        .setup-trust-item:nth-child(2) { animation-delay: 0.50s; }
+        .setup-trust-item:nth-child(3) { animation-delay: 0.65s; }
+        .setup-trust-item:nth-child(4) { animation-delay: 0.80s; }
+
+        .setup-trust-item:hover {
+            transform: translateY(-2px) scale(1.03);
+            border-color: rgba(88, 166, 255, 0.42);
+            background: rgba(88, 166, 255, 0.08);
+            box-shadow: 0 8px 22px rgba(4, 12, 24, 0.30), inset 0 1px 0 rgba(255,255,255,0.06);
+        }
+
+        .setup-trust-icon {
+            font-size: 14px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .setup-trust-text {
+            font-size: 12.5px;
+            line-height: 1;
+            color: rgba(139, 148, 158, 0.95);
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .setup-trust-text strong {
+            color: rgba(230, 237, 243, 0.90);
+            font-weight: 600;
         }
 
         .setup-body {
@@ -117,10 +299,58 @@
         .progress-indicator {
             display: flex;
             gap: 8px;
-            margin-bottom: 24px;
+            margin: -4px 0 24px;
             padding: 16px;
             background: color-mix(in srgb, var(--bg-primary) 40%, transparent);
             border-radius: 12px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 42%, transparent);
+            box-shadow: 0 14px 30px rgba(2, 8, 18, 0.18);
+            backdrop-filter: blur(10px);
+        }
+
+        @keyframes orbDrift1 {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33%       { transform: translate(18px, 14px) scale(1.06); }
+            66%       { transform: translate(-8px, 20px) scale(0.97); }
+        }
+
+        @keyframes orbDrift2 {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            40%       { transform: translate(-16px, 10px) scale(1.08); }
+            75%       { transform: translate(14px, -8px) scale(0.95); }
+        }
+
+        @keyframes orbDrift3 {
+            0%, 100% { transform: translate(0, 0); }
+            50%       { transform: translate(-20px, -14px) scale(1.1); }
+        }
+
+        @keyframes logoPulse {
+            0%, 100% {
+                box-shadow: 0 0 0 4px rgba(88,166,255,0.10), 0 14px 38px rgba(88,166,255,0.18), inset 0 1px 0 rgba(255,255,255,0.08);
+            }
+            50% {
+                box-shadow: 0 0 0 8px rgba(88,166,255,0.05), 0 18px 48px rgba(88,166,255,0.26), inset 0 1px 0 rgba(255,255,255,0.10);
+            }
+        }
+
+        @keyframes spinRing {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes shimmer {
+            0%        { left: -100%; }
+            40%, 100% { left: 210%; }
+        }
+
+        @keyframes stepPulse {
+            0%, 100% { box-shadow: 0 0 0 4px rgba(88,166,255,0.12), 0 4px 14px rgba(88,166,255,0.22); }
+            50%       { box-shadow: 0 0 0 7px rgba(88,166,255,0.06), 0 6px 20px rgba(88,166,255,0.34); }
+        }
+
+        @keyframes trustIn {
+            from { opacity: 0; transform: translateY(8px) scale(0.96); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
         }
 
         .progress-step {
@@ -149,11 +379,23 @@
             background: color-mix(in srgb, var(--accent-blue) 20%, transparent);
             border-color: var(--accent-blue);
             color: var(--accent-blue);
+            font-weight: 700;
+            box-shadow: 0 0 0 4px rgba(88,166,255,0.12), 0 4px 14px rgba(88,166,255,0.22);
+            animation: stepPulse 3s ease-in-out infinite;
         }
 
         .progress-step.complete .step-dot {
             background: var(--color-success-bg);
             border-color: var(--color-success);
+            color: transparent;
+            font-size: 0;
+            box-shadow: 0 0 0 3px rgba(34,197,94,0.10);
+        }
+
+        .progress-step.complete .step-dot::before {
+            content: '✓';
+            font-size: 14px;
+            font-weight: 700;
             color: var(--color-success);
         }
 
@@ -183,7 +425,7 @@
         }
 
         .progress-line.complete {
-            background: var(--color-success);
+            background: linear-gradient(90deg, rgba(88,166,255,0.7) 0%, var(--color-success) 100%);
         }
 
         .info-box {
@@ -291,7 +533,7 @@
         .form-group input:focus {
             outline: none;
             border-color: var(--accent-blue);
-            box-shadow: 0 0 0 3px var(--accent-blue-bg);
+            box-shadow: 0 0 0 3px var(--accent-blue-bg), 0 2px 12px rgba(88,166,255,0.14);
             background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
         }
 
@@ -301,6 +543,30 @@
 
         .form-group input::placeholder {
             color: var(--text-placeholder);
+        }
+
+        .form-group select {
+            width: 100%;
+            padding: 14px 44px 14px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-primary);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all 0.2s ease;
+            appearance: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b949e'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 14px center;
+            background-size: 10px 6px;
+        }
+
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--accent-blue-bg), 0 2px 12px rgba(88,166,255,0.14);
         }
 
         .password-toggle {
@@ -382,19 +648,37 @@
             font-size: 15px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all 0.25s ease;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 10px;
-            box-shadow: var(--shadow-sm);
+            box-shadow: var(--shadow-sm), 0 4px 24px rgba(34,197,94,0.18);
             margin-top: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-primary::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 55%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+            pointer-events: none;
         }
 
         .btn-primary:hover:not(:disabled) {
-            filter: brightness(1.1);
-            box-shadow: var(--shadow-md);
+            filter: brightness(1.08);
+            box-shadow: var(--shadow-md), 0 8px 32px rgba(34,197,94,0.28);
             transform: translateY(-2px);
+        }
+
+        .btn-primary:hover:not(:disabled)::after {
+            left: 210%;
+            transition: left 0.55s ease;
         }
 
         .btn-primary:active:not(:disabled) {
@@ -469,7 +753,24 @@
             }
 
             .setup-header {
-                padding: 28px 20px 20px;
+                padding: 26px 20px 20px;
+            }
+
+            .setup-kicker {
+                margin-bottom: 14px;
+            }
+
+            .setup-hero-title {
+                font-size: 19px;
+            }
+
+            .setup-trust-strip {
+                gap: 6px;
+            }
+
+            .setup-trust-text {
+                white-space: normal;
+                font-size: 12px;
             }
 
             .setup-body {
@@ -622,9 +923,21 @@
             content: '';
             flex: 1;
             height: 1px;
-            background: var(--border-secondary);
+            background: linear-gradient(90deg, var(--border-secondary) 0%, transparent 80%);
         }
-        .form-section-icon { font-size: 15px; line-height: 1; flex-shrink: 0; }
+        .form-section-icon {
+            font-size: 13px;
+            line-height: 1;
+            flex-shrink: 0;
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, rgba(88,166,255,0.13), rgba(255,138,61,0.07));
+            border: 1px solid rgba(88,166,255,0.18);
+            border-radius: 6px;
+        }
         .form-section-title {
             font-size: 11px;
             font-weight: 700;
@@ -685,9 +998,40 @@
         <div class="setup-container">
         <div class="setup-card">
             <div class="setup-header">
-                <div class="logo">⚡</div>
-                <h1>Welcome! Let's get started</h1>
-                <p class="setup-tagline">One page, four sections &mdash; you&rsquo;ll be ready in 1 minute!</p>
+                <!-- animated background: colour blobs + dot grid -->
+                <div class="setup-hdr-bg" aria-hidden="true">
+                    <div class="setup-hdr-orb setup-hdr-orb--1" id="hdrOrb1"></div>
+                    <div class="setup-hdr-orb setup-hdr-orb--2" id="hdrOrb2"></div>
+                    <div class="setup-hdr-orb setup-hdr-orb--3" id="hdrOrb3"></div>
+                    <div class="setup-hdr-grid"></div>
+                </div>
+                <div class="setup-header-inner">
+                    <div class="logo">⚡</div>
+                    <div class="setup-kicker">SoCrates Setup</div>
+                    <h1 class="setup-hero-title">
+                        <span class="setup-hero-line">Automate your battery around</span>
+                        <span class="setup-hero-line setup-hero-line--accent">current &amp; future conditions</span>
+                    </h1>
+                    <p class="setup-tagline">One page. 4 steps. You are good to go!</p>
+                    <div class="setup-trust-strip" aria-label="Trust and privacy highlights">
+                        <div class="setup-trust-item">
+                            <span class="setup-trust-icon" aria-hidden="true">🔒</span>
+                            <div class="setup-trust-text"><strong>Secure</strong> &amp; private storage</div>
+                        </div>
+                        <div class="setup-trust-item">
+                            <span class="setup-trust-icon" aria-hidden="true">🔄</span>
+                            <div class="setup-trust-text"><strong>Revocable</strong> access anytime</div>
+                        </div>
+                        <div class="setup-trust-item">
+                            <span class="setup-trust-icon" aria-hidden="true">🏠</span>
+                            <div class="setup-trust-text"><strong>300+</strong> households trust us</div>
+                        </div>
+                        <div class="setup-trust-item">
+                            <span class="setup-trust-icon" aria-hidden="true">💡</span>
+                            <div class="setup-trust-text"><strong>No extra cost</strong> — your providers</div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="setup-body">
@@ -714,11 +1058,6 @@
                 </div>
 
                 <form id="setupForm">
-                    <div class="info-box" style="margin-bottom: 20px;">
-                        <span class="info-icon">💡</span>
-                        <div>Everything&rsquo;s on this single page &mdash; no multi-page wizard. Fill in each section as you scroll and hit <strong>Validate &amp; Continue</strong> when done.</div>
-                    </div>
-
                     <!-- ═══ Section: Inverter Connection ═══ -->
                     <div class="form-section-header form-section-header--first">
                         <div class="form-section-title-row">
@@ -1156,9 +1495,37 @@
 
     <script src="js/firebase-config.js"></script>
     <script src="js/firebase-auth.js"></script>
-    <script src="js/api-client.js"></script>
-    <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=13"></script>
+    <script src="js/api-client.js?v=5"></script>
+    <script src="js/shared-utils.js?v=13"></script>
+    <script src="js/app-shell.js?v=15"></script>
     <script src="js/setup.js"></script>
+    <script>
+        // Mouse-parallax: orbs follow cursor gently within the header
+        (function () {
+            var header = document.querySelector('.setup-header');
+            var orbs = [
+                { el: document.getElementById('hdrOrb1'), fx:  0.022, fy:  0.016 },
+                { el: document.getElementById('hdrOrb2'), fx: -0.018, fy: -0.013 },
+                { el: document.getElementById('hdrOrb3'), fx:  0.012, fy:  0.020 }
+            ];
+            if (!header || orbs.some(function (o) { return !o.el; })) return;
+            var raf = null;
+            header.addEventListener('mousemove', function (e) {
+                if (raf) return;
+                raf = requestAnimationFrame(function () {
+                    raf = null;
+                    var rect = header.getBoundingClientRect();
+                    var cx = e.clientX - rect.left  - rect.width  / 2;
+                    var cy = e.clientY - rect.top   - rect.height / 2;
+                    orbs.forEach(function (o) {
+                        o.el.style.transform = 'translate(' + (cx * o.fx).toFixed(1) + 'px, ' + (cy * o.fy).toFixed(1) + 'px)';
+                    });
+                });
+            });
+            header.addEventListener('mouseleave', function () {
+                orbs.forEach(function (o) { o.el.style.transform = ''; });
+            });
+        }());
+    </script>
 </body>
 </html>
