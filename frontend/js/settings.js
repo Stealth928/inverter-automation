@@ -110,12 +110,16 @@
         }
 
         async function fetchTeslaAdminStatusAndSharedConfig() {
-            // Check admin status from AppShell state (already fetched on page load)
+            // Check admin status — prefer AppShell cached state, then fall back to API call
             try {
-                const client = window.apiClient;
-                if (client && typeof client.checkAdminAccess === 'function') {
-                    const resp = await client.checkAdminAccess();
-                    teslaIsAdmin = !!(resp && resp.errno === 0 && resp.result && resp.result.isAdmin);
+                if (window.appShell && window.appShell.state && window.appShell.state.isAdmin === true) {
+                    teslaIsAdmin = true;
+                } else {
+                    const client = window.apiClient;
+                    if (client && typeof client.checkAdminAccess === 'function') {
+                        const resp = await client.checkAdminAccess();
+                        teslaIsAdmin = !!(resp && resp.errno === 0 && resp.result && resp.result.isAdmin);
+                    }
                 }
             } catch (e) {
                 teslaIsAdmin = false;
@@ -151,12 +155,18 @@
                 els.notConfiguredBanner.style.display = (!isAdmin && !hasSharedConfig) ? '' : 'none';
             }
 
-            // Vehicle panel step label
+            // Vehicle panel step label — admins see "Step 2" (after admin panel), non-admins see just "Vehicle"
             if (els.vehiclePanelStep) {
-                els.vehiclePanelStep.textContent = isAdmin ? 'Step 2' : 'Step 1';
+                els.vehiclePanelStep.textContent = isAdmin ? 'Step 2' : 'Vehicle';
             }
 
-            // Connect button: disabled for non-admins when no shared config
+            // Vehicle panel width — span full width when admin panel is hidden
+            const vehiclePanel = els.vehiclePanelStep?.closest('.tesla-onboarding-panel');
+            if (vehiclePanel) {
+                vehiclePanel.style.gridColumn = isAdmin ? '' : '1 / -1';
+            }
+
+            // Connect button: always enabled for admins; non-admins need shared config
             if (els.connectBtn) {
                 els.connectBtn.disabled = (!isAdmin && !hasSharedConfig);
             }
