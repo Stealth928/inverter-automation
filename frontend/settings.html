@@ -25,9 +25,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/firebase-auth.js"></script>
-    <script src="js/api-client.js?v=3"></script>
+    <script src="js/api-client.js?v=4"></script>
     <script src="js/shared-utils.js"></script>
-    <script src="js/app-shell.js?v=12"></script>
+    <script src="js/app-shell.js?v=13"></script>
     <script src="js/tour.js?v=29"></script>
     <style>
         /* Page-specific styles */
@@ -36,11 +36,14 @@
             margin: 0 auto;
             padding: 20px;
         }
+        /* Higher specificity to beat .page-shell { padding } from shared-styles */
+        .container.page-shell {
+            padding-top: 64px; /* nav-wrapper top:64px + nav height ~38px = need ~44px; use 64 for comfort */
+        }
         .page-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
         }
         .page-header h1 {
             font-size: 1.5rem;
@@ -289,9 +292,14 @@
         }
         .tesla-step-grid {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px;
             margin-bottom: 18px;
+        }
+        @media (min-width: 900px) {
+            .tesla-step-grid {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
         }
         .tesla-step-card {
             padding: 16px;
@@ -828,8 +836,8 @@
                 justify-content: space-between;
             }
 
-            .container {
-                padding: 12px;
+            .container.page-shell {
+                padding-top: 58px;
             }
 
             .status-bar {
@@ -918,6 +926,193 @@
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
+
+        /* ── Section navigation bar ── */
+        .section-nav-wrapper {
+            position: fixed;
+            top: 64px; /* matches body.has-fixed-nav padding-top */
+            left: 0;
+            right: 0;
+            z-index: 900;
+            pointer-events: none; /* let the inner nav get clicks */
+        }
+        .section-nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            pointer-events: all;
+            background: color-mix(in srgb, var(--bg-primary) 94%, transparent);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid var(--border-primary);
+            border-top: none;
+            border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+            padding: 0 10px;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+        }
+        .section-nav-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            flex: 1;
+            padding: 5px 0;
+        }
+        .section-nav-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 6px 12px;
+            border-radius: var(--radius-md);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: all var(--transition-fast);
+            white-space: nowrap;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+        .section-nav-link:hover {
+            color: var(--text-primary);
+            background: color-mix(in srgb, var(--accent-blue) 10%, transparent);
+            border-color: color-mix(in srgb, var(--accent-blue) 20%, transparent);
+        }
+        .section-nav-link.active {
+            color: var(--accent-blue);
+            background: var(--accent-blue-bg);
+            border-color: color-mix(in srgb, var(--accent-blue) 30%, transparent);
+        }
+        /* Burger button — hidden on desktop */
+        .section-nav-burger {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+        }
+        .section-nav-burger .burger-icon {
+            font-size: 16px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .section-nav-burger .burger-label {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--accent-blue);
+        }
+        .section-nav-burger .burger-arrow {
+            font-size: 10px;
+            color: var(--text-secondary);
+            transition: transform 0.2s ease;
+            flex-shrink: 0;
+        }
+        .section-nav.is-open .section-nav-burger .burger-arrow {
+            transform: rotate(180deg);
+        }
+        @media (max-width: 768px) {
+            .section-nav {
+                flex-direction: column;
+                align-items: stretch;
+                padding: 0;
+                gap: 0;
+            }
+            .section-nav-burger {
+                display: flex;
+            }
+            .section-nav-links {
+                display: none;
+                flex-direction: column;
+                gap: 2px;
+                padding: 4px 8px 8px;
+                border-top: 1px solid var(--border-primary);
+            }
+            .section-nav.is-open .section-nav-links {
+                display: flex;
+            }
+            .section-nav-link {
+                padding: 8px 10px;
+                font-size: 12px;
+                border-radius: var(--radius-md);
+            }
+        }
+
+        /* ── Collapsible sections ── */
+        .section-header {
+            cursor: pointer;
+            user-select: none;
+        }
+        .section-header .section-collapse-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            transition: transform 0.2s ease;
+            flex-shrink: 0;
+        }
+        .section.is-collapsed .section-collapse-icon {
+            transform: rotate(-90deg);
+        }
+        .section-body {
+            transition: none;
+        }
+        .section.is-collapsed .section-body {
+            display: none;
+        }
+
+        /* ── Tesla compact onboarding ── */
+        .tesla-quick-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .tesla-quick-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-primary);
+            background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+        }
+        .tesla-quick-step .step-num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--accent-blue) 18%, transparent);
+            color: var(--accent-blue);
+            font-size: 12px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .tesla-quick-step .step-text {
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text-secondary);
+        }
+        .tesla-quick-step .step-text strong {
+            color: var(--text-primary);
+            display: block;
+            margin-bottom: 2px;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
@@ -976,6 +1171,27 @@
         </div>
 
         <div id="messageArea"></div>
+
+        <!-- Section quick-nav (fixed wrapper + in-flow spacer) -->
+        <div class="section-nav-wrapper">
+            <nav class="section-nav" id="sectionNav">
+                <button type="button" class="section-nav-burger" id="sectionNavBurger" aria-expanded="false" aria-controls="sectionNavLinks">
+                    <span class="burger-icon">☰</span>
+                    <span class="burger-label" id="sectionNavBurgerLabel">Automation</span>
+                    <span class="burger-arrow">▼</span>
+                </button>
+                <div class="section-nav-links" id="sectionNavLinks">
+                    <a class="section-nav-link active" data-target="automationSection">🤖 Automation</a>
+                    <a class="section-nav-link" data-target="blackoutSection">🌙 Blackout</a>
+                    <a class="section-nav-link" data-target="curtailmentSection">☀️ Curtailment</a>
+                    <a class="section-nav-link" data-target="credentialsSection">🔑 Credentials</a>
+                    <a class="section-nav-link" data-target="preferences">🌤️ Preferences</a>
+                    <a class="section-nav-link" data-target="hardwareSection">💪 Hardware</a>
+                    <a class="section-nav-link" data-target="defaultsSection">📋 Rule Defaults</a>
+                    <a class="section-nav-link" data-target="teslaOnboardingSection">🚗 Tesla EV</a>
+                </div>
+            </nav>
+        </div>
 
         <!-- Automation + Cache Settings -->
         <div class="section" id="automationSection">
@@ -1480,7 +1696,7 @@
         </div>
 
         <!-- System Hardware -->
-        <div class="section">
+        <div class="section" id="hardwareSection">
             <div class="section-header">
                 <div>
                     <div class="section-title">
@@ -1532,7 +1748,7 @@
         </div>
 
         <!-- Default Rule Settings -->
-        <div class="section">
+        <div class="section" id="defaultsSection">
             <div class="section-header">
                 <div>
                     <div class="section-title">
@@ -1617,74 +1833,60 @@
                 </div>
             </div>
             <div class="section-description">
-                Connect your Tesla account so vehicle status, charging insight, and dashboard controls can show up in one place.
-            </div>
-            <div class="tesla-multi-vehicle-note">
-                <strong>Multiple Tesla vehicles are supported.</strong> Add one VIN at a time. After each successful Tesla sign-in, use
-                <strong>Add another vehicle</strong> to register the next VIN with the same Tesla app credentials.
+                Connect your Tesla account for vehicle status, charging insights, and dashboard controls.
+                Multiple vehicles supported — add one VIN at a time.
+                <span style="display:inline-flex;align-items:center;gap:5px;margin-left:6px;font-size:12px;color:var(--accent-blue);font-weight:600;">
+                    <span>📖</span>
+                    <a href="#teslaOnboardingSection" onclick="event.preventDefault(); var faq = document.querySelector('#teslaOnboardingSection .faq-toggle'); if(faq){var content=faq.nextElementSibling; if(!content.classList.contains('open')){faq.classList.add('open');content.classList.add('open');} faq.scrollIntoView({behavior:'smooth',block:'start'});} return false;" style="color:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer;">Not sure? See the setup FAQ below ↓</a>
+                </span>
             </div>
             <form id="tesla-onboarding-form" autocomplete="off" onsubmit="return false;">
                 <input type="text" id="teslaOnboardingUsernameHint" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
             </form>
 
-            <div class="tesla-onboarding-hero">
-                <div>
-                    <div class="tesla-onboarding-kicker">What you need before you connect</div>
-                    <h3>Set up the Tesla app once, then finish sign-in here.</h3>
-                    <p>Tesla requires your own Tesla developer app and an exact redirect URI match before OAuth will succeed. After sign-in, status data usually works immediately. Charging controls may also require Tesla virtual-key pairing and, on some vehicles, signed-command proxy readiness before the dashboard will enable them.</p>
-                    <div class="tesla-onboarding-tags">
-                        <span class="tesla-onboarding-tag">Tesla developer app</span>
-                        <span class="tesla-onboarding-tag">Vehicle VIN</span>
-                            <span class="tesla-onboarding-tag">Approved redirect URI</span>
-                    </div>
+            <!-- Compact quick-start steps -->
+            <div class="tesla-quick-steps">
+                <div class="tesla-quick-step">
+                    <span class="step-num">1</span>
+                    <div class="step-text"><strong>Create Tesla Fleet app</strong>Set origin to <code>socratesautomation.com</code> and copy the Client ID.</div>
                 </div>
-                <div class="tesla-onboarding-links">
-                    <a class="btn-secondary tesla-link-btn" href="https://developer.tesla.com/" target="_blank" rel="noreferrer">Open Tesla Developer Dashboard</a>
-                    <a class="btn-secondary tesla-link-btn" href="https://developer.tesla.com/docs/fleet-api" target="_blank" rel="noreferrer">Open Tesla Fleet API Docs</a>
+                <div class="tesla-quick-step">
+                    <span class="step-num">2</span>
+                    <div class="step-text"><strong>Enable required scopes</strong>Vehicle Information, Vehicle Commands, Charging Management.</div>
                 </div>
-            </div>
-
-            <div class="tesla-step-grid">
-                <div class="tesla-step-card">
-                    <div class="tesla-step-number">1</div>
-                    <div class="tesla-step-title">Create or open your Tesla app</div>
-                    <div class="tesla-step-copy">In Tesla Developer Dashboard, open your Fleet app, add the redirect URI shown below, and copy the Tesla Client ID back into this page.</div>
+                <div class="tesla-quick-step">
+                    <span class="step-num">3</span>
+                    <div class="step-text"><strong>Enter VIN &amp; connect</strong>Paste your 17-char VIN, pick region, then Connect with Tesla.</div>
                 </div>
-                <div class="tesla-step-card">
-                    <div class="tesla-step-number">2</div>
-                    <div class="tesla-step-title">Enter your vehicle details</div>
-                    <div class="tesla-step-copy">Paste the 17-character VIN from the Tesla app or vehicle, choose the Tesla account region, and optionally set a display name for the dashboard.</div>
-                </div>
-                <div class="tesla-step-card">
-                    <div class="tesla-step-number">3</div>
-                    <div class="tesla-step-title">Approve Tesla access</div>
-                    <div class="tesla-step-copy">Use Connect with Tesla to sign in. After approval, the dashboard can load Tesla vehicle status for that VIN.</div>
+                <div class="tesla-quick-step">
+                    <span class="step-num">4</span>
+                    <div class="step-text"><strong>Pair virtual key (2021+)</strong>Open <a href="https://tesla.com/_ak/socratesautomation.com" target="_blank" rel="noreferrer">pairing link</a> on your phone &amp; approve.</div>
                 </div>
             </div>
 
             <div class="tesla-onboarding-layout">
                 <div class="tesla-onboarding-panel">
                     <div class="tesla-panel-step">Step 1</div>
-                    <div class="tesla-panel-title">Tesla app setup</div>
-                    <div class="tesla-panel-copy">These values come from Tesla Developer Dashboard. The redirect URI must match exactly in Tesla before sign-in will work.</div>
+                    <div class="tesla-panel-title">Tesla app credentials</div>
+                    <div class="tesla-panel-copy">From your <a href="https://developer.tesla.com/" target="_blank" rel="noreferrer">Tesla Developer Dashboard</a>. Reuse the same Fleet app you created for SoCrates — see FAQ below if unsure.</div>
                     <div class="tesla-onboarding-grid">
                         <div class="setting-item">
                             <div class="setting-label">Tesla Fleet Client ID</div>
-                            <div class="setting-hint">Required. Copy this from your Tesla developer app.</div>
+                            <div class="setting-hint">Copy from your Tesla Fleet app</div>
                             <div class="setting-input">
                                 <input type="text" id="teslaClientId" placeholder="Paste your Tesla Client ID" autocomplete="off" disabled>
                             </div>
                         </div>
                         <div class="setting-item">
                             <div class="setting-label">Tesla Fleet Client Secret</div>
-                            <div class="setting-hint">Optional. Leave blank if your Tesla app uses PKCE only.</div>
+                            <div class="setting-hint">Recommended — enables virtual-key pairing on 2021+ vehicles</div>
                             <div class="setting-input">
                                 <input type="password" id="teslaClientSecret" form="tesla-onboarding-form" placeholder="Optional" autocomplete="new-password" disabled>
                             </div>
                         </div>
                         <div class="setting-item">
                             <div class="setting-label">Redirect URI</div>
-                            <div class="setting-hint">Paste this exact URI into Tesla Developer Dashboard for your app.</div>
+                            <div class="setting-hint">Copy this into Tesla as an Allowed Redirect URI</div>
                             <div class="setting-input">
                                 <input type="text" id="teslaRedirectUri" readonly disabled>
                                 <button class="btn-secondary" type="button" id="teslaCopyRedirectBtn">Copy</button>
@@ -1695,11 +1897,11 @@
                 <div class="tesla-onboarding-panel">
                     <div class="tesla-panel-step">Step 2</div>
                     <div class="tesla-panel-title">Vehicle details</div>
-                    <div class="tesla-panel-copy">The VIN identifies the Tesla you want on the dashboard. Region chooses the Tesla Fleet audience used during sign-in.</div>
+                    <div class="tesla-panel-copy">Identify the Tesla and pick the account region for OAuth sign-in.</div>
                     <div class="tesla-onboarding-grid">
                         <div class="setting-item">
                             <div class="setting-label">Vehicle VIN</div>
-                            <div class="setting-hint">Required. Use the 17-character VIN from the Tesla app or the vehicle itself.</div>
+                            <div class="setting-hint">17-character VIN from the Tesla app or vehicle</div>
                             <div class="setting-input">
                                 <input type="text" id="teslaVehicleId" placeholder="e.g., 5YJ..." autocomplete="off" disabled>
                             </div>
@@ -1713,7 +1915,7 @@
                         </div>
                         <div class="setting-item">
                             <div class="setting-label">Tesla Account Region</div>
-                            <div class="setting-hint">Choose the Tesla account region, not necessarily where the car is parked today.</div>
+                            <div class="setting-hint">Where your Tesla account was created</div>
                             <div class="setting-input">
                                 <select id="teslaRegion" disabled>
                                     <option value="na">North America + Asia-Pacific</option>
@@ -1727,10 +1929,91 @@
                 </div>
             </div>
             <div class="tesla-onboarding-actions">
+                <button class="btn-secondary" type="button" id="teslaCheckOwnershipBtn">Check App Ownership</button>
                 <button class="btn-primary" type="button" id="teslaConnectBtn">Connect with Tesla</button>
                 <button class="btn-secondary" type="button" id="teslaAddVehicleBtn">Add another vehicle</button>
                 <button class="btn-secondary tesla-pending-status is-idle" type="button" id="teslaClearPendingBtn">No Tesla Login Pending</button>
                 <div id="teslaOnboardingStatus" class="tesla-onboarding-status">Start with Step 1 in Tesla Developer Dashboard, then return here to connect.</div>
+            </div>
+            <div class="faq-section" style="margin-top: 16px;">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span>Tesla Setup FAQ</span>
+                    <span class="arrow">▼</span>
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">Detailed step-by-step setup guide</div>
+                        <div class="faq-answer">
+                            <strong>1. Create / open your Tesla Fleet app</strong> — In <a href="https://developer.tesla.com/" target="_blank" rel="noreferrer">Tesla Developer Dashboard</a>, create a Fleet app using <em>Authorization Code and Machine-to-Machine</em>. Set Allowed Origin to <code>https://socratesautomation.com</code> and Redirect URI to <code>https://socratesautomation.com/settings.html</code>. Copy the Client ID back here.<br><br>
+                            <strong>2. Enable the right scopes</strong> — On Tesla's API &amp; Scopes screen turn on <em>Vehicle Information</em>, <em>Vehicle Commands</em>, and <em>Vehicle Charging Management</em>. Vehicle Location is optional.<br><br>
+                            <strong>3. Enter VIN &amp; approve</strong> — Paste the 17-char VIN, choose region, click Connect with Tesla, and approve all permissions.<br><br>
+                            <strong>4. Pair virtual key (2021+ vehicles)</strong> — On your phone with the Tesla app, open <a href="https://tesla.com/_ak/socratesautomation.com" target="_blank" rel="noreferrer">tesla.com/_ak/socratesautomation.com</a>, approve the key in the Tesla app, then confirm on the vehicle screen. Required for charging controls.
+                            <div class="faq-tip">SoCrates uses the shared domain <strong>socratesautomation.com</strong>. Reuse your existing Tesla Fleet app for this domain rather than creating a second one. Tesla billing during app creation is Tesla's own Fleet API billing, not a SoCrates subscription.</div>
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Which Tesla API scopes does SoCrates need?</div>
+                        <div class="faq-answer">
+                            Turn on <strong>Vehicle Information</strong>, <strong>Vehicle Commands</strong>, and <strong>Vehicle Charging Management</strong> in Tesla Developer Dashboard. Those map to the Tesla scopes needed for dashboard status plus charging controls. <strong>Vehicle Location</strong> is optional for SoCrates today.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What exact Tesla app URLs should I enter?</div>
+                        <div class="faq-answer">
+                            Use <code>https://socratesautomation.com</code> as the <strong>Allowed Origin URL</strong>. Use <code>https://socratesautomation.com/settings.html</code> as the <strong>Allowed Redirect URI</strong>. If Tesla asks for an optional returned URL, use the same <code>https://socratesautomation.com/settings.html</code> value.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Why does Tesla phone pairing say the third party is not registered?</div>
+                        <div class="faq-answer">
+                            That message usually means your Tesla Fleet app has not yet registered the <code>socratesautomation.com</code> domain with Tesla. In the self-managed model, this registration must happen once for each Tesla Client ID. SoCrates can do that automatically during connect when you provide the Tesla <strong>Client Secret</strong>.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What does Tesla mean by “Public key hash has already been taken”?</div>
+                        <div class="faq-answer">
+                            Tesla is saying the shared SoCrates public key hosted at <code>socratesautomation.com</code> is already registered to another Tesla Fleet app. In that case, do <strong>not</strong> create another Fleet app for the same SoCrates domain. Reuse the original Tesla Fleet app that was first set up for SoCrates.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Why can Tesla status work while charging controls still fail?</div>
+                        <div class="faq-answer">
+                            Tesla can grant enough access for read-only vehicle status without granting full command access. Charging controls on newer vehicles require both the Tesla OAuth <strong>Vehicle Commands</strong> permission and the separate virtual-key pairing step.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Should I create a brand new Tesla Fleet app or reuse my existing one?</div>
+                        <div class="faq-answer">
+                            For the current SoCrates self-managed flow, you should usually <strong>reuse your existing Tesla Fleet app</strong> for <code>socratesautomation.com</code>. The shared SoCrates public key cannot always be registered to a second Tesla app. Creating another app for the same shared domain can fail with Tesla errors such as <code>Public key hash has already been taken</code>.
+                            <div class="faq-tip">If you already created one Tesla Fleet app for SoCrates, keep using that app's Client ID and Client Secret. A second app is only appropriate if you also control a separate domain and separate Tesla keypair.</div>
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Why is Tesla asking for a card or billing limit?</div>
+                        <div class="faq-answer">
+                            Tesla Fleet API uses usage-based billing on Tesla's side. That billing screen belongs to Tesla Developer Dashboard, not SoCrates. Creating the app or adding a card does <strong>not</strong> mean SoCrates will immediately charge you. It only sets up Tesla's account for any future API usage.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Will I be charged immediately just for connecting SoCrates?</div>
+                        <div class="faq-answer">
+                            Not automatically. Tesla bills based on actual Fleet API usage such as status requests, commands, wakes, and streaming. Tesla's developer site also states that each account receives a monthly discount for personal use, which can cover modest personal automation usage.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What should I do on the Tesla billing screen?</div>
+                        <div class="faq-answer">
+                            For most personal SoCrates setups, choose <strong>Personal</strong>. If Tesla allows <strong>Skip and Submit</strong> and you prefer to avoid adding a card immediately, use that option. If Tesla requires billing details, add your card and keep the billing protection conservative by choosing a <strong>Custom Limit</strong> with a low cap that you are comfortable with.
+                            <div class="faq-tip">A low custom limit is a sensible safety rail for first-time setup. You can raise it later if you decide to use the Tesla integration more heavily.</div>
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Do all users need to do the pairing step?</div>
+                        <div class="faq-answer">
+                            Users with 2021+ vehicles should assume yes. Open <a href="https://tesla.com/_ak/socratesautomation.com" target="_blank" rel="noreferrer">tesla.com/_ak/socratesautomation.com</a> on a phone with the Tesla app installed, approve the key in the Tesla app, then confirm it on the vehicle screen.
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="tesla-vehicles-wrap">
                 <div class="tesla-vehicles-header">
@@ -1748,7 +2031,124 @@
         </div>
     </div>
 
-    <script src="js/settings.js?v=3"></script>
+    <!-- Section nav + collapsible sections enhancer -->
+    <script>
+    (function() {
+        // Wrap each .section's content (after .section-header) in a .section-body div
+        document.querySelectorAll('.container .section').forEach(function(section) {
+            var header = section.querySelector('.section-header');
+            if (!header) return;
+
+            // Add collapse chevron to section-title
+            var title = header.querySelector('.section-title');
+            if (title && !title.querySelector('.section-collapse-icon')) {
+                var chevron = document.createElement('span');
+                chevron.className = 'section-collapse-icon';
+                chevron.textContent = '\u25BC';
+                title.prepend(chevron);
+            }
+
+            // Wrap all siblings after header into section-body
+            var body = document.createElement('div');
+            body.className = 'section-body';
+            var sibling = header.nextElementSibling;
+            while (sibling) {
+                var next = sibling.nextElementSibling;
+                body.appendChild(sibling);
+                sibling = next;
+            }
+            section.appendChild(body);
+
+            // Click header to toggle collapse
+            header.addEventListener('click', function(e) {
+                if (e.target.closest('button, input, select, a')) return;
+                section.classList.toggle('is-collapsed');
+            });
+        });
+
+        // Section nav
+        var nav = document.getElementById('sectionNav');
+        var burgerBtn = document.getElementById('sectionNavBurger');
+        var burgerLabel = document.getElementById('sectionNavBurgerLabel');
+        var linksContainer = document.getElementById('sectionNavLinks');
+
+        // Burger toggle (mobile)
+        if (burgerBtn && nav) {
+            burgerBtn.addEventListener('click', function() {
+                var open = nav.classList.toggle('is-open');
+                burgerBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            });
+        }
+
+        if (nav) {
+            // Scroll to section on link click; close burger on mobile
+            nav.addEventListener('click', function(e) {
+                var link = e.target.closest('.section-nav-link');
+                if (!link) return;
+                e.preventDefault();
+                var targetId = link.getAttribute('data-target');
+                var target = document.getElementById(targetId);
+                if (!target) return;
+                if (target.classList.contains('is-collapsed')) {
+                    target.classList.remove('is-collapsed');
+                }
+                // Close burger menu on mobile after link tap
+                nav.classList.remove('is-open');
+                if (burgerBtn) burgerBtn.setAttribute('aria-expanded', 'false');
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+
+            // Close burger when clicking outside the nav
+            document.addEventListener('click', function(e) {
+                if (nav.classList.contains('is-open') && !nav.contains(e.target)) {
+                    nav.classList.remove('is-open');
+                    if (burgerBtn) burgerBtn.setAttribute('aria-expanded', 'false');
+                }
+            });
+
+            // Highlight active nav link on scroll & update burger label
+            var links = (linksContainer || nav).querySelectorAll('.section-nav-link');
+            var sectionIds = [];
+            links.forEach(function(l) { sectionIds.push(l.getAttribute('data-target')); });
+
+            // Fixed nav + main nav height offset for active detection
+            var OFFSET = 110;
+
+            var ticking = false;
+            function updateActiveNav() {
+                var active = sectionIds[0];
+                for (var i = 0; i < sectionIds.length; i++) {
+                    var el = document.getElementById(sectionIds[i]);
+                    if (el && el.getBoundingClientRect().top <= OFFSET) {
+                        active = sectionIds[i];
+                    }
+                }
+                links.forEach(function(l) {
+                    var isActive = l.getAttribute('data-target') === active;
+                    l.classList.toggle('active', isActive);
+                    // Update burger label to show current section
+                    if (isActive && burgerLabel) {
+                        burgerLabel.textContent = l.textContent.trim();
+                    }
+                });
+                ticking = false;
+            }
+            window.addEventListener('scroll', function() {
+                if (!ticking) {
+                    ticking = true;
+                    requestAnimationFrame(updateActiveNav);
+                }
+            }, { passive: true });
+
+            // Run once on load
+            updateActiveNav();
+        }
+
+        document.documentElement.style.scrollBehavior = 'smooth';
+    })();
+    </script>
+
+    <script src="js/settings.js?v=4"></script>
 </body>
 </html>
 

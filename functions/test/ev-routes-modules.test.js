@@ -4,6 +4,16 @@ const express = require('express');
 const request = require('supertest');
 
 const { registerEVRoutes } = require('../api/routes/ev');
+const teslaFleetAdapter = require('../lib/adapters/tesla-fleet-adapter');
+
+jest.mock('../lib/adapters/tesla-fleet-adapter', () => {
+  const actual = jest.requireActual('../lib/adapters/tesla-fleet-adapter');
+  return {
+    ...actual,
+    getTeslaPartnerDomainPublicKey: jest.fn(actual.getTeslaPartnerDomainPublicKey),
+    registerTeslaPartnerDomain: jest.fn(actual.registerTeslaPartnerDomain)
+  };
+});
 
 // ─── Fakes ─────────────────────────────────────────────────────────────────
 
@@ -975,6 +985,28 @@ describe('POST /api/ev/vehicles/:vehicleId/command', () => {
     expect(adapter.startCharging).not.toHaveBeenCalled();
   });
 
+  test('returns 403 when Tesla command readiness requires vehicle_cmds scope upgrade', async () => {
+    const { adapter, deps } = makeCommandDeps({
+      getCommandReadiness: jest.fn(async () => ({
+        state: 'oauth_scope_upgrade_required',
+        transport: 'signed',
+        source: 'fleet_status',
+        reasonCode: 'tesla_vehicle_cmds_scope_required',
+        vehicleCommandProtocolRequired: true,
+        missingScopes: ['vehicle_cmds']
+      }))
+    });
+    const app = buildApp(deps);
+    const res = await request(app)
+      .post('/api/ev/vehicles/v1/command')
+      .set('Authorization', 'Bearer tok')
+      .send({ command: 'startCharging' });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.result.reasonCode).toBe('tesla_vehicle_cmds_scope_required');
+    expect(adapter.startCharging).not.toHaveBeenCalled();
+  });
+
   test('returns 409 when Tesla virtual key pairing is missing', async () => {
     const error = new Error('vehicle rejected request: your public key has not been paired with the vehicle');
     error.isVirtualKeyMissing = true;
@@ -991,6 +1023,46 @@ describe('POST /api/ev/vehicles/:vehicleId/command', () => {
 
     expect(res.statusCode).toBe(409);
     expect(res.body.result.reasonCode).toBe('missing_virtual_key');
+  });
+
+  test('returns 403 for Tesla command authorization failures instead of reconnect-required 400', async () => {
+    const error = new Error('Unauthorized: missing vehicle command permission on this vehicle');
+    error.status = 403;
+    const { deps } = makeCommandDeps({
+      setChargeLimit: jest.fn(async () => {
+        throw error;
+      })
+    });
+    const app = buildApp(deps);
+    const res = await request(app)
+      .post('/api/ev/vehicles/v1/command')
+      .set('Authorization', 'Bearer tok')
+      .send({ command: 'setChargeLimit', targetSocPct: 80 });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.result.reasonCode).toBe('tesla_permission_denied');
+  });
+
+  test('returns 408 when signed command times out even if adapter marks proxy failure', async () => {
+    const error = new Error('request timed out while waiting for Tesla command response');
+    error.status = 408;
+    error.transport = 'signed';
+    error.isProxyFailure = true;
+    error.reasonCode = 'signed_command_proxy_timeout';
+
+    const { deps } = makeCommandDeps({
+      setChargeLimit: jest.fn(async () => {
+        throw error;
+      })
+    });
+    const app = buildApp(deps);
+    const res = await request(app)
+      .post('/api/ev/vehicles/v1/command')
+      .set('Authorization', 'Bearer tok')
+      .send({ command: 'setChargeLimit', targetSocPct: 80 });
+
+    expect(res.statusCode).toBe(408);
+    expect(res.body.result.reasonCode).toBe('vehicle_offline');
   });
 
   test('returns 429 when command cooldown is active for repeated commands', async () => {
@@ -1073,6 +1145,211 @@ describe('GET /api/ev/oauth/start', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.result.url).toMatch(/tesla\.com/);
     expect(res.body.result.url).toMatch(/my-client/);
+    expect(res.body.result.url).toMatch(/prompt_missing_scopes=true/);
+    expect(res.body.result.url).toMatch(/require_requested_scopes=true/);
+  });
+});
+
+describe('POST /api/ev/partner/register-domain', () => {
+  afterEach(() => {
+    teslaFleetAdapter.getTeslaPartnerDomainPublicKey.mockReset();
+    teslaFleetAdapter.registerTeslaPartnerDomain.mockReset();
+  });
+
+  test('returns 400 when required body params are missing', async () => {
+    const app = buildApp(makeDeps());
+    const res = await request(app)
+      .post('/api/ev/partner/register-domain')
+      .set('Authorization', 'Bearer tok')
+      .send({ clientId: 'client-1' });
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/clientId, clientSecret/);
+  });
+
+  test('registers Tesla partner domain derived from redirectUri', async () => {
+    teslaFleetAdapter.registerTeslaPartnerDomain.mockResolvedValueOnce({
+      registered: true,
+      domain: 'socratesautomation.com',
+      region: 'na'
+    });
+    const app = buildApp(makeDeps());
+    const res = await request(app)
+      .post('/api/ev/partner/register-domain')
+      .set('Authorization', 'Bearer tok')
+      .send({
+        clientId: 'client-1',
+        clientSecret: 'secret-1',
+        redirectUri: 'https://socratesautomation.com/settings.html',
+        region: 'na'
+      });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({
+      errno: 0,
+      result: {
+        registered: true,
+        alreadyRegistered: false,
+        domain: 'socratesautomation.com',
+        region: 'na'
+      }
+    });
+    expect(teslaFleetAdapter.registerTeslaPartnerDomain).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: 'client-1',
+        clientSecret: 'secret-1',
+        domain: 'socratesautomation.com',
+        region: 'na'
+      }),
+      expect.any(Function)
+    );
+  });
+
+  test('treats public key conflict as already-registered when verification lookup fails', async () => {
+    teslaFleetAdapter.registerTeslaPartnerDomain.mockRejectedValueOnce(
+      new Error('Tesla partner registration failed: Validation failed: Public key hash has already been taken')
+    );
+    teslaFleetAdapter.getTeslaPartnerDomainPublicKey.mockRejectedValueOnce(
+      new Error('Tesla partner public key lookup failed: not found')
+    );
+    const app = buildApp(makeDeps());
+    const res = await request(app)
+      .post('/api/ev/partner/register-domain')
+      .set('Authorization', 'Bearer tok')
+      .send({
+        clientId: 'client-1',
+        clientSecret: 'secret-1',
+        redirectUri: 'https://socratesautomation.com/settings.html',
+        region: 'na'
+      });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({
+      errno: 0,
+      result: {
+        registered: true,
+        alreadyRegistered: true,
+        verificationState: 'unverified_conflict',
+        domain: 'socratesautomation.com',
+        region: 'na'
+      }
+    });
+  });
+
+  test('treats public key conflict as success when the same app already owns the domain registration', async () => {
+    teslaFleetAdapter.registerTeslaPartnerDomain.mockRejectedValueOnce(
+      new Error('Tesla partner registration failed: Validation failed: Public key hash has already been taken')
+    );
+    teslaFleetAdapter.getTeslaPartnerDomainPublicKey.mockResolvedValueOnce({
+      domain: 'socratesautomation.com',
+      region: 'na',
+      publicKey: '-----BEGIN PUBLIC KEY-----\nabc\n-----END PUBLIC KEY-----'
+    });
+
+    const app = buildApp(makeDeps());
+    const res = await request(app)
+      .post('/api/ev/partner/register-domain')
+      .set('Authorization', 'Bearer tok')
+      .send({
+        clientId: 'client-1',
+        clientSecret: 'secret-1',
+        redirectUri: 'https://socratesautomation.com/settings.html',
+        region: 'na'
+      });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({
+      errno: 0,
+      result: {
+        registered: true,
+        alreadyRegistered: true,
+        verificationState: 'verified',
+        domain: 'socratesautomation.com',
+        region: 'na'
+      }
+    });
+    expect(teslaFleetAdapter.getTeslaPartnerDomainPublicKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: 'client-1',
+        clientSecret: 'secret-1',
+        domain: 'socratesautomation.com',
+        region: 'na'
+      }),
+      expect.any(Function)
+    );
+  });
+});
+
+describe('POST /api/ev/partner/check-domain-access', () => {
+  afterEach(() => {
+    teslaFleetAdapter.getTeslaPartnerDomainPublicKey.mockReset();
+  });
+
+  test('returns 400 when required body params are missing', async () => {
+    const app = buildApp(makeDeps());
+    const res = await request(app)
+      .post('/api/ev/partner/check-domain-access')
+      .set('Authorization', 'Bearer tok')
+      .send({ clientId: 'client-1' });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/clientId, clientSecret/);
+  });
+
+  test('returns accessible=true when Tesla app has domain access', async () => {
+    teslaFleetAdapter.getTeslaPartnerDomainPublicKey.mockResolvedValueOnce({
+      domain: 'socratesautomation.com',
+      region: 'na',
+      publicKey: '-----BEGIN PUBLIC KEY-----\nabc\n-----END PUBLIC KEY-----'
+    });
+
+    const app = buildApp(makeDeps());
+    const res = await request(app)
+      .post('/api/ev/partner/check-domain-access')
+      .set('Authorization', 'Bearer tok')
+      .send({
+        clientId: 'client-1',
+        clientSecret: 'secret-1',
+        redirectUri: 'https://socratesautomation.com/settings.html',
+        region: 'na'
+      });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({
+      errno: 0,
+      result: {
+        accessible: true,
+        domain: 'socratesautomation.com',
+        region: 'na',
+        publicKeyPresent: true
+      }
+    });
+  });
+
+  test('returns accessible=false when Tesla app does not have access to the domain', async () => {
+    teslaFleetAdapter.getTeslaPartnerDomainPublicKey.mockRejectedValueOnce(
+      new Error('Tesla partner public key lookup failed: This account does not have access to socratesautomation.com')
+    );
+
+    const app = buildApp(makeDeps());
+    const res = await request(app)
+      .post('/api/ev/partner/check-domain-access')
+      .set('Authorization', 'Bearer tok')
+      .send({
+        clientId: 'client-1',
+        clientSecret: 'secret-1',
+        redirectUri: 'https://socratesautomation.com/settings.html',
+        region: 'na'
+      });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.errno).toBe(0);
+    expect(res.body.result).toEqual(expect.objectContaining({
+      accessible: false,
+      domain: 'socratesautomation.com',
+      region: 'na',
+      reasonCode: 'tesla_partner_domain_access_denied'
+    }));
+    expect(String(res.body.result.error || '')).toMatch(/does not have access to socratesautomation\.com/i);
   });
 });
 

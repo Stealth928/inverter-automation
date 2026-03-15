@@ -192,6 +192,28 @@ test.describe('Settings Page', () => {
     await expect(page).toHaveTitle(/Settings|Configuration|Inverter/i);
   });
 
+  test('should display section navigation bar', async ({ page }) => {
+    const nav = page.locator('#sectionNav');
+    await expect(nav).toBeVisible();
+    await expect(page.locator('#sectionNavLinks .section-nav-link')).toHaveCount(8);
+    await expect(page.locator('#sectionNavLinks .section-nav-link', { hasText: 'Tesla EV' })).toBeVisible();
+    await expect(page.locator('#sectionNavLinks .section-nav-link', { hasText: 'Automation' })).toBeVisible();
+    await expect(page.locator('#sectionNavLinks .section-nav-link', { hasText: 'Credentials' })).toBeVisible();
+    // burger button should exist (visible on mobile, hidden on desktop)
+    await expect(page.locator('#sectionNavBurger')).toBeAttached();
+  });
+
+  test('should collapse and expand sections', async ({ page }) => {
+    const section = page.locator('#automationSection');
+    await expect(section).toBeVisible();
+    // Click header to collapse
+    await section.locator('.section-header').click();
+    await expect(section).toHaveClass(/is-collapsed/);
+    // Click again to expand
+    await section.locator('.section-header').click();
+    await expect(section).not.toHaveClass(/is-collapsed/);
+  });
+
   test('should display API configuration section', async ({ page }) => {
     const hasAPISection = await page.getByText(/api|inverter|pricing|key|token/i).count() > 0;
     const hasAnySettingsField = await page.locator('#credentials_deviceSn, #api_amberApiKey, #preferences_weatherPlace, #saveBtn').count() > 0;
@@ -306,14 +328,14 @@ test.describe('Settings Page', () => {
     await expect(page.locator('#teslaClientId')).toBeVisible();
     await expect(page.locator('#teslaVehicleId')).toBeVisible();
     await expect(page.locator('#teslaOnboardingSection .setting-label').filter({ hasText: 'Vehicle VIN' })).toBeVisible();
-    await expect(page.getByText(/What you need before you connect/i)).toBeVisible();
-    await expect(page.getByRole('link', { name: /Open Tesla Developer Dashboard/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Tesla Developer Dashboard/i })).toBeVisible();
     await expect(page.locator('#teslaCopyRedirectBtn')).toBeVisible();
     await expect(page.locator('#teslaConnectBtn')).toBeVisible();
     await expect(page.locator('#teslaAddVehicleBtn')).toBeVisible();
     await expect(page.locator('#teslaVehicleStatusCounts')).toBeVisible();
     await expect(page.locator('#teslaVehiclesList')).toBeVisible();
-    await expect(page.getByText(/Charging controls may also require Tesla virtual-key pairing/i)).toBeVisible();
+    // Quick-start steps should be visible
+    await expect(page.locator('.tesla-quick-steps')).toBeVisible();
   });
 
   test('should show per-vehicle Tesla status rows and count chips', async ({ page }) => {

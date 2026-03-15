@@ -214,6 +214,8 @@ if (typeof functions.pubsub === 'undefined' || typeof functions.pubsub.schedule 
 // Set via: firebase functions:secrets:set SUNGROW_APP_KEY
 const _secretSungrowAppKey    = defineSecret('SUNGROW_APP_KEY');
 const _secretSungrowAppSecret = defineSecret('SUNGROW_APP_SECRET');
+const _secretTeslaProxyUrl    = defineSecret('TESLA_SIGNED_COMMAND_PROXY_URL');
+const _secretTeslaProxyToken  = defineSecret('TESLA_SIGNED_COMMAND_PROXY_TOKEN');
 
 // ==================== CONFIGURATION ====================
 // Reads from environment variables (populated from Secret Manager at runtime,

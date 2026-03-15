@@ -12,6 +12,9 @@ functions/.runtimeconfig.env
 # Tesla partner private key (gitignored — never commit)
 tesla-proxy/private-key.pem
 tesla-proxy/certs/
+tesla-private-key.pem
+*.pem
+!frontend/.well-known/**/*.pem
 
 # Docker / temporary files
 tmp*

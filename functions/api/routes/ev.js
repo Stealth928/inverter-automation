@@ -21,7 +21,9 @@ const {
   buildTeslaAuthUrl,
   createTeslaHttpClient,
   exchangeTeslaAuthCode,
-  normalizeTeslaVin
+  getTeslaPartnerDomainPublicKey,
+  normalizeTeslaVin,
+  registerTeslaPartnerDomain
 } = require('../../lib/adapters/tesla-fleet-adapter');
 
 function registerEVRoutes(app, deps = {}) {
@@ -77,14 +79,35 @@ function registerEVRoutes(app, deps = {}) {
     };
   }
 
+  function deriveTeslaPartnerDomain({ domain, redirectUri }) {
+    const explicitDomain = String(domain || '').trim().toLowerCase();
+    if (explicitDomain) {
+      return explicitDomain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    }
+
+    const redirect = String(redirectUri || '').trim();
+    if (!redirect) {
+      throw new Error('Tesla partner domain registration requires redirectUri or domain');
+    }
+
+    let parsed;
+    try {
+      parsed = new URL(redirect);
+    } catch (error) {
+      throw new Error('Tesla partner domain registration requires a valid redirectUri', { cause: error });
+    }
+
+    return String(parsed.hostname || '').trim().toLowerCase();
+  }
+
   function isTeslaReconnectError(error) {
     const status = extractErrorStatus(error);
     const message = extractErrorMessage(error);
     if (status === 401) return true;
     if (!message) return false;
     if (status === 400 && /invalid.?grant|invalid.?token|expired|revoked/.test(message)) return true;
-    if (status === 403 && /unauthori[sz]ed|invalid.?token|expired|revoked|access denied/.test(message)) return true;
-    return /invalid.?grant|invalid.?token|token expired|token revoked|unauthori[sz]ed/.test(message);
+    if (status === 403 && /invalid.?grant|invalid.?token|token expired|token revoked|expired|revoked|refresh token/.test(message)) return true;
+    return /invalid.?grant|invalid.?token|token expired|token revoked|refresh token.*(expired|revoked|invalid)|oauth.*(expired|revoked|invalid)/.test(message);
   }
 
   function isTeslaPermissionDeniedError(error) {
@@ -117,6 +140,33 @@ function registerEVRoutes(app, deps = {}) {
     return /vehicle.*(offline|asleep|unavailable)|\boffline\b|\basleep\b/.test(message);
   }
 
+  function isTeslaPartnerPublicKeyConflict(error) {
+    const message = extractErrorMessage(error);
+    return /public key hash has already been taken/.test(message);
+  }
+
+  function isTeslaPartnerDomainAccessDenied(error) {
+    const message = extractErrorMessage(error);
+    return /does not have access to/i.test(message);
+  }
+
+  async function verifyTeslaPartnerDomainAlreadyRegistered(params) {
+    try {
+      const result = await getTeslaPartnerDomainPublicKey(
+        params,
+        teslaHttpClient || createTeslaHttpClient()
+      );
+      return Boolean(result && typeof result.publicKey === 'string' && result.publicKey.trim());
+    } catch (error) {
+      logger.warn(`Tesla partner public key verification failed after registration conflict: ${JSON.stringify({
+        domain: params?.domain,
+        region: params?.region,
+        error: error?.message || String(error)
+      })}`);
+      return false;
+    }
+  }
+
   function isTeslaUpstreamServiceError(error) {
     const status = extractErrorStatus(error);
     if (status >= 500 && status < 600) return true;
@@ -125,8 +175,10 @@ function registerEVRoutes(app, deps = {}) {
   }
 
   function isTeslaProxyFailureError(error) {
-    if (error?.isProxyFailure === true) return true;
     const status = extractErrorStatus(error);
+    // 408/403 through the proxy are Tesla responses, not proxy infrastructure failures
+    if (status === 408 || status === 403) return false;
+    if (error?.isProxyFailure === true) return true;
     const message = extractErrorMessage(error);
     return status === 502 || /proxy|signed command proxy|not_a_json_request|signed_command_proxy/.test(message);
   }
@@ -134,7 +186,7 @@ function registerEVRoutes(app, deps = {}) {
   function isTeslaVirtualKeyMissingError(error) {
     if (error?.isVirtualKeyMissing === true) return true;
     const message = extractErrorMessage(error);
-    return /missing_key|public key has not been paired|key has not been paired|no private key available/.test(message);
+    return /missing_key|public key has not been paired|key has not been paired|key not paired|no private key available|KeyNotPaired/.test(message);
   }
 
   function isTeslaCommandConflictError(error) {
@@ -1251,6 +1303,17 @@ function registerEVRoutes(app, deps = {}) {
           });
         }
 
+        if (readiness?.state === 'oauth_scope_upgrade_required') {
+          return res.status(403).json({
+            errno: 403,
+            error: 'Tesla charging commands require the Tesla vehicle_cmds permission for this vehicle. Reconnect Tesla in Settings and approve command access again.',
+            result: {
+              reasonCode: readiness.reasonCode || 'tesla_vehicle_cmds_scope_required',
+              readiness
+            }
+          });
+        }
+
         const commandContext = {
           ...baseContext,
           commandReadiness: readiness
@@ -1407,6 +1470,154 @@ function registerEVRoutes(app, deps = {}) {
       const url = buildTeslaAuthUrl({ clientId, redirectUri, codeChallenge, state: String(state || '') }, region || 'na');
       return res.json({ errno: 0, result: { url } });
     } catch (err) {
+      return res.status(500).json({ errno: 500, error: err.message });
+    }
+  });
+
+  /**
+   * POST /api/ev/partner/check-domain-access
+   * Check whether the Tesla Fleet app credentials have access to the partner domain.
+   * Body: { clientId, clientSecret, redirectUri?, domain?, region? }
+   */
+  app.post('/api/ev/partner/check-domain-access', authenticateUser, async (req, res) => {
+    const { clientId, clientSecret, redirectUri, domain, region } = req.body || {};
+
+    if (!clientId || !clientSecret || (!redirectUri && !domain)) {
+      return res.status(400).json({
+        errno: 400,
+        error: 'clientId, clientSecret, and redirectUri (or domain) are required'
+      });
+    }
+
+    try {
+      const resolvedDomain = deriveTeslaPartnerDomain({ domain, redirectUri });
+      const result = await getTeslaPartnerDomainPublicKey(
+        {
+          clientId,
+          clientSecret,
+          domain: resolvedDomain,
+          region: region || 'na'
+        },
+        teslaHttpClient || createTeslaHttpClient()
+      );
+
+      return res.json({
+        errno: 0,
+        result: {
+          accessible: true,
+          domain: resolvedDomain,
+          region: region || 'na',
+          publicKeyPresent: Boolean(String(result?.publicKey || '').trim())
+        }
+      });
+    } catch (err) {
+      const resolvedDomain = deriveTeslaPartnerDomain({ domain, redirectUri });
+      if (isTeslaPartnerDomainAccessDenied(err)) {
+        return res.json({
+          errno: 0,
+          result: {
+            accessible: false,
+            domain: resolvedDomain,
+            region: region || 'na',
+            reasonCode: 'tesla_partner_domain_access_denied',
+            error: extractErrorMessage(err) || 'This Tesla Fleet app does not have access to the domain'
+          }
+        });
+      }
+
+      return res.json({
+        errno: 0,
+        result: {
+          accessible: false,
+          domain: resolvedDomain,
+          region: region || 'na',
+          reasonCode: 'tesla_partner_domain_lookup_failed',
+          error: extractErrorMessage(err) || err.message || 'Tesla partner domain lookup failed'
+        }
+      });
+    }
+  });
+
+  /**
+   * POST /api/ev/partner/register-domain
+   * Register the Tesla Fleet app domain for virtual-key pairing.
+   * Body: { clientId, clientSecret, redirectUri?, domain?, region? }
+   */
+  app.post('/api/ev/partner/register-domain', authenticateUser, async (req, res) => {
+    const { clientId, clientSecret, redirectUri, domain, region } = req.body || {};
+
+    if (!clientId || !clientSecret || (!redirectUri && !domain)) {
+      return res.status(400).json({
+        errno: 400,
+        error: 'clientId, clientSecret, and redirectUri (or domain) are required'
+      });
+    }
+
+    try {
+      const resolvedDomain = deriveTeslaPartnerDomain({ domain, redirectUri });
+      if (!resolvedDomain) {
+        return res.status(400).json({ errno: 400, error: 'Unable to determine Tesla partner domain' });
+      }
+
+      const partnerClient = teslaHttpClient || createTeslaHttpClient();
+
+      const result = await registerTeslaPartnerDomain(
+        {
+          clientId,
+          clientSecret,
+          domain: resolvedDomain,
+          region: region || 'na'
+        },
+        partnerClient
+      );
+
+      return res.json({
+        errno: 0,
+        result: {
+          ...result,
+          alreadyRegistered: false
+        }
+      });
+    } catch (err) {
+      if (isTeslaPartnerPublicKeyConflict(err)) {
+        const resolvedDomain = deriveTeslaPartnerDomain({ domain, redirectUri });
+        const alreadyRegistered = await verifyTeslaPartnerDomainAlreadyRegistered({
+          clientId,
+          clientSecret,
+          domain: resolvedDomain,
+          region: region || 'na'
+        });
+
+        if (alreadyRegistered) {
+          return res.json({
+            errno: 0,
+            result: {
+              registered: true,
+              alreadyRegistered: true,
+              verificationState: 'verified',
+              domain: resolvedDomain,
+              region: region || 'na'
+            }
+          });
+        }
+
+        logger.warn(`Tesla partner registration conflict treated as already registered: ${JSON.stringify({
+          domain: resolvedDomain,
+          region: region || 'na',
+          reason: 'public_key_hash_taken_unverified'
+        })}`);
+
+        return res.json({
+          errno: 0,
+          result: {
+            registered: true,
+            alreadyRegistered: true,
+            verificationState: 'unverified_conflict',
+            domain: resolvedDomain,
+            region: region || 'na'
+          }
+        });
+      }
       return res.status(500).json({ errno: 500, error: err.message });
     }
   });

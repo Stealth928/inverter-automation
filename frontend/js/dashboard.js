@@ -3045,7 +3045,7 @@
             const state = String(readiness?.state || '').trim();
             if (state === 'ready_signed') return 'Signed Tesla commands';
             if (state === 'ready_direct') return 'Direct Tesla commands';
-            if (state === 'proxy_unavailable') return 'Signed Tesla commands unavailable';
+            if (state === 'proxy_unavailable') return 'Virtual key pairing required';
             if (state === 'read_only') return 'Read-only Tesla connection';
             return 'Checking Tesla command readiness';
         }
@@ -3113,8 +3113,8 @@
             if (state === 'proxy_unavailable') {
                 return {
                     kind: 'warn',
-                    label: 'Proxy Required',
-                    detail: 'This Tesla requires signed commands. Configure the signed-command proxy before charging controls can be enabled.',
+                    label: 'Pairing Required',
+                    detail: 'This vehicle requires virtual-key pairing before charging controls can be used. Open Settings and follow Step\u00a04 to pair your vehicle via the Tesla app.',
                     canControl: false,
                     canWake: false
                 };
@@ -3916,8 +3916,8 @@
                     };
                     setEVCommandHint('warning', 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings before retrying charging controls.');
                 }
-                if (/virtual key|missing_virtual_key/i.test(message)) {
-                    setEVCommandHint('warning', 'Tesla virtual-key pairing is required before charging controls can be used. Finish pairing in Settings, then retry.');
+                if (/vehicle command protocol|signed-command proxy|signed command proxy|not_a_json_request|virtual key|missing_virtual_key/i.test(message)) {
+                    setEVCommandHint('warning', 'This vehicle requires virtual-key pairing before charging commands will work. On your phone with the Tesla app installed, open tesla.com/_ak/socratesautomation.com, approve in the app, then confirm on the vehicle screen.');
                 }
                 if (/offline|asleep|wake the vehicle/i.test(message)) {
                     evDashboardState.statusByVehicleId[vehicleId] = {

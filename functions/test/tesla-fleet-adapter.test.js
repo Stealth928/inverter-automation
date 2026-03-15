@@ -34,7 +34,9 @@ function makeHttpClient(responseMap = {}) {
 
 const FLEET_NA_BASE = TESLA_FLEET_REGIONS.na;
 
-function makeContext(token = 'test-access-token') {
+const TEST_SCOPED_ACCESS_TOKEN = 'eyJhbGciOiJub25lIn0.eyJzY3AiOlsib3BlbmlkIiwiZW1haWwiLCJvZmZsaW5lX2FjY2VzcyIsInZlaGljbGVfZGV2aWNlX2RhdGEiLCJ2ZWhpY2xlX2NtZHMiLCJ2ZWhpY2xlX2NoYXJnaW5nX2NtZHMiXX0.';
+
+function makeContext(token = TEST_SCOPED_ACCESS_TOKEN) {
   return { credentials: { accessToken: token, clientId: 'client123', refreshToken: 'ref456' } };
 }
 
@@ -255,6 +257,45 @@ describe('TeslaFleetAdapter — getCommandReadiness', () => {
       firmwareVersion: '2026.2.1'
     });
     expect(http.calls[0].opts.body).toEqual({ vins: ['5YJ3E1EA7JF000001'] });
+  });
+
+  test('returns oauth_scope_upgrade_required when VCP is required and token is missing vehicle_cmds', async () => {
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/fleet_status`]: {
+        status: 200,
+        data: {
+          response: [
+            {
+              vin: '5YJ3E1EA7JF000001',
+              vehicle_command_protocol_required: true,
+              total_number_of_keys: 4,
+              firmware_version: '2026.2.1'
+            }
+          ]
+        },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({
+      httpClient: http,
+      signedCommandProxyUrl: 'https://tesla-proxy.example.com'
+    });
+
+    const readiness = await adapter.getCommandReadiness('5YJ3E1EA7JF000001', {
+      ...makeContext(),
+      credentials: {
+        accessToken: 'eyJhbGciOiJub25lIn0.eyJzY3AiOlsib3BlbmlkIiwiZW1haWwiLCJvZmZsaW5lX2FjY2VzcyIsInZlaGljbGVfZGV2aWNlX2RhdGEiLCJ2ZWhpY2xlX2NoYXJnaW5nX2NtZHMiXX0.',
+        vin: '5YJ3E1EA7JF000001'
+      }
+    });
+
+    expect(readiness).toMatchObject({
+      state: 'oauth_scope_upgrade_required',
+      transport: 'signed',
+      vehicleCommandProtocolRequired: true,
+      reasonCode: 'tesla_vehicle_cmds_scope_required',
+      missingScopes: ['vehicle_cmds']
+    });
   });
 
   test('returns proxy_unavailable when VCP is required but no proxy is configured', async () => {
@@ -595,6 +636,8 @@ describe('buildTeslaAuthUrl', () => {
     expect(url).toContain(encodeURIComponent('https://example.com/callback'));
     expect(url).toContain('code_challenge=abc123');
     expect(url).toContain('code_challenge_method=S256');
+    expect(url).toContain('prompt_missing_scopes=true');
+    expect(url).toContain('require_requested_scopes=true');
   });
 
   test('uses status-only scopes', () => {
@@ -604,9 +647,9 @@ describe('buildTeslaAuthUrl', () => {
       codeChallenge: 'abc123'
     });
     expect(url).toContain('vehicle_device_data');
-    expect(url).not.toContain('vehicle_cmds');
+    expect(url).toContain('vehicle_cmds');
     expect(url).toContain('vehicle_charging_cmds');
-    expect(TESLA_REQUIRED_SCOPES).toEqual(['openid', 'email', 'offline_access', 'vehicle_device_data', 'vehicle_charging_cmds']);
+    expect(TESLA_REQUIRED_SCOPES).toEqual(['openid', 'email', 'offline_access', 'vehicle_device_data', 'vehicle_cmds', 'vehicle_charging_cmds']);
   });
 
   test('uses China auth base for cn region', () => {

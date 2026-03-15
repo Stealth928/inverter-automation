@@ -632,6 +632,26 @@ class APIClient {
     return this.get('/api/ev/oauth/start', { clientId, redirectUri, codeChallenge, region, state: state || undefined });
   }
 
+  async checkEVPartnerDomainAccess(clientId, clientSecret, redirectUri, region, domain = '') {
+    return this.post('/api/ev/partner/check-domain-access', {
+      clientId,
+      clientSecret,
+      redirectUri,
+      region,
+      ...(domain ? { domain } : {})
+    });
+  }
+
+  async registerEVPartnerDomain(clientId, clientSecret, redirectUri, region, domain = '') {
+    return this.post('/api/ev/partner/register-domain', {
+      clientId,
+      clientSecret,
+      redirectUri,
+      region,
+      ...(domain ? { domain } : {})
+    });
+  }
+
   async exchangeEVOAuthCode(vehicleId, clientId, clientSecret, redirectUri, code, codeVerifier, region, options = {}) {
     return this.post('/api/ev/oauth/callback', {
       vehicleId,

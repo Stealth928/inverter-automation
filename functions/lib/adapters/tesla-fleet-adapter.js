@@ -32,6 +32,7 @@ const TESLA_REQUIRED_SCOPES = Object.freeze([
   'email',
   'offline_access',
   'vehicle_device_data',
+  'vehicle_cmds',
   'vehicle_charging_cmds'
 ]);
 
@@ -112,6 +113,42 @@ function maybeJsonParse(text) {
   } catch {
     return text;
   }
+}
+
+function decodeJwtPayload(token) {
+  const raw = String(token || '').trim();
+  if (!raw) return {};
+  const parts = raw.split('.');
+  if (parts.length < 2) return {};
+  try {
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) || {};
+  } catch {
+    return {};
+  }
+}
+
+function getTeslaGrantedScopes(credentials = {}) {
+  const scopes = new Set();
+  const explicit = String(credentials?.scope || '').trim();
+  if (explicit) {
+    for (const scope of explicit.split(/\s+/)) {
+      if (scope) scopes.add(scope);
+    }
+  }
+  const payload = decodeJwtPayload(credentials?.accessToken);
+  const jwtScopes = Array.isArray(payload?.scp)
+    ? payload.scp
+    : String(payload?.scope || '').trim().split(/\s+/).filter(Boolean);
+  for (const scope of jwtScopes) {
+    if (scope) scopes.add(String(scope));
+  }
+  return scopes;
+}
+
+function hasTeslaScope(credentials, scope) {
+  return getTeslaGrantedScopes(credentials).has(String(scope || '').trim());
 }
 
 function encodeHttpBody(headers, body) {
@@ -260,6 +297,9 @@ function buildTeslaCommandReadiness(raw = {}, options = {}) {
     } else if (!hasSignedCommandProxy) {
       state = 'proxy_unavailable';
       reasonCode = 'signed_command_proxy_unavailable';
+    } else if (totalNumberOfKeys !== null && totalNumberOfKeys === 0) {
+      state = 'virtual_key_required';
+      reasonCode = 'virtual_key_not_paired';
     } else {
       state = 'ready_signed';
     }
@@ -295,6 +335,14 @@ function isVirtualKeyMissingError(error) {
 
 function isProxyFailureError(error) {
   return Boolean(error?.isProxyFailure) || /proxy/.test(String(error?.message || '').toLowerCase());
+}
+
+function isTransportTimeoutError(error) {
+  const message = String(error?.message || error?.cause?.message || '').toLowerCase();
+  return (
+    Number(error?.status) === 408 ||
+    /timeout|timed out|aborterror|aborted|etimedout|econnreset|ehostunreach|gateway timeout/.test(message)
+  );
 }
 
 function getTeslaAuthorizeBase(region = TESLA_DEFAULT_REGION) {
@@ -603,11 +651,24 @@ class TeslaFleetAdapter extends EVAdapter {
         })
       );
       const entry = extractFleetStatusEntry(response.data?.response ?? response.data, vehicleRef.vin) || {};
-      return buildTeslaCommandReadiness(entry, {
+      const readiness = buildTeslaCommandReadiness(entry, {
         source: 'fleet_status',
         vehicleVin: vehicleRef.vin,
         hasSignedCommandProxy: this._hasSignedCommandProxy()
       });
+      if (
+        readiness?.vehicleCommandProtocolRequired === true
+        && readiness?.state === 'ready_signed'
+        && !hasTeslaScope(context?.credentials, 'vehicle_cmds')
+      ) {
+        return {
+          ...readiness,
+          state: 'oauth_scope_upgrade_required',
+          reasonCode: 'tesla_vehicle_cmds_scope_required',
+          missingScopes: ['vehicle_cmds']
+        };
+      }
+      return readiness;
     } catch (error) {
       this._logger.warn('TeslaFleetAdapter', `Command readiness lookup failed for ${vehicleRef.vin}: ${error?.message || error}`);
       if (this._isAuthError(error) || Number(error?.status) === 429 || Number(error?.status) >= 500 || isProxyFailureError(error)) {
@@ -724,7 +785,22 @@ class TeslaFleetAdapter extends EVAdapter {
       );
       return this._normalizeCommandResponse(commandPath, response.data, 'signed', readiness);
     } catch (error) {
-      error.isProxyFailure = isProxyFailureError(error) || Number(error?.status) >= 500;
+      error.transport = error.transport || 'signed';
+      if (isVehicleCommandProtocolRequiredError(error)) {
+        error.isVehicleCommandProtocolRequired = true;
+        error.reasonCode = error.reasonCode || 'vehicle_command_protocol_required';
+      }
+      // 403 Forbidden on the signed path = Tesla doesn't accept our signing key (virtual key not paired)
+      if (Number(error?.status) === 403 && !error.isVehicleCommandProtocolRequired) {
+        error.isVirtualKeyMissing = true;
+        error.reasonCode = error.reasonCode || 'missing_virtual_key';
+      }
+      if (isTransportTimeoutError(error)) {
+        error.isProxyFailure = true;
+        error.reasonCode = error.reasonCode || 'signed_command_proxy_timeout';
+      } else {
+        error.isProxyFailure = isProxyFailureError(error) || Number(error?.status) >= 500 || error.isVehicleCommandProtocolRequired === true;
+      }
       throw error;
     }
   }
@@ -752,8 +828,32 @@ class TeslaFleetAdapter extends EVAdapter {
       throw error;
     }
 
+    if (readiness?.state === 'oauth_scope_upgrade_required') {
+      const error = new Error('Tesla authorization is missing the vehicle_cmds scope required for Vehicle Command Protocol commands');
+      error.status = 403;
+      error.reasonCode = readiness.reasonCode || 'tesla_vehicle_cmds_scope_required';
+      throw error;
+    }
+
+    if (readiness?.state === 'virtual_key_required') {
+      const error = new Error('Tesla virtual key has not been paired with this vehicle. Use the Tesla app to add the signing key.');
+      error.status = 409;
+      error.isVirtualKeyMissing = true;
+      error.reasonCode = 'missing_virtual_key';
+      throw error;
+    }
+
     if (readiness?.transport === 'signed') {
-      return this._sendSignedCommand(commandPath, vehicleId, context, payload, readiness);
+      try {
+        return await this._sendSignedCommand(commandPath, vehicleId, context, payload, readiness);
+      } catch (error) {
+        // 403 Forbidden from signed proxy = Tesla doesn't recognise the signing key
+        if (Number(error?.status) === 403 && !error.isVirtualKeyMissing) {
+          error.isVirtualKeyMissing = true;
+          error.reasonCode = error.reasonCode || 'missing_virtual_key';
+        }
+        throw error;
+      }
     }
 
     try {
@@ -928,7 +1028,9 @@ function buildTeslaAuthUrl(params, region = TESLA_DEFAULT_REGION) {
     redirect_uri: redirectUri,
     scope,
     state,
-    audience
+    audience,
+    prompt_missing_scopes: 'true',
+    require_requested_scopes: 'true'
   });
 
   if (codeChallenge) {
@@ -937,6 +1039,113 @@ function buildTeslaAuthUrl(params, region = TESLA_DEFAULT_REGION) {
   }
 
   return `${getTeslaAuthorizeBase(region)}/authorize?${qs.toString()}`;
+}
+
+/**
+ * One-time domain registration with Tesla Fleet API.
+ * Obtains a client_credentials token then calls POST /api/1/partner_accounts
+ * to associate `domain` with the developer app. Required before virtual-key
+ * pairing will succeed for that domain.
+ */
+async function registerTeslaPartnerDomain(params, httpClient) {
+  const {
+    clientId,
+    clientSecret,
+    domain,
+    region = TESLA_DEFAULT_REGION
+  } = params;
+
+  if (!clientId || !clientSecret || !domain) {
+    throw new Error('registerTeslaPartnerDomain: clientId, clientSecret, and domain are required');
+  }
+  if (!httpClient || typeof httpClient !== 'function') {
+    throw new Error('registerTeslaPartnerDomain: httpClient is required');
+  }
+
+  const tokenBody = {
+    grant_type: 'client_credentials',
+    client_id: clientId,
+    client_secret: clientSecret,
+    scope: TESLA_REQUIRED_SCOPES.join(' '),
+    audience: getFleetBase(region)
+  };
+
+  const tokenResponse = await postTeslaTokenRequest(httpClient, tokenBody, null, region);
+  const accessToken = tokenResponse.data?.access_token;
+  if (!accessToken) {
+    throw new Error('registerTeslaPartnerDomain: failed to obtain partner token from Tesla');
+  }
+
+  const fleetBase = getFleetBase(region);
+  const response = await httpClient('POST', `${fleetBase}/api/1/partner_accounts`, {
+    body: { domain },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (response.status !== 200 && response.status !== 204) {
+    const detail = response.data?.error || response.data?.message || `HTTP ${response.status}`;
+    throw new Error(`Tesla partner registration failed: ${detail}`);
+  }
+
+  return { registered: true, domain, region };
+}
+
+async function getTeslaPartnerDomainPublicKey(params, httpClient) {
+  const {
+    clientId,
+    clientSecret,
+    domain,
+    region = TESLA_DEFAULT_REGION
+  } = params;
+
+  if (!clientId || !clientSecret || !domain) {
+    throw new Error('getTeslaPartnerDomainPublicKey: clientId, clientSecret, and domain are required');
+  }
+  if (!httpClient || typeof httpClient !== 'function') {
+    throw new Error('getTeslaPartnerDomainPublicKey: httpClient is required');
+  }
+
+  const tokenBody = {
+    grant_type: 'client_credentials',
+    client_id: clientId,
+    client_secret: clientSecret,
+    scope: TESLA_REQUIRED_SCOPES.join(' '),
+    audience: getFleetBase(region)
+  };
+
+  const tokenResponse = await postTeslaTokenRequest(httpClient, tokenBody, null, region);
+  const accessToken = tokenResponse.data?.access_token;
+  if (!accessToken) {
+    throw new Error('getTeslaPartnerDomainPublicKey: failed to obtain partner token from Tesla');
+  }
+
+  const fleetBase = getFleetBase(region);
+  const response = await httpClient('GET', `${fleetBase}/api/1/partner_accounts/public_key?domain=${encodeURIComponent(domain)}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  if (response.status !== 200) {
+    const detail = response.data?.error || response.data?.message || `HTTP ${response.status}`;
+    throw new Error(`Tesla partner public key lookup failed: ${detail}`);
+  }
+
+  const publicKey = response.data?.public_key
+    || response.data?.response?.public_key
+    || response.data?.result?.public_key
+    || response.data?.result?.publicKey
+    || response.data?.publicKey
+    || '';
+
+  return {
+    domain,
+    region,
+    publicKey: String(publicKey || '')
+  };
 }
 
 async function exchangeTeslaAuthCode(params, httpClient) {
@@ -982,6 +1191,8 @@ module.exports = {
   createTeslaHttpClient,
   buildTeslaAuthUrl,
   exchangeTeslaAuthCode,
+  getTeslaPartnerDomainPublicKey,
+  registerTeslaPartnerDomain,
   normalizeTeslaVehicleData,
   normalizeTeslaVin,
   TESLA_AUTH_BASE,

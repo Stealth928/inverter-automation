@@ -17,6 +17,8 @@
         ready: false,
         user: null,
         isAdmin: null,
+        profileInitUid: '',
+        profileInitPromise: null,
         readyCallbacks: [],
         signOutCallbacks: [],
         metricsTimer: null,
@@ -78,21 +80,60 @@
         }, 400);
     }
 
+    function shouldSkipProfileInit() {
+        const impersonation = getImpersonationState();
+        return Boolean(impersonation && impersonation.uid && impersonation.mode);
+    }
+
+    async function ensureUserProfileInitialized(client) {
+        const currentUid = String(state.user?.uid || '');
+        if (!currentUid) return true;
+        if (shouldSkipProfileInit()) return true;
+        if (state.profileInitUid === currentUid && state.profileInitPromise) {
+            return state.profileInitPromise;
+        }
+
+        state.profileInitUid = currentUid;
+        state.profileInitPromise = (async () => {
+            try {
+                const initResp = await client.fetch('/api/user/init-profile', { method: 'POST' });
+                let initData = null;
+                try {
+                    initData = await initResp.json();
+                } catch (jsonErr) {
+                    initData = null;
+                }
+
+                if (initResp.status === 401) {
+                    return false;
+                }
+
+                if (initResp.status === 403) {
+                    console.info('[AppShell] Skipping user profile init: forbidden for current session.');
+                    return true;
+                }
+
+                if (!initResp.ok || (initData && initData.errno !== 0)) {
+                    console.warn('[AppShell] User profile init returned error:', initData?.error || `Request failed: ${initResp.status}`);
+                }
+            } catch (initErr) {
+                console.warn('[AppShell] User profile initialization failed:', initErr && initErr.message ? initErr.message : initErr);
+            }
+            return true;
+        })();
+
+        return state.profileInitPromise;
+    }
+
     async function ensureSetupComplete() {
         if (!state.options.checkSetup) return true;
         if (state.options.pageName === 'setup') return true;
         try {
             const client = window.apiClient || await waitForAPIClient(4000);
-            
-            // Initialize user profile in Firestore (creates document and automation state if missing)
-            try {
-              const initResp = await client.fetch('/api/user/init-profile', { method: 'POST' });
-              const initData = await initResp.json();
-              if (initData.errno !== 0) {
-                console.warn('[AppShell] User profile init returned error:', initData.error);
-              }
-            } catch (initErr) {
-              console.warn('[AppShell] User profile initialization failed:', initErr && initErr.message ? initErr.message : initErr);
+            const initOk = await ensureUserProfileInitialized(client);
+            if (!initOk) {
+                handleUnauthorizedRedirect();
+                return false;
             }
             
             // Ensure we have a fresh token before calling setup-status
@@ -903,6 +944,8 @@
         clearImpersonationState();
         state.user = null;
         state.ready = false;
+        state.profileInitUid = '';
+        state.profileInitPromise = null;
         stopMetricsTimer();
         updateUserIdentity(null);
         state.signOutCallbacks.forEach(cb => {
