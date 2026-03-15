@@ -378,17 +378,52 @@
         }
         .tesla-onboarding-actions {
             display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        .tesla-actions-primary {
+            display: flex;
             gap: 10px;
             align-items: center;
-            margin-top: 16px;
             flex-wrap: wrap;
         }
-            .tesla-pending-status.is-idle {
-                border-color: color-mix(in srgb, var(--border-primary) 82%, transparent);
-                background: color-mix(in srgb, var(--bg-tertiary) 72%, transparent);
-                color: var(--text-secondary);
-                cursor: default;
-            }
+        .tesla-actions-tools {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+            font-size: 12px;
+        }
+        .tesla-actions-sep {
+            color: var(--text-tertiary, #999);
+            user-select: none;
+        }
+        .btn-link-subtle {
+            background: none;
+            border: none;
+            padding: 2px 4px;
+            font-size: 12px;
+            color: var(--text-secondary, #888);
+            cursor: pointer;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+            border-radius: 4px;
+            transition: color 0.15s, background 0.15s;
+        }
+        .btn-link-subtle:hover {
+            color: var(--accent-blue, #4a9eff);
+            background: color-mix(in srgb, var(--accent-blue, #4a9eff) 8%, transparent);
+        }
+        .btn-link-subtle:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+        .btn-link-subtle.tesla-pending-status.is-idle {
+            text-decoration: none;
+            color: var(--text-tertiary, #999);
+            cursor: default;
+        }
         .tesla-onboarding-status {
             font-size: 13px;
             color: var(--text-secondary);
@@ -1844,31 +1879,51 @@
                 <input type="text" id="teslaOnboardingUsernameHint" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
             </form>
 
-            <!-- Compact quick-start steps -->
-            <div class="tesla-quick-steps">
+            <!-- Not configured banner (shown when no shared Tesla app config exists and user is not admin) -->
+            <div id="teslaNotConfiguredBanner" style="display:none;padding:20px;text-align:center;color:var(--text-secondary);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:16px;">
+                <div style="font-size:32px;margin-bottom:8px;">🔧</div>
+                <div style="font-weight:600;margin-bottom:4px;">Tesla integration is not configured yet</div>
+                <div style="font-size:13px;">An administrator needs to set up the shared Tesla Fleet app before vehicles can be connected.</div>
+            </div>
+
+            <!-- Admin quick-start steps (only visible to admins) -->
+            <div class="tesla-quick-steps" id="teslaAdminQuickSteps" style="display:none;">
                 <div class="tesla-quick-step">
                     <span class="step-num">1</span>
-                    <div class="step-text"><strong>Create Tesla Fleet app</strong>Set origin to <code>socratesautomation.com</code> and copy the Client ID.</div>
+                    <div class="step-text"><strong>Create Tesla Fleet app</strong>Set origin to <code data-tesla-origin-url>this site's origin</code>, copy Client ID &amp; Secret.</div>
                 </div>
                 <div class="tesla-quick-step">
                     <span class="step-num">2</span>
-                    <div class="step-text"><strong>Enable required scopes</strong>Vehicle Information, Vehicle Commands, Charging Management.</div>
+                    <div class="step-text"><strong>Save &amp; register domain</strong>Paste credentials below, click Save App Config, then Register Domain.</div>
                 </div>
                 <div class="tesla-quick-step">
                     <span class="step-num">3</span>
-                    <div class="step-text"><strong>Enter VIN &amp; connect</strong>Paste your 17-char VIN, pick region, then Connect with Tesla.</div>
+                    <div class="step-text"><strong>Pair virtual key (2021+)</strong>Open <a data-tesla-pair-link href="#" target="_blank" rel="noreferrer">loading pairing link…</a> on your phone &amp; approve on the car.</div>
+                </div>
+            </div>
+
+            <!-- User quick-start steps (visible to non-admin users when shared config exists) -->
+            <div class="tesla-quick-steps" id="teslaUserQuickSteps" style="display:none;">
+                <div class="tesla-quick-step">
+                    <span class="step-num">1</span>
+                    <div class="step-text"><strong>Enter your VIN</strong>Find the 17-character VIN in the Tesla app or on the vehicle.</div>
                 </div>
                 <div class="tesla-quick-step">
-                    <span class="step-num">4</span>
-                    <div class="step-text"><strong>Pair virtual key (2021+)</strong>Open <a href="https://tesla.com/_ak/socratesautomation.com" target="_blank" rel="noreferrer">pairing link</a> on your phone &amp; approve.</div>
+                    <span class="step-num">2</span>
+                    <div class="step-text"><strong>Connect with Tesla</strong>Pick your region and approve access through Tesla.</div>
+                </div>
+                <div class="tesla-quick-step">
+                    <span class="step-num">3</span>
+                    <div class="step-text"><strong>Pair virtual key (2021+)</strong>Open <a data-tesla-pair-link href="#" target="_blank" rel="noreferrer">loading pairing link…</a> on your phone &amp; approve on the car.</div>
                 </div>
             </div>
 
             <div class="tesla-onboarding-layout">
-                <div class="tesla-onboarding-panel">
-                    <div class="tesla-panel-step">Step 1</div>
-                    <div class="tesla-panel-title">Tesla app credentials</div>
-                    <div class="tesla-panel-copy">From your <a href="https://developer.tesla.com/" target="_blank" rel="noreferrer">Tesla Developer Dashboard</a>. Reuse the same Fleet app you created for SoCrates — see FAQ below if unsure.</div>
+                <!-- Admin panel: Tesla app credentials (hidden for regular users) -->
+                <div class="tesla-onboarding-panel" id="teslaAdminPanel" style="display:none;">
+                    <div class="tesla-panel-step">Admin</div>
+                    <div class="tesla-panel-title">Shared Tesla Fleet App</div>
+                    <div class="tesla-panel-copy">These credentials are shared with all users on this domain. From your <a href="https://developer.tesla.com/" target="_blank" rel="noreferrer">Tesla Developer Dashboard</a>.</div>
                     <div class="tesla-onboarding-grid">
                         <div class="setting-item">
                             <div class="setting-label">Tesla Fleet Client ID</div>
@@ -1879,9 +1934,9 @@
                         </div>
                         <div class="setting-item">
                             <div class="setting-label">Tesla Fleet Client Secret</div>
-                            <div class="setting-hint">Recommended — enables virtual-key pairing on 2021+ vehicles</div>
+                            <div class="setting-hint">Required — enables domain registration, virtual-key pairing and charging commands</div>
                             <div class="setting-input">
-                                <input type="password" id="teslaClientSecret" form="tesla-onboarding-form" placeholder="Optional" autocomplete="new-password" disabled>
+                                <input type="password" id="teslaClientSecret" form="tesla-onboarding-form" placeholder="Required for domain registration" autocomplete="new-password" disabled>
                             </div>
                         </div>
                         <div class="setting-item">
@@ -1893,9 +1948,13 @@
                             </div>
                         </div>
                     </div>
+                    <div style="margin-top:12px;">
+                        <button class="btn-primary" type="button" id="teslaSaveAppConfigBtn" disabled>Save App Config</button>
+                        <span id="teslaSaveAppConfigStatus" style="margin-left:8px;font-size:12px;color:var(--text-secondary);"></span>
+                    </div>
                 </div>
                 <div class="tesla-onboarding-panel">
-                    <div class="tesla-panel-step">Step 2</div>
+                    <div class="tesla-panel-step" id="teslaVehiclePanelStep">Vehicle</div>
                     <div class="tesla-panel-title">Vehicle details</div>
                     <div class="tesla-panel-copy">Identify the Tesla and pick the account region for OAuth sign-in.</div>
                     <div class="tesla-onboarding-grid">
@@ -1929,10 +1988,17 @@
                 </div>
             </div>
             <div class="tesla-onboarding-actions">
-                <button class="btn-secondary" type="button" id="teslaCheckOwnershipBtn">Check App Ownership</button>
-                <button class="btn-primary" type="button" id="teslaConnectBtn">Connect with Tesla</button>
-                <button class="btn-secondary" type="button" id="teslaAddVehicleBtn">Add another vehicle</button>
-                <button class="btn-secondary tesla-pending-status is-idle" type="button" id="teslaClearPendingBtn">No Tesla Login Pending</button>
+                <div class="tesla-actions-primary">
+                    <button class="btn-primary" type="button" id="teslaConnectBtn">Connect with Tesla</button>
+                    <button class="btn-secondary" type="button" id="teslaAddVehicleBtn">Add another vehicle</button>
+                </div>
+                <div class="tesla-actions-tools" id="teslaAdminTools" style="display:none;">
+                    <button class="btn-link-subtle" type="button" id="teslaRegisterDomainBtn">Register Domain</button>
+                    <span class="tesla-actions-sep">·</span>
+                    <button class="btn-link-subtle" type="button" id="teslaCheckOwnershipBtn">Check App Ownership</button>
+                    <span class="tesla-actions-sep">·</span>
+                    <button class="btn-link-subtle tesla-pending-status is-idle" type="button" id="teslaClearPendingBtn">No Login Pending</button>
+                </div>
                 <div id="teslaOnboardingStatus" class="tesla-onboarding-status">Start with Step 1 in Tesla Developer Dashboard, then return here to connect.</div>
             </div>
             <div class="faq-section" style="margin-top: 16px;">
@@ -1944,11 +2010,10 @@
                     <div class="faq-item">
                         <div class="faq-question">Detailed step-by-step setup guide</div>
                         <div class="faq-answer">
-                            <strong>1. Create / open your Tesla Fleet app</strong> — In <a href="https://developer.tesla.com/" target="_blank" rel="noreferrer">Tesla Developer Dashboard</a>, create a Fleet app using <em>Authorization Code and Machine-to-Machine</em>. Set Allowed Origin to <code>https://socratesautomation.com</code> and Redirect URI to <code>https://socratesautomation.com/settings.html</code>. Copy the Client ID back here.<br><br>
-                            <strong>2. Enable the right scopes</strong> — On Tesla's API &amp; Scopes screen turn on <em>Vehicle Information</em>, <em>Vehicle Commands</em>, and <em>Vehicle Charging Management</em>. Vehicle Location is optional.<br><br>
-                            <strong>3. Enter VIN &amp; approve</strong> — Paste the 17-char VIN, choose region, click Connect with Tesla, and approve all permissions.<br><br>
-                            <strong>4. Pair virtual key (2021+ vehicles)</strong> — On your phone with the Tesla app, open <a href="https://tesla.com/_ak/socratesautomation.com" target="_blank" rel="noreferrer">tesla.com/_ak/socratesautomation.com</a>, approve the key in the Tesla app, then confirm on the vehicle screen. Required for charging controls.
-                            <div class="faq-tip">SoCrates uses the shared domain <strong>socratesautomation.com</strong>. Reuse your existing Tesla Fleet app for this domain rather than creating a second one. Tesla billing during app creation is Tesla's own Fleet API billing, not a SoCrates subscription.</div>
+                            <strong>1. Create your Tesla Fleet app</strong> — In <a href="https://developer.tesla.com/" target="_blank" rel="noreferrer">Tesla Developer Dashboard</a>, create a Fleet app using <em>Authorization Code and Machine-to-Machine</em>. Set Allowed Origin to <code data-tesla-origin-url>this site's origin</code> and Redirect URI to <code data-tesla-redirect-url>this page's redirect URI</code>. Enable scopes: <em>Vehicle Information</em>, <em>Vehicle Commands</em>, and <em>Vehicle Charging Management</em>. Copy the Client ID and Client Secret.<br><br>
+                            <strong>2. Enter details &amp; connect</strong> — Paste the Tesla Client ID, Client Secret, 17-char VIN, choose region, and click <em>Connect with Tesla</em>. SoCrates automatically registers your domain with Tesla then redirects you to approve access.<br><br>
+                            <strong>3. Pair virtual key (2021+ vehicles)</strong> — On your phone with the Tesla app, open <a data-tesla-pair-link href="#" target="_blank" rel="noreferrer">loading pairing link…</a>, approve the key in the Tesla app, then confirm on the vehicle screen. Required for charging controls.
+                            <div class="faq-tip">Your Tesla Fleet app must use the exact origin and redirect URI shown on this page. Each domain needs its own Tesla Fleet app and keypair — do not reuse an app created for a different domain.</div>
                         </div>
                     </div>
                     <div class="faq-item">
@@ -1960,19 +2025,19 @@
                     <div class="faq-item">
                         <div class="faq-question">What exact Tesla app URLs should I enter?</div>
                         <div class="faq-answer">
-                            Use <code>https://socratesautomation.com</code> as the <strong>Allowed Origin URL</strong>. Use <code>https://socratesautomation.com/settings.html</code> as the <strong>Allowed Redirect URI</strong>. If Tesla asks for an optional returned URL, use the same <code>https://socratesautomation.com/settings.html</code> value.
+                            Use <code data-tesla-origin-url>this site's origin</code> as the <strong>Allowed Origin URL</strong>. Use <code data-tesla-redirect-url>this page's redirect URI</code> as the <strong>Allowed Redirect URI</strong>. If Tesla asks for an optional returned URL, use the same <code data-tesla-redirect-url>this page's redirect URI</code> value.
                         </div>
                     </div>
                     <div class="faq-item">
                         <div class="faq-question">Why does Tesla phone pairing say the third party is not registered?</div>
                         <div class="faq-answer">
-                            That message usually means your Tesla Fleet app has not yet registered the <code>socratesautomation.com</code> domain with Tesla. In the self-managed model, this registration must happen once for each Tesla Client ID. SoCrates can do that automatically during connect when you provide the Tesla <strong>Client Secret</strong>.
+                            That message usually means your Tesla Fleet app has not yet registered the <code data-tesla-domain>current domain</code> domain with Tesla. Keep the Tesla <strong>Client Secret</strong> filled in during connect so SoCrates can attempt the partner-domain registration automatically, and verify the Tesla public key is hosted at <code>https://<span data-tesla-domain>your-domain</span>/.well-known/appspecific/com.tesla.3p.public-key.pem</code>.
                         </div>
                     </div>
                     <div class="faq-item">
                         <div class="faq-question">What does Tesla mean by “Public key hash has already been taken”?</div>
                         <div class="faq-answer">
-                            Tesla is saying the shared SoCrates public key hosted at <code>socratesautomation.com</code> is already registered to another Tesla Fleet app. In that case, do <strong>not</strong> create another Fleet app for the same SoCrates domain. Reuse the original Tesla Fleet app that was first set up for SoCrates.
+                            Tesla is saying the public key hosted for <code data-tesla-domain>this domain</code> is already registered to another Tesla Fleet app. Keep using the Tesla app that originally registered this domain. If you need a separate Tesla app, move SoCrates to a separate domain with a separate Tesla keypair.
                         </div>
                     </div>
                     <div class="faq-item">
@@ -1984,8 +2049,8 @@
                     <div class="faq-item">
                         <div class="faq-question">Should I create a brand new Tesla Fleet app or reuse my existing one?</div>
                         <div class="faq-answer">
-                            For the current SoCrates self-managed flow, you should usually <strong>reuse your existing Tesla Fleet app</strong> for <code>socratesautomation.com</code>. The shared SoCrates public key cannot always be registered to a second Tesla app. Creating another app for the same shared domain can fail with Tesla errors such as <code>Public key hash has already been taken</code>.
-                            <div class="faq-tip">If you already created one Tesla Fleet app for SoCrates, keep using that app's Client ID and Client Secret. A second app is only appropriate if you also control a separate domain and separate Tesla keypair.</div>
+                            In most cases you should <strong>reuse the Tesla Fleet app that already works for this site domain</strong>. Creating a second Tesla app for the same domain can fail with Tesla errors such as <code>Public key hash has already been taken</code>.
+                            <div class="faq-tip">Each SoCrates domain has its own keypair. Reuse the Tesla Fleet app you created for <strong data-tesla-domain>this domain</strong>. If you need to start fresh, generate a new keypair and register the domain again.</div>
                         </div>
                     </div>
                     <div class="faq-item">
@@ -2010,7 +2075,7 @@
                     <div class="faq-item">
                         <div class="faq-question">Do all users need to do the pairing step?</div>
                         <div class="faq-answer">
-                            Users with 2021+ vehicles should assume yes. Open <a href="https://tesla.com/_ak/socratesautomation.com" target="_blank" rel="noreferrer">tesla.com/_ak/socratesautomation.com</a> on a phone with the Tesla app installed, approve the key in the Tesla app, then confirm it on the vehicle screen.
+                            Users with 2021+ vehicles should assume yes. Open <a data-tesla-pair-link href="#" target="_blank" rel="noreferrer">loading pairing link…</a> on a phone with the Tesla app installed, approve the key in the Tesla app, then confirm it on the vehicle screen.
                         </div>
                     </div>
                 </div>

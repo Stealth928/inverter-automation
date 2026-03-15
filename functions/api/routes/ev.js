@@ -35,6 +35,8 @@ function registerEVRoutes(app, deps = {}) {
   const getConfig = typeof deps.getConfig === 'function' ? deps.getConfig : null;
   const incrementApiCount = typeof deps.incrementApiCount === 'function' ? deps.incrementApiCount : null;
   const logger = deps.logger || console;
+  const db = deps.db || null;
+  const requireAdmin = typeof deps.requireAdmin === 'function' ? deps.requireAdmin : null;
   const evUsageControl = deps.evUsageControl || createEvUsageControlService({
     admin: deps.admin || null,
     db: deps.db || null,
@@ -1454,6 +1456,84 @@ function registerEVRoutes(app, deps = {}) {
     }
   );
 
+  // ── Shared Tesla App Config ──────────────────────────────────────────────
+
+  const TESLA_APP_CONFIG_DOC = 'shared/teslaAppConfig';
+
+  async function getSharedTeslaAppConfig() {
+    if (!db) return null;
+    try {
+      const doc = await db.doc(TESLA_APP_CONFIG_DOC).get();
+      return doc.exists ? doc.data() : null;
+    } catch (err) {
+      logger.warn?.('[EV] Failed to read shared Tesla app config:', err.message || err);
+      return null;
+    }
+  }
+
+  /**
+   * GET /api/ev/tesla-app-config
+   * Returns the shared Tesla Fleet app clientId and domain registration status.
+   * Available to any authenticated user.
+   */
+  app.get('/api/ev/tesla-app-config', authenticateUser, async (req, res) => {
+    try {
+      const config = await getSharedTeslaAppConfig();
+      if (!config || !config.clientId) {
+        return res.json({
+          errno: 0,
+          result: { configured: false }
+        });
+      }
+      return res.json({
+        errno: 0,
+        result: {
+          configured: true,
+          clientId: config.clientId,
+          domain: config.domain || '',
+          domainRegistered: config.domainRegistered === true
+        }
+      });
+    } catch (err) {
+      return res.status(500).json({ errno: 500, error: err.message });
+    }
+  });
+
+  /**
+   * POST /api/ev/tesla-app-config
+   * Admin-only: save the shared Tesla Fleet app credentials.
+   * Body: { clientId, clientSecret, domain? }
+   */
+  if (requireAdmin && db) {
+    app.post('/api/ev/tesla-app-config', authenticateUser, requireAdmin, async (req, res) => {
+      const { clientId, clientSecret, domain } = req.body || {};
+      if (!clientId) {
+        return res.status(400).json({ errno: 400, error: 'clientId is required' });
+      }
+      try {
+        const payload = {
+          clientId: String(clientId).trim(),
+          updatedAt: new Date().toISOString(),
+          updatedBy: req.user.uid
+        };
+        if (clientSecret) {
+          payload.clientSecret = String(clientSecret).trim();
+        }
+        if (domain) {
+          payload.domain = String(domain).trim().toLowerCase();
+        }
+        await db.doc(TESLA_APP_CONFIG_DOC).set(payload, { merge: true });
+        logger.info?.('[EV] Shared Tesla app config updated', { uid: req.user.uid, domain: payload.domain });
+        return res.json({
+          errno: 0,
+          result: { saved: true, clientId: payload.clientId, domain: payload.domain || '' }
+        });
+      } catch (err) {
+        return res.status(500).json({ errno: 500, error: err.message });
+      }
+    });
+  }
+
   // ── OAuth2 ────────────────────────────────────────────────────────────────
 
   /**
@@ -1461,8 +1541,13 @@ function registerEVRoutes(app, deps = {}) {
    * Begin Tesla OAuth2 PKCE flow.
    * Query: { clientId, redirectUri, codeChallenge, region?, state? }
    */
-  app.get('/api/ev/oauth/start', authenticateUser, (req, res) => {
-    const { clientId, redirectUri, codeChallenge, region, state } = req.query;
+  app.get('/api/ev/oauth/start', authenticateUser, async (req, res) => {
+    let { clientId, redirectUri, codeChallenge, region, state } = req.query;
+    // Fall back to shared Tesla app clientId if not provided
+    if (!clientId) {
+      const shared = await getSharedTeslaAppConfig();
+      if (shared?.clientId) clientId = shared.clientId;
+    }
     if (!clientId || !redirectUri || !codeChallenge) {
       return res.status(400).json({ errno: 400, error: 'clientId, redirectUri, and codeChallenge are required' });
     }
@@ -1477,10 +1562,19 @@ function registerEVRoutes(app, deps = {}) {
   /**
    * POST /api/ev/partner/check-domain-access
    * Check whether the Tesla Fleet app credentials have access to the partner domain.
-   * Body: { clientId, clientSecret, redirectUri?, domain?, region? }
+   * Body: { clientId?, clientSecret?, redirectUri?, domain?, region? }
    */
   app.post('/api/ev/partner/check-domain-access', authenticateUser, async (req, res) => {
-    const { clientId, clientSecret, redirectUri, domain, region } = req.body || {};
+    let { clientId, clientSecret, redirectUri, domain, region } = req.body || {};
+
+    if (!clientId || !clientSecret) {
+      const shared = await getSharedTeslaAppConfig();
+      if (shared) {
+        if (!clientId && shared.clientId) clientId = shared.clientId;
+        if (!clientSecret && shared.clientSecret) clientSecret = shared.clientSecret;
+        if (!domain && shared.domain) domain = shared.domain;
+      }
+    }
 
     if (!clientId || !clientSecret || (!redirectUri && !domain)) {
       return res.status(400).json({
@@ -1541,10 +1635,19 @@ function registerEVRoutes(app, deps = {}) {
   /**
    * POST /api/ev/partner/register-domain
    * Register the Tesla Fleet app domain for virtual-key pairing.
-   * Body: { clientId, clientSecret, redirectUri?, domain?, region? }
+   * Body: { clientId?, clientSecret?, redirectUri?, domain?, region? }
    */
   app.post('/api/ev/partner/register-domain', authenticateUser, async (req, res) => {
-    const { clientId, clientSecret, redirectUri, domain, region } = req.body || {};
+    let { clientId, clientSecret, redirectUri, domain, region } = req.body || {};
+
+    if (!clientId || !clientSecret) {
+      const shared = await getSharedTeslaAppConfig();
+      if (shared) {
+        if (!clientId && shared.clientId) clientId = shared.clientId;
+        if (!clientSecret && shared.clientSecret) clientSecret = shared.clientSecret;
+        if (!domain && shared.domain) domain = shared.domain;
+      }
+    }
 
     if (!clientId || !clientSecret || (!redirectUri && !domain)) {
       return res.status(400).json({
@@ -1570,6 +1673,18 @@ function registerEVRoutes(app, deps = {}) {
         },
         partnerClient
       );
+
+      // Persist domainRegistered flag in shared Tesla app config
+      if (db) {
+        try {
+          await db.doc(TESLA_APP_CONFIG_DOC).set(
+            { domain: resolvedDomain, domainRegistered: true, domainRegisteredAt: new Date().toISOString() },
+            { merge: true }
+          );
+        } catch (persistErr) {
+          logger.warn?.('[EV] Failed to persist domain registration status:', persistErr.message || persistErr);
+        }
+      }
 
       return res.json({
         errno: 0,
@@ -1633,15 +1748,23 @@ function registerEVRoutes(app, deps = {}) {
       vehicleId,
       vin,
       teslaVehicleId,
-      clientId,
-      clientSecret,
       redirectUri,
       code,
       codeVerifier,
       region
     } = req.body || {};
+    let { clientId, clientSecret } = req.body || {};
     const requestedVin = normalizeTeslaVin(vin || vehicleId);
     const requestedVehicleKey = String(vehicleId || '').trim();
+
+    // Fall back to shared Tesla app credentials when not supplied by the user
+    if (!clientId || !clientSecret) {
+      const shared = await getSharedTeslaAppConfig();
+      if (shared) {
+        if (!clientId && shared.clientId) clientId = shared.clientId;
+        if (!clientSecret && shared.clientSecret) clientSecret = shared.clientSecret;
+      }
+    }
 
     if ((!requestedVehicleKey && !requestedVin) || !clientId || !redirectUri || !code || !codeVerifier) {
       return res.status(400).json({ errno: 400, error: 'vehicleId (or vin), clientId, redirectUri, code, and codeVerifier are required' });

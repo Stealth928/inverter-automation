@@ -995,6 +995,7 @@ registerEVRoutes(app, {
   getUserConfig,
   incrementApiCount,
   logger,
+  requireAdmin,
   teslaHttpClient,
   vehiclesRepo
 });

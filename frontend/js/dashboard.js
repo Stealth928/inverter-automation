@@ -3111,10 +3111,11 @@
                 };
             }
             if (state === 'proxy_unavailable') {
+                const pairingDomain = String(window.location.hostname || '').trim().toLowerCase();
                 return {
                     kind: 'warn',
                     label: 'Pairing Required',
-                    detail: 'This vehicle requires virtual-key pairing before charging controls can be used. Open Settings and follow Step\u00a04 to pair your vehicle via the Tesla app.',
+                    detail: `This vehicle requires virtual-key pairing before charging controls can be used. Open tesla.com/_ak/${pairingDomain} on your phone with the Tesla app, approve the key, then confirm on the vehicle screen.`,
                     canControl: false,
                     canWake: false
                 };
@@ -3386,7 +3387,7 @@
             const transportHintEl = document.getElementById('evControlsTransportHint');
             const hintEl = document.getElementById('evCommandHint');
             const wakeBtn = document.getElementById('evWakeVehicleBtn');
-            const wakeNote = document.getElementById('evWakeVehicleNote');
+            const wakePrompt = document.getElementById('evWakePrompt');
             const sessionGroup = document.getElementById('evSessionControlGroup');
             const limitGroup = document.getElementById('evChargeLimitGroup');
             const ampsGroup = document.getElementById('evChargingAmpsGroup');
@@ -3407,17 +3408,14 @@
             controlsEl.classList.toggle('is-visible', canControl || canWake);
             controlsEl.style.display = (canControl || canWake) ? 'block' : 'none';
             if (transportHintEl) {
-                transportHintEl.textContent = canControl
-                    ? formatEVTransport(readiness)
-                    : (canWake ? 'Manual Tesla wake required before charging commands can run' : '');
+                transportHintEl.textContent = canControl ? formatEVTransport(readiness) : '';
+            }
+            if (wakePrompt) {
+                wakePrompt.style.display = canWake ? '' : 'none';
             }
             if (wakeBtn) {
-                wakeBtn.style.display = canWake ? '' : 'none';
                 wakeBtn.disabled = !canWake || inFlight;
-                wakeBtn.textContent = evDashboardState.wakeInFlight ? 'Waking...' : 'Manual wake';
-            }
-            if (wakeNote) {
-                wakeNote.style.display = canWake ? '' : 'none';
+                wakeBtn.textContent = evDashboardState.wakeInFlight ? 'Waking...' : 'Wake vehicle';
             }
             [sessionGroup, limitGroup, ampsGroup].forEach((element) => {
                 if (!element) return;
@@ -3917,7 +3915,8 @@
                     setEVCommandHint('warning', 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings before retrying charging controls.');
                 }
                 if (/vehicle command protocol|signed-command proxy|signed command proxy|not_a_json_request|virtual key|missing_virtual_key/i.test(message)) {
-                    setEVCommandHint('warning', 'This vehicle requires virtual-key pairing before charging commands will work. On your phone with the Tesla app installed, open tesla.com/_ak/socratesautomation.com, approve in the app, then confirm on the vehicle screen.');
+                    const pairingDomain = String(window.location.hostname || '').trim().toLowerCase();
+                    setEVCommandHint('warning', `This vehicle requires virtual-key pairing before charging commands will work. On your phone with the Tesla app installed, open tesla.com/_ak/${pairingDomain}, approve in the app, then confirm on the vehicle screen.`);
                 }
                 if (/offline|asleep|wake the vehicle/i.test(message)) {
                     evDashboardState.statusByVehicleId[vehicleId] = {

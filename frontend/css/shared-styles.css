@@ -510,6 +510,19 @@
     box-shadow: 0 2px 8px rgba(9, 105, 218, 0.35), inset 0 1px 0 rgba(255,255,255,0.15);
 }
 
+/* Inner content cards and stat tiles in light mode:
+   .data-card and .stat-item have no border in their base rules
+   so they dissolve into the surrounding background.
+   These give them a subtle edge without fighting the more-specific
+   #inverterCard / .stat-item.extreme / .stat-item.curtailed overrides. */
+[data-theme="light"] .data-card {
+    border: 1px solid #e2e6ea;
+}
+[data-theme="light"] .stat-item {
+    background: #ffffff;
+    border: 1px solid #e2e6ea;
+}
+
 /* ============================================
    RESET & BASE STYLES
    ============================================ */

@@ -322,6 +322,7 @@ function isVehicleCommandProtocolRequiredError(error) {
   return (
     Number(error?.status) === 422 ||
     /vehicle_command_protocol_required/.test(message) ||
+    /vehicle command protocol/.test(message) ||
     /not_a_json_request/.test(message) ||
     /use the vehicle command protocol/.test(message) ||
     /requires signed command/.test(message)
@@ -474,16 +475,12 @@ class TeslaFleetAdapter extends EVAdapter {
     this._logger = deps.logger || { debug: () => {}, warn: () => {}, error: () => {} };
     this._sleep = deps.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this._onApiCall = typeof deps.onApiCall === 'function' ? deps.onApiCall : null;
-    this._signedCommandProxyUrl = String(
-      deps.signedCommandProxyUrl ||
-      process.env.TESLA_SIGNED_COMMAND_PROXY_URL ||
-      ''
-    ).trim().replace(/\/+$/, '');
-    this._signedCommandProxyToken = String(
-      deps.signedCommandProxyToken ||
-      process.env.TESLA_SIGNED_COMMAND_PROXY_TOKEN ||
-      ''
-    ).trim();
+    this._explicitProxyUrl = deps.signedCommandProxyUrl
+      ? String(deps.signedCommandProxyUrl).trim().replace(/\/+$/, '')
+      : '';
+    this._explicitProxyToken = deps.signedCommandProxyToken
+      ? String(deps.signedCommandProxyToken).trim()
+      : '';
   }
 
   supportsCommands() {
@@ -617,6 +614,16 @@ class TeslaFleetAdapter extends EVAdapter {
     return normalizeTeslaVehicleData(vehicleData);
   }
 
+  get _signedCommandProxyUrl() {
+    return this._explicitProxyUrl ||
+      String(process.env.TESLA_SIGNED_COMMAND_PROXY_URL || '').trim().replace(/\/+$/, '');
+  }
+
+  get _signedCommandProxyToken() {
+    return this._explicitProxyToken ||
+      String(process.env.TESLA_SIGNED_COMMAND_PROXY_TOKEN || '').trim();
+  }
+
   _hasSignedCommandProxy() {
     return Boolean(this._signedCommandProxyUrl);
   }
@@ -651,10 +658,12 @@ class TeslaFleetAdapter extends EVAdapter {
         })
       );
       const entry = extractFleetStatusEntry(response.data?.response ?? response.data, vehicleRef.vin) || {};
+      const hasProxy = this._hasSignedCommandProxy();
+      this._logger.warn('TeslaFleetAdapter', `Command readiness: vin=${vehicleRef.vin} hasProxy=${hasProxy} vcpRequired=${entry?.vehicle_command_protocol_required}`);
       const readiness = buildTeslaCommandReadiness(entry, {
         source: 'fleet_status',
         vehicleVin: vehicleRef.vin,
-        hasSignedCommandProxy: this._hasSignedCommandProxy()
+        hasSignedCommandProxy: hasProxy
       });
       if (
         readiness?.vehicleCommandProtocolRequired === true
@@ -844,6 +853,7 @@ class TeslaFleetAdapter extends EVAdapter {
     }
 
     if (readiness?.transport === 'signed') {
+      this._logger.warn('TeslaFleetAdapter', `Using SIGNED transport for ${commandPath}`);
       try {
         return await this._sendSignedCommand(commandPath, vehicleId, context, payload, readiness);
       } catch (error) {
@@ -856,6 +866,7 @@ class TeslaFleetAdapter extends EVAdapter {
       }
     }
 
+    this._logger.warn('TeslaFleetAdapter', `Using DIRECT transport for ${commandPath} (state=${readiness?.state})`);
     try {
       return await this._sendDirectCommand(commandPath, vehicleId, context, payload, readiness);
     } catch (error) {

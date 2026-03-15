@@ -12,6 +12,7 @@
                 try {
                     bindTeslaOnboardingHandlers();
                     updateTeslaRedirectUriInput();
+                    updateTeslaOnboardingCopy();
                     updateTeslaRegionHelp();
                     syncTeslaPendingAuthControls();
                     loadSettings();
@@ -52,6 +53,8 @@
         let teslaRecentlyConnectedVin = '';
         let teslaRecentlyConnectedAtMs = 0;
         let teslaVehiclesState = [];
+        let teslaIsAdmin = false;
+        let teslaSharedAppConfig = null; // { configured, clientId, domain, domainRegistered }
 
         function normalizeTeslaVin(vin) {
             const normalized = String(vin || '').trim().toUpperCase();
@@ -63,6 +66,7 @@
                 badge: document.getElementById('teslaOnboardingBadge'),
                 status: document.getElementById('teslaOnboardingStatus'),
                 checkOwnershipBtn: document.getElementById('teslaCheckOwnershipBtn'),
+                registerDomainBtn: document.getElementById('teslaRegisterDomainBtn'),
                 connectBtn: document.getElementById('teslaConnectBtn'),
                 addVehicleBtn: document.getElementById('teslaAddVehicleBtn'),
                 clearPendingBtn: document.getElementById('teslaClearPendingBtn'),
@@ -76,7 +80,15 @@
                 displayNameInput: document.getElementById('teslaDisplayName'),
                 regionInput: document.getElementById('teslaRegion'),
                 regionHelp: document.getElementById('teslaRegionHelp'),
-                redirectUriInput: document.getElementById('teslaRedirectUri')
+                redirectUriInput: document.getElementById('teslaRedirectUri'),
+                adminPanel: document.getElementById('teslaAdminPanel'),
+                adminTools: document.getElementById('teslaAdminTools'),
+                adminQuickSteps: document.getElementById('teslaAdminQuickSteps'),
+                userQuickSteps: document.getElementById('teslaUserQuickSteps'),
+                notConfiguredBanner: document.getElementById('teslaNotConfiguredBanner'),
+                saveAppConfigBtn: document.getElementById('teslaSaveAppConfigBtn'),
+                saveAppConfigStatus: document.getElementById('teslaSaveAppConfigStatus'),
+                vehiclePanelStep: document.getElementById('teslaVehiclePanelStep')
             };
         }
 
@@ -97,6 +109,117 @@
             if (kind === 'error') status.classList.add('is-error');
         }
 
+        async function fetchTeslaAdminStatusAndSharedConfig() {
+            // Check admin status from AppShell state (already fetched on page load)
+            try {
+                const client = window.apiClient;
+                if (client && typeof client.checkAdminAccess === 'function') {
+                    const resp = await client.checkAdminAccess();
+                    teslaIsAdmin = !!(resp && resp.errno === 0 && resp.result && resp.result.isAdmin);
+                }
+            } catch (e) {
+                teslaIsAdmin = false;
+            }
+
+            // Fetch shared Tesla app config
+            try {
+                const client = window.apiClient;
+                if (client && typeof client.getEVTeslaAppConfig === 'function') {
+                    const resp = await client.getEVTeslaAppConfig();
+                    if (resp && resp.errno === 0 && resp.result) {
+                        teslaSharedAppConfig = resp.result;
+                    }
+                }
+            } catch (e) {
+                teslaSharedAppConfig = null;
+            }
+        }
+
+        function applyTeslaAdminUserVisibility() {
+            const els = getTeslaOnboardingElements();
+            const isAdmin = teslaIsAdmin;
+            const hasSharedConfig = teslaSharedAppConfig && teslaSharedAppConfig.configured;
+
+            // Admin panel + admin tools: only for admins
+            if (els.adminPanel) els.adminPanel.style.display = isAdmin ? '' : 'none';
+            if (els.adminTools) els.adminTools.style.display = isAdmin ? '' : 'none';
+            if (els.adminQuickSteps) els.adminQuickSteps.style.display = isAdmin ? '' : 'none';
+            if (els.userQuickSteps) els.userQuickSteps.style.display = isAdmin ? 'none' : (hasSharedConfig ? '' : 'none');
+
+            // Not-configured banner: show only for non-admins when no shared config
+            if (els.notConfiguredBanner) {
+                els.notConfiguredBanner.style.display = (!isAdmin && !hasSharedConfig) ? '' : 'none';
+            }
+
+            // Vehicle panel step label
+            if (els.vehiclePanelStep) {
+                els.vehiclePanelStep.textContent = isAdmin ? 'Step 2' : 'Step 1';
+            }
+
+            // Connect button: disabled for non-admins when no shared config
+            if (els.connectBtn) {
+                els.connectBtn.disabled = (!isAdmin && !hasSharedConfig);
+            }
+
+            // Pre-fill admin panel with shared config values if available
+            if (isAdmin && hasSharedConfig && els.clientIdInput) {
+                if (!els.clientIdInput.value) {
+                    els.clientIdInput.value = teslaSharedAppConfig.clientId || '';
+                }
+            }
+
+            // Enable Save App Config button
+            if (els.saveAppConfigBtn) {
+                els.saveAppConfigBtn.disabled = false;
+            }
+        }
+
+        async function saveTeslaAppConfig() {
+            const els = getTeslaOnboardingElements();
+            const clientId = (els.clientIdInput?.value || '').trim();
+            const clientSecret = (els.clientSecretInput?.value || '').trim();
+            const domain = getTeslaPartnerDomain(getTeslaRedirectUri());
+
+            if (!clientId) {
+                if (els.saveAppConfigStatus) els.saveAppConfigStatus.textContent = 'Client ID is required';
+                showMessage('warning', 'Tesla Fleet Client ID is required');
+                return;
+            }
+
+            if (els.saveAppConfigBtn) {
+                els.saveAppConfigBtn.disabled = true;
+                els.saveAppConfigBtn.textContent = 'Saving...';
+            }
+            if (els.saveAppConfigStatus) els.saveAppConfigStatus.textContent = '';
+
+            try {
+                const client = window.apiClient;
+                if (!client || typeof client.saveEVTeslaAppConfig !== 'function') {
+                    throw new Error('API client unavailable');
+                }
+                const resp = await client.saveEVTeslaAppConfig(clientId, clientSecret, domain);
+                if (!resp || resp.errno !== 0) {
+                    throw new Error(resp?.error || 'Failed to save Tesla app config');
+                }
+                teslaSharedAppConfig = { configured: true, clientId, domain, domainRegistered: teslaSharedAppConfig?.domainRegistered || false };
+                if (els.saveAppConfigStatus) els.saveAppConfigStatus.textContent = 'Saved ✓';
+                els.saveAppConfigStatus.style.color = 'var(--green)';
+                showMessage('success', 'Shared Tesla app config saved');
+                applyTeslaAdminUserVisibility();
+            } catch (err) {
+                if (els.saveAppConfigStatus) {
+                    els.saveAppConfigStatus.textContent = err.message || 'Save failed';
+                    els.saveAppConfigStatus.style.color = 'var(--red, #e74c3c)';
+                }
+                showMessage('warning', `Failed to save Tesla app config: ${err.message || err}`);
+            } finally {
+                if (els.saveAppConfigBtn) {
+                    els.saveAppConfigBtn.disabled = false;
+                    els.saveAppConfigBtn.textContent = 'Save App Config';
+                }
+            }
+        }
+
         function getTeslaRedirectUri() {
             try {
                 const url = new URL(window.location.href);
@@ -106,6 +229,54 @@
             } catch (e) {
                 return `${window.location.origin}/settings.html`;
             }
+        }
+
+        function getTeslaPartnerDomain(redirectUri = '') {
+            const candidate = String(redirectUri || getTeslaRedirectUri()).trim();
+            if (!candidate) return '';
+            try {
+                return String(new URL(candidate).hostname || '').trim().toLowerCase();
+            } catch (error) {
+                return '';
+            }
+        }
+
+        function getTeslaPairingLink(domain = '') {
+            const normalizedDomain = String(domain || '').trim().toLowerCase();
+            return normalizedDomain ? `https://tesla.com/_ak/${normalizedDomain}` : 'https://tesla.com/_ak/<your-domain>';
+        }
+
+        function isSharedTeslaPartnerDomain(domain = '') {
+            return String(domain || '').trim().toLowerCase() === 'socratesautomation.com';
+        }
+
+        function updateTeslaOnboardingCopy() {
+            const redirectUri = getTeslaRedirectUri();
+            const domain = getTeslaPartnerDomain(redirectUri);
+            const origin = (() => {
+                try {
+                    return new URL(redirectUri).origin;
+                } catch (error) {
+                    return window.location.origin;
+                }
+            })();
+            const pairingLink = getTeslaPairingLink(domain);
+
+            document.querySelectorAll('[data-tesla-origin-url]').forEach((element) => {
+                element.textContent = origin;
+            });
+            document.querySelectorAll('[data-tesla-redirect-url]').forEach((element) => {
+                element.textContent = redirectUri;
+            });
+            document.querySelectorAll('[data-tesla-domain]').forEach((element) => {
+                element.textContent = domain || 'your domain';
+            });
+            document.querySelectorAll('[data-tesla-pair-link]').forEach((element) => {
+                element.setAttribute('href', pairingLink);
+                if (!element.textContent || /socratesautomation\.com|<your-domain>|loading pairing link/.test(element.textContent)) {
+                    element.textContent = pairingLink.replace(/^https?:\/\//, '');
+                }
+            });
         }
 
         function updateTeslaRedirectUriInput() {
@@ -270,9 +441,17 @@
                 displayNameInput,
                 regionInput
             } = getTeslaOnboardingElements();
+            let clientId = (clientIdInput?.value || '').trim();
+            let clientSecret = (clientSecretInput?.value || '').trim();
+
+            // Non-admin users: use shared app config for clientId (clientSecret stays server-side)
+            if (!teslaIsAdmin && teslaSharedAppConfig?.configured) {
+                if (!clientId) clientId = teslaSharedAppConfig.clientId || '';
+            }
+
             return {
-                clientId: (clientIdInput?.value || '').trim(),
-                clientSecret: (clientSecretInput?.value || '').trim(),
+                clientId,
+                clientSecret,
                 vehicleId: normalizeTeslaVin(vehicleIdInput?.value || ''),
                 displayName: (displayNameInput?.value || '').trim(),
                 region: String(regionInput?.value || TESLA_REGION_DEFAULT).trim() || TESLA_REGION_DEFAULT,
@@ -337,14 +516,19 @@
             return resp.result || { registered: true };
         }
 
-        function getTeslaPartnerRegistrationWarning(registrationResult = null) {
+        function getTeslaPartnerRegistrationWarning(registrationResult = null, redirectUri = '') {
             if (String(registrationResult?.verificationState || '').trim() !== 'unverified_conflict') {
                 return '';
             }
-            return 'Tesla OAuth can continue for read-only vehicle status, but this Tesla Client ID does not have access to socratesautomation.com. Phone-app pairing at tesla.com/_ak/socratesautomation.com and Tesla charging commands will not work until you use the Fleet app that originally owns that domain, or move to a separate domain and keypair.';
+
+            const domain = getTeslaPartnerDomain(redirectUri);
+
+            return `Tesla OAuth can continue for read-only vehicle status, but this Tesla Client ID does not have access to ${domain || 'the current site domain'}. Ensure the Tesla app Allowed Origin is set to ${domain || 'this domain'}, keep the client secret filled in, and click Register Domain. Verify the public key is hosted at https://${domain || '<your-domain>'}/.well-known/appspecific/com.tesla.3p.public-key.pem.`;
         }
 
+        let _checkingOwnership = false;
         async function checkTeslaPartnerDomainAccess() {
+            if (_checkingOwnership) return;
             const { checkOwnershipBtn } = getTeslaOnboardingElements();
             const form = getTeslaOnboardingFormValues();
 
@@ -361,17 +545,19 @@
                 return;
             }
             if (!window.apiClient || typeof window.apiClient.checkEVPartnerDomainAccess !== 'function') {
-                throw new Error('API client unavailable');
+                showMessage('warning', 'API client unavailable');
+                return;
             }
 
-            const prevButtonHtml = checkOwnershipBtn ? checkOwnershipBtn.innerHTML : '';
+            _checkingOwnership = true;
             if (checkOwnershipBtn) {
                 checkOwnershipBtn.disabled = true;
                 checkOwnershipBtn.innerHTML = '<span class="spinner"></span> Checking app...';
             }
 
             try {
-                setTeslaOnboardingStatus('Checking whether this Tesla Fleet app owns socratesautomation.com...', 'warning');
+                const domain = getTeslaPartnerDomain(form.redirectUri);
+                setTeslaOnboardingStatus(`Checking whether this Tesla Fleet app has access to ${domain || 'the current site domain'}...`, 'warning');
                 const resp = await window.apiClient.checkEVPartnerDomainAccess(
                     form.clientId,
                     form.clientSecret,
@@ -386,29 +572,95 @@
 
                 if (result.accessible) {
                     setTeslaOnboardingBadge('App Verified', 'sync');
-                    setTeslaOnboardingStatus('This Tesla Fleet app has access to socratesautomation.com. It is the correct app to use for SoCrates pairing and command setup.', 'success');
-                    showMessage('success', 'This Tesla Fleet app owns the SoCrates domain registration');
+                    setTeslaOnboardingStatus(`This Tesla Fleet app has access to ${result.domain || domain || 'the current site domain'}. It is the correct app to use for Tesla pairing and command setup on this site.`, 'success');
+                    showMessage('success', `This Tesla Fleet app has access to ${result.domain || domain || 'the current site domain'}`);
                     return;
                 }
 
                 if (String(result.reasonCode || '').trim() === 'tesla_partner_domain_access_denied') {
+                    const deniedDomain = String(result.domain || domain || '').trim() || 'the current site domain';
                     setTeslaOnboardingBadge('Action Needed', 'modified');
-                    setTeslaOnboardingStatus('This Tesla Fleet app does not own socratesautomation.com. Try another Tesla Client ID and Client Secret from your Tesla Developer account.', 'warning');
-                    showMessage('warning', 'This Tesla Fleet app does not have access to socratesautomation.com');
+                    setTeslaOnboardingStatus(`This Tesla Fleet app does not yet have access to ${deniedDomain}. Click Register Domain to register it, or confirm the Tesla app uses the exact origin and redirect URI shown here and keep the client secret filled in.`, 'warning');
+                    showMessage('warning', `This Tesla Fleet app does not have access to ${deniedDomain}`);
                     return;
                 }
 
                 setTeslaOnboardingBadge('Action Needed', 'modified');
-                setTeslaOnboardingStatus(result.error || 'Tesla could not confirm whether this app owns socratesautomation.com.', 'warning');
-                showMessage('warning', result.error || 'Tesla could not confirm whether this app owns socratesautomation.com');
+                setTeslaOnboardingStatus(result.error || `Tesla could not confirm whether this app has access to ${domain || 'the current site domain'}.`, 'warning');
+                showMessage('warning', result.error || `Tesla could not confirm whether this app has access to ${domain || 'the current site domain'}`);
             } catch (error) {
                 setTeslaOnboardingBadge('Error', 'modified');
-                setTeslaOnboardingStatus(error.message || 'Failed to verify Tesla app ownership', 'error');
-                showMessage('warning', `Tesla app ownership check failed: ${error.message || error}`);
+                setTeslaOnboardingStatus(error.message || 'Failed to verify Tesla app domain access', 'error');
+                showMessage('warning', `Tesla app domain access check failed: ${error.message || error}`);
             } finally {
+                _checkingOwnership = false;
                 if (checkOwnershipBtn) {
                     checkOwnershipBtn.disabled = false;
-                    checkOwnershipBtn.innerHTML = prevButtonHtml;
+                    checkOwnershipBtn.textContent = 'Check App Ownership';
+                }
+            }
+        }
+
+        let _registeringDomain = false;
+        async function registerTeslaPartnerDomainManually() {
+            if (_registeringDomain) return;
+            const { registerDomainBtn } = getTeslaOnboardingElements();
+            const form = getTeslaOnboardingFormValues();
+
+            if (!form.clientId) {
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus('Paste a Tesla Fleet Client ID before registering the domain.', 'warning');
+                showMessage('warning', 'Tesla Fleet Client ID is required');
+                return;
+            }
+            if (!form.clientSecret) {
+                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus('Paste a Tesla Fleet Client Secret before registering the domain.', 'warning');
+                showMessage('warning', 'Tesla Fleet Client Secret is required');
+                return;
+            }
+
+            _registeringDomain = true;
+            if (registerDomainBtn) {
+                registerDomainBtn.disabled = true;
+                registerDomainBtn.innerHTML = '<span class="spinner"></span> Registering...';
+            }
+
+            try {
+                const domain = getTeslaPartnerDomain(form.redirectUri);
+                setTeslaOnboardingStatus(`Registering ${domain || 'this domain'} with Tesla Fleet API...`, 'warning');
+                const result = await ensureTeslaPartnerDomainRegistered(form);
+
+                if (result?.skipped) {
+                    setTeslaOnboardingStatus('Client secret is required for domain registration.', 'warning');
+                    return;
+                }
+
+                const warning = getTeslaPartnerRegistrationWarning(result, form.redirectUri);
+                if (warning) {
+                    setTeslaOnboardingBadge('Action Needed', 'modified');
+                    setTeslaOnboardingStatus(warning, 'warning');
+                    showMessage('warning', warning);
+                } else {
+                    setTeslaOnboardingBadge('Domain Registered', 'sync');
+                    const pairingLink = getTeslaPairingLink(domain);
+                    const msg = result?.alreadyRegistered
+                        ? `${domain} is already registered with Tesla for this app. Next: open ${pairingLink} on your phone to pair the virtual key.`
+                        : `${domain} registered with Tesla. Next: click Connect with Tesla above, then open ${pairingLink} on your phone to pair.`;
+                    setTeslaOnboardingStatus(msg, 'success');
+                    showMessage('success', result?.alreadyRegistered
+                        ? `${domain} is already registered with Tesla.`
+                        : `${domain} registered with Tesla.`);
+                }
+            } catch (error) {
+                setTeslaOnboardingBadge('Error', 'modified');
+                setTeslaOnboardingStatus(error.message || 'Failed to register domain with Tesla', 'error');
+                showMessage('warning', `Domain registration failed: ${error.message || error}`);
+            } finally {
+                _registeringDomain = false;
+                if (registerDomainBtn) {
+                    registerDomainBtn.disabled = false;
+                    registerDomainBtn.textContent = 'Register Domain';
                 }
             }
         }
@@ -473,7 +725,7 @@
                 return {
                     key: 'setup_required',
                     label: 'Setup Required',
-                    detail: 'Vehicle is registered, but Tesla OAuth credentials are missing.'
+                    detail: 'Vehicle is registered but not yet connected to Tesla. Enter your credentials above and click Connect with Tesla to complete setup.'
                 };
             }
 
@@ -560,14 +812,21 @@
 
             if (vehicleCount <= 0) {
                 setTeslaOnboardingBadge('Setup Required', 'modified');
-                setTeslaOnboardingStatus('No Tesla vehicles connected yet. Complete the Tesla app setup above, then use Connect with Tesla.', 'warning');
+                const noVehicleMsg = teslaIsAdmin
+                    ? 'No Tesla vehicles connected yet. Complete the Tesla app setup above, then use Connect with Tesla.'
+                    : 'No Tesla vehicles connected yet. Enter your VIN above and click Connect with Tesla.';
+                setTeslaOnboardingStatus(noVehicleMsg, 'warning');
                 return;
             }
 
             if (setupRequiredCount > 0 || actionNeededCount > 0) {
                 setTeslaOnboardingBadge('Action Needed', 'modified');
-                const issues = setupRequiredCount + actionNeededCount;
-                setTeslaOnboardingStatus(`${connectedCount} Tesla vehicle(s) connected, but ${issues} vehicle(s) need attention before dashboard charging controls are fully ready. Review the vehicle list below for reconnect or command-readiness details.`, 'warning');
+                if (setupRequiredCount > 0 && connectedCount === 0) {
+                    setTeslaOnboardingStatus(`${setupRequiredCount} vehicle(s) need Tesla sign-in. Click Connect with Tesla above to link your Tesla account.`, 'warning');
+                } else {
+                    const issues = setupRequiredCount + actionNeededCount;
+                    setTeslaOnboardingStatus(`${connectedCount} vehicle(s) connected, ${issues} vehicle(s) need attention. See the vehicle list below for next steps.`, 'warning');
+                }
                 return;
             }
 
@@ -759,6 +1018,14 @@
             }
             const shouldDelete = confirm(`Disconnect Tesla vehicle ${trimmedId}?`);
             if (!shouldDelete) return;
+
+            // Find and disable the Disconnect button that was clicked
+            const removeBtn = document.querySelector(`[data-tesla-remove-id="${CSS.escape(trimmedId)}"]`);
+            if (removeBtn) {
+                removeBtn.disabled = true;
+                removeBtn.textContent = 'Removing...';
+            }
+
             try {
                 let resp = null;
                 if (typeof window.apiClient.request === 'function') {
@@ -778,6 +1045,10 @@
                 setTeslaOnboardingBadge('Error', 'modified');
                 setTeslaOnboardingStatus(error.message || 'Failed to disconnect Tesla vehicle', 'error');
                 showMessage('warning', `Failed to disconnect Tesla vehicle: ${error.message || error}`);
+                if (removeBtn) {
+                    removeBtn.disabled = false;
+                    removeBtn.textContent = 'Disconnect';
+                }
             }
         }
 
@@ -789,7 +1060,11 @@
             const form = getTeslaOnboardingFormValues();
             if (!form.clientId) {
                 setTeslaOnboardingBadge('Action Needed', 'modified');
-                setTeslaOnboardingStatus('Open Tesla Developer Dashboard, copy your Tesla Client ID, then paste it here.', 'warning');
+                if (teslaIsAdmin) {
+                    setTeslaOnboardingStatus('Open Tesla Developer Dashboard, copy your Tesla Client ID, then paste it here.', 'warning');
+                } else {
+                    setTeslaOnboardingStatus('Tesla integration has not been configured yet. An administrator needs to save the shared Tesla app credentials first.', 'warning');
+                }
                 showMessage('warning', 'Tesla Fleet Client ID is required');
                 return;
             }
@@ -806,7 +1081,7 @@
                 return;
             }
 
-            const prevButtonHtml = connectBtn ? connectBtn.innerHTML : '';
+            const prevButtonText = connectBtn ? connectBtn.textContent : '';
             if (connectBtn) {
                 connectBtn.disabled = true;
                 connectBtn.innerHTML = '<span class="spinner"></span> Opening Tesla...';
@@ -821,15 +1096,18 @@
 
                 let partnerRegistrationResult = null;
                 if (form.clientSecret) {
-                    setTeslaOnboardingStatus('Registering your Tesla app domain with Tesla before sign-in...', 'warning');
+                    const domain = getTeslaPartnerDomain(form.redirectUri);
+                    setTeslaOnboardingStatus(`Registering ${domain} with Tesla...`, 'warning');
                     partnerRegistrationResult = await ensureTeslaPartnerDomainRegistered(form);
-                    const registrationWarning = getTeslaPartnerRegistrationWarning(partnerRegistrationResult);
+                    const registrationWarning = getTeslaPartnerRegistrationWarning(partnerRegistrationResult, form.redirectUri);
                     if (registrationWarning) {
                         setTeslaOnboardingStatus(registrationWarning, 'warning');
                         showMessage('warning', registrationWarning);
+                    } else if (partnerRegistrationResult?.registered) {
+                        setTeslaOnboardingStatus(`Domain ${domain} registered. Opening Tesla sign-in...`, 'success');
                     }
-                } else {
-                    setTeslaOnboardingStatus('No Tesla client secret provided. Tesla sign-in can still work, but virtual-key pairing and charging controls may fail until the app domain is registered.', 'warning');
+                } else if (teslaIsAdmin) {
+                    setTeslaOnboardingStatus('Tesla Client Secret not provided — domain registration skipped. Charging commands may not work. Add the secret and try again for full access.', 'warning');
                 }
 
                 const codeVerifier = createRandomBase64Url(48);
@@ -874,7 +1152,7 @@
             } finally {
                 if (connectBtn) {
                     connectBtn.disabled = false;
-                    connectBtn.innerHTML = prevButtonHtml;
+                    connectBtn.textContent = prevButtonText || 'Connect with Tesla';
                 }
             }
         }
@@ -972,11 +1250,12 @@
                 clearTeslaPendingOAuth();
                 cleanTeslaOAuthParamsFromUrl();
                 markTeslaRecentlyConnected(pending.vehicleId);
-                const registrationWarning = getTeslaPartnerRegistrationWarning({ verificationState: pending.partnerRegistrationState });
+                const registrationWarning = getTeslaPartnerRegistrationWarning({ verificationState: pending.partnerRegistrationState }, pending.redirectUri || getTeslaRedirectUri());
                 if (registrationWarning) {
                     setTeslaOnboardingBadge('Action Needed', 'modified');
                     setTeslaOnboardingStatus(`Tesla connected for VIN ${pending.vehicleId} and dashboard status should begin syncing, but pairing and charging commands are still blocked. ${registrationWarning}`, 'warning');
-                    showMessage('warning', `Tesla connected for VIN ${pending.vehicleId}, but this Client ID is still read-only for SoCrates because it does not own socratesautomation.com.`);
+                    const pendingDomain = getTeslaPartnerDomain(pending.redirectUri || getTeslaRedirectUri()) || 'the current site domain';
+                    showMessage('warning', `Tesla connected for VIN ${pending.vehicleId}, but this Client ID is still read-only for pairing and charging commands because it does not have access to ${pendingDomain}.`);
                 } else {
                     setTeslaOnboardingBadge('Connected', 'sync');
                     setTeslaOnboardingStatus(`Tesla connected for VIN ${pending.vehicleId}. Dashboard status should now begin syncing for this vehicle.`, 'success');
@@ -1067,18 +1346,25 @@
             teslaOnboardingHandlersBound = true;
             const {
                 checkOwnershipBtn,
+                registerDomainBtn,
                 connectBtn,
                 addVehicleBtn,
                 clearPendingBtn,
                 refreshBtn,
                 vehiclesList,
                 regionInput,
-                copyRedirectBtn
+                copyRedirectBtn,
+                saveAppConfigBtn
             } = getTeslaOnboardingElements();
 
             if (checkOwnershipBtn) {
                 checkOwnershipBtn.addEventListener('click', () => {
                     checkTeslaPartnerDomainAccess();
+                });
+            }
+            if (registerDomainBtn) {
+                registerDomainBtn.addEventListener('click', () => {
+                    registerTeslaPartnerDomainManually();
                 });
             }
             if (connectBtn) {
@@ -1111,6 +1397,11 @@
                     copyTeslaRedirectUri();
                 });
             }
+            if (saveAppConfigBtn) {
+                saveAppConfigBtn.addEventListener('click', () => {
+                    saveTeslaAppConfig();
+                });
+            }
             if (vehiclesList) {
                 vehiclesList.addEventListener('click', (event) => {
                     const target = event?.target;
@@ -1139,6 +1430,11 @@
             updateTeslaRedirectUriInput();
             updateTeslaRegionHelp();
             syncTeslaPendingAuthControls();
+
+            // Fetch admin status and shared Tesla app config before rendering
+            await fetchTeslaAdminStatusAndSharedConfig();
+            applyTeslaAdminUserVisibility();
+
             const pendingBeforeCallback = readTeslaPendingOAuth();
             const callbackResult = await handleTeslaOAuthCallbackIfPresent();
             const preserveStatus = Boolean(callbackResult?.handled || pendingBeforeCallback);

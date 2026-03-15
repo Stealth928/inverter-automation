@@ -32,6 +32,12 @@ Before connecting Tesla in-app, you need:
 7. Tesla app public key metadata hosted on your domain:
    - `/.well-known/appspecific/com.tesla.3p.public-key.pem`
 
+Important domain rule:
+
+- Use the exact current site origin and redirect URI shown in Settings.
+- If you are using the shared hosted site at `socratesautomation.com`, reuse the Tesla Fleet app that originally registered that shared domain.
+- If you are self-hosting on your own domain, use a Tesla app and keypair dedicated to your domain.
+
 ## User Flow (Settings UI)
 
 1. Open `Settings` and find `Tesla EV Integration`.

@@ -628,6 +628,18 @@ class APIClient {
     return this.post(`/api/ev/vehicles/${encodeURIComponent(vehicleId)}/wake`, {});
   }
 
+  async getEVTeslaAppConfig() {
+    return this.get('/api/ev/tesla-app-config');
+  }
+
+  async saveEVTeslaAppConfig(clientId, clientSecret, domain = '') {
+    return this.post('/api/ev/tesla-app-config', {
+      clientId,
+      clientSecret,
+      ...(domain ? { domain } : {})
+    });
+  }
+
   async getEVOAuthStartUrl(clientId, redirectUri, codeChallenge, region, state = '') {
     return this.get('/api/ev/oauth/start', { clientId, redirectUri, codeChallenge, region, state: state || undefined });
   }

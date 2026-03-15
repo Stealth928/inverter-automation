@@ -1496,3 +1496,219 @@ describe('POST /api/ev/oauth/callback', () => {
     );
   });
 });
+
+// ─── Shared Tesla App Config helpers ───────────────────────────────────────
+
+function makeDb(initialData = {}) {
+  const store = {};
+  for (const [k, v] of Object.entries(initialData)) store[k] = v;
+  return {
+    doc: jest.fn((path) => ({
+      get: jest.fn(async () => {
+        const data = store[path];
+        return { exists: !!data, data: () => (data ? { ...data } : {}) };
+      }),
+      set: jest.fn(async (payload, options) => {
+        if (options && options.merge) {
+          store[path] = { ...(store[path] || {}), ...payload };
+        } else {
+          store[path] = payload;
+        }
+      })
+    }))
+  };
+}
+
+function makeRequireAdmin(isAdmin = true) {
+  return (req, res, next) => {
+    if (isAdmin) return next();
+    return res.status(403).json({ errno: 403, error: 'Forbidden' });
+  };
+}
+
+// ─── GET /api/ev/tesla-app-config ──────────────────────────────────────────
+
+describe('GET /api/ev/tesla-app-config', () => {
+  test('returns configured=false when no shared config doc exists', async () => {
+    const db = makeDb();
+    const app = buildApp(makeDeps({ db }));
+    const res = await request(app)
+      .get('/api/ev/tesla-app-config')
+      .set('Authorization', 'Bearer tok');
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ errno: 0, result: { configured: false } });
+  });
+
+  test('returns configured=true with clientId when shared config exists', async () => {
+    const db = makeDb({
+      'shared/teslaAppConfig': {
+        clientId: 'shared-client-id',
+        clientSecret: 'shared-secret',
+        domain: 'example.com',
+        domainRegistered: true
+      }
+    });
+    const app = buildApp(makeDeps({ db }));
+    const res = await request(app)
+      .get('/api/ev/tesla-app-config')
+      .set('Authorization', 'Bearer tok');
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({
+      errno: 0,
+      result: {
+        configured: true,
+        clientId: 'shared-client-id',
+        domain: 'example.com',
+        domainRegistered: true
+      }
+    });
+    // clientSecret must never be returned to the client
+    expect(res.body.result.clientSecret).toBeUndefined();
+  });
+
+  test('returns 401 when unauthenticated', async () => {
+    const app = buildApp(makeDeps({ db: makeDb() }));
+    const res = await request(app).get('/api/ev/tesla-app-config');
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+// ─── POST /api/ev/tesla-app-config ─────────────────────────────────────────
+
+describe('POST /api/ev/tesla-app-config', () => {
+  test('admin can save shared config', async () => {
+    const db = makeDb();
+    const app = buildApp(makeDeps({ db, requireAdmin: makeRequireAdmin(true) }));
+    const res = await request(app)
+      .post('/api/ev/tesla-app-config')
+      .set('Authorization', 'Bearer tok')
+      .send({ clientId: 'new-client', clientSecret: 'new-secret', domain: 'MyDomain.com' });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({
+      errno: 0,
+      result: { saved: true, clientId: 'new-client', domain: 'mydomain.com' }
+    });
+  });
+
+  test('non-admin gets 403', async () => {
+    const db = makeDb();
+    const app = buildApp(makeDeps({ db, requireAdmin: makeRequireAdmin(false) }));
+    const res = await request(app)
+      .post('/api/ev/tesla-app-config')
+      .set('Authorization', 'Bearer tok')
+      .send({ clientId: 'new-client', clientSecret: 'new-secret' });
+    expect(res.statusCode).toBe(403);
+  });
+
+  test('returns 400 when clientId is missing', async () => {
+    const db = makeDb();
+    const app = buildApp(makeDeps({ db, requireAdmin: makeRequireAdmin(true) }));
+    const res = await request(app)
+      .post('/api/ev/tesla-app-config')
+      .set('Authorization', 'Bearer tok')
+      .send({ clientSecret: 'secret-only' });
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/clientId/);
+  });
+
+  test('route not registered when requireAdmin is absent', async () => {
+    const db = makeDb();
+    const app = buildApp(makeDeps({ db }));
+    const res = await request(app)
+      .post('/api/ev/tesla-app-config')
+      .set('Authorization', 'Bearer tok')
+      .send({ clientId: 'client' });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+// ─── shared credential fallback ────────────────────────────────────────────
+
+describe('shared Tesla app config fallback', () => {
+  test('GET /api/ev/oauth/start uses shared clientId when not in query', async () => {
+    const db = makeDb({
+      'shared/teslaAppConfig': { clientId: 'shared-client-id' }
+    });
+    const app = buildApp(makeDeps({ db }));
+    const res = await request(app)
+      .get('/api/ev/oauth/start?redirectUri=https%3A%2F%2Fexample.com%2Fcb&codeChallenge=abc123')
+      .set('Authorization', 'Bearer tok');
+    expect(res.statusCode).toBe(200);
+    expect(res.body.result.url).toMatch(/shared-client-id/);
+  });
+
+  test('POST /api/ev/oauth/callback uses shared credentials when not in body', async () => {
+    const db = makeDb({
+      'shared/teslaAppConfig': { clientId: 'shared-client', clientSecret: 'shared-secret' }
+    });
+    const setVehicleCredentials = jest.fn(async () => {});
+    const httpClient = makeTeslaTokenHttpClient();
+    const app = buildApp(makeDeps({
+      db,
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla', region: 'na' })),
+        setVehicleCredentials
+      }),
+      httpClient
+    }));
+
+    const res = await request(app)
+      .post('/api/ev/oauth/callback')
+      .set('Authorization', 'Bearer tok')
+      .send({
+        vehicleId: 'v1',
+        redirectUri: 'https://example.com/callback',
+        code: 'auth-code',
+        codeVerifier: 'verifier'
+      });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ errno: 0, result: { stored: true, vehicleId: 'v1' } });
+    expect(setVehicleCredentials).toHaveBeenCalledWith(
+      'u-test',
+      'v1',
+      expect.objectContaining({
+        clientId: 'shared-client',
+        clientSecret: 'shared-secret'
+      })
+    );
+  });
+
+  test('POST /api/ev/oauth/callback still uses request body credentials when provided', async () => {
+    const db = makeDb({
+      'shared/teslaAppConfig': { clientId: 'shared-client', clientSecret: 'shared-secret' }
+    });
+    const setVehicleCredentials = jest.fn(async () => {});
+    const httpClient = makeTeslaTokenHttpClient();
+    const app = buildApp(makeDeps({
+      db,
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla', region: 'na' })),
+        setVehicleCredentials
+      }),
+      httpClient
+    }));
+
+    const res = await request(app)
+      .post('/api/ev/oauth/callback')
+      .set('Authorization', 'Bearer tok')
+      .send({
+        vehicleId: 'v1',
+        clientId: 'body-client',
+        clientSecret: 'body-secret',
+        redirectUri: 'https://example.com/callback',
+        code: 'auth-code',
+        codeVerifier: 'verifier'
+      });
+
+    expect(res.statusCode).toBe(200);
+    expect(setVehicleCredentials).toHaveBeenCalledWith(
+      'u-test',
+      'v1',
+      expect.objectContaining({
+        clientId: 'body-client',
+        clientSecret: 'body-secret'
+      })
+    );
+  });
+});
