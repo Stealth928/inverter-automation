@@ -84,7 +84,13 @@ describe('TeslaFleetAdapter — getVehicleStatus', () => {
         charging_state: 'Charging',
         charge_limit_soc: 90,
         charge_port_door_open: true,
-        est_battery_range: 198
+        battery_range: 212,
+        est_battery_range: 198,
+        time_to_full_charge: 1.5,
+        charge_energy_added: 9.3,
+        charge_miles_added_rated: 38,
+        charger_power: 7,
+        charger_actual_current: 24
       },
       drive_state: { speed: null, active_route_destination: null },
       vehicle_state: { homelink_nearby: true }
@@ -103,6 +109,12 @@ describe('TeslaFleetAdapter — getVehicleStatus', () => {
     expect(status.chargeLimitPct).toBe(90);
     expect(status.isPluggedIn).toBe(true);
     expect(status.rangeKm).toBeCloseTo(318.7, 0);
+    expect(status.ratedRangeKm).toBeCloseTo(341.1, 0);
+    expect(status.timeToFullChargeHours).toBe(1.5);
+    expect(status.chargeEnergyAddedKwh).toBe(9.3);
+    expect(status.rangeAddedKm).toBeCloseTo(61.2, 0);
+    expect(status.chargingPowerKw).toBe(7);
+    expect(status.chargingAmps).toBe(24);
   });
 
   test('emits Tesla call accounting payload via per-request recorder', async () => {

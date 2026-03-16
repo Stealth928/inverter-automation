@@ -455,9 +455,23 @@ function normalizeTeslaVehicleData(data = {}) {
       ? Boolean(chargeState.charge_port_door_open)
       : null,
     isHome,
+    battery_range_km: chargeState.battery_range
+      ? Math.round(chargeState.battery_range * 1.60934)
+      : null,
     est_battery_range_km: chargeState.est_battery_range
       ? Math.round(chargeState.est_battery_range * 1.60934)
-      : null
+      : null,
+    time_to_full_charge: chargeState.time_to_full_charge,
+    charge_energy_added: chargeState.charge_energy_added,
+    charge_miles_added_rated_km: chargeState.charge_miles_added_rated
+      ? Math.round(chargeState.charge_miles_added_rated * 1.60934)
+      : null,
+    charge_miles_added_ideal_km: chargeState.charge_miles_added_ideal
+      ? Math.round(chargeState.charge_miles_added_ideal * 1.60934)
+      : null,
+    charger_power_kw: chargeState.charger_power,
+    charger_actual_current: chargeState.charger_actual_current,
+    charge_amps: chargeState.charge_amps
   });
 }
 

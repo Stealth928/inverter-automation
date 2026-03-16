@@ -683,7 +683,13 @@ Returns the latest cached or live EV status for the selected vehicle.
     "isPluggedIn": true,
     "isHome": true,
     "rangeKm": 410,
+    "ratedRangeKm": 438,
     "chargeLimitPct": 90,
+    "timeToFullChargeHours": 1.75,
+    "chargeEnergyAddedKwh": 8.4,
+    "rangeAddedKm": 56,
+    "chargingPowerKw": 7,
+    "chargingAmps": 24,
     "asOfIso": "2026-03-14T00:00:00.000Z"
   },
   "audit": {

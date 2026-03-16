@@ -553,6 +553,10 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should render EV summary with SoC battery icon and range immediately after SoC', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('cachedPrices', JSON.stringify({ general: { perKwh: 30 } }));
+    });
+
     await mockEvApis(page, {
       vehicles: [{ vehicleId: 'veh-model-y', displayName: 'Model Y LR' }],
       statusByVehicleId: {
@@ -567,7 +571,12 @@ test.describe('Dashboard Page', () => {
               isPluggedIn: true,
               isHome: true,
               rangeKm: 322,
+              ratedRangeKm: 347,
               chargeLimitPct: 83,
+              timeToFullChargeHours: 2,
+              chargeEnergyAddedKwh: 8.5,
+              rangeAddedKm: 58,
+              chargingPowerKw: 7,
               asOfIso: '2026-03-13T00:00:00.000Z'
             }
           }
@@ -583,12 +592,21 @@ test.describe('Dashboard Page', () => {
     }
 
     const summaryCards = page.locator('#evSelectedSummary .ev-summary-stat');
-    await expect(summaryCards.nth(0)).toContainText('Vehicle');
-    await expect(summaryCards.nth(1)).toContainText('SoC');
-    await expect(summaryCards.nth(2)).toContainText('Range');
-    await expect(summaryCards.nth(1).locator('.ev-summary-battery')).toHaveCount(1);
-    await expect(summaryCards.nth(1)).toContainText('58%');
-    await expect(summaryCards.nth(2)).toContainText('322 km');
+    await expect(summaryCards.nth(0)).toContainText('SoC');
+    await expect(summaryCards.nth(1)).toContainText('Range');
+    await expect(summaryCards.nth(0).locator('.ev-summary-battery')).toHaveCount(1);
+    await expect(summaryCards.nth(0)).toContainText('58%');
+    await expect(summaryCards.nth(0)).toContainText('Charging');
+    await expect(summaryCards.nth(1)).toContainText('347 km');
+    await expect(summaryCards.nth(1)).toContainText('Est. 322 km');
+    await expect(summaryCards.nth(2)).toContainText('To full');
+    await expect(summaryCards.nth(2)).toContainText('2h');
+    await expect(summaryCards.nth(2)).toContainText('$4.20');
+    await expect(summaryCards.nth(3)).toContainText('Session gain');
+    await expect(summaryCards.nth(3)).toContainText('+58 km');
+    await expect(summaryCards.nth(3)).toContainText('8.50 kWh');
+    await expect(summaryCards.nth(4)).toContainText('Charge cost');
+    await expect(summaryCards.nth(4)).toContainText('$2.55');
   });
 
   test('should show Tesla charging controls and submit command payloads for command-ready vehicles', async ({ page }) => {
@@ -611,6 +629,7 @@ test.describe('Dashboard Page', () => {
               isHome: true,
               rangeKm: 311,
               chargeLimitPct: 82,
+              chargingAmps: 24,
               asOfIso: '2026-03-13T00:00:00.000Z'
             }
           }
@@ -656,11 +675,18 @@ test.describe('Dashboard Page', () => {
     await expect(page.locator('#evChargingAmpsInput')).toHaveAttribute('type', 'range');
     await expect(page.locator('#evChargeLimitInput')).toHaveValue('82');
     await expect(page.locator('#evChargeLimitDisplay')).toHaveText('82%');
+    await expect(page.locator('#evChargingAmpsDisplay')).toHaveText('24A');
 
     await page.locator('#evChargeLimitInput').evaluate((element) => {
       element.value = '85';
       element.dispatchEvent(new Event('input', { bubbles: true }));
     });
+    await page.locator('#evChargingAmpsInput').evaluate((element) => {
+      element.value = '26';
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await expect(page.locator('#evChargingAmpsDisplay')).toContainText('26A target');
+    await expect(page.locator('#evChargingAmpsDisplay')).toContainText('now 24A');
     await page.locator('#evSetChargeLimitBtn').click();
 
     await expect(page.locator('#evOverviewMessage')).toContainText(/charge limit updated to 85%/i);

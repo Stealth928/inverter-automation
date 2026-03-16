@@ -66,7 +66,13 @@ describe('normalizeVehicleStatus', () => {
       chargeLimitPct: 90,
       isPluggedIn: true,
       isHome: true,
-      rangeKm: 280
+      rangeKm: 280,
+      ratedRangeKm: 302,
+      timeToFullChargeHours: 1.75,
+      chargeEnergyAddedKwh: 8.4,
+      rangeAddedKm: 56,
+      chargingPowerKw: 7.2,
+      chargingAmps: 24
     };
     const result = normalizeVehicleStatus(raw, '2026-01-01T00:00:00.000Z');
     expect(result.socPct).toBe(75);
@@ -75,6 +81,12 @@ describe('normalizeVehicleStatus', () => {
     expect(result.isPluggedIn).toBe(true);
     expect(result.isHome).toBe(true);
     expect(result.rangeKm).toBe(280);
+    expect(result.ratedRangeKm).toBe(302);
+    expect(result.timeToFullChargeHours).toBe(1.75);
+    expect(result.chargeEnergyAddedKwh).toBe(8.4);
+    expect(result.rangeAddedKm).toBe(56);
+    expect(result.chargingPowerKw).toBe(7.2);
+    expect(result.chargingAmps).toBe(24);
     expect(result.asOfIso).toBe('2026-01-01T00:00:00.000Z');
   });
 
@@ -99,6 +111,12 @@ describe('normalizeVehicleStatus', () => {
     expect(result.socPct).toBeNull();
     expect(result.chargeLimitPct).toBeNull();
     expect(result.rangeKm).toBeNull();
+    expect(result.ratedRangeKm).toBeNull();
+    expect(result.timeToFullChargeHours).toBeNull();
+    expect(result.chargeEnergyAddedKwh).toBeNull();
+    expect(result.rangeAddedKm).toBeNull();
+    expect(result.chargingPowerKw).toBeNull();
+    expect(result.chargingAmps).toBeNull();
   });
 
   test('null/undefined charging state → unknown', () => {

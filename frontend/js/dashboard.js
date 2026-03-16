@@ -3090,6 +3090,69 @@
             return `${km} km / ${mi} mi`;
         }
 
+        function formatEVDistanceGainKm(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) return '—';
+            return `+${Math.round(numeric)} km`;
+        }
+
+        function formatEVHoursToFull(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric) || numeric < 0) return '—';
+            if (numeric === 0) return 'Ready now';
+
+            const totalMinutes = Math.max(1, Math.round(numeric * 60));
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+            if (hours > 0) return `${hours}h`;
+            return `${minutes}m`;
+        }
+
+        function formatEVEnergyKwh(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) return '—';
+            return `${numeric.toFixed(numeric >= 10 ? 1 : 2)} kWh`;
+        }
+
+        function formatEVCurrencyFromCents(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) return '—';
+            const sign = numeric < 0 ? '-' : '';
+            return `${sign}$${Math.abs(numeric / 100).toFixed(2)}`;
+        }
+
+        function getCurrentAmberBuyPriceCents() {
+            try {
+                const cached = JSON.parse(localStorage.getItem('cachedPrices') || '{}');
+                const value = Number(cached?.general?.perKwh);
+                return Number.isFinite(value) ? value : null;
+            } catch {
+                return null;
+            }
+        }
+
+        function deriveEVStatusInsights(status = {}) {
+            const buyPriceCentsPerKwh = getCurrentAmberBuyPriceCents();
+            const chargeEnergyAddedKwh = Number(status?.chargeEnergyAddedKwh);
+            const timeToFullChargeHours = Number(status?.timeToFullChargeHours);
+            const chargingPowerKw = Number(status?.chargingPowerKw);
+            const costAddedCents = Number.isFinite(chargeEnergyAddedKwh) && Number.isFinite(buyPriceCentsPerKwh)
+                ? chargeEnergyAddedKwh * buyPriceCentsPerKwh
+                : null;
+
+            let costToFullCents = null;
+            if (Number.isFinite(timeToFullChargeHours) && timeToFullChargeHours > 0 && Number.isFinite(chargingPowerKw) && chargingPowerKw > 0 && Number.isFinite(buyPriceCentsPerKwh)) {
+                costToFullCents = timeToFullChargeHours * chargingPowerKw * buyPriceCentsPerKwh;
+            }
+
+            return {
+                buyPriceCentsPerKwh,
+                costAddedCents,
+                costToFullCents
+            };
+        }
+
         function formatEVSoc(value) {
             const numeric = Number(value);
             if (!Number.isFinite(numeric)) return '—';
@@ -3363,13 +3426,20 @@
             const ampsInput = document.getElementById('evChargingAmpsInput');
             const limitDisplay = document.getElementById('evChargeLimitDisplay');
             const ampsDisplay = document.getElementById('evChargingAmpsDisplay');
+            const selectedStatus = getSelectedEVStatus();
+            const activeAmps = Number(selectedStatus?.chargingAmps);
 
             if (limitInput && limitDisplay) {
                 limitDisplay.textContent = `${limitInput.value}%`;
                 updateEVSliderFill(limitInput, 50, 100, 'var(--accent-blue)');
             }
             if (ampsInput && ampsDisplay) {
-                ampsDisplay.textContent = `${ampsInput.value}A`;
+                const sliderValue = Number(ampsInput.value);
+                const hasActiveAmps = Number.isFinite(activeAmps);
+                const hasDifferentTarget = hasActiveAmps && Number.isFinite(sliderValue) && Math.round(activeAmps) !== Math.round(sliderValue);
+                ampsDisplay.textContent = hasDifferentTarget
+                    ? `${Math.round(sliderValue)}A target · now ${Math.round(activeAmps)}A`
+                    : `${ampsInput.value}A`;
                 updateEVSliderFill(ampsInput, 1, 48, 'var(--color-success-dark)');
             }
         }
@@ -3472,26 +3542,53 @@
                 pillsEl.appendChild(sourcePill);
             }
 
-            if (readinessMeta.source || readiness?.transport) {
-                const readinessPill = document.createElement('span');
-                readinessPill.className = 'ev-status-pill';
-                readinessPill.textContent = `Commands: ${String(readinessMeta.source || readiness?.transport || 'checking').toUpperCase()}`;
-                pillsEl.appendChild(readinessPill);
-            }
-
+            const insights = deriveEVStatusInsights(status);
+            const isCharging = String(status.chargingState || '').toLowerCase() === 'charging';
             const stats = [
-                { label: 'Vehicle', value: getEVVehicleDisplayName(selectedVehicle) },
                 {
                     label: 'SoC',
                     value: formatEVSoc(status.socPct),
                     type: 'battery',
                     socPct: status.socPct,
-                    chargingState: status.chargingState
+                    chargingState: status.chargingState,
+                    highlight: isCharging,
+                    subvalue: (() => {
+                        const stateLabel = formatEVChargingState(status.chargingState);
+                        const state = String(status.chargingState || '').toLowerCase();
+                        if (state === 'disconnected') return stateLabel;
+                        if (status.isPluggedIn === true) return `${stateLabel} · Plugged in`;
+                        if (status.isPluggedIn === false) return `${stateLabel} · Not plugged`;
+                        return stateLabel;
+                    })()
                 },
-                { label: 'Range', value: formatEVRangeKm(status.rangeKm) },
-                { label: 'Charging', value: formatEVChargingState(status.chargingState), highlight: String(status.chargingState || '').toLowerCase() === 'charging' },
-                { label: 'Plugged', value: formatEVBoolean(status.isPluggedIn) },
-                { label: 'Updated', value: formatEVLastUpdatedLabel(meta, status) }
+                {
+                    label: 'Range',
+                    value: formatEVRangeKm(status.ratedRangeKm ?? status.rangeKm),
+                    subvalue: Number.isFinite(Number(status.rangeKm)) && Number.isFinite(Number(status.ratedRangeKm)) && Math.round(Number(status.ratedRangeKm)) !== Math.round(Number(status.rangeKm))
+                        ? `Est. ${formatEVRangeKm(status.rangeKm)}`
+                        : 'Rated range'
+                },
+                {
+                    label: 'To full',
+                    value: formatEVHoursToFull(status.timeToFullChargeHours),
+                    subvalue: Number.isFinite(Number(insights.costToFullCents))
+                        ? `Est. ${formatEVCurrencyFromCents(insights.costToFullCents)}`
+                        : 'Current tariff'
+                },
+                {
+                    label: 'Session gain',
+                    value: formatEVDistanceGainKm(status.rangeAddedKm),
+                    subvalue: Number.isFinite(Number(status.chargeEnergyAddedKwh))
+                        ? formatEVEnergyKwh(status.chargeEnergyAddedKwh)
+                        : ''
+                },
+                {
+                    label: 'Charge cost',
+                    value: formatEVCurrencyFromCents(insights.costAddedCents),
+                    subvalue: Number.isFinite(Number(insights.buyPriceCentsPerKwh))
+                        ? `${Number(insights.buyPriceCentsPerKwh).toFixed(1)}¢/kWh`
+                        : 'Tariff unavailable'
+                }
             ];
 
             function getEVBatteryFillColor(socPct) {
@@ -3558,8 +3655,20 @@
                     card.appendChild(valueEl);
                 }
 
+                if (stat.subvalue) {
+                    const subvalueEl = document.createElement('div');
+                    subvalueEl.className = 'ev-summary-subvalue';
+                    subvalueEl.textContent = stat.subvalue;
+                    card.appendChild(subvalueEl);
+                }
+
                 summaryEl.appendChild(card);
             });
+
+            const footerEl = document.createElement('div');
+            footerEl.className = 'ev-summary-footer';
+            footerEl.textContent = formatEVLastUpdatedLabel(meta, status);
+            summaryEl.appendChild(footerEl);
 
             renderEVCommandControls(selectedVehicle, status, readiness, readinessMeta, statusError);
         }
@@ -5761,13 +5870,20 @@
             const soc = Math.max(12, Math.min(98, Math.round(socBase + Math.sin((t + (isPrimaryVehicle ? 0.08 : 0.21)) * Math.PI * 2) * socVariance)));
             const chargingState = isPrimaryVehicle ? 'Charging' : 'Stopped';
             const rangeKm = Math.round((isPrimaryVehicle ? 172 : 438) + Math.sin((t + (isPrimaryVehicle ? 0.05 : 0.18)) * Math.PI * 2) * (isPrimaryVehicle ? 18 : 12));
+            const ratedRangeKm = rangeKm + (isPrimaryVehicle ? 19 : 11);
             return {
                 asOfIso: now.toISOString(),
                 socPct: soc,
                 rangeKm,
+                ratedRangeKm,
                 chargingState,
                 isPluggedIn: true,
                 isHome: true,
+                timeToFullChargeHours: isPrimaryVehicle ? 2.2 : 0,
+                chargeEnergyAddedKwh: isPrimaryVehicle ? 8.4 : 0,
+                rangeAddedKm: isPrimaryVehicle ? 52 : 0,
+                chargingPowerKw: isPrimaryVehicle ? 7.2 : 0,
+                chargingAmps: isPrimaryVehicle ? 24 : 16,
                 odometerKm: isPrimaryVehicle ? 18250 : 27440,
                 estimatedRemainingKm: rangeKm
             };

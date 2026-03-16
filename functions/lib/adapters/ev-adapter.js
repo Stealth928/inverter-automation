@@ -59,6 +59,12 @@ function normalizeVehicleStatus(raw = {}, observedAtIso = null) {
     isPluggedIn: raw.isPluggedIn ?? raw.plugged_in ?? null,
     isHome: raw.isHome ?? raw.at_home ?? null,
     rangeKm: toFiniteNumber(raw.rangeKm ?? raw.est_battery_range_km ?? raw.battery_range, null),
+    ratedRangeKm: toFiniteNumber(raw.ratedRangeKm ?? raw.battery_range_km ?? raw.ideal_battery_range_km, null),
+    timeToFullChargeHours: toFiniteNumber(raw.timeToFullChargeHours ?? raw.time_to_full_charge, null),
+    chargeEnergyAddedKwh: toFiniteNumber(raw.chargeEnergyAddedKwh ?? raw.charge_energy_added, null),
+    rangeAddedKm: toFiniteNumber(raw.rangeAddedKm ?? raw.charge_miles_added_rated_km ?? raw.charge_miles_added_ideal_km, null),
+    chargingPowerKw: toFiniteNumber(raw.chargingPowerKw ?? raw.charger_power_kw ?? raw.charger_power, null),
+    chargingAmps: toFiniteNumber(raw.chargingAmps ?? raw.charger_actual_current ?? raw.charge_amps, null),
     asOfIso
   };
 }
