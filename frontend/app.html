@@ -247,40 +247,57 @@
         }
         .ev-summary-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 8px;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 10px;
             margin-bottom: 12px;
+        }
+        @media (max-width: 700px) {
+            .ev-summary-grid {
+                grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            }
         }
         .ev-summary-stat {
             background: var(--bg-input);
             border: 1px solid var(--border-primary);
             border-radius: 8px;
-            padding: 8px 10px;
+            padding: 10px 12px;
+            min-width: 0;
+            overflow: hidden;
         }
         .ev-summary-label {
             font-size: 10px;
             color: var(--text-secondary);
             text-transform: uppercase;
-            letter-spacing: 0.4px;
-            margin-bottom: 4px;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .ev-summary-value {
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 600;
             color: var(--text-primary);
-            word-break: break-word;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .ev-summary-value.ev-summary-value--with-icon {
             display: flex;
             align-items: center;
-            gap: 10px;
-            min-height: 28px;
+            gap: 8px;
+            min-height: 26px;
+            white-space: nowrap;
+            overflow: visible;
         }
         .ev-summary-value-main {
             display: inline-flex;
             align-items: baseline;
             gap: 4px;
             min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .ev-summary-battery {
             width: 20px;
