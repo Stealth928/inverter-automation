@@ -32,6 +32,50 @@ class FirebaseAuth {
    * Call this once on page load
    */
   async init(config, options = {}) {
+      const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
+      const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname === '' || hostname === '::1';
+
+      const readLocalMockUser = () => {
+        try {
+          const raw = localStorage.getItem('mockAuthUser');
+          return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+          return null;
+        }
+      };
+
+      const mockWindowUser = window.mockFirebaseAuth && window.mockFirebaseAuth.currentUser
+        ? window.mockFirebaseAuth.currentUser
+        : null;
+      const storedMockUser = readLocalMockUser();
+      const forceLocalMock = isLocalhost && !!(mockWindowUser || storedMockUser);
+
+      if (forceLocalMock) {
+        this.mock = true;
+        try {
+          const parsed = mockWindowUser || storedMockUser;
+          if (parsed) {
+            const tokenFromWindow = typeof parsed.getIdToken === 'function'
+              ? await parsed.getIdToken()
+              : null;
+            const token = tokenFromWindow || localStorage.getItem('mockAuthToken') || ('mock-token-' + Date.now());
+            parsed.getIdToken = async () => token;
+            this.user = parsed;
+            this.idToken = token;
+          } else {
+            this.user = null;
+            this.idToken = null;
+          }
+        } catch (e) {
+          this.user = null;
+          this.idToken = null;
+        }
+        this.initialized = true;
+        console.warn('[FirebaseAuth] Running in forced MOCK auth mode for localhost/test session');
+        setTimeout(() => this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user)), 0);
+        return;
+      }
+
       // Check if Firebase SDK is loaded
       if (typeof firebase === 'undefined') {
         console.error('[FirebaseAuth] Firebase SDK not loaded. Check that firebase-app-compat.js is included in the page.');
@@ -46,8 +90,6 @@ class FirebaseAuth {
       // or when explicitly allowed via options.allowMock.
       const isPlaceholderConfig = !config || !config.apiKey || String(config.apiKey).trim() === '' || String(config.apiKey).startsWith('YOUR_');
       const allowMock = !!options.allowMock;
-      const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
-      const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname === '';
 
       if (isPlaceholderConfig) {
         if (allowMock || isLocalhost) {

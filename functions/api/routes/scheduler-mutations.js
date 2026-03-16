@@ -29,6 +29,13 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
     throw new Error('registerSchedulerMutationRoutes requires getUserConfig()');
   }
 
+  function shouldVerify(req) {
+    const raw = req?.query?.verify;
+    if (raw === undefined || raw === null || raw === '') return false;
+    const normalized = String(raw).trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes';
+  }
+
   app.post('/api/scheduler/v1/set', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
@@ -48,7 +55,9 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
         // Adapter-based path for non-FoxESS providers
         const context = { deviceSN, userConfig, userId: req.user.uid };
         const result = await deviceAdapter.setSchedule(context, groups);
-        const verify = await deviceAdapter.getSchedule(context).catch(() => null);
+        const verify = shouldVerify(req)
+          ? await deviceAdapter.getSchedule(context).catch(() => null)
+          : null;
         await addHistoryEntry(req.user.uid, { type: 'scheduler_update', action: 'manual', groups, result: result.errno === 0 ? 'success' : 'failed' });
         return res.json({ errno: result.errno, msg: result.errno === 0 ? 'Success' : 'Failed', result: result.result, flagResult: null, verify: verify?.result || null });
       }
@@ -64,10 +73,12 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
       }
       await addHistoryEntry(req.user.uid, { type: 'scheduler_update', action: 'manual', groups, result: result.errno === 0 ? 'success' : 'failed' });
       let verify = null;
-      try {
-        verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, req.user.uid);
-      } catch (error) {
-        logger.warn('Scheduler', `Verify read failed: ${error && error.message ? error.message : error}`);
+      if (shouldVerify(req)) {
+        try {
+          verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, req.user.uid);
+        } catch (error) {
+          logger.warn('Scheduler', `Verify read failed: ${error && error.message ? error.message : error}`);
+        }
       }
       return res.json({ errno: result.errno, msg: result.msg || (result.errno === 0 ? 'Success' : 'Failed'), result: result.result, flagResult, verify: verify?.result || null });
     } catch (error) {
@@ -96,7 +107,9 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
 
       if (deviceAdapter && provider !== 'foxess') {
         const result = await deviceAdapter.clearSchedule({ deviceSN, userConfig, userId });
-        const verify = await deviceAdapter.getSchedule({ deviceSN, userConfig, userId }).catch(() => null);
+        const verify = shouldVerify(req)
+          ? await deviceAdapter.getSchedule({ deviceSN, userConfig, userId }).catch(() => null)
+          : null;
         await addHistoryEntry(userId, { type: 'scheduler_clear', by: userId }).catch(() => {});
         return res.json({ errno: result.errno, msg: result.errno === 0 ? 'Scheduler cleared' : 'Failed', result: result.result, flagResult: null, verify: verify?.result || null });
       }
@@ -110,10 +123,12 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
         logger.warn('Scheduler', `Flag disable failed: ${flagErr && flagErr.message ? flagErr.message : flagErr}`);
       }
       let verify = null;
-      try {
-        verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
-      } catch (error) {
-        logger.warn('Scheduler', `Verify read failed: ${error && error.message ? error.message : error}`);
+      if (shouldVerify(req)) {
+        try {
+          verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+        } catch (error) {
+          logger.warn('Scheduler', `Verify read failed: ${error && error.message ? error.message : error}`);
+        }
       }
       try {
         await addHistoryEntry(userId, { type: 'scheduler_clear', by: userId });

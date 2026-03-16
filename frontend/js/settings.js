@@ -1863,6 +1863,22 @@
                 }
             } catch (error) {
                 console.error('loadSettings error:', error);
+                // Keep the form usable even if a partial load fails.
+                try {
+                    document.querySelectorAll('input, select').forEach((input) => {
+                        input.disabled = false;
+                    });
+                } catch (enableErr) {
+                    console.warn('[Settings] Failed to re-enable controls after load error', enableErr);
+                }
+
+                // Tesla onboarding should still be available in degraded mode.
+                try {
+                    await initializeTeslaOnboarding();
+                } catch (teslaInitErr) {
+                    console.warn('[Settings] Tesla onboarding recovery failed', teslaInitErr);
+                }
+
                 setConfigStatus('error', 'Error');
                 showMessage('warning', `Failed to load: ${error.message}`);
             }

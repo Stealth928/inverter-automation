@@ -156,4 +156,82 @@ describe('quick-control route module', () => {
     expect(response.body.error).toBe('Parameter Error');
     expect(adapter.setSchedule).toHaveBeenCalled();
   });
+
+  test('start skips verify by default and still persists active state', async () => {
+    const deps = createDeps();
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/quickcontrol/start')
+      .set('Authorization', 'Bearer token')
+      .send({ type: 'charge', power: 2500, durationMinutes: 5 });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.verify).toBeNull();
+    expect(deps.foxessAPI.callFoxESSAPI).toHaveBeenCalledTimes(2);
+    expect(deps.saveQuickControlState).toHaveBeenCalledWith('u-quick', expect.objectContaining({
+      active: true,
+      type: 'charge',
+      power: 2500,
+      durationMinutes: 5,
+      provider: 'foxess'
+    }));
+  });
+
+  test('start verifies schedule when verify query is requested', async () => {
+    const deps = createDeps({
+      foxessAPI: {
+        callFoxESSAPI: jest.fn(async (path, _method, payload) => {
+          if (path === '/op/v1/device/scheduler/enable') {
+            return { errno: 0, result: { groups: payload.groups } };
+          }
+          if (path === '/op/v1/device/scheduler/set/flag') {
+            return { errno: 0, result: { enable: payload.enable } };
+          }
+          if (path === '/op/v1/device/scheduler/get') {
+            return { errno: 0, result: { groups: [{ enable: 1 }], enable: true } };
+          }
+          return { errno: 0, result: {} };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/quickcontrol/start?verify=1')
+      .set('Authorization', 'Bearer token')
+      .send({ type: 'discharge', power: 5000, durationMinutes: 5 });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.verify).toEqual({ groups: [{ enable: 1 }], enable: true });
+    expect(deps.foxessAPI.callFoxESSAPI).toHaveBeenCalledWith(
+      '/op/v1/device/scheduler/get',
+      'POST',
+      { deviceSN: 'SN-Q' },
+      { deviceSn: 'SN-Q' },
+      'u-quick'
+    );
+  });
+
+  test('end skips verify by default and clears state', async () => {
+    const deps = createDeps({
+      getQuickControlState: jest.fn(async () => ({
+        active: true,
+        type: 'charge',
+        power: 2500,
+        durationMinutes: 15,
+        expiresAt: Date.now() + 1000
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/quickcontrol/end')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.verify).toBeNull();
+    expect(deps.saveQuickControlState).toHaveBeenCalledWith('u-quick', null);
+  });
 });

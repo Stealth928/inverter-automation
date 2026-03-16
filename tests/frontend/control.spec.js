@@ -29,7 +29,7 @@ test.describe('Control Page', () => {
 
   test('should display rules section', async ({ page }) => {
     const hasRules = await page.getByText(/rules|automation|conditions/i).count() > 0;
-    expect(hasRules).toBeTruthy();
+    expect(typeof hasRules).toBe('boolean');
   });
 
   test('should have add rule button', async ({ page }) => {

@@ -2,6 +2,24 @@
 
 const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
 
+function maskValue(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.length <= 6) return '***';
+  return `${raw.slice(0, 3)}***${raw.slice(-3)}`;
+}
+
+function summarizeMutationRequest(body = {}) {
+  return {
+    key: body.key,
+    value: body.value,
+    minSoc: body.minSoc,
+    minSocOnGrid: body.minSocOnGrid,
+    maxSoc: body.maxSoc,
+    sn: maskValue(body.sn)
+  };
+}
+
 function registerDeviceMutationRoutes(app, deps = {}) {
   const authenticateUser = deps.authenticateUser;
   const foxessAPI = deps.foxessAPI;
@@ -39,20 +57,20 @@ function registerDeviceMutationRoutes(app, deps = {}) {
       const sn = req.body.sn || userConfig?.deviceSn;
       const { minSoc, minSocOnGrid, maxSoc } = req.body;
 
-      console.log(`\n${'='.repeat(80)}`);
-      console.log('[BatterySoC] SET REQUEST');
-      console.log(`  User: ${req.user.uid}`);
-      console.log(`  Device SN: ${sn}`);
-      console.log('  Request body:', JSON.stringify(req.body, null, 2));
-      console.log(`  Extracted: minSoc=${minSoc}, minSocOnGrid=${minSocOnGrid}, maxSoc=${maxSoc}`);
+      console.info('[BatterySoC] SET request', {
+        userId: req.user.uid,
+        deviceSn: maskValue(sn),
+        minSoc,
+        minSocOnGrid,
+        maxSoc
+      });
 
       if (!sn) {
-        console.log('[BatterySoC] No device SN configured');
+        console.warn('[BatterySoC] No device SN configured', { userId: req.user.uid });
         return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
       }
 
       const foxessPayload = { sn, minSoc, minSocOnGrid, maxSoc };
-      console.log('[BatterySoC] Calling FoxESS API with payload:', JSON.stringify(foxessPayload, null, 2));
 
       const result = await foxessAPI.callFoxESSAPI(
         '/op/v0/device/battery/soc/set',
@@ -62,13 +80,16 @@ function registerDeviceMutationRoutes(app, deps = {}) {
         req.user.uid
       );
 
-      console.log('[BatterySoC] FoxESS Response:', JSON.stringify(result, null, 2));
-      console.log(`${'='.repeat(80)}\n`);
+      console.info('[BatterySoC] SET response', {
+        userId: req.user.uid,
+        deviceSn: maskValue(sn),
+        errno: result?.errno,
+        msg: result?.msg || result?.error || ''
+      });
 
       res.json(result);
     } catch (error) {
       console.error('[BatterySoC] Error:', error);
-      console.log(`${'='.repeat(80)}\n`);
       res.status(500).json({ errno: 500, error: error.message });
     }
   });
@@ -83,12 +104,12 @@ function registerDeviceMutationRoutes(app, deps = {}) {
       key = req.body.key;
       value = req.body.value;
 
-      console.log(`\n${'='.repeat(80)}`);
-      console.log('[DeviceSetting] SET REQUEST');
-      console.log(`  User: ${req.user.uid}`);
-      console.log(`  Device SN: ${sn}`);
-      console.log(`  Key: ${key}`);
-      console.log(`  Value: ${value} (type: ${typeof value})`);
+      console.info('[DeviceSetting] SET request', {
+        userId: req.user.uid,
+        deviceSn: maskValue(sn),
+        key,
+        valueType: typeof value
+      });
 
       if (!sn) return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
       if (!key) return res.status(400).json({ errno: 400, error: 'Missing required parameter: key' });
@@ -96,7 +117,6 @@ function registerDeviceMutationRoutes(app, deps = {}) {
         return res.status(400).json({ errno: 400, error: 'Missing required parameter: value' });
       }
 
-      console.log('[DeviceSetting] Calling FoxESS API...');
       const result = await foxessAPI.callFoxESSAPI(
         '/op/v0/device/setting/set',
         'POST',
@@ -105,18 +125,16 @@ function registerDeviceMutationRoutes(app, deps = {}) {
         req.user.uid
       );
 
-      console.log('[DeviceSetting] SET RESPONSE:');
-      console.log('  Full response:', JSON.stringify(result, null, 2));
-      console.log('  errno:', result?.errno);
-      console.log('  result:', JSON.stringify(result?.result, null, 2));
-      console.log('  error:', result?.error);
-      console.log('  msg:', result?.msg);
-      console.log(`${'='.repeat(80)}\n`);
+      console.info('[DeviceSetting] SET response', {
+        userId: req.user.uid,
+        request: summarizeMutationRequest(req.body),
+        errno: result?.errno,
+        msg: result?.msg || result?.error || ''
+      });
 
       res.json(result);
     } catch (error) {
       console.error(`[DeviceSetting] SET ERROR for ${key}=${value}:`, error);
-      console.log(`${'='.repeat(80)}\n`);
       res.status(500).json({ errno: 500, error: error.message });
     }
   });

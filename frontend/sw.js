@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'socrates-v50';
+const CACHE_VERSION = 'socrates-v51';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const STATIC_ASSETS = [
@@ -78,21 +78,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const updateCacheFromNetwork = async (cache, cacheKey) => {
+    const networkResponse = await fetch(request);
+    if (networkResponse && networkResponse.status === 200) {
+      cache.put(cacheKey, networkResponse.clone());
+    }
+    return networkResponse;
+  };
+
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(STATIC_CACHE).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(async () => {
-          const cachedPage = await caches.match(request);
-          if (cachedPage) {
-            return cachedPage;
-          }
+      caches.open(STATIC_CACHE).then(async (cache) => {
+        const cachedPage = await cache.match(request);
+        if (cachedPage) {
+          event.waitUntil(updateCacheFromNetwork(cache, request).catch(() => null));
+          return cachedPage;
+        }
+
+        try {
+          return await updateCacheFromNetwork(cache, request);
+        } catch (_error) {
           return caches.match('/app.html');
-        })
+        }
+      })
     );
     return;
   }
@@ -108,18 +116,15 @@ self.addEventListener('fetch', (event) => {
 
   if (isCriticalShellAsset) {
     event.respondWith(
-      fetch(request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const copy = networkResponse.clone();
-            caches.open(STATIC_CACHE).then((cache) => cache.put(request, copy));
-          }
-          return networkResponse;
-        })
-        .catch(async () => {
-          const cache = await caches.open(STATIC_CACHE);
-          return cache.match(request);
-        })
+      caches.open(STATIC_CACHE).then(async (cache) => {
+        const cachedResponse = await cache.match(request);
+        if (cachedResponse) {
+          event.waitUntil(updateCacheFromNetwork(cache, request).catch(() => null));
+          return cachedResponse;
+        }
+
+        return updateCacheFromNetwork(cache, request).catch(() => cache.match(request));
+      })
     );
     return;
   }

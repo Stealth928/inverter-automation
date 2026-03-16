@@ -17,9 +17,9 @@
     <meta name="apple-mobile-web-app-title" content="SoCrates">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <link rel="stylesheet" href="css/shared-styles.css?v=9" />
     <script src="js/theme-init.js"></script>
     <style>
@@ -504,6 +504,11 @@
 
         .form-group .hint a:hover {
             text-decoration: underline;
+        }
+
+        .form-group .hint strong {
+            color: var(--text-primary);
+            font-weight: 600;
         }
 
         .input-wrapper {
@@ -1120,13 +1125,13 @@
                             <span class="form-section-icon">🔌</span>
                             <span class="form-section-title">Inverter Connection</span>
                         </div>
-                        <div class="form-section-subtitle">Your inverter brand, device serial number, and API credentials</div>
+                        <div class="form-section-subtitle">Choose your inverter brand and enter the details SoCrates needs to connect.</div>
                     </div>
 
                     <!-- Provider Selector -->
                     <div class="form-group" id="providerGroup">
                         <label><span>Inverter Brand</span><span class="required-indicator">*</span></label>
-                        <div class="hint">Select the manufacturer of your hybrid inverter / battery system</div>
+                        <div class="hint">Pick the brand for the inverter or battery system you want to automate.</div>
                         <div class="provider-selector" id="providerSelector">
                             <label class="provider-option provider-option--selected" id="providerFoxessOption">
                                 <input type="radio" name="provider" value="foxess" checked id="providerFoxess">
@@ -1155,7 +1160,7 @@
                                 <span>Device Serial Number</span>
                                 <span class="required-indicator">*</span>
                             </label>
-                            <div class="hint">Found on your inverter label or in the FoxESS Cloud app under Device Info</div>
+                            <div class="hint">Use the serial number shown on the inverter label or in FoxESS Cloud.</div>
                             <div class="input-wrapper">
                                 <input 
                                     type="text" 
@@ -1183,7 +1188,7 @@
                                 <span>FoxESS API Token</span>
                                 <span class="required-indicator">*</span>
                             </label>
-                            <div class="hint">Generate from <a href="https://www.foxesscloud.com/login" target="_blank" rel="noopener noreferrer">FoxESS Cloud (v1)</a> → User Settings → API Management</div>
+                            <div class="hint">Create it in <a href="https://www.foxesscloud.com/login" target="_blank" rel="noopener noreferrer">FoxESS Cloud (v1)</a> → User Settings → API Management. No FoxESS password needed.</div>
                             <div class="input-wrapper">
                                 <input 
                                     type="password" 
@@ -1214,7 +1219,7 @@
                                 <span>System Serial Number (sysSn)</span>
                                 <span class="required-indicator">*</span>
                             </label>
-                            <div class="hint">Your AlphaESS system SN (from your AlphaESS system details)</div>
+                            <div class="hint">Use the system serial number shown in your AlphaESS system details.</div>
                             <div class="input-wrapper">
                                 <input
                                     type="text"
@@ -1235,7 +1240,7 @@
                                 <span>AlphaESS App ID</span>
                                 <span class="required-indicator">*</span>
                             </label>
-                            <div class="hint">OpenAPI developer app ID from AlphaESS developer portal</div>
+                            <div class="hint">From your AlphaESS OpenAPI developer portal.</div>
                             <div class="input-wrapper">
                                 <input
                                     type="text"
@@ -1256,7 +1261,7 @@
                                 <span>AlphaESS App Secret</span>
                                 <span class="required-indicator">*</span>
                             </label>
-                            <div class="hint">OpenAPI developer app secret (stored encrypted)</div>
+                            <div class="hint">From your AlphaESS OpenAPI developer portal. Stored encrypted.</div>
                             <div class="input-wrapper">
                                 <input
                                     type="password"
@@ -1281,7 +1286,7 @@
                                 <span>Inverter Serial Number</span>
                                 <span class="required-indicator">*</span>
                             </label>
-                            <div class="hint">Found on your Sungrow inverter label or in the iSolarCloud app under Device Details</div>
+                            <div class="hint">Use the serial number shown on the inverter label or in iSolarCloud.</div>
                             <div class="input-wrapper">
                                 <input
                                     type="text"
@@ -1302,7 +1307,7 @@
                                 <span>iSolarCloud Account Email</span>
                                 <span class="required-indicator">*</span>
                             </label>
-                            <div class="hint">The email address you use to log in to the <a href="https://isolarcloud.com.au" target="_blank" rel="noopener noreferrer">iSolarCloud</a> app or portal</div>
+                            <div class="hint">The email you use to sign in to <a href="https://isolarcloud.com.au" target="_blank" rel="noopener noreferrer">iSolarCloud</a>.</div>
                             <div class="input-wrapper">
                                 <input
                                     type="email"
@@ -1323,7 +1328,7 @@
                                 <span>iSolarCloud Password</span>
                                 <span class="required-indicator">*</span>
                             </label>
-                            <div class="hint">Your iSolarCloud account password (stored encrypted, used only to refresh API sessions)</div>
+                            <div class="hint">Used only to refresh iSolarCloud sessions. Stored encrypted.</div>
                             <div class="input-wrapper">
                                 <input
                                     type="password"
@@ -1348,7 +1353,7 @@
                                 <span>SigenEnergy Account Email</span>
                                 <span class="required-indicator">*</span>
                             </label>
-                            <div class="hint">The email address you use to log in to the SigenEnergy app</div>
+                            <div class="hint">The email you use to sign in to the SigenEnergy app.</div>
                             <div class="input-wrapper">
                                 <input
                                     type="email"
@@ -1369,7 +1374,7 @@
                                 <span>SigenEnergy Password</span>
                                 <span class="required-indicator">*</span>
                             </label>
-                            <div class="hint">Your SigenEnergy account password (stored encrypted, used only to refresh API sessions)</div>
+                            <div class="hint">Used only to refresh SigenEnergy sessions. Stored encrypted.</div>
                             <div class="input-wrapper">
                                 <input
                                     type="password"
@@ -1390,7 +1395,7 @@
                             <label for="sigenenergyRegion">
                                 <span>Region</span>
                             </label>
-                            <div class="hint">Your geographic region for the SigenEnergy cloud API</div>
+                            <div class="hint">Choose the SigenEnergy API region for your account.</div>
                             <div class="input-wrapper">
                                 <select id="sigenenergyRegion" name="sigenenergyRegion">
                                     <option value="apac" selected>APAC (Australia / Asia-Pacific)</option>
@@ -1408,7 +1413,7 @@
                             <span class="form-section-icon">🌤️</span>
                             <span class="form-section-title">Location &amp; Weather</span>
                         </div>
-                        <div class="form-section-subtitle">Used for solar forecasts, sunrise/sunset times, and timezone-aware scheduling</div>
+                        <div class="form-section-subtitle">Used for solar forecasts and to set your local timezone for scheduling.</div>
                     </div>
 
                     <!-- Weather Location (Required) -->
@@ -1417,7 +1422,7 @@
                             <span>Location</span>
                             <span class="required-indicator">*</span>
                         </label>
-                        <div class="hint">Your city and country (e.g., "Sydney, Australia") &mdash; used for weather forecasts and to auto-detect your timezone for accurate scheduling.</div>
+                        <div class="hint"><strong>Enter City, Country</strong> exactly, for example "Sydney, Australia". We use this to match your location and set the correct timezone.</div>
                         <div class="input-wrapper">
                             <input 
                                 type="text" 
@@ -1447,7 +1452,7 @@
                             <span class="form-section-title">Electricity Pricing</span>
                             <span class="form-section-badge">Optional</span>
                         </div>
-                        <div class="form-section-subtitle">Connect Amber Electric to enable price-aware automated charging and discharging</div>
+                        <div class="form-section-subtitle">Optional. Connect Amber Electric for price-aware charging and discharging.</div>
                     </div>
 
                     <!-- Amber API Key (Optional) -->
@@ -1456,7 +1461,7 @@
                             <span>Amber API Key</span>
                             <span class="optional-badge">Optional</span>
                         </label>
-                        <div class="hint">Enable electricity price automation. Get your API key from <a href="https://app.amber.com.au/developers" target="_blank">Amber Developer Portal</a></div>
+                        <div class="hint">Get a key from the <a href="https://app.amber.com.au/developers" target="_blank">Amber Developer Portal</a> to enable price-aware automation.</div>
                         <div class="input-wrapper">
                             <input 
                                 type="password" 
@@ -1485,7 +1490,7 @@
                             <span class="form-section-icon">🔧</span>
                             <span class="form-section-title">System Hardware</span>
                         </div>
-                        <div class="form-section-subtitle">Your inverter and battery capacity figures used for automation calculations</div>
+                        <div class="form-section-subtitle">Used for automation limits and battery planning.</div>
                     </div>
 
                     <!-- Inverter Capacity -->
@@ -1494,7 +1499,7 @@
                             <span>Inverter Capacity</span>
                             <span class="required-indicator">*</span>
                         </label>
-                        <div class="hint">Your inverter's rated output power in kilowatts (e.g., 10 for a 10 kW inverter).</div>
+                        <div class="hint">Rated inverter output in kW, for example 10.</div>
                         <div class="input-wrapper">
                             <input
                                 type="number"
@@ -1518,7 +1523,7 @@
                             <span>Battery Capacity</span>
                             <span class="required-indicator">*</span>
                         </label>
-                        <div class="hint">Your battery pack's usable energy capacity in kilowatt-hours (e.g., 41.93 for a 41.93 kWh pack).</div>
+                        <div class="hint">Usable battery capacity in kWh, for example 41.93.</div>
                         <div class="input-wrapper">
                             <input
                                 type="number"
@@ -1557,13 +1562,13 @@
         </div>
     </div>
 
-    <script src="js/firebase-config.js"></script>
-    <script src="js/firebase-auth.js"></script>
-    <script src="js/api-client.js?v=5"></script>
-    <script src="js/shared-utils.js?v=13"></script>
-    <script src="js/preview-session.js?v=1"></script>
-    <script src="js/app-shell.js?v=15"></script>
-    <script src="js/setup.js"></script>
+    <script defer src="js/firebase-config.js"></script>
+    <script defer src="js/firebase-auth.js"></script>
+    <script defer src="js/api-client.js?v=5"></script>
+    <script defer src="js/shared-utils.js?v=13"></script>
+    <script defer src="js/preview-session.js?v=1"></script>
+    <script defer src="js/app-shell.js?v=15"></script>
+    <script defer src="js/setup.js"></script>
     <script>
         // Mouse-parallax: orbs follow cursor gently within the header
         (function () {

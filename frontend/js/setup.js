@@ -178,9 +178,13 @@
 
             const provider = getSelectedProvider();
             const amberApiKey = sanitizeInput(document.getElementById('amberApiKey').value);
-            const weatherPlace = sanitizeInput(document.getElementById('weatherPlace').value);
+            const weatherPlaceInput = document.getElementById('weatherPlace');
+            const weatherPlaceValidation = validateWeatherPlace(weatherPlaceInput.value);
+            const weatherPlace = weatherPlaceValidation.normalized;
             const inverterCapacityKw = parseFloat(document.getElementById('inverterCapacityKw').value);
             const batteryCapacityKwh = parseFloat(document.getElementById('batteryCapacityKwh').value);
+
+            weatherPlaceInput.value = weatherPlace;
 
             // Clear previous errors
             clearAllFieldStates();
@@ -267,8 +271,8 @@
                 };
             }
 
-            if (!weatherPlace) {
-                setFieldError('weatherPlace', 'Your location is required to set your timezone');
+            if (!weatherPlaceValidation.valid) {
+                setFieldError('weatherPlace', weatherPlaceValidation.message);
                 return;
             }
             if (!inverterCapacityKw || inverterCapacityKw <= 0) {
@@ -282,7 +286,7 @@
 
             Object.assign(requestBody, {
                 amber_api_key:       amberApiKey || null,
-                weather_place:       weatherPlace || 'Sydney NSW',
+                weather_place:       weatherPlace,
                 inverter_capacity_w: Math.round(inverterCapacityKw * 1000),
                 battery_capacity_kwh: batteryCapacityKwh
             });
@@ -308,6 +312,7 @@
                                 'device_sn':           'deviceSn',
                                 'foxess_token':        'foxessToken',
                                 'amber_api_key':       'amberApiKey',
+                                'weather_place':       'weatherPlace',
                                 'alphaess_system_sn':  'alphaessSystemSn',
                                 'alphaess_app_id':     'alphaessAppId',
                                 'alphaess_app_secret': 'alphaessAppSecret',
@@ -416,6 +421,40 @@
                 .replace(/[\uFEFF\u200B\u200C\u200D\u00A0]/g, '') // BOM and zero-width chars
                 .replace(/[\x00-\x1F\x7F]/g, '') // Control characters
                 .trim();
+        }
+
+        function normalizeWeatherPlace(value) {
+            return sanitizeInput(value)
+                .replace(/\s*,\s*/g, ', ')
+                .replace(/\s{2,}/g, ' ');
+        }
+
+        function validateWeatherPlace(value) {
+            const normalized = normalizeWeatherPlace(value);
+            if (!normalized) {
+                return {
+                    valid: false,
+                    normalized,
+                    message: 'Location is required. Enter City, Country to set your timezone.'
+                };
+            }
+
+            const parts = normalized.split(',').map(part => part.trim()).filter(Boolean);
+            const cityCountryPattern = /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ.' -]{1,}$/;
+
+            if (parts.length !== 2 || !parts.every(part => cityCountryPattern.test(part))) {
+                return {
+                    valid: false,
+                    normalized,
+                    message: 'Enter location as City, Country, for example Sydney, Australia.'
+                };
+            }
+
+            return {
+                valid: true,
+                normalized,
+                message: ''
+            };
         }
 
         function clearAllFieldStates() {
@@ -613,6 +652,22 @@
             updateProgress();
         });
         document.getElementById('weatherPlace').addEventListener('input', () => {
+            clearFieldState('weatherPlace');
+            updateProgress();
+        });
+        document.getElementById('weatherPlace').addEventListener('blur', () => {
+            const input = document.getElementById('weatherPlace');
+            const validation = validateWeatherPlace(input.value);
+            input.value = validation.normalized;
+            if (!input.value) {
+                clearFieldState('weatherPlace');
+                updateProgress();
+                return;
+            }
+            if (!validation.valid) {
+                setFieldError('weatherPlace', validation.message);
+                return;
+            }
             clearFieldState('weatherPlace');
             updateProgress();
         });

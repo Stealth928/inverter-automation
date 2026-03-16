@@ -570,94 +570,116 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
 
     const loadDetailedUser = async (rosterEntry) => {
       const { uid, data, authMetadata, email, joinedAt } = rosterEntry;
-
-      let rulesCount = 0;
-      let configMain = null;
-      let hasEVConfigured = false;
-      try {
-        const vehiclesCollectionRef = db.collection('users').doc(uid).collection('vehicles');
-        const vehiclesGet = (vehiclesCollectionRef && typeof vehiclesCollectionRef.limit === 'function')
-          ? vehiclesCollectionRef.limit(1).get()
-          : vehiclesCollectionRef.get();
-
-        const [rulesSnap, configDoc, vehiclesSnap] = await Promise.all([
-          db.collection('users').doc(uid).collection('rules').get(),
-          db.collection('users').doc(uid).collection('config').doc('main').get(),
-          vehiclesGet
-        ]);
-        rulesCount = rulesSnap.size;
-        configMain = configDoc.exists ? (configDoc.data() || {}) : null;
-        hasEVConfigured = !!(vehiclesSnap && ((typeof vehiclesSnap.size === 'number' && vehiclesSnap.size > 0)
-          || (Array.isArray(vehiclesSnap.docs) && vehiclesSnap.docs.length > 0)
-          || vehiclesSnap.empty === false));
-      } catch (e) {
-        // Ignore per-user failures and keep endpoint resilient
-      }
-
       const emailLc = String(email || '').toLowerCase();
       const isSeedAdmin = emailLc === SEED_ADMIN_EMAIL;
 
-      let secrets = {};
-      if (configMain) {
-        const provider = normalizeProvider(configMain.deviceProvider, configMain);
-        const needsAlphaEssSecret = provider === 'alphaess'
-          && !!(configMain.alphaessSystemSn || configMain.alphaessSysSn || configMain.alphaessAppId)
-          && !configMain.alphaessAppSecret;
+      try {
+        let rulesCount = 0;
+        let configMain = null;
+        let hasEVConfigured = false;
+        try {
+          const vehiclesCollectionRef = db.collection('users').doc(uid).collection('vehicles');
+          const vehiclesGet = (vehiclesCollectionRef && typeof vehiclesCollectionRef.limit === 'function')
+            ? vehiclesCollectionRef.limit(1).get()
+            : vehiclesCollectionRef.get();
 
-        if (needsAlphaEssSecret) {
-          try {
-            const secretsDoc = await db.collection('users').doc(uid).collection('secrets').doc('credentials').get();
-            secrets = secretsDoc.exists ? (secretsDoc.data() || {}) : {};
-          } catch (e) {
-            // Ignore private-secret lookup failures and keep endpoint resilient.
+          const [rulesSnap, configDoc, vehiclesSnap] = await Promise.all([
+            db.collection('users').doc(uid).collection('rules').get(),
+            db.collection('users').doc(uid).collection('config').doc('main').get(),
+            vehiclesGet
+          ]);
+          rulesCount = rulesSnap.size;
+          configMain = configDoc.exists ? (configDoc.data() || {}) : null;
+          hasEVConfigured = !!(vehiclesSnap && ((typeof vehiclesSnap.size === 'number' && vehiclesSnap.size > 0)
+            || (Array.isArray(vehiclesSnap.docs) && vehiclesSnap.docs.length > 0)
+            || vehiclesSnap.empty === false));
+        } catch (e) {
+          // Ignore per-user failures and keep endpoint resilient
+        }
+
+        let secrets = {};
+        if (configMain) {
+          const provider = normalizeProvider(configMain.deviceProvider, configMain);
+          const needsAlphaEssSecret = provider === 'alphaess'
+            && !!(configMain.alphaessSystemSn || configMain.alphaessSysSn || configMain.alphaessAppId)
+            && !configMain.alphaessAppSecret;
+
+          if (needsAlphaEssSecret) {
+            try {
+              const secretsDoc = await db.collection('users').doc(uid).collection('secrets').doc('credentials').get();
+              secrets = secretsDoc.exists ? (secretsDoc.data() || {}) : {};
+            } catch (e) {
+              // Ignore private-secret lookup failures and keep endpoint resilient.
+            }
           }
         }
-      }
 
-      const hasDeviceSn = !!configMain?.deviceSn;
-      const hasFoxessToken = !!configMain?.foxessToken;
-      const hasAmberApiKey = !!configMain?.amberApiKey;
-      const providerFlags = buildProviderFlags(configMain || {}, secrets);
-      const configured = !!(configMain?.setupComplete === true || isProviderConfigured(providerFlags.provider, providerFlags) || hasAnyProviderConfigured(providerFlags));
-      const deviceProvider = providerFlags.provider;
-      const inverterCapacityW = Number.isFinite(Number(configMain?.inverterCapacityW)) ? Number(configMain.inverterCapacityW) : null;
-      const batteryCapacityKWh = Number.isFinite(Number(configMain?.batteryCapacityKWh)) ? Number(configMain.batteryCapacityKWh) : null;
-      const coupling = resolveCoupling(configMain || {});
-      const location = normalizeLocation(configMain?.location);
+        const hasDeviceSn = !!configMain?.deviceSn;
+        const hasFoxessToken = !!configMain?.foxessToken;
+        const hasAmberApiKey = !!configMain?.amberApiKey;
+        const providerFlags = buildProviderFlags(configMain || {}, secrets);
+        const configured = !!(configMain?.setupComplete === true || isProviderConfigured(providerFlags.provider, providerFlags) || hasAnyProviderConfigured(providerFlags));
+        const deviceProvider = providerFlags.provider;
+        const inverterCapacityW = Number.isFinite(Number(configMain?.inverterCapacityW)) ? Number(configMain.inverterCapacityW) : null;
+        const batteryCapacityKWh = Number.isFinite(Number(configMain?.batteryCapacityKWh)) ? Number(configMain.batteryCapacityKWh) : null;
+        const coupling = resolveCoupling(configMain || {});
+        const location = normalizeLocation(configMain?.location);
 
-      incrementCount(providerCounts, deviceProvider || 'unknown');
-      incrementCount(couplingCounts, coupling || 'unknown');
-      const tourStatus = configMain === null ? 'no_config' : (configMain.tourComplete ? 'watched' : 'not_watched');
-      incrementCount(tourStatusCounts, tourStatus);
-      if (location) {
-        incrementNamedCount(locationCounts, location.toLowerCase(), location);
-      }
-      if (inverterCapacityW) {
-        incrementCount(inverterSizeCounts, formatInverterSizeLabel(inverterCapacityW));
-      }
-      if (batteryCapacityKWh) {
-        incrementCount(batterySizeCounts, formatBatterySizeLabel(batteryCapacityKWh));
-      }
+        incrementCount(providerCounts, deviceProvider || 'unknown');
+        incrementCount(couplingCounts, coupling || 'unknown');
+        const tourStatus = configMain === null ? 'no_config' : (configMain.tourComplete ? 'watched' : 'not_watched');
+        incrementCount(tourStatusCounts, tourStatus);
+        if (location) {
+          incrementNamedCount(locationCounts, location.toLowerCase(), location);
+        }
+        if (inverterCapacityW) {
+          incrementCount(inverterSizeCounts, formatInverterSizeLabel(inverterCapacityW));
+        }
+        if (batteryCapacityKWh) {
+          incrementCount(batterySizeCounts, formatBatterySizeLabel(batteryCapacityKWh));
+        }
 
-      return {
-        uid,
-        email,
-        role: data.role || (isSeedAdmin ? 'admin' : 'user'),
-        configured,
-        hasDeviceSn,
-        hasFoxessToken,
-        hasAmberApiKey,
-        inverterCapacityW,
-        batteryCapacityKWh,
-        automationEnabled: !!data.automationEnabled,
-        hasEVConfigured,
-        createdAt: data.createdAt || null,
-        joinedAt,
-        lastSignedInAt: (authMetadata && authMetadata.lastSignInTime) ? authMetadata.lastSignInTime : null,
-        rulesCount,
-        profileInitialized: profileByUid.has(uid),
-        lastUpdated: data.lastUpdated || null
-      };
+        return {
+          uid,
+          email,
+          role: data.role || (isSeedAdmin ? 'admin' : 'user'),
+          configured,
+          hasDeviceSn,
+          hasFoxessToken,
+          hasAmberApiKey,
+          inverterCapacityW,
+          batteryCapacityKWh,
+          automationEnabled: !!data.automationEnabled,
+          hasEVConfigured,
+          createdAt: data.createdAt || null,
+          joinedAt,
+          lastSignedInAt: (authMetadata && authMetadata.lastSignInTime) ? authMetadata.lastSignInTime : null,
+          rulesCount,
+          profileInitialized: profileByUid.has(uid),
+          lastUpdated: data.lastUpdated || null
+        };
+      } catch (error) {
+        console.warn(`[Admin] Failed loading user details for uid=${uid}:`, error);
+        return {
+          uid,
+          email,
+          role: data.role || (isSeedAdmin ? 'admin' : 'user'),
+          configured: false,
+          hasDeviceSn: false,
+          hasFoxessToken: false,
+          hasAmberApiKey: false,
+          inverterCapacityW: null,
+          batteryCapacityKWh: null,
+          automationEnabled: false,
+          hasEVConfigured: false,
+          createdAt: data.createdAt || null,
+          joinedAt,
+          lastSignedInAt: (authMetadata && authMetadata.lastSignInTime) ? authMetadata.lastSignInTime : null,
+          rulesCount: 0,
+          profileInitialized: profileByUid.has(uid),
+          lastUpdated: data.lastUpdated || null
+        };
+      }
     };
 
     let summary = null;

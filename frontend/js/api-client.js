@@ -713,6 +713,13 @@ async function waitForAPIClient(timeoutMs = 3000) {
  */
 function safeRedirect(target, maxBounceMs = 5000) {
   try {
+    if (typeof window !== 'undefined' && window.__DISABLE_AUTH_REDIRECTS__ === true) {
+      return;
+    }
+  } catch (e) {
+    // ignore and continue with normal redirect flow
+  }
+  try {
     const key = 'lastRedirect';
     const normalize = (p) => {
       if (!p) return p;

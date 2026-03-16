@@ -64,6 +64,13 @@ function registerQuickControlRoutes(app, deps = {}) {
     throw new Error('registerQuickControlRoutes requires serverTimestamp()');
   }
 
+  function shouldVerify(req) {
+    const raw = req?.query?.verify;
+    if (raw === undefined || raw === null || raw === '') return false;
+    const normalized = String(raw).trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes';
+  }
+
   /**
    * Start a quick manual control (charge or discharge)
    * POST /api/quickcontrol/start
@@ -257,17 +264,17 @@ function registerQuickControlRoutes(app, deps = {}) {
         }
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
       let verify = null;
-      try {
-        if (provider !== 'foxess' && deviceAdapter && typeof deviceAdapter.getSchedule === 'function') {
-          verify = await deviceAdapter.getSchedule({ deviceSN, userConfig, userId });
-        } else {
-          verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+      if (shouldVerify(req)) {
+        try {
+          if (provider !== 'foxess' && deviceAdapter && typeof deviceAdapter.getSchedule === 'function') {
+            verify = await deviceAdapter.getSchedule({ deviceSN, userConfig, userId });
+          } else {
+            verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+          }
+        } catch (e) {
+          console.warn('[QuickControl] Verify read failed:', e?.message || e);
         }
-      } catch (e) {
-        console.warn('[QuickControl] Verify read failed:', e?.message || e);
       }
 
       const startedAt = Date.now();
@@ -425,14 +432,16 @@ function registerQuickControlRoutes(app, deps = {}) {
       }
 
       let verify = null;
-      try {
-        if (provider !== 'foxess' && deviceAdapter && typeof deviceAdapter.getSchedule === 'function') {
-          verify = await deviceAdapter.getSchedule({ deviceSN, userConfig, userId });
-        } else {
-          verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+      if (shouldVerify(req)) {
+        try {
+          if (provider !== 'foxess' && deviceAdapter && typeof deviceAdapter.getSchedule === 'function') {
+            verify = await deviceAdapter.getSchedule({ deviceSN, userConfig, userId });
+          } else {
+            verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
+          }
+        } catch (e) {
+          console.warn('[QuickControl] Verify read failed:', e?.message || e);
         }
-      } catch (e) {
-        console.warn('[QuickControl] Verify read failed:', e?.message || e);
       }
 
       await saveQuickControlState(userId, null);

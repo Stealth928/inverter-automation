@@ -945,6 +945,96 @@ describe('admin route module', () => {
     expect(response.body.result.users[0]).toEqual(expect.objectContaining({ uid: 'user-c' }));
   });
 
+  test('admin users route tolerates unexpected per-user row failures', async () => {
+    const makeQuerySnapshot = (docs = []) => ({
+      docs,
+      size: docs.length,
+      empty: docs.length === 0,
+      forEach: (fn) => docs.forEach(fn)
+    });
+    const brokenProfile = { email: 'broken@example.com', role: 'user' };
+    Object.defineProperty(brokenProfile, 'automationEnabled', {
+      enumerable: true,
+      get() {
+        throw new ReferenceError('_req is not defined');
+      }
+    });
+
+    const deps = createDeps({
+      admin: {
+        auth: jest.fn(() => ({
+          listUsers: jest.fn(async () => ({
+            users: [{
+              uid: 'user-broken',
+              email: 'broken@example.com',
+              metadata: {
+                creationTime: '2026-01-01T00:00:00.000Z',
+                lastSignInTime: '2026-03-03T08:00:00.000Z'
+              }
+            }],
+            pageToken: undefined
+          }))
+        }))
+      },
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') throw new Error(`Unexpected collection: ${name}`);
+          return {
+            get: jest.fn(async () => makeQuerySnapshot([{ id: 'user-broken', data: () => brokenProfile }])),
+            doc: jest.fn(() => ({
+              collection: jest.fn((subName) => {
+                if (subName === 'rules') {
+                  return { get: jest.fn(async () => makeQuerySnapshot([])) };
+                }
+                if (subName === 'config') {
+                  return {
+                    doc: jest.fn(() => ({
+                      get: jest.fn(async () => ({ exists: true, data: () => ({ deviceProvider: 'foxess' }) }))
+                    }))
+                  };
+                }
+                if (subName === 'vehicles') {
+                  return {
+                    limit: jest.fn(() => ({ get: jest.fn(async () => makeQuerySnapshot([])) }))
+                  };
+                }
+                if (subName === 'secrets') {
+                  return {
+                    doc: jest.fn(() => ({ get: jest.fn(async () => ({ exists: false, data: () => ({}) })) }))
+                  };
+                }
+                throw new Error(`Unexpected subcollection: ${subName}`);
+              })
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/users')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.users).toEqual([
+      expect.objectContaining({
+        uid: 'user-broken',
+        configured: false,
+        automationEnabled: false,
+        hasEVConfigured: false,
+        rulesCount: 0
+      })
+    ]);
+    expect(response.body.result.summary).toEqual(expect.objectContaining({
+      totalUsers: 1,
+      configured: expect.objectContaining({ count: 0 }),
+      automationActive: expect.objectContaining({ count: 0 }),
+      evConfigured: expect.objectContaining({ count: 0 })
+    }));
+  });
+
   test('role update validates allowed roles', async () => {
     const deps = createDeps();
     const app = buildApp(deps);

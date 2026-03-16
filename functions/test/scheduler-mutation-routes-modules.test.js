@@ -45,7 +45,7 @@ describe('scheduler mutation route module', () => {
     expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
   });
 
-  test('set route applies schedule, enables flag, verifies state and writes history', async () => {
+  test('set route applies schedule, enables flag, skips verify by default and writes history', async () => {
     const historyWrite = jest.fn(async () => undefined);
     const foxessAPI = {
       callFoxESSAPI: jest.fn(async (path, _method, payload) => {
@@ -54,9 +54,6 @@ describe('scheduler mutation route module', () => {
         }
         if (path === '/op/v1/device/scheduler/set/flag') {
           return { errno: 0, result: { enable: payload.enable } };
-        }
-        if (path === '/op/v1/device/scheduler/get') {
-          return { errno: 0, result: { groups: [{ enable: 1 }], enable: true } };
         }
         return { errno: 0, result: {} };
       })
@@ -89,7 +86,7 @@ describe('scheduler mutation route module', () => {
       msg: 'ok',
       result: { groups },
       flagResult: { errno: 0, result: { enable: 1 } },
-      verify: { groups: [{ enable: 1 }], enable: true }
+      verify: null
     });
     expect(foxessAPI.callFoxESSAPI).toHaveBeenCalledWith(
       '/op/v1/device/scheduler/enable',
@@ -111,6 +108,60 @@ describe('scheduler mutation route module', () => {
       groups,
       result: 'success'
     });
+    expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalledWith(
+      '/op/v1/device/scheduler/get',
+      'POST',
+      { deviceSN: 'SN-SET' },
+      { deviceSn: 'SN-SET' },
+      'u-scheduler-set'
+    );
+  });
+
+  test('set route verifies state when verify query is requested', async () => {
+    const foxessAPI = {
+      callFoxESSAPI: jest.fn(async (path) => {
+        if (path === '/op/v1/device/scheduler/enable') {
+          return { errno: 0, result: { accepted: true } };
+        }
+        if (path === '/op/v1/device/scheduler/set/flag') {
+          return { errno: 0, result: { enable: 0 } };
+        }
+        if (path === '/op/v1/device/scheduler/get') {
+          return { errno: 0, result: { groups: [], enable: false } };
+        }
+        return { errno: 0, result: {} };
+      })
+    };
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-scheduler-set' };
+        next();
+      });
+
+      registerSchedulerMutationRoutes(instance, {
+        addHistoryEntry: jest.fn(async () => undefined),
+        authenticateUser: (_req, _res, next) => next(),
+        foxessAPI,
+        getUserConfig: jest.fn(async () => ({ deviceSn: 'SN-SET' })),
+        logger: { debug: jest.fn(), warn: jest.fn() }
+      });
+    });
+
+    const response = await request(app)
+      .post('/api/scheduler/v1/set?verify=1')
+      .send({ groups: [{ enable: 0 }] });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.flagResult).toEqual({ errno: 0, result: { enable: 0 } });
+    expect(response.body.verify).toEqual({ groups: [], enable: false });
+    expect(foxessAPI.callFoxESSAPI).toHaveBeenCalledWith(
+      '/op/v1/device/scheduler/get',
+      'POST',
+      { deviceSN: 'SN-SET' },
+      { deviceSn: 'SN-SET' },
+      'u-scheduler-set'
+    );
   });
 
   test('set route tolerates scheduler flag errors and keeps success response', async () => {
@@ -121,9 +172,6 @@ describe('scheduler mutation route module', () => {
         }
         if (path === '/op/v1/device/scheduler/set/flag') {
           throw new Error('flag failed');
-        }
-        if (path === '/op/v1/device/scheduler/get') {
-          return { errno: 0, result: { groups: [], enable: false } };
         }
         return { errno: 0, result: {} };
       })
@@ -150,14 +198,7 @@ describe('scheduler mutation route module', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body.flagResult).toBeNull();
-    expect(response.body.verify).toEqual({ groups: [], enable: false });
-    expect(foxessAPI.callFoxESSAPI).toHaveBeenCalledWith(
-      '/op/v1/device/scheduler/set/flag',
-      'POST',
-      { deviceSN: 'SN-SET', enable: 0 },
-      { deviceSn: 'SN-SET' },
-      'u-scheduler-set'
-    );
+    expect(response.body.verify).toBeNull();
   });
 
   test('clear-all route enforces authenticate middleware', async () => {
@@ -187,7 +228,7 @@ describe('scheduler mutation route module', () => {
     expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
   });
 
-  test('clear-all route clears all groups, disables flag, verifies state and writes history', async () => {
+  test('clear-all route clears all groups, disables flag, skips verify by default and writes history', async () => {
     const historyWrite = jest.fn(async () => undefined);
     const foxessAPI = {
       callFoxESSAPI: jest.fn(async (path, _method, payload) => {
@@ -196,9 +237,6 @@ describe('scheduler mutation route module', () => {
         }
         if (path === '/op/v1/device/scheduler/set/flag') {
           return { errno: 0, result: { enable: payload.enable } };
-        }
-        if (path === '/op/v1/device/scheduler/get') {
-          return { errno: 0, result: { groups: [{ enable: 0 }], enable: false } };
         }
         return { errno: 0, result: {} };
       })
@@ -224,7 +262,7 @@ describe('scheduler mutation route module', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body.errno).toBe(0);
     expect(response.body.flagResult).toEqual({ errno: 0, result: { enable: 0 } });
-    expect(response.body.verify).toEqual({ groups: [{ enable: 0 }], enable: false });
+    expect(response.body.verify).toBeNull();
 
     const clearGroupsPayload = foxessAPI.callFoxESSAPI.mock.calls.find(
       (call) => call[0] === '/op/v1/device/scheduler/enable'
@@ -236,6 +274,43 @@ describe('scheduler mutation route module', () => {
       type: 'scheduler_clear',
       by: 'u-scheduler-clear'
     });
+  });
+
+  test('clear-all route verifies state when verify query is requested', async () => {
+    const foxessAPI = {
+      callFoxESSAPI: jest.fn(async (path, _method, payload) => {
+        if (path === '/op/v1/device/scheduler/enable') {
+          return { errno: 0, msg: 'ok', result: { groups: payload.groups } };
+        }
+        if (path === '/op/v1/device/scheduler/set/flag') {
+          return { errno: 0, result: { enable: payload.enable } };
+        }
+        if (path === '/op/v1/device/scheduler/get') {
+          return { errno: 0, result: { groups: [{ enable: 0 }], enable: false } };
+        }
+        return { errno: 0, result: {} };
+      })
+    };
+
+    const app = buildApp((instance) => {
+      registerSchedulerMutationRoutes(instance, {
+        addHistoryEntry: jest.fn(async () => undefined),
+        authenticateUser: (req, _res, next) => {
+          req.user = { uid: 'u-scheduler-clear' };
+          next();
+        },
+        foxessAPI,
+        getUserConfig: jest.fn(async () => ({ deviceSn: 'SN-CLEAR' })),
+        logger: { debug: jest.fn(), warn: jest.fn() }
+      });
+    });
+
+    const response = await request(app)
+      .post('/api/scheduler/v1/clear-all?verify=true')
+      .send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.verify).toEqual({ groups: [{ enable: 0 }], enable: false });
   });
 
   test('buildClearedSchedulerGroups returns 8 disabled default groups', () => {
