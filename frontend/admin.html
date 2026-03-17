@@ -1079,6 +1079,62 @@
             .tab-btn { padding: 8px 14px; font-size: 13px; }
         }
 
+        @media (max-width: 640px) {
+            .container {
+                padding: 10px;
+            }
+            .users-summary-grid-2,
+            .users-summary-grid-3 {
+                grid-template-columns: 1fr;
+            }
+            .users-summary-panel {
+                padding: 12px;
+            }
+            .users-summary-chart {
+                height: 220px;
+            }
+            .users-summary-chart-compact {
+                height: 190px;
+            }
+            .chart-html-legend {
+                justify-content: flex-start;
+                gap: 6px 12px;
+            }
+            .rank-row {
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr) auto;
+                align-items: center;
+                gap: 6px 8px;
+            }
+            .rank-label {
+                grid-column: 2 / 4;
+                white-space: normal;
+                line-height: 1.3;
+            }
+            .rank-bar-track {
+                grid-column: 2;
+                width: 100%;
+                flex: none;
+            }
+            .rank-badge {
+                grid-column: 3;
+                justify-self: end;
+                min-width: 0;
+            }
+        }
+
+        @media (max-width: 420px) {
+            .users-summary-kpis {
+                grid-template-columns: 1fr;
+            }
+            .users-summary-kpi {
+                padding: 11px 12px 10px;
+            }
+            .users-summary-kpi .value {
+                font-size: 24px;
+            }
+        }
+
         /* Admin Tabs */
         .admin-tab-nav {
             display: flex;
