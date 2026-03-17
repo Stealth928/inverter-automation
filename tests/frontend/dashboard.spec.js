@@ -530,7 +530,7 @@ test.describe('Dashboard Page', () => {
 
     await page.reload();
     const tabsText = ((await page.locator('#evVehicleTabs').textContent().catch(() => '')) || '').trim();
-    expect(tabsText.length === 0 || tabsText.includes('No EV vehicles connected yet') || tabsText.includes('Loading vehicles')).toBeTruthy();
+    expect(tabsText.length === 0 || tabsText.includes('No Tesla vehicles linked yet') || tabsText.includes('Loading vehicles')).toBeTruthy();
     await expect(page.locator('#evControls')).toBeHidden();
   });
 
@@ -669,7 +669,7 @@ test.describe('Dashboard Page', () => {
     }
 
     await expect(page.locator('#evControls')).toBeVisible();
-    await expect(page.locator('#evSelectedStatusPills')).toContainText('Charging Ready');
+    await expect(page.locator('#evSelectedStatusPills')).toContainText('Controls Ready');
     await expect(page.locator('#evControlsTransportHint')).toContainText(/Direct Tesla commands/i);
     await expect(page.locator('#evChargeLimitInput')).toHaveAttribute('type', 'range');
     await expect(page.locator('#evChargingAmpsInput')).toHaveAttribute('type', 'range');

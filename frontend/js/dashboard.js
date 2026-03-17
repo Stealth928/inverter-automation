@@ -3072,7 +3072,7 @@
             if (normalized === 'charging') return 'Charging';
             if (normalized === 'complete') return 'Complete';
             if (normalized === 'stopped') return 'Stopped';
-            if (normalized === 'disconnected') return 'Disconnected';
+            if (normalized === 'disconnected') return 'Not Plugged In';
             return 'Unknown';
         }
 
@@ -3281,8 +3281,8 @@
 
             return {
                 kind: 'ok',
-                label: 'Connected',
-                detail: 'Vehicle connection and status reads are available'
+                label: 'Tesla Linked',
+                detail: 'Tesla account access is active and vehicle status reads are available'
             };
         }
 
@@ -3340,7 +3340,7 @@
             if (state === 'ready_direct') {
                 return {
                     kind: 'ok',
-                    label: 'Charging Ready',
+                    label: 'Controls Ready',
                     detail: 'Tesla direct charging commands are available for this vehicle.',
                     canControl: true,
                     canWake: false
@@ -3349,7 +3349,7 @@
             if (state === 'ready_signed') {
                 return {
                     kind: 'ok',
-                    label: 'Charging Ready',
+                    label: 'Controls Ready',
                     detail: 'Tesla signed charging commands are available for this vehicle.',
                     canControl: true,
                     canWake: false
@@ -3377,7 +3377,7 @@
             if (state === 'read_only') {
                 return {
                     kind: 'warn',
-                    label: 'Read Only',
+                    label: 'Status Only',
                     detail: 'Status visibility is available, but charging controls are not ready for this vehicle yet.',
                     canControl: false,
                     canWake: false
@@ -3403,7 +3403,7 @@
             }
             return {
                 kind: 'info',
-                label: 'Checking Commands',
+                label: 'Checking Controls',
                 detail: 'Checking Tesla command readiness for this vehicle.',
                 canControl: false,
                 canWake: false
@@ -3462,7 +3462,7 @@
                 const empty = document.createElement('div');
                 empty.style.fontSize = '12px';
                 empty.style.color = 'var(--text-secondary)';
-                empty.innerHTML = 'No EV vehicles connected yet. Connect a Tesla vehicle in <a href="/settings.html" style="color:var(--accent-blue);text-decoration:none;">Settings</a>.';
+                empty.innerHTML = 'No Tesla vehicles linked yet. Connect a Tesla vehicle in <a href="/settings.html" style="color:var(--accent-blue);text-decoration:none;">Settings</a>.';
                 tabsEl.appendChild(empty);
                 return;
             }
@@ -4025,7 +4025,7 @@
 
                 if (evDashboardState.vehicles.length === 0) {
                     evDashboardState.selectedVehicleId = '';
-                    setEVOverviewMessage('info', 'No EV vehicles connected yet. Connect your Tesla vehicle in Settings.');
+                    setEVOverviewMessage('info', 'No Tesla vehicles linked yet. Connect your Tesla vehicle in Settings.');
                     renderEVOverview();
                     return;
                 }
