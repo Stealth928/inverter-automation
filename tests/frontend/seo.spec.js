@@ -6,6 +6,7 @@ test.describe('SEO Metadata', () => {
 
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/');
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow');
+    await expect(page.locator('meta[name="googlebot"]')).toHaveAttribute('content', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
     await expect(page.locator('meta[property="og:locale"]')).toHaveAttribute('content', 'en_AU');
     await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://socratesautomation.com/');
     await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', 'https://socratesautomation.com/images/screenshots/screen-1.png');
@@ -22,6 +23,7 @@ test.describe('SEO Metadata', () => {
     expect(ldJsonText).toContain('"@type": "Organization"');
     expect(ldJsonText).toContain('"@type": "WebPage"');
     expect(ldJsonText).toContain('"@type": "SoftwareApplication"');
+    expect(ldJsonText).toContain('"@type": "FAQPage"');
   });
 
   test('landing page includes analytics instrumentation for CTA tracking', async ({ page }) => {
@@ -42,6 +44,7 @@ test.describe('SEO Metadata', () => {
 
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/battery-roi-calculator.html');
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow');
+    await expect(page.locator('meta[name="googlebot"]')).toHaveAttribute('content', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
     await expect(page.locator('meta[property="og:locale"]')).toHaveAttribute('content', 'en_AU');
     await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://socratesautomation.com/battery-roi-calculator.html');
     await expect(page.locator('meta[property="og:image:width"]')).toHaveAttribute('content', '2088');
@@ -56,6 +59,27 @@ test.describe('SEO Metadata', () => {
     expect(ldJsonText).toContain('"WebApplication"');
     expect(ldJsonText).toContain('Battery ROI Calculator');
     expect(ldJsonText).toContain('"@type": "WebPage"');
+    expect(ldJsonText).toContain('"@type": "BreadcrumbList"');
+    expect(ldJsonText).toContain('"@type": "FAQPage"');
+
+    await expect(page.locator('#calculator-faq .faq-item')).toHaveCount(4);
+  });
+
+  test('robots and sitemap expose only public crawl targets', async ({ request }) => {
+    const robotsResponse = await request.get('/robots.txt');
+    expect(robotsResponse.ok()).toBeTruthy();
+    const robotsText = await robotsResponse.text();
+    expect(robotsText).toContain('Allow: /');
+    expect(robotsText).toContain('Disallow: /api/');
+    expect(robotsText).toContain('Sitemap: https://socratesautomation.com/sitemap.xml');
+
+    const sitemapResponse = await request.get('/sitemap.xml');
+    expect(sitemapResponse.ok()).toBeTruthy();
+    const sitemapText = await sitemapResponse.text();
+    expect(sitemapText).toContain('<loc>https://socratesautomation.com/</loc>');
+    expect(sitemapText).toContain('<loc>https://socratesautomation.com/battery-roi-calculator.html</loc>');
+    expect(sitemapText).not.toContain('/login.html');
+    expect(sitemapText).not.toContain('/app.html');
   });
 
   test('internal pages are marked noindex', async ({ page }) => {

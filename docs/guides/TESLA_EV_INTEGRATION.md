@@ -1,70 +1,84 @@
 # Tesla EV Integration Guide
 
-Last updated: March 13, 2026
-Purpose: product and marketing reference for shipped Tesla EV functionality.
+Last updated: 2026-03-17
+Purpose: product and marketing reference for the Tesla EV functionality that is
+currently live in SoCrates.
 
 ## Scope
 
-This guide explains what Tesla EV functionality is currently live in SoCrates,
-where users see it, and how to describe it accurately in product and marketing
-copy.
+This guide explains what Tesla EV functionality is shipped today, where users
+see it, and how to describe it accurately in product, demo, and marketing copy.
 
-For implementation-level setup and operator detail, use:
-- `docs/guides/TESLA_ONBOARDING.md`
+For implementation-level and operator-level onboarding detail, use
+[TESLA_ONBOARDING.md](TESLA_ONBOARDING.md).
 
 ## What Is Live Today
 
-- Tesla connect flow in `Settings` using OAuth PKCE
+- Tesla connect flow in Settings using OAuth PKCE
 - VIN-based vehicle registration and credential storage
-- EV overview card on dashboard with per-vehicle status
+- EV overview card on the dashboard with per-vehicle status
+- per-vehicle command readiness checks
+- manual wake for sleeping vehicles
+- start charging
+- stop charging
+- set charge limit
+- set charging amps
 - hosted Tesla public key metadata at the required `/.well-known/...` path
-
-## Minimum Viable Setup
-
-The current product scope is read-only Tesla support:
-
-1. OAuth connect
-2. VIN registration
-3. vehicle status reads
-4. Tesla public PEM hosted on the app domain
-
-Remote command support is intentionally not part of the active product scope.
 
 ## Where Users See Tesla Integration
 
 | Surface | Location | What is shown |
 | --- | --- | --- |
-| Marketing landing page | `frontend/index.html` | Tesla EV integration callouts in hero/features/FAQ/pricing |
-| Public ROI tool page | `frontend/battery-roi-calculator.html` | Tesla integration messaging in tool context and CTA |
-| Settings | `frontend/settings.html` + `frontend/js/settings.js` | Tesla connect flow, VIN onboarding, connected vehicles list |
-| Dashboard | `frontend/app.html` + `frontend/js/dashboard.js` | EV overview status + charging command controls |
-| Backend EV routes | `functions/api/routes/ev.js` | Vehicle CRUD, status, commands, OAuth start/callback |
+| Landing page | `frontend/index.html` | Tesla integration positioning and product messaging |
+| Settings | `frontend/settings.html` | Tesla onboarding, connected vehicle management, readiness messaging |
+| Dashboard | `frontend/app.html` | EV status, wake flow, and charging controls when readiness allows |
+| Backend EV routes | `functions/api/routes/ev.js` | vehicle CRUD, status, readiness, wake, command, OAuth, partner-domain ops |
 
 ## User Outcomes
 
-- connect Tesla once from Settings and keep vehicle credentials tied to account
-- monitor connected vehicle status from the same dashboard as inverter data
-- keep Tesla setup limited to connection and status visibility
+Users can:
+
+- connect Tesla from the same app used for inverter automation
+- keep VIN-linked vehicles attached to their account
+- monitor charging state and related EV telemetry from the dashboard
+- wake a sleeping vehicle when needed
+- use charging controls once Tesla command readiness is satisfied
 
 ## Product Boundary
 
-- Tesla commands are not exposed in the dashboard.
-- No signed-command proxy is required for the current repo scope.
-- No Cloud Run service is required for the current repo scope.
+Use these boundaries in external or internal descriptions:
 
-## Marketing Positioning Guidance
+- Tesla support is not generic "all commands for all vehicles" support.
+- Charging controls are readiness-gated.
+- Some vehicles work with direct commands; others require signed-command
+  transport.
+- If the required signed-command infrastructure is unavailable, the app keeps
+  the user in status-only mode for that vehicle.
 
-Use these claims:
-- "Tesla EV integration is available in Settings and Dashboard."
-- "Connect by VIN using Tesla OAuth and monitor EV status in SoCrates."
+## Positioning Guidance
 
-Avoid these claims:
-- "All EV brands are supported."
-- "Tesla remote commands are currently available in the dashboard."
+Use claims like:
+
+- "Connect Tesla in Settings and manage EV status from the same SoCrates dashboard."
+- "Tesla charging controls are available when vehicle readiness and command transport requirements are met."
+
+Avoid claims like:
+
+- "Every Tesla command works out of the box for every vehicle."
+- "Tesla charging controls never require additional infrastructure."
+- "All EV brands have identical command support in this product."
+
+## Demo Guidance
+
+When demonstrating Tesla support:
+
+1. show the Settings onboarding flow first
+2. show a connected vehicle in the dashboard EV card
+3. point out readiness messaging before using controls
+4. explain that signed-command requirements vary by vehicle/environment
 
 ## Related Docs
 
-- `docs/guides/TESLA_CHARGING_IMPLEMENTATION_PLAN.md`
-- `docs/guides/PRODUCT_GUIDE.md`
-- `docs/guides/TESLA_ONBOARDING.md`
-- `docs/API.md`
+- [TESLA_ONBOARDING.md](TESLA_ONBOARDING.md)
+- [PRODUCT_GUIDE.md](PRODUCT_GUIDE.md)
+- [../API.md](../API.md)

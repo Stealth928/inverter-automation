@@ -1,275 +1,137 @@
 # Inverter Automation
 
-A production-ready, multi-user solar inverter automation system that optimizes energy usage based on electricity prices, weather conditions, and battery state.
+SoCrates is a serverless energy automation platform for solar, battery, pricing,
+weather, and EV workflows. The current product ships a Firebase-hosted web app,
+an API surface behind `/api/**`, and a one-minute background scheduler that
+evaluates user rules, applies inverter actions, manages curtailment, and records
+admin-grade metrics.
 
-## Features
+## Current Capability Snapshot
 
-- **Smart Battery Management**: Automatically charge when prices are low, discharge when prices are high
-- **Amber Price Integration**: Real-time and forecast electricity prices
-- **Weather-Aware**: Adjust behavior based on current weather conditions
-- **Rule-Based Automation**: Create custom rules with multiple conditions
-- **Multi-User**: Per-user authentication and data isolation
-- **Serverless**: Firebase-powered, no servers to manage
+- Multi-provider inverter support: FoxESS, Sungrow, SigenEnergy, AlphaESS
+- Amber Electric pricing integration for current, forecast, and history views
+- Weather-aware automation using forecast temperature, radiation, and cloud cover
+- Rule engine with priorities, cooldowns, time windows, blackout windows, and
+  provider-aware action execution
+- Manual scheduler editing plus quick charge/discharge overrides
+- Tesla EV integration with OAuth onboarding, vehicle status, wake, charging
+  commands, charge-limit updates, and charging-amps control when command
+  readiness allows it
+- Admin tooling for user management, platform stats, Firestore cost visibility,
+  scheduler metrics, and SLO alerting
+- Responsive frontend with PWA support and public landing/legal pages
 
 ## Quick Start
 
 ```bash
-# Install dependencies
-cd functions && npm install && cd ..
-
-# Login to Firebase
+npm ci
+npm --prefix functions ci
 firebase login
-
-# Deploy
 firebase deploy
 ```
 
-See [docs/SETUP.md](docs/SETUP.md) for detailed setup instructions.
+For local development, provider setup, emulator workflows, and operational env
+vars, start with [docs/SETUP.md](docs/SETUP.md).
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | **⚡ CRITICAL: Pre-deployment checklist & quality control** |
-| [docs/AUTOMATION.md](docs/AUTOMATION.md) | **Automation rules engine** - conditions, actions, examples |
-| [docs/API.md](docs/API.md) | **API reference** - all endpoints and parameters |
-| [docs/SETUP.md](docs/SETUP.md) | **Setup guide** - deployment and configuration |
-| [docs/BACKGROUND_AUTOMATION.md](docs/BACKGROUND_AUTOMATION.md) | Scheduler/runtime behavior and background processing details |
-| [docs/guides/TESTING_GUIDE.md](docs/guides/TESTING_GUIDE.md) | **Testing guide** - how to run tests, coverage, and known gaps |
+Use [docs/INDEX.md](docs/INDEX.md) as the canonical doc map.
+
+High-value entry points:
+
+| Document | Purpose |
+| --- | --- |
+| [docs/SETUP.md](docs/SETUP.md) | Local development, deployment prerequisites, provider onboarding, runtime configuration |
+| [docs/API.md](docs/API.md) | Narrative API reference; pair with OpenAPI for contract detail |
+| [docs/openapi/openapi.v1.yaml](docs/openapi/openapi.v1.yaml) | API contract source of truth used by contract checks |
+| [docs/AUTOMATION.md](docs/AUTOMATION.md) | Rule model, conditions, actions, and provider behavior |
+| [docs/BACKGROUND_AUTOMATION.md](docs/BACKGROUND_AUTOMATION.md) | Scheduler orchestration, cadence, concurrency, metrics, and alerting |
+| [docs/guides/PRODUCT_GUIDE.md](docs/guides/PRODUCT_GUIDE.md) | Product-facing description of shipped UI and capability |
+| [docs/guides/TESTING_GUIDE.md](docs/guides/TESTING_GUIDE.md) | Backend/frontend test execution and CI alignment |
+| [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | Production-safe release workflow |
 
 ## Architecture
 
-```
-                      +----------------------+
-                      |      Firebase        |
-          +-----------+-----------+----------+
-          | Hosting (UI) | Cloud Functions   |
-          | (frontend)   | (API + scheduler) |
-          +--------------+-------------------+
-                         |
-                    +----+----+
-                    | Firestore|
-                    | Database |
-                    +----+----+
-                         |
-    +--------------------+--------------------+
-    |                    |                    |
- FoxESS API        Amber API            Weather API
- (device data)     (price data)        (forecast data)
+```text
+Frontend (Firebase Hosting)
+  Public pages + authenticated app shell + PWA assets
+        |
+        | /api/** rewrite
+        v
+HTTP API (Cloud Function export: api)
+  Express routes for setup, config, pricing, device control,
+  automation, history, EV, admin, diagnostics, and metrics
+        |
+        +--> Firestore (user config, rules, caches, audit, metrics)
+        +--> Provider APIs (FoxESS, Sungrow, SigenEnergy, AlphaESS)
+        +--> Amber Electric
+        +--> Open-Meteo
+        +--> Tesla Fleet API / signed-command proxy when needed
+
+Background Scheduler (Cloud Function export: runAutomation)
+  1-minute cadence -> per-user orchestration -> automation cycle execution
 ```
 
-## Project Structure
+## Repository Layout
 
-```
+```text
 inverter-automation/
-|-- firebase.json            # Firebase configuration
-|-- .firebaserc              # Firebase project metadata
-|-- firestore.rules          # Security rules
-|-- firestore.indexes.json   # Firestore indexes
-|-- frontend/                # Static web app
-|   |-- index.html           # Dashboard
-|   |-- login.html           # Authentication UI
-|   |-- settings.html        # User settings UI
-|   |-- history.html         # History & reports
-|   |-- css/
+|-- firebase.json
+|-- package.json
+|-- frontend/
+|   |-- index.html                  # Public landing page
+|   |-- app.html                    # Authenticated dashboard
+|   |-- setup.html                  # Guided setup flow
+|   |-- settings.html               # Credentials, automation, Tesla, curtailment
+|   |-- control.html                # Manual control workflows
+|   |-- history.html                # Reports and history
+|   |-- roi.html                    # ROI analysis
+|   |-- rules-library.html          # Rule templates
+|   |-- curtailment-discovery.html  # Advanced support/admin discovery surface
+|   |-- admin.html                  # Admin dashboard
 |   |-- js/
-|-- functions/               # Cloud Functions (API)
-|   |-- index.js             # HTTP handlers and schedulers
-|   |-- package.json
-|-- docs/                    # Documentation
-|   |-- AUTOMATION.md
-|   |-- API.md
-|   |-- SETUP.md
-|   |-- BACKGROUND_AUTOMATION.md
-|   |-- guides/
-|   |   |-- TESTING_GUIDE.md
-|   |   |-- PRODUCT_GUIDE.md
-|   |-- evidence/            # Historical execution evidence and records
+|   |-- css/
+|-- functions/
+|   |-- index.js                    # Composition root + exports
+|   |-- api/routes/                 # Route registration modules
+|   |-- lib/services/               # Automation, EV, admin, and runtime services
+|   |-- lib/repositories/           # Firestore data access helpers
+|-- scripts/                        # Quality gates, emulator tooling, contract checks
+|-- docs/                           # Canonical docs, runbooks, audits, and historical evidence
 ```
 
-## Tech Stack
+## Local Development
 
-- **Backend**: Node.js 22, Firebase Cloud Functions, Express.js
-- **Frontend**: HTML/CSS/JavaScript, Firebase Auth SDK
-- **Database**: Cloud Firestore
-- **Hosting**: Firebase Hosting
-- **External APIs**: FoxESS Cloud, Amber Electric, Open-Meteo
-
-## How It Works
-
-1. **User signs up** via Firebase Auth
-2. **Configures API keys** in Settings (FoxESS, Amber)
-3. **Creates automation rules** with conditions:
-   - Price thresholds (current and forecast)
-   - Battery state of charge
-   - Weather conditions
-   - Time windows
-4. **Cloud Scheduler** runs every minute:
-   - Fetches live data from all APIs
-   - Evaluates rules in priority order
-   - First matching rule triggers
-   - Configures inverter scheduler segment
-5. **Dashboard** shows real-time status and debug info
-
-## Automation Conditions
-
-| Condition | Description |
-|-----------|-------------|
-| **Feed-in Price** | Current Amber feed-in (export) price |
-| **Buy Price** | Current Amber buy (import) price |
-| **Forecast Price** | Future Amber prices (15/30/60 min) |
-| **Battery SoC** | Current state of charge (%) |
-| **Temperature** | Battery, ambient, or inverter temp |
-| **Weather** | Sunny, cloudy, rainy conditions |
-| **Time Window** | Specific hours of the day |
-
-## Work Modes
-
-| Mode | Description |
-|------|-------------|
-| **SelfUse** | Prioritize self-consumption |
-| **ForceDischarge** | Export battery to grid |
-| **ForceCharge** | Charge from grid |
-| **Feedin** | Force export mode on supported inverters |
-| **Backup** | Preserve battery for backup |
-
-## Example Rules
-
-### Export when feed-in price is high
-```javascript
-{
-  name: "High Feed-in Export",
-  conditions: {
-    feedInPrice: { enabled: true, operator: '>', value: 30 },
-    soc: { enabled: true, operator: '>', value: 80 }
-  },
-  action: {
-    workMode: "ForceDischarge",
-    durationMinutes: 30,
-    fdPwr: 5000
-  }
-}
-```
-
-### Charge when electricity is cheap
-```javascript
-{
-  name: "Cheap Night Charge",
-  conditions: {
-    buyPrice: { enabled: true, operator: '<', value: 10 },
-    time: { enabled: true, startTime: '00:00', endTime: '06:00' }
-  },
-  action: {
-    workMode: "ForceCharge",
-    durationMinutes: 60
-  }
-}
-```
-
-See [docs/AUTOMATION.md](docs/AUTOMATION.md) for complete rule documentation.
-
-## Development
-
-### Local Testing
+Recommended emulator workflow:
 
 ```bash
-# Start local emulators (auth + firestore + functions + hosting + pubsub)
-# This also seeds/verifies a local test user automatically.
+npm run emu:reset
+```
+
+Other useful commands:
+
+```bash
 npm run emu:start
-
-# Serve frontend (separate terminal)
-cd frontend && python -m http.server 8000
+npm run emu:seed
+npm run emu:status
+npm run emu:stop
 ```
 
-Repeat-issue runbook:
-- See [docs/LOCAL_DEV_KNOWN_ISSUES.md](docs/LOCAL_DEV_KNOWN_ISSUES.md) for emulator startup, seeding, service-worker cache, and tour-highlight pitfalls.
-
-Important local emulator note (macOS/Homebrew):
-- Firestore and Pub/Sub emulators require Java. If startup fails with `Unable to locate a Java Runtime`, export:
-```bash
-export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
-export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"
-```
-- Keep `firebase emulators:start` in a dedicated terminal tab/session. If launched from a short-lived runner, the process can exit when that runner exits.
-
-Local seeded test user:
-- Email: `test@gmail.com`
-- Password: `123456`
-- Role: `admin` (local emulator only)
-
-Dashboard local mock mode (inverter + Amber cards):
-- Add `?mockDashboard=1` to the dashboard URL, or run in browser console: `setDashboardMockMode(true)`
-- Disable with `?mockDashboard=0` or `setDashboardMockMode(false)`
-
-### Running Tests
-
-```powershell
-# Run all tests (backend + frontend)
-.\run-tests.ps1
-
-# Run specific test suites
-.\run-tests.ps1 -Type backend       # Backend Jest tests
-.\run-tests.ps1 -Type frontend      # Playwright tests
-.\run-tests.ps1 -Type unit          # Alias for backend tests
-.\run-tests.ps1 -Type auth          # Auth flow tests (emulator required)
-```
-
-See [docs/guides/TESTING_GUIDE.md](docs/guides/TESTING_GUIDE.md) for complete testing documentation.
-
-## ⚡ Quality Control & Deployment
-
-**This is a production app with live users. Strict quality control is enforced.**
-
-### Pre-Deployment Checklist
-
-**ALWAYS run these before deploying:**
+Verification commands:
 
 ```bash
-# 1. Run pre-deployment quality checks
-npm --prefix functions run pre-deploy
-
-# 2. Run full test suite  
-npm --prefix functions test
-
-# 3. Check logs for errors
-firebase functions:log | tail -30
-
-# 4. Deploy
-firebase deploy --only functions
+npm --prefix functions run lint
+npm --prefix functions test -- --runInBand
+npm run api:contract:check
+npm run openapi:check
+npm run test:e2e:frontend
+node scripts/pre-deploy-check.js
 ```
 
-**The pre-deploy script verifies:**
-- ✓ All Jest tests pass (current count in `docs/guides/TESTING_GUIDE.md`)
-- ✓ No linting errors
-- ✓ All critical modules properly imported/exported
-- ✓ All critical routes defined and functional
-- ✓ No common refactoring mistakes
-- ✓ Firebase configuration correct
+## Deployment Notes
 
-**If any check fails, deployment is blocked. Fix the issue first.**
-
-### Automated Quality Control (GitHub Actions)
-
-Every push to `main` automatically runs:
-- Unit tests (Jest)
-- Linting (ESLint)
-- Module verification
-- Security audit
-
-See [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for the complete deployment and quality control guide.
-
-### Deployment
-
-```bash
-# Single-step safe deployment (runs all checks first)
-npm --prefix functions run pre-deploy && firebase deploy --only functions
-
-# Or manually check then deploy
-firebase deploy                    # Deploy everything
-firebase deploy --only functions   # Deploy functions only
-firebase deploy --only hosting     # Deploy frontend only
-```
-
-## License
-
-MIT
+- Node runtime target is `nodejs22`
+- Hosting rewrites `/api/**` to the `api` Cloud Function
+- The scheduled automation export is `runAutomation`
+- Keep response envelopes backward compatible: `{ errno, result, error, msg }`
+- Update docs and focused tests when changing API behavior or operational flows

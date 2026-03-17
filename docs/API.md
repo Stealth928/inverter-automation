@@ -1,10 +1,18 @@
 # API Reference
 
+Last updated: 2026-03-17
+
 ## Overview
 
-All API endpoints are served via Firebase Cloud Functions at:
-- **Production**: `https://inverter-automation-firebase.web.app/api/*`
-- **Local Emulator**: `http://127.0.0.1:5001/inverter-automation-firebase/us-central1/api/api/*`
+All API endpoints are served behind the hosting rewrite at `/api/**`.
+
+Typical entry points:
+- **Production**: `https://<your-host>/api/*` or your custom domain such as `https://socratesautomation.com/api/*`
+- **Local Hosting Emulator**: `http://127.0.0.1:5000/api/*`
+- **Direct Functions Emulator**: `http://127.0.0.1:5001/<project-id>/us-central1/api/api/*`
+
+Use this file as the narrative companion to `docs/openapi/openapi.v1.yaml`, which
+is the contract source of truth used by repository checks.
 
 All authenticated endpoints require a Firebase ID token in the `Authorization` header:
 ```

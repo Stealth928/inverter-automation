@@ -1,400 +1,334 @@
-# Setup & Deployment Guide
+# Setup Guide
 
-## Quick Start
+Purpose: canonical setup reference for local development, deployment
+configuration, provider onboarding, and runtime environment requirements.
 
-### Prerequisites
-- Node.js 22+ installed
-- Firebase CLI: `npm install -g firebase-tools`
-- A Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+Last updated: 2026-03-17
 
-### Deploy to Firebase
+## 1. Prerequisites
+
+- Node.js 22+
+- Firebase CLI
+- A Firebase project with Hosting, Authentication, Firestore, and Functions
+- Java installed locally if you run Firestore and Pub/Sub emulators
+
+Install dependencies from repo root:
 
 ```bash
-# 1. Clone and install
-git clone <repo>
-cd inverter-automation
-cd functions && npm install && cd ..
+npm ci
+npm --prefix functions ci
+```
 
-# 2. Login to Firebase
-firebase login
+## 2. Firebase Project Setup
 
-# 3. Configure project
-# Edit .firebaserc - set your project ID
-# Edit frontend/js/firebase-config.js - add your Firebase config
+Enable these services in the Firebase project:
 
-# 4. Deploy
+1. Authentication
+2. Firestore Database
+3. Hosting
+4. Cloud Functions
+
+Recommended baseline:
+
+- Email/password auth enabled
+- Firestore created in production mode
+- Hosting configured to serve `frontend/`
+- Functions runtime left on `nodejs22`
+
+The repo already expects these Firebase behaviors:
+
+- `/api/**` rewrites to the `api` function
+- `runAutomation` is deployed as a scheduled function
+- Firestore rules and indexes are tracked in source control
+
+## 3. Frontend Project Configuration
+
+Update Firebase web configuration in `frontend/js/firebase-config.js` for the
+target project, and ensure `.firebaserc` points at the intended Firebase
+project id.
+
+Deploy target check:
+
+```bash
+firebase use
+```
+
+## 4. Deployment Commands
+
+Common deploy commands:
+
+```bash
 firebase deploy
+firebase deploy --only functions
+firebase deploy --only hosting
+firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-Your app will be live at: `https://<project-id>.web.app`
+Use [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) and
+[RELEASE_READINESS_CHECKLIST.md](RELEASE_READINESS_CHECKLIST.md) before
+production releases.
 
----
+## 5. Supported Provider Onboarding
 
-## Firebase Project Setup
+Users configure provider credentials from the app. The guided setup page and the
+Settings page do not expose exactly the same breadth of capability, so use the
+notes below.
 
-### 1. Create Project
-1. Go to [Firebase Console](https://console.firebase.google.com)
-2. Click "Add Project"
-3. Name it (e.g., "inverter-automation")
-4. Enable/disable Google Analytics as desired
+### FoxESS
 
-### 2. Enable Services
+Current status: most complete production path.
 
-#### Authentication
-1. Go to **Authentication > Sign-in method**
-2. Enable **Email/Password**
-3. Optionally enable **Google** sign-in
+Users need:
 
-#### Firestore Database
-1. Go to **Firestore Database**
-2. Click "Create database"
-3. Select **Production mode**
-4. Choose region: `australia-southeast1` (or nearest)
+- FoxESS API token
+- device serial number
 
-#### Hosting
-Automatically configured on first deploy.
+Available in setup flow: yes.
 
-### 3. Get Firebase Config
+### Sungrow
 
-1. Go to **Project Settings > General**
-2. Scroll to "Your apps" section
-3. Click web icon (</>) to add a web app
-4. Copy the config object
+Users need:
 
-Update `frontend/js/firebase-config.js`:
-```javascript
-const firebaseConfig = {
-  apiKey: "AIzaSy...",
-  authDomain: "your-project.firebaseapp.com",
-  projectId: "your-project",
-  storageBucket: "your-project.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abc123"
-};
-```
+- Sungrow / iSolarCloud account email
+- account password
+- device serial number
 
-### 4. Update Project ID
+Available in guided setup: limited / not the primary self-service path.
 
-Edit `.firebaserc`:
-```json
-{
-  "projects": {
-    "default": "your-project-id"
-  }
-}
-```
+Available in Settings validation flow: yes.
 
----
+Notes:
 
-## External API Keys
+- backend performs a live login during validation
+- password is stored write-only in a user secrets subcollection and is not
+  returned by the API
 
-Users configure their own API keys in the Settings page after login. The system supports four battery inverter providers (FoxESS, Sungrow, SigenEnergy, AlphaESS) — configure credentials for whichever provider you use.
+### SigenEnergy
 
-### FoxESS Cloud API
-1. Go to [FoxESS Cloud](https://www.foxesscloud.com)
-2. Login with your FoxESS account
-3. Go to **User Center > API Management**
-4. Generate API key
-5. Note your inverter Serial Number
+Users need:
 
-### Sungrow iSolarCloud API
-1. Go to [iSolarCloud](https://au.isolarcloud.com) (or your regional portal)
-2. Login with your Sungrow/iSolarCloud account
-3. Note your account email, account password, and inverter Serial Number (found in the Device menu)
-4. Enter these in the Setup page — the system will verify credentials via a live login
+- account email
+- account password
+- region: `apac`, `eu`, `cn`, or `us`
 
-> **Note:** Sungrow credentials (password) are stored write-only in a Firestore secrets subcollection and cannot be read back via the API.
+Available in guided setup: limited / not the primary self-service path.
 
-### SigenEnergy Cloud API
-1. Download the SigenEnergy mobile app and create an account
-2. Note your account email and password
-3. Select your region: `apac` (Asia-Pacific), `eu` (Europe), `cn` (China), or `us` (North America)
-4. Enter these in the Setup page — the system will verify credentials via a live OAuth2 login
+Available in Settings validation flow: yes.
 
-> **Note:** SigenEnergy scheduler and history features are in limited beta — work mode control and real-time status are fully supported.
+Notes:
 
-### AlphaESS OpenAPI
-1. Sign in to the AlphaESS OpenAPI portal and create/get your app credentials
-2. Collect your `appId`, `appSecret`, and target `system SN (sysSn)`
-3. Enter these credentials in the Settings page to validate and save them
+- backend performs a live OAuth login during validation
+- work-mode support is live, but scheduling/history coverage is still less
+  mature than FoxESS
 
-> **Note:** AlphaESS is currently disabled in the first-run Setup selector (coming soon), but credential onboarding is available from Settings.
+### AlphaESS
 
-### Amber Electric API
-1. Go to [Amber Developer Portal](https://app.amber.com.au/developers)
-2. Login with your Amber account
-3. Generate API token
-4. Copy the token (shown once)
+Users need:
 
-### Tesla Fleet API (EV Integration)
-1. Create/configure a Tesla developer app for Fleet OAuth.
-2. Add your app redirect URI to Tesla exactly as shown in `Settings > Tesla EV Integration` (`https://<your-host>/settings.html`).
-3. Configure allowed origins/top-level domains in Tesla developer app.
-4. Host Tesla public key metadata at `/.well-known/appspecific/com.tesla.3p.public-key.pem`.
-5. Note your Tesla Fleet `client_id` (and optional `client_secret`).
-6. Get vehicle VIN (17-char) for each vehicle you want to connect.
-7. In app Settings, use `Tesla EV Integration` -> fill client/VIN fields -> click `Connect Tesla`.
-8. Deploy hosting so Tesla can resolve the public PEM at `/.well-known/appspecific/com.tesla.3p.public-key.pem`.
+- `system SN (sysSn)`
+- `appId`
+- `appSecret`
 
-Detailed user flow: `docs/guides/TESLA_ONBOARDING.md`.
+Available in guided setup: not the primary self-service path.
 
-### Scheduler SLO Alert Channel (Optional but Recommended)
+Available in Settings validation flow: yes.
 
-Configure environment variables for operational alerting and threshold overrides:
+Notes:
+
+- validation confirms app credentials by listing accessible systems
+- AlphaESS is supported in the backend and settings flows even though the first
+  run setup UX is still more FoxESS-first
+
+### Amber Electric
+
+Users need:
+
+- Amber API token
+- site selection after validation where applicable
+
+Amber is optional, but price-aware automation, history, and ROI workflows are
+reduced without it.
+
+### Weather
+
+Users configure a location. That location is operational, not cosmetic:
+
+- it drives weather lookups
+- it influences timezone resolution for automation
+
+## 6. Tesla EV Setup
+
+Tesla support is live in the shipped product.
+
+Current user-visible capabilities:
+
+- OAuth onboarding from Settings
+- VIN-based vehicle registration
+- dashboard EV status
+- manual wake
+- start charging
+- stop charging
+- set charge limit
+- set charging amps
+
+Important prerequisites:
+
+1. Tesla developer app configured for Fleet OAuth
+2. Redirect URI exactly matching the deployed `settings.html` origin
+3. Allowed origins and top-level domains configured in Tesla developer app
+4. Public PEM hosted at:
+   `/.well-known/appspecific/com.tesla.3p.public-key.pem`
+5. Appropriate Tesla scopes for status and charging control
+
+Important operational nuance:
+
+- some vehicles allow direct charging commands
+- some require signed commands
+- the app checks readiness per vehicle and only enables controls when Tesla
+  access and command transport are ready
+
+Related docs:
+
+- [guides/TESLA_ONBOARDING.md](guides/TESLA_ONBOARDING.md)
+- [guides/TESLA_EV_INTEGRATION.md](guides/TESLA_EV_INTEGRATION.md)
+
+## 7. Runtime Secrets and Environment Variables
+
+There are two main categories of runtime configuration.
+
+### Deployed function secrets / env
+
+Examples used by the codebase include:
+
+- `SUNGROW_APP_KEY`
+- `SUNGROW_APP_SECRET`
+- `TESLA_SIGNED_COMMAND_PROXY_URL`
+- `TESLA_SIGNED_COMMAND_PROXY_TOKEN`
+
+Scheduler SLO and orchestration tuning is also environment-driven. Examples:
+
+- `AUTOMATION_SCHEDULER_MAX_CONCURRENCY`
+- `AUTOMATION_SCHEDULER_RETRY_ATTEMPTS`
+- `AUTOMATION_SCHEDULER_RETRY_BASE_DELAY_MS`
+- `AUTOMATION_SCHEDULER_RETRY_JITTER_MS`
+- `AUTOMATION_SCHEDULER_LOCK_LEASE_MS`
+- `AUTOMATION_SCHEDULER_IDEMPOTENCY_TTL_MS`
+- `AUTOMATION_SCHEDULER_DEAD_LETTER_TTL_MS`
+- `AUTOMATION_SCHEDULER_SLO_ERROR_RATE_PCT`
+- `AUTOMATION_SCHEDULER_SLO_DEAD_LETTER_RATE_PCT`
+- `AUTOMATION_SCHEDULER_SLO_MAX_QUEUE_LAG_MS`
+- `AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS`
+- `AUTOMATION_SCHEDULER_SLO_P99_CYCLE_DURATION_MS`
+- `AUTOMATION_SCHEDULER_SLO_TAIL_P99_CYCLE_DURATION_MS`
+- `AUTOMATION_SCHEDULER_SLO_TAIL_WINDOW_MINUTES`
+- `AUTOMATION_SCHEDULER_SLO_TAIL_MIN_RUNS`
+- `AUTOMATION_SCHEDULER_SLO_ALERT_WEBHOOK_URL`
+- `AUTOMATION_SCHEDULER_SLO_ALERT_COOLDOWN_MS`
+
+Tesla EV usage-control and cache knobs include:
+
+- `EV_STATUS_CACHE_MAX_AGE_MS`
+- `EV_TESLA_COMMAND_COOLDOWN_MS`
+- `EV_TESLA_COMMAND_DEDUP_TTL_MS`
+- `EV_TESLA_WAKE_COOLDOWN_MS`
+- `EV_TESLA_RATE_WINDOW_MS`
+- `EV_TESLA_RATE_STATUS_PER_WINDOW`
+- `EV_TESLA_RATE_COMMAND_PER_WINDOW`
+- `EV_TESLA_DAILY_BILLABLE_LIMIT_PER_VEHICLE`
+- `EV_TESLA_MONTHLY_BILLABLE_LIMIT_PER_VEHICLE`
+- `EV_TESLA_MONTHLY_BILLABLE_LIMIT_PER_USER`
+- `EV_TESLA_DEGRADED_MODE`
+
+Use Firebase Secret Manager for secrets and ensure deploy-time environment
+configuration matches the intended runtime behavior.
+
+### User-scoped secrets and config
+
+Provider credentials entered in the app are stored under the user record, with
+sensitive write-only credentials kept in a secrets subcollection where needed.
+
+## 8. Local Development
+
+Recommended path:
 
 ```bash
-AUTOMATION_SCHEDULER_SLO_ERROR_RATE_PCT=1.0
-AUTOMATION_SCHEDULER_SLO_DEAD_LETTER_RATE_PCT=0.2
-AUTOMATION_SCHEDULER_SLO_MAX_QUEUE_LAG_MS=120000
-AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS=20000
-AUTOMATION_SCHEDULER_SLO_P99_CYCLE_DURATION_MS=10000
-AUTOMATION_SCHEDULER_SLO_TAIL_P99_CYCLE_DURATION_MS=10000
-AUTOMATION_SCHEDULER_SLO_TAIL_WINDOW_MINUTES=15
-AUTOMATION_SCHEDULER_SLO_TAIL_MIN_RUNS=10
-AUTOMATION_SCHEDULER_SLO_ALERT_WEBHOOK_URL=https://your-alert-endpoint.example.com
-AUTOMATION_SCHEDULER_SLO_ALERT_COOLDOWN_MS=300000
-```
-
-Operational response playbook:
-- `docs/SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md`
-
----
-
-## Local Development
-
-### Option 1: One-command Emulator Reset + Reseed (Recommended)
-
-```bash
-# Deterministic stop -> start -> seed -> health-check
 npm run emu:reset
 ```
 
-`emu:reset` launcher hardening:
-- On Windows, the CLI now auto-falls back from `npx.cmd` to `npm.cmd exec -- ...` when needed.
-- On macOS/Linux, it falls back from `npx` to `npm exec -- ...`.
-
-- Hosting + frontend pages: http://127.0.0.1:5000
-- Emulator UI: http://127.0.0.1:4000
-- Functions: http://127.0.0.1:5001
-- Auth Emulator: http://127.0.0.1:9099
-
-Helpful commands:
+Useful commands:
 
 ```bash
-# Start only (no reseed)
 npm run emu:start
-
-# Reseed only (when emulators are already up)
 npm run emu:seed
-
-# Stop all emulators and cleanup listeners
-npm run emu:stop
-
-# Show quick port status
 npm run emu:status
+npm run emu:stop
 ```
+
+Local endpoints:
+
+- Hosting: `http://127.0.0.1:5000`
+- Functions: `http://127.0.0.1:5001`
+- Emulator UI: `http://127.0.0.1:4000`
+- Auth emulator: `http://127.0.0.1:9099`
 
 Notes:
-- The warning `You are using the Auth Emulator, which is intended for local testing only` is expected in local development.
-- If `localhost:5000` or `127.0.0.1:9099` shows `ERR_CONNECTION_REFUSED`, emulators are down; run `npm run emu:reset`.
-- If your local clone is older and reset/start fails with `spawn npx ENOENT`, use:
-```bash
-npm run emu:stop
-npm exec -- firebase emulators:start --only functions,firestore,hosting,auth,pubsub --import=./emulator-state --export-on-exit
-```
 
-### Option 2: Manual Emulator Start (advanced/troubleshooting)
+- Firestore and Pub/Sub emulators require Java.
+- Windows emulator launcher fallbacks are already handled in the repo scripts.
+- Use [LOCAL_DEV_KNOWN_ISSUES.md](LOCAL_DEV_KNOWN_ISSUES.md) for known emulator
+  and service-worker issues.
 
-```bash
-firebase emulators:start --only functions,firestore,hosting,auth,pubsub
-```
+## 9. Verification Commands
 
-Use this mode when you want interactive logs in the same terminal.
-
-Requires Java (OpenJDK) for Firestore and Pub/Sub emulators.
-
----
-
-## Deployment Commands
+Run these before substantial backend or deployment work:
 
 ```bash
-# Deploy everything
-firebase deploy
-
-# Deploy only functions
-firebase deploy --only functions
-
-# Deploy only hosting (frontend)
-firebase deploy --only hosting
-
-# Deploy only Firestore rules
-firebase deploy --only firestore:rules
-
-# View deployment status
-firebase hosting:channel:list
+npm --prefix functions run lint
+npm --prefix functions test -- --runInBand
+npm run api:contract:check
+npm run openapi:check
+npm run test:e2e:frontend
+node scripts/pre-deploy-check.js
 ```
 
----
+## 10. Firestore Model Summary
 
-## Project Structure
-
-```
-inverter-automation/
-├── firebase.json           # Firebase configuration
-├── .firebaserc             # Project ID mapping
-├── firestore.rules         # Firestore security rules
-├── firestore.indexes.json  # Database indexes
-│
-├── frontend/               # Static files (Firebase Hosting)
-│   ├── index.html          # Main dashboard
-│   ├── login.html          # Authentication
-│   ├── settings.html       # User settings
-│   ├── history.html        # History & reports
-│   ├── setup.html          # Initial setup wizard
-│   ├── css/
-│   │   └── shared-styles.css
-│   └── js/
-│       ├── firebase-config.js
-│       ├── firebase-auth.js
-│       ├── api-client.js
-│       ├── app-shell.js
-│       └── shared-utils.js
-│
-├── functions/              # Cloud Functions
-│   ├── package.json
-│   └── index.js            # Composition root + function exports
-│
-└── docs/                   # Documentation
-    ├── AUTOMATION.md       # Automation rules documentation
-    ├── API.md              # API reference
-    ├── SETUP.md            # This file
-    └── evidence/           # Historical execution logs/evidence
-```
-
----
-
-## Firestore Schema
-
-This section documents the current Firestore model used by backend code.
-
-### Top-level collections
+Top-level collections currently used by runtime code:
 
 | Path | Purpose |
-|---|---|
-| `users/{uid}` | User profile and top-level flags (`email`, `displayName`, `role`, `automationEnabled`, timestamps). |
-| `shared/serverConfig` | Legacy shared setup config used by selected pre-auth setup flows. |
-| `metrics/{YYYY-MM-DD}` | Platform-wide daily API usage counters. |
-| `metrics/automationScheduler/runs/{runId}` | Per-run scheduler orchestration metrics snapshots. |
-| `metrics/automationScheduler/daily/{YYYY-MM-DD}` | Daily scheduler orchestration aggregate metrics for admin dashboards. |
-| `metrics/automationScheduler/alerts/current` | Latest scheduler SLO alert snapshot (healthy/watch/breach status + measured/threshold metrics). |
-| `metrics/automationScheduler/alerts/{YYYY-MM-DD}` | Daily scheduler SLO watch/breach alert snapshots for operational follow-up. |
-| `admin_audit/{docId}` | Admin action audit trail (role changes, impersonation, deletion events). |
+| --- | --- |
+| `users/{uid}` | user profile, auth-linked metadata, admin role, automation flags |
+| `shared/serverConfig` | legacy shared pre-auth setup storage for selected flows |
+| `metrics/{YYYY-MM-DD}` | daily API usage counters |
+| `metrics/automationScheduler/runs/{runId}` | per-run scheduler metrics |
+| `metrics/automationScheduler/daily/{YYYY-MM-DD}` | daily scheduler aggregates |
+| `metrics/automationScheduler/alerts/current` | latest scheduler alert state |
+| `metrics/automationScheduler/alerts/{YYYY-MM-DD}` | daily watch/breach alert snapshots |
+| `admin_audit/{docId}` | admin action audit trail |
 
-### User-scoped collections (`users/{uid}/...`)
+Important user-scoped docs and subcollections:
 
 | Path | Purpose |
-|---|---|
-| `config/main` | User config (FoxESS token/SN, Amber key/site, timezone/location, system topology, automation preferences). |
-| `automation/state` | Runtime automation status (`enabled`, `lastCheck`, `activeRule`, transition metadata). |
-| `rules/{ruleId}` | User automation rules (conditions, action, schedule/priority). |
-| `history/{docId}` | Immutable rule/action history log. |
-| `notifications/{notificationId}` | User notifications (read/unread state). |
-| `automationAudit/{auditId}` | Per-cycle audit data including evaluation snapshots and ROI context. |
-| `metrics/{YYYY-MM-DD}` | Per-user daily API usage counters (`foxess`, `amber`, `weather`, timestamps). |
-| `quickControl/state` | Active quick-control override (`type`, `power`, `expiresAt`, metadata). |
-| `curtailment/state` | Curtailment feature state (`active`, threshold/price snapshot, transition metadata). |
-| `cache/inverter` | Cached inverter summary telemetry (TTL-based). |
-| `cache/inverter-realtime` | Cached full inverter real-time payload (TTL-based). |
-| `cache/weather` | Cached weather forecast payload (TTL-based). |
-| `cache/amber_sites` | Cached Amber site list. |
-| `cache/amber_current_{siteId}` | Cached Amber current price payload per site. |
-| `cache/amber_{siteId}` | Cached Amber historical/materialized price payload per site. |
-| `cache/history_{sn}_{begin}_{end}` | Cached FoxESS history query chunks by serial and time window. |
+| --- | --- |
+| `config/main` | main user config, provider data, timezone, automation preferences |
+| `automation/state` | runtime automation state and last-check metadata |
+| `rules/{ruleId}` | automation rules |
+| `history/{docId}` | automation history |
+| `automationAudit/{auditId}` | per-cycle evaluation and ROI context |
+| `metrics/{YYYY-MM-DD}` | per-user API usage counters |
+| `quickControl/state` | manual override state |
+| `curtailment/state` | curtailment state |
+| `cache/*` | pricing, telemetry, and weather caches |
+| `vehicles/{vehicleId}` | Tesla EV records and credentials metadata |
 
-### Notes
+## 11. First Production Smoke Check
 
-- Cache and audit documents store `ttl` where configured for Firestore TTL cleanup policies.
-- User deletion endpoints now remove the full user document tree recursively, covering all subcollections above.
+After deployment, verify:
 
----
-
-## Cloud Scheduler
-
-Automation runs automatically via Cloud Scheduler (configured in `functions/index.js`):
-
-```javascript
-exports.runAutomation = functions.pubsub
-  .schedule('every 1 minutes')
-  .onRun(async (context) => {
-    // Evaluate rules for all users
-  });
-```
-
-No additional setup needed - Firebase handles scheduling automatically.
-
----
-
-## Troubleshooting
-
-### Deployment Fails
-
-**"Functions failed to deploy"**
-```bash
-# Check function logs
-firebase functions:log
-
-# Verify syntax
-cd functions && node -c index.js
-```
-
-**"Permission denied"**
-```bash
-# Ensure you're logged in to the correct account
-firebase logout
-firebase login
-```
-
-### Functions Not Working
-
-**"401 Unauthorized"**
-- Check that Firebase Auth is initialized in frontend
-- Verify ID token is being sent in Authorization header
-
-**"Rate limit exceeded" (errno 41808)**
-- FoxESS API has rate limits (~60 req/hour)
-- Wait 5 minutes before retrying
-- Check cache TTLs are working
-
-### Frontend Issues
-
-**"Firebase not defined"**
-- Check firebase-config.js is loaded before other scripts
-- Verify Firebase SDK URLs in HTML
-
-**"API calls failing"**
-- Check Network tab for errors
-- Verify `/api/*` rewrites in firebase.json
-
----
-
-## Updating
-
-```bash
-# Pull latest changes
-git pull
-
-# Update dependencies
-cd functions && npm install && cd ..
-
-# Deploy
-firebase deploy
-```
-
----
-
-## Security Notes
-
-1. **Never commit API keys** - Users enter their own keys in Settings
-2. **Firestore rules** protect per-user data isolation
-3. **All API calls** require Firebase authentication
-4. **HTTPS only** - Firebase Hosting enforces SSL
+1. `/api/health` returns success
+2. login and password reset work
+3. dashboard loads telemetry and pricing
+4. settings save and reload correctly
+5. automation rule save/toggle/cycle work
+6. EV onboarding and EV status render for Tesla-enabled accounts
+7. admin dashboard works for admins and rejects non-admins

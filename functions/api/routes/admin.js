@@ -68,6 +68,36 @@ function registerAdminRoutes(app, deps = {}) {
   if (typeof isAdmin !== 'function') {
     throw new Error('registerAdminRoutes requires isAdmin()');
   }
+
+  const parseBoundedPositiveInt = (value, fallback, max = Number.MAX_SAFE_INTEGER) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(1, Math.min(max, Math.floor(parsed)));
+  };
+
+  async function mapWithConcurrency(items, maxConcurrency, iterator) {
+    const safeItems = Array.isArray(items) ? items : [];
+    const concurrency = Math.max(1, Math.min(maxConcurrency || 1, safeItems.length || 1));
+    const results = new Array(safeItems.length);
+    let nextIndex = 0;
+
+    const workers = Array.from({ length: concurrency }, async () => {
+      while (nextIndex < safeItems.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await iterator(safeItems[currentIndex], currentIndex);
+      }
+    });
+
+    await Promise.all(workers);
+    return results;
+  }
+
+  const ADMIN_USERS_SCAN_MAX_CONCURRENCY = parseBoundedPositiveInt(
+    process.env.ADMIN_USERS_SCAN_MAX_CONCURRENCY,
+    8,
+    50
+  );
 /**
  * GET /api/admin/firestore-metrics - Pull Firestore usage + billing signals from GCP Monitoring
  * Query: ?hours=36 (default 36, min 6, max 168)
@@ -686,7 +716,7 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
     let users = [];
 
     if (includeSummary) {
-      const allDetailedUsers = await Promise.all(roster.map(loadDetailedUser));
+      const allDetailedUsers = await mapWithConcurrency(roster, ADMIN_USERS_SCAN_MAX_CONCURRENCY, loadDetailedUser);
       users = showAll ? allDetailedUsers : allDetailedUsers.slice(pageStart, pageStart + pageSize);
 
       const configuredUsers = allDetailedUsers.filter((user) => user.configured).length;
@@ -735,7 +765,7 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
         ]
       };
     } else {
-      users = await Promise.all(selectedRoster.map(loadDetailedUser));
+      users = await mapWithConcurrency(selectedRoster, ADMIN_USERS_SCAN_MAX_CONCURRENCY, loadDetailedUser);
     }
 
     res.json({

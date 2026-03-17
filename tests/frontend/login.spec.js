@@ -70,6 +70,26 @@ test.describe('Login Page', () => {
     expect(inputType).toBe('password');
   });
 
+  test('should expose linked terms and privacy pages in the auth footer', async ({ page }) => {
+    const termsLink = page.locator('.login-footer a[href="/terms.html"]');
+    const privacyLink = page.locator('.login-footer a[href="/privacy.html"]');
+
+    await expect(termsLink).toBeVisible();
+    await expect(termsLink).toHaveText('Terms');
+    await expect(privacyLink).toBeVisible();
+    await expect(privacyLink).toHaveText('Privacy Policy');
+  });
+
+  test('should load the linked legal pages', async ({ page }) => {
+    await page.goto('/terms.html');
+    await expect(page).toHaveTitle(/Terms/i);
+    await expect(page.locator('h1')).toHaveText('Terms');
+
+    await page.goto('/privacy.html');
+    await expect(page).toHaveTitle(/Privacy Policy/i);
+    await expect(page.locator('h1')).toHaveText('Privacy Policy');
+  });
+
   test('should have link to password reset page', async ({ page }) => {
     const resetLink = page.locator('a[href*="reset"], a:has-text("Forgot"), a:has-text("Reset")').first();
     await expect(resetLink).toBeVisible();

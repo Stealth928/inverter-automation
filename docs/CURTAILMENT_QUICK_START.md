@@ -1,245 +1,120 @@
-# 🚀 Quick Start: Solar Curtailment Discovery
+# Solar Curtailment Quick Start
 
-**TL;DR:** You now have a fully functional discovery page to understand your system. Click buttons, read results, and you'll know exactly how to implement curtailment automation.
+Last updated: 2026-03-17
 
----
+## Purpose
 
-## Access the Page
+This guide explains the current shipped curtailment workflow:
 
-**Direct Link:**
-```
-https://inverter-automation-firebase.web.app/curtailment-discovery.html
-```
+- enable curtailment from Settings
+- choose a feed-in price threshold
+- understand when the runtime activates or deactivates curtailment
+- optionally use the advanced discovery page for support/admin investigation
 
-**Or via App Menu:**
-```
-Navigate to: 🔬 WIP - Solar Curtailment
-```
+## What Curtailment Does Today
 
----
+Curtailment monitors the current feed-in price and toggles export limiting when
+your configured threshold is crossed.
 
-## 5-Minute Tutorial
+In practice:
 
-### Step 1: Let it Load ⏳
-- Page loads your device SN from settings
-- Fetches real-time telemetry
-- Shows activity log
+- if current feed-in price is below your threshold, curtailment can activate
+- if current feed-in price rises back above your threshold, curtailment can
+  deactivate
+- state changes are tracked separately from the main rule winner
 
-### Step 2: Detect Topology 🎯
-**Click:** "Detect Topology Now"
+This is an operational runtime feature, not just a planning concept.
 
-**Wait for:** Green checkmark + result badge
+## Fast Path for Normal Users
 
-**You'll see:**
-- Detected topology (DC-Coupled ✅ / AC-Coupled ⚠️ / Hybrid / Unknown ?)
-- Current solar generation (pvPower)
-- Current grid export (feedinPower)  
-- House consumption (loadsPower)
+### Step 1: Open Settings
 
-**What it means:**
-- **DC-Coupled**: You can fully curtail exports ✅
-- **AC-Coupled**: External solar inverter limits your control ⚠️
-- **Hybrid**: Both types present, mixed control needed
-- **Unknown**: Need more data or check manually
+Go to `Settings` and find the `Solar Curtailment` section.
 
-### Step 3: Probe API Keys 🔑
-**Click:** "Probe Export Limit Keys"
+### Step 2: Enable Curtailment
 
-**Wait for:** Table populates with results
+Turn curtailment on.
 
-**You'll see:**
-- List of export limit setting keys tested
-- Which ones are "Available" (✓) vs "Not Available" (✗)
-- Current value for available keys
+### Step 3: Set the Price Threshold
 
-**What it means:**
-- Available keys = Your device supports this FoxESS feature
-- Not Available = Your KH model may not expose it
-- Check your device in FoxESS Cloud to verify
+Choose the feed-in threshold in cents per kWh.
 
-### Step 4: Read Current Settings 📋
-**Click:** "Read Current Settings"
+Simple starting guidance:
 
-**You'll see:**
-- `ExportLimit`: Is limiting enabled? (1=yes, 0=no)
-- `ExportLimitPower`: What's the current cap? (Watts)
+- below `0`: only react to clearly negative export pricing
+- around `0`: react when export is neutral or worse
+- above `0`: react earlier and more aggressively
 
-**Action:**
-- If `ExportLimit = 0`, limiting is currently disabled
-- Your device will export freely unless limited
+### Step 4: Save Settings
 
-### Step 5: Optional — Test Control ⚡
-**IF you're confident, click:** "Set Export Limit"
+After saving, the background automation cycle uses the threshold in ongoing
+runtime evaluation.
 
-**Before you do:**
-- ⚠️ This will IMMEDIATELY change your inverter
-- Open FoxESS Cloud app in another tab to watch
-- Start with a high value (e.g., 10000W) for safety
+### Step 5: Watch Dashboard and Logs
 
-**What happens:**
-- Your app sends command to FoxESS
-- Inverter applies limit within 5-30 seconds
-- You should see feedinPower drop in FoxESS Cloud
-- Log shows success/failure
+When price crosses the threshold, the dashboard and runtime logs will reflect
+curtailment activation or deactivation.
 
-**To restore:**
-- Click "Disable Export Limiting (Restore Default)"
-- Export limit is disabled, inverter exports normally
+## Advanced Discovery Workflow
 
-### Step 6: Review Activity Log 📝
-- All operations logged with timestamps
-- Green = success ✓
-- Yellow = warning ⚠️
-- Red = error ✗
-- Blue = info ℹ️
+The repo also ships `curtailment-discovery.html`, which is an advanced
+support/admin-oriented tool for topology and export-limit investigation.
 
----
+Important nuance:
 
-## What You'll Know After Discovery
+- parts of the UI still label this path as `WIP - Topology Discovery`
+- this page is not the normal first-run workflow for most users
+- it is most useful when diagnosing FoxESS-style export-limit behavior,
+  topology questions, or support cases
 
-| Question | Discovery Answers |
-|----------|-------------------|
-| Can I curtail my solar? | ✅ Yes (if DC-coupled) or ⚠️ Partially (if AC-coupled) |
-| Which API keys work? | Shows list of available settings |
-| Is my system ready? | Topology + Keys + Current settings = Readiness |
-| Can I control exports? | Yes, if ExportLimit + ExportLimitPower are available |
-| What's my system type? | DC-coupled / AC-coupled / Hybrid |
-| Do I have good telemetry? | Shows 20+ variables available for analysis |
+Use the discovery page when you need to:
 
----
+- inspect likely topology behavior
+- probe export-limit related settings on supported devices
+- compare current export-limit settings with observed runtime behavior
 
-## Next Steps
+## Recommended Threshold Choices
 
-### ✅ If DC-Coupled
-```
-Your system is ideal for curtailment automation.
-Next: Create automation rule that curtails on negative FiT.
-Timeline: Phase 2 (3-4 days)
-```
+| Goal | Example threshold |
+| --- | --- |
+| Avoid negative export pricing | `-10` to `0` |
+| Curtail around break-even | `0` to `5` |
+| Curtail aggressively in weak export markets | `5` and above |
 
-### ⚠️ If AC-Coupled
-```
-External solar inverter limits your control.
-Options:
-  1. Use Amber SmartShift for solar control
-  2. Control battery exports only (partial)
-  3. Plan external inverter integration (future)
-```
+Choose thresholds carefully. A threshold that sits too close to frequently
+oscillating prices can cause more frequent state changes.
 
-### ❓ If Unknown/No Keys
-```
-Your device may not support FoxESS export limiting.
-Next: Check FoxESS Cloud app manually for "ExportLimit" setting.
-If it exists: Contact support about API access.
-If not: May need to use Amber or other control methods.
-```
+## What to Expect at Runtime
 
----
+Normal behavior looks like this:
 
-## Troubleshooting
+- most automation cycles produce no curtailment state change
+- curtailment only writes state and sends control updates when a threshold
+  crossing occurs
+- repeated activation/deactivation on every cycle is a sign that your threshold
+  may be too close to a volatile price band
 
-| Problem | Solution |
-|---------|----------|
-| "Device SN not configured" | Go to Settings and add your device SN |
-| All keys show "Not Available" | Your KH model may not expose these settings |
-| Changes don't appear in FoxESS | Wait 30 seconds and refresh FoxESS Cloud app |
-| Page won't load | Check you're logged in, try hard refresh (Ctrl+Shift+R) |
-| Export limit didn't change | Check FoxESS Cloud — verify change reached device |
+## When to Use Discovery Instead of Settings Alone
 
----
+Use the advanced discovery page if:
 
-## Don't Do This
+- you suspect AC-coupled or mixed-topology behavior
+- export limiting does not behave as expected
+- you are troubleshooting provider-specific capability questions
+- support/admin needs to inspect low-level behavior beyond the normal settings
 
-❌ Set export limit to 0W without understanding impact
-❌ Run this during critical discharge window without monitoring
-❌ Assume AC-coupled detection is 100% accurate (manual verification)
-❌ Use same control method as Amber SmartShift (conflict)
-❌ Expect instant changes (5-30s delay is normal)
+## Verification Checklist
 
----
+After enabling curtailment, verify:
 
-## Cool Things You Can Do Next
+1. settings save successfully
+2. curtailment remains enabled after reload
+3. current price and threshold relationship make sense
+4. runtime logs show stable behavior rather than repeated oscillation
+5. dashboard messaging matches the expected active/inactive state
 
-Once you know your system:
+## Related Docs
 
-1. **Negative FiT Automation**
-   - When grid price < 0¢/kWh
-   - Curtail exports to $0
-   - Save money on feed-in penalty
-
-2. **Load-Following Curtailment** (Advanced)
-   - Export only what's not needed at home
-   - Prevent over-export during peak load times
-   - Maximize self-consumption
-
-3. **Dynamic Export Limiting**
-   - Set export cap based on battery SoC
-   - Charge to 100%, export surplus
-   - Keep battery charged for peak demand
-
-4. **ROI Tracking**
-   - Log curtailment events
-   - Calculate $ saved per action
-   - Dashboard showing curtailment impact
-
----
-
-## Configuring the Price Threshold
-
-**What is it?** A dynamic trigger value that activates curtailment based on feed-in electricity price.
-
-**Location:** Settings → Solar Curtailment → Price Threshold (cents/kWh)
-
-**Configuration Guide:**
-
-| Scenario | Threshold Setting | Why |
-|----------|-------------------|-----|
-| Avoid negative pricing (grid penalizes export) | -50 to -10 | Curtail only when you'd lose money |
-| Break-even point (price covers costs) | -5 to 0 | Curtail when export isn't worth it |
-| Peak-hour avoidance (low afternoon prices) | 5 to 15 | Curtail during low-price periods |
-| Aggressive conservation | 20+ | Curtail most exports (advanced) |
-
-**Example:** If you set threshold to 5¢/kWh:
-- Current price 3¢ → Curtailment ACTIVE (3 < 5) ✓
-- Current price 8¢ → Curtailment INACTIVE (8 ≥ 5) ✗
-
-**Range:** -999 to +999 cents/kWh  
-**Default:** 0 cents/kWh (curtail when price ≤ 0)
-
-**How It Works:**
-- Every automation cycle (~2 minutes), system checks: Is price < threshold?
-- If YES: Activate curtailment (reduce/stop exports)
-- If NO: Deactivate curtailment (allow normal exports)
-- All transitions logged for ROI tracking
-
----
-
-## Key Numbers
-
-- **Topology Detection Accuracy:** 85-95% for DC-coupled
-- **API Propagation Delay:** 5-30 seconds
-- **Battery Cache TTL:** 5 minutes (fresh data)
-- **FoxESS Rate Limit:** 150 requests/hour per device
-- **Firestore Audit Retention:** 48 hours (auto-cleanup)
-
----
-
-## Summary
-
-```
-Discovery Page = Understand Your System
-    ↓
-Run topology detection, probe API keys, read settings
-    ↓
-You now know: Type + Capabilities + Current Config
-    ↓
-Phase 2: Build automation rules with curtailment
-    ↓
-Phase 3-5: Full curtailment automation + ROI tracking
-```
-
----
-
-**Ready? Click "🔬 WIP - Solar Curtailment" in your app menu and start exploring! 🚀**
-
-For detailed info: See `docs/SOLAR_CURTAILMENT_ASSESSMENT.md` or `docs/CURTAILMENT_DISCOVERY_PAGE.md`
+- [CURTAILMENT_MONITORING_GUIDE.md](CURTAILMENT_MONITORING_GUIDE.md)
+- [guides/PRODUCT_GUIDE.md](guides/PRODUCT_GUIDE.md)
+- [SETUP.md](SETUP.md)

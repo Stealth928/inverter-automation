@@ -33,7 +33,7 @@
 - [ ] `FUNCTIONS_EMULATOR` env var is **not set** in production
 - [ ] `FIRESTORE_EMULATOR_HOST` is **not set** in production
 - [ ] `firebase.json` runtime is `nodejs22`
-- [ ] All Cloud Function environment variables set via `firebase functions:config:set` or Firebase environment secrets
+- [ ] All Cloud Function secrets and environment variables are configured in the deployed runtime, with secrets managed through Firebase Secret Manager where required
 - [ ] Rate-limit and cache settings are appropriate for production load
 
 ---
@@ -63,8 +63,8 @@
 
 ## 5. API Contract Verification
 
-- [ ] All `/api/**` routes are documented in `docs/API.md`
-- [ ] `docs/openapi/openapi.v1.yaml` is in sync with actual routes
+- [ ] All `/api/**` routes are documented in `docs/API.md` or intentionally covered by domain-level narrative plus OpenAPI
+- [ ] `docs/openapi/openapi.v1.yaml` is in sync with actual routes and remains the contract source of truth
 - [ ] Response envelope unchanged: `{ errno, result, error, msg }`
 - [ ] New endpoints follow auth pattern: `authenticateUser` for protected, `tryAttachUser` for optional-auth
 - [ ] No existing endpoint signatures were changed without a version bump

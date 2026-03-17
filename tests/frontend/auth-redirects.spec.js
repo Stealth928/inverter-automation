@@ -245,19 +245,19 @@ test.describe('Auth Redirect Rules', () => {
       displayName: 'Auth One'
     });
     await page.goto('/login.html');
-    await page.waitForURL('**/app.html', { timeout: 7000 });
+    await expect.poll(() => new URL(page.url()).pathname, { timeout: 7000 }).toBe('/app.html');
     expect(new URL(page.url()).pathname).toBe('/app.html');
   });
 
-  test('authenticated user on marketing page redirects to app page', async ({ page }) => {
+  test('authenticated user on marketing page stays on marketing page', async ({ page }) => {
     await seedAuthUser(page, {
       uid: 'auth-user-2',
       email: 'auth2@example.com',
       displayName: 'Auth Two'
     });
     await page.goto('/index.html');
-    await page.waitForURL('**/app.html', { timeout: 7000 });
-    expect(new URL(page.url()).pathname).toBe('/app.html');
+    await page.waitForTimeout(700);
+    expect(new URL(page.url()).pathname).toBe('/index.html');
   });
 
   test('login submission redirects directly to app without index hop', async ({ page }) => {

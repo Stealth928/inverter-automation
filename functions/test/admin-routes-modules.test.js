@@ -945,6 +945,108 @@ describe('admin route module', () => {
     expect(response.body.result.users[0]).toEqual(expect.objectContaining({ uid: 'user-c' }));
   });
 
+  test('admin users route bounds detailed user scan concurrency during summary loads', async () => {
+    const makeQuerySnapshot = (docs = []) => ({
+      docs,
+      size: docs.length,
+      empty: docs.length === 0,
+      forEach: (fn) => docs.forEach(fn)
+    });
+    const userProfiles = Object.fromEntries(
+      Array.from({ length: 12 }, (_, index) => {
+        const uid = `user-${index + 1}`;
+        return [uid, { email: `${uid}@example.com`, role: 'user', automationEnabled: false }];
+      })
+    );
+    const activeConfigReads = { count: 0, max: 0 };
+    const MAX_ALLOWED_ACTIVE_CONFIG_READS = 8;
+
+    const delayedConfigGet = async () => {
+      activeConfigReads.count += 1;
+      activeConfigReads.max = Math.max(activeConfigReads.max, activeConfigReads.count);
+      if (activeConfigReads.count > MAX_ALLOWED_ACTIVE_CONFIG_READS) {
+        activeConfigReads.count -= 1;
+        throw new Error('config read concurrency exceeded test threshold');
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      activeConfigReads.count -= 1;
+      return {
+        exists: true,
+        data: () => ({
+          deviceProvider: 'foxess',
+          deviceSn: 'device-sn',
+          foxessToken: 'foxess-token'
+        })
+      };
+    };
+
+    const deps = createDeps({
+      admin: {
+        auth: jest.fn(() => ({
+          listUsers: jest.fn(async () => ({
+            users: Object.keys(userProfiles).map((uid, index) => ({
+              uid,
+              email: userProfiles[uid].email,
+              metadata: {
+                creationTime: '2026-01-01T00:00:00.000Z',
+                lastSignInTime: `2026-03-${String(index + 1).padStart(2, '0')}T08:00:00.000Z`
+              }
+            })),
+            pageToken: undefined
+          }))
+        }))
+      },
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') throw new Error(`Unexpected collection: ${name}`);
+          return {
+            get: jest.fn(async () => makeQuerySnapshot(Object.entries(userProfiles).map(([uid, data]) => ({ id: uid, data: () => data })))),
+            doc: jest.fn(() => ({
+              collection: jest.fn((subName) => {
+                if (subName === 'rules') {
+                  return { get: jest.fn(async () => makeQuerySnapshot([])) };
+                }
+                if (subName === 'config') {
+                  return {
+                    doc: jest.fn(() => ({
+                      get: jest.fn(delayedConfigGet)
+                    }))
+                  };
+                }
+                if (subName === 'vehicles') {
+                  return {
+                    limit: jest.fn(() => ({ get: jest.fn(async () => makeQuerySnapshot([])) }))
+                  };
+                }
+                if (subName === 'secrets') {
+                  return {
+                    doc: jest.fn(() => ({ get: jest.fn(async () => ({ exists: false, data: () => ({}) })) }))
+                  };
+                }
+                throw new Error(`Unexpected subcollection: ${subName}`);
+              })
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/users')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.summary).toEqual(expect.objectContaining({
+      totalUsers: 12,
+      configured: expect.objectContaining({ count: 12 })
+    }));
+    expect(response.body.result.users).toHaveLength(12);
+    expect(activeConfigReads.max).toBeLessThanOrEqual(MAX_ALLOWED_ACTIVE_CONFIG_READS);
+  });
+
   test('admin users route tolerates unexpected per-user row failures', async () => {
     const makeQuerySnapshot = (docs = []) => ({
       docs,

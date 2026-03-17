@@ -1,424 +1,250 @@
 # Background Automation System
 
-This document describes how the automation system runs in the background, independent of whether a user has the website open.
+Purpose: document how automation runs when users are online and when they are
+not, and explain the current scheduler orchestration that ships in code.
 
-## Architecture Overview
+Last updated: 2026-03-17
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         AUTOMATION TRIGGERS                             │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────────────┐           ┌─────────────────────────────────┐  │
-│  │   FRONTEND TIMER    │           │     CLOUD SCHEDULER             │  │
-│  │   (When on site)    │           │     (Background)                │  │
-│  └──────────┬──────────┘           └──────────────┬──────────────────┘  │
-│             │                                     │                     │
-│             │  countdown = intervalMs             │  every 1 minute     │
-│             │                                     │                     │
-│             └──────────────┬──────────────────────┘                     │
-│                            │                                            │
-│                            ▼                                            │
-│            ┌───────────────────────────────────┐                        │
-│            │  POST /api/automation/cycle       │                        │
-│            │  (Same logic for both triggers)   │                        │
-│            └───────────────────────────────────┘                        │
-│                            │                                            │
-└────────────────────────────┼────────────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         AUTOMATION CYCLE                                │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  1. Check if enabled (state.enabled === true)                           │
-│  2. Check blackout windows (skip if in blackout)                        │
-│  3. Fetch live data (respects cache TTL):                               │
-│     • Inverter data: getCachedInverterData() - 5 min TTL                │
-│     • Amber prices: callAmberAPI() - 60 sec TTL                         │
-│     • Weather: getCachedWeatherData() - 30 min TTL (if rules need it)   │
-│  4. Evaluate rules by priority (lowest number first)                    │
-│  5. Apply segment to inverter if rule triggers                          │
-│  6. Update automation state (lastCheck, activeRule, etc.)               │
-│  7. Return result                                                       │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+## Overview
+
+The product has two ways to trigger the same automation evaluation path:
+
+1. Dashboard-triggered cycle execution via `POST /api/automation/cycle`
+2. Background scheduler execution via the `runAutomation` Cloud Function
+
+Both paths converge on the same core automation cycle logic. The frontend timer
+exists for a responsive UX while the authenticated app is open, but background
+execution is handled by the server-side scheduler and does not depend on the
+browser staying open.
+
+## Runtime Topology
+
+```text
+Authenticated dashboard open?
+  yes -> client countdown can call POST /api/automation/cycle
+  no  -> runAutomation scheduler handles background cadence
+
+runAutomation (Cloud Functions v2 scheduler, every 1 minute, UTC)
+  -> runAutomationSchedulerCycle(...)
+  -> fetch eligible users
+  -> apply concurrency, lock, and idempotency controls
+  -> invoke shared automation cycle handler for each user that is due
+  -> persist scheduler metrics, alert state, and dead-letter records
 ```
 
-## How It Works
+## Cloud Function Exports
 
-### Dual-Trigger Design
+- `exports.api = functions.https.onRequest(app)`
+- `exports.runAutomation = onSchedule({ schedule: 'every 1 minutes', timeZone: 'UTC', ... })`
 
-The automation system uses the **same endpoint** (`POST /api/automation/cycle`) for both:
+The scheduler export lives in [functions/index.js](../functions/index.js) and is
+wired to `runAutomationSchedulerCycle(...)` in
+[functions/lib/services/automation-scheduler-service.js](../functions/lib/services/automation-scheduler-service.js).
 
-1. **Frontend Timer** - When user is on the website, a JavaScript countdown timer calls the endpoint when it reaches zero
-2. **Cloud Scheduler** - When user is NOT on the website, Cloud Scheduler triggers cycles for all users
+## Scheduler Cadence Model
 
-This ensures **identical behavior** whether the user is browsing or not.
+The scheduler itself runs every minute, but user automation does not necessarily
+run every minute.
 
-### Cloud Scheduler Function
+Per user, the backend checks:
 
-**Location:** `functions/index.js` (exports.runAutomation)  
-**Schedule:** Every 1 minute  
-**Timezone:** Australia/Sydney
+- automation enabled state
+- blackout-window eligibility
+- elapsed time since `automation/state.lastCheck`
+- configured interval override in `users/{uid}/config/main`
 
-```javascript
-exports.runAutomation = functions.pubsub
-  .schedule('every 1 minutes')
-  .timeZone('Australia/Sydney')
-  .onRun(async (_context) => {
-    // For each user:
-    //   1. Check if interval has elapsed since lastCheck
-    //   2. If yes, call /api/automation/cycle endpoint logic
-  });
-```
+Current defaults:
 
-### Timing Control
+- scheduler tick: 1 minute
+- default automation interval: 60000 ms
+- default cache TTLs:
+  - Amber: 60000 ms
+  - inverter telemetry: 300000 ms
+  - weather: 1800000 ms
+  - Tesla status cache: 600000 ms
 
-The scheduler checks **every 1 minute**, but only triggers a cycle when enough time has elapsed:
+User-configurable automation interval is still respected even though the
+scheduler wakes every minute.
 
-```javascript
-const userIntervalMs = userConfig?.automation?.intervalMs || defaultIntervalMs;
-const elapsed = Date.now() - (state?.lastCheck || 0);
+## What Happens in a Background Run
 
-if (elapsed < userIntervalMs) {
-  // Skip - too soon for this user
-  continue;
-}
+For each scheduler tick:
 
-// Time to run a cycle
-```
+1. Fetch eligible users and current automation/config state.
+2. Determine whether each user is due for a cycle.
+3. Acquire a short-lived per-user lock.
+4. Create or verify an idempotency marker for the cycle key.
+5. Invoke the same automation cycle handler used by
+   `POST /api/automation/cycle`.
+6. Persist scheduler metrics, phase timings, status, and alert snapshots.
+7. Release the lock and record dead-letter data on repeated failure.
 
-This allows different users to have different cycle frequencies while using a single scheduler.
+The cycle handler then performs the usual work:
 
-## Configuration
+1. read current config and rules
+2. honor blackout windows and quick-control pauses
+3. fetch cached or live pricing, weather, and provider telemetry
+4. evaluate rules by priority
+5. apply provider-aware actions through the adapter registry
+6. run curtailment evaluation where enabled
+7. write automation history, audit, and state updates
 
-### Server Defaults
+## Concurrency, Retries, and Idempotency
 
-**Location:** `functions/index.js` → `getConfig()`
+The background scheduler now includes orchestration controls that were not part
+of the earlier single-loop implementation.
 
-```javascript
-automation: {
-  intervalMs: 60000,      // Default cycle interval: 60 seconds
-  cacheTtl: {
-    amber: 60000,         // Amber cache: 60 seconds
-    inverter: 300000,     // Inverter cache: 5 minutes
-    weather: 1800000      // Weather cache: 30 minutes
-  }
-}
-```
+### Concurrency
 
-### Per-User Overrides
+Users are processed with bounded concurrency. Current server-side defaults are:
 
-**Location:** Firestore `users/{uid}/config/main`
+- `maxConcurrentUsers`: 10
+- `retryAttempts`: 2
+- `retryBaseDelayMs`: 500
+- `retryJitterMs`: 250
+- `lockLeaseMs`: 120000
+- `idempotencyTtlMs`: 300000
+- `deadLetterTtlMs`: 604800000
 
-```javascript
-{
-  deviceSn: "ABC123...",           // Required: FoxESS device serial
-  foxessToken: "...",              // Required: FoxESS API token
-  amberApiKey: "...",              // Required: Amber API key
-  automation: {
-    intervalMs: 120000,            // Optional: Override cycle interval (2 min)
-    inverterCacheTtlMs: 600000,    // Optional: Override inverter cache (10 min)
-    blackoutWindows: [             // Optional: Time windows to skip automation
-      { enabled: true, start: "22:00", end: "06:00" }
-    ]
-  }
-}
-```
+These can be overridden via server config or environment variables:
 
-### Cache TTL Behavior
+- `AUTOMATION_SCHEDULER_MAX_CONCURRENCY`
+- `AUTOMATION_SCHEDULER_RETRY_ATTEMPTS`
+- `AUTOMATION_SCHEDULER_RETRY_BASE_DELAY_MS`
+- `AUTOMATION_SCHEDULER_RETRY_JITTER_MS`
+- `AUTOMATION_SCHEDULER_LOCK_LEASE_MS`
+- `AUTOMATION_SCHEDULER_IDEMPOTENCY_TTL_MS`
+- `AUTOMATION_SCHEDULER_DEAD_LETTER_TTL_MS`
 
-| Data Type | Default TTL | Respects Per-User Override |
-|-----------|-------------|---------------------------|
-| Amber Prices | 60 seconds | No (server config only) |
-| Inverter Data | 5 minutes | Yes (`automation.inverterCacheTtlMs`) |
-| Weather | 30 minutes | No (server config only) |
+### Per-user Locking
 
-## Frontend Integration
+Each user gets a scheduler lock document under:
 
-### CONFIG Loading
+- `users/{uid}/automation/lock`
 
-The frontend loads configuration from the backend on page load:
+This prevents overlapping scheduler workers from trying to apply actions for the
+same user at the same time.
 
-```javascript
-// frontend/index.html - initializePageData()
-const cfgResp = await authenticatedFetch('/api/config');
-const cfg = await cfgResp.json();
+### Idempotency
 
-// Apply backend config to frontend CONFIG
-if (cfg.result.automation?.intervalMs) {
-  CONFIG.automation.intervalMs = cfg.result.automation.intervalMs;
-}
-```
+Each attempted cycle writes an idempotency marker under:
 
-### Countdown Timer
+- `users/{uid}/automation/idempotency_<cycleKey>`
 
-The frontend countdown timer uses the same `intervalMs`:
+This prevents duplicate execution when the same cycle key is retried or two
+workers race on the same user.
 
-```javascript
-// Calculate remaining time
-const elapsed = Math.floor((Date.now() - window.automationLastCheck) / 1000);
-const intervalSec = CONFIG.automation.intervalMs / 1000;
-const remaining = Math.max(0, intervalSec - elapsed);
+### Dead Letters
 
-// Trigger cycle when countdown reaches 0
-if (remaining === 0 && window.automationEnabled) {
-  runAutomationCycle();
-}
-```
+Repeated scheduler failures are retained long enough for operational follow-up.
+Dead-letter metrics are included in the scheduler admin view and SLO alerting.
 
-### Frontend-Backend Consistency
+## Metrics and Alerting
 
-| Setting | Frontend | Backend |
-|---------|----------|---------|
-| Default Interval | `CONFIG.automation.intervalMs = 60000` | `getConfig().automation.intervalMs = 60000` |
-| Per-User Override | Loaded from `/api/config` | Loaded from Firestore |
-| Timing Check | `elapsed >= intervalSec` | `elapsed >= userIntervalMs` |
-| Same Endpoint | `POST /api/automation/cycle` | `POST /api/automation/cycle` (via route handler) |
+Scheduler metrics are persisted for operational visibility.
 
-## Use Cases
+Firestore paths:
 
-### Use Case 1: User Browsing Website
-```
-User opens dashboard
-  ↓
-Frontend loads /api/automation/status
-  ↓
-Frontend timer starts countdown (60s default)
-  ↓
-Timer hits 0 → calls /api/automation/cycle
-  ↓
-Cycle evaluates rules, applies segments
-  ↓
-Timer resets, countdown restarts
-  ↓
-(Meanwhile, Cloud Scheduler also runs, but skipped because too soon)
-```
+- `metrics/automationScheduler/runs/{runId}`
+- `metrics/automationScheduler/daily/{YYYY-MM-DD}`
+- `metrics/automationScheduler/alerts/current`
+- `metrics/automationScheduler/alerts/{YYYY-MM-DD}`
 
-### Use Case 2: User Closes Browser
-```
-User closes browser
-  ↓
-Frontend timer stops
-  ↓
-Cloud Scheduler continues every 1 minute
-  ↓
-Scheduler checks: elapsed (120s) >= interval (60s) → YES
-  ↓
-Scheduler calls /api/automation/cycle for user
-  ↓
-Cycle evaluates rules, applies segments
-  ↓
-lastCheck updated in Firestore
-```
+The admin dashboard and `/api/admin/scheduler-metrics` read from these docs.
 
-### Use Case 3: Multiple Users, Different Intervals
-```
-Cloud Scheduler runs (T=0)
-  │
-  ├─ User A: interval=60s, lastCheck=T-65s → elapsed 65s ≥ 60s → RUN
-  ├─ User B: interval=120s, lastCheck=T-90s → elapsed 90s < 120s → SKIP
-  ├─ User C: interval=60s, lastCheck=T-30s → elapsed 30s < 60s → SKIP
-  └─ User D: automation disabled → SKIP
+SLO thresholds are configurable with environment variables such as:
 
-Cloud Scheduler runs (T=60s)
-  │
-  ├─ User A: lastCheck=T-60s → elapsed 60s ≥ 60s → RUN
-  ├─ User B: lastCheck=T-150s → elapsed 150s ≥ 120s → RUN
-  ├─ User C: lastCheck=T-90s → elapsed 90s ≥ 60s → RUN
-  └─ User D: automation disabled → SKIP
-```
+- `AUTOMATION_SCHEDULER_SLO_ERROR_RATE_PCT`
+- `AUTOMATION_SCHEDULER_SLO_DEAD_LETTER_RATE_PCT`
+- `AUTOMATION_SCHEDULER_SLO_MAX_QUEUE_LAG_MS`
+- `AUTOMATION_SCHEDULER_SLO_MAX_CYCLE_DURATION_MS`
+- `AUTOMATION_SCHEDULER_SLO_P99_CYCLE_DURATION_MS`
+- `AUTOMATION_SCHEDULER_SLO_TAIL_P99_CYCLE_DURATION_MS`
+- `AUTOMATION_SCHEDULER_SLO_TAIL_WINDOW_MINUTES`
+- `AUTOMATION_SCHEDULER_SLO_TAIL_MIN_RUNS`
+- `AUTOMATION_SCHEDULER_SLO_ALERT_WEBHOOK_URL`
+- `AUTOMATION_SCHEDULER_SLO_ALERT_COOLDOWN_MS`
 
-### Use Case 4: Blackout Windows
-```
-Time: 23:30 Sydney
-User config: blackoutWindow 22:00-06:00
+Operational response guidance is documented in
+[SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md](SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md).
 
-Cloud Scheduler triggers
-  ↓
-Cycle starts for user
-  ↓
-Check blackout: currentTime (23:30) is within 22:00-06:00
-  ↓
-Return: { skipped: true, reason: 'In blackout window' }
-  ↓
-No inverter commands sent
-```
+## Frontend Interaction
 
-### Use Case 5: Rule Evaluation with Cache
-```
-Cycle runs (T=0)
-  ├─ Inverter: cache empty → API call → Counter +1
-  ├─ Amber: cache empty → API call → Counter +1
-  └─ Rules evaluated...
+The dashboard still reads config and automation status so it can show:
 
-Cycle runs (T=60s)
-  ├─ Inverter: cache age 60s < TTL 300s → CACHE HIT → No API call
-  ├─ Amber: cache age 60s ≥ TTL 60s → API call → Counter +1
-  └─ Rules evaluated...
+- countdown to the next expected cycle
+- active automation state
+- quick-control pause effects
+- recent history and telemetry
 
-Cycle runs (T=120s)
-  ├─ Inverter: cache age 120s < TTL 300s → CACHE HIT → No API call
-  ├─ Amber: cache age 60s ≥ TTL 60s → API call → Counter +1
-  └─ Rules evaluated...
-```
+Important distinction:
 
-## Deployment
+- frontend countdown is a UX convenience
+- background automation authority is the server-side scheduler
 
-### Deploy Functions
+If the browser is closed, automation continues through `runAutomation`.
+
+## Cache Behavior
+
+Automation reuses cached provider data wherever allowed to control cost and API
+pressure.
+
+Current defaults from server config:
+
+| Data source | Default TTL |
+| --- | --- |
+| Amber pricing | 60 seconds |
+| Inverter/device telemetry | 5 minutes |
+| Weather | 30 minutes |
+| Tesla status | 10 minutes |
+
+Provider-specific UI paths may still request fresh data when the user explicitly
+asks for a live refresh.
+
+## Manual and Background Triggers Compared
+
+| Trigger | Who starts it | Main use |
+| --- | --- | --- |
+| `POST /api/automation/cycle` | user/frontend/backend tools | immediate evaluation, testing, UX responsiveness |
+| `runAutomation` | Cloud Scheduler | unattended background execution for all users |
+
+The rule engine, provider adapters, and automation state model are shared.
+
+## Troubleshooting Checklist
+
+### Automation seems idle
+
+Check:
+
+1. user automation is enabled
+2. `lastCheck` is advancing
+3. blackout windows are not active
+4. quick control is not still overriding the cycle
+5. scheduler metrics show successful recent runs
+
+### Scheduler is running but users are skipped
+
+Common reasons:
+
+- user interval has not elapsed yet
+- lock already held by another worker
+- idempotency marker already exists for the cycle
+- automation disabled
+- blackout window active
+
+### Elevated scheduler errors or lag
+
+Use:
+
+- admin dashboard scheduler metrics
+- `/api/admin/scheduler-metrics`
+- [SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md](SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md)
+
+### Validation commands
+
 ```bash
-firebase deploy --only functions
-```
-
-This deploys both:
-- `api` - The HTTP API endpoint
-- `runAutomation` - The Cloud Scheduler function
-
-### Verify Deployment
-```bash
-# Check functions are deployed
-firebase functions:list
-
-# Expected output:
-# ┌──────────────────┬────────────────────┬─────────────┐
-# │ Function         │ Trigger            │ Location    │
-# ├──────────────────┼────────────────────┼─────────────┤
-# │ api              │ https              │ us-central1 │
-# │ runAutomation    │ pubsub (scheduled) │ us-central1 │
-# └──────────────────┴────────────────────┴─────────────┘
-```
-
-### Monitor Scheduler
-```bash
-# Watch scheduler logs in real-time
-firebase functions:log --only runAutomation --follow
-
-# Expected logs:
-# [Scheduler] ========== Background check {id} START ==========
-# [Scheduler] Found 5 users
-# [Scheduler] User abc123: Triggering cycle (elapsed=65000ms, interval=60000ms)
-# [Scheduler] User abc123: ✅ Rule 'High Feed-in' triggered
-# [Scheduler] User def456: ⏭️ Skipped: Automation disabled
-# [Scheduler] ========== Background check {id} COMPLETE ==========
-# [Scheduler] 5 users: 2 cycles, 1 too soon, 2 disabled, 0 errors (1234ms)
-```
-
-## Troubleshooting
-
-### Automation Not Running in Background
-
-1. **Check scheduler is deployed:**
-   ```bash
-   firebase functions:list | grep runAutomation
-   ```
-
-2. **Check scheduler logs:**
-   ```bash
-   firebase functions:log --only runAutomation
-   ```
-
-3. **Verify user has automation enabled:**
-   - Firestore: `users/{uid}/automation/state` → `enabled: true`
-
-4. **Verify user has device configured:**
-   - Firestore: `users/{uid}/config/main` → `deviceSn: "..."`
-
-### API Counters Not Updating
-
-1. **Check if cache is working (expected behavior):**
-   - Amber counter: Should increment roughly every 60 seconds
-   - Inverter counter: Should increment roughly every 5 minutes
-   - Weather counter: Should increment roughly every 30 minutes
-
-2. **Check lastCheck is updating:**
-   - Firestore: `users/{uid}/automation/state` → `lastCheck` timestamp
-
-3. **Check for errors in logs:**
-   ```bash
-   firebase functions:log --only runAutomation | grep "Error\|❌"
-   ```
-
-### Different Behavior Frontend vs Backend
-
-Both should behave identically because:
-1. Both call the same endpoint (`POST /api/automation/cycle`)
-2. Both use the same `intervalMs` configuration
-3. Both rely on the same `lastCheck` timestamp
-
-If they differ, check:
-- Frontend CONFIG is loading from backend `/api/config`
-- No local overrides in frontend code
-- `lastCheck` is being saved correctly in Firestore
-
-## API Reference
-
-### POST /api/automation/cycle
-
-Runs one automation cycle for the authenticated user.
-
-**Request:**
-```http
-POST /api/automation/cycle
-Authorization: Bearer {firebase-id-token}
-Content-Type: application/json
-
-{}
-```
-
-**Response (rule triggered):**
-```json
-{
-  "errno": 0,
-  "result": {
-    "triggered": true,
-    "status": "new_trigger",
-    "rule": {
-      "name": "High Feed-in",
-      "priority": 1
-    },
-    "action": {
-      "workMode": "ForceDischarge",
-      "durationMinutes": 30
-    }
-  }
-}
-```
-
-**Response (skipped):**
-```json
-{
-  "errno": 0,
-  "result": {
-    "skipped": true,
-    "reason": "In blackout window"
-  }
-}
-```
-
-### GET /api/automation/status
-
-Returns current automation state and all rules.
-
-**Response:**
-```json
-{
-  "errno": 0,
-  "result": {
-    "enabled": true,
-    "lastCheck": 1702531200000,
-    "activeRule": "high_feedin",
-    "activeRuleName": "High Feed-in",
-    "inBlackout": false,
-    "rules": {
-      "high_feedin": {
-        "name": "High Feed-in",
-        "enabled": true,
-        "priority": 1,
-        "conditions": {...},
-        "action": {...}
-      }
-    }
-  }
-}
+npm --prefix functions run lint
+npm --prefix functions test -- --runInBand
+node scripts/pre-deploy-check.js
+firebase functions:log --only runAutomation
 ```
