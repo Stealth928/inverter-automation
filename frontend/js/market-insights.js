@@ -36,12 +36,40 @@
         if (!isNum(v)) return '—';
         return Number(v).toFixed(1) + '%';
     }
-    function fmtDate(d) { return d || '—'; }
+    function pad2(n) {
+        return String(n).padStart(2, '0');
+    }
+    function formatDateParts(y, m, d) {
+        return `${pad2(d)}-${pad2(m)}-${String(y)}`;
+    }
+    // UI-only formatter: keeps source keys untouched while normalizing all rendered dates.
+    function fmtDate(input) {
+        if (!input) return '—';
+        if (input instanceof Date && !Number.isNaN(input.getTime())) {
+            return formatDateParts(input.getFullYear(), input.getMonth() + 1, input.getDate());
+        }
+
+        const s = String(input).trim();
+        let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); // YYYY-MM-DD
+        if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+
+        m = s.match(/^(\d{4})(\d{2})(\d{2})$/); // YYYYMMDD
+        if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+
+        m = s.match(/^(\d{4})(\d{2})$/); // YYYYMM (monthly period)
+        if (m) return `01-${m[2]}-${m[1]}`;
+
+        const parsed = new Date(s);
+        if (!Number.isNaN(parsed.getTime())) return fmtDate(parsed);
+        return s;
+    }
+    function rowDateLabel(row) {
+        if (!row) return '—';
+        return row.date ? fmtDate(row.date) : periodLabel(row.period);
+    }
     function periodLabel(p) {
         if (!p) return '—';
-        const s = String(p);
-        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        return months[Number(s.slice(4, 6)) - 1] + ' ' + s.slice(0, 4);
+        return fmtDate(String(p));
     }
     function isNum(v) { return v !== null && v !== undefined && Number.isFinite(Number(v)); }
     function avg(arr) {
@@ -327,7 +355,7 @@
         const diff = Math.max(Date.now() - d.getTime(), 0);
         const days = Math.floor(diff / DAY_MS);
         const hrs = Math.floor((diff % DAY_MS) / 3600000);
-        $('freshnessBadge').textContent = `Updated ${d.toLocaleDateString('en-AU')} · ${days}d ${hrs}h ago`;
+        $('freshnessBadge').textContent = `Updated ${fmtDate(d)} · ${days}d ${hrs}h ago`;
     }
 
     // ── SVG Line Chart ──
@@ -435,8 +463,23 @@
             const svgRect = svg.getBoundingClientRect();
             const sx = svgRect.width / W;
             const sy = svgRect.height / H;
-            tooltip.style.left = (cx * sx + svgRect.left - rect.left + 12) + 'px';
-            tooltip.style.top = (cy * sy + svgRect.top - rect.top - 10) + 'px';
+            const anchorX = cx * sx + svgRect.left - rect.left;
+            const anchorY = cy * sy + svgRect.top - rect.top;
+            const margin = 8;
+            const ttRect = tooltip.getBoundingClientRect();
+            const ttW = ttRect.width || 160;
+            const ttH = ttRect.height || 48;
+
+            let left = anchorX + 12;
+            if (left + ttW > rect.width - margin) left = anchorX - ttW - 12;
+            left = Math.max(margin, Math.min(left, rect.width - ttW - margin));
+
+            let top = anchorY - ttH - 10;
+            if (top < margin) top = anchorY + 10;
+            top = Math.max(margin, Math.min(top, rect.height - ttH - margin));
+
+            tooltip.style.left = `${left}px`;
+            tooltip.style.top = `${top}px`;
         });
 
         svg.addEventListener('mouseout', (e) => {
@@ -493,7 +536,7 @@
 
         if (spikeCount > 0) {
             const n = spikeCount === 1 ? '1 day' : `${spikeCount} days`;
-            parts.push(`Daily spike pressure was <strong>${n}</strong> above $${SPIKE_THRESHOLD}/MWh (${spikePct.toFixed(1)}% of days), peaking at <strong>${fmtDollar(spikeDay?.maxRRP)}</strong>${spikeDay ? ` on ${spikeDay.date || periodLabel(spikeDay.period)}` : ''}.`);
+            parts.push(`Daily spike pressure was <strong>${n}</strong> above $${SPIKE_THRESHOLD}/MWh (${spikePct.toFixed(1)}% of days), peaking at <strong>${fmtDollar(spikeDay?.maxRRP)}</strong>${spikeDay ? ` on ${rowDateLabel(spikeDay)}` : ''}.`);
         } else {
             parts.push(`No days exceeded the $${SPIKE_THRESHOLD}/MWh spike threshold — prices stayed contained.`);
         }
@@ -529,7 +572,7 @@
             label: region,
             pts: rows.map(r => ({
                 key: r.date || r.period,
-                label: r.date || periodLabel(r.period),
+                label: rowDateLabel(r),
                 v: Number(r[metric])
             })).filter(p => Number.isFinite(p.v))
         })).filter(s => s.pts.length);
@@ -579,7 +622,7 @@
 
         el.innerHTML = sampled.map((r, i) => {
             const key = `${r.region}:${r.date || r.period}`;
-            const label = r.date || periodLabel(r.period);
+            const label = rowDateLabel(r);
             const sel = S.detail && S.detail.key === key ? ' is-selected' : '';
             const tileLabel = isMonthly ? `<span class="mi-heat__label">${r.region}<br>${periodLabel(r.period)}</span>` : '';
             const m = monthlySpikeStats(r);
@@ -667,7 +710,7 @@
                 </div>
                 <div class="mi-detail__item">
                     <div class="mi-detail__item-label">Date</div>
-                    <div class="mi-detail__item-value">${r.date || periodLabel(r.period)}</div>
+                    <div class="mi-detail__item-value">${rowDateLabel(r)}</div>
                 </div>
                 <div class="mi-detail__item">
                     <div class="mi-detail__item-label">Average Price</div>
@@ -791,7 +834,7 @@
                 <div class="mi-rank-row" data-key="${key}" data-idx="${i}">
                     <span class="mi-rank-pos">${i + 1}</span>
                     <div class="mi-rank-info">
-                        <div class="mi-rank-title">${r.region} — ${r.date || periodLabel(r.period)}</div>
+                        <div class="mi-rank-title">${r.region} — ${rowDateLabel(r)}</div>
                         <div class="mi-rank-sub">${sub}</div>
                     </div>
                     <span class="mi-rank-badge mi-rank-badge--${cls}">${badge}</span>

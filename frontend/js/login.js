@@ -140,6 +140,18 @@
             });
         });
 
+        // Keep keyboard flow deterministic: email -> password on Sign In.
+        const signinEmailInput = document.getElementById('signinEmail');
+        const signinPasswordInput = document.getElementById('signinPassword');
+        if (signinEmailInput && signinPasswordInput) {
+            signinEmailInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Tab' && !event.shiftKey) {
+                    event.preventDefault();
+                    signinPasswordInput.focus();
+                }
+            });
+        }
+
         // Landing CTAs can deep-link directly to Sign Up via /login.html?tab=signup
         try {
             const params = new URLSearchParams(window.location.search);

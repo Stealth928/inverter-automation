@@ -1190,6 +1190,14 @@
     function registerServiceWorker() {
         if (!('serviceWorker' in navigator)) return;
         const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+        const isPlaywright = typeof navigator !== 'undefined' && navigator.webdriver === true;
+        if (typeof window !== 'undefined' && window.__DISABLE_SERVICE_WORKER__ === true) {
+            return;
+        }
+        // Keep E2E focus/navigation deterministic on localhost automation runs.
+        if (isLocalhost && isPlaywright) {
+            return;
+        }
         if (window.location.protocol !== 'https:' && !isLocalhost) {
             return;
         }

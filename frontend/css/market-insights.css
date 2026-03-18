@@ -311,6 +311,16 @@
     height: auto;
     display: block;
 }
+
+/* Keep the primary trend chart compact and fully occupied on mobile widths. */
+#trendChart {
+    min-height: 0;
+    height: clamp(210px, 58vw, 320px);
+    overflow: hidden;
+}
+#trendChart svg {
+    height: 100%;
+}
 .mi-chart-legend {
     display: flex;
     flex-wrap: wrap;
@@ -361,6 +371,12 @@
 }
 .mi-tooltip.is-visible {
     opacity: 1;
+}
+
+#trendChart .mi-tooltip {
+    max-width: min(220px, calc(100% - 16px));
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 /* Heatmap */
@@ -680,6 +696,13 @@
 @media (max-width: 600px) {
     .mi-page {
         padding: var(--space-md);
+    }
+    .mi-card__head {
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+    #trendChart {
+        height: clamp(200px, 62vw, 260px);
     }
     .mi-kpis {
         grid-template-columns: repeat(2, 1fr);
