@@ -1,5 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
+test.use({ serviceWorkers: 'block' });
+
 function slugify(value) {
   return String(value)
     .toLowerCase()
@@ -41,7 +43,7 @@ async function bootstrapRulesLibrary(page, options = {}) {
     });
   });
 
-  await page.route('**/js/api-client.js', async (route) => {
+  await page.route('**/js/api-client.js*', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/javascript',

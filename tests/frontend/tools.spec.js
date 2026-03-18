@@ -5,8 +5,9 @@ test.describe('Public Tools', () => {
     await page.goto('/index.html');
 
     await expect(page.locator('#tools .tool-card__cta[href="/battery-roi-calculator.html"]')).toHaveCount(1);
-    await expect(page.locator('#tools .tool-card__cta--disabled')).toHaveCount(3);
+    await expect(page.locator('#tools .tool-card__cta--waitlist')).toHaveCount(3);
     await expect(page.locator('#tools .tool-card__badge--live')).toHaveCount(1);
+    await expect(page.locator('#tools .tool-card--coming')).toHaveCount(3);
   });
 
   test('battery ROI calculator recomputes results when the scenario changes', async ({ page }) => {
