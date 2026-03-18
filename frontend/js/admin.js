@@ -102,7 +102,7 @@
     let usersCouplingChart = null;
     let usersTourChart = null;
     let activeTab = 'overview';
-    let tabsLoaded = { overview: false, scheduler: false, users: false };
+    let tabsLoaded = { overview: false, scheduler: false, dataworks: false, users: false };
 
     function showMessage(type, msg, duration = 5000) {
         const area = document.getElementById('messageArea');
@@ -798,6 +798,8 @@
                 loadFirestoreCostMetrics();
             } else if (name === 'scheduler') {
                 loadSchedulerMetrics();
+            } else if (name === 'dataworks') {
+                loadDataworks();
             } else if (name === 'users') {
                 loadUsers();
             }
@@ -1903,6 +1905,78 @@
             if (p95El) p95El.textContent = '-';
             if (p99El) p99El.textContent = '-';
             showMessage('warning', `Failed to load scheduler metrics: ${e.message || e}`);
+        } finally {
+            if (refreshBtn) refreshBtn.disabled = false;
+        }
+    }
+
+    async function loadDataworks() {
+        const updatedEl = document.getElementById('dataworksUpdated');
+        const summaryEl = document.getElementById('dataworksSummary');
+        const refreshBtn = document.getElementById('refreshDataworksBtn');
+        const statusEl = document.getElementById('dataworksPipelineStatus');
+        const rowsEl = document.getElementById('dataworksRowsProcessed');
+        const filesEl = document.getElementById('dataworksFilesIngested');
+        const latestFileEl = document.getElementById('dataworksLatestFile');
+
+        if (!adminApiClient || !updatedEl || !summaryEl || !statusEl || !rowsEl || !filesEl || !latestFileEl) return;
+
+        if (refreshBtn) refreshBtn.disabled = true;
+        updatedEl.textContent = 'Loading DataWorks snapshot...';
+        summaryEl.textContent = 'Loading pipeline details...';
+        statusEl.textContent = '-';
+        rowsEl.textContent = '-';
+        filesEl.textContent = '-';
+        latestFileEl.textContent = '-';
+
+        try {
+            let payload = null;
+            if (typeof adminApiClient.getAdminDataworksSummary === 'function') {
+                payload = await adminApiClient.getAdminDataworksSummary();
+            } else {
+                const resp = await adminApiClient.fetch('/api/admin/dataworks');
+                if (resp.status === 404) {
+                    updatedEl.textContent = 'DataWorks endpoint not available yet.';
+                    summaryEl.textContent = 'Backend is not emitting DataWorks status yet. Add /api/admin/dataworks with summary payload when ready.';
+                    return;
+                }
+                if (!resp.ok) {
+                    throw new Error(`Request failed: ${resp.status}`);
+                }
+                payload = await resp.json();
+            }
+
+            if (!payload || typeof payload !== 'object') {
+                throw new Error('Invalid DataWorks response');
+            }
+            const result = payload.errno === 0 ? payload.result : payload;
+            if (payload.errno !== undefined && payload.errno !== 0) {
+                throw new Error(payload.error || 'Failed to load DataWorks summary');
+            }
+
+            const rowsProcessed = Number(result?.rowsProcessed || result?.rows || 0);
+            const filesIngested = Number(result?.filesIngested || result?.fileCount || 0);
+            const latestFile = result?.latestFile || result?.latest?.file || '-';
+            const status = result?.status || 'Unknown';
+            const details = result?.details || result?.message || 'No summary details available yet.';
+            const updatedAt = result?.updatedAt || result?.lastUpdated || new Date().toISOString();
+
+            statusEl.textContent = String(status);
+            rowsEl.textContent = formatCompactNumber(rowsProcessed);
+            filesEl.textContent = formatCompactNumber(filesIngested);
+            latestFileEl.textContent = latestFile || '-';
+            summaryEl.textContent = String(details);
+
+            const updatedDate = new Date(updatedAt);
+            updatedEl.textContent = `Last checked ${updatedDate.toLocaleDateString('en-AU')} ${updatedDate.toLocaleTimeString('en-AU')}`;
+        } catch (e) {
+            console.error('[Admin] Failed to load DataWorks summary:', e);
+            updatedEl.textContent = 'Unable to load DataWorks snapshot';
+            summaryEl.textContent = e?.message ? `Error: ${e.message}` : 'Failed to load DataWorks snapshot';
+            statusEl.textContent = 'Unavailable';
+            rowsEl.textContent = '-';
+            filesEl.textContent = '-';
+            latestFileEl.textContent = '-';
         } finally {
             if (refreshBtn) refreshBtn.disabled = false;
         }

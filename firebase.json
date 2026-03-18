@@ -11,6 +11,26 @@
         "source": "/index.html",
         "destination": "/",
         "type": 301
+      },
+      {
+        "source": "/login",
+        "destination": "/login.html",
+        "type": 301
+      },
+      {
+        "source": "/setup",
+        "destination": "/setup.html",
+        "type": 301
+      },
+      {
+        "source": "/reset-password",
+        "destination": "/reset-password.html",
+        "type": 301
+      },
+      {
+        "source": "/market-insights",
+        "destination": "/market-insights.html",
+        "type": 301
       }
     ],
 
@@ -40,7 +60,25 @@
         ]
       },
       {
+        "source": "/login",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, nofollow, noarchive"
+          }
+        ]
+      },
+      {
         "source": "/login.html",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, nofollow, noarchive"
+          }
+        ]
+      },
+      {
+        "source": "/setup",
         "headers": [
           {
             "key": "X-Robots-Tag",
@@ -121,11 +159,29 @@
         ]
       },
       {
+        "source": "/reset-password",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, nofollow, noarchive"
+          }
+        ]
+      },
+      {
         "source": "/reset-password.html",
         "headers": [
           {
             "key": "X-Robots-Tag",
             "value": "noindex, nofollow, noarchive"
+          }
+        ]
+      },
+      {
+        "source": "/market-insights.html",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
           }
         ]
       },
@@ -189,6 +245,15 @@
       },
       {
         "source": "**/*.@(js|css)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=60, stale-while-revalidate=600"
+          }
+        ]
+      },
+      {
+        "source": "/data/aemo-market-insights/**",
         "headers": [
           {
             "key": "Cache-Control",

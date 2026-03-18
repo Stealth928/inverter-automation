@@ -387,6 +387,7 @@
         '/roi.html': { icon: 'roi', label: 'Automation ROI' },
         '/test.html': { icon: 'lab', label: 'Automation Lab' },
         '/history.html': { icon: 'reports', label: 'Reports' },
+        '/market-insights.html': { icon: 'market', label: 'Market Insights', badge: 'NEW' },
         '/control.html': { icon: 'controls', label: 'Controls' },
         '/rules-library.html': { icon: 'library', label: 'Rules Library' },
         '/settings.html': { icon: 'settings', label: 'Settings' },
@@ -403,6 +404,7 @@
         controls: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="9" width="18" height="10" rx="5"/><path d="M8 13v4"/><path d="M6 15h4"/><circle cx="15.5" cy="13.5" r="1"/><circle cx="17.5" cy="15.5" r="1"/></svg>',
         settings: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/><circle cx="12" cy="12" r="3"/></svg>',
         topology: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M8.2 6h7.6"/><path d="M8 7.5l2.8 7.4"/><path d="M16 7.5l-2.8 7.4"/></svg>',
+        market: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 17l4-4 4 4 4-8 6 6"/><circle cx="21" cy="15" r="1.4"/><path d="M3 21h18"/></svg>',
         admin: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3 4.5 6v5.8c0 4.4 3 8.3 7.5 9.2 4.5-.9 7.5-4.8 7.5-9.2V6L12 3z"/><path d="m9.5 12 1.8 1.8 3.2-3.4"/></svg>'
     };
 
@@ -420,6 +422,7 @@
         '/roi.html': { icon: 'roi', label: 'Automation ROI' },
         '/test.html': { icon: 'lab' },
         '/history.html': { icon: 'reports', label: 'Reports' },
+        '/market-insights.html': { icon: 'market', label: 'AEMO Market Insights', selector: '.page-header h1' },
         '/control.html': { icon: 'controls', label: 'Advanced Controls' },
         '/rules-library.html': { icon: 'library', label: 'Rules Library' },
         '/settings.html': { icon: 'settings', label: 'Settings' },
@@ -536,12 +539,19 @@
             labelEl.className = 'nav-link__label';
             labelEl.textContent = label || fallbackLabel;
 
+            const badgeEl = config.badge ? document.createElement('span') : null;
+            if (badgeEl) {
+                badgeEl.className = 'nav-link__badge';
+                badgeEl.textContent = config.badge;
+            }
+
             link.classList.add('nav-link--with-icon');
             link.dataset.navIcon = config.icon;
             link.dataset.navIconDecorated = '1';
             link.textContent = '';
             link.appendChild(iconEl);
             link.appendChild(labelEl);
+            if (badgeEl) link.appendChild(badgeEl);
         });
     }
 

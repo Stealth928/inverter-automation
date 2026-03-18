@@ -103,4 +103,12 @@ test.describe('SEO Metadata', () => {
       await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow');
     }
   });
+
+  test('login page exposes explicit auth-page crawler and trust signals', async ({ page }) => {
+    await page.goto('/login.html');
+
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/login.html');
+    await expect(page.locator('meta[name="googlebot"]')).toHaveAttribute('content', 'noindex, nofollow, noarchive, max-snippet:0, max-image-preview:none, max-video-preview:0');
+    await expect(page.locator('[data-auth-trust-note]')).toContainText('socratesautomation.com');
+  });
 });

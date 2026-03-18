@@ -1,5 +1,7 @@
 {
   "scripts": {
+    "aemo:dashboard:build": "node scripts/generate-aemo-market-insights.js",
+    "aemo:dashboard:update:delta": "node scripts/aemo-market-insights-delta-update.js",
     "emu:start": "node scripts/emulator-cli.js start",
     "emu:seed": "node scripts/emulator-cli.js seed",
     "emu:reset": "node scripts/emulator-cli.js reset",

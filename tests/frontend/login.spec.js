@@ -14,6 +14,8 @@ test.describe('Login Page', () => {
 
   test('should load login page', async ({ page }) => {
     await expect(page).toHaveTitle(/Login|Inverter/i);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/login.html');
+    await expect(page.locator('meta[name="googlebot"]')).toHaveAttribute('content', 'noindex, nofollow, noarchive, max-snippet:0, max-image-preview:none, max-video-preview:0');
   });
 
   test('should display login form elements', async ({ page }) => {
@@ -78,6 +80,15 @@ test.describe('Login Page', () => {
     await expect(termsLink).toHaveText('Terms');
     await expect(privacyLink).toBeVisible();
     await expect(privacyLink).toHaveText('Privacy Policy');
+  });
+
+  test('should show clear SoCrates trust and contact guidance', async ({ page }) => {
+    const trustNote = page.locator('[data-auth-trust-note]');
+
+    await expect(trustNote).toBeVisible();
+    await expect(trustNote).toContainText('Secure account access for SoCrates.');
+    await expect(trustNote).toContainText('socratesautomation.com');
+    await expect(trustNote.locator('a[href="mailto:socrates.team.comms@gmail.com"]')).toBeVisible();
   });
 
   test('should load the linked legal pages', async ({ page }) => {

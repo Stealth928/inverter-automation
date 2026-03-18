@@ -1,0 +1,50 @@
+name: AEMO Market Insights Delta Update
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '25 1 * * *'
+
+jobs:
+  delta-update-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Download latest AEMO monthly files (rolling window)
+        run: |
+          END_MONTH=$(date -u +%Y-%m)
+          START_MONTH=$(date -u -d '2 months ago' +%Y-%m)
+          python download_aemo_monthly.py --start "$START_MONTH" --end "$END_MONTH" --out aemo-aggregated-data --overwrite
+
+      - name: Delta update market insights data
+        env:
+          PYTHON_BIN: python
+        run: npm run aemo:dashboard:update:delta
+
+      - name: Deploy Firebase hosting
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          FIREBASE_PROJECT: ${{ secrets.FIREBASE_PROJECT }}
+        run: |
+          if [ -n "$FIREBASE_PROJECT" ]; then
+            npx firebase-tools deploy --only hosting --project "$FIREBASE_PROJECT" --token "$FIREBASE_TOKEN"
+          else
+            npx firebase-tools deploy --only hosting --token "$FIREBASE_TOKEN"
+          fi
