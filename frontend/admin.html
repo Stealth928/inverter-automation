@@ -965,6 +965,195 @@
             color: var(--text-primary);
         }
 
+        .dataworks-card {
+            margin-bottom: 20px;
+        }
+        .dataworks-lead {
+            margin-bottom: 12px;
+            padding: 12px 14px;
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-lg);
+            background: linear-gradient(
+                135deg,
+                color-mix(in srgb, var(--accent-blue) 9%, transparent),
+                color-mix(in srgb, var(--color-success) 5%, transparent)
+            );
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .dataworks-lead strong {
+            color: var(--text-primary);
+        }
+        .dataworks-grid-4,
+        .dataworks-grid-2 {
+            display: grid;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .dataworks-grid-4 {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+        .dataworks-grid-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .dataworks-panel {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-lg);
+            padding: 14px;
+            min-height: 100%;
+        }
+        .dataworks-panel-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .dataworks-panel-title .label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .dataworks-panel-subtitle {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: -6px;
+            margin-bottom: 10px;
+        }
+        .dataworks-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.35px;
+            text-transform: uppercase;
+            border: 1px solid transparent;
+        }
+        .dataworks-badge.good {
+            color: var(--color-success);
+            background: color-mix(in srgb, var(--color-success) 12%, transparent);
+            border-color: color-mix(in srgb, var(--color-success) 26%, transparent);
+        }
+        .dataworks-badge.warn {
+            color: var(--color-warning);
+            background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+            border-color: color-mix(in srgb, var(--color-warning) 26%, transparent);
+        }
+        .dataworks-badge.bad {
+            color: var(--color-danger);
+            background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+            border-color: color-mix(in srgb, var(--color-danger) 28%, transparent);
+        }
+        .dataworks-badge.neutral {
+            color: var(--text-secondary);
+            background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+            border-color: color-mix(in srgb, var(--border-primary) 65%, transparent);
+        }
+        .dataworks-metric-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .dataworks-metric-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: start;
+        }
+        .dataworks-metric-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .dataworks-metric-value {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+            text-align: right;
+        }
+        .dataworks-metric-meta {
+            grid-column: 1 / -1;
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: -3px;
+        }
+        .dataworks-inline-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .dataworks-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--bg-secondary) 58%, transparent);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 60%, transparent);
+            color: var(--text-secondary);
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .dataworks-table-wrap {
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+        }
+        .dataworks-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        .dataworks-table th,
+        .dataworks-table td {
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border-primary);
+            white-space: nowrap;
+        }
+        .dataworks-table th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.35px;
+            font-size: 10px;
+            background: color-mix(in srgb, var(--bg-secondary) 40%, var(--bg-tertiary));
+        }
+        .dataworks-table tr:last-child td {
+            border-bottom: none;
+        }
+        .dataworks-note-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .dataworks-note {
+            padding: 10px 11px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 55%, transparent);
+            border-radius: var(--radius-md);
+            background: color-mix(in srgb, var(--bg-secondary) 50%, transparent);
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.45;
+        }
+        .dataworks-note strong {
+            color: var(--text-primary);
+        }
+        .dataworks-empty {
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
         /* Metrics mini-chart */
         .metrics-day {
             display: flex;
@@ -1075,6 +1264,12 @@
             .scheduler-slo-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
+            .dataworks-grid-4 {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .dataworks-grid-2 {
+                grid-template-columns: 1fr;
+            }
             .admin-tab-nav { gap: 0; }
             .tab-btn { padding: 8px 14px; font-size: 13px; }
         }
@@ -1132,6 +1327,9 @@
             }
             .users-summary-kpi .value {
                 font-size: 24px;
+            }
+            .dataworks-grid-4 {
+                grid-template-columns: 1fr;
             }
         }
 
@@ -1222,7 +1420,7 @@
         <nav class="admin-tab-nav" role="tablist">
             <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">📈 Overview</button>
             <button class="tab-btn" data-tab="scheduler" onclick="switchTab('scheduler')">⚙️ Scheduler</button>
-            <button class="tab-btn" data-tab="dataworks" onclick="switchTab('dataworks')">DataWorks</button>
+            <button class="tab-btn" data-tab="dataworks" onclick="switchTab('dataworks')">🛰️ DataWorks</button>
             <button class="tab-btn" data-tab="users" onclick="switchTab('users')">👥 Users</button>
         </nav>
 
@@ -1466,7 +1664,7 @@
         </div><!-- /tab-scheduler -->
 
         <div id="tab-dataworks" class="tab-panel">
-            <div class="card">
+            <div class="card dataworks-card">
                 <div class="card-header">
                     <div class="card-title"><span class="icon">🛰️</span> DataWorks Snapshot</div>
                     <button class="action-btn" onclick="loadDataworks()" id="refreshDataworksBtn">Refresh</button>
@@ -1476,24 +1674,34 @@
                     <div class="platform-kpis-wrap">
                         <div class="platform-kpis" id="dataworksKpis">
                             <div class="kpi-item">
-                                <div class="label">Pipeline Status</div>
+                                <div class="label">Pipeline Health</div>
                                 <div class="value" id="dataworksPipelineStatus">-</div>
                             </div>
                             <div class="kpi-item">
-                                <div class="label">Rows Processed</div>
+                                <div class="label">Latest Market Date</div>
                                 <div class="value" id="dataworksRowsProcessed">-</div>
                             </div>
                             <div class="kpi-item">
-                                <div class="label">Files Ingested</div>
+                                <div class="label">Files / Assets</div>
                                 <div class="value" id="dataworksFilesIngested">-</div>
                             </div>
                             <div class="kpi-item">
-                                <div class="label">Latest File</div>
+                                <div class="label">Scheduler Pulse</div>
                                 <div class="value" id="dataworksLatestFile">-</div>
                             </div>
                         </div>
                     </div>
-                    <div id="dataworksSummary" class="users-summary-loading" style="margin-top: 12px;">Loading pipeline details...</div>
+                    <div id="dataworksLead" class="dataworks-lead">Loading pipeline details...</div>
+                    <div class="dataworks-grid-4">
+                        <section class="dataworks-panel" id="dataworksPipelinePanel"></section>
+                        <section class="dataworks-panel" id="dataworksQualityPanel"></section>
+                        <section class="dataworks-panel" id="dataworksSchedulerPanel"></section>
+                        <section class="dataworks-panel" id="dataworksFootprintPanel"></section>
+                    </div>
+                    <div class="dataworks-grid-2">
+                        <section class="dataworks-panel" id="dataworksRegionsPanel"></section>
+                        <section class="dataworks-panel" id="dataworksRecentRunsPanel"></section>
+                    </div>
                 </div>
             </div>
         </div><!-- /tab-dataworks -->

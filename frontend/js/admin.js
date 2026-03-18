@@ -1386,6 +1386,190 @@
         return `${minutes}m ${remSeconds}s`;
     }
 
+    function formatPercentage(value, digits = 1) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return '-';
+        return `${num.toFixed(digits)}%`;
+    }
+
+    function parseDateValue(value) {
+        if (!value) return null;
+        if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+        if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            const date = new Date(`${value}T00:00:00Z`);
+            return Number.isNaN(date.getTime()) ? null : date;
+        }
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function formatDateShort(value) {
+        const date = parseDateValue(value);
+        if (!date) return '-';
+        return date.toLocaleDateString('en-AU', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric'
+        });
+    }
+
+    function formatRelativeTime(value) {
+        const date = parseDateValue(value);
+        if (!date) return '-';
+        const diffMs = Date.now() - date.getTime();
+        if (!Number.isFinite(diffMs)) return '-';
+        const absMs = Math.abs(diffMs);
+        const suffix = diffMs >= 0 ? 'ago' : 'ahead';
+        if (absMs < 60000) return 'just now';
+        if (absMs < 3600000) return `${Math.round(absMs / 60000)}m ${suffix}`;
+        if (absMs < 86400000) return `${Math.round(absMs / 3600000)}h ${suffix}`;
+        return `${Math.round(absMs / 86400000)}d ${suffix}`;
+    }
+
+    function formatDayAge(value) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return '-';
+        if (num <= 0) return 'today';
+        if (num === 1) return '1 day';
+        return `${num} days`;
+    }
+
+    function dataworksTone(level) {
+        const normalized = String(level || '').toLowerCase();
+        if (normalized === 'healthy' || normalized === 'good' || normalized === 'ok' || normalized === 'fresh') return 'good';
+        if (normalized === 'watch' || normalized === 'warn' || normalized === 'lagging' || normalized === 'degraded') return 'warn';
+        if (normalized === 'breach' || normalized === 'bad' || normalized === 'stale' || normalized === 'error') return 'bad';
+        return 'neutral';
+    }
+
+    function renderDataworksBadge(label, level) {
+        const tone = dataworksTone(level || label);
+        return `<span class="dataworks-badge ${tone}">${escapeHtml(label || 'Unknown')}</span>`;
+    }
+
+    function renderDataworksMetricRow(label, value, meta) {
+        return `
+            <div class="dataworks-metric-row">
+                <div class="dataworks-metric-label">${escapeHtml(label)}</div>
+                <div class="dataworks-metric-value">${escapeHtml(value)}</div>
+                ${meta ? `<div class="dataworks-metric-meta">${escapeHtml(meta)}</div>` : ''}
+            </div>
+        `;
+    }
+
+    function renderDataworksPanel(title, icon, badgeHtml, bodyHtml, subtitle = '') {
+        return `
+            <div class="dataworks-panel-title">
+                <span class="label"><span>${escapeHtml(icon)}</span><span>${escapeHtml(title)}</span></span>
+                ${badgeHtml || ''}
+            </div>
+            ${subtitle ? `<div class="dataworks-panel-subtitle">${escapeHtml(subtitle)}</div>` : ''}
+            ${bodyHtml}
+        `;
+    }
+
+    async function fetchJsonResponse(url, options = {}) {
+        const response = await fetch(url, options);
+        if (!response.ok) {
+            throw new Error(`Request failed: ${response.status}`);
+        }
+        return response.json();
+    }
+
+    async function fetchDataworksIndex() {
+        return fetchJsonResponse('/data/aemo-market-insights/index.json', { cache: 'no-store' });
+    }
+
+    async function fetchDataworksSchedulerPulse() {
+        const days = 3;
+        const includeRuns = true;
+        const runLimit = 8;
+
+        if (typeof adminApiClient?.getAdminSchedulerMetrics === 'function') {
+            const data = await adminApiClient.getAdminSchedulerMetrics(days, includeRuns, runLimit);
+            if (!data || data.errno !== 0) {
+                throw new Error(data?.error || 'Failed to load scheduler pulse');
+            }
+            return data;
+        }
+
+        const query = new URLSearchParams({
+            days: String(days),
+            includeRuns: '1',
+            runLimit: String(runLimit)
+        });
+        const resp = await adminApiClient.fetch(`/api/admin/scheduler-metrics?${query.toString()}`);
+        if (!resp.ok) {
+            throw new Error(`Request failed: ${resp.status}`);
+        }
+        const data = await resp.json();
+        if (!data || data.errno !== 0) {
+            throw new Error(data?.error || 'Failed to load scheduler pulse');
+        }
+        return data;
+    }
+
+    function deriveDataworksMarketSummary(index) {
+        const summary = index?.dataworks || {};
+        const freshness = summary.freshness || {};
+        const quality = summary.quality || {};
+        const files = summary.files || {};
+        const workflow = summary.workflow || {};
+        const regionRows = Array.isArray(summary.regions) ? summary.regions : [];
+        const latestDate = freshness.latestDate || index?.bounds?.maxDate || null;
+        const latestPeriod = freshness.latestPeriod || index?.bounds?.maxPeriod || null;
+        const dataAgeDays = Number(freshness.dataAgeDays);
+        const status = summary.status && typeof summary.status === 'object'
+            ? summary.status
+            : {
+                level: Number.isFinite(dataAgeDays) && dataAgeDays > 1 ? 'warn' : 'good',
+                label: Number.isFinite(dataAgeDays) && dataAgeDays > 1 ? 'Lagging' : 'Healthy',
+                reasons: []
+            };
+        return {
+            latestDate,
+            latestPeriod,
+            dataAgeDays: Number.isFinite(dataAgeDays) ? dataAgeDays : null,
+            generatedAt: index?.generatedAt || null,
+            sourceGeneratedAt: index?.sourceGeneratedAt || null,
+            status,
+            workflow,
+            files,
+            quality,
+            regionRows,
+            counts: index?.counts || {},
+            regions: Array.isArray(index?.regions) ? index.regions : [],
+            bounds: index?.bounds || {}
+        };
+    }
+
+    function deriveSchedulerPulseSummary(data) {
+        const result = data?.result || {};
+        const summary = result.summary || {};
+        const recentRuns = Array.isArray(result.recentRuns) ? result.recentRuns : [];
+        const currentAlert = result.currentAlert && typeof result.currentAlert === 'object'
+            ? result.currentAlert
+            : null;
+        const lastRun = recentRuns[0] || null;
+        const status = (() => {
+            const alertStatus = String(currentAlert?.status || '').toLowerCase();
+            if (alertStatus === 'breach') return { level: 'bad', label: 'Breach' };
+            if (alertStatus === 'watch') return { level: 'warn', label: 'Watch' };
+            const errorRatePct = Number(summary.errorRatePct || 0);
+            if (errorRatePct > 1 || Number(summary.deadLetters || 0) > 0) return { level: 'warn', label: 'Watch' };
+            return { level: 'good', label: 'Healthy' };
+        })();
+
+        return {
+            updatedAt: result.updatedAt || data?.updatedAt || null,
+            status,
+            summary,
+            recentRuns,
+            currentAlert,
+            lastRun
+        };
+    }
+
     function escapeHtml(value) {
         return String(value == null ? '' : value)
             .replace(/&/g, '&amp;')
@@ -1912,71 +2096,213 @@
 
     async function loadDataworks() {
         const updatedEl = document.getElementById('dataworksUpdated');
-        const summaryEl = document.getElementById('dataworksSummary');
         const refreshBtn = document.getElementById('refreshDataworksBtn');
         const statusEl = document.getElementById('dataworksPipelineStatus');
         const rowsEl = document.getElementById('dataworksRowsProcessed');
         const filesEl = document.getElementById('dataworksFilesIngested');
         const latestFileEl = document.getElementById('dataworksLatestFile');
+        const leadEl = document.getElementById('dataworksLead');
+        const pipelinePanel = document.getElementById('dataworksPipelinePanel');
+        const qualityPanel = document.getElementById('dataworksQualityPanel');
+        const schedulerPanel = document.getElementById('dataworksSchedulerPanel');
+        const footprintPanel = document.getElementById('dataworksFootprintPanel');
+        const regionsPanel = document.getElementById('dataworksRegionsPanel');
+        const recentRunsPanel = document.getElementById('dataworksRecentRunsPanel');
 
-        if (!adminApiClient || !updatedEl || !summaryEl || !statusEl || !rowsEl || !filesEl || !latestFileEl) return;
+        if (!adminApiClient || !updatedEl || !statusEl || !rowsEl || !filesEl || !latestFileEl || !leadEl || !pipelinePanel || !qualityPanel || !schedulerPanel || !footprintPanel || !regionsPanel || !recentRunsPanel) return;
 
         if (refreshBtn) refreshBtn.disabled = true;
         updatedEl.textContent = 'Loading DataWorks snapshot...';
-        summaryEl.textContent = 'Loading pipeline details...';
+        leadEl.textContent = 'Loading pipeline details...';
         statusEl.textContent = '-';
         rowsEl.textContent = '-';
         filesEl.textContent = '-';
         latestFileEl.textContent = '-';
+        pipelinePanel.innerHTML = '<div class="dataworks-empty">Loading pipeline health...</div>';
+        qualityPanel.innerHTML = '<div class="dataworks-empty">Loading quality summary...</div>';
+        schedulerPanel.innerHTML = '<div class="dataworks-empty">Loading scheduler pulse...</div>';
+        footprintPanel.innerHTML = '<div class="dataworks-empty">Loading file footprint...</div>';
+        regionsPanel.innerHTML = '<div class="dataworks-empty">Loading region freshness...</div>';
+        recentRunsPanel.innerHTML = '<div class="dataworks-empty">Loading recent activity...</div>';
 
         try {
-            let payload = null;
-            if (typeof adminApiClient.getAdminDataworksSummary === 'function') {
-                payload = await adminApiClient.getAdminDataworksSummary();
+            const [marketResult, schedulerResult] = await Promise.allSettled([
+                fetchDataworksIndex(),
+                fetchDataworksSchedulerPulse()
+            ]);
+
+            const marketSummary = marketResult.status === 'fulfilled'
+                ? deriveDataworksMarketSummary(marketResult.value)
+                : null;
+            const schedulerSummary = schedulerResult.status === 'fulfilled'
+                ? deriveSchedulerPulseSummary(schedulerResult.value)
+                : null;
+
+            if (!marketSummary && !schedulerSummary) {
+                throw new Error('Failed to load market data summary and scheduler pulse');
+            }
+
+            const pipelineLabel = marketSummary?.status?.label || 'Unavailable';
+            const latestMarketDate = marketSummary?.latestDate || null;
+            const rawCsvFiles = Number(marketSummary?.files?.rawCsvFiles || 0);
+            const publishedAssetCount = Number(marketSummary?.files?.publishedAssetCount || 0);
+            const schedulerLabel = schedulerSummary?.status?.label || 'Unavailable';
+            const latestSchedulerRun = schedulerSummary?.lastRun?.startedAtMs
+                ? formatRelativeTime(Number(schedulerSummary.lastRun.startedAtMs))
+                : '-';
+            const dataAgeText = latestMarketDate
+                ? `${formatDateShort(latestMarketDate)}${marketSummary?.dataAgeDays !== null ? ` · ${formatDayAge(marketSummary.dataAgeDays)}` : ''}`
+                : 'Unavailable';
+
+            statusEl.textContent = pipelineLabel;
+            rowsEl.textContent = dataAgeText;
+            filesEl.textContent = rawCsvFiles > 0 || publishedAssetCount > 0
+                ? `${formatCompactNumber(rawCsvFiles)} / ${formatCompactNumber(publishedAssetCount)}`
+                : '-';
+            latestFileEl.textContent = schedulerSummary ? `${schedulerLabel} · ${latestSchedulerRun}` : 'Unavailable';
+
+            const leadParts = [];
+            if (marketSummary) {
+                const reasonText = Array.isArray(marketSummary.status?.reasons) && marketSummary.status.reasons.length
+                    ? marketSummary.status.reasons.join(' · ')
+                    : 'market data assets are publishing without active quality concerns.';
+                leadParts.push(`<strong>${escapeHtml(marketSummary.status?.label || 'Market data')}</strong> ${escapeHtml(reasonText)}`);
+            }
+            if (schedulerSummary) {
+                const cyclesRun = Number(schedulerSummary.summary?.cyclesRun || 0);
+                const errorRatePct = Number(schedulerSummary.summary?.errorRatePct || 0);
+                leadParts.push(`<strong>${escapeHtml(schedulerSummary.status.label)}</strong> scheduler pulse over 3d with ${escapeHtml(formatCompactNumber(cyclesRun))} cycles and ${escapeHtml(errorRatePct.toFixed(2))}% errors.`);
+            }
+            leadEl.innerHTML = leadParts.join(' ');
+
+            if (marketSummary) {
+                const workflowLabel = marketSummary.workflow?.cadenceLabel || 'Workflow schedule unavailable';
+                pipelinePanel.innerHTML = renderDataworksPanel(
+                    'Pipeline',
+                    '🧭',
+                    renderDataworksBadge(marketSummary.status?.label || 'Unknown', marketSummary.status?.level),
+                    `<div class="dataworks-metric-list">
+                        ${renderDataworksMetricRow('Workflow cadence', workflowLabel, marketSummary.workflow?.cron ? `cron ${marketSummary.workflow.cron}` : 'Hosted by GitHub Actions')}
+                        ${renderDataworksMetricRow('Published', formatRelativeTime(marketSummary.generatedAt), marketSummary.generatedAt ? `index generated ${formatDate(marketSummary.generatedAt)}` : '')}
+                        ${renderDataworksMetricRow('Source aggregate', formatRelativeTime(marketSummary.sourceGeneratedAt), marketSummary.sourceGeneratedAt ? `aggregate manifest ${formatDate(marketSummary.sourceGeneratedAt)}` : '')}
+                        ${renderDataworksMetricRow('Latest market date', formatDateShort(marketSummary.latestDate), marketSummary.dataAgeDays !== null ? `${formatDayAge(marketSummary.dataAgeDays)} behind UTC` : '')}
+                    </div>`,
+                    'Static metadata from the published market-insights bundle.'
+                );
+
+                const issueRegions = Array.isArray(marketSummary.quality?.issueRegions) ? marketSummary.quality.issueRegions : [];
+                qualityPanel.innerHTML = renderDataworksPanel(
+                    'Quality',
+                    '🧪',
+                    renderDataworksBadge(
+                        Number(marketSummary.quality?.issuePeriods || 0) > 0 ? 'Watch' : 'Clean',
+                        Number(marketSummary.quality?.issuePeriods || 0) > 0 ? 'warn' : 'good'
+                    ),
+                    `<div class="dataworks-metric-list">
+                        ${renderDataworksMetricRow('Issue periods', formatCompactNumber(marketSummary.quality?.issuePeriods || 0), marketSummary.quality?.latestIssuePeriod ? `latest ${marketSummary.quality.latestIssuePeriod}` : 'No flagged periods')}
+                        ${renderDataworksMetricRow('Recent coverage', formatPercentage(marketSummary.quality?.recentAverageCoveragePct, 2), marketSummary.quality?.recentMinimumCoveragePct != null ? `min ${formatPercentage(marketSummary.quality.recentMinimumCoveragePct, 2)} in last 7d` : '')}
+                        ${renderDataworksMetricRow('Recent quality', marketSummary.quality?.recentAverageQualityScore != null ? Number(marketSummary.quality.recentAverageQualityScore).toFixed(2) : '-', marketSummary.quality?.recentMinimumQualityScore != null ? `min ${Number(marketSummary.quality.recentMinimumQualityScore).toFixed(2)} in last 7d` : '')}
+                        ${renderDataworksMetricRow('Missing / malformed', `${formatCompactNumber(marketSummary.quality?.estimatedMissingIntervals || 0)} / ${formatCompactNumber(marketSummary.quality?.malformedRows || 0)}`, `interval anomalies ${formatCompactNumber(marketSummary.quality?.intervalAnomalies || 0)}`)}
+                    </div>
+                    ${issueRegions.length ? `<div class="dataworks-inline-list">${issueRegions.map((region) => `<span class="dataworks-chip">${escapeHtml(region)}</span>`).join('')}</div>` : ''}`,
+                    'Quality report roll-up from the aggregate build output.'
+                );
+
+                footprintPanel.innerHTML = renderDataworksPanel(
+                    'Footprint',
+                    '🗂️',
+                    renderDataworksBadge('Lightweight', 'good'),
+                    `<div class="dataworks-metric-list">
+                        ${renderDataworksMetricRow('Raw CSV files', formatCompactNumber(marketSummary.files?.rawCsvFiles || 0), `${formatCompactNumber(marketSummary.regions?.length || 0)} regions across ${marketSummary.bounds?.minPeriod || '-'} to ${marketSummary.bounds?.maxPeriod || '-'}`)}
+                        ${renderDataworksMetricRow('Published assets', formatCompactNumber(marketSummary.files?.publishedAssetCount || 0), 'region payloads + index.json')}
+                        ${renderDataworksMetricRow('Daily / monthly rows', `${formatCompactNumber(marketSummary.files?.dailyRows || marketSummary.counts?.daily || 0)} / ${formatCompactNumber(marketSummary.files?.monthlyRows || marketSummary.counts?.monthly || 0)}`, marketSummary.files?.hourlyRows ? `${formatCompactNumber(marketSummary.files.hourlyRows)} hourly rows in aggregates` : '')}
+                        ${renderDataworksMetricRow('Region coverage', `${formatCompactNumber(marketSummary.regions?.length || 0)} live`, marketSummary.bounds?.minDate && marketSummary.bounds?.maxDate ? `${marketSummary.bounds.minDate} to ${marketSummary.bounds.maxDate}` : '')}
+                    </div>`,
+                    'Uses static hosted JSON, so opening this tab does not trigger heavy scans.'
+                );
+
+                const regionRows = Array.isArray(marketSummary.regionRows) ? marketSummary.regionRows : [];
+                regionsPanel.innerHTML = renderDataworksPanel(
+                    'Region Freshness',
+                    '🗺️',
+                    renderDataworksBadge(`${regionRows.length || 0} regions`, 'neutral'),
+                    regionRows.length
+                        ? `<div class="dataworks-table-wrap"><table class="dataworks-table"><thead><tr><th>Region</th><th>Latest Date</th><th>Age</th><th>Recent Quality</th><th>Issues</th></tr></thead><tbody>${regionRows.map((row) => `<tr><td>${escapeHtml(row.region || '-')}</td><td>${escapeHtml(formatDateShort(row.latestDate))}</td><td>${escapeHtml(formatDayAge(row.ageDays))}</td><td>${escapeHtml(row.recentQualityScoreAvg != null ? Number(row.recentQualityScoreAvg).toFixed(2) : '-')}</td><td>${escapeHtml(String(Number(row.qualityIssuePeriods || 0)))}</td></tr>`).join('')}</tbody></table></div>`
+                        : '<div class="dataworks-empty">No region summaries available.</div>',
+                    'Per-region latest publish date and recent quality score.'
+                );
             } else {
-                const resp = await adminApiClient.fetch('/api/admin/dataworks');
-                if (resp.status === 404) {
-                    updatedEl.textContent = 'DataWorks endpoint not available yet.';
-                    summaryEl.textContent = 'Backend is not emitting DataWorks status yet. Add /api/admin/dataworks with summary payload when ready.';
-                    return;
-                }
-                if (!resp.ok) {
-                    throw new Error(`Request failed: ${resp.status}`);
-                }
-                payload = await resp.json();
+                pipelinePanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
+                qualityPanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
+                footprintPanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
+                regionsPanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
             }
 
-            if (!payload || typeof payload !== 'object') {
-                throw new Error('Invalid DataWorks response');
+            if (schedulerSummary) {
+                const currentAlertText = schedulerSummary.currentAlert
+                    ? formatSchedulerAlertMessage(schedulerSummary.currentAlert)
+                    : 'No active alert.';
+                schedulerPanel.innerHTML = renderDataworksPanel(
+                    'Scheduler Pulse',
+                    '⚙️',
+                    renderDataworksBadge(schedulerSummary.status.label, schedulerSummary.status.level),
+                    `<div class="dataworks-metric-list">
+                        ${renderDataworksMetricRow('Last run', schedulerSummary.lastRun?.startedAtMs ? formatRelativeTime(Number(schedulerSummary.lastRun.startedAtMs)) : '-', schedulerSummary.lastRun?.startedAtMs ? formatDate(Number(schedulerSummary.lastRun.startedAtMs)) : 'No recent runs in window')}
+                        ${renderDataworksMetricRow('Cycles / errors', `${formatCompactNumber(schedulerSummary.summary?.cyclesRun || 0)} / ${formatCompactNumber(schedulerSummary.summary?.errors || 0)}`, `${Number(schedulerSummary.summary?.errorRatePct || 0).toFixed(2)}% error rate`)}
+                        ${renderDataworksMetricRow('Dead letters / retries', `${formatCompactNumber(schedulerSummary.summary?.deadLetters || 0)} / ${formatCompactNumber(schedulerSummary.summary?.retries || 0)}`, `runs ${formatCompactNumber(schedulerSummary.summary?.runs || 0)} in 3d window`)}
+                        ${renderDataworksMetricRow('Tail latency', formatDurationMs(schedulerSummary.summary?.p99CycleDurationMs || 0), `max ${formatDurationMs(schedulerSummary.summary?.maxCycleDurationMs || 0)}`)}
+                    </div>
+                    <div class="dataworks-note-list" style="margin-top:10px;"><div class="dataworks-note"><strong>Alert state:</strong> ${escapeHtml(currentAlertText)}</div></div>`,
+                    'Same admin scheduler read model used by the Scheduler tab, but scoped down for quick pulse checks.'
+                );
+
+                const recentRuns = Array.isArray(schedulerSummary.recentRuns) ? schedulerSummary.recentRuns.slice(0, 6) : [];
+                recentRunsPanel.innerHTML = renderDataworksPanel(
+                    'Recent Activity',
+                    '📜',
+                    renderDataworksBadge(recentRuns.length ? `${recentRuns.length} runs` : 'No runs', recentRuns.length ? 'neutral' : 'warn'),
+                    recentRuns.length
+                        ? `<div class="dataworks-table-wrap"><table class="dataworks-table"><thead><tr><th>Started</th><th>Cycles</th><th>Errors</th><th>Dead</th><th>P99</th></tr></thead><tbody>${recentRuns.map((run) => `<tr><td>${escapeHtml(run.startedAtMs ? new Date(Number(run.startedAtMs)).toLocaleString('en-AU') : '-')}</td><td>${escapeHtml(String(Number(run.cyclesRun || 0)))}</td><td>${escapeHtml(String(Number(run.errors || 0)))}</td><td>${escapeHtml(String(Number(run.deadLetters || 0)))}</td><td>${escapeHtml(formatDurationMs(run.cycleDurationMs?.p99Ms || 0))}</td></tr>`).join('')}</tbody></table></div>`
+                        : '<div class="dataworks-empty">No recent scheduler runs available in the selected window.</div>',
+                    'Compact view of the latest automation scheduler executions.'
+                );
+            } else {
+                schedulerPanel.innerHTML = '<div class="dataworks-empty">Scheduler pulse unavailable. The rest of the DataWorks snapshot is still valid.</div>';
+                recentRunsPanel.innerHTML = renderDataworksPanel(
+                    'Notes',
+                    'ℹ️',
+                    renderDataworksBadge('Static only', 'neutral'),
+                    '<div class="dataworks-note-list"><div class="dataworks-note"><strong>Scheduler telemetry unavailable:</strong> this view can still show market-data freshness and quality from hosted static assets.</div><div class="dataworks-note"><strong>Cost posture:</strong> DataWorks reads one static JSON bundle and only calls the existing scheduler summary endpoint.</div></div>'
+                );
             }
-            const result = payload.errno === 0 ? payload.result : payload;
-            if (payload.errno !== undefined && payload.errno !== 0) {
-                throw new Error(payload.error || 'Failed to load DataWorks summary');
+
+            const updatedParts = [];
+            if (marketSummary?.generatedAt) {
+                updatedParts.push(`market data ${formatRelativeTime(marketSummary.generatedAt)}`);
             }
-
-            const rowsProcessed = Number(result?.rowsProcessed || result?.rows || 0);
-            const filesIngested = Number(result?.filesIngested || result?.fileCount || 0);
-            const latestFile = result?.latestFile || result?.latest?.file || '-';
-            const status = result?.status || 'Unknown';
-            const details = result?.details || result?.message || 'No summary details available yet.';
-            const updatedAt = result?.updatedAt || result?.lastUpdated || new Date().toISOString();
-
-            statusEl.textContent = String(status);
-            rowsEl.textContent = formatCompactNumber(rowsProcessed);
-            filesEl.textContent = formatCompactNumber(filesIngested);
-            latestFileEl.textContent = latestFile || '-';
-            summaryEl.textContent = String(details);
-
-            const updatedDate = new Date(updatedAt);
-            updatedEl.textContent = `Last checked ${updatedDate.toLocaleDateString('en-AU')} ${updatedDate.toLocaleTimeString('en-AU')}`;
+            if (schedulerSummary?.lastRun?.startedAtMs) {
+                updatedParts.push(`scheduler run ${formatRelativeTime(Number(schedulerSummary.lastRun.startedAtMs))}`);
+            }
+            if (marketSummary?.workflow?.cadenceLabel) {
+                updatedParts.push(`cadence ${marketSummary.workflow.cadenceLabel}`);
+            }
+            updatedEl.textContent = updatedParts.length
+                ? `Last checked ${new Date().toLocaleDateString('en-AU')} ${new Date().toLocaleTimeString('en-AU')} · ${updatedParts.join(' · ')}`
+                : `Last checked ${new Date().toLocaleDateString('en-AU')} ${new Date().toLocaleTimeString('en-AU')}`;
         } catch (e) {
             console.error('[Admin] Failed to load DataWorks summary:', e);
             updatedEl.textContent = 'Unable to load DataWorks snapshot';
-            summaryEl.textContent = e?.message ? `Error: ${e.message}` : 'Failed to load DataWorks snapshot';
+            leadEl.textContent = e?.message ? `Error: ${e.message}` : 'Failed to load DataWorks snapshot';
             statusEl.textContent = 'Unavailable';
             rowsEl.textContent = '-';
             filesEl.textContent = '-';
             latestFileEl.textContent = '-';
+            pipelinePanel.innerHTML = '<div class="dataworks-empty">Unable to load pipeline summary.</div>';
+            qualityPanel.innerHTML = '<div class="dataworks-empty">Unable to load quality summary.</div>';
+            schedulerPanel.innerHTML = '<div class="dataworks-empty">Unable to load scheduler pulse.</div>';
+            footprintPanel.innerHTML = '<div class="dataworks-empty">Unable to load file footprint.</div>';
+            regionsPanel.innerHTML = '<div class="dataworks-empty">Unable to load region freshness.</div>';
+            recentRunsPanel.innerHTML = '<div class="dataworks-empty">Unable to load recent activity.</div>';
         } finally {
             if (refreshBtn) refreshBtn.disabled = false;
         }
