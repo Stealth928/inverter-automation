@@ -981,6 +981,7 @@
             color: var(--text-secondary);
             font-size: 12px;
             line-height: 1.5;
+            overflow-wrap: anywhere;
         }
         .dataworks-lead strong {
             color: var(--text-primary);
@@ -1003,11 +1004,13 @@
             border-radius: var(--radius-lg);
             padding: 14px;
             min-height: 100%;
+            min-width: 0;
         }
         .dataworks-panel-title {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: space-between;
+            flex-wrap: wrap;
             gap: 8px;
             margin-bottom: 10px;
             font-size: 12px;
@@ -1018,6 +1021,11 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+        .dataworks-panel-title .label span:last-child {
+            overflow-wrap: anywhere;
         }
         .dataworks-panel-subtitle {
             font-size: 11px;
@@ -1036,6 +1044,10 @@
             letter-spacing: 0.35px;
             text-transform: uppercase;
             border: 1px solid transparent;
+            max-width: 100%;
+            min-width: 0;
+            white-space: normal;
+            line-height: 1.2;
         }
         .dataworks-badge.good {
             color: var(--color-success);
@@ -1071,18 +1083,23 @@
         .dataworks-metric-label {
             font-size: 11px;
             color: var(--text-secondary);
+            overflow-wrap: anywhere;
         }
         .dataworks-metric-value {
             font-size: 13px;
             font-weight: 700;
             color: var(--text-primary);
             text-align: right;
+            min-width: 0;
+            overflow-wrap: anywhere;
+            word-break: break-word;
         }
         .dataworks-metric-meta {
             grid-column: 1 / -1;
             font-size: 11px;
             color: var(--text-secondary);
             margin-top: -3px;
+            overflow-wrap: anywhere;
         }
         .dataworks-inline-list {
             display: flex;
@@ -1113,6 +1130,7 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 11px;
+            min-width: 520px;
         }
         .dataworks-table th,
         .dataworks-table td {
@@ -1145,6 +1163,7 @@
             font-size: 11px;
             color: var(--text-secondary);
             line-height: 1.45;
+            overflow-wrap: anywhere;
         }
         .dataworks-note strong {
             color: var(--text-primary);
@@ -1270,6 +1289,9 @@
             .dataworks-grid-2 {
                 grid-template-columns: 1fr;
             }
+            #dataworksKpis {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
             .admin-tab-nav { gap: 0; }
             .tab-btn { padding: 8px 14px; font-size: 13px; }
         }
@@ -1316,6 +1338,31 @@
                 justify-self: end;
                 min-width: 0;
             }
+            .dataworks-grid-4 {
+                grid-template-columns: 1fr;
+            }
+            .dataworks-panel {
+                padding: 12px;
+            }
+            .dataworks-panel-subtitle {
+                margin-top: 0;
+                line-height: 1.4;
+            }
+            .dataworks-metric-row {
+                grid-template-columns: 1fr;
+                gap: 3px;
+            }
+            .dataworks-metric-value {
+                text-align: left;
+                font-size: 12px;
+            }
+            .dataworks-metric-meta {
+                margin-top: 0;
+            }
+            .dataworks-table th,
+            .dataworks-table td {
+                padding: 7px 8px;
+            }
         }
 
         @media (max-width: 420px) {
@@ -1331,6 +1378,9 @@
             .dataworks-grid-4 {
                 grid-template-columns: 1fr;
             }
+            #dataworksKpis {
+                grid-template-columns: 1fr;
+            }
         }
 
         /* Admin Tabs */
@@ -1339,6 +1389,10 @@
             gap: 2px;
             margin-bottom: 24px;
             border-bottom: 1px solid var(--border-primary);
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
         }
         .tab-btn {
             background: none;
@@ -1352,6 +1406,8 @@
             cursor: pointer;
             transition: color 0.15s, border-color 0.15s, background 0.15s;
             border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+            flex: 0 0 auto;
+            white-space: nowrap;
         }
         .tab-btn:hover {
             color: var(--text-primary);

@@ -789,8 +789,28 @@
     // ==================== Tab Switching ====================
     function switchTab(name) {
         activeTab = name;
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === name));
+        let activeButton = null;
+        document.querySelectorAll('.tab-btn').forEach((btn) => {
+            const isActive = btn.dataset.tab === name;
+            btn.classList.toggle('active', isActive);
+            if (isActive) activeButton = btn;
+        });
         document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.id === `tab-${name}`));
+        const tabNav = document.querySelector('.admin-tab-nav');
+        if (tabNav && activeButton && tabNav.scrollWidth > tabNav.clientWidth) {
+            try {
+                const reduceMotion = typeof window.matchMedia === 'function'
+                    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                    : false;
+                activeButton.scrollIntoView({
+                    behavior: reduceMotion ? 'auto' : 'smooth',
+                    block: 'nearest',
+                    inline: 'center'
+                });
+            } catch (error) {
+                activeButton.scrollIntoView();
+            }
+        }
         if (!tabsLoaded[name]) {
             tabsLoaded[name] = true;
             if (name === 'overview') {
