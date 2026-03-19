@@ -2520,8 +2520,8 @@
                         <div class="card-title"><span class="icon">⚡</span> Inverter Status</div>
                             <div style="display:flex;align-items:center;gap:8px;flex-direction:column;align-items:flex-end">
                             <div style="display:flex;gap:8px;align-items:center">
-                                <span class="card-badge" id="inverterSourceBadge">Live</span>
-                                <div id="inverterLastUpdate" style="font-size:11px;color:var(--text-secondary);">—</div>
+                                <span class="card-badge" id="inverterSourceBadge" title="Showing live inverter data when available">Live</span>
+                                <div id="inverterLastUpdate" style="font-size:11px;color:var(--text-secondary);" title="How old the latest inverter reading is">Data age: —</div>
                                 <button class="btn btn-icon" onclick="callAPI('/api/inverter/real-time?forceRefresh=true', 'Real-time Data')" title="Refresh inverter data (bypasses cache)">🔄</button>
                             </div>
 
@@ -2538,8 +2538,7 @@
                                     <button class="btn btn-sm" onclick="loadApiMetrics(1)" title="Refresh metrics">🔄</button>
                                 </div>
                             <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;text-align:right">
-                                <span id="inverterCloudTime">—</span>
-                                <span style="color:var(--text-muted);margin-left:8px;font-size:10px" id="inverterFetchLabel">(fetched • <span id="inverterFetchAgo">—</span>)</span>
+                                <span style="color:var(--text-muted);font-size:10px" id="inverterFetchLabel" title="How recently this dashboard fetched inverter data">Last checked: <span id="inverterFetchAgo">—</span></span>
                             </div>
                         </div>
                     </div>

@@ -16,6 +16,8 @@
         preset: '30d',
         startP: null,
         endP: null,
+        startDate: null,
+        endDate: null,
         trendMetric: 'meanRRP',
         detail: null,
         monthlySpikeByKey: new Map()
@@ -41,6 +43,11 @@
     }
     function formatDateParts(y, m, d) {
         return `${pad2(d)}-${pad2(m)}-${String(y)}`;
+    }
+    function isoDateFromPeriod(period) {
+        const s = String(period || '');
+        if (!/^\d{6}$/.test(s)) return null;
+        return `${s.slice(0, 4)}-${s.slice(4, 6)}-01`;
     }
     // UI-only formatter: keeps source keys untouched while normalizing all rendered dates.
     function fmtDate(input) {
@@ -144,30 +151,45 @@
     function applyPreset(preset) {
         const periods = allPeriods();
         S.endP = periods[periods.length - 1];
+        S.endDate = S.index.bounds.maxDate;
         if (preset === '30d' || preset === '90d') {
             const cut = new Date(Date.parse(S.index.bounds.maxDate + 'T00:00:00Z') - (preset === '30d' ? 29 : 89) * DAY_MS);
+            S.startDate = cut.toISOString().slice(0, 10);
             S.startP = `${cut.getUTCFullYear()}${String(cut.getUTCMonth() + 1).padStart(2, '0')}`;
         } else if (preset === '6m') {
             S.startP = periods[Math.max(periods.length - 6, 0)];
+            S.startDate = isoDateFromPeriod(S.startP);
         } else if (preset === '12m') {
             S.startP = periods[Math.max(periods.length - 12, 0)];
+            S.startDate = isoDateFromPeriod(S.startP);
         } else if (preset === 'ytd') {
             S.startP = `${String(S.endP).slice(0, 4)}01`;
+            S.startDate = isoDateFromPeriod(S.startP);
         } else {
             S.startP = periods[0];
+            S.startDate = S.index.bounds.minDate || isoDateFromPeriod(S.startP);
         }
         S.preset = preset;
     }
 
     // ── Filtering ──
+    function inPeriodWindow(row) {
+        return String(row.period) >= String(S.startP) &&
+            String(row.period) <= String(S.endP);
+    }
+
+    function inDailyWindow(row) {
+        if (!row || !row.date) return false;
+        if (S.startDate && String(row.date) < String(S.startDate)) return false;
+        if (S.endDate && String(row.date) > String(S.endDate)) return false;
+        return true;
+    }
+
     function rowsFor(region) {
         const d = S.data.get(region);
         if (!d) return [];
         const rows = S.gran === 'daily' ? d.daily : d.monthly;
-        return rows.filter(r =>
-            String(r.period) >= String(S.startP) &&
-            String(r.period) <= String(S.endP)
-        );
+        return rows.filter(r => S.gran === 'daily' ? inDailyWindow(r) : inPeriodWindow(r));
     }
 
     function rowsByRegion() {
@@ -188,10 +210,7 @@
             const d = S.data.get(region);
             if (!d || !Array.isArray(d.daily)) return [];
             return d.daily
-                .filter(r =>
-                    String(r.period) >= String(S.startP) &&
-                    String(r.period) <= String(S.endP)
-                )
+                .filter(inDailyWindow)
                 .map(r => ({ ...r, region }));
         });
     }
@@ -241,7 +260,8 @@
     }
 
     function validate() {
-        if (String(S.startP) > String(S.endP)) {
+        if ((S.startDate && S.endDate && String(S.startDate) > String(S.endDate)) ||
+            String(S.startP) > String(S.endP)) {
             setWarn('Start must be before end.');
             return false;
         }
@@ -328,21 +348,23 @@
 
     // ── KPIs ──
     function renderKpis(flat) {
-        const avgPrice = avg(flat.map(r => r.meanRRP));
-        const medPrice = avg(flat.map(r => r.p50RRP));
-        const negCount = total(flat.map(r => r.negativeRRPCount));
-        const allRows = total(flat.map(r => r.rowCount));
+        const dailyBase = selectedDailyFlat();
+        const baseRows = dailyBase.length ? dailyBase : flat;
+        const dayUnitPlural = S.regions.length === 1 ? 'days' : 'region-days';
+        const avgPrice = avg(baseRows.map(r => r.meanRRP));
+        const medPrice = avg(baseRows.map(r => r.p50RRP));
+        const negCount = total(baseRows.map(r => r.negativeRRPCount));
+        const allRows = total(baseRows.map(r => r.rowCount));
         const negPct = allRows ? (negCount / allRows * 100) : null;
 
         // Keep spike KPI normalized to daily exceedance regardless of current granularity.
-        const dailyBase = selectedDailyFlat();
         const spikeCount = dailyBase.filter(r => isNum(r.maxRRP) && Number(r.maxRRP) > SPIKE_THRESHOLD).length;
         const spikeDen = dailyBase.length;
         const spikePct = spikeDen ? (spikeCount / spikeDen * 100) : 0;
 
-        const minAll = Math.min(...flat.map(r => Number(r.minRRP)).filter(Number.isFinite));
-        const maxAll = Math.max(...flat.map(r => Number(r.maxRRP)).filter(Number.isFinite));
-        const volAvg = avg(flat.map((r) => {
+        const minAll = Math.min(...baseRows.map(r => Number(r.minRRP)).filter(Number.isFinite));
+        const maxAll = Math.max(...baseRows.map(r => Number(r.maxRRP)).filter(Number.isFinite));
+        const volAvg = avg(baseRows.map((r) => {
             if (isNum(r.volatilityRRP)) return Number(r.volatilityRRP);
             if (isNum(r.maxRRP) && isNum(r.minRRP)) return Number(r.maxRRP) - Number(r.minRRP);
             return null;
@@ -356,7 +378,7 @@
 
         $('kpiSpikes').textContent = fmtInt(spikeCount);
         $('kpiSpikesSub').textContent = spikeDen
-            ? `${spikePct.toFixed(1)}% of days exceeded $${SPIKE_THRESHOLD}/MWh`
+            ? `${spikePct.toFixed(1)}% of ${dayUnitPlural} exceeded $${SPIKE_THRESHOLD}/MWh`
             : '';
 
         $('kpiNegative').textContent = fmtInt(negCount);
@@ -376,6 +398,44 @@
         const days = Math.floor(diff / DAY_MS);
         const hrs = Math.floor((diff % DAY_MS) / 3600000);
         $('freshnessBadge').textContent = `Updated ${fmtDate(d)} · ${days}d ${hrs}h ago`;
+    }
+
+    function summaryTrend(rows, metricKey = 'meanRRP') {
+        const buckets = new Map();
+        rows.forEach((row) => {
+            const key = String(row.date || row.period || '');
+            const value = Number(row[metricKey]);
+            if (!key || !Number.isFinite(value)) return;
+            const bucket = buckets.get(key) || {
+                key,
+                label: rowDateLabel(row),
+                values: []
+            };
+            bucket.values.push(value);
+            buckets.set(key, bucket);
+        });
+
+        const points = Array.from(buckets.values())
+            .sort((a, b) => a.key.localeCompare(b.key))
+            .map((bucket) => ({
+                key: bucket.key,
+                label: bucket.label,
+                v: avg(bucket.values)
+            }))
+            .filter((point) => Number.isFinite(point.v));
+
+        const first = points[0];
+        const last = points[points.length - 1];
+        const pct = first && last && Math.abs(first.v) > 0.01
+            ? ((last.v - first.v) / Math.abs(first.v) * 100)
+            : 0;
+
+        return {
+            count: points.length,
+            first,
+            last,
+            pct
+        };
     }
 
     // ── SVG Line Chart ──
@@ -462,15 +522,35 @@
         // Hover interaction
         const tooltip = container.querySelector('.mi-tooltip');
         const svg = container.querySelector('svg');
+        let activeHitKey = null;
 
-        svg.addEventListener('mouseover', (e) => {
-            const hit = e.target.closest('.hit-target');
-            if (!hit) return;
+        function setHoverDot(si, pi, radius) {
+            const dot = svg.querySelector(`circle.hover-dot[data-si="${si}"][data-pi="${pi}"]`);
+            if (dot) dot.setAttribute('r', String(radius));
+        }
+
+        function clearTooltip() {
+            if (activeHitKey) {
+                setHoverDot(activeHitKey.si, activeHitKey.pi, 0);
+                activeHitKey = null;
+            }
+            tooltip.classList.remove('is-visible');
+        }
+
+        function showTooltipForHit(hit) {
             const si = Number(hit.dataset.si);
             const pi = Number(hit.dataset.pi);
-            const pt = allSampled[si][pi];
-            const dot = svg.querySelector(`circle.hover-dot[data-si="${si}"][data-pi="${pi}"]`);
-            if (dot) dot.setAttribute('r', '4');
+            const pt = allSampled[si]?.[pi];
+            if (!pt) return;
+
+            if (!activeHitKey || activeHitKey.si !== si || activeHitKey.pi !== pi) {
+                if (activeHitKey) {
+                    setHoverDot(activeHitKey.si, activeHitKey.pi, 0);
+                }
+                activeHitKey = { si, pi };
+            }
+
+            setHoverDot(si, pi, 4);
 
             const label = pt.label || pt.key || '';
             const region = seriesList[si].label;
@@ -500,15 +580,21 @@
 
             tooltip.style.left = `${left}px`;
             tooltip.style.top = `${top}px`;
-        });
+        }
 
-        svg.addEventListener('mouseout', (e) => {
+        svg.addEventListener('mouseover', (e) => {
             const hit = e.target.closest('.hit-target');
             if (!hit) return;
-            const dot = svg.querySelector(`circle.hover-dot[data-si="${hit.dataset.si}"][data-pi="${hit.dataset.pi}"]`);
-            if (dot) dot.setAttribute('r', '0');
-            tooltip.classList.remove('is-visible');
+            showTooltipForHit(hit);
         });
+
+        svg.addEventListener('mousemove', (e) => {
+            const hit = e.target.closest('.hit-target');
+            if (!hit) return;
+            showTooltipForHit(hit);
+        });
+
+        svg.addEventListener('mouseleave', clearTooltip);
 
         // Legend
         legendContainer.innerHTML = seriesList.map((s, i) =>
@@ -527,49 +613,46 @@
             '6m': 'last 6 months', '12m': 'last 12 months',
             'ytd': 'this year', 'all': 'all available data'
         }[S.preset] || 'selected period';
-        const avgP = avg(flat.map(r => r.meanRRP));
         const dailyBase = selectedDailyFlat();
+        const summaryBase = dailyBase.length ? dailyBase : flat;
+        const avgP = avg(summaryBase.map(r => r.meanRRP));
         const spikeCount = dailyBase.filter(r => isNum(r.maxRRP) && Number(r.maxRRP) > SPIKE_THRESHOLD).length;
         const spikePct = dailyBase.length ? (spikeCount / dailyBase.length * 100) : 0;
         const spikeDay = dailyBase.slice().sort((a, b) => Number(b.maxRRP) - Number(a.maxRRP))[0];
-        const negCount = total(flat.map(r => r.negativeRRPCount));
-        const totalRows = total(flat.map(r => r.rowCount || 0));
+        const negCount = total(summaryBase.map(r => r.negativeRRPCount));
+        const totalRows = total(summaryBase.map(r => r.rowCount || 0));
         const negPct = totalRows ? (negCount / totalRows * 100) : 0;
-
-        // Trend: compare first half avg vs second half avg
-        // Sort flat by date before splitting
-        const sorted = flat.slice().sort((a, b) => String(a.date || a.period).localeCompare(String(b.date || b.period)));
-        const mid = Math.floor(sorted.length / 2);
-        const firstHalfAvg = avg(sorted.slice(0, mid).map(r => r.meanRRP));
-        const secondHalfAvg = avg(sorted.slice(mid).map(r => r.meanRRP));
-        const trendPct = firstHalfAvg && Math.abs(firstHalfAvg) > 0.01
-            ? ((secondHalfAvg - firstHalfAvg) / Math.abs(firstHalfAvg) * 100)
-            : 0;
-        const trendWord = trendPct > 8 ? 'rising' : trendPct < -8 ? 'falling' : 'relatively stable';
+        const trend = summaryTrend(summaryBase);
+        const trendPct = trend.pct;
+        const trendWord = trendPct > 8 ? 'higher' : trendPct < -8 ? 'lower' : 'near where it started';
         const trendArrow = trendPct > 8 ? '\u2197' : trendPct < -8 ? '\u2198' : '\u2192';
 
         const signal = spikePct > 12 ? 'high' : spikePct > 4 ? 'elevated' : 'normal';
         const signalLabel = { high: 'High market activity', elevated: 'Elevated activity', normal: 'Normal market conditions' }[signal];
+        const spikeUnit = S.regions.length === 1 ? 'day' : 'region-day';
+        const spikeUnitPlural = S.regions.length === 1 ? 'days' : 'region-days';
 
         const parts = [];
         parts.push(`Over the <strong>${presetLabel}</strong>, ${regionList} prices averaged <strong>${fmtDollar(avgP)}/MWh</strong>.`);
 
         if (spikeCount > 0) {
-            const n = spikeCount === 1 ? '1 day' : `${spikeCount} days`;
-            parts.push(`Daily spike pressure was <strong>${n}</strong> above $${SPIKE_THRESHOLD}/MWh (${spikePct.toFixed(1)}% of days), peaking at <strong>${fmtDollar(spikeDay?.maxRRP)}</strong>${spikeDay ? ` on ${rowDateLabel(spikeDay)}` : ''}.`);
+            const n = spikeCount === 1 ? `1 ${spikeUnit}` : `${spikeCount} ${spikeUnit}s`;
+            parts.push(`Daily spike pressure was <strong>${n}</strong> above $${SPIKE_THRESHOLD}/MWh (${spikePct.toFixed(1)}% of ${spikeUnitPlural}), peaking at <strong>${fmtDollar(spikeDay?.maxRRP)}</strong>${spikeDay ? ` on ${rowDateLabel(spikeDay)}` : ''}.`);
         } else {
-            parts.push(`No days exceeded the $${SPIKE_THRESHOLD}/MWh spike threshold — prices stayed contained.`);
+            parts.push(`No ${spikeUnitPlural} exceeded the $${SPIKE_THRESHOLD}/MWh spike threshold — prices stayed contained.`);
         }
 
         if (S.gran === 'monthly') {
-            parts.push('Monthly charts below are aggregated, while spike percentages above stay normalized to daily exceedance for consistency.');
+            parts.push('Monthly charts below show whole-month aggregates, while the headline stats above stay tied to the exact daily window for consistency.');
         }
 
         if (negPct > 1.5) {
             parts.push(`Negative prices made up <strong>${negPct.toFixed(1)}%</strong> of intervals, reflecting periods of renewable oversupply.`);
         }
 
-        parts.push(`The overall price direction is <strong>${trendWord} ${trendArrow}</strong>${Math.abs(trendPct) > 8 ? ` (${Math.abs(trendPct).toFixed(0)}% ${trendPct > 0 ? 'higher' : 'lower'} than at the start of the period)` : ''}.`);
+        if (trend.count >= 2 && trend.first && trend.last) {
+            parts.push(`From ${trend.first.label} to ${trend.last.label}, average prices finished <strong>${trendWord} ${trendArrow}</strong>${Math.abs(trendPct) > 8 ? ` (${Math.abs(trendPct).toFixed(0)}% ${trendPct > 0 ? 'above' : 'below'} the starting level)` : ''}.`);
+        }
 
         const icon = { high: '\u26a1', elevated: '\u2197', normal: '\u2713' }[signal];
         el.innerHTML = `

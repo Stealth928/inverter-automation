@@ -664,9 +664,6 @@
                                 if (parsed) {
                                     // store cloud timestamp (ms since epoch)
                                     lastUpdated.inverterCloud = parsed;
-                                    // also show formatted cloud time in the header (DD/MM/YYYY HH:MM)
-                                    const el = document.getElementById('inverterCloudTime');
-                                    if (el) el.textContent = 'cloud: ' + formatDate(parsed, true);
                                 }
                             }
                         } catch (e) {/* ignore parse errors */}
@@ -6571,15 +6568,15 @@
                 const amb = document.getElementById('amberLastUpdate');
                 const we = document.getElementById('weatherLastUpdate');
                 if (inv) {
-                    // Show "time since cloud sync" if available, otherwise fallback to fetch time
+                    // Prefer the reading age; fall back to the dashboard check age.
                     if (lastUpdated.inverterCloud) {
-                        const text = formatSince(lastUpdated.inverterCloud) + ' (cloud)';
+                        const text = `Data age: ${formatSince(lastUpdated.inverterCloud)}`;
                         inv.textContent = text;
                     } else if (lastUpdated.inverter) {
-                        const text = formatSince(lastUpdated.inverter);
+                        const text = `Last checked: ${formatSince(lastUpdated.inverter)}`;
                         inv.textContent = text;
                     } else {
-                        inv.textContent = '—';
+                        inv.textContent = 'Data age: —';
                     }
                 }
                 if (amb) {
@@ -6591,14 +6588,9 @@
                     we.textContent = text;
                 }
 
-                // Also update the detailed inverter cloud/fetch labels
+                // Also update the detailed inverter check label.
                 try {
-                    const cloudEl = document.getElementById('inverterCloudTime');
                     const fetchAgoEl = document.getElementById('inverterFetchAgo');
-                    if (cloudEl) {
-                        const text = lastUpdated.inverterCloud ? `cloud: ${formatDate(lastUpdated.inverterCloud, true)}` : '—';
-                        cloudEl.textContent = text;
-                    }
                     if (fetchAgoEl) {
                         const text = lastUpdated.inverter ? formatSince(lastUpdated.inverter) : '—';
                         fetchAgoEl.textContent = text;
