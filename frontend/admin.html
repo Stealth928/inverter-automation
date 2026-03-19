@@ -169,6 +169,10 @@
             background: color-mix(in srgb, var(--color-success) 10%, transparent);
             border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
         }
+        .action-btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
         .actions-cell {
             display: flex;
             gap: 6px;
@@ -1173,6 +1177,10 @@
         .dataworks-note strong {
             color: var(--text-primary);
         }
+        .dataworks-note a,
+        .dataworks-panel a {
+            color: var(--accent-blue);
+        }
         .dataworks-empty {
             color: var(--text-secondary);
             font-size: 12px;
@@ -1728,7 +1736,10 @@
             <div class="card dataworks-card">
                 <div class="card-header">
                     <div class="card-title"><span class="icon">🛰️</span> DataWorks Snapshot</div>
-                    <button class="action-btn" onclick="loadDataworks()" id="refreshDataworksBtn">Refresh</button>
+                    <div class="actions-cell">
+                        <button class="action-btn success" onclick="triggerDataworksDispatch()" id="triggerDataworksRunBtn" disabled>Run now</button>
+                        <button class="action-btn" onclick="loadDataworks()" id="refreshDataworksBtn">Refresh</button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div id="dataworksUpdated" class="firestore-updated">Loading DataWorks snapshot...</div>
@@ -1762,6 +1773,7 @@
                     <div class="dataworks-grid-2">
                         <section class="dataworks-panel" id="dataworksRegionsPanel"></section>
                         <section class="dataworks-panel" id="dataworksRecentRunsPanel"></section>
+                        <section class="dataworks-panel" id="dataworksOpsPanel"></section>
                     </div>
                 </div>
             </div>
@@ -1831,6 +1843,6 @@
         </div>
     </div>
 
-    <script defer src="js/admin.js?v=6"></script>
+    <script defer src="js/admin.js?v=7"></script>
 </body>
 </html>

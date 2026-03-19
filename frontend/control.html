@@ -454,6 +454,24 @@
         </div>
       </div>
 
+      <div class="card" id="card-alphaess-override-status" style="display:none">
+        <div class="card-header">
+          <h2>âš¡ Current Scheduler Override</h2>
+        </div>
+        <div class="card-body">
+          <div id="alphaessCurrentOverride" style="padding:10px;background:rgba(88,166,255,0.05);border-radius:6px;font-size:13px;color:var(--muted);margin-bottom:8px">
+            Current override: <span style="color:var(--accent)">Unknown</span>
+          </div>
+          <div id="alphaessCurrentOverrideDetail" class="hint" style="margin-bottom:12px">
+            Derived from active AlphaESS scheduler windows when you check current status.
+          </div>
+          <div id="status-alphaessOverride"></div>
+          <div class="form-actions">
+            <button type="button" class="btn" style="flex:1" onclick="getAlphaEssCurrentOverride()">ðŸ”„ Check Current Override</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Force Charge Times -->
       <div class="card" id="card-force-charge">
         <div class="card-header">

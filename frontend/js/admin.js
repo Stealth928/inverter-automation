@@ -103,6 +103,8 @@
     let usersTourChart = null;
     let activeTab = 'overview';
     let tabsLoaded = { overview: false, scheduler: false, dataworks: false, users: false };
+    let usersTableRequestSequence = 0;
+    let usersSummaryRequestSequence = 0;
 
     function showMessage(type, msg, duration = 5000) {
         const area = document.getElementById('messageArea');
@@ -315,12 +317,15 @@
         note.textContent = `Top ${currentUsersPagination.showAll ? currentUsersPagination.totalUsers : currentUsersPagination.pageSize} by last sign-in. Column sorting applies to ${scope}.`;
     }
 
-    function buildUsersQuery({ page, pageSize, showAll, includeSummary }) {
+    function buildUsersQuery({ page, pageSize, showAll, includeSummary, refreshSummary }) {
         const params = new URLSearchParams();
         params.set('page', String(page || 1));
         params.set('limit', String(pageSize || 50));
         params.set('all', showAll ? '1' : '0');
         params.set('includeSummary', includeSummary ? '1' : '0');
+        if (refreshSummary) {
+            params.set('refreshSummary', '1');
+        }
         return params.toString();
     }
 
@@ -821,7 +826,10 @@
             } else if (name === 'dataworks') {
                 loadDataworks();
             } else if (name === 'users') {
-                loadUsers();
+                if (!currentUsersSummary) {
+                    setUsersSummaryLoading();
+                }
+                loadUsers({ includeSummary: false, requestSummary: true });
             }
         }
     }
@@ -848,17 +856,20 @@
 
     // ==================== Load Users ====================
     async function loadUsers(options = {}) {
+        const requestSequence = ++usersTableRequestSequence;
         const loading = document.getElementById('usersLoading');
         const tableWrapper = document.getElementById('usersTableWrapper');
         const footer = document.getElementById('usersTableFooter');
-        const includeSummary = options.includeSummary ?? !currentUsersSummary;
+        const includeSummary = options.includeSummary ?? false;
+        const requestSummary = options.requestSummary ?? false;
+        const refreshSummary = options.refreshSummary ?? false;
         const showAll = options.showAll ?? currentUsersPagination.showAll ?? false;
         const page = options.page ?? currentUsersPagination.page ?? 1;
         const pageSize = options.pageSize ?? currentUsersPagination.pageSize ?? 50;
         loading.style.display = '';
         tableWrapper.style.display = 'none';
         if (footer) footer.style.display = 'none';
-        if (includeSummary || !currentUsersSummary) {
+        if ((includeSummary || requestSummary) && !currentUsersSummary) {
             setUsersSummaryLoading();
         }
 
@@ -867,6 +878,7 @@
             const resp = await adminApiClient.fetch(`/api/admin/users?${query}`);
             const data = await resp.json();
             if (data.errno !== 0) throw new Error(data.error || 'Failed to load users');
+            if (requestSequence !== usersTableRequestSequence) return;
 
             currentUsers = data.result.users || [];
             currentUsersPagination = data.result.pagination || { page: 1, pageSize: 50, totalUsers: currentUsers.length, totalPages: 1, showAll, sortingScope: showAll ? 'all-loaded' : 'current-page' };
@@ -882,12 +894,55 @@
 
             loading.style.display = 'none';
             tableWrapper.style.display = '';
+
+            if (!includeSummary && requestSummary) {
+                loadUsersSummary({ refreshSummary });
+            }
         } catch (e) {
+            if (requestSequence !== usersTableRequestSequence) return;
             console.error('[Admin] Failed to load users:', e);
+            tabsLoaded.users = false;
             if (!currentUsersSummary) {
                 renderUsersSummary(null);
             }
             loading.innerHTML = `<span style="color: var(--color-danger);">Failed to load users: ${e.message}</span>`;
+        }
+    }
+
+    async function loadUsersSummary(options = {}) {
+        const requestSequence = ++usersSummaryRequestSequence;
+        const refreshSummary = options.refreshSummary === true;
+
+        if (!currentUsersSummary) {
+            setUsersSummaryLoading();
+        }
+
+        try {
+            const query = buildUsersQuery({
+                page: 1,
+                pageSize: 1,
+                showAll: false,
+                includeSummary: true,
+                refreshSummary
+            });
+            const resp = await adminApiClient.fetch(`/api/admin/users?${query}`);
+            const data = await resp.json();
+            if (data.errno !== 0) throw new Error(data.error || 'Failed to load users summary');
+            if (requestSequence !== usersSummaryRequestSequence) return;
+
+            if (data.result.summary) {
+                currentUsersSummary = data.result.summary;
+                renderUsersSummary(currentUsersSummary);
+                updatePlatformStatsFromSummary(currentUsersSummary);
+            } else if (!currentUsersSummary) {
+                renderUsersSummary(null);
+            }
+        } catch (e) {
+            if (requestSequence !== usersSummaryRequestSequence) return;
+            console.error('[Admin] Failed to load users summary:', e);
+            if (!currentUsersSummary) {
+                renderUsersSummary(null);
+            }
         }
     }
 
@@ -902,12 +957,12 @@
         if (currentUsersPagination.showAll) return;
         const nextPage = Math.max(1, Math.min(currentUsersPagination.totalPages, currentUsersPagination.page + Number(direction || 0)));
         if (nextPage === currentUsersPagination.page) return;
-        loadUsers({ page: nextPage, pageSize: currentUsersPagination.pageSize, showAll: false, includeSummary: false });
+        loadUsers({ page: nextPage, pageSize: currentUsersPagination.pageSize, showAll: false, includeSummary: false, requestSummary: false });
     }
 
     function toggleAllUsers() {
         const nextShowAll = !currentUsersPagination.showAll;
-        loadUsers({ page: 1, pageSize: 50, showAll: nextShowAll, includeSummary: false });
+        loadUsers({ page: 1, pageSize: 50, showAll: nextShowAll, includeSummary: false, requestSummary: false });
     }
 
     async function loadPlatformStats() {
@@ -1474,6 +1529,82 @@
         return `${num} days`;
     }
 
+    function formatStatusLabel(value) {
+        const text = String(value || '').trim();
+        if (!text) return '-';
+        return text
+            .replace(/[_-]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+    }
+
+    function utcMidnight(value) {
+        const date = parseDateValue(value);
+        if (!date) return null;
+        return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    }
+
+    function diffUtcDays(left, right) {
+        const leftDate = utcMidnight(left);
+        const rightDate = utcMidnight(right);
+        if (!leftDate || !rightDate) return null;
+        return Math.round((leftDate.getTime() - rightDate.getTime()) / 86400000);
+    }
+
+    function computeCurrentUtcDayAge(value) {
+        const latestDate = parseDateValue(value);
+        if (!latestDate) return null;
+        return diffUtcDays(new Date(), latestDate);
+    }
+
+    function buildLiveDataworksStatus({ dataAgeDays, issuePeriods, recentMinimumCoveragePct, recentAverageQualityScore, fallbackStatus }) {
+        const reasons = [];
+        let level = 'good';
+        let label = 'Healthy';
+
+        if (Number.isFinite(dataAgeDays) && dataAgeDays > 1) {
+            level = dataAgeDays > 3 ? 'bad' : 'warn';
+            label = dataAgeDays > 3 ? 'Stale' : 'Lagging';
+            reasons.push(`latest market date is ${dataAgeDays} day${dataAgeDays === 1 ? '' : 's'} behind UTC`);
+        }
+
+        if (Number.isFinite(recentMinimumCoveragePct) && recentMinimumCoveragePct < 99.5) {
+            if (level === 'good') {
+                level = 'warn';
+                label = 'Watch';
+            }
+            reasons.push(`recent minimum coverage dipped to ${recentMinimumCoveragePct.toFixed(2)}%`);
+        }
+
+        if (Number.isFinite(recentAverageQualityScore) && recentAverageQualityScore < 99) {
+            if (level !== 'bad') {
+                level = recentAverageQualityScore < 97 ? 'bad' : 'warn';
+                label = recentAverageQualityScore < 97 ? 'Degraded' : 'Watch';
+            }
+            reasons.push(`recent average quality score is ${recentAverageQualityScore.toFixed(2)}`);
+        }
+
+        if (Number(issuePeriods || 0) > 0) {
+            if (level === 'good') {
+                level = 'warn';
+                label = 'Watch';
+            }
+            reasons.push(`${issuePeriods} quality-report period${issuePeriods === 1 ? '' : 's'} flagged`);
+        }
+
+        if (reasons.length) {
+            return { level, label, reasons };
+        }
+
+        return fallbackStatus && typeof fallbackStatus === 'object'
+            ? {
+                level: fallbackStatus.level || level,
+                label: fallbackStatus.label || label,
+                reasons: Array.isArray(fallbackStatus.reasons) ? fallbackStatus.reasons : reasons
+            }
+            : { level, label, reasons };
+    }
+
     function dataworksTone(level) {
         const normalized = String(level || '').toLowerCase();
         if (normalized === 'healthy' || normalized === 'good' || normalized === 'ok' || normalized === 'fresh') return 'good';
@@ -1506,6 +1637,11 @@
             ${subtitle ? `<div class="dataworks-panel-subtitle">${escapeHtml(subtitle)}</div>` : ''}
             ${bodyHtml}
         `;
+    }
+
+    function renderExternalLink(url, label) {
+        if (!url) return escapeHtml(label || '-');
+        return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label || url)}</a>`;
     }
 
     async function fetchJsonResponse(url, options = {}) {
@@ -1549,23 +1685,50 @@
         return data;
     }
 
+    async function fetchDataworksOpsSummary(force = false) {
+        if (typeof adminApiClient?.getAdminDataworksOps === 'function') {
+            const data = await adminApiClient.getAdminDataworksOps(force);
+            if (!data || data.errno !== 0) {
+                throw new Error(data?.error || 'Failed to load DataWorks workflow diagnostics');
+            }
+            return data;
+        }
+
+        const query = new URLSearchParams();
+        if (force) query.set('force', '1');
+        const path = query.size ? `/api/admin/dataworks/ops?${query.toString()}` : '/api/admin/dataworks/ops';
+        const resp = await adminApiClient.fetch(path);
+        if (!resp.ok) {
+            throw new Error(`Request failed: ${resp.status}`);
+        }
+        const data = await resp.json();
+        if (!data || data.errno !== 0) {
+            throw new Error(data?.error || 'Failed to load DataWorks workflow diagnostics');
+        }
+        return data;
+    }
+
     function deriveDataworksMarketSummary(index) {
         const summary = index?.dataworks || {};
         const freshness = summary.freshness || {};
         const quality = summary.quality || {};
         const files = summary.files || {};
         const workflow = summary.workflow || {};
-        const regionRows = Array.isArray(summary.regions) ? summary.regions : [];
+        const sourceRegionRows = Array.isArray(summary.regions) ? summary.regions : [];
         const latestDate = freshness.latestDate || index?.bounds?.maxDate || null;
         const latestPeriod = freshness.latestPeriod || index?.bounds?.maxPeriod || null;
-        const dataAgeDays = Number(freshness.dataAgeDays);
-        const status = summary.status && typeof summary.status === 'object'
-            ? summary.status
-            : {
-                level: Number.isFinite(dataAgeDays) && dataAgeDays > 1 ? 'warn' : 'good',
-                label: Number.isFinite(dataAgeDays) && dataAgeDays > 1 ? 'Lagging' : 'Healthy',
-                reasons: []
-            };
+        const dataAgeDays = computeCurrentUtcDayAge(latestDate);
+        const regionRows = sourceRegionRows.map((row) => ({
+            ...row,
+            ageDays: computeCurrentUtcDayAge(row?.latestDate)
+        }));
+        const status = buildLiveDataworksStatus({
+            dataAgeDays,
+            issuePeriods: quality?.issuePeriods,
+            recentMinimumCoveragePct: quality?.recentMinimumCoveragePct,
+            recentAverageQualityScore: quality?.recentAverageQualityScore,
+            fallbackStatus: summary.status
+        });
         return {
             latestDate,
             latestPeriod,
@@ -1607,6 +1770,53 @@
             recentRuns,
             currentAlert,
             lastRun
+        };
+    }
+
+    function deriveDataworksOpsSummary(data) {
+        const result = data?.result || {};
+        const workflow = result.workflow || {};
+        const dispatch = result.dispatch || {};
+        const latestRun = result.latestRun && typeof result.latestRun === 'object' ? result.latestRun : null;
+        const lastSuccessfulRun = result.lastSuccessfulRun && typeof result.lastSuccessfulRun === 'object'
+            ? result.lastSuccessfulRun
+            : null;
+        const latestJob = result.latestJob && typeof result.latestJob === 'object' ? result.latestJob : null;
+        const recentRuns = Array.isArray(result.recentRuns) ? result.recentRuns : [];
+        const latestFailedStep = latestJob?.steps?.find((step) => step?.conclusion === 'failure') || null;
+        const latestCompletedStep = Array.isArray(latestJob?.steps) && latestJob.steps.length
+            ? latestJob.steps[latestJob.steps.length - 1]
+            : null;
+        const latestStep = latestFailedStep || latestCompletedStep || null;
+        const latestRunState = String(latestRun?.status || '').toLowerCase();
+        const latestRunConclusion = String(latestRun?.conclusion || '').toLowerCase();
+        const badge = (() => {
+            if (!latestRun) return { label: 'No Runs', level: 'neutral' };
+            if (latestRunState && latestRunState !== 'completed') return { label: 'Running', level: 'warn' };
+            if (latestRunConclusion === 'success') return { label: 'Healthy', level: 'good' };
+            if (latestRunConclusion === 'failure') return { label: 'Failure', level: 'bad' };
+            if (latestRunConclusion === 'cancelled' || latestRunConclusion === 'timed_out') return { label: 'Watch', level: 'warn' };
+            return {
+                label: formatStatusLabel(latestRun?.conclusion || latestRun?.status || 'Unknown'),
+                level: 'neutral'
+            };
+        })();
+
+        return {
+            workflow,
+            dispatchEnabled: !!dispatch.enabled,
+            dispatchConfigured: !!dispatch.configured,
+            dispatchReason: dispatch.reason || null,
+            dispatchCooldownMs: Number(dispatch.cooldownMs || 0),
+            latestRun,
+            latestJob,
+            latestStep,
+            latestFailedStep,
+            lastSuccessfulRun,
+            recentRuns,
+            cache: result.cache || null,
+            rateLimit: result.rateLimit || null,
+            badge
         };
     }
 
@@ -2145,9 +2355,10 @@
         }
     }
 
-    async function loadDataworks() {
+    async function loadDataworks(options = {}) {
         const updatedEl = document.getElementById('dataworksUpdated');
         const refreshBtn = document.getElementById('refreshDataworksBtn');
+        const dispatchBtn = document.getElementById('triggerDataworksRunBtn');
         const statusEl = document.getElementById('dataworksPipelineStatus');
         const rowsEl = document.getElementById('dataworksRowsProcessed');
         const filesEl = document.getElementById('dataworksFilesIngested');
@@ -2159,10 +2370,16 @@
         const footprintPanel = document.getElementById('dataworksFootprintPanel');
         const regionsPanel = document.getElementById('dataworksRegionsPanel');
         const recentRunsPanel = document.getElementById('dataworksRecentRunsPanel');
+        const opsPanel = document.getElementById('dataworksOpsPanel');
 
-        if (!adminApiClient || !updatedEl || !statusEl || !rowsEl || !filesEl || !latestFileEl || !leadEl || !pipelinePanel || !qualityPanel || !schedulerPanel || !footprintPanel || !regionsPanel || !recentRunsPanel) return;
+        if (!adminApiClient || !updatedEl || !statusEl || !rowsEl || !filesEl || !latestFileEl || !leadEl || !pipelinePanel || !qualityPanel || !schedulerPanel || !footprintPanel || !regionsPanel || !recentRunsPanel || !opsPanel) return;
 
         if (refreshBtn) refreshBtn.disabled = true;
+        if (dispatchBtn) {
+            dispatchBtn.disabled = true;
+            dispatchBtn.textContent = 'Run now';
+            dispatchBtn.title = 'Loading workflow controls...';
+        }
         updatedEl.textContent = 'Loading DataWorks snapshot...';
         leadEl.textContent = 'Loading pipeline details...';
         statusEl.textContent = '-';
@@ -2175,11 +2392,13 @@
         footprintPanel.innerHTML = '<div class="dataworks-empty">Loading file footprint...</div>';
         regionsPanel.innerHTML = '<div class="dataworks-empty">Loading region freshness...</div>';
         recentRunsPanel.innerHTML = '<div class="dataworks-empty">Loading recent activity...</div>';
+        opsPanel.innerHTML = '<div class="dataworks-empty">Loading workflow diagnostics...</div>';
 
         try {
-            const [marketResult, schedulerResult] = await Promise.allSettled([
+            const [marketResult, schedulerResult, opsResult] = await Promise.allSettled([
                 fetchDataworksIndex(),
-                fetchDataworksSchedulerPulse()
+                fetchDataworksSchedulerPulse(),
+                fetchDataworksOpsSummary(options.forceOps === true)
             ]);
 
             const marketSummary = marketResult.status === 'fulfilled'
@@ -2188,9 +2407,12 @@
             const schedulerSummary = schedulerResult.status === 'fulfilled'
                 ? deriveSchedulerPulseSummary(schedulerResult.value)
                 : null;
+            const opsSummary = opsResult.status === 'fulfilled'
+                ? deriveDataworksOpsSummary(opsResult.value)
+                : null;
 
-            if (!marketSummary && !schedulerSummary) {
-                throw new Error('Failed to load market data summary and scheduler pulse');
+            if (!marketSummary && !schedulerSummary && !opsSummary) {
+                throw new Error('Failed to load DataWorks summary, scheduler pulse, and workflow diagnostics');
             }
 
             const pipelineLabel = marketSummary?.status?.label || 'Unavailable';
@@ -2223,6 +2445,13 @@
                 const cyclesRun = Number(schedulerSummary.summary?.cyclesRun || 0);
                 const errorRatePct = Number(schedulerSummary.summary?.errorRatePct || 0);
                 leadParts.push(`<strong>${escapeHtml(schedulerSummary.status.label)}</strong> scheduler pulse over 3d with ${escapeHtml(formatCompactNumber(cyclesRun))} cycles and ${escapeHtml(errorRatePct.toFixed(2))}% errors.`);
+            }
+            if (opsSummary?.latestRun) {
+                if (opsSummary.latestFailedStep?.name) {
+                    leadParts.push(`<strong>GitHub ${escapeHtml(opsSummary.badge.label)}</strong> latest workflow run failed at ${escapeHtml(opsSummary.latestFailedStep.name)}.`);
+                } else if (opsSummary.latestRun.status && String(opsSummary.latestRun.status).toLowerCase() !== 'completed') {
+                    leadParts.push(`<strong>GitHub Running</strong> latest workflow run is ${escapeHtml(formatStatusLabel(opsSummary.latestRun.status))}.`);
+                }
             }
             leadEl.innerHTML = leadParts.join(' ');
 
@@ -2327,12 +2556,63 @@
                 );
             }
 
+            if (opsSummary) {
+                const latestRunLabel = opsSummary.latestRun
+                    ? `${formatStatusLabel(opsSummary.latestRun.conclusion || opsSummary.latestRun.status)} · ${formatStatusLabel(opsSummary.latestRun.event || 'manual')}`
+                    : 'No workflow runs found';
+                const latestStepMeta = opsSummary.latestStep
+                    ? `${formatStatusLabel(opsSummary.latestStep.conclusion || opsSummary.latestStep.status)} in latest job`
+                    : (opsSummary.latestJob ? `${formatStatusLabel(opsSummary.latestJob.conclusion || opsSummary.latestJob.status)} job` : 'No job detail');
+                const recentOpsNotes = opsSummary.recentRuns.slice(0, 3).map((run) =>
+                    `<div class="dataworks-note">#${escapeHtml(String(run.number || '-'))} · ${escapeHtml(formatStatusLabel(run.conclusion || run.status || 'unknown'))} · ${escapeHtml(formatStatusLabel(run.event || 'unknown'))} · ${escapeHtml(formatRelativeTime(run.createdAt || run.updatedAt || null))}</div>`
+                ).join('');
+                const workflowLink = opsSummary.latestRun?.htmlUrl || opsSummary.workflow?.htmlUrl || null;
+                const cacheMeta = opsSummary.cache?.fetchedAt
+                    ? `GitHub metadata ${formatRelativeTime(opsSummary.cache.fetchedAt)}`
+                    : 'GitHub metadata fresh on server cache';
+                const rateLimitMeta = Number.isFinite(Number(opsSummary.rateLimit?.remaining))
+                    ? `API remaining ${Number(opsSummary.rateLimit.remaining)}`
+                    : '';
+                opsPanel.innerHTML = renderDataworksPanel(
+                    'Workflow Ops',
+                    '🚀',
+                    renderDataworksBadge(opsSummary.badge.label, opsSummary.badge.level),
+                    `<div class="dataworks-metric-list">
+                        ${renderDataworksMetricRow('Workflow', formatStatusLabel(opsSummary.workflow.state), opsSummary.workflow.ref ? `ref ${opsSummary.workflow.ref}` : '')}
+                        ${renderDataworksMetricRow('Latest run', opsSummary.latestRun ? formatRelativeTime(opsSummary.latestRun.createdAt || opsSummary.latestRun.updatedAt) : '-', latestRunLabel)}
+                        ${renderDataworksMetricRow('Latest step', opsSummary.latestStep?.name || '-', latestStepMeta)}
+                        ${renderDataworksMetricRow('Last success', opsSummary.lastSuccessfulRun ? formatRelativeTime(opsSummary.lastSuccessfulRun.updatedAt || opsSummary.lastSuccessfulRun.createdAt) : '-', opsSummary.lastSuccessfulRun ? `run #${opsSummary.lastSuccessfulRun.number || '-'}` : 'No recent success')}
+                        ${renderDataworksMetricRow('Dispatch', opsSummary.dispatchEnabled ? 'Available' : 'Read-only', opsSummary.dispatchReason || `cooldown ${Math.round((opsSummary.dispatchCooldownMs || 0) / 1000)}s`)}
+                    </div>
+                    <div class="dataworks-note-list" style="margin-top:10px;">
+                        <div class="dataworks-note"><strong>Links:</strong> ${workflowLink ? renderExternalLink(workflowLink, 'Open GitHub workflow') : 'Workflow link unavailable'}.</div>
+                        <div class="dataworks-note"><strong>Diagnostics cache:</strong> ${escapeHtml(cacheMeta)}${rateLimitMeta ? ` · ${escapeHtml(rateLimitMeta)}` : ''}</div>
+                        ${recentOpsNotes || '<div class="dataworks-note"><strong>Recent runs:</strong> No recent workflow runs available.</div>'}
+                    </div>`,
+                    'Cached GitHub Actions read model for the hosted market-insights workflow.'
+                );
+            } else {
+                opsPanel.innerHTML = '<div class="dataworks-empty">Workflow diagnostics unavailable.</div>';
+            }
+
+            if (dispatchBtn) {
+                const runInProgress = !!opsSummary?.latestRun?.status && String(opsSummary.latestRun.status).toLowerCase() !== 'completed';
+                dispatchBtn.disabled = !opsSummary?.dispatchEnabled || runInProgress;
+                dispatchBtn.textContent = runInProgress ? 'Run active' : 'Run now';
+                dispatchBtn.title = runInProgress
+                    ? 'A DataWorks workflow run is already active.'
+                    : (opsSummary?.dispatchEnabled ? 'Trigger the GitHub DataWorks workflow now.' : (opsSummary?.dispatchReason || 'Manual dispatch unavailable.'));
+            }
+
             const updatedParts = [];
             if (marketSummary?.generatedAt) {
                 updatedParts.push(`market data ${formatRelativeTime(marketSummary.generatedAt)}`);
             }
             if (schedulerSummary?.lastRun?.startedAtMs) {
                 updatedParts.push(`scheduler run ${formatRelativeTime(Number(schedulerSummary.lastRun.startedAtMs))}`);
+            }
+            if (opsSummary?.latestRun?.createdAt || opsSummary?.latestRun?.updatedAt) {
+                updatedParts.push(`workflow run ${formatRelativeTime(opsSummary.latestRun.createdAt || opsSummary.latestRun.updatedAt)}`);
             }
             if (marketSummary?.workflow?.cadenceLabel) {
                 updatedParts.push(`cadence ${marketSummary.workflow.cadenceLabel}`);
@@ -2354,8 +2634,52 @@
             footprintPanel.innerHTML = '<div class="dataworks-empty">Unable to load file footprint.</div>';
             regionsPanel.innerHTML = '<div class="dataworks-empty">Unable to load region freshness.</div>';
             recentRunsPanel.innerHTML = '<div class="dataworks-empty">Unable to load recent activity.</div>';
+            opsPanel.innerHTML = '<div class="dataworks-empty">Unable to load workflow diagnostics.</div>';
+            if (dispatchBtn) {
+                dispatchBtn.disabled = true;
+                dispatchBtn.textContent = 'Run now';
+                dispatchBtn.title = 'Workflow diagnostics unavailable.';
+            }
         } finally {
             if (refreshBtn) refreshBtn.disabled = false;
+        }
+    }
+
+    async function triggerDataworksDispatch() {
+        const dispatchBtn = document.getElementById('triggerDataworksRunBtn');
+        if (!adminApiClient || !dispatchBtn) return;
+        if (!window.confirm('Trigger the DataWorks GitHub workflow now?')) return;
+
+        dispatchBtn.disabled = true;
+        const originalLabel = dispatchBtn.textContent;
+        dispatchBtn.textContent = 'Dispatching...';
+
+        try {
+            let data;
+            if (typeof adminApiClient.triggerAdminDataworksDispatch === 'function') {
+                data = await adminApiClient.triggerAdminDataworksDispatch();
+            } else {
+                const resp = await adminApiClient.fetch('/api/admin/dataworks/dispatch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                data = await resp.json();
+            }
+
+            if (!data || data.errno !== 0) {
+                throw new Error(data?.error || 'Failed to dispatch DataWorks workflow');
+            }
+
+            const pollDelayMs = Number(data?.result?.recommendedPollAfterMs || 15000);
+            showMessage('success', `Queued DataWorks workflow on ${data?.result?.ref || 'main'}. Refreshing workflow diagnostics shortly...`, 6000);
+            window.setTimeout(() => {
+                loadDataworks({ forceOps: true });
+            }, pollDelayMs);
+        } catch (e) {
+            showMessage('error', `❌ Failed to trigger DataWorks workflow: ${e.message || e}`);
+            dispatchBtn.textContent = originalLabel;
+            loadDataworks({ forceOps: true });
         }
     }
 
@@ -2396,7 +2720,7 @@
             const data = await resp.json();
             if (data.errno !== 0) throw new Error(data.error || 'Failed to update role');
             showMessage('success', `✅ ${label} is now ${role}`);
-            loadUsers();
+            loadUsers({ includeSummary: false, requestSummary: true, refreshSummary: true });
         } catch (e) {
             showMessage('error', `❌ Failed to update role: ${e.message}`);
         }

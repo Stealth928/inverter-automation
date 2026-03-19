@@ -2,6 +2,15 @@
     const output = document.getElementById('output');
     let currentDeviceProvider = 'foxess';
     let currentProviderCapabilities = resolveProviderCapabilities(currentDeviceProvider);
+    let currentUserTimezone = (() => {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+      } catch (e) {
+        return '';
+      }
+    })();
+    let currentUserTimezoneLoaded = false;
+    let currentUserTimezonePromise = null;
     const DEFAULT_AC_SOLAR_VARIABLES = Object.freeze(['meterPower2', 'meterPower', 'generationPower', 'generation']);
     const telemetryMappingState = {
       acSolarPowerVariable: '',
@@ -12,6 +21,15 @@
 
     function normalizeTelemetryVariableName(value) {
       return String(value || '').trim().replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 64);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     function resolveProviderCapabilities(provider) {
@@ -33,7 +51,7 @@
     function getDirectWorkModeNotice(capabilities = currentProviderCapabilities) {
       const provider = capabilities?.provider || 'foxess';
       if (provider === 'alphaess') {
-        return '<strong>AlphaESS note:</strong> Direct Work Mode control is unavailable because AlphaESS OpenAPI only supports scheduler-based overrides. Use Scheduler or Quick Control for temporary charge/discharge changes.';
+        return '<strong>AlphaESS note:</strong> Direct Work Mode control is unavailable because AlphaESS OpenAPI only supports scheduler-based overrides. Use Scheduler or Quick Control for temporary charge/discharge changes. You can still check the current active scheduler override below.';
       }
       if (provider === 'sungrow') {
         return '<strong>Sungrow note:</strong> Direct Work Mode control is hidden because the current Sungrow integration still maps work modes through FoxESS-style labels. Use Scheduler or Quick Control for temporary charge/discharge actions until vendor-specific mode handling is implemented.';
@@ -97,6 +115,194 @@
         rawValue: numericMode
       };
     }
+
+    async function ensureControlTimezoneLoaded() {
+      if (currentUserTimezoneLoaded) return currentUserTimezone;
+      if (currentUserTimezonePromise) return currentUserTimezonePromise;
+
+      currentUserTimezonePromise = (async () => {
+        try {
+          const res = await authenticatedFetch('/api/config');
+          const result = await res.json();
+          if (result?.errno === 0 && result.result) {
+            const configuredTimezone = String(
+              result.result.timezone ||
+              result.result.config?.automation?.timeZone ||
+              ''
+            ).trim();
+            if (configuredTimezone) {
+              currentUserTimezone = configuredTimezone;
+            }
+          }
+        } catch (e) {
+          // Fall back to browser-local timezone if config is unavailable.
+        }
+        currentUserTimezoneLoaded = true;
+        return currentUserTimezone;
+      })();
+
+      try {
+        return await currentUserTimezonePromise;
+      } finally {
+        currentUserTimezonePromise = null;
+      }
+    }
+
+    function getCurrentMinutesForTimezone(timeZone) {
+      try {
+        const formatter = new Intl.DateTimeFormat('en-GB', {
+          timeZone: timeZone || undefined,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+        const parts = formatter.formatToParts(new Date());
+        const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0);
+        const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0);
+        return (hour * 60) + minute;
+      } catch (e) {
+        const now = new Date();
+        return (now.getHours() * 60) + now.getMinutes();
+      }
+    }
+
+    function formatSchedulerMinute(hour, minute) {
+      const safeHour = Math.max(0, Math.min(23, Number(hour) || 0));
+      const safeMinute = Math.max(0, Math.min(59, Number(minute) || 0));
+      return `${String(safeHour).padStart(2, '0')}:${String(safeMinute).padStart(2, '0')}`;
+    }
+
+    function describeSchedulerWindow(group = {}) {
+      return `${formatSchedulerMinute(group.startHour, group.startMinute)}-${formatSchedulerMinute(group.endHour, group.endMinute)}`;
+    }
+
+    function isSchedulerWindowActive(group = {}, currentMinutes = 0) {
+      if (Number(group.enable) !== 1) return false;
+
+      const startMinutes = (Math.max(0, Math.min(23, Number(group.startHour) || 0)) * 60) + Math.max(0, Math.min(59, Number(group.startMinute) || 0));
+      const endMinutes = (Math.max(0, Math.min(23, Number(group.endHour) || 0)) * 60) + Math.max(0, Math.min(59, Number(group.endMinute) || 0));
+
+      if (startMinutes === 0 && endMinutes === 0) return false;
+      if (startMinutes === endMinutes) return false;
+      if (endMinutes > startMinutes) {
+        return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+      }
+      return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    }
+
+    function deriveAlphaEssOverrideState(groups = [], timeZone = currentUserTimezone) {
+      const currentMinutes = getCurrentMinutesForTimezone(timeZone);
+      const relevantGroups = Array.isArray(groups)
+        ? groups.filter((group) => ['ForceCharge', 'ForceDischarge', 'Feedin'].includes(String(group?.workMode || '')))
+        : [];
+      const activeGroups = relevantGroups.filter((group) => isSchedulerWindowActive(group, currentMinutes));
+      const zoneLabel = timeZone || 'your browser local time';
+
+      if (!activeGroups.length) {
+        return {
+          state: 'idle',
+          displayName: 'No active scheduler override',
+          detail: `No enabled AlphaESS charge or discharge window matches the current time in ${zoneLabel}.`,
+          activeWindows: []
+        };
+      }
+
+      if (activeGroups.length > 1) {
+        const windows = activeGroups.map((group) => ({
+          workMode: String(group.workMode || ''),
+          label: describeSchedulerWindow(group)
+        }));
+        return {
+          state: 'ambiguous',
+          displayName: 'Multiple scheduler windows active',
+          detail: `More than one enabled AlphaESS window matches the current time in ${zoneLabel}.`,
+          activeWindows: windows
+        };
+      }
+
+      const activeGroup = activeGroups[0];
+      const isCharge = String(activeGroup.workMode || '') === 'ForceCharge';
+      const isFeedIn = String(activeGroup.workMode || '') === 'Feedin';
+      const windowLabel = describeSchedulerWindow(activeGroup);
+
+      return {
+        state: isCharge ? 'charge' : 'discharge',
+        displayName: isCharge ? 'Charge window active' : (isFeedIn ? 'Discharge/export window active' : 'Discharge window active'),
+        detail: `${windowLabel} is active right now in ${zoneLabel}.`,
+        activeWindows: [
+          {
+            workMode: String(activeGroup.workMode || ''),
+            label: windowLabel
+          }
+        ]
+      };
+    }
+
+    function resetAlphaEssOverrideCard() {
+      const summaryEl = document.getElementById('alphaessCurrentOverride');
+      const detailEl = document.getElementById('alphaessCurrentOverrideDetail');
+      if (summaryEl) {
+        summaryEl.innerHTML = 'Current override: <span style="color:var(--accent)">Unknown</span>';
+      }
+      if (detailEl) {
+        detailEl.textContent = 'Derived from active AlphaESS scheduler windows when you check current status.';
+      }
+    }
+
+    function renderAlphaEssOverrideState(state = {}) {
+      const summaryEl = document.getElementById('alphaessCurrentOverride');
+      const detailEl = document.getElementById('alphaessCurrentOverrideDetail');
+      if (!summaryEl || !detailEl) return;
+
+      const color = state.state === 'charge'
+        ? 'var(--color-success)'
+        : (state.state === 'discharge' ? 'var(--color-orange)' : (state.state === 'ambiguous' ? 'var(--color-warning)' : 'var(--accent)'));
+
+      summaryEl.innerHTML = `Current override: <span style="color:${color}">${escapeHtml(state.displayName || 'Unknown')}</span>`;
+      detailEl.textContent = String(state.detail || 'Derived from active AlphaESS scheduler windows.');
+    }
+
+    async function getAlphaEssCurrentOverride() {
+      if (String(currentDeviceProvider || '').toLowerCase() !== 'alphaess') {
+        showStatus('alphaessOverride', '⚠️ Current scheduler override is only available for AlphaESS.', 'error');
+        return;
+      }
+
+      showStatus('alphaessOverride', '⏳ Checking current AlphaESS scheduler override...', 'info');
+
+      try {
+        const timeZone = await ensureControlTimezoneLoaded();
+        const res = await authenticatedFetch('/api/scheduler/v1/get');
+        const result = await res.json();
+
+        if (result.errno === 0 && result.result) {
+          const derived = deriveAlphaEssOverrideState(result.result.groups || [], timeZone);
+          const payload = {
+            errno: 0,
+            result: {
+              provider: 'alphaess',
+              source: result.source || 'device',
+              timeZone: timeZone || 'browser-local',
+              checkedAtIso: new Date().toISOString(),
+              displayName: derived.displayName,
+              state: derived.state,
+              detail: derived.detail,
+              activeWindows: derived.activeWindows
+            }
+          };
+
+          renderAlphaEssOverrideState(payload.result);
+          showStatus('alphaessOverride', '✅ Loaded current scheduler override', 'success');
+          displayFormattedResponse('AlphaESS Current Scheduler Override', payload);
+          return;
+        }
+
+        showStatus('alphaessOverride', `❌ ${result.msg || result.error || 'Failed to load scheduler override'}`, 'error');
+        displayFormattedResponse('AlphaESS Current Scheduler Override', result);
+      } catch (error) {
+        showStatus('alphaessOverride', `❌ Error: ${error.message}`, 'error');
+      }
+    }
     
     AppShell.init({
       pageName: 'controls',
@@ -118,6 +324,7 @@
         currentProviderCapabilities = resolveProviderCapabilities(provider);
         const providerNote = document.getElementById('controls-provider-note');
         const workModeCard = document.getElementById('card-work-mode');
+        const alphaOverrideCard = document.getElementById('card-alphaess-override-status');
         if (!currentProviderCapabilities.supportsAdvancedDeviceControls) {
           const socCard = document.getElementById('card-battery-soc');
           const fcCard = document.getElementById('card-force-charge');
@@ -134,9 +341,19 @@
             providerNote.innerHTML = getDirectWorkModeNotice(currentProviderCapabilities);
             providerNote.style.display = providerNote.innerHTML ? '' : 'none';
           }
+          if (alphaOverrideCard) {
+            alphaOverrideCard.style.display = provider === 'alphaess' ? '' : 'none';
+          }
+          if (provider === 'alphaess') {
+            resetAlphaEssOverrideCard();
+          }
         } else if (providerNote) {
           providerNote.style.display = 'none';
           providerNote.textContent = '';
+          if (alphaOverrideCard) {
+            alphaOverrideCard.style.display = 'none';
+          }
+          resetAlphaEssOverrideCard();
         }
         syncTelemetryMappingVisibility();
         return provider;

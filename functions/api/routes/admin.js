@@ -19,6 +19,16 @@ function registerAdminRoutes(app, deps = {}) {
   const normalizeCouplingValue = deps.normalizeCouplingValue;
   const isAdmin = deps.isAdmin;
   const SEED_ADMIN_EMAIL = deps.SEED_ADMIN_EMAIL;
+  const fetchImpl = deps.fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
+  const githubDataworks = deps.githubDataworks && typeof deps.githubDataworks === 'object'
+    ? deps.githubDataworks
+    : {};
+  const githubOwner = String(githubDataworks.owner || '').trim() || 'Stealth928';
+  const githubRepo = String(githubDataworks.repo || '').trim() || 'inverter-automation';
+  const githubWorkflowId = String(githubDataworks.workflowId || '').trim() || 'aemo-market-insights-delta.yml';
+  const githubRef = String(githubDataworks.ref || '').trim() || 'main';
+  const githubDispatchToken = String(githubDataworks.dispatchToken || '').trim();
+  const githubUserAgent = String(githubDataworks.userAgent || '').trim() || 'SoCrates-Admin-DataWorks';
 
   if (!app || typeof app.get !== 'function' || typeof app.post !== 'function') {
     throw new Error('registerAdminRoutes requires an Express app');
@@ -74,6 +84,11 @@ function registerAdminRoutes(app, deps = {}) {
     if (!Number.isFinite(parsed)) return fallback;
     return Math.max(1, Math.min(max, Math.floor(parsed)));
   };
+  const githubDiagnosticsCacheTtlMs = parseBoundedPositiveInt(githubDataworks.cacheTtlMs, 300000, 3600000);
+  const githubDispatchCooldownMs = parseBoundedPositiveInt(githubDataworks.dispatchCooldownMs, 90000, 3600000);
+  let dataworksOpsCache = null;
+  let dataworksOpsCacheExpiresAtMs = 0;
+  let lastDataworksDispatchAtMs = 0;
 
   const toMs = (value) => {
     if (!value) return null;
@@ -99,6 +114,195 @@ function registerAdminRoutes(app, deps = {}) {
   const isConfiguredUserConfig = (config = {}) => (
     !!(config.setupComplete || config.deviceSn || config.foxessToken || config.amberApiKey)
   );
+
+  const readHeader = (headers, key) => {
+    if (!headers || !key) return null;
+    if (typeof headers.get === 'function') return headers.get(key);
+    const expected = String(key).toLowerCase();
+    for (const headerKey of Object.keys(headers)) {
+      if (String(headerKey).toLowerCase() === expected) {
+        return headers[headerKey];
+      }
+    }
+    return null;
+  };
+
+  const parseGithubRateLimit = (headers) => {
+    const limit = Number(readHeader(headers, 'x-ratelimit-limit'));
+    const remaining = Number(readHeader(headers, 'x-ratelimit-remaining'));
+    const resetSeconds = Number(readHeader(headers, 'x-ratelimit-reset'));
+    return {
+      limit: Number.isFinite(limit) ? limit : null,
+      remaining: Number.isFinite(remaining) ? remaining : null,
+      resetAt: Number.isFinite(resetSeconds) ? new Date(resetSeconds * 1000).toISOString() : null
+    };
+  };
+
+  const normalizeGithubRun = (run) => {
+    if (!run || typeof run !== 'object') return null;
+    const createdAtMs = toMs(run.created_at);
+    const updatedAtMs = toMs(run.updated_at);
+    return {
+      id: run.id || null,
+      number: run.run_number || null,
+      status: run.status || null,
+      conclusion: run.conclusion || null,
+      event: run.event || null,
+      createdAt: run.created_at || null,
+      updatedAt: run.updated_at || null,
+      createdAtMs,
+      updatedAtMs,
+      durationMs: Number.isFinite(createdAtMs) && Number.isFinite(updatedAtMs)
+        ? Math.max(updatedAtMs - createdAtMs, 0)
+        : null,
+      htmlUrl: run.html_url || null,
+      jobsUrl: run.jobs_url || null
+    };
+  };
+
+  const normalizeGithubJob = (job) => {
+    if (!job || typeof job !== 'object') return null;
+    return {
+      id: job.id || null,
+      name: job.name || null,
+      status: job.status || null,
+      conclusion: job.conclusion || null,
+      startedAt: job.started_at || null,
+      completedAt: job.completed_at || null,
+      steps: Array.isArray(job.steps)
+        ? job.steps.map((step) => ({
+          number: step.number || null,
+          name: step.name || null,
+          status: step.status || null,
+          conclusion: step.conclusion || null,
+          startedAt: step.started_at || null,
+          completedAt: step.completed_at || null
+        }))
+        : []
+    };
+  };
+
+  async function callGithubApi(url, options = {}) {
+    if (typeof fetchImpl !== 'function') {
+      const error = new Error('fetch implementation not available on server');
+      error.statusCode = 503;
+      throw error;
+    }
+
+    const response = await fetchImpl(url, {
+      method: options.method || 'GET',
+      headers: {
+        'User-Agent': githubUserAgent,
+        'Accept': 'application/vnd.github+json',
+        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+        ...(options.body ? { 'Content-Type': 'application/json' } : {})
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+
+    const rateLimit = parseGithubRateLimit(response.headers);
+    if (options.expectStatus && response.status === options.expectStatus) {
+      return { data: null, rateLimit };
+    }
+
+    let text = '';
+    let data = null;
+    if (typeof response.text === 'function') {
+      text = await response.text();
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch (_parseError) {
+          data = null;
+        }
+      }
+    }
+
+    if (!response.ok) {
+      const error = new Error(data?.message || text || `GitHub API request failed with ${response.status}`);
+      error.statusCode = response.status;
+      throw error;
+    }
+
+    return { data, rateLimit };
+  }
+
+  async function loadGithubWorkflowOps(forceRefresh = false) {
+    const nowMs = Date.now();
+    if (!forceRefresh && dataworksOpsCache && nowMs < dataworksOpsCacheExpiresAtMs) {
+      return {
+        ...dataworksOpsCache,
+        cache: {
+          hit: true,
+          fetchedAt: dataworksOpsCache.cache?.fetchedAt || new Date(nowMs).toISOString(),
+          fetchedAtMs: dataworksOpsCache.cache?.fetchedAtMs || nowMs,
+          ageMs: nowMs - (dataworksOpsCache.cache?.fetchedAtMs || nowMs),
+          ttlMs: githubDiagnosticsCacheTtlMs
+        }
+      };
+    }
+
+    const workflowUrl = `https://api.github.com/repos/${encodeURIComponent(githubOwner)}/${encodeURIComponent(githubRepo)}/actions/workflows/${encodeURIComponent(githubWorkflowId)}`;
+    const runsUrl = `${workflowUrl}/runs?per_page=5`;
+    const { data: workflowData, rateLimit: workflowRateLimit } = await callGithubApi(workflowUrl);
+    const { data: runsData, rateLimit: runsRateLimit } = await callGithubApi(runsUrl);
+    const recentRuns = Array.isArray(runsData?.workflow_runs)
+      ? runsData.workflow_runs.map(normalizeGithubRun).filter(Boolean)
+      : [];
+    const latestRun = recentRuns[0] || null;
+    const lastSuccessfulRun = recentRuns.find((run) => run?.conclusion === 'success') || null;
+
+    let latestJob = null;
+    let latestJobsRateLimit = null;
+    if (latestRun?.jobsUrl) {
+      const { data: jobsData, rateLimit } = await callGithubApi(latestRun.jobsUrl);
+      latestJobsRateLimit = rateLimit;
+      const jobs = Array.isArray(jobsData?.jobs) ? jobsData.jobs : [];
+      latestJob = normalizeGithubJob(jobs[0] || null);
+    }
+
+    const fetchedAtMs = Date.now();
+    const result = {
+      workflow: {
+        owner: githubOwner,
+        repo: githubRepo,
+        workflowId: githubWorkflowId,
+        ref: githubRef,
+        state: workflowData?.state || null,
+        path: workflowData?.path || null,
+        htmlUrl: workflowData?.html_url || null
+      },
+      dispatch: {
+        enabled: !!githubDispatchToken && String(workflowData?.state || '').toLowerCase() === 'active',
+        configured: !!githubDispatchToken,
+        ref: githubRef,
+        cooldownMs: githubDispatchCooldownMs,
+        reason: githubDispatchToken
+          ? (String(workflowData?.state || '').toLowerCase() === 'active' ? null : 'workflow is not active')
+          : 'dispatch token not configured on the API runtime'
+      },
+      latestRun,
+      lastSuccessfulRun,
+      latestJob,
+      recentRuns,
+      rateLimit: latestJobsRateLimit || runsRateLimit || workflowRateLimit || {
+        limit: null,
+        remaining: null,
+        resetAt: null
+      },
+      cache: {
+        hit: false,
+        fetchedAt: new Date(fetchedAtMs).toISOString(),
+        fetchedAtMs,
+        ageMs: 0,
+        ttlMs: githubDiagnosticsCacheTtlMs
+      }
+    };
+
+    dataworksOpsCache = result;
+    dataworksOpsCacheExpiresAtMs = fetchedAtMs + githubDiagnosticsCacheTtlMs;
+    return result;
+  }
 
   async function loadUserLifecycleSnapshot(uid, options = {}) {
     const profile = options.profile && typeof options.profile === 'object' ? options.profile : {};
@@ -237,6 +441,56 @@ function registerAdminRoutes(app, deps = {}) {
     8,
     50
   );
+  const ADMIN_USERS_SUMMARY_CACHE_TTL_MS = parseBoundedPositiveInt(
+    process.env.ADMIN_USERS_SUMMARY_CACHE_TTL_MS,
+    2 * 60 * 1000,
+    15 * 60 * 1000
+  );
+  let adminUsersSummaryCache = {
+    summary: null,
+    expiresAtMs: 0,
+    pending: null
+  };
+
+  function invalidateAdminUsersSummaryCache() {
+    adminUsersSummaryCache = {
+      summary: null,
+      expiresAtMs: 0,
+      pending: null
+    };
+  }
+
+  async function getCachedAdminUsersSummary(loadSummary, { forceRefresh = false } = {}) {
+    const now = Date.now();
+    const hasFreshSummary = !forceRefresh
+      && adminUsersSummaryCache.summary
+      && adminUsersSummaryCache.expiresAtMs > now;
+    if (hasFreshSummary) {
+      return adminUsersSummaryCache.summary;
+    }
+
+    if (!forceRefresh && adminUsersSummaryCache.pending) {
+      return adminUsersSummaryCache.pending;
+    }
+
+    const pending = Promise.resolve()
+      .then(loadSummary)
+      .then((summary) => {
+        adminUsersSummaryCache = {
+          summary,
+          expiresAtMs: Date.now() + ADMIN_USERS_SUMMARY_CACHE_TTL_MS,
+          pending: null
+        };
+        return summary;
+      })
+      .catch((error) => {
+        adminUsersSummaryCache.pending = null;
+        throw error;
+      });
+
+    adminUsersSummaryCache.pending = pending;
+    return pending;
+  }
 /**
  * GET /api/admin/firestore-metrics - Pull Firestore usage + billing signals from GCP Monitoring
  * Query: ?hours=36 (default 36, min 6, max 168)
@@ -642,103 +896,78 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
     const mapNamedCountsToRows = (map) => Array.from(map.values())
       .sort((a, b) => b.count - a.count || String(a.label).localeCompare(String(b.label)));
 
-    const usersSnap = await db.collection('users').get();
-    const profileByUid = new Map();
-    usersSnap.docs.forEach((doc) => {
-      profileByUid.set(doc.id, doc.data() || {});
-    });
-
-    // Include users that authenticated but never completed onboarding/profile init.
-    // Those users exist in Firebase Auth but may be missing users/{uid} docs.
-    const authByUid = new Map();
-    try {
-      let pageToken;
-      do {
-        const page = await admin.auth().listUsers(1000, pageToken);
-        (page.users || []).forEach((userRecord) => {
-          authByUid.set(userRecord.uid, userRecord);
-        });
-        pageToken = page.pageToken;
-      } while (pageToken);
-    } catch (authListErr) {
-      console.warn('[Admin] listUsers failed; falling back to Firestore-only users:', authListErr.message || authListErr);
-    }
-
-    const allUids = new Set([...profileByUid.keys(), ...authByUid.keys()]);
     const parseBooleanQuery = (value, defaultValue = false) => {
       if (value === undefined || value === null || value === '') return defaultValue;
       const normalized = String(value).trim().toLowerCase();
       return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'all';
     };
-    const toMs = (value) => {
-      if (!value) return 0;
-      if (typeof value === 'number') return value;
-      if (typeof value === 'string') {
-        const parsed = Date.parse(value);
-        return Number.isNaN(parsed) ? 0 : parsed;
-      }
-      if (typeof value.toDate === 'function') {
-        const d = value.toDate();
-        return d && d.getTime ? d.getTime() : 0;
-      }
-      if (Number.isFinite(value._seconds)) return value._seconds * 1000;
-      if (Number.isFinite(value.seconds)) return value.seconds * 1000;
-      return 0;
-    };
 
-    const requestedPageSizeRaw = Number(req.query?.limit);
-    const requestedPageRaw = Number(req.query?.page);
-    const showAll = parseBooleanQuery(req.query?.all, false);
-    const includeSummary = parseBooleanQuery(req.query?.includeSummary, true);
-    const pageSize = showAll
-      ? Math.max(1, allUids.size)
-      : (Number.isFinite(requestedPageSizeRaw)
-        ? Math.max(1, Math.min(100, Math.floor(requestedPageSizeRaw)))
-        : 50);
+    const buildAdminUserRoster = async () => {
+      const usersSnap = await db.collection('users').get();
+      const profileByUid = new Map();
+      usersSnap.docs.forEach((doc) => {
+        profileByUid.set(doc.id, doc.data() || {});
+      });
 
-    const roster = Array.from(allUids).map((uid) => {
-      const data = profileByUid.get(uid) || {};
-      const authUser = authByUid.get(uid) || null;
-      const authMetadata = authUser && authUser.metadata ? authUser.metadata : null;
-      const email = data.email || (authUser && authUser.email ? authUser.email : '');
-      const joinedAt = (authMetadata && authMetadata.creationTime) ? authMetadata.creationTime : (data.createdAt || null);
-      const lastSignedInAt = (authMetadata && authMetadata.lastSignInTime) ? authMetadata.lastSignInTime : null;
+      // Include users that authenticated but never completed onboarding/profile init.
+      // Those users exist in Firebase Auth but may be missing users/{uid} docs.
+      const authByUid = new Map();
+      try {
+        let pageToken;
+        do {
+          const page = await admin.auth().listUsers(1000, pageToken);
+          (page.users || []).forEach((userRecord) => {
+            authByUid.set(userRecord.uid, userRecord);
+          });
+          pageToken = page.pageToken;
+        } while (pageToken);
+      } catch (authListErr) {
+        console.warn('[Admin] listUsers failed; falling back to Firestore-only users:', authListErr.message || authListErr);
+      }
+
+      const allUids = new Set([...profileByUid.keys(), ...authByUid.keys()]);
+      const roster = Array.from(allUids).map((uid) => {
+        const data = profileByUid.get(uid) || {};
+        const authUser = authByUid.get(uid) || null;
+        const authMetadata = authUser && authUser.metadata ? authUser.metadata : null;
+        const email = data.email || (authUser && authUser.email ? authUser.email : '');
+        const joinedAt = (authMetadata && authMetadata.creationTime) ? authMetadata.creationTime : (data.createdAt || null);
+        const lastSignedInAt = (authMetadata && authMetadata.lastSignInTime) ? authMetadata.lastSignInTime : null;
+
+        return {
+          uid,
+          data,
+          authUser,
+          authMetadata,
+          email,
+          joinedAt,
+          lastSignedInAt,
+          lastSignedInAtMs: toMs(lastSignedInAt),
+          joinedAtMs: toMs(joinedAt),
+          profileExists: profileByUid.has(uid)
+        };
+      }).sort((a, b) => {
+        if (b.lastSignedInAtMs !== a.lastSignedInAtMs) return b.lastSignedInAtMs - a.lastSignedInAtMs;
+        if (b.joinedAtMs !== a.joinedAtMs) return b.joinedAtMs - a.joinedAtMs;
+        const emailCmp = String(a.email || '').localeCompare(String(b.email || ''));
+        if (emailCmp !== 0) return emailCmp;
+        return String(a.uid).localeCompare(String(b.uid));
+      });
 
       return {
-        uid,
-        data,
-        authUser,
-        authMetadata,
-        email,
-        joinedAt,
-        lastSignedInAt,
-        lastSignedInAtMs: toMs(lastSignedInAt),
-        joinedAtMs: toMs(joinedAt)
+        roster,
+        totalUsers: roster.length
       };
-    }).sort((a, b) => {
-      if (b.lastSignedInAtMs !== a.lastSignedInAtMs) return b.lastSignedInAtMs - a.lastSignedInAtMs;
-      if (b.joinedAtMs !== a.joinedAtMs) return b.joinedAtMs - a.joinedAtMs;
-      const emailCmp = String(a.email || '').localeCompare(String(b.email || ''));
-      if (emailCmp !== 0) return emailCmp;
-      return String(a.uid).localeCompare(String(b.uid));
-    });
+    };
 
-    const totalUsers = roster.length;
-    const totalPages = showAll ? 1 : Math.max(1, Math.ceil(totalUsers / pageSize));
-    const requestedPage = Number.isFinite(requestedPageRaw) ? Math.max(1, Math.floor(requestedPageRaw)) : 1;
-    const page = showAll ? 1 : Math.min(requestedPage, totalPages);
-    const pageStart = showAll ? 0 : ((page - 1) * pageSize);
-    const selectedRoster = showAll ? roster : roster.slice(pageStart, pageStart + pageSize);
-
-    const providerCounts = new Map();
-    const locationCounts = new Map();
-    const inverterSizeCounts = new Map();
-    const batterySizeCounts = new Map();
-    const couplingCounts = new Map();
-    const tourStatusCounts = new Map();
-
-    const loadDetailedUser = async (rosterEntry) => {
-      const { uid, data, authMetadata, email, joinedAt } = rosterEntry;
+    const loadDetailedUser = async (rosterEntry, options = {}) => {
+      const {
+        summaryCollectors = null,
+        includeEvProbe = false
+      } = options;
+      const shouldCollectSummary = !!summaryCollectors;
+      const shouldLoadEvStatus = shouldCollectSummary || includeEvProbe;
+      const { uid, data, authMetadata, email, joinedAt, lastSignedInAt, profileExists } = rosterEntry;
       const emailLc = String(email || '').toLowerCase();
       const isSeedAdmin = emailLc === SEED_ADMIN_EMAIL;
 
@@ -746,15 +975,19 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
         let rulesCount = 0;
         let configMain = null;
         let hasEVConfigured = false;
+        const userRef = db.collection('users').doc(uid);
+
         try {
-          const vehiclesCollectionRef = db.collection('users').doc(uid).collection('vehicles');
-          const vehiclesGet = (vehiclesCollectionRef && typeof vehiclesCollectionRef.limit === 'function')
-            ? vehiclesCollectionRef.limit(1).get()
-            : vehiclesCollectionRef.get();
+          const vehiclesCollectionRef = shouldLoadEvStatus ? userRef.collection('vehicles') : null;
+          const vehiclesGet = shouldLoadEvStatus
+            ? ((vehiclesCollectionRef && typeof vehiclesCollectionRef.limit === 'function')
+              ? vehiclesCollectionRef.limit(1).get()
+              : vehiclesCollectionRef.get())
+            : Promise.resolve(null);
 
           const [rulesSnap, configDoc, vehiclesSnap] = await Promise.all([
-            db.collection('users').doc(uid).collection('rules').get(),
-            db.collection('users').doc(uid).collection('config').doc('main').get(),
+            userRef.collection('rules').get(),
+            userRef.collection('config').doc('main').get(),
             vehiclesGet
           ]);
           rulesCount = rulesSnap.size;
@@ -775,7 +1008,7 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
 
           if (needsAlphaEssSecret) {
             try {
-              const secretsDoc = await db.collection('users').doc(uid).collection('secrets').doc('credentials').get();
+              const secretsDoc = await userRef.collection('secrets').doc('credentials').get();
               secrets = secretsDoc.exists ? (secretsDoc.data() || {}) : {};
             } catch (e) {
               // Ignore private-secret lookup failures and keep endpoint resilient.
@@ -794,18 +1027,20 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
         const coupling = resolveCoupling(configMain || {});
         const location = normalizeLocation(configMain?.location);
 
-        incrementCount(providerCounts, deviceProvider || 'unknown');
-        incrementCount(couplingCounts, coupling || 'unknown');
-        const tourStatus = configMain === null ? 'no_config' : (configMain.tourComplete ? 'watched' : 'not_watched');
-        incrementCount(tourStatusCounts, tourStatus);
-        if (location) {
-          incrementNamedCount(locationCounts, location.toLowerCase(), location);
-        }
-        if (inverterCapacityW) {
-          incrementCount(inverterSizeCounts, formatInverterSizeLabel(inverterCapacityW));
-        }
-        if (batteryCapacityKWh) {
-          incrementCount(batterySizeCounts, formatBatterySizeLabel(batteryCapacityKWh));
+        if (shouldCollectSummary) {
+          incrementCount(summaryCollectors.providerCounts, deviceProvider || 'unknown');
+          incrementCount(summaryCollectors.couplingCounts, coupling || 'unknown');
+          const tourStatus = configMain === null ? 'no_config' : (configMain.tourComplete ? 'watched' : 'not_watched');
+          incrementCount(summaryCollectors.tourStatusCounts, tourStatus);
+          if (location) {
+            incrementNamedCount(summaryCollectors.locationCounts, location.toLowerCase(), location);
+          }
+          if (inverterCapacityW) {
+            incrementCount(summaryCollectors.inverterSizeCounts, formatInverterSizeLabel(inverterCapacityW));
+          }
+          if (batteryCapacityKWh) {
+            incrementCount(summaryCollectors.batterySizeCounts, formatBatterySizeLabel(batteryCapacityKWh));
+          }
         }
 
         return {
@@ -822,9 +1057,9 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
           hasEVConfigured,
           createdAt: data.createdAt || null,
           joinedAt,
-          lastSignedInAt: (authMetadata && authMetadata.lastSignInTime) ? authMetadata.lastSignInTime : null,
+          lastSignedInAt,
           rulesCount,
-          profileInitialized: profileByUid.has(uid),
+          profileInitialized: profileExists,
           lastUpdated: data.lastUpdated || null
         };
       } catch (error) {
@@ -843,27 +1078,30 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
           hasEVConfigured: false,
           createdAt: data.createdAt || null,
           joinedAt,
-          lastSignedInAt: (authMetadata && authMetadata.lastSignInTime) ? authMetadata.lastSignInTime : null,
+          lastSignedInAt,
           rulesCount: 0,
-          profileInitialized: profileByUid.has(uid),
+          profileInitialized: profileExists,
           lastUpdated: data.lastUpdated || null
         };
       }
     };
 
-    let summary = null;
-    let users = [];
+    const createSummaryCollectors = () => ({
+      providerCounts: new Map(),
+      locationCounts: new Map(),
+      inverterSizeCounts: new Map(),
+      batterySizeCounts: new Map(),
+      couplingCounts: new Map(),
+      tourStatusCounts: new Map()
+    });
 
-    if (includeSummary) {
-      const allDetailedUsers = await mapWithConcurrency(roster, ADMIN_USERS_SCAN_MAX_CONCURRENCY, loadDetailedUser);
-      users = showAll ? allDetailedUsers : allDetailedUsers.slice(pageStart, pageStart + pageSize);
-
+    const buildUsersSummaryFromDetailedUsers = (allDetailedUsers, summaryCollectors, totalUsers) => {
       const configuredUsers = allDetailedUsers.filter((user) => user.configured).length;
       const automationActiveUsers = allDetailedUsers.filter((user) => user.automationEnabled).length;
       const amberConfiguredUsers = allDetailedUsers.filter((user) => user.hasAmberApiKey).length;
       const evConfiguredUsers = allDetailedUsers.filter((user) => user.hasEVConfigured).length;
 
-      summary = {
+      return {
         totalUsers,
         configured: {
           count: configuredUsers,
@@ -883,16 +1121,16 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
           percentage: toPercent(evConfiguredUsers, totalUsers),
           note: 'Computed with a single-document existence probe per user from the vehicles subcollection.'
         },
-        providerBreakdown: mapCountsToRows(providerCounts, (key) => providerLabelMap[key] || String(key || 'Unknown')),
-        topLocations: mapNamedCountsToRows(locationCounts).slice(0, 5),
-        inverterSizeDistribution: mapCountsToRows(inverterSizeCounts),
-        batterySizeDistribution: mapCountsToRows(batterySizeCounts),
-        couplingBreakdown: mapCountsToRows(couplingCounts, (key) => {
+        providerBreakdown: mapCountsToRows(summaryCollectors.providerCounts, (key) => providerLabelMap[key] || String(key || 'Unknown')),
+        topLocations: mapNamedCountsToRows(summaryCollectors.locationCounts).slice(0, 5),
+        inverterSizeDistribution: mapCountsToRows(summaryCollectors.inverterSizeCounts),
+        batterySizeDistribution: mapCountsToRows(summaryCollectors.batterySizeCounts),
+        couplingBreakdown: mapCountsToRows(summaryCollectors.couplingCounts, (key) => {
           if (key === 'ac') return 'AC Coupled';
           if (key === 'dc') return 'DC Coupled';
           return 'Unknown';
         }),
-        tourStatusBreakdown: mapCountsToRows(tourStatusCounts, (key) => {
+        tourStatusBreakdown: mapCountsToRows(summaryCollectors.tourStatusCounts, (key) => {
           if (key === 'watched') return 'Watched';
           if (key === 'not_watched') return 'Not watched';
           if (key === 'no_config') return 'No config';
@@ -903,8 +1141,78 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
           'EV-linked percentage uses a single-document existence probe per user rather than a full vehicle scan.'
         ]
       };
+    };
+
+    const buildUsersSummary = async (roster) => {
+      const summaryCollectors = createSummaryCollectors();
+      const allDetailedUsers = await mapWithConcurrency(
+        roster,
+        ADMIN_USERS_SCAN_MAX_CONCURRENCY,
+        (rosterEntry) => loadDetailedUser(rosterEntry, { summaryCollectors })
+      );
+      return buildUsersSummaryFromDetailedUsers(allDetailedUsers, summaryCollectors, roster.length);
+    };
+
+    const requestedPageSizeRaw = Number(req.query?.limit);
+    const requestedPageRaw = Number(req.query?.page);
+    const showAll = parseBooleanQuery(req.query?.all, false);
+    const includeSummary = parseBooleanQuery(req.query?.includeSummary, true);
+    const refreshSummary = parseBooleanQuery(req.query?.refreshSummary, false) || parseBooleanQuery(req.query?.refresh, false);
+
+    const { roster, totalUsers } = await buildAdminUserRoster();
+    const forceSummaryRefresh = refreshSummary
+      || !!(adminUsersSummaryCache.summary && adminUsersSummaryCache.summary.totalUsers !== totalUsers);
+
+    const pageSize = showAll
+      ? Math.max(1, totalUsers)
+      : (Number.isFinite(requestedPageSizeRaw)
+        ? Math.max(1, Math.min(100, Math.floor(requestedPageSizeRaw)))
+        : 50);
+    const totalPages = showAll ? 1 : Math.max(1, Math.ceil(totalUsers / pageSize));
+    const requestedPage = Number.isFinite(requestedPageRaw) ? Math.max(1, Math.floor(requestedPageRaw)) : 1;
+    const page = showAll ? 1 : Math.min(requestedPage, totalPages);
+    const pageStart = showAll ? 0 : ((page - 1) * pageSize);
+    const selectedRoster = showAll ? roster : roster.slice(pageStart, pageStart + pageSize);
+    let users = [];
+    let summary = null;
+
+    if (includeSummary) {
+      const hasFreshCachedSummary = !forceSummaryRefresh
+        && adminUsersSummaryCache.summary
+        && adminUsersSummaryCache.expiresAtMs > Date.now();
+
+      if (hasFreshCachedSummary || (!forceSummaryRefresh && adminUsersSummaryCache.pending)) {
+        const usersPromise = mapWithConcurrency(
+          selectedRoster,
+          ADMIN_USERS_SCAN_MAX_CONCURRENCY,
+          (rosterEntry) => loadDetailedUser(rosterEntry, { includeEvProbe: true })
+        );
+        const summaryPromise = getCachedAdminUsersSummary(
+          () => buildUsersSummary(roster),
+          { forceRefresh: false }
+        );
+        [users, summary] = await Promise.all([usersPromise, summaryPromise]);
+      } else {
+        const summaryCollectors = createSummaryCollectors();
+        const allDetailedUsers = await mapWithConcurrency(
+          roster,
+          ADMIN_USERS_SCAN_MAX_CONCURRENCY,
+          (rosterEntry) => loadDetailedUser(rosterEntry, { summaryCollectors })
+        );
+        summary = buildUsersSummaryFromDetailedUsers(allDetailedUsers, summaryCollectors, totalUsers);
+        adminUsersSummaryCache = {
+          summary,
+          expiresAtMs: Date.now() + ADMIN_USERS_SUMMARY_CACHE_TTL_MS,
+          pending: null
+        };
+        users = showAll ? allDetailedUsers : allDetailedUsers.slice(pageStart, pageStart + pageSize);
+      }
     } else {
-      users = await mapWithConcurrency(selectedRoster, ADMIN_USERS_SCAN_MAX_CONCURRENCY, loadDetailedUser);
+      users = await mapWithConcurrency(
+        selectedRoster,
+        ADMIN_USERS_SCAN_MAX_CONCURRENCY,
+        (rosterEntry) => loadDetailedUser(rosterEntry)
+      );
     }
 
     res.json({
@@ -1764,6 +2072,101 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
     res.status(500).json({ errno: 500, error: error.message || String(error) });
   }
 });
+
+/**
+ * GET /api/admin/dataworks/ops - Lightweight GitHub workflow diagnostics for DataWorks
+ */
+app.get('/api/admin/dataworks/ops', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const forceRefresh = String(req.query.force || '').trim() === '1';
+    const result = await loadGithubWorkflowOps(forceRefresh);
+    return res.json({ errno: 0, result });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 502;
+    console.error('[Admin] dataworks ops diagnostics failed:', error?.message || error);
+    return res.status(statusCode).json({
+      errno: statusCode,
+      error: error?.message || 'Failed to load DataWorks workflow diagnostics'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/dataworks/dispatch - Manually dispatch the DataWorks GitHub workflow
+ */
+app.post('/api/admin/dataworks/dispatch', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    if (!githubDispatchToken) {
+      return res.status(503).json({
+        errno: 503,
+        error: 'DataWorks manual dispatch is not configured on the API runtime'
+      });
+    }
+
+    const nowMs = Date.now();
+    if (nowMs - lastDataworksDispatchAtMs < githubDispatchCooldownMs) {
+      return res.status(429).json({
+        errno: 429,
+        error: `DataWorks workflow was already dispatched recently. Try again in ${Math.ceil((githubDispatchCooldownMs - (nowMs - lastDataworksDispatchAtMs)) / 1000)}s.`
+      });
+    }
+
+    const latestOps = await loadGithubWorkflowOps(true);
+    if (latestOps?.latestRun?.status && latestOps.latestRun.status !== 'completed') {
+      return res.status(409).json({
+        errno: 409,
+        error: 'A DataWorks workflow run is already in progress',
+        result: {
+          latestRun: latestOps.latestRun
+        }
+      });
+    }
+
+    const dispatchUrl = `https://api.github.com/repos/${encodeURIComponent(githubOwner)}/${encodeURIComponent(githubRepo)}/actions/workflows/${encodeURIComponent(githubWorkflowId)}/dispatches`;
+    await callGithubApi(dispatchUrl, {
+      method: 'POST',
+      token: githubDispatchToken,
+      body: { ref: githubRef },
+      expectStatus: 204
+    });
+
+    lastDataworksDispatchAtMs = Date.now();
+    dataworksOpsCache = null;
+    dataworksOpsCacheExpiresAtMs = 0;
+
+    await db.collection('admin_audit').add({
+      action: 'dataworks_dispatch',
+      adminUid: req.user.uid,
+      adminEmail: req.user.email || '',
+      workflowOwner: githubOwner,
+      workflowRepo: githubRepo,
+      workflowId: githubWorkflowId,
+      ref: githubRef,
+      timestamp: serverTimestamp()
+    });
+
+    return res.status(202).json({
+      errno: 0,
+      result: {
+        accepted: true,
+        workflowOwner: githubOwner,
+        workflowRepo: githubRepo,
+        workflowId: githubWorkflowId,
+        ref: githubRef,
+        requestedAtMs: lastDataworksDispatchAtMs,
+        recommendedPollAfterMs: 15000
+      }
+    });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 502;
+    console.error('[Admin] dataworks workflow dispatch failed:', error?.message || error);
+    return res.status(statusCode).json({
+      errno: statusCode,
+      error: error?.message || 'Failed to dispatch DataWorks workflow'
+    });
+  }
+});
+
 /**
  * POST /api/admin/users/:uid/role - Update a user's role
  * Body: { role: 'admin' | 'user' }
@@ -1814,6 +2217,7 @@ app.post('/api/admin/users/:uid/role', authenticateUser, requireAdmin, async (re
       throw firestoreErr;
     }
 
+    invalidateAdminUsersSummaryCache();
     res.json({ errno: 0, result: { uid, role, customClaimsUpdated: true } });
   } catch (error) {
     console.error('[Admin] Error setting role:', error);
@@ -1886,6 +2290,7 @@ app.post('/api/admin/users/:uid/delete', authenticateUser, requireAdmin, async (
       timestamp: serverTimestamp()
     });
 
+    invalidateAdminUsersSummaryCache();
     res.json({ errno: 0, result: { deleted: true, uid, email: targetUser.email || '' } });
   } catch (error) {
     console.error('[Admin] Error deleting user:', error);

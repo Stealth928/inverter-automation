@@ -67,6 +67,27 @@ function buildApp(deps) {
   return app;
 }
 
+function makeFetchHeaders(values = {}) {
+  const normalized = Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [String(key).toLowerCase(), value])
+  );
+  return {
+    get: (key) => normalized[String(key).toLowerCase()] ?? null
+  };
+}
+
+function makeFetchResponse(status, body, headers = {}) {
+  const text = body == null
+    ? ''
+    : (typeof body === 'string' ? body : JSON.stringify(body));
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: makeFetchHeaders(headers),
+    text: jest.fn(async () => text)
+  };
+}
+
 function makeQuerySnapshot(docs = []) {
   return {
     size: docs.length,
@@ -115,6 +136,158 @@ describe('admin route module', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ errno: 0, result: { isAdmin: true } });
+  });
+
+  test('dataworks ops returns cached GitHub diagnostics without refetching immediately', async () => {
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        state: 'active',
+        path: '.github/workflows/aemo-market-insights-delta.yml',
+        html_url: 'https://github.com/example/repo/workflow'
+      }, {
+        'x-ratelimit-remaining': '59'
+      }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        workflow_runs: [
+          {
+            id: 123,
+            run_number: 7,
+            status: 'completed',
+            conclusion: 'failure',
+            event: 'schedule',
+            created_at: '2026-03-19T02:08:53Z',
+            updated_at: '2026-03-19T02:10:43Z',
+            html_url: 'https://github.com/example/repo/actions/runs/123',
+            jobs_url: 'https://api.github.com/repos/example/repo/actions/runs/123/jobs'
+          },
+          {
+            id: 122,
+            run_number: 6,
+            status: 'completed',
+            conclusion: 'success',
+            event: 'schedule',
+            created_at: '2026-03-18T02:08:53Z',
+            updated_at: '2026-03-18T02:10:43Z',
+            html_url: 'https://github.com/example/repo/actions/runs/122',
+            jobs_url: 'https://api.github.com/repos/example/repo/actions/runs/122/jobs'
+          }
+        ]
+      }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        jobs: [
+          {
+            id: 1,
+            name: 'delta-update-and-deploy',
+            status: 'completed',
+            conclusion: 'failure',
+            steps: [
+              { number: 6, name: 'Download latest AEMO monthly files', status: 'completed', conclusion: 'success' },
+              { number: 8, name: 'Deploy Firebase hosting', status: 'completed', conclusion: 'failure' }
+            ]
+          }
+        ]
+      }));
+
+    const app = buildApp(createDeps({
+      fetchImpl,
+      githubDataworks: {
+        owner: 'Stealth928',
+        repo: 'inverter-automation',
+        workflowId: 'aemo-market-insights-delta.yml',
+        ref: 'main'
+      }
+    }));
+
+    const firstResponse = await request(app)
+      .get('/api/admin/dataworks/ops')
+      .set('Authorization', 'Bearer token');
+
+    const secondResponse = await request(app)
+      .get('/api/admin/dataworks/ops')
+      .set('Authorization', 'Bearer token');
+
+    expect(firstResponse.statusCode).toBe(200);
+    expect(firstResponse.body.errno).toBe(0);
+    expect(firstResponse.body.result.workflow.state).toBe('active');
+    expect(firstResponse.body.result.latestRun.conclusion).toBe('failure');
+    expect(firstResponse.body.result.latestJob.steps[1].name).toBe('Deploy Firebase hosting');
+    expect(secondResponse.statusCode).toBe(200);
+    expect(secondResponse.body.result.cache.hit).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  test('dataworks dispatch triggers workflow and writes admin audit entry when configured', async () => {
+    const addMock = jest.fn(async () => undefined);
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        state: 'active',
+        path: '.github/workflows/aemo-market-insights-delta.yml',
+        html_url: 'https://github.com/example/repo/workflow'
+      }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        workflow_runs: [
+          {
+            id: 123,
+            run_number: 7,
+            status: 'completed',
+            conclusion: 'failure',
+            event: 'schedule',
+            created_at: '2026-03-19T02:08:53Z',
+            updated_at: '2026-03-19T02:10:43Z',
+            html_url: 'https://github.com/example/repo/actions/runs/123',
+            jobs_url: 'https://api.github.com/repos/example/repo/actions/runs/123/jobs'
+          }
+        ]
+      }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        jobs: [
+          {
+            id: 1,
+            name: 'delta-update-and-deploy',
+            status: 'completed',
+            conclusion: 'failure',
+            steps: []
+          }
+        ]
+      }))
+      .mockResolvedValueOnce(makeFetchResponse(204, null));
+
+    const app = buildApp(createDeps({
+      fetchImpl,
+      githubDataworks: {
+        owner: 'Stealth928',
+        repo: 'inverter-automation',
+        workflowId: 'aemo-market-insights-delta.yml',
+        ref: 'main',
+        dispatchToken: 'token-123'
+      },
+      db: {
+        collection: jest.fn(() => ({
+          doc: jest.fn(() => ({
+            set: jest.fn(async () => undefined)
+          })),
+          where: jest.fn(() => ({})),
+          add: addMock
+        }))
+      }
+    }));
+
+    const response = await request(app)
+      .post('/api/admin/dataworks/dispatch')
+      .set('Authorization', 'Bearer token')
+      .send({});
+
+    expect(response.statusCode).toBe(202);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.accepted).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    expect(addMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'dataworks_dispatch',
+      workflowOwner: 'Stealth928',
+      workflowRepo: 'inverter-automation',
+      workflowId: 'aemo-market-insights-delta.yml',
+      ref: 'main'
+    }));
   });
 
   test('firestore-metrics returns 503 when googleapis is unavailable', async () => {
@@ -1030,6 +1203,178 @@ describe('admin route module', () => {
     }));
     expect(response.body.result.users).toHaveLength(1);
     expect(response.body.result.users[0]).toEqual(expect.objectContaining({ uid: 'user-c' }));
+  });
+
+  test('admin users page loads skip EV probes when summary is not requested', async () => {
+    const makeQuerySnapshot = (docs = []) => ({
+      docs,
+      size: docs.length,
+      empty: docs.length === 0,
+      forEach: (fn) => docs.forEach(fn)
+    });
+    const userProfiles = {
+      'user-a': { email: 'a@example.com', role: 'user', automationEnabled: false },
+      'user-b': { email: 'b@example.com', role: 'user', automationEnabled: true }
+    };
+    const vehicleProbe = jest.fn(() => {
+      throw new Error('vehicles collection should not be queried for page-only loads');
+    });
+
+    const deps = createDeps({
+      admin: {
+        auth: jest.fn(() => ({
+          listUsers: jest.fn(async () => ({
+            users: Object.keys(userProfiles).map((uid, index) => ({
+              uid,
+              email: userProfiles[uid].email,
+              metadata: {
+                creationTime: '2026-01-01T00:00:00.000Z',
+                lastSignInTime: `2026-03-${String(index + 1).padStart(2, '0')}T08:00:00.000Z`
+              }
+            })),
+            pageToken: undefined
+          }))
+        }))
+      },
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') throw new Error(`Unexpected collection: ${name}`);
+          return {
+            get: jest.fn(async () => makeQuerySnapshot(Object.entries(userProfiles).map(([uid, data]) => ({ id: uid, data: () => data })))),
+            doc: jest.fn(() => ({
+              collection: jest.fn((subName) => {
+                if (subName === 'rules') {
+                  return { get: jest.fn(async () => makeQuerySnapshot([])) };
+                }
+                if (subName === 'config') {
+                  return {
+                    doc: jest.fn(() => ({
+                      get: jest.fn(async () => ({
+                        exists: true,
+                        data: () => ({ deviceProvider: 'foxess', deviceSn: 'device-sn', foxessToken: 'foxess-token' })
+                      }))
+                    }))
+                  };
+                }
+                if (subName === 'vehicles') {
+                  return {
+                    limit: vehicleProbe,
+                    get: vehicleProbe
+                  };
+                }
+                if (subName === 'secrets') {
+                  return {
+                    doc: jest.fn(() => ({ get: jest.fn(async () => ({ exists: false, data: () => ({}) })) }))
+                  };
+                }
+                throw new Error(`Unexpected subcollection: ${subName}`);
+              })
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/users?includeSummary=0&limit=2&page=1')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.summary).toBeNull();
+    expect(vehicleProbe).not.toHaveBeenCalled();
+    expect(response.body.result.users).toEqual(expect.arrayContaining([
+      expect.objectContaining({ uid: 'user-a', hasEVConfigured: false }),
+      expect.objectContaining({ uid: 'user-b', hasEVConfigured: false })
+    ]));
+  });
+
+  test('admin users route reuses cached summary between requests', async () => {
+    const makeQuerySnapshot = (docs = []) => ({
+      docs,
+      size: docs.length,
+      empty: docs.length === 0,
+      forEach: (fn) => docs.forEach(fn)
+    });
+    const userProfiles = {
+      'user-a': { email: 'a@example.com', role: 'user', automationEnabled: false },
+      'user-b': { email: 'b@example.com', role: 'user', automationEnabled: true }
+    };
+    const configGet = jest.fn(async () => ({
+      exists: true,
+      data: () => ({ deviceProvider: 'foxess', deviceSn: 'device-sn', foxessToken: 'foxess-token' })
+    }));
+
+    const deps = createDeps({
+      admin: {
+        auth: jest.fn(() => ({
+          listUsers: jest.fn(async () => ({
+            users: Object.keys(userProfiles).map((uid, index) => ({
+              uid,
+              email: userProfiles[uid].email,
+              metadata: {
+                creationTime: '2026-01-01T00:00:00.000Z',
+                lastSignInTime: `2026-03-${String(index + 1).padStart(2, '0')}T08:00:00.000Z`
+              }
+            })),
+            pageToken: undefined
+          }))
+        }))
+      },
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') throw new Error(`Unexpected collection: ${name}`);
+          return {
+            get: jest.fn(async () => makeQuerySnapshot(Object.entries(userProfiles).map(([uid, data]) => ({ id: uid, data: () => data })))),
+            doc: jest.fn(() => ({
+              collection: jest.fn((subName) => {
+                if (subName === 'rules') {
+                  return { get: jest.fn(async () => makeQuerySnapshot([])) };
+                }
+                if (subName === 'config') {
+                  return {
+                    doc: jest.fn(() => ({
+                      get: configGet
+                    }))
+                  };
+                }
+                if (subName === 'vehicles') {
+                  return {
+                    limit: jest.fn(() => ({ get: jest.fn(async () => makeQuerySnapshot([])) }))
+                  };
+                }
+                if (subName === 'secrets') {
+                  return {
+                    doc: jest.fn(() => ({ get: jest.fn(async () => ({ exists: false, data: () => ({}) })) }))
+                  };
+                }
+                throw new Error(`Unexpected subcollection: ${subName}`);
+              })
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const first = await request(app)
+      .get('/api/admin/users?limit=1&page=1')
+      .set('Authorization', 'Bearer token');
+
+    expect(first.statusCode).toBe(200);
+    expect(first.body.errno).toBe(0);
+    expect(first.body.result.summary).toEqual(expect.objectContaining({ totalUsers: 2 }));
+    expect(configGet).toHaveBeenCalledTimes(2);
+
+    const second = await request(app)
+      .get('/api/admin/users?limit=1&page=1')
+      .set('Authorization', 'Bearer token');
+
+    expect(second.statusCode).toBe(200);
+    expect(second.body.errno).toBe(0);
+    expect(second.body.result.summary).toEqual(expect.objectContaining({ totalUsers: 2 }));
+    expect(configGet).toHaveBeenCalledTimes(3);
   });
 
   test('admin users route bounds detailed user scan concurrency during summary loads', async () => {

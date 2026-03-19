@@ -44,6 +44,34 @@ describe('admin-access module', () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
+  test('isAdmin falls back to admin custom claim when Firestore lookup fails', async () => {
+    const get = jest.fn(async () => {
+      throw new Error('temporary firestore outage');
+    });
+    const db = createDb(get);
+    const { isAdmin } = createAdminAccess({ db, seedAdminEmail: 'seed@example.com' });
+
+    const req = { user: { uid: 'u-claim', email: 'admin@example.com', admin: true } };
+    const result = await isAdmin(req);
+
+    expect(result).toBe(true);
+    expect(req._isAdmin).toBe(true);
+    expect(req._adminLookupFailed).toBe(true);
+  });
+
+  test('isAdmin denies access when Firestore role explicitly demotes a stale admin claim', async () => {
+    const get = jest.fn(async () => ({ exists: true, data: () => ({ role: 'user' }) }));
+    const db = createDb(get);
+    const { isAdmin } = createAdminAccess({ db, seedAdminEmail: 'seed@example.com' });
+
+    const req = { user: { uid: 'u-stale', email: 'admin@example.com', admin: true } };
+    const result = await isAdmin(req);
+
+    expect(result).toBe(false);
+    expect(req._isAdmin).toBe(false);
+    expect(req._adminLookupFailed).toBe(false);
+  });
+
   test('requireAdmin returns 403 when user is not admin', async () => {
     const get = jest.fn(async () => ({ exists: true, data: () => ({ role: 'user' }) }));
     const db = createDb(get);

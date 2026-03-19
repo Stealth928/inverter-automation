@@ -551,6 +551,14 @@ class APIClient {
     return this.get('/api/admin/scheduler-metrics', { days, includeRuns, runLimit });
   }
 
+  async getAdminDataworksOps(force = false) {
+    return this.get('/api/admin/dataworks/ops', force ? { force: 1 } : {});
+  }
+
+  async triggerAdminDataworksDispatch() {
+    return this.post('/api/admin/dataworks/dispatch', {});
+  }
+
   async getAdminUserStats(uid) {
     return this.get(`/api/admin/users/${encodeURIComponent(uid)}/stats`);
   }

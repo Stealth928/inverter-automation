@@ -1040,4 +1040,43 @@ test.describe('Dashboard Page', () => {
 
     expect(ruleModalState.backupUnavailable).toBe(true);
   });
+
+  test('should not treat AlphaESS export flow as solar production when pvPower is zero', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'alphaess',
+      deviceSn: 'ALPHA-SN-001'
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'ALPHA-SN-001',
+            time: '2026-03-20T06:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 42, unit: '%' },
+              { variable: 'pvPower', value: 0, unit: 'kW' },
+              { variable: 'loadsPower', value: 0.53, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 4.45, unit: 'kW' },
+              { variable: 'meterPower2', value: -4.45, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 4.98, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?alphaessSolarRegression=1', { waitUntil: 'domcontentloaded' });
+
+    await expect.poll(async () => {
+      return ((await page.locator('#solar-tile .value').textContent().catch(() => '')) || '').trim();
+    }, { timeout: 10000 }).toBe('0.00 kW');
+
+    await expect(page.locator('#solar-tile .value')).toHaveText('0.00 kW');
+    await expect(page.locator('#solar-tile .value')).not.toHaveText('4.45 kW');
+  });
 });

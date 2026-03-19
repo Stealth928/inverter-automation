@@ -944,6 +944,10 @@ registerMetricsRoutes(app, {
 // are registered before the catch-all app.use('/api', authenticateUser).
 const getRuntimeProjectIdForAdmin = () => getRuntimeProjectId(admin);
 const fetchCloudBillingCostForAdmin = (projectId) => fetchCloudBillingCost(projectId, { googleApis });
+const runtimeConfig = typeof functions.config === 'function' ? functions.config() : {};
+const githubRuntimeConfig = runtimeConfig.github && typeof runtimeConfig.github === 'object'
+  ? runtimeConfig.github
+  : {};
 
 registerAdminRoutes(app, {
   admin,
@@ -962,7 +966,14 @@ registerAdminRoutes(app, {
   requireAdmin,
   SEED_ADMIN_EMAIL,
   serverTimestamp,
-  sumSeriesValues
+  sumSeriesValues,
+  githubDataworks: {
+    owner: process.env.GITHUB_DATAWORKS_OWNER || githubRuntimeConfig.owner || 'Stealth928',
+    repo: process.env.GITHUB_DATAWORKS_REPO || githubRuntimeConfig.repo || 'inverter-automation',
+    workflowId: process.env.GITHUB_DATAWORKS_WORKFLOW || githubRuntimeConfig.workflow || 'aemo-market-insights-delta.yml',
+    ref: process.env.GITHUB_DATAWORKS_REF || githubRuntimeConfig.ref || 'main',
+    dispatchToken: process.env.GITHUB_DATAWORKS_TOKEN || githubRuntimeConfig.dispatch_token || ''
+  }
 });
 
 // Apply auth middleware to remaining API routes

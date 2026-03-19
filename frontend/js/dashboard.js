@@ -317,6 +317,7 @@
                 supportsDirectWorkMode: normalized === 'foxess',
                 supportsBackupMode: normalized === 'foxess',
                 supportsAdvancedDeviceControls: normalized === 'foxess',
+                supportsTelemetrySourceMapping: normalized === 'foxess',
                 supportsQuickControl: normalized !== 'sigenergy',
                 supportsSchedulerControl: normalized !== 'sigenergy',
                 supportsExactPowerControl: normalized === 'foxess',
@@ -1122,7 +1123,9 @@
                 const acSolarPowerKW = normalizeTopologyPower(acSolarPower);
                 const solarPowerTotalKW = normalizeTopologyPower(solarPowerTotal);
                 const meterPower2KW = normalizeTopologyPower(meterPower2);
+                const allowMeterBasedSolarFallback = Boolean(_providerCapabilities?.supportsTelemetrySourceMapping);
                 const isLikelyACCoupled =
+                    allowMeterBasedSolarFallback &&
                     (pvTotalKW === null || Math.abs(pvTotalKW) < 0.05) &&
                     (meterPower2KW !== null && Math.abs(meterPower2KW) > 0.05);
 

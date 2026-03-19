@@ -242,6 +242,30 @@ Tesla EV usage-control and cache knobs include:
 Use Firebase Secret Manager for secrets and ensure deploy-time environment
 configuration matches the intended runtime behavior.
 
+Optional DataWorks admin controls can also be configured for the admin panel:
+
+- `github.owner`
+- `github.repo`
+- `github.workflow`
+- `github.ref`
+- `github.dispatch_token`
+
+Example:
+
+```bash
+firebase functions:config:set \
+  github.owner="Stealth928" \
+  github.repo="inverter-automation" \
+  github.workflow="aemo-market-insights-delta.yml" \
+  github.ref="main" \
+  github.dispatch_token="<github-token>"
+```
+
+Without `github.dispatch_token`, the DataWorks tab stays read-only and only
+shows cached GitHub workflow diagnostics. With it configured, admins can
+manually dispatch the market-insights workflow from the DataWorks panel.
+Use a token that can dispatch GitHub Actions for this repository.
+
 ### User-scoped secrets and config
 
 Provider credentials entered in the app are stored under the user record, with

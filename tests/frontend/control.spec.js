@@ -6,7 +6,11 @@ const { test, expect } = require('@playwright/test');
  * Tests the manual control interface at control.html
  */
 
-async function mockControlApi(page, { deviceProvider = 'foxess' } = {}) {
+async function mockControlApi(page, {
+  deviceProvider = 'foxess',
+  timezone = 'Australia/Sydney',
+  schedulerGroups = []
+} = {}) {
   await page.route('**/api/**', async (route) => {
     const requestUrl = new URL(route.request().url());
     const path = requestUrl.pathname;
@@ -18,6 +22,21 @@ async function mockControlApi(page, { deviceProvider = 'foxess' } = {}) {
         result: {
           setupComplete: true,
           deviceProvider
+        }
+      };
+    } else if (path === '/api/config') {
+      body = {
+        errno: 0,
+        result: {
+          timezone
+        }
+      };
+    } else if (path === '/api/scheduler/v1/get') {
+      body = {
+        errno: 0,
+        source: 'device',
+        result: {
+          groups: schedulerGroups
         }
       };
     } else if (path === '/api/user/init-profile') {
@@ -130,18 +149,44 @@ test.describe('Control Page', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.locator('#card-work-mode')).toBeVisible();
+    await expect(page.locator('#card-alphaess-override-status')).toBeHidden();
     await expect(page.locator('#controls-provider-note')).toBeHidden();
   });
 
-  test('hides the work mode control for AlphaESS and shows guidance', async ({ page }) => {
+  test('hides the work mode control for AlphaESS, shows guidance, and exposes a read-only override card', async ({ page }) => {
     await mockControlApi(page, { deviceProvider: 'alphaess' });
     await page.reload();
     await page.waitForLoadState('networkidle');
 
     await expect(page.locator('#card-work-mode')).toBeHidden();
+    await expect(page.locator('#card-alphaess-override-status')).toBeVisible();
     await expect(page.locator('#controls-provider-note')).toBeVisible();
     await expect(page.locator('#controls-provider-note')).toContainText(/AlphaESS/i);
     await expect(page.locator('#controls-provider-note')).toContainText(/Scheduler|Quick Control/i);
+  });
+
+  test('derives the current AlphaESS override from live scheduler windows', async ({ page }) => {
+    await mockControlApi(page, {
+      deviceProvider: 'alphaess',
+      schedulerGroups: [
+        {
+          enable: 1,
+          workMode: 'ForceCharge',
+          startHour: 0,
+          startMinute: 0,
+          endHour: 23,
+          endMinute: 59
+        }
+      ]
+    });
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('#card-alphaess-override-status button').click();
+
+    await expect(page.locator('#alphaessCurrentOverride')).toContainText(/Charge window active/i);
+    await expect(page.locator('#alphaessCurrentOverrideDetail')).toContainText(/00:00-23:59/i);
+    await expect(page.locator('#status-alphaessOverride')).toContainText(/Loaded current scheduler override/i);
   });
 
   test('should display inverter status information', async ({ page }) => {
