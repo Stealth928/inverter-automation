@@ -77,6 +77,23 @@ beforeAll(() => {
     id: data?.id || 'doc-id'
   });
 
+  const emptySnapshot = {
+    docs: [],
+    empty: true,
+    size: 0,
+    forEach: () => {}
+  };
+
+  const buildQueryChain = () => {
+    const chain = {
+      get: jest.fn(async () => emptySnapshot)
+    };
+    chain.limit = jest.fn(() => chain);
+    chain.orderBy = jest.fn(() => chain);
+    chain.where = jest.fn(() => chain);
+    return chain;
+  };
+
   const mockCollection = {
     doc: jest.fn(() => ({
       get: jest.fn(async () => mockDoc({ role: 'user' })),
@@ -91,6 +108,7 @@ beforeAll(() => {
       size: 2
     })),
     add: jest.fn(async () => ({ id: 'audit-log-id' })),
+    where: jest.fn(() => buildQueryChain()),
     orderBy: jest.fn(() => ({
       limit: jest.fn(() => ({
         get: jest.fn(async () => ({
