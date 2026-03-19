@@ -1080,6 +1080,100 @@ describe('read-only route modules', () => {
     expect(setUserConfig).not.toHaveBeenCalled();
   });
 
+  test('inverter real-time endpoint appends mapped AC solar and total solar fields when configured', async () => {
+    const realtimePayload = {
+      errno: 0,
+      result: [
+        {
+          datas: [
+            { variable: 'pvPower', value: 1.2 },
+            { variable: 'meterPower2', value: 0.8 }
+          ]
+        }
+      ]
+    };
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-inverter-map' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData: jest.fn(async () => realtimePayload),
+        getUserConfig: jest.fn(async () => ({
+          deviceSn: 'SN-MAP',
+          telemetryMappings: {
+            acSolarPowerVariable: 'meterPower2'
+          }
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig: jest.fn(async () => undefined),
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.result[0].datas).toEqual(expect.arrayContaining([
+      expect.objectContaining({ variable: 'acSolarPower', value: 0.8, unit: 'kW' }),
+      expect.objectContaining({ variable: 'solarPowerTotal', value: 2, unit: 'kW' })
+    ]));
+  });
+
+  test('inverter real-time endpoint ignores AC solar mapping for providers without raw source mapping support', async () => {
+    const adapterGetStatus = jest.fn(async () => ({
+      socPct: 68,
+      batteryTempC: 27.1,
+      ambientTempC: 21.4,
+      pvPowerW: 0,
+      loadPowerW: 1800,
+      gridPowerW: 600,
+      feedInPowerW: 0,
+      batteryPowerW: -1200,
+      observedAtIso: '2026-03-20T00:20:00.000Z'
+    }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-alpha-map-ignored' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({
+            getStatus: adapterGetStatus
+          }))
+        },
+        authenticateUser: (_req, _res, next) => next(),
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData: jest.fn(),
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'alphaess',
+          alphaessSystemSn: 'ALPHA-MAP-1',
+          telemetryMappings: {
+            acSolarPowerVariable: 'meterPower2'
+          }
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() },
+        setUserConfig: jest.fn(async () => undefined),
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+
+    expect(response.statusCode).toBe(200);
+    const datas = response.body.result[0].datas || [];
+    expect(datas).toEqual(expect.arrayContaining([
+      expect.objectContaining({ variable: 'meterPower2', value: 0.6, unit: 'kW' })
+    ]));
+    expect(datas.find((entry) => entry.variable === 'acSolarPower')).toBeUndefined();
+    expect(datas.find((entry) => entry.variable === 'solarPowerTotal')).toBeUndefined();
+  });
+
   test('inverter generation endpoint enriches yearly generation from report data', async () => {
     const foxessAPI = {
       callFoxESSAPI: jest.fn(async (path) => {
@@ -1181,6 +1275,77 @@ describe('read-only route modules', () => {
     expect(response.body).toEqual(cachedResult);
     expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
     expect(cacheCollection.doc).toHaveBeenCalledWith('history_SN-HIST_1700000000000_1700003600000');
+  });
+
+  test('inverter history endpoint appends mapped AC solar and total series when configured', async () => {
+    const cachedResult = {
+      errno: 0,
+      result: [{
+        datas: [
+          {
+            variable: 'pvPower',
+            data: [
+              { time: '2026-03-20 10:00:00', value: 1.1 },
+              { time: '2026-03-20 10:05:00', value: 1.3 }
+            ]
+          },
+          {
+            variable: 'meterPower2',
+            data: [
+              { time: '2026-03-20 10:00:00', value: 0.7 },
+              { time: '2026-03-20 10:05:00', value: 0.6 }
+            ]
+          }
+        ]
+      }]
+    };
+    const docRef = {
+      delete: jest.fn(async () => undefined),
+      get: jest.fn(async () => ({
+        data: () => ({ timestamp: Date.now(), data: cachedResult }),
+        exists: true
+      })),
+      set: jest.fn(async () => undefined)
+    };
+    const cacheCollection = { doc: jest.fn(() => docRef) };
+    const userDoc = { collection: jest.fn(() => cacheCollection) };
+    const usersCollection = { doc: jest.fn(() => userDoc) };
+    const db = { collection: jest.fn(() => usersCollection) };
+
+    const app = buildApp((instance) => {
+      registerInverterHistoryRoutes(instance, {
+        authenticateUser: (req, _res, next) => {
+          req.user = { uid: 'u-history-map' };
+          next();
+        },
+        db,
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getUserConfig: jest.fn(async () => ({
+          deviceSn: 'SN-HIST',
+          telemetryMappings: {
+            acSolarPowerVariable: 'meterPower2'
+          }
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() }
+      });
+    });
+
+    const response = await request(app)
+      .get('/api/inverter/history')
+      .query({ begin: 1700000000, end: 1700003600 });
+
+    expect(response.statusCode).toBe(200);
+    const datas = response.body.result[0].datas || [];
+    const acSolarSeries = datas.find((entry) => entry.variable === 'acSolarPower');
+    const solarTotalSeries = datas.find((entry) => entry.variable === 'solarPowerTotal');
+    expect(acSolarSeries.data).toEqual([
+      { time: '2026-03-20 10:00:00', value: 0.7 },
+      { time: '2026-03-20 10:05:00', value: 0.6 }
+    ]);
+    expect(solarTotalSeries.data).toEqual([
+      { time: '2026-03-20 10:00:00', value: 1.8 },
+      { time: '2026-03-20 10:05:00', value: 1.9 }
+    ]);
   });
 
   test('inverter history endpoint fetches and caches single-range response on cache miss', async () => {
@@ -1304,6 +1469,58 @@ describe('read-only route modules', () => {
       { deviceSn: 'SN-DEVICE' },
       'u-device'
     );
+  });
+
+  test('device read routes workmode get preserves provider-native mode metadata for non-FoxESS adapters', async () => {
+    const getWorkMode = jest.fn(async () => ({
+      errno: 0,
+      result: {
+        workMode: 'ForceDischarge',
+        raw: 2003
+      }
+    }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-sungrow' };
+        next();
+      });
+      registerDeviceReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({ getWorkMode }))
+        },
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'sungrow',
+          sungrowDeviceSn: 'SG-001'
+        })),
+        logger: { log: jest.fn(), warn: jest.fn() }
+      });
+    });
+
+    const response = await request(app).get('/api/device/workmode/get');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      result: {
+        workMode: 'ForceDischarge',
+        raw: 2003,
+        provider: 'sungrow',
+        displayName: 'Force Discharge',
+        value: 2003,
+        legacyValue: null
+      }
+    });
+    expect(getWorkMode).toHaveBeenCalledWith({
+      deviceSN: 'SG-001',
+      userConfig: {
+        deviceProvider: 'sungrow',
+        sungrowDeviceSn: 'SG-001'
+      },
+      userId: 'u-sungrow'
+    });
   });
 
   test('device status check returns diagnostic summary envelope', async () => {
@@ -1452,6 +1669,50 @@ describe('read-only route modules', () => {
     );
   });
 
+  test('diagnostics read routes expose configured and recommended AC solar mapping hints', async () => {
+    const foxessAPI = {
+      callFoxESSAPI: jest.fn(async () => ({
+        errno: 0,
+        result: [
+          {
+            datas: [
+              { variable: 'pvPower', value: 0.0 },
+              { variable: 'meterPower2', value: 0.9 },
+              { variable: 'batChargePower', value: 1.0 },
+              { variable: 'gridConsumptionPower', value: 0.0 }
+            ]
+          }
+        ]
+      }))
+    };
+
+    const app = buildApp((instance) => {
+      registerDiagnosticsReadRoutes(instance, {
+        authenticateUser: (req, _res, next) => {
+          req.user = { uid: 'u-diagnostics' };
+          next();
+        },
+        foxessAPI,
+        getUserConfig: jest.fn(async () => ({
+          deviceSn: 'SN-DIAG',
+          telemetryMappings: {
+            acSolarPowerVariable: 'meterPower2'
+          }
+        }))
+      });
+    });
+
+    const response = await request(app).post('/api/inverter/all-data').send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.topologyHints).toEqual(expect.objectContaining({
+      configuredAcSolarVariable: 'meterPower2',
+      recommendedAcSolarVariable: 'meterPower2',
+      acSolarPower: 0.9,
+      solarPowerTotal: 0.9
+    }));
+  });
+
   test('diagnostics read routes all-data dispatches to adapter for non-FoxESS providers', async () => {
     const foxessAPI = {
       callFoxESSAPI: jest.fn(async () => ({ errno: 0, result: [] }))
@@ -1511,6 +1772,54 @@ describe('read-only route modules', () => {
       userId: 'u-diagnostics-alpha'
     });
     expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
+  });
+
+  test('diagnostics read routes suppress AC mapping hints for providers without raw source mapping support', async () => {
+    const adapterGetStatus = jest.fn(async () => ({
+      socPct: 73,
+      batteryTempC: 29.1,
+      ambientTempC: 23.4,
+      pvPowerW: 0,
+      loadPowerW: 1800,
+      gridPowerW: 900,
+      feedInPowerW: 0,
+      batteryPowerW: -1200,
+      observedAtIso: '2026-03-12T04:20:00.000Z'
+    }));
+
+    const app = buildApp((instance) => {
+      registerDiagnosticsReadRoutes(instance, {
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({
+            getStatus: adapterGetStatus
+          }))
+        },
+        authenticateUser: (req, _res, next) => {
+          req.user = { uid: 'u-diagnostics-alpha-map' };
+          next();
+        },
+        foxessAPI: {
+          callFoxESSAPI: jest.fn(async () => ({ errno: 0, result: [] }))
+        },
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'alphaess',
+          alphaessSystemSn: 'ALPHA-DIAG-2',
+          telemetryMappings: {
+            acSolarPowerVariable: 'meterPower2'
+          }
+        }))
+      });
+    });
+
+    const response = await request(app).post('/api/inverter/all-data').send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.topologyHints).toEqual(expect.objectContaining({
+      configuredAcSolarVariable: null,
+      recommendedAcSolarVariable: null,
+      acSolarPower: null,
+      solarPowerTotal: null
+    }));
   });
 
   test('scheduler read routes return defaults when device SN is unavailable', async () => {

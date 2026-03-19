@@ -67,6 +67,25 @@ function buildApp(deps) {
   return app;
 }
 
+function makeQuerySnapshot(docs = []) {
+  return {
+    size: docs.length,
+    docs,
+    empty: docs.length === 0,
+    forEach: (fn) => docs.forEach(fn)
+  };
+}
+
+function makeRulesQuery(docs = []) {
+  const snapshot = makeQuerySnapshot(docs);
+  const query = {
+    get: jest.fn(async () => snapshot)
+  };
+  query.limit = jest.fn(() => query);
+  query.orderBy = jest.fn(() => query);
+  return query;
+}
+
 describe('admin route module', () => {
   test('throws when required dependencies are missing', () => {
     const app = express();
@@ -1202,6 +1221,268 @@ describe('admin route module', () => {
       configured: expect.objectContaining({ count: 0 }),
       automationActive: expect.objectContaining({ count: 0 }),
       evConfigured: expect.objectContaining({ count: 0 })
+    }));
+  });
+
+  test('platform-stats reconstructs active history from deleted-user lifecycle snapshots', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-20T12:00:00.000Z'));
+
+    try {
+      const currentProfile = {
+        email: 'current@example.com',
+        role: 'user',
+        automationEnabled: true
+      };
+      const currentConfig = {
+        setupComplete: true,
+        setupCompletedAt: '2026-01-06T00:00:00.000Z'
+      };
+      const currentRulesQuery = makeRulesQuery([]);
+      const auditDocs = [
+        {
+          id: 'audit-1',
+          data: () => ({
+            action: 'delete_user',
+            targetUid: 'deleted-user',
+            timestamp: '2026-03-10T09:00:00.000Z',
+            snapshot: {
+              joinedAtMs: Date.parse('2026-01-01T00:00:00.000Z'),
+              configured: true,
+              configuredAtMs: Date.parse('2026-01-02T00:00:00.000Z'),
+              hasRules: true,
+              firstRuleAtMs: Date.parse('2026-01-03T00:00:00.000Z')
+            }
+          })
+        }
+      ];
+
+      const db = {
+        collection: jest.fn((name) => {
+          if (name === 'users') {
+            return {
+              get: jest.fn(async () => makeQuerySnapshot([
+                { id: 'current-user', data: () => currentProfile }
+              ])),
+              doc: jest.fn((uid) => {
+                if (uid !== 'current-user') {
+                  throw new Error(`Unexpected user doc lookup: ${uid}`);
+                }
+                return {
+                  collection: jest.fn((subName) => {
+                    if (subName === 'config') {
+                      return {
+                        doc: jest.fn((docId) => {
+                          if (docId !== 'main') throw new Error(`Unexpected config doc: ${docId}`);
+                          return {
+                            get: jest.fn(async () => ({ exists: true, data: () => currentConfig }))
+                          };
+                        })
+                      };
+                    }
+                    if (subName === 'rules') {
+                      return currentRulesQuery;
+                    }
+                    throw new Error(`Unexpected user subcollection: ${subName}`);
+                  })
+                };
+              })
+            };
+          }
+
+          if (name === 'admin_audit') {
+            return {
+              where: jest.fn((field, op, value) => {
+                if (field !== 'action' || op !== '==' || value !== 'delete_user') {
+                  throw new Error(`Unexpected audit query: ${field} ${op} ${value}`);
+                }
+                return {
+                  get: jest.fn(async () => makeQuerySnapshot(auditDocs))
+                };
+              }),
+              add: jest.fn(async () => undefined)
+            };
+          }
+
+          throw new Error(`Unexpected collection lookup: ${name}`);
+        })
+      };
+
+      const deps = createDeps({
+        db,
+        admin: {
+          auth: jest.fn(() => ({
+            listUsers: jest.fn(async () => ({
+              users: [
+                {
+                  uid: 'current-user',
+                  email: 'current@example.com',
+                  metadata: {
+                    creationTime: '2026-01-05T00:00:00.000Z',
+                    lastSignInTime: '2026-03-19T10:00:00.000Z'
+                  }
+                }
+              ],
+              pageToken: undefined
+            })),
+            getUser: jest.fn(async () => ({ uid: 'target-uid', email: 'target@example.com', customClaims: {} })),
+            setCustomUserClaims: jest.fn(async () => undefined),
+            deleteUser: jest.fn(async () => undefined)
+          }))
+        }
+      });
+      const app = buildApp(deps);
+
+      const response = await request(app)
+        .get('/api/admin/platform-stats?days=20')
+        .set('Authorization', 'Bearer token');
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body.errno).toBe(0);
+      expect(response.body.result.summary).toEqual(expect.objectContaining({
+        totalUsers: 1,
+        configuredUsers: 1,
+        usersWithRules: 0,
+        mau: 1,
+        automationActive: 1
+      }));
+      expect(response.body.result.warnings).toEqual([]);
+
+      const trend = response.body.result.trend;
+      expect(trend).toHaveLength(20);
+      expect(trend[0]).toEqual(expect.objectContaining({
+        date: '2026-03-01',
+        totalUsers: 2,
+        configuredUsers: 2,
+        usersWithRules: 1,
+        deletedUsers: 0
+      }));
+      expect(trend.find((point) => point.date === '2026-03-10')).toEqual(expect.objectContaining({
+        totalUsers: 1,
+        configuredUsers: 1,
+        usersWithRules: 0,
+        deletedUsers: 1
+      }));
+      expect(trend[trend.length - 1]).toEqual(expect.objectContaining({
+        date: '2026-03-20',
+        totalUsers: 1,
+        configuredUsers: 1,
+        usersWithRules: 0,
+        deletedUsers: 1
+      }));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('user delete stores lifecycle snapshot in admin audit', async () => {
+    const targetProfile = {
+      email: 'target@example.com',
+      role: 'user',
+      automationEnabled: true,
+      createdAt: '2026-02-01T00:00:00.000Z'
+    };
+    const targetConfig = {
+      setupComplete: true,
+      setupCompletedAt: '2026-02-02T00:00:00.000Z'
+    };
+    const targetRulesQuery = makeRulesQuery([
+      {
+        data: () => ({
+          createdAt: '2026-02-10T00:00:00.000Z'
+        })
+      }
+    ]);
+    const auditAdd = jest.fn(async () => undefined);
+
+    const db = {
+      collection: jest.fn((name) => {
+        if (name === 'users') {
+          return {
+            doc: jest.fn((uid) => {
+              if (uid !== 'user-2') {
+                throw new Error(`Unexpected user doc lookup: ${uid}`);
+              }
+              return {
+                get: jest.fn(async () => ({ exists: true, data: () => targetProfile })),
+                collection: jest.fn((subName) => {
+                  if (subName === 'config') {
+                    return {
+                      doc: jest.fn((docId) => {
+                        if (docId !== 'main') throw new Error(`Unexpected config doc: ${docId}`);
+                        return {
+                          get: jest.fn(async () => ({ exists: true, data: () => targetConfig }))
+                        };
+                      })
+                    };
+                  }
+                  if (subName === 'rules') {
+                    return targetRulesQuery;
+                  }
+                  throw new Error(`Unexpected user subcollection: ${subName}`);
+                })
+              };
+            })
+          };
+        }
+
+        if (name === 'admin_audit') {
+          return {
+            where: jest.fn(() => ({})),
+            add: auditAdd
+          };
+        }
+
+        throw new Error(`Unexpected collection lookup: ${name}`);
+      })
+    };
+
+    const deleteUser = jest.fn(async () => undefined);
+    const deps = createDeps({
+      db,
+      admin: {
+        auth: jest.fn(() => ({
+          getUser: jest.fn(async () => ({
+            uid: 'user-2',
+            email: 'target@example.com',
+            metadata: {
+              creationTime: '2026-02-01T00:00:00.000Z',
+              lastSignInTime: '2026-03-01T00:00:00.000Z'
+            },
+            customClaims: {}
+          })),
+          setCustomUserClaims: jest.fn(async () => undefined),
+          deleteUser
+        }))
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/admin/users/user-2/delete')
+      .set('Authorization', 'Bearer token')
+      .send({ confirmText: 'DELETE' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(deps.deleteUserDataTree).toHaveBeenCalledWith('user-2');
+    expect(deleteUser).toHaveBeenCalledWith('user-2');
+    expect(auditAdd).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'delete_user',
+      adminUid: 'admin-uid',
+      adminEmail: 'admin@example.com',
+      targetUid: 'user-2',
+      targetEmail: 'target@example.com',
+      snapshot: {
+        role: 'user',
+        automationEnabled: true,
+        joinedAtMs: Date.parse('2026-02-01T00:00:00.000Z'),
+        lastSignInMs: Date.parse('2026-03-01T00:00:00.000Z'),
+        configured: true,
+        configuredAtMs: Date.parse('2026-02-02T00:00:00.000Z'),
+        hasRules: true,
+        firstRuleAtMs: Date.parse('2026-02-10T00:00:00.000Z')
+      },
+      timestamp: '__TS__'
     }));
   });
 

@@ -354,6 +354,11 @@
             color: var(--text-secondary);
             margin-bottom: 8px;
         }
+        .chart-warning {
+            font-size: 11px;
+            color: var(--color-warning);
+            margin-bottom: 8px;
+        }
         .chart-wrap {
             position: relative;
             height: 280px;
@@ -1508,7 +1513,8 @@
                     <div class="card-title"><span class="icon">📈</span> 90-Day User Growth, Configuration & Rules Trend</div>
                 </div>
                 <div class="card-body">
-                    <div class="chart-subtitle">Bars = total users, lines = configured users + users with rules</div>
+                    <div class="chart-subtitle" id="platformTrendSubtitle">Bars = active users, lines = configured users + users with rules, red line = cumulative deletions</div>
+                    <div class="chart-warning" id="platformTrendWarning" style="display: none;"></div>
                     <div class="chart-wrap">
                         <canvas id="platformTrendChart"></canvas>
                     </div>

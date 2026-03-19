@@ -6,6 +6,34 @@ const { test, expect } = require('@playwright/test');
  * Tests the manual control interface at control.html
  */
 
+async function mockControlApi(page, { deviceProvider = 'foxess' } = {}) {
+  await page.route('**/api/**', async (route) => {
+    const requestUrl = new URL(route.request().url());
+    const path = requestUrl.pathname;
+    let body = { errno: 0, result: {} };
+
+    if (path === '/api/config/setup-status') {
+      body = {
+        errno: 0,
+        result: {
+          setupComplete: true,
+          deviceProvider
+        }
+      };
+    } else if (path === '/api/user/init-profile') {
+      body = { errno: 0, result: { initialized: true } };
+    } else if (path === '/api/admin/check') {
+      body = { errno: 0, result: { isAdmin: false } };
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(body)
+    });
+  });
+}
+
 test.describe('Control Page', () => {
   
   test.beforeEach(async ({ page }) => {
@@ -94,6 +122,26 @@ test.describe('Control Page', () => {
     // Look for mode selection (dropdown or buttons)
     const modeSelector = await page.locator('select, [data-mode], button:has-text("Mode")').count();
     expect(modeSelector).toBeGreaterThanOrEqual(0);
+  });
+
+  test('keeps the work mode control visible for FoxESS', async ({ page }) => {
+    await mockControlApi(page, { deviceProvider: 'foxess' });
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('#card-work-mode')).toBeVisible();
+    await expect(page.locator('#controls-provider-note')).toBeHidden();
+  });
+
+  test('hides the work mode control for AlphaESS and shows guidance', async ({ page }) => {
+    await mockControlApi(page, { deviceProvider: 'alphaess' });
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('#card-work-mode')).toBeHidden();
+    await expect(page.locator('#controls-provider-note')).toBeVisible();
+    await expect(page.locator('#controls-provider-note')).toContainText(/AlphaESS/i);
+    await expect(page.locator('#controls-provider-note')).toContainText(/Scheduler|Quick Control/i);
   });
 
   test('should display inverter status information', async ({ page }) => {

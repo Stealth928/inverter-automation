@@ -6,6 +6,14 @@ const { test, expect } = require('@playwright/test');
  * Tests the automation history page at history.html
  */
 
+function jsonResponse(payload, status = 200) {
+  return {
+    status,
+    contentType: 'application/json',
+    body: JSON.stringify(payload)
+  };
+}
+
 test.describe('History Page', () => {
   
   test.beforeEach(async ({ page }) => {
@@ -167,5 +175,23 @@ test.describe('History Page', () => {
     await page.waitForTimeout(500);
     const refErrors = errors.filter(e => /getStoredAmberSiteId|setStoredAmberSiteId/i.test(e));
     expect(refErrors).toHaveLength(0);
+  });
+
+  test('shows AlphaESS report limitation notice when configured for AlphaESS', async ({ page }) => {
+    await page.route('**/api/config', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          deviceProvider: 'alphaess',
+          deviceSn: 'ALPHA-SN-001'
+        }
+      }, 200));
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#reportProviderNotice')).toBeVisible();
+    await expect(page.locator('#reportProviderNotice')).toContainText(/yearly view is estimated/i);
+    await expect(page.locator('#reportProviderNotice')).toContainText(/AC-coupled auto-detect is disabled/i);
   });
 });

@@ -296,6 +296,136 @@
         let _batteryCapacityKwh = 41.93; // kWh; overridden from user config on load
         let _inverterCapacityW  = 10000; // Watts; overridden from user config on load
         let _userProvider       = '';    // 'foxess' | 'alphaess' | 'sungrow' | etc; overridden on load
+        let _providerCapabilities = resolveProviderCapabilities('foxess');
+
+        function normalizeDashboardProvider(provider) {
+            if (window.sharedUtils && typeof window.sharedUtils.normalizeDeviceProvider === 'function') {
+                return window.sharedUtils.normalizeDeviceProvider(provider);
+            }
+            const normalized = String(provider || '').trim().toLowerCase();
+            return normalized || 'foxess';
+        }
+
+        function resolveProviderCapabilities(provider) {
+            if (window.sharedUtils && typeof window.sharedUtils.getProviderCapabilities === 'function') {
+                return window.sharedUtils.getProviderCapabilities(provider);
+            }
+            const normalized = normalizeDashboardProvider(provider);
+            return {
+                provider: normalized,
+                label: normalized === 'alphaess' ? 'AlphaESS' : (normalized === 'sigenergy' ? 'SigenEnergy' : (normalized === 'sungrow' ? 'Sungrow' : 'FoxESS')),
+                supportsDirectWorkMode: normalized === 'foxess',
+                supportsBackupMode: normalized === 'foxess',
+                supportsAdvancedDeviceControls: normalized === 'foxess',
+                supportsQuickControl: normalized !== 'sigenergy',
+                supportsSchedulerControl: normalized !== 'sigenergy',
+                supportsExactPowerControl: normalized === 'foxess',
+                supportsReliableYearlyReport: normalized !== 'alphaess' && normalized !== 'sigenergy',
+                supportsAcHistoryAutoDetect: normalized !== 'alphaess' && normalized !== 'sigenergy',
+                schedulerEditableWindowCount: normalized === 'alphaess' ? 4 : (normalized === 'sungrow' ? 4 : (normalized === 'sigenergy' ? 0 : 8)),
+                schedulerStepMinutes: normalized === 'alphaess' ? 15 : 1
+            };
+        }
+
+        function getSchedulerSlotLabel(caps = _providerCapabilities, index = null) {
+            const baseLabel = caps && caps.provider === 'alphaess' ? 'Window' : 'Segment';
+            return index === null ? baseLabel : `${baseLabel} ${index}`;
+        }
+
+        function getSchedulerSlotCount(caps = _providerCapabilities) {
+            const count = Number(caps?.schedulerEditableWindowCount);
+            return Number.isFinite(count) && count > 0 ? count : 8;
+        }
+
+        function setWorkModeOptionAvailability(selectEl, optionValue, isAvailable, fallbackValue = 'SelfUse') {
+            if (!selectEl) return;
+            const targetOption = Array.from(selectEl.options || []).find((option) => option.value === optionValue);
+            if (!targetOption) return;
+            targetOption.disabled = !isAvailable;
+            targetOption.hidden = !isAvailable;
+            if (!isAvailable && selectEl.value === optionValue) {
+                selectEl.value = fallbackValue;
+            }
+        }
+
+        function applyProviderConstraintsToDashboard() {
+            const caps = _providerCapabilities || resolveProviderCapabilities(_userProvider);
+            const quickControlCard = document.querySelector('[data-dashboard-card="quickControls"]');
+            const schedulerCard = document.querySelector('[data-dashboard-card="scheduler"]');
+            const schedulerForm = document.getElementById('form-scheduler-segment');
+            const schedulerStatus = document.getElementById('schedulerStatus');
+            let schedulerNotice = document.getElementById('schedulerProviderNotice');
+
+            if (!schedulerNotice && schedulerStatus && schedulerStatus.parentElement) {
+                schedulerNotice = document.createElement('div');
+                schedulerNotice.id = 'schedulerProviderNotice';
+                schedulerNotice.style.cssText = 'display:none;padding:10px 12px;margin-bottom:12px;background:rgba(56,139,253,0.1);border:1px solid rgba(56,139,253,0.3);border-radius:6px;font-size:12px;line-height:1.6;color:var(--text-secondary);';
+                schedulerStatus.parentElement.insertBefore(schedulerNotice, schedulerStatus);
+            }
+
+            if (quickControlCard) {
+                quickControlCard.style.display = caps.supportsQuickControl ? '' : 'none';
+            }
+            if (schedulerCard) {
+                schedulerCard.style.display = caps.supportsSchedulerControl ? '' : 'none';
+            }
+
+            if (schedulerForm) {
+                const segmentIndexSelect = schedulerForm.querySelector('select[name="segmentIndex"]');
+                const segmentLabel = segmentIndexSelect?.closest('.input-group')?.querySelector('label');
+                const powerLabel = schedulerForm.querySelector('input[name="fdPwr"]')?.closest('.input-group')?.querySelector('label');
+                const workModeSelect = schedulerForm.querySelector('select[name="workMode"]');
+                const schedulerCount = getSchedulerSlotCount(caps);
+
+                if (segmentLabel) segmentLabel.textContent = caps.provider === 'alphaess' ? 'Window #' : 'Segment #';
+                if (powerLabel) powerLabel.textContent = caps.supportsExactPowerControl ? 'Power (W)' : 'Requested Power (W)';
+                setWorkModeOptionAvailability(workModeSelect, 'Backup', caps.supportsBackupMode);
+                setWorkModeOptionAvailability(workModeSelect, 'SelfUse', caps.provider !== 'sungrow');
+
+                if (segmentIndexSelect) {
+                    Array.from(segmentIndexSelect.options).forEach((option, index) => {
+                        const available = index < schedulerCount;
+                        option.disabled = !available;
+                        option.hidden = !available;
+                    });
+                    if (Number(segmentIndexSelect.value) >= schedulerCount) {
+                        segmentIndexSelect.value = '0';
+                    }
+                }
+            }
+
+            setWorkModeOptionAvailability(document.getElementById('actionWorkMode'), 'Backup', caps.supportsBackupMode);
+            setWorkModeOptionAvailability(document.getElementById('newRuleWorkMode'), 'Backup', caps.supportsBackupMode);
+            setWorkModeOptionAvailability(document.getElementById('actionWorkMode'), 'SelfUse', caps.provider !== 'sungrow');
+            setWorkModeOptionAvailability(document.getElementById('newRuleWorkMode'), 'SelfUse', caps.provider !== 'sungrow');
+
+            if (schedulerNotice) {
+                if (caps.provider === 'alphaess') {
+                    schedulerNotice.style.display = 'block';
+                    schedulerNotice.innerHTML =
+                        '<strong style="color:var(--accent-blue);">AlphaESS scheduler note</strong><br>' +
+                        'Only the first <strong>4 windows</strong> map to AlphaESS charge/discharge slots.<br>' +
+                        'Times are rounded to <strong>15-minute boundaries</strong> and requested power is <strong>advisory only</strong>.<br>' +
+                        '<strong>Backup</strong> is unavailable, and <strong>Feed In</strong> uses AlphaESS discharge/export scheduling semantics.';
+                } else if (caps.provider === 'sungrow') {
+                    schedulerNotice.style.display = 'block';
+                    schedulerNotice.innerHTML =
+                        '<strong style="color:var(--accent-blue);">Sungrow scheduler note</strong><br>' +
+                        'Only the first <strong>4 windows</strong> map to the current Sungrow TOU integration.<br>' +
+                        'Requested power and SoC values are <strong>not written as exact device parameters</strong> by the current adapter.<br>' +
+                        '<strong>Self Use</strong> and <strong>Backup</strong> are hidden here because they do not map cleanly to the current Sungrow scheduler implementation.';
+                } else {
+                    schedulerNotice.style.display = 'none';
+                    schedulerNotice.innerHTML = '';
+                }
+            }
+        }
+
+        function setDashboardProvider(provider) {
+            _userProvider = normalizeDashboardProvider(provider);
+            _providerCapabilities = resolveProviderCapabilities(_userProvider);
+            applyProviderConstraintsToDashboard();
+        }
 
         // apiClient is declared in api-client.js and initialized after Firebase auth is ready
 
@@ -748,17 +878,27 @@
                 
                 if (data.errno === 0 && data.result) {
                     const result = data.result;
-                    const currentMode = result.value;
-                    const enumList = result.enumList || [];
+                    const numericToCanonical = {
+                        0: 'SelfUse',
+                        1: 'Feedin',
+                        2: 'Backup',
+                        3: 'PeakShaving'
+                    };
+                    const currentMode = typeof result.workMode === 'string' && result.workMode
+                        ? result.workMode
+                        : (numericToCanonical[result.value] || result.value);
+                    const displayMode = result.displayName || currentMode;
                     
-                    displayEl.innerHTML = `<span style="color:${cssVar('--color-success')}">Current:</span> ${currentMode}`;
+                    displayEl.innerHTML = `<span style="color:${cssVar('--color-success')}">Current:</span> ${displayMode}`;
                     
                     // Select matching option in dropdown
                     const select = document.getElementById('workModeSelect');
-                    for (let opt of select.options) {
-                        if (opt.value === currentMode) {
-                            select.value = opt.value;
-                            break;
+                    if (select) {
+                        for (let opt of select.options) {
+                            if (opt.value === currentMode) {
+                                select.value = opt.value;
+                                break;
+                            }
                         }
                     }
                 } else {
@@ -964,8 +1104,10 @@
                 if ((!computedSolar || computedSolar === 0) && gen !== null && (batChg !== null)) {
                     computedSolar = asNumber(gen) + asNumber(batChg);
                 }
-                // Prefer aggregated pvPower from the device when available (more accurate for total PV)
+                // Prefer backend-normalized solar totals when available, then fall back to legacy heuristics.
                 const pvTotal = findValue(items, ['pvPower','pvpower','pv_total','pv_total_power']);
+                const acSolarPower = findValue(items, ['acSolarPower', 'acsolarpower']);
+                const solarPowerTotal = findValue(items, ['solarPowerTotal', 'solarpowertotal']);
                 const meterPower2 = findValue(items, ['meterPower2', 'meter_power_2', 'meter2power']);
 
                 function normalizeTopologyPower(v) {
@@ -977,13 +1119,17 @@
                 }
 
                 const pvTotalKW = normalizeTopologyPower(pvTotal);
+                const acSolarPowerKW = normalizeTopologyPower(acSolarPower);
+                const solarPowerTotalKW = normalizeTopologyPower(solarPowerTotal);
                 const meterPower2KW = normalizeTopologyPower(meterPower2);
                 const isLikelyACCoupled =
                     (pvTotalKW === null || Math.abs(pvTotalKW) < 0.05) &&
                     (meterPower2KW !== null && Math.abs(meterPower2KW) > 0.05);
 
                 let finalSolar = null;
-                if (isLikelyACCoupled) {
+                if (solarPowerTotalKW !== null) {
+                    finalSolar = solarPowerTotalKW;
+                } else if (isLikelyACCoupled) {
                     finalSolar = Math.abs(meterPower2KW);
                 } else if (pvTotal !== null && pvTotal !== undefined && !isNaN(Number(pvTotal))) {
                     finalSolar = pvTotal;
@@ -1377,11 +1523,17 @@
                 }
                 // Also include aggregated pvPower if available
                 const pvPowerTotal = findValue(items, ['pvPower','pvpower']);
+                const hasAcSolarBreakdown = acSolarPower !== null && acSolarPower !== undefined;
+                const hasSolarBreakdown = pvStrings.length > 0 || hasAcSolarBreakdown;
 
-                if (pvStrings.length) {
-                    let pvHtml = '<div style="margin-top:12px;font-size:12px;color:var(--text-secondary);font-weight:600">🔸 PV String Outputs';
-                    if (pvPowerTotal !== null && pvPowerTotal !== undefined) {
-                        pvHtml += ` <span style="color:var(--color-success);font-weight:700">(Total: ${fmtKW(pvPowerTotal)})</span>`;
+                if (hasSolarBreakdown) {
+                    let pvHtml = '<div style="margin-top:12px;font-size:12px;color:var(--text-secondary);font-weight:600">';
+                    pvHtml += hasAcSolarBreakdown ? '🔸 Solar Inputs' : '🔸 PV String Outputs';
+                    const breakdownTotal = solarPowerTotal !== null && solarPowerTotal !== undefined
+                        ? solarPowerTotal
+                        : (pvPowerTotal !== null && pvPowerTotal !== undefined ? pvPowerTotal : finalSolar);
+                    if (breakdownTotal !== null && breakdownTotal !== undefined) {
+                        pvHtml += ` <span style="color:var(--color-success);font-weight:700">(Total: ${fmtKW(breakdownTotal)})</span>`;
                     }
                     pvHtml += '</div>';
                     pvHtml += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">';
@@ -1395,6 +1547,22 @@
                             <div style="font-size:10px;color:var(--text-secondary);margin-top:4px">${voltStr} · ${currStr}</div>
                         </div>`;
                     });
+
+                    if (hasAcSolarBreakdown) {
+                        if (!pvStrings.length && pvPowerTotal !== null && pvPowerTotal !== undefined) {
+                            pvHtml += `<div class="stat-item" style="min-width:110px;padding:10px;text-align:center">
+                                <div class="value" style="font-size:18px;font-weight:700;color:var(--color-success)">${fmtKW(pvPowerTotal)}</div>
+                                <div class="label" style="font-size:12px;color:var(--accent-blue);margin-top:4px;font-weight:600">DC Solar</div>
+                                <div style="font-size:10px;color:var(--text-secondary);margin-top:4px">Fox PV input</div>
+                            </div>`;
+                        }
+                        pvHtml += `<div class="stat-item" style="min-width:110px;padding:10px;text-align:center">
+                            <div class="value" style="font-size:18px;font-weight:700;color:var(--accent)">${fmtKW(acSolarPower)}</div>
+                            <div class="label" style="font-size:12px;color:var(--accent-blue);margin-top:4px;font-weight:600">AC Solar</div>
+                            <div style="font-size:10px;color:var(--text-secondary);margin-top:4px">Mapped external source</div>
+                        </div>`;
+                    }
+
                     pvHtml += '</div>';
                     card.innerHTML = html + tempNoticeHtml + pvHtml;
                 } else {
@@ -2893,7 +3061,9 @@
         let currentSchedulerGroups = [];
         
         async function clearAllSchedulerSegments() {
-            if (!confirm('⚠️ Clear ALL 10 scheduler time periods?\n\nThis will reset all segments to disabled (00:00-00:00).')) {
+            const slotCount = getSchedulerSlotCount();
+            const slotLabel = getSchedulerSlotLabel(_providerCapabilities).toLowerCase();
+            if (!confirm(`⚠️ Clear all ${slotCount} scheduler ${slotLabel}${slotCount === 1 ? '' : 's'}?\n\nThis will reset all visible ${slotLabel}${slotCount === 1 ? '' : 's'} to disabled (00:00-00:00).`)) {
                 return;
             }
             
@@ -2950,8 +3120,11 @@
                 
                 currentSchedulerGroups = data.result.groups || [];
                 const globalEnable = data.result.enable;
+                const visibleGroups = (_providerCapabilities.provider === 'alphaess')
+                    ? currentSchedulerGroups.slice(0, getSchedulerSlotCount())
+                    : currentSchedulerGroups;
                 
-                if (currentSchedulerGroups.length === 0) {
+                if (visibleGroups.length === 0) {
                     container.innerHTML = '<div style="color:var(--text-secondary);font-size:12px;padding:20px;text-align:center">No segments configured</div>';
                     return;
                 }
@@ -2968,7 +3141,7 @@
                     Scheduler: <strong>${globalEnable ? '✅ ENABLED' : '❌ DISABLED'}</strong>
                 </div>`;
                 
-                currentSchedulerGroups.forEach((seg, i) => {
+                visibleGroups.forEach((seg, i) => {
                     const color = modeColors[seg.workMode] || cssVar('--text-secondary');
                     const startTime = `${String(seg.startHour).padStart(2,'0')}:${String(seg.startMinute).padStart(2,'0')}`;
                     const endTime = `${String(seg.endHour).padStart(2,'0')}:${String(seg.endMinute).padStart(2,'0')}`;
@@ -2976,7 +3149,7 @@
                     
                     html += `<div style="background:var(--bg-card);border:1px solid ${isEnabled ? color : 'var(--border-primary)'};border-radius:8px;padding:10px;opacity:${isEnabled ? 1 : 0.6}">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                            <span style="font-weight:600;color:${color}">Segment ${i+1}</span>
+                            <span style="font-weight:600;color:${color}">${getSchedulerSlotLabel(_providerCapabilities, i + 1)}</span>
                             <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:${isEnabled ? color : 'var(--border-primary)'};color:var(--bg-primary)">${isEnabled ? 'ON' : 'OFF'}</span>
                         </div>
                         <div style="font-size:20px;font-weight:600;color:var(--text-primary);margin-bottom:4px">${startTime} → ${endTime}</div>
@@ -4435,14 +4608,21 @@
         function applyProviderNoticeToQCForm(provider) {
             const noticeEl = document.getElementById('quickControlProviderNotice');
             if (!noticeEl) return;
-            const p = String(provider || '').toLowerCase();
-            if (p === 'alphaess') {
+            const caps = resolveProviderCapabilities(provider || _userProvider);
+            if (caps.provider === 'alphaess') {
                 noticeEl.style.display = 'block';
                 noticeEl.innerHTML =
                     '<strong style="color:var(--accent-blue);">ℹ️ AlphaESS Note</strong><br>' +
                     '• <strong>Time windows are rounded to 15-minute slots</strong> — a 5-min charge will use the nearest 15-min window.<br>' +
                     '• <strong>Power setting is advisory</strong> — AlphaESS controls the actual charge/discharge rate within the window.<br>' +
                     '• Allow <strong>~30–60 seconds</strong> for your inverter to pick up the new schedule.';
+            } else if (caps.provider === 'sungrow') {
+                noticeEl.style.display = 'block';
+                noticeEl.innerHTML =
+                    '<strong style="color:var(--accent-blue);">ℹ️ Sungrow Note</strong><br>' +
+                    '• Quick Control currently works by writing a Sungrow TOU window rather than an exact power command.<br>' +
+                    '• <strong>Power is requested, not guaranteed</strong>, and the inverter may choose a different charge/discharge rate.<br>' +
+                    '• Allow <strong>~30–60 seconds</strong> for the inverter to apply the updated schedule.';
             } else {
                 noticeEl.style.display = 'none';
                 noticeEl.innerHTML = '';
@@ -4480,7 +4660,7 @@
                 if (data.errno === 0 && data.result) {
                     // Update form notice if provider is known from status (before config may load)
                     if (data.result.provider && !_userProvider) {
-                        _userProvider = String(data.result.provider).toLowerCase();
+                        setDashboardProvider(data.result.provider);
                     }
                     applyProviderNoticeToQCForm(data.result.provider || _userProvider);
                     updateQuickControlUI(data.result);
@@ -4616,15 +4796,23 @@
                 statusDiv.style.background = 'rgba(46,160,67,0.15)';
                 statusDiv.style.borderColor = 'rgba(46,160,67,0.4)';
                 statusDiv.style.color = 'var(--color-success)';
-                const isAlphaEss = (status.provider || _userProvider) === 'alphaess';
+                const caps = resolveProviderCapabilities(status.provider || _userProvider);
+                const isAlphaEss = caps.provider === 'alphaess';
+                const isSungrow = caps.provider === 'sungrow';
                 const secondsActive = Math.floor((Date.now() - status.startedAt) / 1000);
-                const alphaEssHint = isAlphaEss ? `
+                const providerHint = isAlphaEss ? `
                     <div style="margin-bottom:12px;padding:8px 10px;background:rgba(56,139,253,0.1);border:1px solid rgba(56,139,253,0.3);border-radius:5px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
                         <strong style="color:var(--accent-blue);">ℹ️ AlphaESS</strong> — 
                         Time window rounded to nearest 15-min slot.
                         Power is advisory; your inverter sets the actual rate.
                         ${secondsActive < 90 ? '<strong style="color:var(--color-orange);">Allow ~30–60s for the inverter to apply this schedule.</strong>' : ''}
-                    </div>` : '';
+                    </div>` : (isSungrow ? `
+                    <div style="margin-bottom:12px;padding:8px 10px;background:rgba(56,139,253,0.1);border:1px solid rgba(56,139,253,0.3);border-radius:5px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                        <strong style="color:var(--accent-blue);">ℹ️ Sungrow</strong> —
+                        Quick Control is being enforced through a TOU window.
+                        Power is requested rather than exact, and the inverter may choose the final rate.
+                        ${secondsActive < 90 ? '<strong style="color:var(--color-orange);">Allow ~30–60s for the inverter to apply this schedule.</strong>' : ''}
+                    </div>` : '');
                 statusDiv.innerHTML = `
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                         <div style="font-weight:600;display:flex;align-items:center;gap:8px;">${typeIcon}<span>${typeText} at ${powerKW} kW</span></div>
@@ -4634,7 +4822,7 @@
                         Started: ${new Date(status.startedAt).toLocaleTimeString()} • 
                         Ends: ${new Date(status.expiresAt).toLocaleTimeString()}
                     </div>
-                    ${alphaEssHint}
+                    ${providerHint}
                     <div style="display:flex;gap:8px;">
                         <button class="btn" onclick="stopQuickControl()" style="background:var(--color-danger);border-color:var(--color-danger);flex:1;font-size:12px;padding:8px;font-weight:600;">
                             ${overviewIconChipHtml('stop', 'app-overview-icon--sm')}<span>Stop Now</span>
@@ -4854,7 +5042,8 @@
         }
         
         async function deleteSegment(index) {
-            if (!confirm(`Clear segment ${index + 1}? This will disable it and reset times to 00:00.`)) return;
+            const slotLabel = getSchedulerSlotLabel(_providerCapabilities, index + 1);
+            if (!confirm(`Clear ${slotLabel.toLowerCase()}? This will disable it and reset times to 00:00.`)) return;
             
             const statusDiv = document.getElementById('schedulerStatus');
             statusDiv.style.display = 'block';
@@ -4913,7 +5102,7 @@
                 if (data.errno === 0) {
                     statusDiv.style.background = 'var(--color-success-dark)';
                     statusDiv.style.color = '#fff';
-                    let msg = `✅ Segment ${index + 1} cleared successfully`;
+                    let msg = `✅ ${slotLabel} cleared successfully`;
                     if (data.flagResult) {
                         msg += data.flagResult.errno === 0 ? ' (flag updated)' : '';
                     }
@@ -4979,6 +5168,23 @@
             const index = parseInt(form.segmentIndex.value);
             const [startHour, startMinute] = form.startTime.value.split(':').map(Number);
             const [endHour, endMinute] = form.endTime.value.split(':').map(Number);
+            const slotLabel = getSchedulerSlotLabel(_providerCapabilities, index + 1);
+
+            if (index >= getSchedulerSlotCount()) {
+                statusDiv.style.background = 'var(--color-danger)';
+                statusDiv.style.color = '#fff';
+                statusDiv.textContent = `❌ ${slotLabel} is outside the editable range for ${_providerCapabilities.label}.`;
+                setTimeout(() => { statusDiv.style.display = 'none'; }, CONFIG.ui.statusFadeMs);
+                return;
+            }
+
+            if (!_providerCapabilities.supportsBackupMode && form.workMode.value === 'Backup') {
+                statusDiv.style.background = 'var(--color-danger)';
+                statusDiv.style.color = '#fff';
+                statusDiv.textContent = `❌ Backup mode is not available for ${_providerCapabilities.label}.`;
+                setTimeout(() => { statusDiv.style.display = 'none'; }, CONFIG.ui.statusFadeMs);
+                return;
+            }
             
             // Validate: fdSoc must be >= minSocOnGrid
             const minSocOnGrid = parseInt(form.minSocOnGrid.value) || 10;
@@ -5035,10 +5241,13 @@
                 if (data.errno === 0) {
                     statusDiv.style.background = 'var(--color-success-dark)';
                     statusDiv.style.color = '#fff';
-                    let msg = `✅ Segment ${index + 1} saved successfully`;
+                    let msg = `✅ ${slotLabel} saved successfully`;
                     // Show flag status
                     if (data.flagResult) {
                         msg += data.flagResult.errno === 0 ? ' (flag set)' : ' (flag warning)';
+                    }
+                    if (!_providerCapabilities.supportsExactPowerControl && currentSchedulerGroups[index]?.fdPwr > 0) {
+                        msg += ' (requested power advisory)';
                     }
                     statusDiv.textContent = msg;
                     // Show full response including verify info so user can see device state
@@ -6970,7 +7179,7 @@
                     }
                     // Store inverter provider for provider-specific UI hints (e.g. AlphaESS notices)
                     if (cfg.result.deviceProvider) {
-                        _userProvider = String(cfg.result.deviceProvider).toLowerCase();
+                        setDashboardProvider(cfg.result.deviceProvider);
                         applyProviderNoticeToQCForm(_userProvider);
                     }
                     applyInverterCapacityToUI(_inverterCapacityW);
@@ -7218,7 +7427,9 @@
                 ${telemetryFailsafePaused ? `<div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;background:rgba(248,81,73,0.16);border:1px solid rgba(248,81,73,0.55);color:var(--color-danger);font-size:12px;font-weight:600">⚠️ ${telemetryPauseText || 'Automation paused by telemetry fail-safe.'}</div>` : ''}
                 <!-- Compact Add Rule button placed under master section for quick access -->
                 <div style="display:flex;justify-content:flex-start;gap:8px;margin-bottom:12px">
-                    <button class="btn btn-primary btn-sm" onclick="showAddRuleModal()" style="padding:6px 10px;font-size:12px">➕ Add Rule</button>
+                    ${_providerCapabilities.supportsSchedulerControl
+                        ? '<button class="btn btn-primary btn-sm" onclick="showAddRuleModal()" style="padding:6px 10px;font-size:12px">➕ Add Rule</button>'
+                        : '<div style="padding:6px 10px;font-size:12px;border:1px solid var(--border-primary);border-radius:6px;background:var(--bg-overlay);color:var(--text-secondary);">Automation rule editing is unavailable for SigenEnergy until scheduler support is implemented.</div>'}
                 </div>
             `;
             
@@ -7973,6 +8184,7 @@
                     });
                 }
             }
+            applyProviderConstraintsToDashboard();
             syncAutomationToggleVisibility();
 
             const minSocInput = document.getElementById('newRuleMinSoc');
@@ -8234,6 +8446,11 @@
         }
 
         function getWorkModeActionPhrase(mode) {
+            if (_providerCapabilities.provider === 'alphaess') {
+                if (mode === 'ForceDischarge') return 'schedule a battery discharge window';
+                if (mode === 'ForceCharge') return 'schedule a battery charge window';
+                if (mode === 'Feedin') return 'schedule a discharge/export window';
+            }
             const map = {
                 ForceDischarge: 'force battery discharge',
                 ForceCharge: 'force battery charge',
@@ -8257,7 +8474,16 @@
                 return `Then it will ${getWorkModeActionPhrase(mode)} for ${duration} minutes.`;
             }
 
-            return `When triggered, this rule will ${getWorkModeActionPhrase(mode)} for ${duration} minutes at ${power}W, with stop SoC ${stopSoc}%, min grid SoC ${minSoc}%, max SoC ${maxSoc}%, and cooldown ${cooldown} minutes before retrigger. Active cancellation applies: if conditions no longer match, the active segment is cancelled on the next automation check.`;
+            const powerPhrase = _providerCapabilities.supportsExactPowerControl ? `${power}W` : `requested ${power}W`;
+            const providerNote = _providerCapabilities.provider === 'alphaess'
+                ? ' AlphaESS applies this through scheduler windows, rounds times to 15-minute boundaries, and may choose the actual charge/discharge rate.'
+                : (_providerCapabilities.provider === 'sungrow'
+                    ? ' Sungrow currently applies this through TOU windows, and the current adapter records the requested power/SOC values without writing matching exact device limits.'
+                    : (_providerCapabilities.provider === 'sigenergy'
+                        ? ' Sigenergy scheduler-backed rule execution is not implemented in the current adapter.'
+                        : ''));
+
+            return `When triggered, this rule will ${getWorkModeActionPhrase(mode)} for ${duration} minutes at ${powerPhrase}, with stop SoC ${stopSoc}%, min grid SoC ${minSoc}%, max SoC ${maxSoc}%, and cooldown ${cooldown} minutes before retrigger. Active cancellation applies: if conditions no longer match, the active segment is cancelled on the next automation check.${providerNote}`;
         }
 
         function updateRulePlainEnglishSummary(modalRef = null) {

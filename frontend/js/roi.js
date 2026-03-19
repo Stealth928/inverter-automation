@@ -3,6 +3,71 @@
         let roiData = null;
         let automationHistoryData = null;
         let deviceSn = null;
+        let deviceProvider = 'foxess';
+        let providerCapabilities = resolveRoiProviderCapabilities(deviceProvider);
+
+        function normalizeRoiProvider(provider) {
+            if (window.sharedUtils && typeof window.sharedUtils.normalizeDeviceProvider === 'function') {
+                return window.sharedUtils.normalizeDeviceProvider(provider);
+            }
+            const normalized = String(provider || '').trim().toLowerCase();
+            return normalized || 'foxess';
+        }
+
+        function resolveRoiProviderCapabilities(provider) {
+            if (window.sharedUtils && typeof window.sharedUtils.getProviderCapabilities === 'function') {
+                return window.sharedUtils.getProviderCapabilities(provider);
+            }
+            const normalized = normalizeRoiProvider(provider);
+            return {
+                provider: normalized,
+                label: normalized === 'alphaess' ? 'AlphaESS' : (normalized === 'sigenergy' ? 'SigenEnergy' : (normalized === 'sungrow' ? 'Sungrow' : 'FoxESS')),
+                supportsExactPowerControl: normalized === 'foxess'
+            };
+        }
+
+        function renderRoiProviderNotice() {
+            const roiContent = document.getElementById('roiContent');
+            if (!roiContent || !roiContent.parentElement) return;
+
+            let noticeEl = document.getElementById('roiProviderNotice');
+            if (!noticeEl) {
+                noticeEl = document.createElement('div');
+                noticeEl.id = 'roiProviderNotice';
+                noticeEl.className = 'info-banner';
+                noticeEl.style.display = 'none';
+                roiContent.parentElement.insertBefore(noticeEl, roiContent);
+            }
+
+            if (providerCapabilities.provider === 'alphaess') {
+                noticeEl.style.display = 'flex';
+                noticeEl.innerHTML = `
+                    <span class="icon">ℹ️</span>
+                    <div class="text">
+                        <strong>AlphaESS ROI note:</strong> ROI is indicative only. Requested rule power is advisory on AlphaESS, so actual battery rate and export behavior may differ from the rule settings used in the calculation.
+                    </div>
+                `;
+            } else if (providerCapabilities.provider === 'sungrow') {
+                noticeEl.style.display = 'flex';
+                noticeEl.innerHTML = `
+                    <span class="icon">ℹ️</span>
+                    <div class="text">
+                        <strong>Sungrow ROI note:</strong> ROI is indicative only. The current Sungrow integration applies rules through TOU windows and does not enforce exact power targets, so actual charge/discharge behavior may differ from the rule settings used in the calculation.
+                    </div>
+                `;
+            } else if (providerCapabilities.provider === 'sigenergy') {
+                noticeEl.style.display = 'flex';
+                noticeEl.innerHTML = `
+                    <span class="icon">ℹ️</span>
+                    <div class="text">
+                        <strong>SigenEnergy ROI note:</strong> ROI should be treated as provisional only. Scheduler-backed rule execution is not fully implemented for Sigenergy in the current integration.
+                    </div>
+                `;
+            } else {
+                noticeEl.style.display = 'none';
+                noticeEl.innerHTML = '';
+            }
+        }
 
         /**
          * Format duration in milliseconds to human-readable string
@@ -621,7 +686,13 @@
                 <div class="info-banner" style="background: rgba(126,231,135,0.08); border-color: rgba(126,231,135,0.2);">
                     <span class="icon">💡</span>
                     <div class="text">
-                        <strong>Profit Calculation:</strong> Uses actual feed-in/buy-in prices captured at rule trigger time, multiplied by rule power setting and rule duration. Prices in ¢/kWh.
+                        <strong>Profit Calculation:</strong> ${providerCapabilities.supportsExactPowerControl
+                            ? 'Uses actual feed-in/buy-in prices captured at rule trigger time, multiplied by rule power setting and rule duration. Prices in ¢/kWh.'
+                            : (providerCapabilities.provider === 'alphaess'
+                                ? 'Uses actual feed-in/buy-in prices with the requested rule power and actual runtime. On AlphaESS, requested power is advisory, so ROI is indicative rather than exact.'
+                                : (providerCapabilities.provider === 'sungrow'
+                                    ? 'Uses actual feed-in/buy-in prices with the requested rule power and actual runtime. On Sungrow, the current integration applies TOU windows rather than exact power targets, so ROI is indicative rather than exact.'
+                                    : 'Uses actual feed-in/buy-in prices with the requested rule power and actual runtime. On SigenEnergy, scheduler-backed rule execution is not fully implemented, so ROI is indicative rather than exact.'))}
                     </div>
                 </div>
                 
@@ -976,9 +1047,14 @@
             try {
                 const resp = await authenticatedFetch('/api/config');
                 const data = await resp.json();
+                if (data.errno === 0 && data.result?.deviceProvider) {
+                    deviceProvider = normalizeRoiProvider(data.result.deviceProvider);
+                    providerCapabilities = resolveRoiProviderCapabilities(deviceProvider);
+                }
                 if (data.errno === 0 && data.result?.deviceSn) {
                     deviceSn = data.result.deviceSn;
                 }
+                renderRoiProviderNotice();
             } catch (e) {
                 console.warn('Failed to load device SN:', e);
             }

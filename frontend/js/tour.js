@@ -194,19 +194,31 @@
     /* 11 — Work mode control */
     {
       page: '/control.html',
-      selector: '#form-workMode',
+      selector: '#card-work-mode',
       position: 'right',
       title: '🔧 Inverter Work Mode',
-      body: 'Directly set the inverter work mode: SelfUse, ForceCharge, ForceDischarge or Backup. Changes take effect immediately and persist until another rule or manual action overrides them.'
+      body: 'For providers that expose direct mode switching, this control updates the inverter work mode immediately. Some providers, including AlphaESS, only support scheduler-based overrides instead.',
+      skipIf: function () {
+        var card = document.getElementById('card-work-mode');
+        if (!card) return false;
+        var cs = window.getComputedStyle(card);
+        return card.hidden || cs.display === 'none' || cs.visibility === 'hidden';
+      }
     },
 
     /* 12 — Battery SoC settings */
     {
       page: '/control.html',
-      selector: '#form-batterySoc',
+      selector: '#card-battery-soc',
       position: 'right',
       title: '🔋 Min SoC Settings',
-      body: 'Set the minimum state-of-charge the inverter must maintain. "Min SoC on Grid" is the threshold while grid-connected; the inverter will not discharge below this level.'
+      body: 'Set the minimum state-of-charge the inverter must maintain. "Min SoC on Grid" is the threshold while grid-connected; the inverter will not discharge below this level.',
+      skipIf: function () {
+        var card = document.getElementById('card-battery-soc');
+        if (!card) return false;
+        var cs = window.getComputedStyle(card);
+        return card.hidden || cs.display === 'none' || cs.visibility === 'hidden';
+      }
     },
 
     /* 13 — Credentials */

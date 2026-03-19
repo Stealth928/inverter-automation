@@ -1,6 +1,7 @@
 'use strict';
 
 const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
+const { appendHistoryTelemetryMappings } = require('../../lib/telemetry-mappings');
 
 function registerInverterHistoryRoutes(app, deps = {}) {
   const authenticateUser = deps.authenticateUser;
@@ -31,6 +32,15 @@ function registerInverterHistoryRoutes(app, deps = {}) {
     const provider = userConfig?.deviceProvider || 'foxess';
     if (provider === 'foxess' || !adapterRegistry) return null;
     return adapterRegistry.getDeviceProvider(provider) || null;
+  }
+
+  function providerUnsupported(res, userConfig) {
+    const provider = (userConfig?.deviceProvider || 'foxess').toLowerCase();
+    if (provider !== 'foxess') {
+      res.status(400).json({ errno: 400, error: `Not supported for provider: ${provider}` });
+      return true;
+    }
+    return false;
   }
 
   async function withTimeout(promise, timeoutMs) {
@@ -89,7 +99,11 @@ function registerInverterHistoryRoutes(app, deps = {}) {
             ),
             9000
           );
-          if (adapterResult !== null) return res.json(adapterResult);
+          if (adapterResult !== null) {
+            appendHistoryTelemetryMappings(adapterResult, userConfig);
+            return res.json(adapterResult);
+          }
+          if (providerUnsupported(res, userConfig)) return;
         } catch (adapterError) {
           logger.warn(`[History] Adapter error: ${adapterError.message}`);
           return res.status(500).json({ errno: 500, msg: `Device API error: ${adapterError.message}` });
@@ -104,6 +118,7 @@ function registerInverterHistoryRoutes(app, deps = {}) {
           // Check cache first
           const cachedResult = await getHistoryFromCacheFirestore(userId, sn, begin, end);
           if (cachedResult) {
+            appendHistoryTelemetryMappings(cachedResult, userConfig);
             return res.json(cachedResult);
           }
 
@@ -120,6 +135,7 @@ function registerInverterHistoryRoutes(app, deps = {}) {
               .catch((e) => logger.warn('[History] Cache write failed:', e.message));
           }
 
+          appendHistoryTelemetryMappings(result, userConfig);
           return res.json(result);
         }
 
@@ -196,7 +212,9 @@ function registerInverterHistoryRoutes(app, deps = {}) {
           mergedDatas.push({ unit: 'kW', data: merged, name: variable, variable });
         }
 
-        return res.json({ errno: 0, msg: 'Operation successful', result: [{ datas: mergedDatas, deviceSN }] });
+        const mergedPayload = { errno: 0, msg: 'Operation successful', result: [{ datas: mergedDatas, deviceSN }] };
+        appendHistoryTelemetryMappings(mergedPayload, userConfig);
+        return res.json(mergedPayload);
       } catch (apiError) {
         logger.warn(`[History] API error: ${apiError.message}`);
         return res.status(500).json({ errno: 500, msg: `FoxESS API error: ${apiError.message}` });

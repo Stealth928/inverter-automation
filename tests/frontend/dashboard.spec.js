@@ -16,6 +16,74 @@ function jsonResponse(payload, status = 200) {
   };
 }
 
+async function mockDashboardConfig(page, overrides = {}) {
+  const {
+    deviceProvider = 'foxess',
+    deviceSn = 'TEST-SN-001',
+    inverterCapacityW = 10000,
+    batteryCapacityKWh = 13.5
+  } = overrides;
+
+  await page.route('**/api/config', async (route) => {
+    await route.fulfill(jsonResponse({
+      errno: 0,
+      result: {
+        deviceProvider,
+        deviceSn,
+        inverterCapacityW,
+        batteryCapacityKWh,
+        rules: [],
+        preferences: { forecastDays: 6 },
+        config: {
+          cache: {
+            amber: 60000,
+            inverter: 300000,
+            weather: 1800000
+          },
+          automation: { intervalMs: 60000 },
+          defaults: { cooldownMinutes: 5 }
+        }
+      }
+    }, 200));
+  });
+
+  await page.route('**/api/config/setup-status', async (route) => {
+    await route.fulfill(jsonResponse({
+      errno: 0,
+      result: {
+        setupComplete: true,
+        deviceProvider
+      }
+    }, 200));
+  });
+
+  await page.route('**/api/user/init-profile', async (route) => {
+    await route.fulfill(jsonResponse({
+      errno: 0,
+      result: { initialized: true }
+    }, 200));
+  });
+
+  await page.route('**/api/admin/check', async (route) => {
+    await route.fulfill(jsonResponse({
+      errno: 0,
+      result: { isAdmin: false }
+    }, 200));
+  });
+
+  await page.route('**/api/automation/status', async (route) => {
+    await route.fulfill(jsonResponse({
+      errno: 0,
+      result: {
+        enabled: false,
+        inBlackout: false,
+        lastCheck: Date.now(),
+        rules: {}
+      }
+    }, 200));
+  });
+}
+
 function extractVehicleIdFromUrl(url) {
   try {
     const pathname = new URL(url).pathname;
@@ -138,6 +206,15 @@ test.describe('Dashboard Page', () => {
 
     await page.addInitScript(() => {
       window.__DISABLE_AUTH_REDIRECTS__ = true;
+      window.__DISABLE_SERVICE_WORKER__ = true;
+      window.mockFirebaseAuth = {
+        currentUser: {
+          uid: 'test-user-123',
+          email: 'test@example.com',
+          displayName: 'Test User',
+          getIdToken: () => Promise.resolve('mock-token')
+        }
+      };
       try {
         localStorage.setItem('mockAuthUser', JSON.stringify({
           uid: 'test-user-123',
@@ -150,15 +227,7 @@ test.describe('Dashboard Page', () => {
       }
 
       // Prevent redirects during tests.
-      try {
-        Object.defineProperty(window, 'safeRedirect', {
-          configurable: false,
-          writable: false,
-          value: function () {}
-        });
-      } catch (e) {
-        window.safeRedirect = function () {};
-      }
+      window.safeRedirect = function () {};
 
       try {
         window.location.assign = function () {};
@@ -899,5 +968,76 @@ test.describe('Dashboard Page', () => {
     await page.waitForTimeout(500);
     const refErrors = errors.filter(e => /getStoredAmberSiteId|setStoredAmberSiteId/i.test(e));
     expect(refErrors).toHaveLength(0);
+  });
+
+  test('should adapt scheduler, quick control, and rule builder UI for AlphaESS capabilities', async ({ page }) => {
+    await mockDashboardConfig(page, { deviceProvider: 'alphaess' });
+    await page.goto('about:blank');
+    await page.goto('/app.html?alphaessCapabilities=1', { waitUntil: 'domcontentloaded' });
+
+    await expect.poll(async () => page.evaluate(() => {
+      const schedulerNotice = document.getElementById('schedulerProviderNotice');
+      const quickNotice = document.getElementById('quickControlProviderNotice');
+      const schedulerForm = document.getElementById('form-scheduler-segment');
+      const powerLabel = schedulerForm?.querySelector('input[name="fdPwr"]')?.closest('.input-group')?.querySelector('label')?.textContent || '';
+      return Boolean(
+        schedulerNotice &&
+        getComputedStyle(schedulerNotice).display !== 'none' &&
+        quickNotice &&
+        getComputedStyle(quickNotice).display !== 'none' &&
+        powerLabel.includes('Requested Power')
+      );
+    }), { timeout: 10000 }).toBe(true);
+
+    await expect(page.locator('#schedulerProviderNotice')).toBeVisible();
+    await expect(page.locator('#schedulerProviderNotice')).toContainText(/AlphaESS scheduler note/i);
+    await expect(page.locator('#quickControlProviderNotice')).toBeVisible();
+    await expect(page.locator('#quickControlProviderNotice')).toContainText(/Power setting is advisory/i);
+
+    const schedulerState = await page.evaluate(() => {
+      const form = document.getElementById('form-scheduler-segment');
+      const segmentSelect = form?.querySelector('select[name="segmentIndex"]');
+      const workModeSelect = form?.querySelector('select[name="workMode"]');
+      const powerInput = form?.querySelector('input[name="fdPwr"]');
+      const powerLabel = powerInput?.closest('.input-group')?.querySelector('label')?.textContent || '';
+      const visibleSegmentCount = segmentSelect
+        ? Array.from(segmentSelect.options).filter((option) => !option.hidden && !option.disabled).length
+        : 0;
+      const backupOption = workModeSelect
+        ? Array.from(workModeSelect.options).find((option) => option.value === 'Backup')
+        : null;
+
+      return {
+        visibleSegmentCount,
+        powerLabel,
+        backupUnavailable: backupOption ? (backupOption.hidden || backupOption.disabled) : true
+      };
+    });
+
+    expect(schedulerState.visibleSegmentCount).toBe(4);
+    expect(schedulerState.powerLabel).toContain('Requested Power');
+    expect(schedulerState.backupUnavailable).toBe(true);
+
+    await page.waitForFunction(() => typeof window.showAddRuleModal === 'function');
+    await page.evaluate(() => {
+      const existing = document.getElementById('addRuleModal');
+      if (existing) existing.remove();
+      window.showAddRuleModal();
+    });
+
+    await expect(page.locator('#addRuleModal')).toBeVisible();
+    await expect(page.locator('#addRuleModal #ruleActionPlainEnglishText')).toContainText(/AlphaESS applies this through scheduler windows/i);
+
+    const ruleModalState = await page.evaluate(() => {
+      const select = document.getElementById('newRuleWorkMode');
+      const backupOption = select
+        ? Array.from(select.options).find((option) => option.value === 'Backup')
+        : null;
+      return {
+        backupUnavailable: backupOption ? (backupOption.hidden || backupOption.disabled) : true
+      };
+    });
+
+    expect(ruleModalState.backupUnavailable).toBe(true);
   });
 });

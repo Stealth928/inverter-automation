@@ -155,6 +155,83 @@ function getEvApiCount(dayMetrics = {}) {
     return 0;
 }
 
+/* ============================================
+   PROVIDER CAPABILITIES
+   ============================================ */
+
+const PROVIDER_UI_CAPABILITIES = Object.freeze({
+    foxess: Object.freeze({
+        label: 'FoxESS',
+        supportsDirectWorkMode: true,
+        supportsBackupMode: true,
+        supportsAdvancedDeviceControls: true,
+        supportsTelemetrySourceMapping: true,
+        supportsQuickControl: true,
+        supportsSchedulerControl: true,
+        supportsExactPowerControl: true,
+        supportsReliableYearlyReport: true,
+        supportsAcHistoryAutoDetect: true,
+        schedulerEditableWindowCount: 8,
+        schedulerStepMinutes: 1
+    }),
+    alphaess: Object.freeze({
+        label: 'AlphaESS',
+        supportsDirectWorkMode: false,
+        supportsBackupMode: false,
+        supportsAdvancedDeviceControls: false,
+        supportsTelemetrySourceMapping: false,
+        supportsQuickControl: true,
+        supportsSchedulerControl: true,
+        supportsExactPowerControl: false,
+        supportsReliableYearlyReport: false,
+        supportsAcHistoryAutoDetect: false,
+        schedulerEditableWindowCount: 4,
+        schedulerStepMinutes: 15
+    }),
+    sungrow: Object.freeze({
+        label: 'Sungrow',
+        supportsDirectWorkMode: false,
+        supportsBackupMode: false,
+        supportsAdvancedDeviceControls: false,
+        supportsTelemetrySourceMapping: false,
+        supportsQuickControl: true,
+        supportsSchedulerControl: true,
+        supportsExactPowerControl: false,
+        supportsReliableYearlyReport: true,
+        supportsAcHistoryAutoDetect: true,
+        schedulerEditableWindowCount: 4,
+        schedulerStepMinutes: 1
+    }),
+    sigenergy: Object.freeze({
+        label: 'SigenEnergy',
+        supportsDirectWorkMode: false,
+        supportsBackupMode: false,
+        supportsAdvancedDeviceControls: false,
+        supportsTelemetrySourceMapping: false,
+        supportsQuickControl: false,
+        supportsSchedulerControl: false,
+        supportsExactPowerControl: false,
+        supportsReliableYearlyReport: false,
+        supportsAcHistoryAutoDetect: false,
+        schedulerEditableWindowCount: 0,
+        schedulerStepMinutes: 1
+    })
+});
+
+function normalizeDeviceProvider(provider) {
+    const normalized = String(provider || '').trim().toLowerCase();
+    return normalized || 'foxess';
+}
+
+function getProviderCapabilities(provider) {
+    const normalized = normalizeDeviceProvider(provider);
+    const capabilities = PROVIDER_UI_CAPABILITIES[normalized] || PROVIDER_UI_CAPABILITIES.foxess;
+    return {
+        provider: normalized,
+        ...capabilities
+    };
+}
+
 /**
  * Load and display API call metrics
  * @param {number} days - Number of days to fetch
@@ -602,6 +679,7 @@ if (typeof module !== 'undefined' && module.exports) {
         showInfo,
         loadApiMetrics,
         getInverterApiCount,
+        getProviderCapabilities,
         startMetricsAutoRefresh,
         formatMs,
         formatDate,
@@ -624,7 +702,8 @@ if (typeof module !== 'undefined' && module.exports) {
         getAmberUserStorageId,
         getAmberSiteStorageKey,
         getStoredAmberSiteId,
-        setStoredAmberSiteId
+        setStoredAmberSiteId,
+        normalizeDeviceProvider
     };
 }
 
@@ -638,7 +717,9 @@ if (typeof window !== 'undefined') {
         formatDate,
         formatTimeAgo,
         getInverterApiCount,
+        getProviderCapabilities,
         getStoredAmberSiteId,
-        setStoredAmberSiteId
+        setStoredAmberSiteId,
+        normalizeDeviceProvider
     });
 }

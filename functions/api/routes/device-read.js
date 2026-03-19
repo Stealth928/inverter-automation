@@ -31,6 +31,59 @@ function registerDeviceReadRoutes(app, deps = {}) {
     return false;
   }
 
+  function getWorkModeDisplayName(provider, workMode, rawValue = null) {
+    const normalizedProvider = String(provider || 'foxess').toLowerCase();
+    const labels = {
+      SelfUse: 'Self Use',
+      Feedin: normalizedProvider === 'sigenergy' ? 'Fully Fed to Grid' : 'Feed In',
+      FeedinFirst: 'Feed In First',
+      ForceCharge: 'Force Charge',
+      ForceDischarge: 'Force Discharge',
+      Backup: 'Backup',
+      PeakShaving: 'Peak Shaving',
+      VPP: 'Virtual Power Plant'
+    };
+
+    if (workMode && labels[workMode]) {
+      return labels[workMode];
+    }
+    if (rawValue === null || rawValue === undefined || rawValue === '') {
+      return 'Unknown';
+    }
+    return String(rawValue);
+  }
+
+  function enrichAdapterWorkModeResult(provider, adapterResult) {
+    if (!adapterResult || adapterResult.errno !== 0 || !adapterResult.result) {
+      return adapterResult;
+    }
+
+    const raw = adapterResult.result.raw ?? adapterResult.result.value ?? null;
+    const workMode = typeof adapterResult.result.workMode === 'string'
+      ? adapterResult.result.workMode
+      : null;
+    const legacyValueMap = {
+      SelfUse: 0,
+      Feedin: 1,
+      FeedinFirst: 1,
+      Backup: 2,
+      PeakShaving: 3,
+      VPP: 3
+    };
+
+    return {
+      ...adapterResult,
+      result: {
+        ...adapterResult.result,
+        provider: String(provider || 'foxess').toLowerCase(),
+        workMode,
+        displayName: getWorkModeDisplayName(provider, workMode, raw),
+        value: raw,
+        legacyValue: workMode ? (legacyValueMap[workMode] ?? null) : null
+      }
+    };
+  }
+
   // Battery SoC read endpoint used by control UI
   app.get('/api/device/battery/soc/get', async (req, res) => {
     try {
@@ -212,15 +265,7 @@ function registerDeviceReadRoutes(app, deps = {}) {
           if (adapter && typeof adapter.getWorkMode === 'function') {
             const sn = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
             const adapterResult = await adapter.getWorkMode({ deviceSN: sn, userConfig, userId: req.user.uid });
-            // Add numeric `value` field so the frontend (which expects result.result.value) keeps working
-            if (adapterResult.errno === 0 && adapterResult.result?.workMode !== undefined) {
-              const strToNum = { SelfUse: 0, Feedin: 1, FeedinFirst: 1, Backup: 2, PeakShaving: 3, VPP: 3 };
-              return res.json({
-                ...adapterResult,
-                result: { ...adapterResult.result, value: strToNum[adapterResult.result.workMode] ?? 0 }
-              });
-            }
-            return res.json(adapterResult);
+            return res.json(enrichAdapterWorkModeResult(provider, adapterResult));
           }
         }
       }

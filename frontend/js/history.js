@@ -12,11 +12,72 @@
         let historyVariables = null;
         let deviceSn = null;
         let deviceProvider = '';
+        let providerCapabilities = resolveHistoryProviderCapabilities('foxess');
         let cachedTopologyContext = null;
         let cachedTopologyFetchedAt = 0;
 
         const TOPOLOGY_CACHE_MS = 10 * 60 * 1000;
         const DEFAULT_TOPOLOGY_REFRESH_MS = 4 * 60 * 60 * 1000;
+        const HISTORY_DEBUG_STORAGE_KEY = 'debug:history';
+
+        function historyDebugLog(...args) {
+            try {
+                if (window.localStorage && window.localStorage.getItem(HISTORY_DEBUG_STORAGE_KEY) === '1') {
+                    console.debug(...args);
+                }
+            } catch (_) {}
+        }
+
+        function normalizeHistoryProvider(provider) {
+            if (window.sharedUtils && typeof window.sharedUtils.normalizeDeviceProvider === 'function') {
+                return window.sharedUtils.normalizeDeviceProvider(provider);
+            }
+            const normalized = String(provider || '').trim().toLowerCase();
+            return normalized || 'foxess';
+        }
+
+        function resolveHistoryProviderCapabilities(provider) {
+            if (window.sharedUtils && typeof window.sharedUtils.getProviderCapabilities === 'function') {
+                return window.sharedUtils.getProviderCapabilities(provider);
+            }
+            const normalized = normalizeHistoryProvider(provider);
+            return {
+                provider: normalized,
+                label: normalized === 'alphaess' ? 'AlphaESS' : (normalized === 'sigenergy' ? 'SigenEnergy' : (normalized === 'sungrow' ? 'Sungrow' : 'FoxESS')),
+                supportsReliableYearlyReport: normalized !== 'alphaess' && normalized !== 'sigenergy',
+                supportsAcHistoryAutoDetect: normalized !== 'alphaess' && normalized !== 'sigenergy'
+            };
+        }
+
+        function renderReportProviderNotice() {
+            const reportStatus = document.getElementById('reportStatus');
+            if (!reportStatus || !reportStatus.parentElement) return;
+
+            let noticeEl = document.getElementById('reportProviderNotice');
+            if (!noticeEl) {
+                noticeEl = document.createElement('div');
+                noticeEl.id = 'reportProviderNotice';
+                noticeEl.style.cssText = 'display:none;padding:10px 12px;margin-bottom:12px;background:rgba(56,139,253,0.1);border:1px solid rgba(56,139,253,0.3);border-radius:6px;font-size:12px;line-height:1.6;color:var(--text-secondary);';
+                reportStatus.parentElement.insertBefore(noticeEl, reportStatus);
+            }
+
+            if (providerCapabilities.provider === 'alphaess') {
+                noticeEl.style.display = 'block';
+                noticeEl.innerHTML =
+                    '<strong style="color:var(--accent-blue);">AlphaESS report note</strong><br>' +
+                    'Monthly view is usable, but the <strong>yearly view is estimated</strong> rather than a true month-by-month breakdown.<br>' +
+                    '<strong>AC-coupled auto-detect is disabled</strong> on AlphaESS history/report remapping unless topology is manually stored.';
+            } else if (providerCapabilities.provider === 'sigenergy') {
+                noticeEl.style.display = 'block';
+                noticeEl.innerHTML =
+                    '<strong style="color:var(--accent-blue);">SigenEnergy report note</strong><br>' +
+                    'The current Sigenergy adapter does <strong>not yet implement full history/report/generation parity</strong> in this UI.<br>' +
+                    'Expect report views to be incomplete until the adapter is finished and telemetry mappings are verified.';
+            } else {
+                noticeEl.style.display = 'none';
+                noticeEl.innerHTML = '';
+            }
+        }
 
         // Initialize page (NO automatic API calls - those happen after auth)
         document.addEventListener('DOMContentLoaded', () => {
@@ -57,19 +118,21 @@
                 const resp = await authenticatedFetch('/api/config');
                 const data = await resp.json();
                 if (data.errno === 0 && data.result?.deviceProvider) {
-                    deviceProvider = String(data.result.deviceProvider).toLowerCase();
+                    deviceProvider = normalizeHistoryProvider(data.result.deviceProvider);
+                    providerCapabilities = resolveHistoryProviderCapabilities(deviceProvider);
                 }
                 if (data.errno === 0 && data.result?.deviceSn) {
                     deviceSn = data.result.deviceSn;
                     try { localStorage.setItem('deviceSn', deviceSn); } catch (e) {}
                 }
+                renderReportProviderNotice();
             } catch (e) {
                 console.warn('Could not load device SN:', e);
             }
         }
 
         function isAlphaEssProvider() {
-            return String(deviceProvider || '').toLowerCase() === 'alphaess';
+            return providerCapabilities.provider === 'alphaess';
         }
 
         // Load Chart.js on demand
@@ -446,23 +509,30 @@
                     debugInfo[name] = {count: item.data.length, samples};
                 }
             });
-            console.log('[History] Variables detail:', debugInfo);
+            historyDebugLog('[History] Variables detail:', debugInfo);
             
             // Choose solar source with AC-coupled awareness:
             // prefer pvPower for DC systems, but if pvPower is missing/near-zero
             // and meterPower2 has meaningful values, use meterPower2.
+            const solarTotalData = variables.solarPowerTotal?.data || [];
+            const acSolarData = variables.acSolarPower?.data || [];
             const pvData = variables.pvPower?.data || [];
             const meter2Data = variables.meterPower2?.data || [];
             const generationData = variables.generationPower?.data || [];
 
             const maxAbs = (arr) => arr.length ? Math.max(...arr.map(d => Math.abs(Number(d?.value) || 0))) : 0;
+            const solarTotalPeak = maxAbs(solarTotalData);
+            const acSolarPeak = maxAbs(acSolarData);
             const pvPeak = maxAbs(pvData);
             const meter2Peak = maxAbs(meter2Data);
             const canUseMeterPower2AsSolar = !isAlphaEssProvider();
 
             let genData = [];
             let solarSource = 'generationPower';
-            if (pvData.length > 0 && pvPeak >= 0.05) {
+            if (solarTotalData.length > 0 && solarTotalPeak >= 0.05) {
+                genData = solarTotalData;
+                solarSource = 'solarPowerTotal';
+            } else if (pvData.length > 0 && pvPeak >= 0.05) {
                 genData = pvData;
                 solarSource = 'pvPower';
             } else if (canUseMeterPower2AsSolar && meter2Data.length > 0 && meter2Peak >= 0.05) {
@@ -477,8 +547,8 @@
             const gridData = variables.gridConsumptionPower?.data || [];
             const loadsData = variables.loadsPower?.data || [];
             
-            console.log('[History] Solar source selected:', solarSource, 'pvPeak:', pvPeak, 'meter2Peak:', meter2Peak);
-            console.log('[History] genData length:', genData.length, 'feedData length:', feedData.length, 'gridData length:', gridData.length, 'loadsData length:', loadsData.length);
+            historyDebugLog('[History] Solar source selected:', solarSource, 'solarTotalPeak:', solarTotalPeak, 'acSolarPeak:', acSolarPeak, 'pvPeak:', pvPeak, 'meter2Peak:', meter2Peak);
+            historyDebugLog('[History] genData length:', genData.length, 'feedData length:', feedData.length, 'gridData length:', gridData.length, 'loadsData length:', loadsData.length);
             
             if (genData.length === 0) {
                 content.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>No generation data available. Available variables: ${Object.keys(variables).join(', ')}</p></div>`;
@@ -552,6 +622,10 @@
                         <div class="value">${maxHouseLoad.toFixed(2)}<span class="unit">kW</span></div>
                     </div>
                 </div>
+                ${isAlphaEssProvider() ? `
+                <div style="margin-bottom:10px;padding:10px 12px;border-radius:8px;background:${cssVar('--accent-blue-bg')};border:1px solid ${cssVar('--border-primary')};color:${cssVar('--accent-blue')};font-size:12px;">
+                    AlphaESS history uses provider-native power series. AC-coupled auto-detect remapping is disabled unless topology has been stored manually.
+                </div>` : ''}
                 <div class="chart-container">
                     <canvas id="historyChartCanvas"></canvas>
                 </div>
@@ -698,6 +772,9 @@
                 }
 
                 const reportOptions = {};
+                if (providerCapabilities.provider === 'alphaess' && dimension === 'year') {
+                    reportOptions.note = 'AlphaESS yearly report is estimated by the current integration and should not be treated as a true month-by-month history.';
+                }
                 if (acContext.isLikelyAcCoupled) {
                     if (dimension === 'month') {
                         try {
@@ -716,7 +793,9 @@
                             console.warn('[Report] AC fallback generation from meterPower2 failed:', fallbackErr);
                         }
                     } else if (dimension === 'year') {
-                        reportOptions.note = 'AC-coupled detected: yearly generation remains from report API (meterPower2 remap currently applied to daily/monthly view).';
+                        reportOptions.note = reportOptions.note
+                            ? `${reportOptions.note} AC-coupled detected: yearly generation remains from report API (meterPower2 remap currently applied to daily/monthly view).`
+                            : 'AC-coupled detected: yearly generation remains from report API (meterPower2 remap currently applied to daily/monthly view).';
                     }
                 }
                 
@@ -766,8 +845,8 @@
                 }
             });
             
-            console.log('[Report] Parsed variables:', Object.keys(variables));
-            console.log('[Report] Generation data count:', variables.generation?.data.length, 'values:', variables.generation?.values.slice(0, 5));
+            historyDebugLog('[Report] Parsed variables:', Object.keys(variables));
+            historyDebugLog('[Report] Generation data count:', variables.generation?.data.length, 'values:', variables.generation?.values.slice(0, 5));
             
             let genData = variables.generation?.data || [];
             if (Array.isArray(options.generationValues) && options.generationValues.length > 0) {
@@ -1230,7 +1309,7 @@
             // Count days inclusively: if start=Nov 1 and end=Nov 5, that's 5 days
             const maxRangeDays = 60;
             const rangeDays = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-            console.log('[Prices] Date range calculation:', { 
+            historyDebugLog('[Prices] Date range calculation:', { 
                 startDate: startDate.toISOString(), 
                 endDate: endDate.toISOString(), 
                 msecDiff: endDate - startDate,
@@ -1266,14 +1345,14 @@
                 status.className = 'status error';
                 status.style.display = 'block';
                 status.textContent = `✗ ${validation.error}`;
-                console.log('[Prices] Validation failed:', validation.error);
+                historyDebugLog('[Prices] Validation failed:', validation.error);
                 btn.disabled = false;
                 btn.innerHTML = '📈 Fetch Prices';
                 return;
             }
 
             if (validation.warning) {
-                console.log(`[Prices] Warning: ${validation.warning}`);
+                historyDebugLog(`[Prices] Warning: ${validation.warning}`);
             }
 
             btn.disabled = true;
@@ -1290,7 +1369,7 @@
                 
                 // Get site ID first (with debug info)
                 const sitesResp = await apiClient.getAmberSites();
-                console.log('[Prices] getAmberSites response:', sitesResp);
+                historyDebugLog('[Prices] getAmberSites response:', sitesResp);
                 
                 // Extract sites from response - handle both array and {errno, result} formats
                 let sites = [];
@@ -1306,7 +1385,7 @@
                     // Try to get more debug info
                     const debugResp = await apiClient.fetch('/api/pricing/sites?debug=true');
                     const debugJson = await debugResp.json();
-                    console.log('[Prices] Debug response:', debugJson);
+                    historyDebugLog('[Prices] Debug response:', debugJson);
                     throw new Error('No Amber sites available. Please configure your Amber API key in Settings → Integrations → Amber API.');
                 }
                 
@@ -1325,7 +1404,7 @@
                     String(dates.endDate.getMonth() + 1).padStart(2, '0') + '-' + 
                     String(dates.endDate.getDate()).padStart(2, '0');
 
-                console.log('[Prices] Date conversion check:', {
+                historyDebugLog('[Prices] Date conversion check:', {
                     inputStart: document.getElementById('priceStartDate').value,
                     inputEnd: document.getElementById('priceEndDate').value,
                     parsedStartDate: dates.startDate.toString(),
@@ -1336,20 +1415,20 @@
 
                 status.textContent = `⏳ Fetching prices for ${dates.rangeDays} days at ${resolution}-minute resolution...`;
                 status.textContent += ` [Requesting: ${startDate} to ${endDate}]`;
-                console.log('[Prices] Request details:', { siteId, startDate, endDate, resolution });
+                historyDebugLog('[Prices] Request details:', { siteId, startDate, endDate, resolution });
 
                 // Fetch historical prices (actual only, no forecasts)
                 const pricesResp = await apiClient.getAmberHistoricalPrices(siteId, startDate, endDate, resolution, true);
                 
-                console.log('[Prices] Response from API:', pricesResp);
-                console.log('[Prices] First 3 price timestamps:', pricesResp.result?.slice(0, 3).map(p => ({ startTime: p.startTime, channel: p.channelType })));
+                historyDebugLog('[Prices] Response from API:', pricesResp);
+                historyDebugLog('[Prices] First 3 price timestamps:', pricesResp.result?.slice(0, 3).map(p => ({ startTime: p.startTime, channel: p.channelType })));
                 
                 if (pricesResp.errno && pricesResp.errno !== 0) {
                     throw new Error(pricesResp.error || `API Error ${pricesResp.errno}`);
                 }
 
                 const prices = Array.isArray(pricesResp) ? pricesResp : pricesResp.result || [];
-                console.log('[Prices] Parsed prices array:', { count: prices.length, sample: prices.slice(0, 2) });
+                historyDebugLog('[Prices] Parsed prices array:', { count: prices.length, sample: prices.slice(0, 2) });
                 
                 if (prices.length === 0) {
                     throw new Error('No price data available for this date range');
@@ -1389,11 +1468,11 @@
         }
 
         function renderPriceStatistics(prices) {
-            console.log('[Prices] renderPriceStatistics called with', prices.length, 'prices');
+            historyDebugLog('[Prices] renderPriceStatistics called with', prices.length, 'prices');
             
             // Log unique channel types to debug
             const uniqueChannels = [...new Set(prices.map(p => p.channelType))];
-            console.log('[Prices] Unique channel types:', uniqueChannels);
+            historyDebugLog('[Prices] Unique channel types:', uniqueChannels);
             
             // Separate buy and feed-in prices
             const buyPrices = prices
@@ -1406,7 +1485,7 @@
                 .map(p => -Math.round(p.perKwh)) // Convert to display format (negative = you earn)
                 .filter(v => typeof v === 'number');
 
-            console.log('[Prices] Separated data:', { buyCount: buyPrices.length, feedCount: feedPrices.length });
+            historyDebugLog('[Prices] Separated data:', { buyCount: buyPrices.length, feedCount: feedPrices.length });
 
             if (buyPrices.length === 0 || feedPrices.length === 0) {
                 console.warn('[Prices] Insufficient data for statistics - buy:', buyPrices.length, 'feed:', feedPrices.length);
@@ -1432,17 +1511,17 @@
             document.getElementById('statFeedMax').textContent = calc.feedMax.toFixed(1);
 
             document.getElementById('pricesStats').style.display = 'block';
-            console.log('[Prices] Statistics rendered successfully');
+            historyDebugLog('[Prices] Statistics rendered successfully');
         }
 
         function renderAmberHistoricalChart(prices) {
-            console.log('[Prices] renderAmberHistoricalChart called with', prices.length, 'prices');
+            historyDebugLog('[Prices] renderAmberHistoricalChart called with', prices.length, 'prices');
             
             // Separate data by channel type
             const generalPrices = prices.filter(p => p.channelType === 'general');
             const feedinPrices = prices.filter(p => p.channelType === 'feedIn');
 
-            console.log('[Prices] Chart data - general:', generalPrices.length, 'feedIn:', feedinPrices.length);
+            historyDebugLog('[Prices] Chart data - general:', generalPrices.length, 'feedIn:', feedinPrices.length);
 
             // Build a unified, sorted list of timestamps from all prices so each dataset aligns
             const allTimestamps = Array.from(new Set(prices.map(p => p.startTime))).sort((a, b) => new Date(a) - new Date(b));
@@ -1474,7 +1553,7 @@
             const buyData = allTimestamps.map(ts => generalMap.has(ts) ? generalMap.get(ts) : null);
             const feedData = allTimestamps.map(ts => feedMap.has(ts) ? feedMap.get(ts) : null);
 
-            console.log('[Prices] Price data - buy samples:', buyData.slice(0, 3), 'feed samples:', feedData.slice(0, 3));
+            historyDebugLog('[Prices] Price data - buy samples:', buyData.slice(0, 3), 'feed samples:', feedData.slice(0, 3));
 
             // Get canvas element
             const canvas = document.getElementById('amberHistoricalChart');
@@ -1616,17 +1695,3 @@
             });
         }
 
-        // Initialize price datepickers on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            try { initPriceDatepickers(); } catch (error) { console.warn('Failed to init price datepickers', error); }
-        });
-
-        // Initialize Firebase on page load
-        AppShell.init({
-            pageName: 'history',
-            autoMetrics: true,
-            onReady: () => {
-                try { loadDeviceSn(); } catch (error) { console.warn('Failed to load device SN', error); }
-            }
-        });
-    

@@ -180,6 +180,29 @@ describe('config/status read route module', () => {
     });
   });
 
+  test('telemetry-mappings route returns normalized per-user mapping payload', async () => {
+    const deps = createDeps({
+      getUserConfig: jest.fn(async () => ({
+        telemetryMappings: {
+          acSolarPowerVariable: ' meterPower2 '
+        }
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/config/telemetry-mappings')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      result: {
+        acSolarPowerVariable: 'meterPower2'
+      }
+    });
+  });
+
   test('tour-status route enforces authentication middleware', async () => {
     const deps = createDeps();
     const app = buildApp(deps);

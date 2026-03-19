@@ -680,14 +680,16 @@ describe('inverter-history.js /api/inverter/history — provider dispatch', () =
     expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
   });
 
-  test('Sungrow path falls back to FoxESS when adapter.getHistory returns null', async () => {
+  test('Sungrow path: adapter.getHistory returning null returns 400 (not supported)', async () => {
     const adapterRegistry = {
       getDeviceProvider: jest.fn(() => ({ getHistory: async () => null }))
     };
     const { app, foxessAPI } = buildInverterHistoryApp({ adapterRegistry });
     const res = await request(app).get('/api/inverter/history');
-    expect(res.statusCode).toBe(200);
-    expect(foxessAPI.callFoxESSAPI).toHaveBeenCalled();
+    expect(res.statusCode).toBe(400);
+    expect(res.body.errno).toBe(400);
+    expect(res.body.error).toMatch(/Not supported for provider/);
+    expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
   });
 
   test('returns 500 when adapter.getHistory throws', async () => {

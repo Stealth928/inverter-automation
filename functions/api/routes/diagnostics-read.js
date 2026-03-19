@@ -1,6 +1,11 @@
 'use strict';
 
 const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
+const {
+  appendRealtimeTelemetryMappings,
+  getConfiguredAcSolarPowerVariable,
+  shouldApplyTelemetryMappings
+} = require('../../lib/telemetry-mappings');
 
 function toFiniteNumber(value, fallback = null) {
   const numeric = Number(value);
@@ -145,22 +150,39 @@ function findDataValue(datas, variable, fallback = null) {
   return numeric;
 }
 
-function withTopologyHints(payload) {
+function withTopologyHints(payload, userConfig) {
   if (!payload || payload.errno !== 0) return payload;
 
   const datas = extractDatas(payload);
   const pvPower = findDataValue(datas, 'pvPower', 0);
   const meterPower = findDataValue(datas, 'meterPower', null);
   const meterPower2 = findDataValue(datas, 'meterPower2', null);
+  const acSolarPower = findDataValue(datas, 'acSolarPower', null);
+  const solarPowerTotal = findDataValue(datas, 'solarPowerTotal', null);
   const batChargePower = findDataValue(datas, 'batChargePower', 0);
   const gridConsumptionPower = findDataValue(datas, 'gridConsumptionPower', 0);
+  const mappingSupported = shouldApplyTelemetryMappings(userConfig);
+  const configuredAcSolarVariable = mappingSupported
+    ? (getConfiguredAcSolarPowerVariable(userConfig) || null)
+    : null;
+  let recommendedAcSolarVariable = null;
+
+  if (mappingSupported && pvPower < 0.1 && meterPower2 !== null && Math.abs(meterPower2) > 0.5) {
+    recommendedAcSolarVariable = 'meterPower2';
+  } else if (mappingSupported && pvPower < 0.1 && meterPower !== null && Math.abs(meterPower) > 0.5) {
+    recommendedAcSolarVariable = 'meterPower';
+  }
 
   payload.topologyHints = {
     pvPower,
     meterPower,
     meterPower2,
+    acSolarPower,
+    solarPowerTotal,
     batChargePower,
     gridConsumptionPower,
+    configuredAcSolarVariable,
+    recommendedAcSolarVariable,
     likelyTopology:
       (pvPower < 0.1 && (batChargePower > 0.5 || meterPower2 > 0.5) && gridConsumptionPower < 0.5)
         ? 'AC-coupled (external PV via meter)'
@@ -296,7 +318,8 @@ function registerDiagnosticsReadRoutes(app, deps = {}) {
           normalizeToKw: true,
           invertBatteryPowerSign: invertAlphaEssBatteryPowerSign
         });
-        const withHints = withTopologyHints(normalized);
+        appendRealtimeTelemetryMappings(normalized, userConfig);
+        const withHints = withTopologyHints(normalized, userConfig);
         console.log(`[Diagnostics] Adapter diagnostics response ready for provider=${provider}`);
         return res.json(withHints);
       }
@@ -348,7 +371,8 @@ function registerDiagnosticsReadRoutes(app, deps = {}) {
         return res.json(result); // Return the error response as-is
       }
 
-      withTopologyHints(result);
+      appendRealtimeTelemetryMappings(result, userConfig);
+      withTopologyHints(result, userConfig);
 
       console.log('[Diagnostics] All data retrieved, topology hints:', result.topologyHints);
       res.json(result);

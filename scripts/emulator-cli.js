@@ -308,16 +308,32 @@ async function spawnEmulatorProcess(env, logFd) {
 }
 
 async function verifySetupStatus() {
-  const attempts = 25;
-  for (let i = 0; i < attempts; i += 1) {
+  const maxAttempts = 120; // ~60s total
+  const retryDelayMs = 500;
+
+  let lastStatus = null;
+  let lastError = null;
+
+  for (let i = 0; i < maxAttempts; i += 1) {
+    if (i === 0) {
+      log('Waiting for /api/config/setup-status to become healthy...');
+    } else if (i % 10 === 0) {
+      log(`Still waiting for setup-status (attempt ${i + 1}/${maxAttempts})...`);
+    }
+
     const ok = await new Promise((resolve) => {
       const req = http.get('http://127.0.0.1:5000/api/config/setup-status', (res) => {
+        lastStatus = res.statusCode;
         const success = res.statusCode && res.statusCode >= 200 && res.statusCode < 300;
         res.resume();
         resolve(Boolean(success));
       });
-      req.on('error', () => resolve(false));
+      req.on('error', (err) => {
+        lastError = err && err.message ? err.message : err;
+        resolve(false);
+      });
       req.setTimeout(1200, () => {
+        lastError = 'timeout';
         req.destroy();
         resolve(false);
       });
@@ -328,9 +344,10 @@ async function verifySetupStatus() {
     }
 
     // eslint-disable-next-line no-await-in-loop
-    await sleep(500);
+    await sleep(retryDelayMs);
   }
 
+  log(`setup-status did not become healthy (last http status=${lastStatus ?? 'unknown'} last error=${lastError ?? 'none'})`);
   return false;
 }
 

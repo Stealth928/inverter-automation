@@ -73,6 +73,43 @@ describe('config mutation route module', () => {
     );
   });
 
+  test('telemetry mappings route normalizes payload and saves to user config', async () => {
+    const deps = buildDeps();
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-config' };
+        next();
+      });
+      registerConfigMutationRoutes(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/config/telemetry-mappings')
+      .send({
+        acSolarPowerVariable: ' meterPower2 '
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      msg: 'Telemetry mappings saved',
+      result: {
+        acSolarPowerVariable: 'meterPower2'
+      }
+    });
+    expect(deps.setUserConfig).toHaveBeenCalledWith(
+      'u-config',
+      {
+        telemetryMappings: {
+          acSolarPowerVariable: 'meterPower2',
+          updatedAt: '__TS__'
+        }
+      },
+      { merge: true }
+    );
+  });
+
   test('config save returns 400 for invalid payload', async () => {
     const deps = buildDeps();
 

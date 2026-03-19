@@ -1,5 +1,7 @@
 'use strict';
 
+const { getTelemetryMappings } = require('../../lib/telemetry-mappings');
+
 const WRITE_ONLY_SECRET_FIELDS = Object.freeze([
   'alphaessAppSecret',
   'sungrowPassword',
@@ -153,6 +155,23 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
       });
     } catch (error) {
       console.error('[Config] Error getting system topology:', error.message);
+      res.status(500).json({ errno: 500, error: error.message });
+    }
+  });
+
+  // Get persisted telemetry mapping overrides used to normalize vendor-specific fields.
+  app.get('/api/config/telemetry-mappings', async (req, res) => {
+    try {
+      const userId = req.user.uid;
+      const userConfig = await getUserConfig(userId);
+      const telemetryMappings = getTelemetryMappings(userConfig);
+
+      res.json({
+        errno: 0,
+        result: telemetryMappings
+      });
+    } catch (error) {
+      console.error('[Config] Error getting telemetry mappings:', error.message);
       res.status(500).json({ errno: 500, error: error.message });
     }
   });

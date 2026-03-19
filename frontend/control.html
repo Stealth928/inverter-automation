@@ -242,6 +242,98 @@
       border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent);
       color: var(--accent-blue-hover);
     }
+    .telemetry-mapping-panel {
+      margin-top: 14px;
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid color-mix(in srgb, var(--accent-blue) 28%, transparent);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 92%, transparent), color-mix(in srgb, var(--bg-overlay) 88%, transparent)),
+        radial-gradient(circle at top right, color-mix(in srgb, var(--accent-blue) 12%, transparent), transparent 40%);
+      box-shadow: inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+    }
+    .telemetry-mapping-panel__header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .telemetry-mapping-panel__title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .telemetry-mapping-panel__copy {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+    .telemetry-mapping-panel__steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .telemetry-mapping-panel__step {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid color-mix(in srgb, var(--border-primary) 60%, transparent);
+      background: color-mix(in srgb, var(--bg-overlay) 82%, transparent);
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+    .telemetry-mapping-panel__step strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+    .telemetry-mapping-panel__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--accent-blue) 14%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent);
+      color: var(--accent-blue);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .telemetry-mapping-panel__meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+      line-height: 1.6;
+    }
+    .telemetry-mapping-panel__locked {
+      display: none;
+      margin-top: 10px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent);
+      background: color-mix(in srgb, var(--accent-blue) 10%, transparent);
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    .telemetry-mapping-panel__recommendation {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--color-success) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--color-success) 26%, transparent);
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .telemetry-mapping-panel code {
+      font-size: 11px;
+    }
     @media (max-width: 640px) {
       .container { padding: 10px; }
       .grid {
@@ -298,6 +390,8 @@
       <h1><span style="font-size:1.8rem">🎛️</span> Advanced Controls</h1>
     </header>
 
+    <div id="controls-provider-note" class="hint" style="display:none"></div>
+
     <div class="grid">
       
       <!-- Battery SoC Settings -->
@@ -333,7 +427,7 @@
       </div>
 
       <!-- Work Mode Control -->
-      <div class="card">
+      <div class="card" id="card-work-mode">
         <div class="card-header">
           <h2>⚡ Work Mode</h2>
         </div>
@@ -428,9 +522,9 @@
       </div>
       <div class="card-body">
         <div class="hint">
-          <strong>🔍 For AC-Coupled Solar Users:</strong> If your solar panels connect to a separate inverter (not directly to Fox), 
-          your setup is "AC-coupled". Fox may show this as "GEN LOAD" instead of "PV". Use these tools to identify which meter 
-          channel represents your solar production.
+          <strong>🔍 For AC-Coupled Solar Users:</strong> If your solar panels connect to a separate inverter rather than directly to the battery inverter, 
+          your setup is "AC-coupled". Some providers expose that production in a meter or generation channel instead of a PV field.
+          Use these tools to identify which telemetry source represents your solar production.
         </div>
 
         <div style="display: grid; gap: 12px;">
@@ -456,6 +550,59 @@
               📡 Detected Topology
             </div>
             <div id="topologyResult" style="font-size: 12px; color: var(--text-secondary);"></div>
+          </div>
+
+          <div class="telemetry-mapping-panel" id="acSolarMappingPanel">
+            <div class="telemetry-mapping-panel__header">
+              <div>
+                <div class="telemetry-mapping-panel__title">AC Solar Source Mapping</div>
+                <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;">
+                  Save a per-user override when your AC-coupled solar appears in a telemetry field such as <code>meterPower2</code>.
+                </div>
+              </div>
+              <div class="telemetry-mapping-panel__badge">Per-user override</div>
+            </div>
+
+            <div class="telemetry-mapping-panel__copy">
+              Leave this blank unless you need an explicit mapping. The list starts with common candidates and gets richer after you run variable discovery or live diagnostics.
+            </div>
+
+            <div class="telemetry-mapping-panel__steps" id="acSolarMappingSteps">
+              <div class="telemetry-mapping-panel__step">
+                <strong>1. Run live diagnostics</strong>
+                Click <em>Get All Real-Time Data</em> while solar is producing.
+              </div>
+              <div class="telemetry-mapping-panel__step">
+                <strong>2. Check the recommendation</strong>
+                The panel suggests the most likely field, usually <code>meterPower2</code>.
+              </div>
+              <div class="telemetry-mapping-panel__step">
+                <strong>3. Save only if needed</strong>
+                Use a manual mapping only when auto-detect is wrong for your firmware.
+              </div>
+            </div>
+
+            <div id="acSolarMappingProviderNote" class="status-message info" style="display:none;margin-bottom:12px;"></div>
+            <div id="acSolarMappingLocked" class="telemetry-mapping-panel__locked"></div>
+
+            <div id="acSolarMappingControls">
+            <div class="input-group" style="margin-bottom:0;">
+              <label for="acSolarPowerVariable">AC Solar Field</label>
+              <select id="acSolarPowerVariable" class="input">
+                <option value="">Auto-detect (leave unset)</option>
+              </select>
+              <div id="acSolarMappingMeta" class="telemetry-mapping-panel__meta"></div>
+            </div>
+
+            <div id="acSolarRecommendation" class="telemetry-mapping-panel__recommendation"></div>
+
+            <div class="form-actions" style="margin-top:14px;">
+              <button type="button" class="btn btn-primary" id="btnSaveAcSolarMapping" onclick="saveTelemetryMappings()" style="flex:1">Save AC Mapping</button>
+              <button type="button" class="btn" id="btnClearAcSolarMapping" onclick="clearTelemetryMappings()">Use Auto-detect</button>
+            </div>
+
+            <div id="status-telemetryMapping"></div>
+            </div>
           </div>
 
           <!-- Instructions -->

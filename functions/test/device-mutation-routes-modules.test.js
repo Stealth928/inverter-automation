@@ -112,4 +112,38 @@ describe('device mutation route module', () => {
       'u-device'
     );
   });
+
+  test('workmode set dispatches to non-FoxESS adapter without FoxESS remapping', async () => {
+    const setWorkMode = jest.fn(async () => ({ errno: 0, result: { accepted: true } }));
+    const deps = createDeps({
+      foxessAPI: {
+        callFoxESSAPI: jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }))
+      },
+      adapterRegistry: {
+        getDeviceProvider: jest.fn(() => ({ setWorkMode }))
+      },
+      getUserConfig: jest.fn(async () => ({
+        deviceProvider: 'sungrow',
+        sungrowDeviceSn: 'SG-SET-001'
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/device/workmode/set')
+      .set('Authorization', 'Bearer token')
+      .send({ workMode: 'ForceDischarge' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ errno: 0, result: { accepted: true } });
+    expect(setWorkMode).toHaveBeenCalledWith({
+      deviceSN: 'SG-SET-001',
+      userConfig: {
+        deviceProvider: 'sungrow',
+        sungrowDeviceSn: 'SG-SET-001'
+      },
+      userId: 'u-device'
+    }, 'ForceDischarge');
+    expect(deps.foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
+  });
 });

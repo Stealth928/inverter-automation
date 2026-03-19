@@ -75,6 +75,145 @@ function registerAdminRoutes(app, deps = {}) {
     return Math.max(1, Math.min(max, Math.floor(parsed)));
   };
 
+  const toMs = (value) => {
+    if (!value) return null;
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+    if (typeof value.toDate === 'function') {
+      const date = value.toDate();
+      return date && typeof date.getTime === 'function' ? date.getTime() : null;
+    }
+    if (Number.isFinite(value._seconds)) return value._seconds * 1000;
+    if (Number.isFinite(value.seconds)) return value.seconds * 1000;
+    return null;
+  };
+
+  const inferUserRole = (profileRole, email) => {
+    if (profileRole) return profileRole;
+    return String(email || '').toLowerCase() === SEED_ADMIN_EMAIL ? 'admin' : 'user';
+  };
+
+  const isConfiguredUserConfig = (config = {}) => (
+    !!(config.setupComplete || config.deviceSn || config.foxessToken || config.amberApiKey)
+  );
+
+  async function loadUserLifecycleSnapshot(uid, options = {}) {
+    const profile = options.profile && typeof options.profile === 'object' ? options.profile : {};
+    const profileExists = options.profileExists === true;
+    const authUser = options.authUser && typeof options.authUser === 'object' ? options.authUser : null;
+    const authMetadata = authUser && authUser.metadata ? authUser.metadata : null;
+    const email = profile.email || (authUser?.email || '');
+    const role = inferUserRole(profile.role, email);
+    const joinedAtMs = toMs(authMetadata?.creationTime) || toMs(profile.createdAt);
+    const lastSignInMs = toMs(authMetadata?.lastSignInTime) || null;
+
+    let configured = false;
+    let configuredAtMs = null;
+    let firstRuleAtMs = null;
+    let hasRules = false;
+
+    if (profileExists) {
+      const userRef = db.collection('users').doc(uid);
+
+      try {
+        const cfgDoc = await userRef.collection('config').doc('main').get();
+        if (cfgDoc.exists) {
+          const cfg = cfgDoc.data() || {};
+          configured = isConfiguredUserConfig(cfg);
+          if (configured) {
+            configuredAtMs =
+              toMs(cfg.setupCompletedAt) ||
+              toMs(cfg.firstConfiguredAt) ||
+              toMs(cfg.updatedAt) ||
+              toMs(cfg.createdAt) ||
+              toMs(profile.lastUpdated) ||
+              joinedAtMs;
+          }
+        }
+      } catch (_cfgErr) {
+        // Keep admin endpoints resilient for per-user lookup failures.
+      }
+
+      try {
+        let firstRuleSnap = await userRef
+          .collection('rules')
+          .orderBy('createdAt', 'asc')
+          .limit(1)
+          .get();
+
+        if (firstRuleSnap.empty) {
+          firstRuleSnap = await userRef
+            .collection('rules')
+            .limit(1)
+            .get();
+        }
+
+        if (!firstRuleSnap.empty) {
+          hasRules = true;
+          const firstRule = firstRuleSnap.docs[0].data() || {};
+          firstRuleAtMs =
+            toMs(firstRule.createdAt) ||
+            toMs(firstRule.updatedAt) ||
+            configuredAtMs ||
+            toMs(profile.lastUpdated) ||
+            joinedAtMs;
+        }
+      } catch (_ruleErr) {
+        // Keep admin endpoints resilient for per-user lookup failures.
+      }
+    }
+
+    return {
+      uid,
+      email,
+      role,
+      automationEnabled: !!profile.automationEnabled,
+      joinedAtMs,
+      lastSignInMs,
+      configured,
+      configuredAtMs,
+      hasRules,
+      firstRuleAtMs
+    };
+  }
+
+  const buildDeletionAuditSnapshot = (lifecycle = {}) => ({
+    role: lifecycle.role || 'user',
+    automationEnabled: lifecycle.automationEnabled === true,
+    joinedAtMs: Number.isFinite(lifecycle.joinedAtMs) ? lifecycle.joinedAtMs : null,
+    lastSignInMs: Number.isFinite(lifecycle.lastSignInMs) ? lifecycle.lastSignInMs : null,
+    configured: lifecycle.configured === true,
+    configuredAtMs: Number.isFinite(lifecycle.configuredAtMs) ? lifecycle.configuredAtMs : null,
+    hasRules: lifecycle.hasRules === true,
+    firstRuleAtMs: Number.isFinite(lifecycle.firstRuleAtMs) ? lifecycle.firstRuleAtMs : null
+  });
+
+  function parseDeletionAuditSnapshot(snapshotValue, deletedAtMs) {
+    const snapshot = snapshotValue && typeof snapshotValue === 'object' ? snapshotValue : null;
+    const joinedAtMs = toMs(snapshot?.joinedAtMs || snapshot?.joinedAt || snapshot?.createdAt);
+    const configuredAtMs = toMs(snapshot?.configuredAtMs || snapshot?.firstConfiguredAt || snapshot?.setupCompletedAt);
+    const firstRuleAtMs = toMs(snapshot?.firstRuleAtMs || snapshot?.ruleCreatedAt);
+
+    if (!snapshot || !Number.isFinite(deletedAtMs) || !Number.isFinite(joinedAtMs)) {
+      return null;
+    }
+
+    return {
+      uid: snapshot.uid || null,
+      role: snapshot.role || 'user',
+      automationEnabled: snapshot.automationEnabled === true,
+      joinedAtMs,
+      configured: snapshot.configured === true || Number.isFinite(configuredAtMs),
+      configuredAtMs: Number.isFinite(configuredAtMs) ? configuredAtMs : null,
+      hasRules: snapshot.hasRules === true || Number.isFinite(firstRuleAtMs),
+      firstRuleAtMs: Number.isFinite(firstRuleAtMs) ? firstRuleAtMs : null,
+      deletedAtMs
+    };
+  }
+
   async function mapWithConcurrency(items, maxConcurrency, iterator) {
     const safeItems = Array.isArray(items) ? items : [];
     const concurrency = Math.max(1, Math.min(maxConcurrency || 1, safeItems.length || 1));
@@ -798,22 +937,7 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
   try {
     const daysRaw = Number(req.query?.days);
     const days = Number.isFinite(daysRaw) ? Math.max(7, Math.min(365, Math.floor(daysRaw))) : 90;
-
-    const toMs = (value) => {
-      if (!value) return null;
-      if (typeof value === 'number') return value;
-      if (typeof value === 'string') {
-        const parsed = Date.parse(value);
-        return Number.isNaN(parsed) ? null : parsed;
-      }
-      if (typeof value.toDate === 'function') {
-        const d = value.toDate();
-        return d && d.getTime ? d.getTime() : null;
-      }
-      if (Number.isFinite(value._seconds)) return value._seconds * 1000;
-      if (Number.isFinite(value.seconds)) return value.seconds * 1000;
-      return null;
-    };
+    const warnings = [];
 
     // Build date window in UTC date keys (YYYY-MM-DD)
     const now = new Date();
@@ -850,116 +974,87 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
 
     const allUids = new Set([...profileByUid.keys(), ...authByUid.keys()]);
 
-    const users = await Promise.all(Array.from(allUids).map(async (uid) => {
-      const profile = profileByUid.get(uid) || {};
-      const authUser = authByUid.get(uid) || null;
-      const authMetadata = authUser && authUser.metadata ? authUser.metadata : null;
+    const users = await Promise.all(Array.from(allUids).map((uid) => loadUserLifecycleSnapshot(uid, {
+      profile: profileByUid.get(uid) || {},
+      profileExists: profileByUid.has(uid),
+      authUser: authByUid.get(uid) || null
+    })));
 
-      const email = profile.email || (authUser?.email || '');
-      const emailLc = String(email || '').toLowerCase();
-      const role = profile.role || (emailLc === SEED_ADMIN_EMAIL ? 'admin' : 'user');
-
-      const joinedAtMs = toMs(authMetadata?.creationTime) || toMs(profile.createdAt);
-      const lastSignInMs = toMs(authMetadata?.lastSignInTime) || null;
-
-      let configured = false;
-      let configuredAtMs = null;
-      let firstRuleAtMs = null;
-      let hasRules = false;
-      if (profileByUid.has(uid)) {
-        try {
-          const cfgDoc = await db.collection('users').doc(uid).collection('config').doc('main').get();
-          if (cfgDoc.exists) {
-            const cfg = cfgDoc.data() || {};
-            configured = !!(cfg.setupComplete || cfg.deviceSn || cfg.foxessToken || cfg.amberApiKey);
-            if (configured) {
-              configuredAtMs =
-                toMs(cfg.setupCompletedAt) ||
-                toMs(cfg.firstConfiguredAt) ||
-                toMs(cfg.updatedAt) ||
-                toMs(cfg.createdAt) ||
-                toMs(profile.lastUpdated) ||
-                joinedAtMs;
-            }
-          }
-        } catch (cfgErr) {
-          // Keep endpoint resilient for per-user errors
-        }
-
-        try {
-          let firstRuleSnap = await db.collection('users').doc(uid)
-            .collection('rules')
-            .orderBy('createdAt', 'asc')
-            .limit(1)
-            .get();
-
-          // Fallback for legacy rules missing createdAt
-          if (firstRuleSnap.empty) {
-            firstRuleSnap = await db.collection('users').doc(uid)
-              .collection('rules')
-              .limit(1)
-              .get();
-          }
-
-          if (!firstRuleSnap.empty) {
-            hasRules = true;
-            const firstRule = firstRuleSnap.docs[0].data() || {};
-            firstRuleAtMs =
-              toMs(firstRule.createdAt) ||
-              toMs(firstRule.updatedAt) ||
-              configuredAtMs ||
-              toMs(profile.lastUpdated) ||
-              joinedAtMs;
-          }
-        } catch (ruleErr) {
-          // Keep endpoint resilient for per-user errors
-        }
-      }
-
-      return {
-        uid,
-        role,
-        automationEnabled: !!profile.automationEnabled,
-        joinedAtMs,
-        lastSignInMs,
-        configured,
-        configuredAtMs,
-        hasRules,
-        firstRuleAtMs
-      };
-    }));
-
-    const joinedSeries = users
-      .map((u) => u.joinedAtMs)
-      .filter((ms) => Number.isFinite(ms))
-      .sort((a, b) => a - b);
-
-    const configuredSeries = users
-      .map((u) => u.configuredAtMs)
-      .filter((ms) => Number.isFinite(ms))
-      .sort((a, b) => a - b);
-
-    const rulesSeries = users
-      .map((u) => u.firstRuleAtMs)
-      .filter((ms) => Number.isFinite(ms))
-      .sort((a, b) => a - b);
-
-    // Load deletion timestamps from admin_audit
     const deletionSeries = [];
+    const deletedUserSnapshots = [];
+    let missingDeletionSnapshots = 0;
     try {
       const auditSnap = await db.collection('admin_audit')
         .where('action', '==', 'delete_user')
         .get();
       auditSnap.forEach((doc) => {
-        const ts = toMs(doc.data().timestamp);
-        if (Number.isFinite(ts)) deletionSeries.push(ts);
+        const auditData = doc.data() || {};
+        const deletedAtMs = toMs(auditData.timestamp);
+        if (Number.isFinite(deletedAtMs)) {
+          deletionSeries.push(deletedAtMs);
+        }
+        const deletedUser = parseDeletionAuditSnapshot(auditData.snapshot, deletedAtMs);
+        if (deletedUser) {
+          deletedUserSnapshots.push({
+            ...deletedUser,
+            uid: auditData.targetUid || deletedUser.uid || `deleted-${doc.id}`
+          });
+        } else if (Number.isFinite(deletedAtMs)) {
+          missingDeletionSnapshots += 1;
+        }
       });
       deletionSeries.sort((a, b) => a - b);
     } catch (auditErr) {
       console.warn('[Admin] platform-stats: could not load deletion audit log:', auditErr.message || auditErr);
     }
+    if (missingDeletionSnapshots > 0) {
+      warnings.push(
+        `${missingDeletionSnapshots} deleted user lifecycle snapshot${missingDeletionSnapshots === 1 ? '' : 's'} missing; earlier days may be understated.`
+      );
+    }
 
-    let joinedIdx = 0;
+    const activeUserHistory = [
+      ...users.map((user) => ({ ...user, deletedAtMs: null })),
+      ...deletedUserSnapshots
+    ];
+
+    const addLifecycleEvent = (events, atMs, delta) => {
+      if (!Number.isFinite(atMs) || !Number.isFinite(delta) || delta === 0) return;
+      events.push({ atMs, delta });
+    };
+
+    const totalEvents = [];
+    const configuredEvents = [];
+    const rulesEvents = [];
+    activeUserHistory.forEach((user) => {
+      if (!Number.isFinite(user.joinedAtMs)) return;
+
+      addLifecycleEvent(totalEvents, user.joinedAtMs, 1);
+      if (Number.isFinite(user.deletedAtMs) && user.deletedAtMs >= user.joinedAtMs) {
+        addLifecycleEvent(totalEvents, user.deletedAtMs, -1);
+      }
+
+      if (Number.isFinite(user.configuredAtMs) && (!Number.isFinite(user.deletedAtMs) || user.configuredAtMs <= user.deletedAtMs)) {
+        addLifecycleEvent(configuredEvents, user.configuredAtMs, 1);
+        if (Number.isFinite(user.deletedAtMs)) {
+          addLifecycleEvent(configuredEvents, user.deletedAtMs, -1);
+        }
+      }
+
+      if (Number.isFinite(user.firstRuleAtMs) && (!Number.isFinite(user.deletedAtMs) || user.firstRuleAtMs <= user.deletedAtMs)) {
+        addLifecycleEvent(rulesEvents, user.firstRuleAtMs, 1);
+        if (Number.isFinite(user.deletedAtMs)) {
+          addLifecycleEvent(rulesEvents, user.deletedAtMs, -1);
+        }
+      }
+    });
+
+    const sortEvents = (events) => events.sort((a, b) => a.atMs - b.atMs || a.delta - b.delta);
+    sortEvents(totalEvents);
+    sortEvents(configuredEvents);
+    sortEvents(rulesEvents);
+
+    let totalIdx = 0;
     let configuredIdx = 0;
     let rulesIdx = 0;
     let deletionIdx = 0;
@@ -969,16 +1064,16 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
     let deletedUsers = 0;
 
     const trend = dateBuckets.map((bucket) => {
-      while (joinedIdx < joinedSeries.length && joinedSeries[joinedIdx] <= bucket.dayEndMs) {
-        totalUsers += 1;
-        joinedIdx += 1;
+      while (totalIdx < totalEvents.length && totalEvents[totalIdx].atMs <= bucket.dayEndMs) {
+        totalUsers += totalEvents[totalIdx].delta;
+        totalIdx += 1;
       }
-      while (configuredIdx < configuredSeries.length && configuredSeries[configuredIdx] <= bucket.dayEndMs) {
-        configuredUsers += 1;
+      while (configuredIdx < configuredEvents.length && configuredEvents[configuredIdx].atMs <= bucket.dayEndMs) {
+        configuredUsers += configuredEvents[configuredIdx].delta;
         configuredIdx += 1;
       }
-      while (rulesIdx < rulesSeries.length && rulesSeries[rulesIdx] <= bucket.dayEndMs) {
-        usersWithRules += 1;
+      while (rulesIdx < rulesEvents.length && rulesEvents[rulesIdx].atMs <= bucket.dayEndMs) {
+        usersWithRules += rulesEvents[rulesIdx].delta;
         rulesIdx += 1;
       }
       while (deletionIdx < deletionSeries.length && deletionSeries[deletionIdx] <= bucket.dayEndMs) {
@@ -987,9 +1082,9 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
       }
       return {
         date: bucket.key,
-        totalUsers,
-        configuredUsers,
-        usersWithRules,
+        totalUsers: Math.max(0, totalUsers),
+        configuredUsers: Math.max(0, configuredUsers),
+        usersWithRules: Math.max(0, usersWithRules),
         deletedUsers
       };
     });
@@ -1005,7 +1100,7 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
       automationActive: users.filter((u) => u.automationEnabled).length
     };
 
-    res.json({ errno: 0, result: { summary, trend, days } });
+    res.json({ errno: 0, result: { summary, trend, days, warnings } });
   } catch (error) {
     console.error('[Admin] Error loading platform stats:', error);
     res.status(500).json({ errno: 500, error: error.message });
@@ -1752,6 +1847,18 @@ app.post('/api/admin/users/:uid/delete', authenticateUser, requireAdmin, async (
       return res.status(404).json({ errno: 404, error: 'User not found' });
     }
 
+    let lifecycleSnapshot = null;
+    try {
+      const profileDoc = await db.collection('users').doc(uid).get();
+      lifecycleSnapshot = await loadUserLifecycleSnapshot(uid, {
+        profile: profileDoc.exists ? (profileDoc.data() || {}) : {},
+        profileExists: profileDoc.exists,
+        authUser: targetUser
+      });
+    } catch (snapshotErr) {
+      console.warn('[AdminDelete] Failed to capture lifecycle snapshot:', snapshotErr.message || snapshotErr);
+    }
+
     await deleteUserDataTree(uid);
 
     try {
@@ -1775,6 +1882,7 @@ app.post('/api/admin/users/:uid/delete', authenticateUser, requireAdmin, async (
       adminEmail: req.user.email,
       targetUid: uid,
       targetEmail: targetUser.email || '',
+      snapshot: buildDeletionAuditSnapshot(lifecycleSnapshot || {}),
       timestamp: serverTimestamp()
     });
 

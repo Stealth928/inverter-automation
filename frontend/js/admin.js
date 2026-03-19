@@ -911,6 +911,16 @@
     }
 
     async function loadPlatformStats() {
+        const subtitleEl = document.getElementById('platformTrendSubtitle');
+        const warningEl = document.getElementById('platformTrendWarning');
+        if (subtitleEl) {
+            subtitleEl.textContent = 'Bars = active users, lines = configured users + users with rules, red line = cumulative deletions';
+        }
+        if (warningEl) {
+            warningEl.style.display = 'none';
+            warningEl.textContent = '';
+        }
+
         try {
             const resp = await adminApiClient.fetch('/api/admin/platform-stats?days=90');
             const data = await resp.json();
@@ -918,15 +928,25 @@
 
             const summary = data.result?.summary || {};
             const trend = Array.isArray(data.result?.trend) ? data.result.trend : [];
+            const warnings = Array.isArray(data.result?.warnings) ? data.result.warnings : [];
 
             document.getElementById('statTotalUsers').textContent = Number(summary.totalUsers || 0);
             document.getElementById('statConfigured').textContent = Number(summary.configuredUsers || 0);
             document.getElementById('statMAU').textContent = Number(summary.mau ?? summary.admins ?? 0);
             document.getElementById('statAutomationActive').textContent = Number(summary.automationActive || 0);
 
+            if (warningEl && warnings.length) {
+                warningEl.style.display = '';
+                warningEl.textContent = warnings.join(' · ');
+            }
+
             renderPlatformTrendChart(trend);
         } catch (e) {
             console.error('[Admin] Failed to load platform stats:', e);
+            if (warningEl) {
+                warningEl.style.display = '';
+                warningEl.textContent = e.message || String(e);
+            }
             showMessage('warning', `⚠️ Failed to load trend stats: ${e.message}`);
         }
     }

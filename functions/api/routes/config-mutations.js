@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeTelemetryMappings } = require('../../lib/telemetry-mappings');
+
 const WRITE_ONLY_SECRET_FIELDS = Object.freeze([
   'alphaessAppSecret',
   'sungrowPassword',
@@ -111,6 +113,30 @@ function registerConfigMutationRoutes(app, deps = {}) {
       res.json({ errno: 0, msg: 'System topology saved', result: systemTopology });
     } catch (error) {
       console.error('[Config] Error saving system topology:', error.message);
+      res.status(500).json({ errno: 500, error: error.message });
+    }
+  });
+
+  // Persist telemetry mapping overrides for vendor-specific realtime/history fields.
+  app.post('/api/config/telemetry-mappings', async (req, res) => {
+    try {
+      const userId = req.user.uid;
+      const telemetryMappings = normalizeTelemetryMappings(req.body || {});
+
+      await setUserConfig(userId, {
+        telemetryMappings: {
+          ...telemetryMappings,
+          updatedAt: serverTimestamp()
+        }
+      }, { merge: true });
+
+      res.json({
+        errno: 0,
+        msg: 'Telemetry mappings saved',
+        result: telemetryMappings
+      });
+    } catch (error) {
+      console.error('[Config] Error saving telemetry mappings:', error.message);
       res.status(500).json({ errno: 500, error: error.message });
     }
   });

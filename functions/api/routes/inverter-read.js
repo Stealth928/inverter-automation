@@ -1,6 +1,7 @@
 'use strict';
 
 const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
+const { appendRealtimeTelemetryMappings } = require('../../lib/telemetry-mappings');
 const DEFAULT_LOCAL_TOPOLOGY_REFRESH_MS = 4 * 60 * 60 * 1000;
 
 function normalizeLocalCouplingValue(value) {
@@ -319,6 +320,7 @@ function registerInverterReadRoutes(app, deps = {}) {
           ? resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue, status)
           : false;
         const normalized = buildRealtimePayloadFromDeviceStatus(status, sn, { normalizeToKw, invertBatteryPowerSign });
+        appendRealtimeTelemetryMappings(normalized, userConfig);
         return res.json(normalized);
       }
 
@@ -332,6 +334,7 @@ function registerInverterReadRoutes(app, deps = {}) {
       } catch (persistError) {
         logger.warn('[Inverter] Failed to auto-persist system topology:', persistError.message);
       }
+      appendRealtimeTelemetryMappings(result, userConfig);
       res.json(result);
     } catch (error) {
       res.status(500).json({ errno: 500, error: error.message });
