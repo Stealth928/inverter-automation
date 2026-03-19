@@ -79,6 +79,26 @@
     function total(arr) {
         return arr.filter(isNum).map(Number).reduce((a, b) => a + b, 0);
     }
+    function buildKpiSegment(className, text) {
+        const span = document.createElement('span');
+        span.className = className;
+        span.textContent = text;
+        return span;
+    }
+    function renderRangeKpi(el, min, max) {
+        if (!el) return;
+        if (!Number.isFinite(min) || !Number.isFinite(max)) {
+            el.classList.remove('mi-kpi__value--range');
+            el.textContent = '—';
+            return;
+        }
+        el.classList.add('mi-kpi__value--range');
+        el.replaceChildren(
+            buildKpiSegment('mi-kpi__range-line', fmtDollar(min)),
+            buildKpiSegment('mi-kpi__range-sep', '—'),
+            buildKpiSegment('mi-kpi__range-line', fmtDollar(max))
+        );
+    }
 
     // ── Data Loading ──
     async function loadIndex() {
@@ -342,7 +362,7 @@
         $('kpiNegative').textContent = fmtInt(negCount);
         $('kpiNegSub').textContent = negPct !== null ? `${fmtPct(negPct)} of intervals were negative` : '';
 
-        $('kpiRange').textContent = Number.isFinite(minAll) ? `${fmtDollar(minAll)} — ${fmtDollar(maxAll)}` : '—';
+        renderRangeKpi($('kpiRange'), minAll, maxAll);
 
         $('kpiVolatility').textContent = fmtDollar(volAvg);
     }
@@ -1069,8 +1089,9 @@
 
         $('emptyState').hidden = hasData;
         if (!hasData) {
-            [$('kpiAvgPrice'), $('kpiMedianPrice'), $('kpiSpikes'), $('kpiNegative'), $('kpiRange'), $('kpiVolatility')]
+            [$('kpiAvgPrice'), $('kpiMedianPrice'), $('kpiSpikes'), $('kpiNegative'), $('kpiVolatility')]
                 .forEach(el => el.textContent = '—');
+            renderRangeKpi($('kpiRange'));
             $('trendChart').innerHTML = '<div class="mi-empty">No data to display.</div>';
             $('trendLegend').innerHTML = '';
             $('heatmap').innerHTML = '';

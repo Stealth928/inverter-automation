@@ -110,4 +110,27 @@ test.describe('Market Insights Page', () => {
     expect(relativeBounds.right).toBeGreaterThanOrEqual(-0.5);
     expect(relativeBounds.bottom).toBeGreaterThanOrEqual(-0.5);
   });
+
+  test('keeps the price range KPI inside its card on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/market-insights.html');
+
+    const rangeLines = page.locator('#kpiRange .mi-kpi__range-line');
+    await expect(rangeLines).toHaveCount(2);
+    await expect(rangeLines.first()).toBeVisible();
+
+    const overflow = await page.evaluate(() => {
+      const value = document.getElementById('kpiRange');
+      if (!value) return null;
+      return Array.from(value.querySelectorAll('.mi-kpi__range-line')).map((line) => ({
+        scrollWidth: line.scrollWidth,
+        clientWidth: line.clientWidth
+      }));
+    });
+
+    expect(overflow).not.toBeNull();
+    overflow.forEach((line) => {
+      expect(line.scrollWidth - line.clientWidth).toBeLessThanOrEqual(1);
+    });
+  });
 });

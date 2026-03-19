@@ -219,6 +219,7 @@
     border: 1px solid var(--border-secondary);
     border-radius: var(--radius-lg);
     padding: var(--space-lg);
+    min-width: 0;
     text-align: center;
     transition: transform 0.15s ease, border-color 0.15s ease;
 }
@@ -238,9 +239,29 @@
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.1;
+    max-width: 100%;
+    margin-inline: auto;
 }
 .mi-kpi--accent .mi-kpi__value {
     color: var(--mi-accent-red);
+}
+.mi-kpi__value--range {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: clamp(1.15rem, 0.75vw + 0.95rem, 1.6rem);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+}
+.mi-kpi__range-line {
+    display: block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+.mi-kpi__range-sep {
+    display: block;
+    color: var(--text-secondary);
 }
 .mi-kpi__label {
     font-size: var(--font-size-sm);
