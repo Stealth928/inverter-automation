@@ -230,6 +230,10 @@ describe('admin route module', () => {
           maxTelemetryAgeMs: 1900000,
           p95CycleDurationMs: 320,
           p99CycleDurationMs: 390,
+          avgQueueLagTotalMs: 180,
+          avgQueueLagSamples: 5,
+          avgCycleDurationTotalMs: 1100,
+          avgCycleDurationSamples: 5,
           phaseTimingsMaxMs: {
             dataFetchMs: 70,
             ruleEvalMs: 45,
@@ -244,6 +248,47 @@ describe('admin route module', () => {
           },
           failureByType: { api_rate_limit: 1 },
           telemetryPauseReasons: { stale_telemetry: 2, frozen_telemetry: 1 },
+          outlierRun: {
+            dayKey: '2026-03-06',
+            runId: 'run-daily-outlier',
+            schedulerId: 'sched-daily',
+            workerId: 'worker-daily',
+            startedAtMs: 1500,
+            completedAtMs: 1900,
+            maxCycleDurationMs: 400,
+            avgCycleDurationMs: 220,
+            p95CycleDurationMs: 320,
+            p99CycleDurationMs: 390,
+            queueLagAvgMs: 36,
+            queueLagMaxMs: 120,
+            retries: 2,
+            errors: 1,
+            deadLetters: 1,
+            skipped: {
+              disabledOrBlackout: 1,
+              idempotent: 1,
+              locked: 1,
+              tooSoon: 2
+            },
+            failureByType: { api_rate_limit: 1 },
+            telemetryPauseReasons: { stale_telemetry: 2, frozen_telemetry: 1 },
+            phaseTimingsMaxMs: {
+              dataFetchMs: 70,
+              ruleEvalMs: 45,
+              actionApplyMs: 120,
+              curtailmentMs: 35
+            },
+            slowestCycle: {
+              userId: 'u-daily',
+              cycleKey: 'u-daily_1',
+              durationMs: 400,
+              queueLagMs: 120,
+              retriesUsed: 2,
+              failureType: 'api_rate_limit',
+              startedAtMs: 1500,
+              completedAtMs: 1900
+            }
+          },
           slo: {
             status: 'breach'
           }
@@ -265,6 +310,10 @@ describe('admin route module', () => {
           maxTelemetryAgeMs: 1700000,
           p95CycleDurationMs: 260,
           p99CycleDurationMs: 280,
+          avgQueueLagTotalMs: 120,
+          avgQueueLagSamples: 4,
+          avgCycleDurationTotalMs: 720,
+          avgCycleDurationSamples: 4,
           phaseTimingsMaxMs: {
             dataFetchMs: 60,
             ruleEvalMs: 40,
@@ -403,6 +452,13 @@ describe('admin route module', () => {
                   }
                   if (subName === 'runs') {
                     return {
+                      where: jest.fn(() => ({
+                        orderBy: jest.fn(() => ({
+                          limit: jest.fn(() => ({
+                            get: runsGet
+                          }))
+                        }))
+                      })),
                       orderBy: jest.fn(() => ({
                         limit: jest.fn(() => ({
                           get: runsGet
@@ -449,6 +505,8 @@ describe('admin route module', () => {
       maxTelemetryAgeMs: 1900000,
       p95CycleDurationMs: 320,
       p99CycleDurationMs: 390,
+      avgQueueLagMs: 33,
+      avgCycleDurationMs: 202,
       phaseTimingsMaxMs: {
         dataFetchMs: 70,
         ruleEvalMs: 45,
@@ -527,8 +585,13 @@ describe('admin route module', () => {
         status: 'watch'
       }),
       outlierRun: expect.objectContaining({
-        runId: 'run-1',
-        workerId: 'worker-1',
+        runId: 'run-daily-outlier',
+        workerId: 'worker-daily',
+        maxCycleDurationMs: 400,
+        phaseTimingsMaxMs: expect.objectContaining({
+          dataFetchMs: 70,
+          actionApplyMs: 120
+        }),
         likelyCauses: expect.arrayContaining(['external_api_slowness_or_retries'])
       }),
       telemetryPauseReasons: expect.objectContaining({
@@ -540,6 +603,11 @@ describe('admin route module', () => {
         latestRunMaxMs: expect.objectContaining({
           dataFetchMs: 30,
           actionApplyMs: 12
+        }),
+        outlierRunStartedAtMs: 1500,
+        outlierRunMaxMs: expect.objectContaining({
+          dataFetchMs: 70,
+          actionApplyMs: 120
         }),
         windowMaxMs: expect.objectContaining({
           dataFetchMs: 70,

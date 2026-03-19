@@ -1,6 +1,7 @@
 'use strict';
 
 const {
+  ensureAutomationTelemetryTimestamp,
   fetchAutomationAmberData,
   fetchAutomationInverterData,
   hasNestedDatasFrame,
@@ -40,6 +41,24 @@ describe('automation cycle data service', () => {
 
     expect(result).toBe(primaryPayload);
     expect(getCachedInverterRealtimeData).not.toHaveBeenCalled();
+  });
+
+  test('ensureAutomationTelemetryTimestamp backfills missing timestamp from cache age', () => {
+    const payload = {
+      errno: 0,
+      __cacheAgeMs: 65000,
+      result: [{ datas: [{ variable: 'SoC', value: 70 }] }]
+    };
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-03-19T00:10:00.000Z'));
+
+    try {
+      const result = ensureAutomationTelemetryTimestamp(payload);
+      expect(result).toBe(payload);
+      expect(result.observedAtIso).toBe('2026-03-19T00:08:55.000Z');
+      expect(result.result[0].time).toBe('2026-03-19T00:08:55.000Z');
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   test('fetchAutomationInverterData builds full telemetry frame for non-fox providers', async () => {

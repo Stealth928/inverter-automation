@@ -1,10 +1,7 @@
-﻿
         // ===== STATE MANAGEMENT =====
         const discoveryState = {
             topology: null,
             telemetry: null,
-            exportLimitKey: null,
-            exportLimitValue: null,
             keysProbed: {},
             deviceSn: null,
             deviceProvider: ''
@@ -159,8 +156,11 @@
                 const loadsPower = toKW(getVar('loadsPower'));
 
                 // Update display
+                const topologyLabel = topology === 'hybrid'
+                    ? 'HYBRID / MIXED'
+                    : topology.toUpperCase();
                 const topoEl = document.getElementById('topologyResult');
-                topoEl.innerHTML = `${topology.toUpperCase()}<div class="topology-indicator ${topology.toLowerCase()}">${topology}</div>`;
+                topoEl.innerHTML = `${topologyLabel}<div class="topology-indicator ${topology}">${topology}</div>`;
 
                 document.getElementById('solarGenResult').textContent = `${effectiveSolar.toFixed(2)}kW`;
                 document.getElementById('currentExportResult').textContent = `${feedinPower.toFixed(2)}kW`;
@@ -172,6 +172,8 @@
                     addLog('⚠️ AC-coupled system detected. External solar inverter likely. Curtailment will only limit battery exports.', 'warning');
                 } else if (topology === 'dc-coupled') {
                     addLog('✓ DC-coupled system detected. Full curtailment control available.', 'success');
+                } else if (topology === 'hybrid') {
+                    addLog('⚠️ Mixed AC and DC indicators detected. Review telemetry manually before relying on curtailment behavior.', 'warning');
                 } else {
                     addLog('? Topology unclear. System may have insufficient telemetry or unusual configuration.', 'warning');
                 }
@@ -278,7 +280,6 @@
 
             if (availableKeys.length > 0) {
                 addLog(`✓ Found ${availableKeys.length} available keys: ${availableKeys.join(', ')}`, 'success');
-                discoveryState.exportLimitKey = availableKeys[0];
             } else {
                 addLog('⚠️ No export limit keys found. Your device may not support this feature.', 'warning');
             }
@@ -369,8 +370,6 @@
                     </div>
                     `}
                 `;
-
-                discoveryState.exportLimitValue = settings.ExportLimit;
             } catch (err) {
                 container.innerHTML = `<div class="test-result failure">Error reading settings: ${err.message}</div>`;
                 addLog(`Settings read failed: ${err.message}`, 'error');
@@ -428,8 +427,6 @@
                         </small>
                     </div>
                 `;
-
-                discoveryState.exportLimitValue = limitValue;
             } catch (err) {
                 container.innerHTML = `<div class="test-result failure"><strong>✗ Failed to Set Export Limit</strong><br />${err.message}</div>`;
                 addLog(`Export limit set failed: ${err.message}`, 'error');
@@ -472,82 +469,12 @@
                         Status: Device will now use default export settings<br />
                     </div>
                 `;
-
-                discoveryState.exportLimitValue = null;
             } catch (err) {
                 container.innerHTML = `<div class="test-result failure"><strong>✗ Failed</strong><br />${err.message}</div>`;
                 addLog(`Disable export limit failed: ${err.message}`, 'error');
             }
 
             document.getElementById('disableLimitBtn').disabled = false;
-        }
-
-        // ===== CAPABILITY SUMMARY =====
-        function generateCapabilitySummary() {
-            const summary = document.getElementById('capabilitySummary');
-            
-            let html = '';
-
-            // Topology capability
-            if (discoveryState.topology === 'dc-coupled') {
-                html += `
-                    <div class="test-result">
-                        <strong>✓ System Topology: DC-Coupled</strong><br />
-                        Solar panels connect directly to FoxESS battery. Full curtailment control available.
-                    </div>
-                `;
-            } else if (discoveryState.topology === 'ac-coupled') {
-                html += `
-                    <div class="test-result warning">
-                        <strong>⚠️ System Topology: AC-Coupled</strong><br />
-                        External solar inverter detected. Curtailment will only control battery exports,
-                        not external solar directly. Amber SmartShift or external inverter control may be needed.
-                    </div>
-                `;
-            } else {
-                html += `
-                    <div class="test-result warning">
-                        <strong>? System Topology: Unknown</strong><br />
-                        Unable to determine if system is DC or AC-coupled. Check telemetry data manually.
-                    </div>
-                `;
-            }
-
-            // Export limit keys
-            const availableKeys = Object.entries(discoveryState.keysProbed)
-                .filter(([, v]) => v.status === 'available')
-                .map(([k, v]) => `${k} (currently: ${v.value})`);
-
-            if (availableKeys.length > 0) {
-                html += `
-                    <div class="test-result" style="margin-top: 10px;">
-                        <strong>✓ Export Limit Keys Available</strong><br />
-                        ${availableKeys.join('<br />')}
-                    </div>
-                `;
-            } else {
-                html += `
-                    <div class="test-result warning" style="margin-top: 10px;">
-                        <strong>⚠️ No Export Limit Keys Found</strong><br />
-                        Probe results did not find standard FoxESS export limit settings.
-                    </div>
-                `;
-            }
-
-            // Recommendation
-            html += `
-                <div class="alert info" style="margin-top: 10px;">
-                    <strong>Next Steps:</strong><br />
-                    Based on discovery results, you can proceed with:
-                    <ul style="margin: 8px 0 0 20px; color: var(--accent-blue);">
-                        <li>Creating automation rules that trigger curtailment on negative FiT</li>
-                        <li>Setting up load-following curtailment during negative pricing windows</li>
-                        <li>Integrating curtailment events into ROI tracking</li>
-                    </ul>
-                </div>
-            `;
-
-            summary.innerHTML = html;
         }
 
         // ===== EVENT LISTENERS =====
@@ -566,7 +493,7 @@
             await fetchTelemetry(true);
             // Load API metrics
             try { loadApiMetrics(1); } catch(e) { console.warn('Failed to load API metrics:', e); }
-            addLog('Ready for discovery. Select "Detect Topology" to begin.', 'success');
+            addLog('Ready for discovery. Use the tools below to inspect topology and export limits.', 'success');
         }
 
         // Initialize AppShell and then the page
@@ -578,15 +505,5 @@
             });
         } else {
             addLog('AppShell not available', 'warning');
-        }
-
-        // WIP Pages visibility - Topology Discovery (admin only)
-        if (typeof window.auth !== 'undefined' && window.auth) {
-            window.auth.onAuthStateChanged((user) => {
-                if (user && user.email === 'socrates.team.comms@gmail.com') {
-                    const topologyLink = document.getElementById('topologyNavLink');
-                    if (topologyLink) topologyLink.style.display = '';
-                }
-            });
         }
     

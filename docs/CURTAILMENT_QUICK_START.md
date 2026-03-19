@@ -62,7 +62,6 @@ support/admin-oriented tool for topology and export-limit investigation.
 
 Important nuance:
 
-- parts of the UI still label this path as `WIP - Topology Discovery`
 - this page is not the normal first-run workflow for most users
 - it is most useful when diagnosing FoxESS-style export-limit behavior,
   topology questions, or support cases

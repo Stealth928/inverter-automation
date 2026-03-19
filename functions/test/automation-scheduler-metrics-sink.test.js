@@ -148,6 +148,7 @@ describe('automation scheduler metrics sink', () => {
     const runPathA = 'metrics/automationScheduler/runs/1710000000000_sched-a';
     const runPathB = 'metrics/automationScheduler/runs/1710000000500_sched-b';
     const dailyPath = `metrics/automationScheduler/daily/${dayKey}`;
+    const tailStatePath = 'metrics/automationScheduler/state/tailLatency';
     const currentAlertPath = 'metrics/automationScheduler/alerts/current';
     const dayAlertPath = `metrics/automationScheduler/alerts/${dayKey}`;
 
@@ -155,6 +156,7 @@ describe('automation scheduler metrics sink', () => {
       runPathA,
       runPathB,
       dailyPath,
+      tailStatePath,
       currentAlertPath,
       dayAlertPath
     ]));
@@ -205,6 +207,8 @@ describe('automation scheduler metrics sink', () => {
         actionApplyMs: 24,
         curtailmentMs: 8
       },
+      avgQueueLagTotalMs: 130,
+      avgQueueLagSamples: 9,
       avgCycleDurationTotalMs: 420,
       avgCycleDurationSamples: 9,
       skipped: {
@@ -221,10 +225,30 @@ describe('automation scheduler metrics sink', () => {
         stale_telemetry: 1,
         frozen_telemetry: 1
       },
+      outlierRun: expect.objectContaining({
+        runId: '1710000000500_sched-b',
+        maxCycleDurationMs: 140,
+        phaseTimingsMaxMs: {
+          dataFetchMs: 30,
+          ruleEvalMs: 18,
+          actionApplyMs: 24,
+          curtailmentMs: 8
+        }
+      }),
       slo: expect.objectContaining({
         status: 'breach',
         breachedMetrics: expect.arrayContaining(['errorRatePct', 'deadLetterRatePct'])
       })
+    }));
+    expect(getDoc(tailStatePath)).toEqual(expect.objectContaining({
+      runs: [
+        { startedAtMs: 1710000000500, p99Ms: 135 },
+        { startedAtMs: 1710000000000, p99Ms: 89 }
+      ],
+      thresholdMs: 10000,
+      windowMinutes: 15,
+      minRuns: 10,
+      updatedAtMs: 1710000000999
     }));
     expect(getDoc(currentAlertPath)).toEqual(expect.objectContaining({
       dayKey,
@@ -245,6 +269,83 @@ describe('automation scheduler metrics sink', () => {
       dayKey,
       status: 'breach',
       alertStatus: 'breach'
+    }));
+  });
+
+  test('sustained tail latency tracking survives midnight boundaries', async () => {
+    const { db, getDoc } = createInMemoryDb();
+    const preMidnightStartedAtMs = Date.parse('2024-03-09T23:59:58.000Z');
+    const preMidnightRecordedAtMs = Date.parse('2024-03-09T23:59:59.000Z');
+    const postMidnightStartedAtMs = Date.parse('2024-03-10T00:00:00.000Z');
+    const postMidnightRecordedAtMs = Date.parse('2024-03-10T00:00:01.000Z');
+    const sink = createAutomationSchedulerMetricsSink({
+      db,
+      now: () => preMidnightRecordedAtMs,
+      serverTimestamp: () => 'server-ts',
+      timezone: 'UTC',
+      sloThresholds: {
+        tailP99CycleDurationMs: 10000,
+        tailWindowMinutes: 15,
+        tailMinRuns: 2
+      }
+    });
+
+    await sink.emitSchedulerMetrics({
+      schedulerId: 'sched-pre-midnight',
+      startedAtMs: preMidnightStartedAtMs,
+      completedAtMs: preMidnightRecordedAtMs,
+      durationMs: 1000,
+      totalEnabledUsers: 1,
+      cycleCandidates: 1,
+      cyclesRun: 1,
+      deadLetters: 0,
+      errors: 0,
+      retries: 0,
+      queueLagMs: { avgMs: 10, count: 1, maxMs: 10, minMs: 10, p95Ms: 10, p99Ms: 10 },
+      cycleDurationMs: { avgMs: 12000, count: 1, maxMs: 12000, minMs: 12000, p95Ms: 12000, p99Ms: 12000 },
+      telemetryAgeMs: { avgMs: 1000, count: 1, maxMs: 1000, minMs: 1000, p95Ms: 1000, p99Ms: 1000 },
+      skipped: { disabledOrBlackout: 0, idempotent: 0, locked: 0, tooSoon: 0 }
+    });
+
+    const sinkAfterMidnight = createAutomationSchedulerMetricsSink({
+      db,
+      now: () => postMidnightRecordedAtMs,
+      serverTimestamp: () => 'server-ts',
+      timezone: 'UTC',
+      sloThresholds: {
+        tailP99CycleDurationMs: 10000,
+        tailWindowMinutes: 15,
+        tailMinRuns: 2
+      }
+    });
+
+    await sinkAfterMidnight.emitSchedulerMetrics({
+      schedulerId: 'sched-post-midnight',
+      startedAtMs: postMidnightStartedAtMs,
+      completedAtMs: postMidnightRecordedAtMs,
+      durationMs: 1000,
+      totalEnabledUsers: 1,
+      cycleCandidates: 1,
+      cyclesRun: 1,
+      deadLetters: 0,
+      errors: 0,
+      retries: 0,
+      queueLagMs: { avgMs: 12, count: 1, maxMs: 12, minMs: 12, p95Ms: 12, p99Ms: 12 },
+      cycleDurationMs: { avgMs: 14000, count: 1, maxMs: 14000, minMs: 14000, p95Ms: 14000, p99Ms: 14000 },
+      telemetryAgeMs: { avgMs: 1000, count: 1, maxMs: 1000, minMs: 1000, p95Ms: 1000, p99Ms: 1000 },
+      skipped: { disabledOrBlackout: 0, idempotent: 0, locked: 0, tooSoon: 0 }
+    });
+
+    const currentAlert = getDoc('metrics/automationScheduler/alerts/current');
+    expect(currentAlert).toEqual(expect.objectContaining({
+      status: 'breach',
+      tailLatency: expect.objectContaining({
+        status: 'breach',
+        observedRuns: 2,
+        runsAboveThreshold: 2,
+        maxObservedP99Ms: 14000,
+        minObservedP99Ms: 12000
+      })
     }));
   });
 

@@ -1152,6 +1152,54 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         .map((entry, index) => ({ ...entry, rank: index + 1 }));
     };
 
+    const sanitizeOutlierRunSnapshot = (value) => {
+      const source = value && typeof value === 'object' ? value : {};
+      const runId = source.runId != null ? String(source.runId) : null;
+      const maxCycleDurationMs = Math.max(0, toFiniteNumber(source.maxCycleDurationMs, 0));
+      if (!runId && maxCycleDurationMs <= 0) {
+        return null;
+      }
+      return {
+        dayKey: source.dayKey != null ? String(source.dayKey) : null,
+        runId,
+        schedulerId: source.schedulerId != null ? String(source.schedulerId) : null,
+        workerId: source.workerId != null ? String(source.workerId) : null,
+        startedAtMs: Math.max(0, toFiniteNumber(source.startedAtMs, 0)),
+        startedAtIso: source.startedAtMs ? new Date(toFiniteNumber(source.startedAtMs, 0)).toISOString() : null,
+        completedAtMs: Math.max(0, toFiniteNumber(source.completedAtMs, 0)),
+        maxCycleDurationMs,
+        avgCycleDurationMs: Math.max(0, toFiniteNumber(source.avgCycleDurationMs, 0)),
+        p95CycleDurationMs: Math.max(0, toFiniteNumber(source.p95CycleDurationMs, 0)),
+        p99CycleDurationMs: Math.max(0, toFiniteNumber(source.p99CycleDurationMs, 0)),
+        queueLagAvgMs: Math.max(0, toFiniteNumber(source.queueLagAvgMs, 0)),
+        queueLagMaxMs: Math.max(0, toFiniteNumber(source.queueLagMaxMs, 0)),
+        retries: Math.max(0, toFiniteNumber(source.retries, 0)),
+        errors: Math.max(0, toFiniteNumber(source.errors, 0)),
+        deadLetters: Math.max(0, toFiniteNumber(source.deadLetters, 0)),
+        skipped: {
+          disabledOrBlackout: toFiniteNumber(source.skipped?.disabledOrBlackout, 0),
+          idempotent: toFiniteNumber(source.skipped?.idempotent, 0),
+          locked: toFiniteNumber(source.skipped?.locked, 0),
+          tooSoon: toFiniteNumber(source.skipped?.tooSoon, 0)
+        },
+        failureByType: sanitizeFailureByType(source.failureByType),
+        telemetryPauseReasons: sanitizeFailureByType(source.telemetryPauseReasons),
+        phaseTimingsMaxMs: sanitizePhaseTimingMaxMs(source.phaseTimingsMaxMs),
+        slowestCycle: source.slowestCycle && typeof source.slowestCycle === 'object'
+          ? {
+              userId: source.slowestCycle.userId != null ? String(source.slowestCycle.userId) : null,
+              cycleKey: source.slowestCycle.cycleKey != null ? String(source.slowestCycle.cycleKey) : null,
+              durationMs: Math.max(0, toFiniteNumber(source.slowestCycle.durationMs, 0)),
+              queueLagMs: Math.max(0, toFiniteNumber(source.slowestCycle.queueLagMs, 0)),
+              retriesUsed: Math.max(0, toFiniteNumber(source.slowestCycle.retriesUsed, 0)),
+              failureType: source.slowestCycle.failureType ? String(source.slowestCycle.failureType) : null,
+              startedAtMs: Math.max(0, toFiniteNumber(source.slowestCycle.startedAtMs, 0)),
+              completedAtMs: Math.max(0, toFiniteNumber(source.slowestCycle.completedAtMs, 0))
+            }
+          : null
+      };
+    };
+
     const sanitizeTailLatency = (value) => {
       const source = value && typeof value === 'object' ? value : {};
       const statusRaw = String(source.status || '').trim().toLowerCase();
@@ -1171,6 +1219,14 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         windowStartMs: Math.max(0, toFiniteNumber(source.windowStartMs, 0)),
         windowEndMs: Math.max(0, toFiniteNumber(source.windowEndMs, 0))
       };
+    };
+
+    const parseDayKeyStartMs = (dayKey) => {
+      const text = String(dayKey || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        return NaN;
+      }
+      return Date.parse(`${text}T00:00:00.000Z`);
     };
 
     const mergeFailureByType = (target, source) => {
@@ -1197,7 +1253,10 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       const lockSkips = toFiniteNumber(skipped.locked, 0);
       const idempotentSkips = toFiniteNumber(skipped.idempotent, 0);
       const retries = toFiniteNumber(run.retries, 0);
-      const queueLagMaxMs = toFiniteNumber(run.queueLagMs?.maxMs, 0);
+      const queueLagMaxMs = Math.max(
+        toFiniteNumber(run.queueLagMs?.maxMs, 0),
+        toFiniteNumber(run.queueLagMaxMs, 0)
+      );
 
       if (apiFailureCount > 0 || retries > 0) {
         tags.push('external_api_slowness_or_retries');
@@ -1277,6 +1336,8 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
     const dailyDesc = [];
     dailySnapshot.forEach((doc) => {
       const data = doc.data() || {};
+      const avgCycleDurationSamples = toFiniteNumber(data.avgCycleDurationSamples, 0);
+      const avgQueueLagSamples = toFiniteNumber(data.avgQueueLagSamples, 0);
       dailyDesc.push({
         dayKey: data.dayKey || doc.id,
         runs: toFiniteNumber(data.runs, 0),
@@ -1291,9 +1352,16 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         maxTelemetryAgeMs: toFiniteNumber(data.maxTelemetryAgeMs, 0),
         p95CycleDurationMs: toFiniteNumber(data.p95CycleDurationMs, 0),
         p99CycleDurationMs: toFiniteNumber(data.p99CycleDurationMs, 0),
-        avgCycleDurationMs: data.avgCycleDurationSamples > 0
+        avgCycleDurationMs: avgCycleDurationSamples > 0
           ? toFiniteNumber(data.avgCycleDurationTotalMs, 0) / toFiniteNumber(data.avgCycleDurationSamples, 1)
           : 0,
+        avgCycleDurationTotalMs: toFiniteNumber(data.avgCycleDurationTotalMs, 0),
+        avgCycleDurationSamples,
+        avgQueueLagMs: avgQueueLagSamples > 0
+          ? toFiniteNumber(data.avgQueueLagTotalMs, 0) / toFiniteNumber(data.avgQueueLagSamples, 1)
+          : 0,
+        avgQueueLagTotalMs: toFiniteNumber(data.avgQueueLagTotalMs, 0),
+        avgQueueLagSamples,
         phaseTimingsMaxMs: sanitizePhaseTimingMaxMs(data.phaseTimingsMaxMs),
         skipped: {
           disabledOrBlackout: toFiniteNumber(data.skipped?.disabledOrBlackout, 0),
@@ -1304,6 +1372,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         failureByType: sanitizeFailureByType(data.failureByType),
         telemetryPauseReasons: sanitizeFailureByType(data.telemetryPauseReasons),
         slo: sanitizeSloSnapshot(data.slo),
+        outlierRun: sanitizeOutlierRunSnapshot(data.outlierRun),
         updatedAtMs: toFiniteNumber(data.lastRunAtMs, 0)
       });
     });
@@ -1321,6 +1390,8 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       maxTelemetryAgeMs: 0,
       p95CycleDurationMs: 0,
       p99CycleDurationMs: 0,
+      avgQueueLagMs: 0,
+      avgCycleDurationMs: 0,
       phaseTimingsMaxMs: sanitizePhaseTimingMaxMs(null),
       skipped: {
         disabledOrBlackout: 0,
@@ -1345,6 +1416,8 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       summary.maxTelemetryAgeMs = Math.max(summary.maxTelemetryAgeMs, day.maxTelemetryAgeMs);
       summary.p95CycleDurationMs = Math.max(summary.p95CycleDurationMs, day.p95CycleDurationMs);
       summary.p99CycleDurationMs = Math.max(summary.p99CycleDurationMs, day.p99CycleDurationMs);
+      summary.avgQueueLagMs += day.avgQueueLagTotalMs;
+      summary.avgCycleDurationMs += day.avgCycleDurationTotalMs;
       for (const phaseKey of phaseTimingKeys) {
         summary.phaseTimingsMaxMs[phaseKey] = Math.max(
           toFiniteNumber(summary.phaseTimingsMaxMs[phaseKey], 0),
@@ -1362,6 +1435,21 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       );
     }
 
+    const avgQueueLagSamples = dailyDesc.reduce(
+      (sum, day) => sum + toFiniteNumber(day.avgQueueLagSamples, 0),
+      0
+    );
+    const avgCycleDurationSamples = dailyDesc.reduce(
+      (sum, day) => sum + toFiniteNumber(day.avgCycleDurationSamples, 0),
+      0
+    );
+    summary.avgQueueLagMs = avgQueueLagSamples > 0 ? summary.avgQueueLagMs / avgQueueLagSamples : 0;
+    summary.avgCycleDurationMs = avgCycleDurationSamples > 0
+      ? summary.avgCycleDurationMs / avgCycleDurationSamples
+      : 0;
+    summary.avgQueueLagMs = Math.round(summary.avgQueueLagMs);
+    summary.avgCycleDurationMs = Math.round(summary.avgCycleDurationMs);
+
     const soak = buildSchedulerSoakSummary({
       dailyDesc,
       daysRequested: days
@@ -1373,8 +1461,13 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
 
     let recentRuns = [];
     if (includeRuns) {
-      const runSnapshot = await metricsRootRef
-        .collection('runs')
+      const oldestDayInWindow = dailyDesc.length > 0 ? dailyDesc[dailyDesc.length - 1] : null;
+      const windowStartMs = oldestDayInWindow ? parseDayKeyStartMs(oldestDayInWindow.dayKey) : NaN;
+      const runsCollection = metricsRootRef.collection('runs');
+      const runQuery = Number.isFinite(windowStartMs)
+        ? runsCollection.where('startedAtMs', '>=', windowStartMs)
+        : runsCollection;
+      const runSnapshot = await runQuery
         .orderBy('startedAtMs', 'desc')
         .limit(runLimit)
         .get();
@@ -1420,30 +1513,47 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       : sanitizePhaseTimingMaxMs(null);
 
     let outlierRun = null;
-    if (recentRuns.length > 0) {
-      outlierRun = recentRuns
+    if (dailyDesc.length > 0) {
+      outlierRun = dailyDesc
+        .slice()
+        .map((day) => sanitizeOutlierRunSnapshot(day.outlierRun))
+        .filter(Boolean)
+        .sort((a, b) => {
+          const durationDiff = toFiniteNumber(b?.maxCycleDurationMs, 0) - toFiniteNumber(a?.maxCycleDurationMs, 0);
+          if (durationDiff !== 0) {
+            return durationDiff;
+          }
+          return toFiniteNumber(b?.startedAtMs, 0) - toFiniteNumber(a?.startedAtMs, 0);
+        })[0] || null;
+    }
+    if (!outlierRun && recentRuns.length > 0) {
+      const fallbackOutlier = recentRuns
         .slice()
         .sort((a, b) => toFiniteNumber(b.cycleDurationMs?.maxMs, 0) - toFiniteNumber(a.cycleDurationMs?.maxMs, 0))[0] || null;
-      if (outlierRun) {
-        const slowestCycle = Array.isArray(outlierRun.slowCycleSamples) && outlierRun.slowCycleSamples.length
-          ? outlierRun.slowCycleSamples[0]
+      if (fallbackOutlier) {
+        const slowestCycle = Array.isArray(fallbackOutlier.slowCycleSamples) && fallbackOutlier.slowCycleSamples.length
+          ? fallbackOutlier.slowCycleSamples[0]
           : null;
-        outlierRun = {
-          runId: outlierRun.runId,
-          schedulerId: outlierRun.schedulerId,
-          workerId: outlierRun.workerId || null,
-          startedAtMs: outlierRun.startedAtMs,
-          startedAtIso: outlierRun.startedAtMs ? new Date(outlierRun.startedAtMs).toISOString() : null,
-          maxCycleDurationMs: toFiniteNumber(outlierRun.cycleDurationMs?.maxMs, 0),
-          p95CycleDurationMs: toFiniteNumber(outlierRun.cycleDurationMs?.p95Ms, 0),
-          p99CycleDurationMs: toFiniteNumber(outlierRun.cycleDurationMs?.p99Ms, 0),
-          queueLagMaxMs: toFiniteNumber(outlierRun.queueLagMs?.maxMs, 0),
-          retries: toFiniteNumber(outlierRun.retries, 0),
-          errors: toFiniteNumber(outlierRun.errors, 0),
-          deadLetters: toFiniteNumber(outlierRun.deadLetters, 0),
-          skipped: outlierRun.skipped,
-          failureByType: outlierRun.failureByType,
-          likelyCauses: buildLikelyCauseTags(outlierRun),
+        outlierRun = sanitizeOutlierRunSnapshot({
+          dayKey: fallbackOutlier.dayKey,
+          runId: fallbackOutlier.runId,
+          schedulerId: fallbackOutlier.schedulerId,
+          workerId: fallbackOutlier.workerId || null,
+          startedAtMs: fallbackOutlier.startedAtMs,
+          completedAtMs: fallbackOutlier.completedAtMs,
+          maxCycleDurationMs: toFiniteNumber(fallbackOutlier.cycleDurationMs?.maxMs, 0),
+          avgCycleDurationMs: toFiniteNumber(fallbackOutlier.cycleDurationMs?.avgMs, 0),
+          p95CycleDurationMs: toFiniteNumber(fallbackOutlier.cycleDurationMs?.p95Ms, 0),
+          p99CycleDurationMs: toFiniteNumber(fallbackOutlier.cycleDurationMs?.p99Ms, 0),
+          queueLagAvgMs: toFiniteNumber(fallbackOutlier.queueLagMs?.avgMs, 0),
+          queueLagMaxMs: toFiniteNumber(fallbackOutlier.queueLagMs?.maxMs, 0),
+          retries: toFiniteNumber(fallbackOutlier.retries, 0),
+          errors: toFiniteNumber(fallbackOutlier.errors, 0),
+          deadLetters: toFiniteNumber(fallbackOutlier.deadLetters, 0),
+          skipped: fallbackOutlier.skipped,
+          failureByType: fallbackOutlier.failureByType,
+          telemetryPauseReasons: fallbackOutlier.telemetryPauseReasons,
+          phaseTimingsMaxMs: sanitizePhaseTimingMaxMs(extractPhaseTimingRunMaxMs(fallbackOutlier.phaseTimingsMs)),
           slowestCycle: slowestCycle
             ? {
                 userId: slowestCycle.userId,
@@ -1456,8 +1566,14 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
                 completedAtMs: slowestCycle.completedAtMs
               }
             : null
-        };
+        });
       }
+    }
+    if (outlierRun) {
+      outlierRun = {
+        ...outlierRun,
+        likelyCauses: buildLikelyCauseTags(outlierRun)
+      };
     }
 
     let currentAlert = null;
@@ -1540,6 +1656,8 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           phaseTimings: {
             latestRunStartedAtMs: toFiniteNumber(latestRun?.startedAtMs, 0),
             latestRunMaxMs: latestRunPhaseTimingsMaxMs,
+            outlierRunStartedAtMs: toFiniteNumber(outlierRun?.startedAtMs, 0),
+            outlierRunMaxMs: sanitizePhaseTimingMaxMs(outlierRun?.phaseTimingsMaxMs),
             windowMaxMs: sanitizePhaseTimingMaxMs(summary.phaseTimingsMaxMs)
           }
         },
@@ -2012,4 +2130,3 @@ app.get('/api/admin/check', authenticateUser, async (req, res) => {
 module.exports = {
   registerAdminRoutes
 };
-

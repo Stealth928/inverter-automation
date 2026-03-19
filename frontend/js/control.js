@@ -518,15 +518,5 @@
       }
     }
 
-    // WIP Pages visibility - Topology Discovery (admin only)
-    if (typeof window.auth !== 'undefined' && window.auth) {
-      window.auth.onAuthStateChanged((user) => {
-        if (user && user.email === 'socrates.team.comms@gmail.com') {
-          const topologyLink = document.getElementById('topologyNavLink');
-          if (topologyLink) topologyLink.style.display = '';
-        }
-      });
-    }
-
     // Initialize Firebase on page load
   

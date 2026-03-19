@@ -382,6 +382,53 @@ describe('automation scheduler service', () => {
     ).toBe(true);
   });
 
+  test('queue and cycle duration stats only count executed cycles', async () => {
+    const emitSchedulerMetrics = jest.fn(async () => undefined);
+    const automationCycleHandler = jest.fn(async (_req, res) => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      res.json({
+        errno: 0,
+        result: {
+          skipped: true,
+          reason: 'No rules configured',
+          phaseTimingsMs: {
+            dataFetchMs: 4,
+            ruleEvalMs: 2,
+            actionApplyMs: 1,
+            curtailmentMs: 1
+          }
+        }
+      });
+    });
+    const acquireUserCycleLock = jest.fn(async ({ userId }) => {
+      if (userId === 'u-2') {
+        return { acquired: false, lockId: null };
+      }
+      return { acquired: true, lockId: `lock-${userId}` };
+    });
+    const { deps } = buildSchedulerDeps({
+      acquireUserCycleLock,
+      automationCycleHandler,
+      emitSchedulerMetrics,
+      schedulerOptions: {
+        maxConcurrentUsers: 1,
+        retryAttempts: 1,
+        retryBaseDelayMs: 0,
+        retryJitterMs: 0
+      },
+      userIds: ['u-1', 'u-2']
+    });
+
+    await runAutomationSchedulerCycle({}, deps);
+
+    expect(emitSchedulerMetrics).toHaveBeenCalledTimes(1);
+    const metrics = emitSchedulerMetrics.mock.calls[0][0];
+    expect(metrics.cyclesRun).toBe(1);
+    expect(metrics.skipped.locked).toBe(1);
+    expect(metrics.queueLagMs.count).toBe(1);
+    expect(metrics.cycleDurationMs.count).toBe(1);
+  });
+
   test('warns and continues when metric emission fails', async () => {
     const emitSchedulerMetrics = jest.fn(async () => {
       throw new Error('metrics sink unavailable');

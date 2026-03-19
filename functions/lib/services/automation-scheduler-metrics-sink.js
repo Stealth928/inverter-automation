@@ -250,6 +250,122 @@ function sanitizeSlowCycleSamples(value, maxItems = 3) {
     .map((entry, index) => ({ ...entry, rank: index + 1 }));
 }
 
+function sanitizeSlowestCycle(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const userId = source.userId != null ? String(source.userId) : null;
+  const cycleKey = source.cycleKey != null ? String(source.cycleKey) : null;
+  const durationMs = Math.max(0, toFiniteNumber(source.durationMs, source.cycleDurationMs));
+  if (!userId && !cycleKey && durationMs <= 0) {
+    return null;
+  }
+  return {
+    userId,
+    cycleKey,
+    durationMs,
+    queueLagMs: Math.max(0, toFiniteNumber(source.queueLagMs, 0)),
+    retriesUsed: Math.max(0, toFiniteNumber(source.retriesUsed, 0)),
+    failureType: source.failureType ? String(source.failureType) : null,
+    startedAtMs: Math.max(0, toFiniteNumber(source.startedAtMs, 0)),
+    completedAtMs: Math.max(0, toFiniteNumber(source.completedAtMs, 0))
+  };
+}
+
+function sanitizeOutlierRunSnapshot(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const runId = source.runId != null ? String(source.runId) : null;
+  const maxCycleDurationMs = Math.max(0, toFiniteNumber(source.maxCycleDurationMs, 0));
+  if (!runId && maxCycleDurationMs <= 0) {
+    return null;
+  }
+  return {
+    dayKey: source.dayKey != null ? String(source.dayKey) : null,
+    runId,
+    schedulerId: source.schedulerId != null ? String(source.schedulerId) : null,
+    workerId: source.workerId != null ? String(source.workerId) : null,
+    startedAtMs: Math.max(0, toFiniteNumber(source.startedAtMs, 0)),
+    completedAtMs: Math.max(0, toFiniteNumber(source.completedAtMs, 0)),
+    maxCycleDurationMs,
+    avgCycleDurationMs: Math.max(0, toFiniteNumber(source.avgCycleDurationMs, 0)),
+    p95CycleDurationMs: Math.max(0, toFiniteNumber(source.p95CycleDurationMs, 0)),
+    p99CycleDurationMs: Math.max(0, toFiniteNumber(source.p99CycleDurationMs, 0)),
+    queueLagAvgMs: Math.max(0, toFiniteNumber(source.queueLagAvgMs, 0)),
+    queueLagMaxMs: Math.max(0, toFiniteNumber(source.queueLagMaxMs, 0)),
+    retries: Math.max(0, toFiniteNumber(source.retries, 0)),
+    errors: Math.max(0, toFiniteNumber(source.errors, 0)),
+    deadLetters: Math.max(0, toFiniteNumber(source.deadLetters, 0)),
+    skipped: {
+      disabledOrBlackout: Math.max(0, toFiniteNumber(source.skipped?.disabledOrBlackout, 0)),
+      idempotent: Math.max(0, toFiniteNumber(source.skipped?.idempotent, 0)),
+      locked: Math.max(0, toFiniteNumber(source.skipped?.locked, 0)),
+      tooSoon: Math.max(0, toFiniteNumber(source.skipped?.tooSoon, 0))
+    },
+    failureByType: buildFailureTally(source.failureByType),
+    telemetryPauseReasons: buildFailureTally(source.telemetryPauseReasons),
+    phaseTimingsMaxMs: sanitizePhaseTimingMaxMs(source.phaseTimingsMaxMs),
+    slowestCycle: sanitizeSlowestCycle(source.slowestCycle)
+  };
+}
+
+function buildOutlierRunSnapshot(options = {}) {
+  const normalizedMetrics = options.normalizedMetrics && typeof options.normalizedMetrics === 'object'
+    ? options.normalizedMetrics
+    : {};
+  const slowCycleSamples = sanitizeSlowCycleSamples(normalizedMetrics.slowCycleSamples, 1);
+  const slowestCycle = slowCycleSamples.length > 0 ? slowCycleSamples[0] : null;
+
+  return sanitizeOutlierRunSnapshot({
+    dayKey: options.dayKey || null,
+    runId: options.runId || null,
+    schedulerId: options.schedulerId || null,
+    workerId: normalizedMetrics.workerId || null,
+    startedAtMs: normalizedMetrics.startedAtMs,
+    completedAtMs: normalizedMetrics.completedAtMs,
+    maxCycleDurationMs: normalizedMetrics.cycleDurationMs?.maxMs,
+    avgCycleDurationMs: normalizedMetrics.cycleDurationMs?.avgMs,
+    p95CycleDurationMs: normalizedMetrics.cycleDurationMs?.p95Ms,
+    p99CycleDurationMs: normalizedMetrics.cycleDurationMs?.p99Ms,
+    queueLagAvgMs: normalizedMetrics.queueLagMs?.avgMs,
+    queueLagMaxMs: normalizedMetrics.queueLagMs?.maxMs,
+    retries: normalizedMetrics.retries,
+    errors: normalizedMetrics.errors,
+    deadLetters: normalizedMetrics.deadLetters,
+    skipped: normalizedMetrics.skipped,
+    failureByType: normalizedMetrics.failureByType,
+    telemetryPauseReasons: normalizedMetrics.telemetryPauseReasons,
+    phaseTimingsMaxMs: buildPhaseTimingMaxMs(normalizedMetrics.phaseTimingsMs),
+    slowestCycle: slowestCycle
+      ? {
+          userId: slowestCycle.userId,
+          cycleKey: slowestCycle.cycleKey,
+          durationMs: slowestCycle.cycleDurationMs,
+          queueLagMs: slowestCycle.queueLagMs,
+          retriesUsed: slowestCycle.retriesUsed,
+          failureType: slowestCycle.failureType,
+          startedAtMs: slowestCycle.startedAtMs,
+          completedAtMs: slowestCycle.completedAtMs
+        }
+      : null
+  });
+}
+
+function shouldReplaceOutlierRun(existing, candidate) {
+  const safeExisting = sanitizeOutlierRunSnapshot(existing);
+  const safeCandidate = sanitizeOutlierRunSnapshot(candidate);
+  if (!safeCandidate || safeCandidate.maxCycleDurationMs <= 0) {
+    return false;
+  }
+  if (!safeExisting || safeExisting.maxCycleDurationMs <= 0) {
+    return true;
+  }
+  if (safeCandidate.maxCycleDurationMs > safeExisting.maxCycleDurationMs) {
+    return true;
+  }
+  if (safeCandidate.maxCycleDurationMs < safeExisting.maxCycleDurationMs) {
+    return false;
+  }
+  return safeCandidate.startedAtMs >= safeExisting.startedAtMs;
+}
+
 function severityRank(value) {
   const status = String(value || '').trim().toLowerCase();
   if (status === 'breach') return 2;
@@ -314,6 +430,7 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
     const metricsRootRef = db.collection('metrics').doc('automationScheduler');
     const runRef = metricsRootRef.collection('runs').doc(runId);
     const dailyRef = metricsRootRef.collection('daily').doc(dayKey);
+    const tailStateRef = metricsRootRef.collection('state').doc('tailLatency');
     const currentAlertRef = metricsRootRef.collection('alerts').doc('current');
     const dayAlertRef = metricsRootRef.collection('alerts').doc(dayKey);
 
@@ -348,6 +465,12 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       workerId: String(metricsInput.workerId || '').trim() || null,
       slowCycleSamples
     };
+    const runOutlierSnapshot = buildOutlierRunSnapshot({
+      dayKey,
+      normalizedMetrics,
+      runId,
+      schedulerId
+    });
     const runSlo = buildSchedulerSloSnapshot({
       cyclesRun: normalizedMetrics.cyclesRun,
       deadLetters: normalizedMetrics.deadLetters,
@@ -372,8 +495,9 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
     }, { merge: true });
 
     let dailyAggregateForAlert = null;
-    const updateDailyAggregate = async (readSnapshot, writeSet) => {
+    const updateDailyAggregate = async (readSnapshot, tailSnapshot, writeSet) => {
       const existingData = readSnapshot.exists ? readSnapshot.data() || {} : {};
+      const existingTailData = tailSnapshot.exists ? tailSnapshot.data() || {} : {};
       const existingFailureByType = buildFailureTally(existingData.failureByType);
       const failureByType = mergeFailureTally(existingFailureByType, normalizedFailureByType);
       const existingTelemetryPauseReasons = buildFailureTally(existingData.telemetryPauseReasons);
@@ -409,6 +533,12 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       const nextAvgCycleDurationSamples =
         toFiniteNumber(existingData.avgCycleDurationSamples, 0) +
         normalizedMetrics.cycleDurationMs.count;
+      const nextAvgQueueLagTotalMs =
+        toFiniteNumber(existingData.avgQueueLagTotalMs, 0) +
+        normalizedMetrics.queueLagMs.avgMs * normalizedMetrics.queueLagMs.count;
+      const nextAvgQueueLagSamples =
+        toFiniteNumber(existingData.avgQueueLagSamples, 0) +
+        normalizedMetrics.queueLagMs.count;
       const nextCyclesRun = toFiniteNumber(existingData.cyclesRun, 0) + normalizedMetrics.cyclesRun;
       const nextDeadLetters = toFiniteNumber(existingData.deadLetters, 0) + normalizedMetrics.deadLetters;
       const nextErrors = toFiniteNumber(existingData.errors, 0) + normalizedMetrics.errors;
@@ -429,7 +559,7 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       const tailWindowMs = tailWindowMinutes * 60 * 1000;
       const tailWindowStartMs = recordedAtMs - tailWindowMs;
       const tailSampleLimit = Math.max(20, Math.min(120, tailMinRuns * 4));
-      const priorTailSamples = sanitizeTailSamples(existingData.tailLatencyState?.runs, tailSampleLimit);
+      const priorTailSamples = sanitizeTailSamples(existingTailData.runs, tailSampleLimit);
       const nextTailSamples = sanitizeTailSamples([
         {
           startedAtMs,
@@ -476,54 +606,74 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
         tailLatency
       };
 
-      writeSet({
-        dayKey,
-        runs: previousRuns + 1,
-        totalEnabledUsers: toFiniteNumber(existingData.totalEnabledUsers, 0) + normalizedMetrics.totalEnabledUsers,
-        cycleCandidates: toFiniteNumber(existingData.cycleCandidates, 0) + normalizedMetrics.cycleCandidates,
-        cyclesRun: nextCyclesRun,
-        deadLetters: nextDeadLetters,
-        errors: nextErrors,
-        retries: toFiniteNumber(existingData.retries, 0) + normalizedMetrics.retries,
-        skipped: {
-          disabledOrBlackout:
-            toFiniteNumber(existingData.skipped?.disabledOrBlackout, 0) + normalizedSkipped.disabledOrBlackout,
-          idempotent: toFiniteNumber(existingData.skipped?.idempotent, 0) + normalizedSkipped.idempotent,
-          locked: toFiniteNumber(existingData.skipped?.locked, 0) + normalizedSkipped.locked,
-          tooSoon: toFiniteNumber(existingData.skipped?.tooSoon, 0) + normalizedSkipped.tooSoon
+      const existingOutlierRun = sanitizeOutlierRunSnapshot(existingData.outlierRun);
+      const nextOutlierRun = shouldReplaceOutlierRun(existingOutlierRun, runOutlierSnapshot)
+        ? runOutlierSnapshot
+        : existingOutlierRun;
+
+      await writeSet({
+        daily: {
+          dayKey,
+          runs: previousRuns + 1,
+          totalEnabledUsers: toFiniteNumber(existingData.totalEnabledUsers, 0) + normalizedMetrics.totalEnabledUsers,
+          cycleCandidates: toFiniteNumber(existingData.cycleCandidates, 0) + normalizedMetrics.cycleCandidates,
+          cyclesRun: nextCyclesRun,
+          deadLetters: nextDeadLetters,
+          errors: nextErrors,
+          retries: toFiniteNumber(existingData.retries, 0) + normalizedMetrics.retries,
+          skipped: {
+            disabledOrBlackout:
+              toFiniteNumber(existingData.skipped?.disabledOrBlackout, 0) + normalizedSkipped.disabledOrBlackout,
+            idempotent: toFiniteNumber(existingData.skipped?.idempotent, 0) + normalizedSkipped.idempotent,
+            locked: toFiniteNumber(existingData.skipped?.locked, 0) + normalizedSkipped.locked,
+            tooSoon: toFiniteNumber(existingData.skipped?.tooSoon, 0) + normalizedSkipped.tooSoon
+          },
+          maxQueueLagMs: nextMaxQueueLagMs,
+          maxCycleDurationMs: nextMaxCycleDurationMs,
+          maxTelemetryAgeMs: nextMaxTelemetryAgeMs,
+          p95CycleDurationMs: nextP95CycleDurationMs,
+          p99CycleDurationMs: nextP99CycleDurationMs,
+          phaseTimingsMaxMs: nextPhaseTimingsMaxMs,
+          avgCycleDurationTotalMs: nextAvgCycleDurationTotalMs,
+          avgCycleDurationSamples: nextAvgCycleDurationSamples,
+          avgQueueLagTotalMs: nextAvgQueueLagTotalMs,
+          avgQueueLagSamples: nextAvgQueueLagSamples,
+          failureByType,
+          telemetryPauseReasons,
+          slo: dailySlo,
+          tailLatency,
+          outlierRun: nextOutlierRun,
+          lastSchedulerId: schedulerId,
+          lastRunAtMs: recordedAtMs,
+          updatedAt: serverTimestamp()
         },
-        maxQueueLagMs: nextMaxQueueLagMs,
-        maxCycleDurationMs: nextMaxCycleDurationMs,
-        maxTelemetryAgeMs: nextMaxTelemetryAgeMs,
-        p95CycleDurationMs: nextP95CycleDurationMs,
-        p99CycleDurationMs: nextP99CycleDurationMs,
-        phaseTimingsMaxMs: nextPhaseTimingsMaxMs,
-        avgCycleDurationTotalMs: nextAvgCycleDurationTotalMs,
-        avgCycleDurationSamples: nextAvgCycleDurationSamples,
-        failureByType,
-        telemetryPauseReasons,
-        slo: dailySlo,
-        tailLatencyState: {
+        tailState: {
           runs: nextTailSamples,
           thresholdMs: tailThresholdMs,
           windowMinutes: tailWindowMinutes,
           minRuns: tailMinRuns,
-          updatedAtMs: recordedAtMs
-        },
-        lastSchedulerId: schedulerId,
-        lastRunAtMs: recordedAtMs,
-        updatedAt: serverTimestamp()
+          updatedAtMs: recordedAtMs,
+          updatedAt: serverTimestamp()
+        }
       });
     };
 
     if (typeof db.runTransaction === 'function') {
       await db.runTransaction(async (tx) => {
-        const snapshot = await tx.get(dailyRef);
-        await updateDailyAggregate(snapshot, (data) => tx.set(dailyRef, data, { merge: true }));
+        const dailySnapshot = await tx.get(dailyRef);
+        const tailSnapshot = await tx.get(tailStateRef);
+        await updateDailyAggregate(dailySnapshot, tailSnapshot, (data) => {
+          tx.set(dailyRef, data.daily, { merge: true });
+          tx.set(tailStateRef, data.tailState, { merge: true });
+        });
       });
     } else {
-      const snapshot = await dailyRef.get();
-      await updateDailyAggregate(snapshot, (data) => dailyRef.set(data, { merge: true }));
+      const dailySnapshot = await dailyRef.get();
+      const tailSnapshot = await tailStateRef.get();
+      await updateDailyAggregate(dailySnapshot, tailSnapshot, async (data) => {
+        await dailyRef.set(data.daily, { merge: true });
+        await tailStateRef.set(data.tailState, { merge: true });
+      });
     }
 
     if (!dailyAggregateForAlert) {

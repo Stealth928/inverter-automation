@@ -38,7 +38,7 @@ native mobile app in this repository.
 | `roi.html` | ROI analysis | Automation ROI and related reporting workflows |
 | `rules-library.html` | Template library | Import-ready rule templates with power scaling |
 | `settings.html` | System settings | Provider credentials, location/timezone, automation options, curtailment, Tesla onboarding |
-| `curtailment-discovery.html` | Advanced curtailment discovery surface | Admin/support-oriented and still labeled as WIP/topology discovery in parts of the UI |
+| `curtailment-discovery.html` | Advanced curtailment discovery surface | Admin/support-oriented curtailment and topology investigation |
 | `admin.html` | Admin panel | User management, platform stats, Firestore metrics, scheduler metrics |
 | `privacy.html` / `terms.html` | Legal pages | Publicly accessible |
 
@@ -122,9 +122,8 @@ Current shipped behavior:
 - the advanced discovery page helps support/admin users inspect topology and
   export-limit behavior on supported FoxESS-style paths
 
-The discovery surface still carries WIP/topology wording in the UI, so docs
-should describe it as an advanced support/admin feature rather than a general
-first-time workflow.
+The discovery surface is best described as an advanced support/admin feature
+rather than a general first-time workflow.
 
 ### 7. Tesla EV Integration
 

@@ -1087,14 +1087,15 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
         }
       });
 
-      cyclesRun = cycleResults.filter((entry) => entry.executed === true).length;
+      const executedCycleResults = cycleResults.filter((entry) => entry.executed === true);
+      cyclesRun = executedCycleResults.length;
       errors = cycleResults.filter((entry) => !entry.success).length;
       skippedLocked = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.skippedLocked, 0), 0);
       skippedIdempotent = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.skippedIdempotent, 0), 0);
       deadLetters = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.deadLetters, 0), 0);
       totalRetries = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.retriesUsed, 0), 0);
-      queueLagStats = buildDurationStats(cycleResults.map((entry) => entry.queueLagMs));
-      cycleDurationStats = buildDurationStats(cycleResults.map((entry) => entry.cycleDurationMs));
+      queueLagStats = buildDurationStats(executedCycleResults.map((entry) => entry.queueLagMs));
+      cycleDurationStats = buildDurationStats(executedCycleResults.map((entry) => entry.cycleDurationMs));
       phaseTimingStats = buildPhaseTimingStats(cycleResults);
       telemetryAgeStats = buildDurationStats(cycleResults.map((entry) => entry.telemetryAgeMs));
       failureByType = tallyFailureTypes(cycleResults);

@@ -23,6 +23,7 @@ tmp_docker_check/
 
 # macOS
 .DS_Store
+__pycache__/
 
 # Editor
 .vscode/
@@ -41,6 +42,9 @@ functions/test-output.txt
 functions/quick-control-test-output.txt
 deployed-index.html
 restore-config.json
+api_500s.txt
+api_env.json
+proxy_logs.txt
 
 # Test artifacts and reports
 playwright-report/

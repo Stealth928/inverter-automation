@@ -1644,8 +1644,8 @@
         const maxCycleDurationMs = Number(summary?.maxCycleDurationMs || 0);
         const maxTelemetryAgeMs = Number(summary?.maxTelemetryAgeMs || 0);
         const p99CycleDurationMs = Number(summary?.p99CycleDurationMs || 0);
-        const avgQueueLagMs = Number(options?.avgQueueLagMs || 0);
-        const avgCycleDurationMs = Number(options?.avgCycleDurationMs || 0);
+        const avgQueueLagMs = Number(summary?.avgQueueLagMs || options?.avgQueueLagMs || 0);
+        const avgCycleDurationMs = Number(summary?.avgCycleDurationMs || options?.avgCycleDurationMs || 0);
         const thresholds = options?.thresholds && typeof options.thresholds === 'object'
             ? options.thresholds
             : {};
@@ -1934,8 +1934,18 @@
                 return `${label} ${formatDurationMs(latestMs)} / ${formatDurationMs(windowMaxMs)}`;
             })
             .join(' | ');
+        const outlierPhaseComparison = phaseRows
+            .map(({ key, label }) => {
+                const outlierMs = Number(phaseTimings?.outlierRunMaxMs?.[key] || 0);
+                const windowMaxMs = Number(phaseTimings?.windowMaxMs?.[key] || 0);
+                return `${label} ${formatDurationMs(outlierMs)} / ${formatDurationMs(windowMaxMs)}`;
+            })
+            .join(' | ');
         const phaseStartedAt = phaseTimings?.latestRunStartedAtMs
             ? new Date(Number(phaseTimings.latestRunStartedAtMs)).toLocaleString('en-AU')
+            : '-';
+        const outlierPhaseStartedAt = phaseTimings?.outlierRunStartedAtMs
+            ? new Date(Number(phaseTimings.outlierRunStartedAtMs)).toLocaleString('en-AU')
             : '-';
 
         if (!outlier && !phaseTimings && telemetryPauseReasonEntries.length === 0) {
@@ -1981,7 +1991,8 @@
         el.innerHTML = `
             <div><strong>Outlier Run:</strong> ${escapeHtml(outlier?.runId || '-')} @ ${escapeHtml(startedAt)} (scheduler=${escapeHtml(outlier?.schedulerId || '-')}, worker=${escapeHtml(outlier?.workerId || '-')})</div>
             <div><strong>Tail:</strong> p95=${formatDurationMs(outlier?.p95CycleDurationMs || 0)}, p99=${formatDurationMs(outlier?.p99CycleDurationMs || 0)}, max=${formatDurationMs(outlier?.maxCycleDurationMs || 0)}, queueMax=${formatDurationMs(outlier?.queueLagMaxMs || 0)}</div>
-            <div><strong>Phase Timings:</strong> latest run @ ${escapeHtml(phaseStartedAt)} maxes (latest / window): ${escapeHtml(phaseComparison)}</div>
+            <div><strong>Outlier Phases:</strong> run @ ${escapeHtml(outlierPhaseStartedAt === '-' ? startedAt : outlierPhaseStartedAt)} maxes (outlier / window): ${escapeHtml(outlierPhaseComparison)}</div>
+            <div><strong>Latest Phases:</strong> latest run @ ${escapeHtml(phaseStartedAt)} maxes (latest / window): ${escapeHtml(phaseComparison)}</div>
             <div><strong>Likely Causes:</strong> ${escapeHtml(causeText)}</div>
             <div><strong>Slowest Cycle:</strong> ${slowestText}</div>
             <div><strong>Sustained Tail Signal:</strong> ${escapeHtml(tailText)}</div>
@@ -2075,8 +2086,8 @@
             if (p95El) p95El.textContent = formatDurationMs(summary.p95CycleDurationMs || 0);
             if (p99El) p99El.textContent = formatDurationMs(summary.p99CycleDurationMs || 0);
             renderSchedulerSloCards(summary, {
-                avgQueueLagMs: queueLagAverage.avgMs,
-                avgCycleDurationMs: cycleDurationAverage.avgMs,
+                avgQueueLagMs: Number(summary.avgQueueLagMs || queueLagAverage.avgMs || 0),
+                avgCycleDurationMs: Number(summary.avgCycleDurationMs || cycleDurationAverage.avgMs || 0),
                 thresholds: sloThresholds,
                 tailLatency
             });

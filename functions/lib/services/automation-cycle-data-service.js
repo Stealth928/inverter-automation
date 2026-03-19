@@ -1,5 +1,7 @@
 'use strict';
 
+const { parseTimestampMs } = require('./automation-telemetry-health-service');
+
 function getLogger(logger = console) {
   return {
     info: logger && typeof logger.log === 'function' ? logger.log.bind(logger) : console.log,
@@ -49,6 +51,53 @@ function toAutomationTelemetryFrame(status = {}) {
     __cacheHit: false,
     __providerAdapter: true
   };
+}
+
+function ensureAutomationTelemetryTimestamp(payload, nowMs = Date.now()) {
+  if (!payload || typeof payload !== 'object') {
+    return payload;
+  }
+
+  const firstFrame = Array.isArray(payload.result) && payload.result.length > 0 &&
+    payload.result[0] && typeof payload.result[0] === 'object'
+    ? payload.result[0]
+    : null;
+
+  const candidates = [
+    payload.observedAtIso,
+    payload.observedAt,
+    payload.time,
+    payload.timestamp,
+    firstFrame?.observedAtIso,
+    firstFrame?.observedAt,
+    firstFrame?.time,
+    firstFrame?.timestamp
+  ];
+
+  let observedAtMs = NaN;
+  for (const candidate of candidates) {
+    observedAtMs = parseTimestampMs(candidate);
+    if (Number.isFinite(observedAtMs)) {
+      break;
+    }
+  }
+
+  if (!Number.isFinite(observedAtMs)) {
+    const cacheAgeMs = Number(payload.__cacheAgeMs);
+    observedAtMs = Number.isFinite(cacheAgeMs) && cacheAgeMs >= 0
+      ? Math.max(0, nowMs - cacheAgeMs)
+      : nowMs;
+  }
+
+  const observedAtIso = new Date(observedAtMs).toISOString();
+  if (!payload.observedAtIso) {
+    payload.observedAtIso = observedAtIso;
+  }
+  if (firstFrame && !firstFrame.time && !firstFrame.timestamp) {
+    firstFrame.time = observedAtIso;
+  }
+
+  return payload;
 }
 
 async function fetchAutomationInverterData(options = {}) {
@@ -105,7 +154,7 @@ async function fetchAutomationInverterData(options = {}) {
     }
   }
 
-  return inverterData;
+  return ensureAutomationTelemetryTimestamp(inverterData);
 }
 
 function logAmberForecastSummary(amberData, logger = console) {
@@ -242,6 +291,7 @@ async function fetchAutomationAmberData(options = {}) {
 }
 
 module.exports = {
+  ensureAutomationTelemetryTimestamp,
   fetchAutomationAmberData,
   fetchAutomationInverterData,
   hasNestedDatasFrame,

@@ -391,7 +391,7 @@
         '/control.html': { icon: 'controls', label: 'Controls' },
         '/rules-library.html': { icon: 'library', label: 'Rules Library' },
         '/settings.html': { icon: 'settings', label: 'Settings' },
-        '/curtailment-discovery.html': { icon: 'topology', label: 'WIP - Topology Discovery' },
+        '/curtailment-discovery.html': { icon: 'topology', label: 'Curtailment Discovery' },
         '/admin.html': { icon: 'admin', label: 'Admin' }
     };
 
