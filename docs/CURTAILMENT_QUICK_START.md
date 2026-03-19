@@ -55,23 +55,6 @@ runtime evaluation.
 When price crosses the threshold, the dashboard and runtime logs will reflect
 curtailment activation or deactivation.
 
-## Advanced Discovery Workflow
-
-The repo also ships `curtailment-discovery.html`, which is an advanced
-support/admin-oriented tool for topology and export-limit investigation.
-
-Important nuance:
-
-- this page is not the normal first-run workflow for most users
-- it is most useful when diagnosing FoxESS-style export-limit behavior,
-  topology questions, or support cases
-
-Use the discovery page when you need to:
-
-- inspect likely topology behavior
-- probe export-limit related settings on supported devices
-- compare current export-limit settings with observed runtime behavior
-
 ## Recommended Threshold Choices
 
 | Goal | Example threshold |

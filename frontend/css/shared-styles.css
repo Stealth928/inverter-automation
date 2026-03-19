@@ -260,7 +260,6 @@
 [data-theme="light"] .nav-link[data-nav-icon="reports"] .nav-link__icon { color: #a46200; }
 [data-theme="light"] .nav-link[data-nav-icon="controls"] .nav-link__icon { color: #5a58c8; }
 [data-theme="light"] .nav-link[data-nav-icon="settings"] .nav-link__icon { color: #5f6a78; }
-[data-theme="light"] .nav-link[data-nav-icon="topology"] .nav-link__icon { color: #156f9d; }
 [data-theme="light"] .nav-link[data-nav-icon="admin"] .nav-link__icon { color: #9b6700; }
 
 [data-theme="light"] .page-title--with-icon[data-page-title-icon="overview"] .page-title__icon { color: #1869c6; }
@@ -270,7 +269,6 @@
 [data-theme="light"] .page-title--with-icon[data-page-title-icon="reports"] .page-title__icon { color: #a46200; }
 [data-theme="light"] .page-title--with-icon[data-page-title-icon="controls"] .page-title__icon { color: #5a58c8; }
 [data-theme="light"] .page-title--with-icon[data-page-title-icon="settings"] .page-title__icon { color: #5f6a78; }
-[data-theme="light"] .page-title--with-icon[data-page-title-icon="topology"] .page-title__icon { color: #156f9d; }
 [data-theme="light"] .page-title--with-icon[data-page-title-icon="admin"] .page-title__icon { color: #9b6700; }
 
 [data-theme="light"] .nav-link.active .nav-link__icon {
@@ -720,7 +718,6 @@ body.preview-tour-nav-locked .nav-main .nav-toggle {
 .nav-link[data-nav-icon="reports"] .nav-link__icon { --nav-icon-glyph: #ffc56d; }
 .nav-link[data-nav-icon="controls"] .nav-link__icon { --nav-icon-glyph: #b7c1ff; }
 .nav-link[data-nav-icon="settings"] .nav-link__icon { --nav-icon-glyph: #d9dee7; }
-.nav-link[data-nav-icon="topology"] .nav-link__icon { --nav-icon-glyph: #a5d3ff; }
 .nav-link[data-nav-icon="admin"] .nav-link__icon { --nav-icon-glyph: #ffd978; }
 
 /* Nav link order - ensures consistent positioning */
@@ -751,10 +748,6 @@ body.preview-tour-nav-locked .nav-main .nav-toggle {
 
 .nav-link[href="/settings.html"] {
     order: 7 !important;
-}
-
-.nav-link[href="/curtailment-discovery.html"] {
-    order: 8 !important;
 }
 
 /* Admin panel link - always last */
@@ -1017,7 +1010,6 @@ body.preview-tour-nav-locked .nav-main .nav-toggle {
 .page-title--with-icon[data-page-title-icon="reports"] .page-title__icon { --page-title-glyph: #ffc56d; }
 .page-title--with-icon[data-page-title-icon="controls"] .page-title__icon { --page-title-glyph: #b7c1ff; }
 .page-title--with-icon[data-page-title-icon="settings"] .page-title__icon { --page-title-glyph: #d9dee7; }
-.page-title--with-icon[data-page-title-icon="topology"] .page-title__icon { --page-title-glyph: #a5d3ff; }
 .page-title--with-icon[data-page-title-icon="admin"] .page-title__icon { --page-title-glyph: #ffd978; }
 
 .page-actions {

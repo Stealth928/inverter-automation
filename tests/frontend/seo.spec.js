@@ -92,7 +92,6 @@ test.describe('SEO Metadata', () => {
       '/history.html',
       '/roi.html',
       '/rules-library.html',
-      '/curtailment-discovery.html',
       '/reset-password.html',
       '/admin.html',
       '/test.html'

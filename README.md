@@ -87,7 +87,6 @@ inverter-automation/
 |   |-- history.html                # Reports and history
 |   |-- roi.html                    # ROI analysis
 |   |-- rules-library.html          # Rule templates
-|   |-- curtailment-discovery.html  # Advanced support/admin discovery surface
 |   |-- admin.html                  # Admin dashboard
 |   |-- js/
 |   |-- css/

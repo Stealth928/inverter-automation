@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'socrates-v52';
+const CACHE_VERSION = 'socrates-v53';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const STATIC_ASSETS = [
@@ -10,7 +10,6 @@ const STATIC_ASSETS = [
   '/control.html',
   '/history.html',
   '/roi.html',
-  '/curtailment-discovery.html',
   '/admin.html',
   '/css/shared-styles.css?v=9',
   '/css/tour.css?v=4',

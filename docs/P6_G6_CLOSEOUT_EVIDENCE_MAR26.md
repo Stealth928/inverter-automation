@@ -28,8 +28,8 @@
 ### G6-2: No Duplicated Low-Level Fetch/Auth Wrappers Across Pages ✅
 
 **What was done:**
-- Removed `async function authenticatedFetch(...)` from 9 page scripts:
-  `control.js`, `curtailment-discovery.js`, `dashboard.js`, `history.js`, `login.js`, `roi.js`, `settings.js`, `setup.js`, `test-page.js`
+- Removed `async function authenticatedFetch(...)` from 8 page scripts:
+  `control.js`, `dashboard.js`, `history.js`, `login.js`, `roi.js`, `settings.js`, `setup.js`, `test-page.js`
 - Upgraded `firebase-auth.js` canonical `authenticatedFetch` to:
   1. Try `AppShell.authFetch` (handles 401 redirect)
   2. Fall back to `apiClient.fetch`
@@ -84,7 +84,6 @@ Select-String -Path frontend\js\*.js -Pattern "\bfetch\(" |
 | admin.html | 0 |
 | roi.html | 0 |
 | rules-library.html | 0 |
-| curtailment-discovery.html | 0 |
 | control.html | 0 |
 | setup.html | 0 |
 | login.html | 0 |
@@ -128,7 +127,6 @@ Select-String -Path frontend\js\*.js -Pattern "\bfetch\(" |
 |---|---|---|
 | `frontend/js/admin.js` | ~1,069 | `frontend/admin.html` |
 | `frontend/js/control.js` | ~480 | `frontend/control.html` |
-| `frontend/js/curtailment-discovery.js` | ~555 | `frontend/curtailment-discovery.html` |
 | `frontend/js/dashboard.js` | ~7,100 | `frontend/index.html` |
 | `frontend/js/history.js` | ~1,500 | `frontend/history.html` |
 | `frontend/js/login.js` | ~255 | `frontend/login.html` |
@@ -148,7 +146,6 @@ Select-String -Path frontend\js\*.js -Pattern "\bfetch\(" |
 | `frontend/js/history.js` | Removed local `authenticatedFetch`; use stored Amber site ID |
 | `frontend/js/roi.js` | Removed local `authenticatedFetch`; use stored Amber site ID |
 | `frontend/js/control.js` | Removed local `authenticatedFetch` |
-| `frontend/js/curtailment-discovery.js` | Removed local `authenticatedFetch` |
 | `frontend/js/login.js` | Removed local `authenticatedFetch` |
 | `frontend/js/settings.js` | Removed local `authenticatedFetch` |
 | `frontend/js/setup.js` | Removed local `authenticatedFetch` |

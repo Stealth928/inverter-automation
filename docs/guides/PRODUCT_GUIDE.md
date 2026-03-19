@@ -38,7 +38,6 @@ native mobile app in this repository.
 | `roi.html` | ROI analysis | Automation ROI and related reporting workflows |
 | `rules-library.html` | Template library | Import-ready rule templates with power scaling |
 | `settings.html` | System settings | Provider credentials, location/timezone, automation options, curtailment, Tesla onboarding |
-| `curtailment-discovery.html` | Advanced curtailment discovery surface | Admin/support-oriented curtailment and topology investigation |
 | `admin.html` | Admin panel | User management, platform stats, Firestore metrics, scheduler metrics |
 | `privacy.html` / `terms.html` | Legal pages | Publicly accessible |
 

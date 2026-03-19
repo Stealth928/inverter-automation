@@ -1653,12 +1653,12 @@ The active implementation plan now keeps a compact summary and links here for fu
 
 **G6 criterion #4 — No HTML > 200 inline lines** (completed prior to this chunk):
 - Extracted 16,297+ lines of inline JS from 12 HTML files into 11 dedicated JS modules:
-  `admin.js`, `control.js`, `curtailment-discovery.js`, `dashboard.js`, `history.js`,
+  `admin.js`, `control.js`, `dashboard.js`, `history.js`,
   `login.js`, `roi.js`, `rules-library.js`, `settings.js`, `setup.js`, `test-page.js`
 - All HTML files now at 0 inline script lines; `reset-password.html` remains at 88 lines (2 small utility blocks, below 200 limit).
 
 **G6 criterion #2 — No duplicated fetch/auth wrappers:**
-- Removed identical `authenticatedFetch` wrapper definitions from 9 page scripts (control, curtailment-discovery, dashboard, history, login, roi, settings, setup, test-page).
+- Removed identical `authenticatedFetch` wrapper definitions from 8 page scripts (control, dashboard, history, login, roi, settings, setup, test-page).
 - Upgraded canonical `authenticatedFetch` in `firebase-auth.js` to prefer `AppShell.authFetch` → `apiClient.fetch` → `firebaseAuth.fetchWithAuth` fallback.
 - Single global `window.authenticatedFetch` defined once; all pages use it.
 
