@@ -238,28 +238,130 @@
       };
     }
 
+    function getAlphaEssOverrideStateLabel(stateKey, hasChecked) {
+      if (stateKey === 'charge') return 'Charge active';
+      if (stateKey === 'discharge') return 'Discharge active';
+      if (stateKey === 'ambiguous') return 'Multiple windows';
+      return hasChecked ? 'No active window' : 'Not checked';
+    }
+
+    function formatAlphaEssCheckedAt(value) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '';
+      try {
+        return new Intl.DateTimeFormat(undefined, {
+          hour: 'numeric',
+          minute: '2-digit'
+        }).format(date);
+      } catch (e) {
+        return '';
+      }
+    }
+
+    function setAlphaEssOverrideLoading(isLoading) {
+      const button = document.getElementById('btnAlphaEssCurrentOverride');
+      const labelEl = button?.querySelector('.alphaess-override-action__label');
+      if (button) {
+        button.disabled = !!isLoading;
+        button.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+      }
+      if (labelEl) {
+        labelEl.textContent = isLoading ? 'Checking Live Override' : 'Check Live Override';
+      }
+    }
+
     function resetAlphaEssOverrideCard() {
+      const heroEl = document.getElementById('alphaessOverrideHero');
       const summaryEl = document.getElementById('alphaessCurrentOverride');
       const detailEl = document.getElementById('alphaessCurrentOverrideDetail');
+      const statePillEl = document.getElementById('alphaessOverrideStatePill');
+      const windowCountEl = document.getElementById('alphaessOverrideWindowCount');
+      const timezoneEl = document.getElementById('alphaessOverrideTimezone');
+      const checkedAtEl = document.getElementById('alphaessOverrideCheckedAt');
+      const windowsEl = document.getElementById('alphaessOverrideWindows');
+      if (heroEl) {
+        heroEl.dataset.state = 'idle';
+      }
+      if (statePillEl) {
+        statePillEl.dataset.state = 'idle';
+        statePillEl.textContent = 'Not checked';
+      }
       if (summaryEl) {
-        summaryEl.innerHTML = 'Current override: <span style="color:var(--accent)">Unknown</span>';
+        summaryEl.textContent = 'No override checked yet';
       }
       if (detailEl) {
         detailEl.textContent = 'Derived from active AlphaESS scheduler windows when you check current status.';
       }
+      if (windowCountEl) {
+        windowCountEl.textContent = 'Awaiting check';
+      }
+      if (timezoneEl) {
+        timezoneEl.textContent = 'Timezone pending';
+      }
+      if (checkedAtEl) {
+        checkedAtEl.textContent = 'Not checked yet';
+      }
+      if (windowsEl) {
+        windowsEl.innerHTML = '<span class="alphaess-window-chip alphaess-window-chip--placeholder">Run a check to load matching scheduler windows.</span>';
+      }
+      setAlphaEssOverrideLoading(false);
     }
 
     function renderAlphaEssOverrideState(state = {}) {
+      const heroEl = document.getElementById('alphaessOverrideHero');
       const summaryEl = document.getElementById('alphaessCurrentOverride');
       const detailEl = document.getElementById('alphaessCurrentOverrideDetail');
+      const statePillEl = document.getElementById('alphaessOverrideStatePill');
+      const windowCountEl = document.getElementById('alphaessOverrideWindowCount');
+      const timezoneEl = document.getElementById('alphaessOverrideTimezone');
+      const checkedAtEl = document.getElementById('alphaessOverrideCheckedAt');
+      const windowsEl = document.getElementById('alphaessOverrideWindows');
       if (!summaryEl || !detailEl) return;
 
-      const color = state.state === 'charge'
-        ? 'var(--color-success)'
-        : (state.state === 'discharge' ? 'var(--color-orange)' : (state.state === 'ambiguous' ? 'var(--color-warning)' : 'var(--accent)'));
+      const stateKey = ['charge', 'discharge', 'ambiguous'].includes(String(state.state || ''))
+        ? String(state.state)
+        : 'idle';
+      const hasChecked = !!String(state.checkedAtIso || '').trim();
+      const activeWindows = Array.isArray(state.activeWindows) ? state.activeWindows : [];
+      const checkedAt = formatAlphaEssCheckedAt(state.checkedAtIso);
+      const timeZoneLabel = String(state.timeZone || currentUserTimezone || 'browser-local').trim() || 'browser-local';
 
-      summaryEl.innerHTML = `Current override: <span style="color:${color}">${escapeHtml(state.displayName || 'Unknown')}</span>`;
+      if (heroEl) {
+        heroEl.dataset.state = stateKey;
+      }
+      if (statePillEl) {
+        statePillEl.dataset.state = stateKey;
+        statePillEl.textContent = getAlphaEssOverrideStateLabel(stateKey, hasChecked);
+      }
+      summaryEl.textContent = String(state.displayName || 'Unknown');
       detailEl.textContent = String(state.detail || 'Derived from active AlphaESS scheduler windows.');
+      if (windowCountEl) {
+        if (!hasChecked) {
+          windowCountEl.textContent = 'Awaiting check';
+        } else if (!activeWindows.length) {
+          windowCountEl.textContent = 'No matching windows';
+        } else {
+          windowCountEl.textContent = `${activeWindows.length} matching window${activeWindows.length === 1 ? '' : 's'}`;
+        }
+      }
+      if (timezoneEl) {
+        timezoneEl.textContent = `Timezone: ${timeZoneLabel}`;
+      }
+      if (checkedAtEl) {
+        checkedAtEl.textContent = hasChecked && checkedAt ? `Checked at ${checkedAt}` : 'Not checked yet';
+      }
+      if (windowsEl) {
+        if (activeWindows.length) {
+          windowsEl.innerHTML = activeWindows.map((window) => {
+            const workMode = String(window?.workMode || '');
+            const modeLabel = getCanonicalWorkModeLabel('alphaess', workMode);
+            const windowLabel = String(window?.label || '').trim();
+            return `<span class="alphaess-window-chip" data-mode="${escapeHtml(workMode)}">${escapeHtml(modeLabel)}${windowLabel ? ` · ${escapeHtml(windowLabel)}` : ''}</span>`;
+          }).join('');
+        } else {
+          windowsEl.innerHTML = '<span class="alphaess-window-chip alphaess-window-chip--placeholder">No active scheduler windows match the current time.</span>';
+        }
+      }
     }
 
     async function getAlphaEssCurrentOverride() {
@@ -268,6 +370,7 @@
         return;
       }
 
+      setAlphaEssOverrideLoading(true);
       showStatus('alphaessOverride', '⏳ Checking current AlphaESS scheduler override...', 'info');
 
       try {
@@ -301,6 +404,8 @@
         displayFormattedResponse('AlphaESS Current Scheduler Override', result);
       } catch (error) {
         showStatus('alphaessOverride', `❌ Error: ${error.message}`, 'error');
+      } finally {
+        setAlphaEssOverrideLoading(false);
       }
     }
     

@@ -1656,35 +1656,6 @@
         return fetchJsonResponse('/data/aemo-market-insights/index.json', { cache: 'no-store' });
     }
 
-    async function fetchDataworksSchedulerPulse() {
-        const days = 3;
-        const includeRuns = true;
-        const runLimit = 8;
-
-        if (typeof adminApiClient?.getAdminSchedulerMetrics === 'function') {
-            const data = await adminApiClient.getAdminSchedulerMetrics(days, includeRuns, runLimit);
-            if (!data || data.errno !== 0) {
-                throw new Error(data?.error || 'Failed to load scheduler pulse');
-            }
-            return data;
-        }
-
-        const query = new URLSearchParams({
-            days: String(days),
-            includeRuns: '1',
-            runLimit: String(runLimit)
-        });
-        const resp = await adminApiClient.fetch(`/api/admin/scheduler-metrics?${query.toString()}`);
-        if (!resp.ok) {
-            throw new Error(`Request failed: ${resp.status}`);
-        }
-        const data = await resp.json();
-        if (!data || data.errno !== 0) {
-            throw new Error(data?.error || 'Failed to load scheduler pulse');
-        }
-        return data;
-    }
-
     async function fetchDataworksOpsSummary(force = false) {
         if (typeof adminApiClient?.getAdminDataworksOps === 'function') {
             const data = await adminApiClient.getAdminDataworksOps(force);
@@ -1743,33 +1714,6 @@
             counts: index?.counts || {},
             regions: Array.isArray(index?.regions) ? index.regions : [],
             bounds: index?.bounds || {}
-        };
-    }
-
-    function deriveSchedulerPulseSummary(data) {
-        const result = data?.result || {};
-        const summary = result.summary || {};
-        const recentRuns = Array.isArray(result.recentRuns) ? result.recentRuns : [];
-        const currentAlert = result.currentAlert && typeof result.currentAlert === 'object'
-            ? result.currentAlert
-            : null;
-        const lastRun = recentRuns[0] || null;
-        const status = (() => {
-            const alertStatus = String(currentAlert?.status || '').toLowerCase();
-            if (alertStatus === 'breach') return { level: 'bad', label: 'Breach' };
-            if (alertStatus === 'watch') return { level: 'warn', label: 'Watch' };
-            const errorRatePct = Number(summary.errorRatePct || 0);
-            if (errorRatePct > 1 || Number(summary.deadLetters || 0) > 0) return { level: 'warn', label: 'Watch' };
-            return { level: 'good', label: 'Healthy' };
-        })();
-
-        return {
-            updatedAt: result.updatedAt || data?.updatedAt || null,
-            status,
-            summary,
-            recentRuns,
-            currentAlert,
-            lastRun
         };
     }
 
@@ -2362,17 +2306,16 @@
         const statusEl = document.getElementById('dataworksPipelineStatus');
         const rowsEl = document.getElementById('dataworksRowsProcessed');
         const filesEl = document.getElementById('dataworksFilesIngested');
-        const latestFileEl = document.getElementById('dataworksLatestFile');
+        const workflowStatusEl = document.getElementById('dataworksWorkflowStatus');
         const leadEl = document.getElementById('dataworksLead');
         const pipelinePanel = document.getElementById('dataworksPipelinePanel');
         const qualityPanel = document.getElementById('dataworksQualityPanel');
-        const schedulerPanel = document.getElementById('dataworksSchedulerPanel');
         const footprintPanel = document.getElementById('dataworksFootprintPanel');
         const regionsPanel = document.getElementById('dataworksRegionsPanel');
-        const recentRunsPanel = document.getElementById('dataworksRecentRunsPanel');
+        const workflowRunsPanel = document.getElementById('dataworksWorkflowRunsPanel');
         const opsPanel = document.getElementById('dataworksOpsPanel');
 
-        if (!adminApiClient || !updatedEl || !statusEl || !rowsEl || !filesEl || !latestFileEl || !leadEl || !pipelinePanel || !qualityPanel || !schedulerPanel || !footprintPanel || !regionsPanel || !recentRunsPanel || !opsPanel) return;
+        if (!adminApiClient || !updatedEl || !statusEl || !rowsEl || !filesEl || !workflowStatusEl || !leadEl || !pipelinePanel || !qualityPanel || !footprintPanel || !regionsPanel || !workflowRunsPanel || !opsPanel) return;
 
         if (refreshBtn) refreshBtn.disabled = true;
         if (dispatchBtn) {
@@ -2385,43 +2328,38 @@
         statusEl.textContent = '-';
         rowsEl.textContent = '-';
         filesEl.textContent = '-';
-        latestFileEl.textContent = '-';
+        workflowStatusEl.textContent = '-';
         pipelinePanel.innerHTML = '<div class="dataworks-empty">Loading pipeline health...</div>';
         qualityPanel.innerHTML = '<div class="dataworks-empty">Loading quality summary...</div>';
-        schedulerPanel.innerHTML = '<div class="dataworks-empty">Loading scheduler pulse...</div>';
         footprintPanel.innerHTML = '<div class="dataworks-empty">Loading file footprint...</div>';
         regionsPanel.innerHTML = '<div class="dataworks-empty">Loading region freshness...</div>';
-        recentRunsPanel.innerHTML = '<div class="dataworks-empty">Loading recent activity...</div>';
+        workflowRunsPanel.innerHTML = '<div class="dataworks-empty">Loading workflow history...</div>';
         opsPanel.innerHTML = '<div class="dataworks-empty">Loading workflow diagnostics...</div>';
 
         try {
-            const [marketResult, schedulerResult, opsResult] = await Promise.allSettled([
+            const [marketResult, opsResult] = await Promise.allSettled([
                 fetchDataworksIndex(),
-                fetchDataworksSchedulerPulse(),
                 fetchDataworksOpsSummary(options.forceOps === true)
             ]);
 
             const marketSummary = marketResult.status === 'fulfilled'
                 ? deriveDataworksMarketSummary(marketResult.value)
                 : null;
-            const schedulerSummary = schedulerResult.status === 'fulfilled'
-                ? deriveSchedulerPulseSummary(schedulerResult.value)
-                : null;
             const opsSummary = opsResult.status === 'fulfilled'
                 ? deriveDataworksOpsSummary(opsResult.value)
                 : null;
 
-            if (!marketSummary && !schedulerSummary && !opsSummary) {
-                throw new Error('Failed to load DataWorks summary, scheduler pulse, and workflow diagnostics');
+            if (!marketSummary && !opsSummary) {
+                throw new Error('Failed to load DataWorks summary and workflow diagnostics');
             }
 
             const pipelineLabel = marketSummary?.status?.label || 'Unavailable';
             const latestMarketDate = marketSummary?.latestDate || null;
             const rawCsvFiles = Number(marketSummary?.files?.rawCsvFiles || 0);
             const publishedAssetCount = Number(marketSummary?.files?.publishedAssetCount || 0);
-            const schedulerLabel = schedulerSummary?.status?.label || 'Unavailable';
-            const latestSchedulerRun = schedulerSummary?.lastRun?.startedAtMs
-                ? formatRelativeTime(Number(schedulerSummary.lastRun.startedAtMs))
+            const workflowStatusLabel = opsSummary?.badge?.label || 'Unavailable';
+            const latestWorkflowRun = opsSummary?.latestRun?.createdAt || opsSummary?.latestRun?.updatedAt
+                ? formatRelativeTime(opsSummary.latestRun.createdAt || opsSummary.latestRun.updatedAt)
                 : '-';
             const dataAgeText = latestMarketDate
                 ? `${formatDateShort(latestMarketDate)}${marketSummary?.dataAgeDays !== null ? ` · ${formatDayAge(marketSummary.dataAgeDays)}` : ''}`
@@ -2432,7 +2370,9 @@
             filesEl.textContent = rawCsvFiles > 0 || publishedAssetCount > 0
                 ? `${formatCompactNumber(rawCsvFiles)} / ${formatCompactNumber(publishedAssetCount)}`
                 : '-';
-            latestFileEl.textContent = schedulerSummary ? `${schedulerLabel} · ${latestSchedulerRun}` : 'Unavailable';
+            workflowStatusEl.textContent = opsSummary
+                ? (latestWorkflowRun !== '-' ? `${workflowStatusLabel} · ${latestWorkflowRun}` : workflowStatusLabel)
+                : 'Unavailable';
 
             const leadParts = [];
             if (marketSummary) {
@@ -2441,19 +2381,18 @@
                     : 'market data assets are publishing without active quality concerns.';
                 leadParts.push(`<strong>${escapeHtml(marketSummary.status?.label || 'Market data')}</strong> ${escapeHtml(reasonText)}`);
             }
-            if (schedulerSummary) {
-                const cyclesRun = Number(schedulerSummary.summary?.cyclesRun || 0);
-                const errorRatePct = Number(schedulerSummary.summary?.errorRatePct || 0);
-                leadParts.push(`<strong>${escapeHtml(schedulerSummary.status.label)}</strong> scheduler pulse over 3d with ${escapeHtml(formatCompactNumber(cyclesRun))} cycles and ${escapeHtml(errorRatePct.toFixed(2))}% errors.`);
-            }
             if (opsSummary?.latestRun) {
                 if (opsSummary.latestFailedStep?.name) {
                     leadParts.push(`<strong>GitHub ${escapeHtml(opsSummary.badge.label)}</strong> latest workflow run failed at ${escapeHtml(opsSummary.latestFailedStep.name)}.`);
                 } else if (opsSummary.latestRun.status && String(opsSummary.latestRun.status).toLowerCase() !== 'completed') {
                     leadParts.push(`<strong>GitHub Running</strong> latest workflow run is ${escapeHtml(formatStatusLabel(opsSummary.latestRun.status))}.`);
+                } else {
+                    leadParts.push(`<strong>GitHub ${escapeHtml(opsSummary.badge.label)}</strong> latest workflow run is ${escapeHtml(formatStatusLabel(opsSummary.latestRun.conclusion || opsSummary.latestRun.status || 'unknown'))}.`);
                 }
             }
-            leadEl.innerHTML = leadParts.join(' ');
+            leadEl.innerHTML = leadParts.length
+                ? leadParts.join(' ')
+                : 'Published market-data metadata and DataWorks workflow diagnostics are available.';
 
             if (marketSummary) {
                 const workflowLabel = marketSummary.workflow?.cadenceLabel || 'Workflow schedule unavailable';
@@ -2518,54 +2457,14 @@
                 regionsPanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
             }
 
-            if (schedulerSummary) {
-                const currentAlertText = schedulerSummary.currentAlert
-                    ? formatSchedulerAlertMessage(schedulerSummary.currentAlert)
-                    : 'No active alert.';
-                schedulerPanel.innerHTML = renderDataworksPanel(
-                    'Scheduler Pulse',
-                    '⚙️',
-                    renderDataworksBadge(schedulerSummary.status.label, schedulerSummary.status.level),
-                    `<div class="dataworks-metric-list">
-                        ${renderDataworksMetricRow('Last run', schedulerSummary.lastRun?.startedAtMs ? formatRelativeTime(Number(schedulerSummary.lastRun.startedAtMs)) : '-', schedulerSummary.lastRun?.startedAtMs ? formatDate(Number(schedulerSummary.lastRun.startedAtMs)) : 'No recent runs in window')}
-                        ${renderDataworksMetricRow('Cycles / errors', `${formatCompactNumber(schedulerSummary.summary?.cyclesRun || 0)} / ${formatCompactNumber(schedulerSummary.summary?.errors || 0)}`, `${Number(schedulerSummary.summary?.errorRatePct || 0).toFixed(2)}% error rate`)}
-                        ${renderDataworksMetricRow('Dead letters / retries', `${formatCompactNumber(schedulerSummary.summary?.deadLetters || 0)} / ${formatCompactNumber(schedulerSummary.summary?.retries || 0)}`, `runs ${formatCompactNumber(schedulerSummary.summary?.runs || 0)} in 3d window`)}
-                        ${renderDataworksMetricRow('Tail latency', formatDurationMs(schedulerSummary.summary?.p99CycleDurationMs || 0), `max ${formatDurationMs(schedulerSummary.summary?.maxCycleDurationMs || 0)}`)}
-                    </div>
-                    <div class="dataworks-note-list" style="margin-top:10px;"><div class="dataworks-note"><strong>Alert state:</strong> ${escapeHtml(currentAlertText)}</div></div>`,
-                    'Same admin scheduler read model used by the Scheduler tab, but scoped down for quick pulse checks.'
-                );
-
-                const recentRuns = Array.isArray(schedulerSummary.recentRuns) ? schedulerSummary.recentRuns.slice(0, 6) : [];
-                recentRunsPanel.innerHTML = renderDataworksPanel(
-                    'Recent Activity',
-                    '📜',
-                    renderDataworksBadge(recentRuns.length ? `${recentRuns.length} runs` : 'No runs', recentRuns.length ? 'neutral' : 'warn'),
-                    recentRuns.length
-                        ? `<div class="dataworks-table-wrap"><table class="dataworks-table"><thead><tr><th>Started</th><th>Cycles</th><th>Errors</th><th>Dead</th><th>P99</th></tr></thead><tbody>${recentRuns.map((run) => `<tr><td>${escapeHtml(run.startedAtMs ? new Date(Number(run.startedAtMs)).toLocaleString('en-AU') : '-')}</td><td>${escapeHtml(String(Number(run.cyclesRun || 0)))}</td><td>${escapeHtml(String(Number(run.errors || 0)))}</td><td>${escapeHtml(String(Number(run.deadLetters || 0)))}</td><td>${escapeHtml(formatDurationMs(run.cycleDurationMs?.p99Ms || 0))}</td></tr>`).join('')}</tbody></table></div>`
-                        : '<div class="dataworks-empty">No recent scheduler runs available in the selected window.</div>',
-                    'Compact view of the latest automation scheduler executions.'
-                );
-            } else {
-                schedulerPanel.innerHTML = '<div class="dataworks-empty">Scheduler pulse unavailable. The rest of the DataWorks snapshot is still valid.</div>';
-                recentRunsPanel.innerHTML = renderDataworksPanel(
-                    'Notes',
-                    'ℹ️',
-                    renderDataworksBadge('Static only', 'neutral'),
-                    '<div class="dataworks-note-list"><div class="dataworks-note"><strong>Scheduler telemetry unavailable:</strong> this view can still show market-data freshness and quality from hosted static assets.</div><div class="dataworks-note"><strong>Cost posture:</strong> DataWorks reads one static JSON bundle and only calls the existing scheduler summary endpoint.</div></div>'
-                );
-            }
-
             if (opsSummary) {
+                const workflowRuns = Array.isArray(opsSummary.recentRuns) ? opsSummary.recentRuns.slice(0, 5) : [];
                 const latestRunLabel = opsSummary.latestRun
                     ? `${formatStatusLabel(opsSummary.latestRun.conclusion || opsSummary.latestRun.status)} · ${formatStatusLabel(opsSummary.latestRun.event || 'manual')}`
                     : 'No workflow runs found';
                 const latestStepMeta = opsSummary.latestStep
                     ? `${formatStatusLabel(opsSummary.latestStep.conclusion || opsSummary.latestStep.status)} in latest job`
                     : (opsSummary.latestJob ? `${formatStatusLabel(opsSummary.latestJob.conclusion || opsSummary.latestJob.status)} job` : 'No job detail');
-                const recentOpsNotes = opsSummary.recentRuns.slice(0, 3).map((run) =>
-                    `<div class="dataworks-note">#${escapeHtml(String(run.number || '-'))} · ${escapeHtml(formatStatusLabel(run.conclusion || run.status || 'unknown'))} · ${escapeHtml(formatStatusLabel(run.event || 'unknown'))} · ${escapeHtml(formatRelativeTime(run.createdAt || run.updatedAt || null))}</div>`
-                ).join('');
                 const workflowLink = opsSummary.latestRun?.htmlUrl || opsSummary.workflow?.htmlUrl || null;
                 const cacheMeta = opsSummary.cache?.fetchedAt
                     ? `GitHub metadata ${formatRelativeTime(opsSummary.cache.fetchedAt)}`
@@ -2573,6 +2472,15 @@
                 const rateLimitMeta = Number.isFinite(Number(opsSummary.rateLimit?.remaining))
                     ? `API remaining ${Number(opsSummary.rateLimit.remaining)}`
                     : '';
+                workflowRunsPanel.innerHTML = renderDataworksPanel(
+                    'Workflow Runs',
+                    '📜',
+                    renderDataworksBadge(workflowRuns.length ? `${workflowRuns.length} runs` : 'No runs', workflowRuns.length ? 'neutral' : 'warn'),
+                    workflowRuns.length
+                        ? `<div class="dataworks-table-wrap"><table class="dataworks-table"><thead><tr><th>Run</th><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th></tr></thead><tbody>${workflowRuns.map((run) => `<tr><td>${escapeHtml(String(run.number || '-'))}</td><td>${escapeHtml(formatStatusLabel(run.conclusion || run.status || 'unknown'))}</td><td>${escapeHtml(formatStatusLabel(run.event || 'unknown'))}</td><td>${escapeHtml(formatRelativeTime(run.createdAt || run.updatedAt || null))}</td><td>${escapeHtml(run.durationMs != null ? formatDurationMs(run.durationMs) : '-')}</td></tr>`).join('')}</tbody></table></div>`
+                        : '<div class="dataworks-empty">No recent workflow runs available.</div>',
+                    'Recent GitHub Actions runs for the hosted DataWorks pipeline.'
+                );
                 opsPanel.innerHTML = renderDataworksPanel(
                     'Workflow Ops',
                     '🚀',
@@ -2587,11 +2495,16 @@
                     <div class="dataworks-note-list" style="margin-top:10px;">
                         <div class="dataworks-note"><strong>Links:</strong> ${workflowLink ? renderExternalLink(workflowLink, 'Open GitHub workflow') : 'Workflow link unavailable'}.</div>
                         <div class="dataworks-note"><strong>Diagnostics cache:</strong> ${escapeHtml(cacheMeta)}${rateLimitMeta ? ` · ${escapeHtml(rateLimitMeta)}` : ''}</div>
-                        ${recentOpsNotes || '<div class="dataworks-note"><strong>Recent runs:</strong> No recent workflow runs available.</div>'}
                     </div>`,
                     'Cached GitHub Actions read model for the hosted market-insights workflow.'
                 );
             } else {
+                workflowRunsPanel.innerHTML = renderDataworksPanel(
+                    'Workflow Runs',
+                    '📜',
+                    renderDataworksBadge('Unavailable', 'warn'),
+                    '<div class="dataworks-note-list"><div class="dataworks-note"><strong>Workflow history unavailable:</strong> GitHub diagnostics did not load.</div><div class="dataworks-note"><strong>Cost posture:</strong> DataWorks still reads one static JSON bundle plus a cached GitHub workflow read model when available.</div></div>'
+                );
                 opsPanel.innerHTML = '<div class="dataworks-empty">Workflow diagnostics unavailable.</div>';
             }
 
@@ -2607,9 +2520,6 @@
             const updatedParts = [];
             if (marketSummary?.generatedAt) {
                 updatedParts.push(`market data ${formatRelativeTime(marketSummary.generatedAt)}`);
-            }
-            if (schedulerSummary?.lastRun?.startedAtMs) {
-                updatedParts.push(`scheduler run ${formatRelativeTime(Number(schedulerSummary.lastRun.startedAtMs))}`);
             }
             if (opsSummary?.latestRun?.createdAt || opsSummary?.latestRun?.updatedAt) {
                 updatedParts.push(`workflow run ${formatRelativeTime(opsSummary.latestRun.createdAt || opsSummary.latestRun.updatedAt)}`);
@@ -2627,13 +2537,12 @@
             statusEl.textContent = 'Unavailable';
             rowsEl.textContent = '-';
             filesEl.textContent = '-';
-            latestFileEl.textContent = '-';
+            workflowStatusEl.textContent = '-';
             pipelinePanel.innerHTML = '<div class="dataworks-empty">Unable to load pipeline summary.</div>';
             qualityPanel.innerHTML = '<div class="dataworks-empty">Unable to load quality summary.</div>';
-            schedulerPanel.innerHTML = '<div class="dataworks-empty">Unable to load scheduler pulse.</div>';
             footprintPanel.innerHTML = '<div class="dataworks-empty">Unable to load file footprint.</div>';
             regionsPanel.innerHTML = '<div class="dataworks-empty">Unable to load region freshness.</div>';
-            recentRunsPanel.innerHTML = '<div class="dataworks-empty">Unable to load recent activity.</div>';
+            workflowRunsPanel.innerHTML = '<div class="dataworks-empty">Unable to load workflow history.</div>';
             opsPanel.innerHTML = '<div class="dataworks-empty">Unable to load workflow diagnostics.</div>';
             if (dispatchBtn) {
                 dispatchBtn.disabled = true;

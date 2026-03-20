@@ -11,6 +11,7 @@
  */
 
 const functions = require('firebase-functions');
+const { onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const express = require('express');
@@ -216,6 +217,7 @@ const _secretSungrowAppKey    = defineSecret('SUNGROW_APP_KEY');
 const _secretSungrowAppSecret = defineSecret('SUNGROW_APP_SECRET');
 const _secretTeslaProxyUrl    = defineSecret('TESLA_SIGNED_COMMAND_PROXY_URL');
 const _secretTeslaProxyToken  = defineSecret('TESLA_SIGNED_COMMAND_PROXY_TOKEN');
+const _secretGithubDataworksToken = defineSecret('GITHUB_DATAWORKS_TOKEN');
 
 // ==================== CONFIGURATION ====================
 // Reads from environment variables (populated from Secret Manager at runtime,
@@ -944,10 +946,6 @@ registerMetricsRoutes(app, {
 // are registered before the catch-all app.use('/api', authenticateUser).
 const getRuntimeProjectIdForAdmin = () => getRuntimeProjectId(admin);
 const fetchCloudBillingCostForAdmin = (projectId) => fetchCloudBillingCost(projectId, { googleApis });
-const runtimeConfig = typeof functions.config === 'function' ? functions.config() : {};
-const githubRuntimeConfig = runtimeConfig.github && typeof runtimeConfig.github === 'object'
-  ? runtimeConfig.github
-  : {};
 
 registerAdminRoutes(app, {
   admin,
@@ -968,11 +966,11 @@ registerAdminRoutes(app, {
   serverTimestamp,
   sumSeriesValues,
   githubDataworks: {
-    owner: process.env.GITHUB_DATAWORKS_OWNER || githubRuntimeConfig.owner || 'Stealth928',
-    repo: process.env.GITHUB_DATAWORKS_REPO || githubRuntimeConfig.repo || 'inverter-automation',
-    workflowId: process.env.GITHUB_DATAWORKS_WORKFLOW || githubRuntimeConfig.workflow || 'aemo-market-insights-delta.yml',
-    ref: process.env.GITHUB_DATAWORKS_REF || githubRuntimeConfig.ref || 'main',
-    dispatchToken: process.env.GITHUB_DATAWORKS_TOKEN || githubRuntimeConfig.dispatch_token || ''
+    owner: process.env.GITHUB_DATAWORKS_OWNER || 'Stealth928',
+    repo: process.env.GITHUB_DATAWORKS_REPO || 'inverter-automation',
+    workflowId: process.env.GITHUB_DATAWORKS_WORKFLOW || 'aemo-market-insights-delta.yml',
+    ref: process.env.GITHUB_DATAWORKS_REF || 'main',
+    dispatchToken: process.env.GITHUB_DATAWORKS_TOKEN || ''
   }
 });
 
@@ -1271,7 +1269,18 @@ Object.assign(authAPI, authModule.init({
 // Use the broadly-compatible onRequest export to avoid depending on newer SDK features
 // NOTE: secrets are bound on the v2 onSchedule export below; api export will need
 // migration to v2 onRequest when secrets binding is required for Gen 1 → Gen 2 move.
-exports.api = functions.https.onRequest(app);
+exports.api = onRequest(
+  {
+    timeoutSeconds: 60,
+    maxInstances: 20,
+    secrets: [
+      _secretTeslaProxyUrl,
+      _secretTeslaProxyToken,
+      _secretGithubDataworksToken
+    ]
+  },
+  app
+);
 
 // Export for testing
 if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID) {

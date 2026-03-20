@@ -244,24 +244,25 @@ configuration matches the intended runtime behavior.
 
 Optional DataWorks admin controls can also be configured for the admin panel:
 
-- `github.owner`
-- `github.repo`
-- `github.workflow`
-- `github.ref`
-- `github.dispatch_token`
+- Secret:
+  `GITHUB_DATAWORKS_TOKEN`
+- Optional environment overrides:
+  `GITHUB_DATAWORKS_OWNER`, `GITHUB_DATAWORKS_REPO`,
+  `GITHUB_DATAWORKS_WORKFLOW`, `GITHUB_DATAWORKS_REF`
 
 Example:
 
 ```bash
-firebase functions:config:set \
-  github.owner="Stealth928" \
-  github.repo="inverter-automation" \
-  github.workflow="aemo-market-insights-delta.yml" \
-  github.ref="main" \
-  github.dispatch_token="<github-token>"
+firebase functions:secrets:set GITHUB_DATAWORKS_TOKEN
+
+# Optional overrides if you do not want the built-in defaults
+# Default owner: Stealth928
+# Default repo: inverter-automation
+# Default workflow: aemo-market-insights-delta.yml
+# Default ref: main
 ```
 
-Without `github.dispatch_token`, the DataWorks tab stays read-only and only
+Without `GITHUB_DATAWORKS_TOKEN`, the DataWorks tab stays read-only and only
 shows cached GitHub workflow diagnostics. With it configured, admins can
 manually dispatch the market-insights workflow from the DataWorks panel.
 Use a token that can dispatch GitHub Actions for this repository.

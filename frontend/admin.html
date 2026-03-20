@@ -995,17 +995,13 @@
         .dataworks-lead strong {
             color: var(--text-primary);
         }
-        .dataworks-grid-4,
-        .dataworks-grid-2 {
+        .dataworks-grid-3 {
             display: grid;
             gap: 10px;
             margin-top: 10px;
         }
-        .dataworks-grid-4 {
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-        }
-        .dataworks-grid-2 {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+        .dataworks-grid-3 {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
         }
         .dataworks-panel {
             background: var(--bg-tertiary);
@@ -1296,11 +1292,8 @@
             .scheduler-slo-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
-            .dataworks-grid-4 {
+            .dataworks-grid-3 {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-            .dataworks-grid-2 {
-                grid-template-columns: 1fr;
             }
             #dataworksKpis {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1351,7 +1344,7 @@
                 justify-self: end;
                 min-width: 0;
             }
-            .dataworks-grid-4 {
+            .dataworks-grid-3 {
                 grid-template-columns: 1fr;
             }
             .dataworks-panel {
@@ -1388,7 +1381,7 @@
             .users-summary-kpi .value {
                 font-size: 24px;
             }
-            .dataworks-grid-4 {
+            .dataworks-grid-3 {
                 grid-template-columns: 1fr;
             }
             #dataworksKpis {
@@ -1758,21 +1751,20 @@
                                 <div class="value" id="dataworksFilesIngested">-</div>
                             </div>
                             <div class="kpi-item">
-                                <div class="label">Scheduler Pulse</div>
-                                <div class="value" id="dataworksLatestFile">-</div>
+                                <div class="label">Workflow Status</div>
+                                <div class="value" id="dataworksWorkflowStatus">-</div>
                             </div>
                         </div>
                     </div>
                     <div id="dataworksLead" class="dataworks-lead">Loading pipeline details...</div>
-                    <div class="dataworks-grid-4">
+                    <div class="dataworks-grid-3">
                         <section class="dataworks-panel" id="dataworksPipelinePanel"></section>
                         <section class="dataworks-panel" id="dataworksQualityPanel"></section>
-                        <section class="dataworks-panel" id="dataworksSchedulerPanel"></section>
                         <section class="dataworks-panel" id="dataworksFootprintPanel"></section>
                     </div>
-                    <div class="dataworks-grid-2">
+                    <div class="dataworks-grid-3">
                         <section class="dataworks-panel" id="dataworksRegionsPanel"></section>
-                        <section class="dataworks-panel" id="dataworksRecentRunsPanel"></section>
+                        <section class="dataworks-panel" id="dataworksWorkflowRunsPanel"></section>
                         <section class="dataworks-panel" id="dataworksOpsPanel"></section>
                     </div>
                 </div>

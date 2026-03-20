@@ -37,19 +37,46 @@
       margin: 0 auto;
       padding: 20px;
     }
-    header {
+    .page-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 20px;
+      gap: 18px;
     }
-    header h1 {
-      font-size: 1.5rem;
-      font-weight: 600;
-      color: var(--accent-blue);
+    .controls-header-copy {
+      max-width: 760px;
+    }
+    .page-header .page-title {
+      margin: 0;
+      color: var(--text);
+    }
+    .controls-header-copy .page-subtitle {
+      max-width: 680px;
+    }
+    .controls-header-badges {
       display: flex;
-      align-items: center;
+      flex-wrap: wrap;
       gap: 10px;
+      align-items: center;
+      justify-content: flex-end;
+    }
+    .controls-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--border-primary) 75%, transparent);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 90%, transparent), color-mix(in srgb, var(--bg-overlay) 92%, transparent)),
+        radial-gradient(circle at top right, color-mix(in srgb, var(--accent-blue) 14%, transparent), transparent 46%);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .controls-badge--accent {
+      color: var(--accent-blue);
+      border-color: color-mix(in srgb, var(--accent-blue) 28%, transparent);
     }
     .hint {
       font-size: 13px;
@@ -120,6 +147,16 @@
     }
     .btn:active {
       transform: translateY(0);
+    }
+    .btn:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .btn:disabled:hover {
+      background: color-mix(in srgb, var(--bg-card) 80%, transparent);
+      border-color: var(--border-primary);
+      transform: none;
     }
     .btn-primary {
       background: var(--gradient-success);
@@ -334,6 +371,169 @@
     .telemetry-mapping-panel code {
       font-size: 11px;
     }
+    .alphaess-override-card .card-header {
+      gap: 12px;
+    }
+    .alphaess-override-card .card-header h2 {
+      margin-right: auto;
+    }
+    .alphaess-override-state-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--border-primary) 70%, transparent);
+      background: color-mix(in srgb, var(--bg-overlay) 86%, transparent);
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .alphaess-override-state-pill[data-state="charge"] {
+      color: var(--color-success);
+      border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
+      background: color-mix(in srgb, var(--color-success) 12%, transparent);
+    }
+    .alphaess-override-state-pill[data-state="discharge"] {
+      color: var(--color-orange);
+      border-color: color-mix(in srgb, var(--color-orange) 34%, transparent);
+      background: color-mix(in srgb, var(--color-orange) 12%, transparent);
+    }
+    .alphaess-override-state-pill[data-state="ambiguous"] {
+      color: var(--color-warning);
+      border-color: color-mix(in srgb, var(--color-warning) 34%, transparent);
+      background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+    }
+    .alphaess-override-hero {
+      display: grid;
+      gap: 14px;
+      padding: 18px;
+      border-radius: 16px;
+      border: 1px solid color-mix(in srgb, var(--border-primary) 72%, transparent);
+      background:
+        radial-gradient(circle at top right, color-mix(in srgb, var(--accent-blue) 16%, transparent), transparent 42%),
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 96%, transparent), color-mix(in srgb, var(--bg-overlay) 92%, transparent));
+      box-shadow:
+        inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
+        0 18px 28px -24px rgba(0, 0, 0, 0.55);
+    }
+    .alphaess-override-hero[data-state="charge"] {
+      border-color: color-mix(in srgb, var(--color-success) 26%, transparent);
+      background:
+        radial-gradient(circle at top right, color-mix(in srgb, var(--color-success) 16%, transparent), transparent 42%),
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 96%, transparent), color-mix(in srgb, var(--bg-overlay) 92%, transparent));
+    }
+    .alphaess-override-hero[data-state="discharge"] {
+      border-color: color-mix(in srgb, var(--color-orange) 30%, transparent);
+      background:
+        radial-gradient(circle at top right, color-mix(in srgb, var(--color-orange) 16%, transparent), transparent 42%),
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 96%, transparent), color-mix(in srgb, var(--bg-overlay) 92%, transparent));
+    }
+    .alphaess-override-hero[data-state="ambiguous"] {
+      border-color: color-mix(in srgb, var(--color-warning) 34%, transparent);
+      background:
+        radial-gradient(circle at top right, color-mix(in srgb, var(--color-warning) 16%, transparent), transparent 42%),
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 96%, transparent), color-mix(in srgb, var(--bg-overlay) 92%, transparent));
+    }
+    .alphaess-override-hero__eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+    .alphaess-override-hero__value {
+      font-size: clamp(1.2rem, 2vw, 1.55rem);
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--text);
+    }
+    .alphaess-override-hero__detail {
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text-secondary);
+    }
+    .alphaess-override-hero__meta,
+    .alphaess-override-hero__windows {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .alphaess-meta-pill,
+    .alphaess-window-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 32px;
+      padding: 7px 11px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--border-primary) 76%, transparent);
+      background: color-mix(in srgb, var(--bg-overlay) 88%, transparent);
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .alphaess-window-chip {
+      color: var(--text);
+      border-color: color-mix(in srgb, var(--accent-blue) 24%, transparent);
+      background: color-mix(in srgb, var(--accent-blue) 10%, transparent);
+    }
+    .alphaess-window-chip[data-mode="ForceCharge"] {
+      color: var(--color-success);
+      border-color: color-mix(in srgb, var(--color-success) 24%, transparent);
+      background: color-mix(in srgb, var(--color-success) 10%, transparent);
+    }
+    .alphaess-window-chip[data-mode="Feedin"],
+    .alphaess-window-chip[data-mode="ForceDischarge"] {
+      color: var(--color-orange);
+      border-color: color-mix(in srgb, var(--color-orange) 28%, transparent);
+      background: color-mix(in srgb, var(--color-orange) 10%, transparent);
+    }
+    .alphaess-window-chip--placeholder {
+      color: var(--text-secondary);
+      border-style: dashed;
+      background: color-mix(in srgb, var(--bg-overlay) 92%, transparent);
+    }
+    .alphaess-override-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .alphaess-override-action {
+      flex: 1;
+      min-height: 44px;
+      font-weight: 600;
+      background: linear-gradient(135deg, #245fc7, #1a76d2);
+      border-color: color-mix(in srgb, var(--accent-blue) 48%, transparent);
+      color: #fff;
+      box-shadow: 0 14px 24px -20px color-mix(in srgb, var(--accent-blue) 55%, transparent);
+    }
+    .alphaess-override-action:hover {
+      background: linear-gradient(135deg, #245fc7, #1a76d2);
+      border-color: color-mix(in srgb, var(--accent-blue) 56%, transparent);
+      filter: brightness(1.06);
+    }
+    .alphaess-override-action[aria-busy="true"] {
+      cursor: progress;
+      opacity: 0.92;
+    }
+    .alphaess-override-action__spinner {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.28);
+      border-top-color: #fff;
+      display: none;
+      flex-shrink: 0;
+    }
+    .alphaess-override-action[aria-busy="true"] .alphaess-override-action__spinner {
+      display: inline-block;
+      animation: control-spin 0.75s linear infinite;
+    }
+    @keyframes control-spin {
+      to { transform: rotate(360deg); }
+    }
     @media (max-width: 640px) {
       .container { padding: 10px; }
       .grid {
@@ -348,8 +548,14 @@
       .form-actions {
         flex-wrap: wrap;
       }
-      header { flex-wrap: wrap; gap: 8px; }
-      header h1 { font-size: 1.1rem; }
+      .page-header { flex-wrap: wrap; gap: 12px; }
+      .page-header .page-title { font-size: 1.1rem; }
+      .controls-header-badges {
+        justify-content: flex-start;
+      }
+      .alphaess-override-actions {
+        flex-direction: column;
+      }
     }
   </style>
 </head>
@@ -357,15 +563,15 @@
   <nav class="nav-main">
     <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
     <div class="nav-links">
-      <a href="/app.html" class="nav-link">🏠 Overview</a>
-      <a href="/roi.html" class="nav-link">💲 Automation ROI</a>
-      <a href="/test.html" class="nav-link">🧪 Automation Lab</a>
-      <a href="/history.html" class="nav-link">📊 Reports</a>
-      <a href="/market-insights.html" class="nav-link">⚡ Market Insights</a>
-      <a href="/control.html" class="nav-link">🎮 Controls</a>
-      <a href="/rules-library.html" class="nav-link">📚 Rules Library</a>
-      <a href="/settings.html" class="nav-link">⚙️ Settings</a>
-      <a href="/admin.html" class="nav-link" id="adminNavLink" style="display: none;">🛡️ Admin</a>
+      <a href="/app.html" class="nav-link">Overview</a>
+      <a href="/roi.html" class="nav-link">Automation ROI</a>
+      <a href="/test.html" class="nav-link">Automation Lab</a>
+      <a href="/history.html" class="nav-link">Reports</a>
+      <a href="/market-insights.html" class="nav-link">Market Insights</a>
+      <a href="/control.html" class="nav-link">Controls</a>
+      <a href="/rules-library.html" class="nav-link">Rules Library</a>
+      <a href="/settings.html" class="nav-link">Settings</a>
+      <a href="/admin.html" class="nav-link" id="adminNavLink" style="display: none;">Admin</a>
     </div>
     <div class="nav-right">
       <div class="user-menu" data-user-menu>
@@ -377,17 +583,24 @@
             <div class="user-name" data-user-name>Guest</div>
             <div class="user-email" data-user-email>Not signed in</div>
           </div>
-          <button class="user-dropdown-item" type="button" data-go-settings>⚙️ Settings</button>
-          <button class="user-dropdown-item" type="button" data-contact-us>💬 Contact Us</button>
-          <button class="user-dropdown-item danger" type="button" data-signout>🚪 Sign Out</button>
+          <button class="user-dropdown-item" type="button" data-go-settings>Settings</button>
+          <button class="user-dropdown-item" type="button" data-contact-us>Contact Us</button>
+          <button class="user-dropdown-item danger" type="button" data-signout>Sign Out</button>
         </div>
       </div>
     </div>
   </nav>
 
   <div class="container page-shell">
-    <header>
-      <h1><span style="font-size:1.8rem">🎛️</span> Advanced Controls</h1>
+    <header class="page-header">
+      <div class="controls-header-copy">
+        <h1 class="page-title">Advanced Controls</h1>
+        <p class="page-subtitle">Manual device actions, provider-aware safeguards, and live diagnostics without leaving the control surface.</p>
+      </div>
+      <div class="controls-header-badges">
+        <span class="controls-badge controls-badge--accent">Provider-aware actions</span>
+        <span class="controls-badge">Live diagnostics</span>
+      </div>
     </header>
 
     <div id="controls-provider-note" class="hint" style="display:none"></div>
@@ -397,7 +610,7 @@
       <!-- Battery SoC Settings -->
       <div class="card" id="card-battery-soc">
         <div class="card-header">
-          <h2>🔋 Battery SoC Limits</h2>
+          <h2>Battery SoC Limits</h2>
         </div>
         <div class="card-body">
           <form id="form-batterySoc" onsubmit="setBatterySoc(event)">
@@ -419,8 +632,8 @@
             </div>
             <div id="status-batterySoc"></div>
             <div class="form-actions">
-              <button type="submit" class="btn btn-primary" style="flex:1">💾 Save Settings</button>
-              <button type="button" class="btn" onclick="getBatterySoc()">🔄 Load Current</button>
+              <button type="submit" class="btn btn-primary" style="flex:1">Save Settings</button>
+              <button type="button" class="btn" onclick="getBatterySoc()">Load Current</button>
             </div>
           </form>
         </div>
@@ -429,7 +642,7 @@
       <!-- Work Mode Control -->
       <div class="card" id="card-work-mode">
         <div class="card-header">
-          <h2>⚡ Work Mode</h2>
+          <h2>Work Mode</h2>
         </div>
         <div class="card-body">
           <form id="form-workMode" onsubmit="setWorkMode(event)">
@@ -447,27 +660,40 @@
             </div>
             <div id="status-workMode"></div>
             <div class="form-actions">
-              <button type="submit" class="btn btn-primary" style="flex:1">✅ Apply Mode</button>
-              <button type="button" class="btn" onclick="getWorkMode()">🔄 Check Current</button>
+              <button type="submit" class="btn btn-primary" style="flex:1">Apply Mode</button>
+              <button type="button" class="btn" onclick="getWorkMode()">Check Current</button>
             </div>
           </form>
         </div>
       </div>
 
-      <div class="card" id="card-alphaess-override-status" style="display:none">
+      <div class="card alphaess-override-card" id="card-alphaess-override-status" style="display:none">
         <div class="card-header">
-          <h2>âš¡ Current Scheduler Override</h2>
+          <h2>Scheduler Override</h2>
+          <span class="alphaess-override-state-pill" id="alphaessOverrideStatePill" data-state="idle">Not checked</span>
         </div>
         <div class="card-body">
-          <div id="alphaessCurrentOverride" style="padding:10px;background:rgba(88,166,255,0.05);border-radius:6px;font-size:13px;color:var(--muted);margin-bottom:8px">
-            Current override: <span style="color:var(--accent)">Unknown</span>
-          </div>
-          <div id="alphaessCurrentOverrideDetail" class="hint" style="margin-bottom:12px">
-            Derived from active AlphaESS scheduler windows when you check current status.
+          <div class="alphaess-override-hero" id="alphaessOverrideHero" data-state="idle">
+            <div class="alphaess-override-hero__eyebrow">Live AlphaESS scheduler state</div>
+            <div class="alphaess-override-hero__value" id="alphaessCurrentOverride">No override checked yet</div>
+            <div id="alphaessCurrentOverrideDetail" class="alphaess-override-hero__detail">
+              Derived from active AlphaESS scheduler windows when you check current status.
+            </div>
+            <div class="alphaess-override-hero__meta">
+              <span class="alphaess-meta-pill" id="alphaessOverrideWindowCount">Awaiting check</span>
+              <span class="alphaess-meta-pill" id="alphaessOverrideTimezone">Timezone pending</span>
+              <span class="alphaess-meta-pill" id="alphaessOverrideCheckedAt">Not checked yet</span>
+            </div>
+            <div class="alphaess-override-hero__windows" id="alphaessOverrideWindows">
+              <span class="alphaess-window-chip alphaess-window-chip--placeholder">Run a check to load matching scheduler windows.</span>
+            </div>
           </div>
           <div id="status-alphaessOverride"></div>
-          <div class="form-actions">
-            <button type="button" class="btn" style="flex:1" onclick="getAlphaEssCurrentOverride()">ðŸ”„ Check Current Override</button>
+          <div class="alphaess-override-actions">
+            <button type="button" class="btn alphaess-override-action" id="btnAlphaEssCurrentOverride" onclick="getAlphaEssCurrentOverride()">
+              <span class="alphaess-override-action__spinner" aria-hidden="true"></span>
+              <span class="alphaess-override-action__label">Check Live Override</span>
+            </button>
           </div>
         </div>
       </div>
@@ -475,7 +701,7 @@
       <!-- Force Charge Times -->
       <div class="card" id="card-force-charge">
         <div class="card-header">
-          <h2>⏰ Force Charge Times</h2>
+          <h2>Force Charge Times</h2>
         </div>
         <div class="card-body">
           <form id="form-forceCharge" onsubmit="setForceChargeTimes(event)">
@@ -513,8 +739,8 @@
             </div>
             <div id="status-forceCharge"></div>
             <div class="form-actions">
-              <button type="submit" class="btn btn-primary" style="flex:1">💾 Save Times</button>
-              <button type="button" class="btn" onclick="getForceChargeTimes()">🔄 Load Current</button>
+              <button type="submit" class="btn btn-primary" style="flex:1">Save Times</button>
+              <button type="button" class="btn" onclick="getForceChargeTimes()">Load Current</button>
             </div>
           </form>
         </div>
@@ -525,8 +751,8 @@
     <!-- Output Panel -->
     <div class="output-panel">
       <div class="output-header">
-        <h2>📋 API Response</h2>
-        <button class="btn" onclick="clearOutput()" style="padding:6px 10px;font-size:12px">🗑️ Clear</button>
+        <h2>API Response</h2>
+        <button class="btn" onclick="clearOutput()" style="padding:6px 10px;font-size:12px">Clear</button>
       </div>
       <div class="output-body">
         <div id="output" class="output-content">Results from actions and diagnostics will appear here...</div>
@@ -536,11 +762,11 @@
     <!-- Topology Diagnostics Section -->
     <div class="card" style="margin-top: 20px;">
       <div class="card-header">
-        <h2>🔬 Solar Topology Diagnostics</h2>
+        <h2>Solar Topology Diagnostics</h2>
       </div>
       <div class="card-body">
         <div class="hint">
-          <strong>🔍 For AC-Coupled Solar Users:</strong> If your solar panels connect to a separate inverter rather than directly to the battery inverter, 
+          <strong>For AC-Coupled Solar Users:</strong> If your solar panels connect to a separate inverter rather than directly to the battery inverter,
           your setup is "AC-coupled". Some providers expose that production in a meter or generation channel instead of a PV field.
           Use these tools to identify which telemetry source represents your solar production.
         </div>
@@ -549,7 +775,7 @@
           <!-- Discover Variables -->
           <div>
             <button type="button" class="btn" onclick="discoverVariables()" id="btnDiscoverVars" style="width: 100%;">
-              🔍 Discover Available Variables
+              Discover Available Variables
             </button>
             <div id="status-discover" style="margin-top: 8px;"></div>
           </div>
@@ -557,7 +783,7 @@
           <!-- Get All Real-Time Data -->
           <div>
             <button type="button" class="btn" onclick="getAllRealtimeData()" id="btnAllData" style="width: 100%;">
-              📊 Get All Real-Time Data (No Filters)
+              Get All Real-Time Data (No Filters)
             </button>
             <div id="status-alldata" style="margin-top: 8px;"></div>
           </div>
@@ -565,7 +791,7 @@
           <!-- Topology Analysis Display -->
           <div id="topologyAnalysis" style="display: none; margin-top: 12px; padding: 12px; background: rgba(88, 166, 255, 0.08); border-left: 3px solid var(--accent-blue); border-radius: 6px;">
             <div style="font-size: 13px; font-weight: 600; color: var(--accent-blue); margin-bottom: 8px;">
-              📡 Detected Topology
+              Detected Topology
             </div>
             <div id="topologyResult" style="font-size: 12px; color: var(--text-secondary);"></div>
           </div>
@@ -626,7 +852,7 @@
           <!-- Instructions -->
           <details style="margin-top: 12px;">
             <summary style="cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent-blue); padding: 8px 0;">
-              📖 How to Use These Diagnostics
+              How to Use These Diagnostics
             </summary>
             <div style="font-size: 12px; color: var(--text-secondary); padding: 12px; background: var(--bg-overlay); border-radius: 6px; margin-top: 8px; line-height: 1.6;">
               <p><strong>Step 1:</strong> Click "Discover Available Variables" to see what data your device exposes.</p>
@@ -659,7 +885,7 @@
       <div class="metric-weather">Weather: <span id="countWeather" class="metric-value">0</span></div>
       <div class="metric-ev">EV: <span id="countEV" class="metric-value">0</span></div>
     </div>
-    <button class="btn btn-sm" onclick="loadApiMetrics(1)" title="Refresh metrics">🔄</button>
+    <button class="btn btn-sm" onclick="loadApiMetrics(1)" title="Refresh metrics">Refresh</button>
   </div>
 
   <script defer src="js/control.js"></script>
