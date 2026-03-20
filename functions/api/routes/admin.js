@@ -967,7 +967,7 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
       } = options;
       const shouldCollectSummary = !!summaryCollectors;
       const shouldLoadEvStatus = shouldCollectSummary || includeEvProbe;
-      const { uid, data, authMetadata, email, joinedAt, lastSignedInAt, profileExists } = rosterEntry;
+      const { uid, data, email, joinedAt, lastSignedInAt, profileExists } = rosterEntry;
       const emailLc = String(email || '').toLowerCase();
       const isSeedAdmin = emailLc === SEED_ADMIN_EMAIL;
 
