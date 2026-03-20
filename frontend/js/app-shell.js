@@ -1,4 +1,9 @@
 (function (window, document) {
+    const APP_RELEASE_ID = '2026-03-20-pwa-refresh-1';
+    const APP_RELEASE_STORAGE_KEY = 'socratesAppReleaseId';
+    const APP_RELEASE_RELOAD_SESSION_KEY = `socratesAppReleaseReload:${APP_RELEASE_ID}`;
+    const SERVICE_WORKER_VERSION = '53';
+    const SOCRATES_CACHE_PREFIX = 'socrates-';
     const defaultOptions = {
         pageName: 'app',
         requireAuth: true,
@@ -1178,6 +1183,81 @@
         ensureMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
     }
 
+    async function enforceCurrentRelease() {
+        let previousRelease = '';
+        let alreadyReloadedThisSession = false;
+        const hasServiceWorkerControl = !!(
+            typeof navigator !== 'undefined' &&
+            navigator.serviceWorker &&
+            navigator.serviceWorker.controller
+        );
+
+        try {
+            alreadyReloadedThisSession = window.sessionStorage.getItem(APP_RELEASE_RELOAD_SESSION_KEY) === '1';
+        } catch (_error) {
+            alreadyReloadedThisSession = false;
+        }
+
+        try {
+            previousRelease = window.localStorage.getItem(APP_RELEASE_STORAGE_KEY) || '';
+            window.localStorage.setItem(APP_RELEASE_STORAGE_KEY, APP_RELEASE_ID);
+        } catch (_error) {
+            previousRelease = '';
+        }
+
+        const releaseChanged = previousRelease !== APP_RELEASE_ID;
+        if (!releaseChanged) {
+            return false;
+        }
+
+        try {
+            if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(registrations.map(async (registration) => {
+                    try {
+                        if (registration.waiting) {
+                            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                        }
+                        if (typeof registration.update === 'function') {
+                            await registration.update();
+                        }
+                    } catch (_error) {
+                        // Keep best-effort cache eviction resilient.
+                    }
+                }));
+            }
+        } catch (_error) {
+            // Ignore release cleanup update failures.
+        }
+
+        try {
+            if ('caches' in window) {
+                const cacheKeys = await window.caches.keys();
+                await Promise.all(
+                    cacheKeys
+                        .filter((key) => String(key || '').startsWith(SOCRATES_CACHE_PREFIX))
+                        .map((key) => window.caches.delete(key))
+                );
+            }
+        } catch (_error) {
+            // Ignore cache cleanup failures and continue with reload path.
+        }
+
+        const shouldReload = !alreadyReloadedThisSession && (Boolean(previousRelease) || hasServiceWorkerControl);
+        if (!shouldReload) {
+            return false;
+        }
+
+        try {
+            window.sessionStorage.setItem(APP_RELEASE_RELOAD_SESSION_KEY, '1');
+        } catch (_error) {
+            // Session storage can fail in restricted browsing modes; reload anyway.
+        }
+
+        window.location.reload();
+        return true;
+    }
+
     function registerServiceWorker() {
         if (!('serviceWorker' in navigator)) return;
         const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
@@ -1201,7 +1281,9 @@
                 window.location.reload();
             });
 
-            navigator.serviceWorker.register('/sw.js?v=51').then((registration) => {
+            navigator.serviceWorker.register(`/sw.js?v=${SERVICE_WORKER_VERSION}`, {
+                updateViaCache: 'none'
+            }).then((registration) => {
                 if (typeof registration.update === 'function') {
                     registration.update().catch(() => {});
                 }
@@ -1586,8 +1668,16 @@
     }
     function initPwaSupport() {
         ensurePwaHeadTags();
-        registerServiceWorker();
-        initInstallPrompt();
+        enforceCurrentRelease()
+            .then((reloaded) => {
+                if (reloaded) return;
+                registerServiceWorker();
+                initInstallPrompt();
+            })
+            .catch(() => {
+                registerServiceWorker();
+                initInstallPrompt();
+            });
     }
 
     initPwaSupport();

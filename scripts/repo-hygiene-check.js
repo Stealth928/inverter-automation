@@ -4,6 +4,7 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { getPwaVersionViolations } = require('./lib/pwa-version-contract');
 
 const REQUIRED_GITIGNORE_ENTRIES = [
   '*.log',
@@ -129,6 +130,12 @@ function checkFrontendLockfileConsistency(repoRoot, trackedFiles, violations) {
   }
 }
 
+function checkPwaVersionConsistency(repoRoot, violations) {
+  getPwaVersionViolations(repoRoot).forEach((violation) => {
+    violations.push(violation);
+  });
+}
+
 function main() {
   const repoRoot = resolveRepoRoot();
   const trackedFiles = getTrackedFiles(repoRoot);
@@ -138,6 +145,7 @@ function main() {
   checkTrackedArtifacts(trackedFiles, violations);
   checkRootMarkdownFiles(trackedFiles, violations);
   checkFrontendLockfileConsistency(repoRoot, trackedFiles, violations);
+  checkPwaVersionConsistency(repoRoot, violations);
 
   if (violations.length > 0) {
     console.error('[Hygiene] FAILED');

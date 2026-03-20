@@ -1,6 +1,9 @@
 {
   "hosting": {
     "public": "frontend",
+    "predeploy": [
+      "node scripts/sync-hosted-market-insights.js"
+    ],
     "ignore": [
       "firebase.json",
       "**/node_modules/**"

@@ -1653,7 +1653,11 @@
     }
 
     async function fetchDataworksIndex() {
-        return fetchJsonResponse('/data/aemo-market-insights/index.json', { cache: 'no-store' });
+        const cacheBust = Date.now();
+        return fetchJsonResponse(`/data/aemo-market-insights/index.json?ts=${cacheBust}`, {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
     }
 
     async function fetchDataworksOpsSummary(force = false) {

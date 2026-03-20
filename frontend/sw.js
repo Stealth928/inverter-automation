@@ -1,5 +1,12 @@
-const CACHE_VERSION = 'socrates-v58';
+const CACHE_VERSION = 'socrates-v60';
+const CACHE_PREFIX = 'socrates-';
+const API_CLIENT_VERSION = '5';
+const SHARED_UTILS_VERSION = '13';
+const APP_SHELL_VERSION = '23';
+const TOUR_VERSION = '31';
+const ADMIN_VERSION = '9';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
+const OFFLINE_FALLBACK_PAGE = '/app.html';
 
 const STATIC_ASSETS = [
   '/',
@@ -13,13 +20,13 @@ const STATIC_ASSETS = [
   '/admin.html',
   '/css/shared-styles.css?v=9',
   '/css/tour.css?v=4',
-  '/js/tour.js?v=31',
+  `/js/tour.js?v=${TOUR_VERSION}`,
   '/js/firebase-config.js',
   '/js/firebase-auth.js',
-  '/js/api-client.js?v=5',
-  '/js/shared-utils.js?v=13',
-  '/js/app-shell.js?v=21',
-  '/js/admin.js?v=5',
+  `/js/api-client.js?v=${API_CLIENT_VERSION}`,
+  `/js/shared-utils.js?v=${SHARED_UTILS_VERSION}`,
+  `/js/app-shell.js?v=${APP_SHELL_VERSION}`,
+  `/js/admin.js?v=${ADMIN_VERSION}`,
   '/favicon.ico',
   '/manifest.webmanifest',
   '/icons/icon-192.png?v=2',
@@ -40,7 +47,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key !== STATIC_CACHE)
+          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== STATIC_CACHE)
           .map((key) => caches.delete(key))
       )
     )
@@ -70,6 +77,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Market insights data must reflect the latest publish immediately.
+  // Bypass the service-worker cache so the admin panel never sticks to an old snapshot.
+  if (requestUrl.pathname.startsWith('/data/aemo-market-insights/')) {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
+  }
+
   // Screenshot carousel assets should always reflect latest deploys.
   // Bypass service-worker cache so same-filename replacements are picked up.
   if (requestUrl.pathname.startsWith('/images/screenshots/')) {
@@ -77,8 +91,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  const updateCacheFromNetwork = async (cache, cacheKey) => {
-    const networkResponse = await fetch(request);
+  const updateCacheFromNetwork = async (cache, cacheKey, fetchOptions = {}) => {
+    const networkResponse = await fetch(request, fetchOptions);
     if (networkResponse && networkResponse.status === 200) {
       cache.put(cacheKey, networkResponse.clone());
     }
@@ -88,16 +102,11 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith(
       caches.open(STATIC_CACHE).then(async (cache) => {
-        const cachedPage = await cache.match(request);
-        if (cachedPage) {
-          event.waitUntil(updateCacheFromNetwork(cache, request).catch(() => null));
-          return cachedPage;
-        }
-
         try {
-          return await updateCacheFromNetwork(cache, request);
+          return await updateCacheFromNetwork(cache, request, { cache: 'no-store' });
         } catch (_error) {
-          return caches.match('/app.html');
+          const cachedPage = await cache.match(request);
+          return cachedPage || caches.match(OFFLINE_FALLBACK_PAGE);
         }
       })
     );
@@ -116,13 +125,11 @@ self.addEventListener('fetch', (event) => {
   if (isCriticalShellAsset) {
     event.respondWith(
       caches.open(STATIC_CACHE).then(async (cache) => {
-        const cachedResponse = await cache.match(request);
-        if (cachedResponse) {
-          event.waitUntil(updateCacheFromNetwork(cache, request).catch(() => null));
-          return cachedResponse;
+        try {
+          return await updateCacheFromNetwork(cache, request, { cache: 'no-store' });
+        } catch (_error) {
+          return cache.match(request);
         }
-
-        return updateCacheFromNetwork(cache, request).catch(() => cache.match(request));
       })
     );
     return;

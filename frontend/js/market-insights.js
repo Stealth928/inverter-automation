@@ -25,6 +25,11 @@
 
     const $ = (id) => document.getElementById(id);
 
+    function withCacheBust(url) {
+        const sep = String(url).includes('?') ? '&' : '?';
+        return `${url}${sep}ts=${Date.now()}`;
+    }
+
     // ── Formatting ──
     function fmtDollar(v) {
         if (!isNum(v)) return '—';
@@ -109,14 +114,20 @@
 
     // ── Data Loading ──
     async function loadIndex() {
-        const r = await fetch(INDEX_URL, { cache: 'no-store' });
+        const r = await fetch(withCacheBust(INDEX_URL), {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
         if (!r.ok) throw new Error('Failed to load data index');
         S.index = await r.json();
     }
 
     async function loadRegion(region) {
         if (S.data.has(region)) return;
-        const r = await fetch(S.index.files[region], { cache: 'no-store' });
+        const r = await fetch(withCacheBust(S.index.files[region]), {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
         if (!r.ok) throw new Error('Failed to load ' + region);
         S.data.set(region, await r.json());
     }
