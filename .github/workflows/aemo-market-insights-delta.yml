@@ -41,10 +41,9 @@ jobs:
       - name: Deploy Firebase hosting
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-          FIREBASE_PROJECT: ${{ secrets.FIREBASE_PROJECT }}
         run: |
-          if [ -n "$FIREBASE_PROJECT" ]; then
-            npx firebase-tools deploy --only hosting --project "$FIREBASE_PROJECT" --token "$FIREBASE_TOKEN"
-          else
-            npx firebase-tools deploy --only hosting --token "$FIREBASE_TOKEN"
+          if [ -z "$FIREBASE_TOKEN" ]; then
+            echo "::error::Missing GitHub Actions repository secret FIREBASE_TOKEN. Generate one with 'firebase login:ci' and add it under Settings > Secrets and variables > Actions."
+            exit 1
           fi
+          npx firebase-tools deploy --only hosting --project "inverter-automation-firebase" --token "$FIREBASE_TOKEN" --non-interactive

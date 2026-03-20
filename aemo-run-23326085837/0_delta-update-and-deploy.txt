@@ -1,0 +1,249 @@
+﻿2026-03-20T02:08:39.7166024Z Current runner version: '2.332.0'
+2026-03-20T02:08:39.7199788Z ##[group]Runner Image Provisioner
+2026-03-20T02:08:39.7201258Z Hosted Compute Agent
+2026-03-20T02:08:39.7202143Z Version: 20260213.493
+2026-03-20T02:08:39.7203166Z Commit: 5c115507f6dd24b8de37d8bbe0bb4509d0cc0fa3
+2026-03-20T02:08:39.7204443Z Build Date: 2026-02-13T00:28:41Z
+2026-03-20T02:08:39.7205563Z Worker ID: {492155e8-cf47-4e0d-996c-9115c96bd110}
+2026-03-20T02:08:39.7206733Z Azure Region: eastus2
+2026-03-20T02:08:39.7207873Z ##[endgroup]
+2026-03-20T02:08:39.7210419Z ##[group]Operating System
+2026-03-20T02:08:39.7211425Z Ubuntu
+2026-03-20T02:08:39.7212780Z 24.04.3
+2026-03-20T02:08:39.7213576Z LTS
+2026-03-20T02:08:39.7214353Z ##[endgroup]
+2026-03-20T02:08:39.7215242Z ##[group]Runner Image
+2026-03-20T02:08:39.7216335Z Image: ubuntu-24.04
+2026-03-20T02:08:39.7217184Z Version: 20260309.50.1
+2026-03-20T02:08:39.7219606Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260309.50/images/ubuntu/Ubuntu2404-Readme.md
+2026-03-20T02:08:39.7222251Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260309.50
+2026-03-20T02:08:39.7224044Z ##[endgroup]
+2026-03-20T02:08:39.7225872Z ##[group]GITHUB_TOKEN Permissions
+2026-03-20T02:08:39.7228638Z Contents: read
+2026-03-20T02:08:39.7229980Z Metadata: read
+2026-03-20T02:08:39.7230858Z Packages: read
+2026-03-20T02:08:39.7231616Z ##[endgroup]
+2026-03-20T02:08:39.7234648Z Secret source: Actions
+2026-03-20T02:08:39.7236062Z Prepare workflow directory
+2026-03-20T02:08:39.7689768Z Prepare all required actions
+2026-03-20T02:08:39.7744438Z Getting action download info
+2026-03-20T02:08:40.0932376Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+2026-03-20T02:08:40.2118803Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-03-20T02:08:40.3024956Z Download action repository 'actions/setup-python@v5' (SHA:a26af69be951a213d495a4c3e4e4022e16d87065)
+2026-03-20T02:08:40.6137133Z Complete job name: delta-update-and-deploy
+2026-03-20T02:08:40.7024961Z ##[group]Run actions/checkout@v4
+2026-03-20T02:08:40.7026206Z with:
+2026-03-20T02:08:40.7026968Z   repository: Stealth928/inverter-automation
+2026-03-20T02:08:40.7028273Z   token: ***
+2026-03-20T02:08:40.7028957Z   ssh-strict: true
+2026-03-20T02:08:40.7029981Z   ssh-user: git
+2026-03-20T02:08:40.7030715Z   persist-credentials: true
+2026-03-20T02:08:40.7031557Z   clean: true
+2026-03-20T02:08:40.7032290Z   sparse-checkout-cone-mode: true
+2026-03-20T02:08:40.7033204Z   fetch-depth: 1
+2026-03-20T02:08:40.7033951Z   fetch-tags: false
+2026-03-20T02:08:40.7034689Z   show-progress: true
+2026-03-20T02:08:40.7035435Z   lfs: false
+2026-03-20T02:08:40.7036120Z   submodules: false
+2026-03-20T02:08:40.7036880Z   set-safe-directory: true
+2026-03-20T02:08:40.7037972Z ##[endgroup]
+2026-03-20T02:08:40.8200059Z Syncing repository: Stealth928/inverter-automation
+2026-03-20T02:08:40.8202861Z ##[group]Getting Git version info
+2026-03-20T02:08:40.8204430Z Working directory is '/home/runner/work/inverter-automation/inverter-automation'
+2026-03-20T02:08:40.8206573Z [command]/usr/bin/git version
+2026-03-20T02:08:40.8242900Z git version 2.53.0
+2026-03-20T02:08:40.8268724Z ##[endgroup]
+2026-03-20T02:08:40.8283015Z Temporarily overriding HOME='/home/runner/work/_temp/36679222-42f6-4fba-8a3d-8277c977bb61' before making global git config changes
+2026-03-20T02:08:40.8285620Z Adding repository directory to the temporary git global config as a safe directory
+2026-03-20T02:08:40.8295895Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/inverter-automation/inverter-automation
+2026-03-20T02:08:40.8334203Z Deleting the contents of '/home/runner/work/inverter-automation/inverter-automation'
+2026-03-20T02:08:40.8337490Z ##[group]Initializing the repository
+2026-03-20T02:08:40.8342278Z [command]/usr/bin/git init /home/runner/work/inverter-automation/inverter-automation
+2026-03-20T02:08:40.8444433Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-03-20T02:08:40.8448054Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-03-20T02:08:40.8451468Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-03-20T02:08:40.8453908Z hint: call:
+2026-03-20T02:08:40.8455050Z hint:
+2026-03-20T02:08:40.8456613Z hint: 	git config --global init.defaultBranch <name>
+2026-03-20T02:08:40.8458441Z hint:
+2026-03-20T02:08:40.8460429Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-03-20T02:08:40.8462958Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-03-20T02:08:40.8464319Z hint:
+2026-03-20T02:08:40.8465170Z hint: 	git branch -m <name>
+2026-03-20T02:08:40.8466017Z hint:
+2026-03-20T02:08:40.8467101Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-03-20T02:08:40.8469523Z Initialized empty Git repository in /home/runner/work/inverter-automation/inverter-automation/.git/
+2026-03-20T02:08:40.8472882Z [command]/usr/bin/git remote add origin https://github.com/Stealth928/inverter-automation
+2026-03-20T02:08:40.8496931Z ##[endgroup]
+2026-03-20T02:08:40.8498267Z ##[group]Disabling automatic garbage collection
+2026-03-20T02:08:40.8500300Z [command]/usr/bin/git config --local gc.auto 0
+2026-03-20T02:08:40.8530241Z ##[endgroup]
+2026-03-20T02:08:40.8531433Z ##[group]Setting up auth
+2026-03-20T02:08:40.8536598Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-03-20T02:08:40.8568269Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-03-20T02:08:40.8902766Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-03-20T02:08:40.8933530Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-03-20T02:08:40.9165473Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-03-20T02:08:40.9198764Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-03-20T02:08:40.9445769Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-03-20T02:08:40.9480901Z ##[endgroup]
+2026-03-20T02:08:40.9483037Z ##[group]Fetching the repository
+2026-03-20T02:08:40.9492290Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +1bdef6d2a6cb643e6b0d50bfc845dfa565695b02:refs/remotes/origin/main
+2026-03-20T02:08:42.7832191Z From https://github.com/Stealth928/inverter-automation
+2026-03-20T02:08:42.7834526Z  * [new ref]         1bdef6d2a6cb643e6b0d50bfc845dfa565695b02 -> origin/main
+2026-03-20T02:08:42.7867251Z ##[endgroup]
+2026-03-20T02:08:42.7868103Z ##[group]Determining the checkout info
+2026-03-20T02:08:42.7870758Z ##[endgroup]
+2026-03-20T02:08:42.7876237Z [command]/usr/bin/git sparse-checkout disable
+2026-03-20T02:08:42.7920348Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-03-20T02:08:42.7953701Z ##[group]Checking out the ref
+2026-03-20T02:08:42.7954252Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-03-20T02:08:43.3115152Z Switched to a new branch 'main'
+2026-03-20T02:08:43.3116572Z branch 'main' set up to track 'origin/main'.
+2026-03-20T02:08:43.3144486Z ##[endgroup]
+2026-03-20T02:08:43.3188771Z [command]/usr/bin/git log -1 --format=%H
+2026-03-20T02:08:43.3214112Z 1bdef6d2a6cb643e6b0d50bfc845dfa565695b02
+2026-03-20T02:08:43.3450823Z ##[group]Run actions/setup-node@v4
+2026-03-20T02:08:43.3451132Z with:
+2026-03-20T02:08:43.3451303Z   node-version: 22
+2026-03-20T02:08:43.3451499Z   always-auth: false
+2026-03-20T02:08:43.3451691Z   check-latest: false
+2026-03-20T02:08:43.3452290Z   token: ***
+2026-03-20T02:08:43.3452476Z ##[endgroup]
+2026-03-20T02:08:43.5197935Z Found in cache @ /opt/hostedtoolcache/node/22.22.1/x64
+2026-03-20T02:08:43.5205181Z ##[group]Environment details
+2026-03-20T02:08:48.8678208Z node: v22.22.1
+2026-03-20T02:08:48.8678481Z npm: 10.9.4
+2026-03-20T02:08:48.8678849Z yarn: 1.22.22
+2026-03-20T02:08:48.8681079Z ##[endgroup]
+2026-03-20T02:08:48.8813421Z ##[group]Run actions/setup-python@v5
+2026-03-20T02:08:48.8813692Z with:
+2026-03-20T02:08:48.8813893Z   python-version: 3.11
+2026-03-20T02:08:48.8814126Z   check-latest: false
+2026-03-20T02:08:48.8814437Z   token: ***
+2026-03-20T02:08:48.8814624Z   update-environment: true
+2026-03-20T02:08:48.8814838Z   allow-prereleases: false
+2026-03-20T02:08:48.8815047Z   freethreaded: false
+2026-03-20T02:08:48.8815231Z ##[endgroup]
+2026-03-20T02:08:49.0502243Z ##[group]Installed versions
+2026-03-20T02:08:49.0617784Z Successfully set up CPython (3.11.15)
+2026-03-20T02:08:49.0618308Z ##[endgroup]
+2026-03-20T02:08:49.0717955Z ##[group]Run npm ci
+2026-03-20T02:08:49.0718277Z [36;1mnpm ci[0m
+2026-03-20T02:08:49.0782636Z shell: /usr/bin/bash -e {0}
+2026-03-20T02:08:49.0782883Z env:
+2026-03-20T02:08:49.0783123Z   pythonLocation: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:08:49.0783538Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib/pkgconfig
+2026-03-20T02:08:49.0783937Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:08:49.0784293Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:08:49.0784645Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:08:49.0784996Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib
+2026-03-20T02:08:49.0785289Z ##[endgroup]
+2026-03-20T02:08:52.9782677Z npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+2026-03-20T02:08:53.3413046Z npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+2026-03-20T02:08:54.1147147Z 
+2026-03-20T02:08:54.1147948Z added 219 packages, and audited 220 packages in 5s
+2026-03-20T02:08:54.1148479Z 
+2026-03-20T02:08:54.1148806Z 34 packages are looking for funding
+2026-03-20T02:08:54.1149611Z   run `npm fund` for details
+2026-03-20T02:08:54.1183261Z 
+2026-03-20T02:08:54.1183703Z 1 high severity vulnerability
+2026-03-20T02:08:54.1184021Z 
+2026-03-20T02:08:54.1184250Z To address all issues, run:
+2026-03-20T02:08:54.1184690Z   npm audit fix
+2026-03-20T02:08:54.1184914Z 
+2026-03-20T02:08:54.1185149Z Run `npm audit` for details.
+2026-03-20T02:08:54.1716655Z ##[group]Run END_MONTH=$(date -u +%Y-%m)
+2026-03-20T02:08:54.1717009Z [36;1mEND_MONTH=$(date -u +%Y-%m)[0m
+2026-03-20T02:08:54.1717322Z [36;1mSTART_MONTH=$(date -u -d '2 months ago' +%Y-%m)[0m
+2026-03-20T02:08:54.1717876Z [36;1mpython download_aemo_monthly.py --start "$START_MONTH" --end "$END_MONTH" --out aemo-aggregated-data --overwrite[0m
+2026-03-20T02:08:54.1772869Z shell: /usr/bin/bash -e {0}
+2026-03-20T02:08:54.1773099Z env:
+2026-03-20T02:08:54.1773340Z   pythonLocation: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:08:54.1773750Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib/pkgconfig
+2026-03-20T02:08:54.1774169Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:08:54.1774529Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:08:54.1774893Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:08:54.1775263Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib
+2026-03-20T02:08:54.1775591Z ##[endgroup]
+2026-03-20T02:09:22.1534522Z OK: NSW202601.csv
+2026-03-20T02:09:22.1535071Z OK: QLD202601.csv
+2026-03-20T02:09:22.1535559Z OK: VIC202601.csv
+2026-03-20T02:09:22.1535945Z OK: SA202601.csv
+2026-03-20T02:09:22.1536283Z OK: TAS202601.csv
+2026-03-20T02:09:22.1537875Z MISSING/FAILED: https://www.aemo.com.au/aemo/data/nem/priceanddemand/PRICE_AND_DEMAND_202601_SNOWY1.csv
+2026-03-20T02:09:22.1538779Z OK: NSW202602.csv
+2026-03-20T02:09:22.1539375Z OK: QLD202602.csv
+2026-03-20T02:09:22.1539770Z OK: VIC202602.csv
+2026-03-20T02:09:22.1540119Z OK: SA202602.csv
+2026-03-20T02:09:22.1540491Z OK: TAS202602.csv
+2026-03-20T02:09:22.1541458Z MISSING/FAILED: https://www.aemo.com.au/aemo/data/nem/priceanddemand/PRICE_AND_DEMAND_202602_SNOWY1.csv
+2026-03-20T02:09:22.1542397Z OK: NSW202603.csv
+2026-03-20T02:09:22.1542795Z OK: QLD202603.csv
+2026-03-20T02:09:22.1543146Z OK: VIC202603.csv
+2026-03-20T02:09:22.1543473Z OK: SA202603.csv
+2026-03-20T02:09:22.1543817Z OK: TAS202603.csv
+2026-03-20T02:09:22.1544794Z MISSING/FAILED: https://www.aemo.com.au/aemo/data/nem/priceanddemand/PRICE_AND_DEMAND_202603_SNOWY1.csv
+2026-03-20T02:09:22.1667476Z ##[group]Run npm run aemo:dashboard:update:delta
+2026-03-20T02:09:22.1667821Z [36;1mnpm run aemo:dashboard:update:delta[0m
+2026-03-20T02:09:22.1716677Z shell: /usr/bin/bash -e {0}
+2026-03-20T02:09:22.1716899Z env:
+2026-03-20T02:09:22.1717142Z   pythonLocation: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:09:22.1717546Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib/pkgconfig
+2026-03-20T02:09:22.1717951Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:09:22.1718301Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:09:22.1718659Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:09:22.1719004Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib
+2026-03-20T02:09:22.1719518Z   PYTHON_BIN: python
+2026-03-20T02:09:22.1719703Z ##[endgroup]
+2026-03-20T02:09:22.2688718Z 
+2026-03-20T02:09:22.2689314Z > aemo:dashboard:update:delta
+2026-03-20T02:09:22.2690229Z > node scripts/aemo-market-insights-delta-update.js
+2026-03-20T02:09:22.2690637Z 
+2026-03-20T02:09:22.3233999Z Delta aggregation for periods 202101..202603 and regions NSW, QLD, SA, TAS, VIC
+2026-03-20T02:10:12.5053766Z Aggregates written to: /home/runner/work/inverter-automation/inverter-automation/aemo-aggregated-data/aggregates/.delta-tmp
+2026-03-20T02:10:12.5054893Z Monthly rows: 315, daily rows: 9835, hourly rows: 228795
+2026-03-20T02:10:15.1210867Z Wrote AEMO market insights assets to /home/runner/work/inverter-automation/inverter-automation/frontend/data/aemo-market-insights
+2026-03-20T02:10:15.1354085Z Delta update complete. Changed CSV files: 315
+2026-03-20T02:10:15.1995762Z ##[group]Run if [ -n "$FIREBASE_PROJECT" ]; then
+2026-03-20T02:10:15.1996138Z [36;1mif [ -n "$FIREBASE_PROJECT" ]; then[0m
+2026-03-20T02:10:15.1996613Z [36;1m  npx firebase-tools deploy --only hosting --project "$FIREBASE_PROJECT" --token "$FIREBASE_TOKEN"[0m
+2026-03-20T02:10:15.1997069Z [36;1melse[0m
+2026-03-20T02:10:15.1997347Z [36;1m  npx firebase-tools deploy --only hosting --token "$FIREBASE_TOKEN"[0m
+2026-03-20T02:10:15.1997687Z [36;1mfi[0m
+2026-03-20T02:10:15.2047335Z shell: /usr/bin/bash -e {0}
+2026-03-20T02:10:15.2047566Z env:
+2026-03-20T02:10:15.2047806Z   pythonLocation: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:10:15.2048211Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib/pkgconfig
+2026-03-20T02:10:15.2048617Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:10:15.2048969Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:10:15.2049592Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-20T02:10:15.2049966Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib
+2026-03-20T02:10:15.2050260Z   FIREBASE_TOKEN: 
+2026-03-20T02:10:15.2050435Z   FIREBASE_PROJECT: 
+2026-03-20T02:10:15.2050621Z ##[endgroup]
+2026-03-20T02:10:15.8478948Z npm warn exec The following package was not found and will be installed: firebase-tools@15.11.0
+2026-03-20T02:10:29.1167079Z npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+2026-03-20T02:10:30.1374634Z npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+2026-03-20T02:10:30.7959662Z npm warn deprecated json-ptr@3.1.1: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+2026-03-20T02:10:35.4336440Z (node:2576) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-03-20T02:10:35.4337760Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-03-20T02:10:35.4446201Z 
+2026-03-20T02:10:35.4448220Z [1m[31mError:[39m[22m Failed to authenticate, have you run [1mfirebase login[22m?
+2026-03-20T02:10:35.7502770Z ##[error]Process completed with exit code 1.
+2026-03-20T02:10:35.7588553Z Post job cleanup.
+2026-03-20T02:10:35.8535999Z [command]/usr/bin/git version
+2026-03-20T02:10:35.8573726Z git version 2.53.0
+2026-03-20T02:10:35.8616120Z Temporarily overriding HOME='/home/runner/work/_temp/869a5dae-718c-4a78-b3fc-7ce36ba6ecfd' before making global git config changes
+2026-03-20T02:10:35.8617350Z Adding repository directory to the temporary git global config as a safe directory
+2026-03-20T02:10:35.8622066Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/inverter-automation/inverter-automation
+2026-03-20T02:10:35.8658097Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-03-20T02:10:35.8691432Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-03-20T02:10:35.8935396Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-03-20T02:10:35.8959074Z http.https://github.com/.extraheader
+2026-03-20T02:10:35.8972328Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-03-20T02:10:35.9005008Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-03-20T02:10:35.9243275Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-03-20T02:10:35.9275371Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-03-20T02:10:35.9621340Z Cleaning up orphan processes
+2026-03-20T02:10:36.0042802Z ##[warning]Node.js 20 actions are deprecated. The following actions are running on Node.js 20 and may not work as expected: actions/checkout@v4, actions/setup-node@v4, actions/setup-python@v5. Actions will be forced to run with Node.js 24 by default starting June 2nd, 2026. Please check if updated versions of these actions are available that support Node.js 24. To opt into Node.js 24 now, set the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true environment variable on the runner or in your workflow file. Once Node.js 24 becomes the default, you can temporarily opt out by setting ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
