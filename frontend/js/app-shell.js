@@ -1240,9 +1240,12 @@
 
     function initInstallPrompt() {
         const ENABLE_DESKTOP_IN_APP_INSTALL_CTA = true;
-        const ENABLE_MOBILE_IN_APP_INSTALL_CTA = false;
+        const ENABLE_ANDROID_IN_APP_INSTALL_CTA = true;
+        const ENABLE_IOS_IN_APP_INSTALL_CTA = false;
         let deferredInstallPrompt = null;
         let fallbackTimer = null;
+        let hasInstalledRelatedApp = false;
+        let hasCheckedInstalledRelatedApps = false;
 
         const PROMPT_DISMISS_UNTIL_KEY = 'pwaInstallPromptDismissUntil';
         const INSTALLED_SEEN_AT_KEY = 'pwaInstalledSeenAt';
@@ -1291,9 +1294,12 @@
         const isAndroid = () => /android/i.test(window.navigator.userAgent || '');
         const isMobileInstallFlow = () => isIOS() || isAndroid();
         const getPromptSurface = () => (isMobileInstallFlow() ? 'mobile' : 'desktop');
-        const isInAppInstallEnabled = (surface = getPromptSurface()) => (
-            surface === 'desktop' ? ENABLE_DESKTOP_IN_APP_INSTALL_CTA : ENABLE_MOBILE_IN_APP_INSTALL_CTA
-        );
+        const isInAppInstallEnabled = (surface = getPromptSurface()) => {
+            if (surface === 'desktop') return ENABLE_DESKTOP_IN_APP_INSTALL_CTA;
+            if (isAndroid()) return ENABLE_ANDROID_IN_APP_INSTALL_CTA;
+            if (isIOS()) return ENABLE_IOS_IN_APP_INSTALL_CTA;
+            return false;
+        };
 
         const getDisplayMode = () => {
             if (document.referrer && document.referrer.startsWith('android-app://')) {
@@ -1358,7 +1364,8 @@
 
         const shouldSuppressPrompts = (surface = getPromptSurface()) => {
             if (isStandalone()) return true;
-            if (surface === 'mobile' && hasRecentInstalledSeen()) return true;
+            if (surface === 'mobile' && isIOS() && hasRecentInstalledSeen()) return true;
+            if (surface === 'mobile' && isAndroid() && hasCheckedInstalledRelatedApps && hasInstalledRelatedApp) return true;
             if (isPromptSuppressedByCooldown()) return true;
             return false;
         };
@@ -1470,7 +1477,7 @@
         };
 
         const scheduleFallbackPrompt = () => {
-            if (!ENABLE_MOBILE_IN_APP_INSTALL_CTA) return;
+            if (!ENABLE_IOS_IN_APP_INSTALL_CTA) return;
             if (!isIOS()) return;
             if (shouldSuppressPrompts('mobile')) return;
             clearFallbackTimer();
@@ -1486,12 +1493,19 @@
             if (typeof navigator.getInstalledRelatedApps !== 'function') return;
             try {
                 const relatedApps = await navigator.getInstalledRelatedApps();
-                if (Array.isArray(relatedApps) && relatedApps.length > 0) {
+                hasCheckedInstalledRelatedApps = true;
+                hasInstalledRelatedApp = Array.isArray(relatedApps) && relatedApps.some((app) => app && app.platform === 'webapp');
+                if (hasInstalledRelatedApp) {
                     markInstalledSeen();
                     clearStoredValue(PROMPT_DISMISS_UNTIL_KEY);
                     deferredInstallPrompt = null;
                     clearFallbackTimer();
                     hideButton();
+                } else if (isAndroid() && !isStandalone()) {
+                    // On Android, if the related PWA is no longer installed, clear stale state
+                    // so the user can be offered reinstall again immediately.
+                    clearStoredValue(INSTALLED_SEEN_AT_KEY);
+                    clearStoredValue(PROMPT_DISMISS_UNTIL_KEY);
                 }
             } catch (_err) {
                 // Best-effort detection only.
@@ -1501,7 +1515,7 @@
         if (isStandalone()) {
             markInstalledSeen();
             clearStoredValue(PROMPT_DISMISS_UNTIL_KEY);
-        } else if (isMobileInstallFlow() && isCrossHostMigrationLaunch()) {
+        } else if (isIOS() && isCrossHostMigrationLaunch()) {
             // If a launch crossed known app hosts (www/apex/firebase hosts), treat it as
             // an existing app install context migration and suppress install nags.
             markInstalledSeen();
@@ -1522,6 +1536,11 @@
                 deferredInstallPrompt = null;
                 hideButton();
                 return;
+            }
+            if (promptSurface === 'mobile' && isAndroid()) {
+                hasCheckedInstalledRelatedApps = true;
+                hasInstalledRelatedApp = false;
+                clearStoredValue(INSTALLED_SEEN_AT_KEY);
             }
             event.preventDefault();
             if (shouldSuppressPrompts(promptSurface)) {
@@ -1557,6 +1576,8 @@
 
         window.addEventListener('appinstalled', () => {
             deferredInstallPrompt = null;
+            hasCheckedInstalledRelatedApps = true;
+            hasInstalledRelatedApp = true;
             markInstalledSeen();
             clearStoredValue(PROMPT_DISMISS_UNTIL_KEY);
             clearFallbackTimer();

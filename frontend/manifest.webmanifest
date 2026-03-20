@@ -5,6 +5,13 @@
   "description": "Monitor and automate your inverter with real-time pricing and weather insights.",
   "start_url": "/app.html",
   "scope": "/",
+  "related_applications": [
+    {
+      "platform": "webapp",
+      "url": "/manifest.webmanifest",
+      "id": "/"
+    }
+  ],
   "display": "standalone",
   "orientation": "portrait-primary",
   "theme_color": "#0d1117",
