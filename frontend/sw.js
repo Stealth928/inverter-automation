@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'socrates-v53';
+const CACHE_VERSION = 'socrates-v56';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const STATIC_ASSETS = [
@@ -18,12 +18,12 @@ const STATIC_ASSETS = [
   '/js/firebase-auth.js',
   '/js/api-client.js?v=5',
   '/js/shared-utils.js?v=13',
-  '/js/app-shell.js?v=15',
+  '/js/app-shell.js?v=19',
   '/js/admin.js?v=5',
   '/favicon.ico',
   '/manifest.webmanifest',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
+  '/icons/icon-192.png?v=2',
+  '/icons/icon-512.png?v=2',
   '/icons/icon-maskable-512.png',
   '/icons/apple-touch-icon.png'
 ];

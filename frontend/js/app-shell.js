@@ -304,7 +304,7 @@
         }
 
         const target = stateData.email || user.email || user.uid || 'unknown user';
-        message.textContent = `⚠️ IMPERSONATION ACTIVE — You are viewing as: ${target}`;
+        message.textContent = `\u26A0\uFE0F IMPERSONATION ACTIVE - You are viewing as: ${target}`;
         banner.style.display = 'block';
     }
 
@@ -719,7 +719,7 @@
                 if (window.TourEngine && typeof window.TourEngine.start === 'function') {
                     window.TourEngine.start(0);
                 } else {
-                    // TourEngine not loaded on this page — navigate to dashboard and start there
+                    // TourEngine not loaded on this page - navigate to dashboard and start there
                     try {
                         sessionStorage.setItem('tourStep', '0');
                         sessionStorage.setItem('tourStepVersion', 'tour-v2026-03-15-ev-step');
@@ -878,7 +878,7 @@
                     dropdown.insertBefore(sep, signOutBtn);
                 }
 
-                // Differentiate Sign Out from Delete Account — make it neutral, not danger
+                // Differentiate Sign Out from Delete Account - make it neutral, not danger
                 signOutBtn.classList.remove('danger');
                 signOutBtn.classList.add('sign-out');
             } else {
@@ -917,7 +917,7 @@
             toggleBtn.setAttribute('data-nav-toggle', '1');
             toggleBtn.setAttribute('aria-label', 'Toggle navigation menu');
             toggleBtn.setAttribute('aria-expanded', 'false');
-            toggleBtn.textContent = '☰';
+            toggleBtn.textContent = '\u2630';
             nav.insertBefore(toggleBtn, nav.firstChild);
         }
         if (toggleBtn.dataset.bound === '1') return;
@@ -926,13 +926,13 @@
         const closeMenu = () => {
             nav.classList.remove('nav-open');
             toggleBtn.setAttribute('aria-expanded', 'false');
-            toggleBtn.textContent = '☰';
+            toggleBtn.textContent = '\u2630';
         };
 
         const openMenu = () => {
             nav.classList.add('nav-open');
             toggleBtn.setAttribute('aria-expanded', 'true');
-            toggleBtn.textContent = '✕';
+            toggleBtn.textContent = '\u2715';
         };
 
         const toggleMenu = () => {
@@ -1239,15 +1239,136 @@
     }
 
     function initInstallPrompt() {
+        const ENABLE_IN_APP_INSTALL_PROMPTS = false;
+        if (!ENABLE_IN_APP_INSTALL_PROMPTS) {
+            const isMobilePromptSurface = /iphone|ipad|ipod|android/i.test(window.navigator.userAgent || '');
+            if (isMobilePromptSurface) {
+                window.addEventListener('beforeinstallprompt', (event) => {
+                    event.preventDefault();
+                });
+            }
+            const existingButton = document.getElementById('pwaInstallBtn');
+            if (existingButton) existingButton.style.display = 'none';
+            return;
+        }
+
         let deferredInstallPrompt = null;
         let fallbackTimer = null;
 
-        const isStandalone = () =>
-            window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        const PROMPT_DISMISS_UNTIL_KEY = 'pwaInstallPromptDismissUntil';
+        const INSTALLED_SEEN_AT_KEY = 'pwaInstalledSeenAt';
+        const INSTALL_PROMPT_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+        const MANUAL_HELP_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+        const INSTALLED_SEEN_TTL_MS = 180 * 24 * 60 * 60 * 1000; // 180 days
+        const KNOWN_PWA_HOSTS = [
+            'socratesautomation.com',
+            'www.socratesautomation.com',
+            'inverter-automation-firebase.web.app',
+            'inverter-automation-firebase.firebaseapp.com'
+        ];
+
+        const now = () => Date.now();
+
+        const readStoredNumber = (key) => {
+            try {
+                const raw = window.localStorage.getItem(key);
+                if (!raw) return 0;
+                const parsed = Number(raw);
+                return Number.isFinite(parsed) ? parsed : 0;
+            } catch (_err) {
+                return 0;
+            }
+        };
+
+        const writeStoredNumber = (key, value) => {
+            try {
+                const safeValue = Math.max(0, Math.floor(Number(value) || 0));
+                window.localStorage.setItem(key, String(safeValue));
+            } catch (_err) {
+                // Ignore storage errors (private mode / restricted storage).
+            }
+        };
+
+        const clearStoredValue = (key) => {
+            try {
+                window.localStorage.removeItem(key);
+            } catch (_err) {
+                // Ignore storage errors.
+            }
+        };
 
         const isLocalhost = () => ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
         const isIOS = () => /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
         const isAndroid = () => /android/i.test(window.navigator.userAgent || '');
+        const isMobileInstallFlow = () => isIOS() || isAndroid();
+
+        const getDisplayMode = () => {
+            if (document.referrer && document.referrer.startsWith('android-app://')) {
+                return 'twa';
+            }
+            if (window.navigator.standalone === true) {
+                return 'standalone';
+            }
+            if (window.matchMedia('(display-mode: window-controls-overlay)').matches) {
+                return 'window-controls-overlay';
+            }
+            if (window.matchMedia('(display-mode: standalone)').matches) {
+                return 'standalone';
+            }
+            if (window.matchMedia('(display-mode: minimal-ui)').matches) {
+                return 'minimal-ui';
+            }
+            if (window.matchMedia('(display-mode: fullscreen)').matches) {
+                return 'fullscreen';
+            }
+            if (window.matchMedia('(display-mode: browser)').matches) {
+                return 'browser';
+            }
+            return 'unknown';
+        };
+
+        const isStandalone = () => {
+            const displayMode = getDisplayMode();
+            return displayMode !== 'browser' && displayMode !== 'unknown';
+        };
+
+        const markInstalledSeen = () => {
+            writeStoredNumber(INSTALLED_SEEN_AT_KEY, now());
+        };
+
+        const hasRecentInstalledSeen = () => {
+            const seenAt = readStoredNumber(INSTALLED_SEEN_AT_KEY);
+            if (!seenAt) return false;
+            return (now() - seenAt) < INSTALLED_SEEN_TTL_MS;
+        };
+
+        const suppressPromptsFor = (durationMs = INSTALL_PROMPT_COOLDOWN_MS) => {
+            writeStoredNumber(PROMPT_DISMISS_UNTIL_KEY, now() + durationMs);
+        };
+
+        const isPromptSuppressedByCooldown = () => {
+            return now() < readStoredNumber(PROMPT_DISMISS_UNTIL_KEY);
+        };
+
+        const isCrossHostMigrationLaunch = () => {
+            if (!document.referrer) return false;
+            let refHost = '';
+            try {
+                refHost = String(new URL(document.referrer).hostname || '').toLowerCase();
+            } catch (_err) {
+                return false;
+            }
+            const currentHost = String(window.location.hostname || '').toLowerCase();
+            if (!refHost || !currentHost || refHost === currentHost) return false;
+            return KNOWN_PWA_HOSTS.includes(refHost) && KNOWN_PWA_HOSTS.includes(currentHost);
+        };
+
+        const shouldSuppressPrompts = () => {
+            if (isStandalone()) return true;
+            if (hasRecentInstalledSeen()) return true;
+            if (isPromptSuppressedByCooldown()) return true;
+            return false;
+        };
 
         const ensureInstallButton = () => {
             let styleTag = document.getElementById('pwa-install-style');
@@ -1319,7 +1440,8 @@
         };
 
         const showButton = (label, onClick) => {
-            if (isStandalone()) return;
+            if (!isMobileInstallFlow()) return;
+            if (shouldSuppressPrompts()) return;
             const button = ensureInstallButton();
             button.textContent = label;
             button.onclick = onClick;
@@ -1334,27 +1456,63 @@
         const showManualInstallHelp = () => {
             if (isIOS()) {
                 window.alert('On iPhone/iPad: open this site in Safari, tap Share, then choose "Add to Home Screen".');
+                suppressPromptsFor(MANUAL_HELP_COOLDOWN_MS);
                 return;
             }
 
             if (isAndroid()) {
-                window.alert('On Android: open the browser menu (⋮) and choose "Install app" or "Add to Home screen".');
+                window.alert('On Android: open the browser menu (three dots) and choose "Install app" or "Add to Home screen".');
+                suppressPromptsFor(MANUAL_HELP_COOLDOWN_MS);
                 return;
             }
 
             window.alert('Use your browser menu and choose "Install" or "Add to Home screen".');
+            suppressPromptsFor(MANUAL_HELP_COOLDOWN_MS);
+        };
+
+        const clearFallbackTimer = () => {
+            if (!fallbackTimer) return;
+            clearTimeout(fallbackTimer);
+            fallbackTimer = null;
         };
 
         const scheduleFallbackPrompt = () => {
-            if (isStandalone()) return;
-            if (!isIOS() && !isAndroid()) return;
-            if (fallbackTimer) clearTimeout(fallbackTimer);
+            if (!isIOS()) return;
+            if (shouldSuppressPrompts()) return;
+            clearFallbackTimer();
 
             fallbackTimer = setTimeout(() => {
                 if (deferredInstallPrompt) return;
+                if (shouldSuppressPrompts()) return;
                 showButton('Install App', showManualInstallHelp);
-            }, 3500);
+            }, 5000);
         };
+
+        const detectInstalledRelatedApps = async () => {
+            if (typeof navigator.getInstalledRelatedApps !== 'function') return;
+            try {
+                const relatedApps = await navigator.getInstalledRelatedApps();
+                if (Array.isArray(relatedApps) && relatedApps.length > 0) {
+                    markInstalledSeen();
+                    clearStoredValue(PROMPT_DISMISS_UNTIL_KEY);
+                    deferredInstallPrompt = null;
+                    clearFallbackTimer();
+                    hideButton();
+                }
+            } catch (_err) {
+                // Best-effort detection only.
+            }
+        };
+
+        if (isStandalone()) {
+            markInstalledSeen();
+            clearStoredValue(PROMPT_DISMISS_UNTIL_KEY);
+        } else if (isCrossHostMigrationLaunch()) {
+            // If a launch crossed known app hosts (www/apex/firebase hosts), treat it as
+            // an existing app install context migration and suppress install nags.
+            markInstalledSeen();
+            suppressPromptsFor();
+        }
 
         window.addEventListener('beforeinstallprompt', (event) => {
             if (isLocalhost()) {
@@ -1363,18 +1521,36 @@
                 return;
             }
             event.preventDefault();
-            deferredInstallPrompt = event;
-            if (fallbackTimer) {
-                clearTimeout(fallbackTimer);
-                fallbackTimer = null;
+            // On desktop, let the browser keep its own install/open-in-app UX.
+            // Suppressing it here creates a second install CTA and makes uninstall
+            // behavior feel inconsistent because PWA installs are browser-specific.
+            if (!isMobileInstallFlow()) {
+                deferredInstallPrompt = null;
+                hideButton();
+                return;
             }
+            if (shouldSuppressPrompts()) {
+                deferredInstallPrompt = null;
+                hideButton();
+                return;
+            }
+            deferredInstallPrompt = event;
+            clearFallbackTimer();
             showButton('Install App', async () => {
                 if (!deferredInstallPrompt) return;
                 deferredInstallPrompt.prompt();
+                let accepted = false;
                 try {
-                    await deferredInstallPrompt.userChoice;
+                    const choiceResult = await deferredInstallPrompt.userChoice;
+                    accepted = choiceResult && choiceResult.outcome === 'accepted';
                 } catch (err) {
                     console.warn('[AppShell] Install prompt interaction failed', err);
+                }
+                if (accepted) {
+                    markInstalledSeen();
+                    clearStoredValue(PROMPT_DISMISS_UNTIL_KEY);
+                } else {
+                    suppressPromptsFor();
                 }
                 deferredInstallPrompt = null;
                 hideButton();
@@ -1382,17 +1558,16 @@
         });
 
         scheduleFallbackPrompt();
+        detectInstalledRelatedApps();
 
         window.addEventListener('appinstalled', () => {
             deferredInstallPrompt = null;
-            if (fallbackTimer) {
-                clearTimeout(fallbackTimer);
-                fallbackTimer = null;
-            }
+            markInstalledSeen();
+            clearStoredValue(PROMPT_DISMISS_UNTIL_KEY);
+            clearFallbackTimer();
             hideButton();
         });
     }
-
     function initPwaSupport() {
         ensurePwaHeadTags();
         registerServiceWorker();
