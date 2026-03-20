@@ -9,8 +9,266 @@ const {
   getProjectId,
   assertEmulatorEnvironment
 } = require('./emulator-test-user');
+const { resolveProviderDeviceId } = require('../lib/provider-device-id');
 
 const METRICS_TIMEZONE = 'Australia/Sydney';
+const INVERTER_CACHE_TTL_MS = 5 * 60 * 1000;
+
+const AMBER_CACHE_PRESETS = Object.freeze({
+  foxess: Object.freeze({
+    siteNmi: 'FOX-NMI-1001',
+    siteNetwork: 'Seed FoxESS Grid',
+    network: 'N2',
+    generalBase: 18.4,
+    generalStep: 0.35,
+    feedInBase: -7.8,
+    feedInStep: -0.22,
+    renewablesBase: 58,
+    renewablesStep: 2
+  }),
+  sungrow: Object.freeze({
+    siteNmi: 'SUNG-NMI-2001',
+    siteNetwork: 'Seed Sungrow Grid',
+    network: 'NSW',
+    generalBase: 20.6,
+    generalStep: 0.28,
+    feedInBase: -8.2,
+    feedInStep: -0.21,
+    renewablesBase: 52,
+    renewablesStep: 3
+  }),
+  sigenergy: Object.freeze({
+    siteNmi: 'SIGE-NMI-3001',
+    siteNetwork: 'Seed Sigen Grid',
+    network: 'QLD',
+    generalBase: 23.1,
+    generalStep: 0.33,
+    feedInBase: -6.9,
+    feedInStep: -0.19,
+    renewablesBase: 47,
+    renewablesStep: 2
+  }),
+  alphaess: Object.freeze({
+    siteNmi: 'ALPH-NMI-4001',
+    siteNetwork: 'Seed AlphaESS Grid',
+    network: 'WA',
+    generalBase: 16.5,
+    generalStep: 0.31,
+    feedInBase: -7.5,
+    feedInStep: -0.18,
+    renewablesBase: 50,
+    renewablesStep: 2
+  })
+});
+
+const INVERTER_CACHE_PRESETS = Object.freeze({
+  foxess: Object.freeze({
+    socPct: 82,
+    pvPowerW: 3800,
+    loadsPowerW: 1740,
+    gridConsumptionPowerW: 620,
+    batChargePowerW: 540,
+    batDischargePowerW: 120,
+    feedinPowerW: -80,
+    batTemperatureC: 28.6,
+    ambientTemperationC: 24.4,
+    invTemperationC: 36.2,
+    boostTemperationC: 41.7,
+    generationPowerW: 4080
+  }),
+  sungrow: Object.freeze({
+    socPct: 75,
+    pvPowerW: 3000,
+    loadsPowerW: 1500,
+    gridConsumptionPowerW: 540,
+    batChargePowerW: 410,
+    batDischargePowerW: 150,
+    feedinPowerW: -30,
+    batTemperatureC: 30.1,
+    ambientTemperationC: 25.0,
+    invTemperationC: 34.8,
+    boostTemperationC: 40.9,
+    generationPowerW: 3000
+  }),
+  sigenergy: Object.freeze({
+    socPct: 69,
+    pvPowerW: 2600,
+    loadsPowerW: 1310,
+    gridConsumptionPowerW: 470,
+    batChargePowerW: 220,
+    batDischargePowerW: 300,
+    feedinPowerW: -190,
+    batTemperatureC: 29.2,
+    ambientTemperationC: 23.8,
+    invTemperationC: 35.1,
+    boostTemperationC: 40.2,
+    generationPowerW: 2650
+  }),
+  alphaess: Object.freeze({
+    socPct: 87,
+    pvPowerW: 4200,
+    loadsPowerW: 1620,
+    gridConsumptionPowerW: 580,
+    batChargePowerW: 320,
+    batDischargePowerW: 210,
+    feedinPowerW: -160,
+    batTemperatureC: 26.8,
+    ambientTemperationC: 22.9,
+    invTemperationC: 35.6,
+    boostTemperationC: 39.8,
+    generationPowerW: 4320
+  })
+});
+
+function roundTo(value, decimals = 2) {
+  return Number(Number(value).toFixed(decimals));
+}
+
+function toSeedProvider(seedUser) {
+  return String(seedUser?.provider || 'foxess').toLowerCase().trim();
+}
+
+function getInverterCachePreset(seedUser) {
+  return INVERTER_CACHE_PRESETS[toSeedProvider(seedUser)] || INVERTER_CACHE_PRESETS.foxess;
+}
+
+function getAmberCachePreset(seedUser) {
+  return AMBER_CACHE_PRESETS[toSeedProvider(seedUser)] || AMBER_CACHE_PRESETS.foxess;
+}
+
+function buildInverterDataFrame(seedUser, deviceSN, timestampIso, includeRealtimeExtras = false) {
+  const preset = getInverterCachePreset(seedUser);
+  const soc = Number.isFinite(Number(preset.socPct)) ? Number(preset.socPct) : 75;
+  const pvPowerW = Number.isFinite(Number(preset.pvPowerW)) ? Number(preset.pvPowerW) : 3200;
+  const loadsPowerW = Number.isFinite(Number(preset.loadsPowerW)) ? Number(preset.loadsPowerW) : 1600;
+  const gridConsumptionPowerW = Number.isFinite(Number(preset.gridConsumptionPowerW))
+    ? Number(preset.gridConsumptionPowerW)
+    : 500;
+  const feedinPowerW = Number.isFinite(Number(preset.feedinPowerW)) ? Number(preset.feedinPowerW) : -80;
+  const batChargePowerW = Number.isFinite(Number(preset.batChargePowerW)) ? Number(preset.batChargePowerW) : 0;
+  const batDischargePowerW = Number.isFinite(Number(preset.batDischargePowerW)) ? Number(preset.batDischargePowerW) : 0;
+  const meterPower2 = gridConsumptionPowerW > 0
+    ? gridConsumptionPowerW
+    : (feedinPowerW > 0 ? -feedinPowerW : 0);
+
+  const pvSplit = [0.34, 0.27, 0.23, 0.16];
+  const pvVolt = [392, 378, 364, 348];
+  const pvPowers = pvSplit.map((ratio) => roundTo(pvPowerW * ratio, 2));
+  const pvCurrents = pvPowers.map((power, index) => roundTo(power / Math.max(pvVolt[index], 1), 2));
+
+  const datas = [
+    { variable: 'SoC', value: soc },
+    { variable: 'SoC1', value: soc },
+    { variable: 'pvPower', value: pvPowerW },
+    { variable: 'loadsPower', value: loadsPowerW },
+    { variable: 'gridConsumptionPower', value: gridConsumptionPowerW },
+    { variable: 'feedinPower', value: feedinPowerW },
+    { variable: 'meterPower2', value: meterPower2 },
+    { variable: 'batTemperature', value: preset.batTemperatureC },
+    { variable: 'ambientTemperation', value: preset.ambientTemperationC }
+  ];
+
+  if (includeRealtimeExtras) {
+    datas.push(
+      { variable: 'generationPower', value: preset.generationPowerW },
+      { variable: 'batChargePower', value: batChargePowerW },
+      { variable: 'batDischargePower', value: batDischargePowerW },
+      { variable: 'invTemperation', value: preset.invTemperationC },
+      { variable: 'boostTemperation', value: preset.boostTemperationC },
+      { variable: 'pv1Power', value: pvPowers[0], unit: 'W' },
+      { variable: 'pv2Power', value: pvPowers[1], unit: 'W' },
+      { variable: 'pv3Power', value: pvPowers[2], unit: 'W' },
+      { variable: 'pv4Power', value: pvPowers[3], unit: 'W' },
+      { variable: 'pv1Volt', value: pvVolt[0], unit: 'V' },
+      { variable: 'pv2Volt', value: pvVolt[1], unit: 'V' },
+      { variable: 'pv3Volt', value: pvVolt[2], unit: 'V' },
+      { variable: 'pv4Volt', value: pvVolt[3], unit: 'V' },
+      { variable: 'pv1Current', value: pvCurrents[0], unit: 'A' },
+      { variable: 'pv2Current', value: pvCurrents[1], unit: 'A' },
+      { variable: 'pv3Current', value: pvCurrents[2], unit: 'A' },
+      { variable: 'pv4Current', value: pvCurrents[3], unit: 'A' },
+      { variable: 'meterPower', value: meterPower2 },
+      { variable: 'gridPower', value: gridConsumptionPowerW },
+      { variable: 'meterPowerW', value: meterPower2 },
+      { variable: 'loadPower', value: loadsPowerW }
+    );
+  }
+
+  return {
+    errno: 0,
+    result: [{
+      deviceSN: String(deviceSN || ''),
+      time: timestampIso,
+      datas
+    }]
+  };
+}
+
+function buildAmberSites(seedUser) {
+  const preset = getAmberCachePreset(seedUser);
+  const siteId = String(seedUser?.config?.amberSiteId || `seed-site-${toSeedProvider(seedUser)}`);
+  return [{
+    id: siteId,
+    nmi: preset.siteNmi,
+    network: preset.siteNetwork,
+    networkName: preset.network,
+    nmiVerified: false
+  }];
+}
+
+function buildAmberCurrentRows(seedUser) {
+  const preset = getAmberCachePreset(seedUser);
+  const now = new Date();
+  const aligned = new Date(now);
+  aligned.setSeconds(0, 0);
+  aligned.setMinutes(aligned.getMinutes() < 30 ? 0 : 30);
+
+  return Array.from({ length: 8 }, (_, idx) => {
+    const intervalStart = new Date(aligned.getTime() + idx * 30 * 60 * 1000);
+    const intervalEnd = new Date(aligned.getTime() + (idx + 1) * 30 * 60 * 1000);
+    const base = intervalStart.toISOString();
+    const end = intervalEnd.toISOString();
+    const renewables = roundTo(preset.renewablesBase + idx * preset.renewablesStep, 1);
+    const isCurrent = idx === 0;
+
+    const buy = roundTo(preset.generalBase + (idx * preset.generalStep), 2);
+    const feedIn = roundTo(preset.feedInBase - (idx * Math.abs(preset.feedInStep)), 2);
+
+    const common = {
+      startTime: base,
+      endTime: end,
+      date: base.slice(0, 10),
+      nemTime: base,
+      type: isCurrent ? 'CurrentInterval' : 'ForecastInterval'
+    };
+
+    return [{
+      ...common,
+      channelType: 'general',
+      perKwh: buy,
+      spotPerKwh: buy,
+      renewables,
+      descriptor: 'seed'
+    }, {
+      ...common,
+      channelType: 'feedIn',
+      perKwh: feedIn,
+      spotPerKwh: feedIn,
+      renewables,
+      descriptor: 'seed'
+    }];
+  }).flat();
+}
+
+function resolveProviderAndDeviceId(seedUser) {
+  const cfg = seedUser && seedUser.config ? seedUser.config : {};
+  const provider = cfg.deviceProvider || String(seedUser?.provider || 'foxess');
+  const resolved = resolveProviderDeviceId(cfg, cfg.deviceSN);
+  return {
+    provider: String(resolved.provider || provider).toLowerCase().trim(),
+    deviceSN: String(resolved.deviceId || cfg.deviceSN || '').trim()
+  };
+}
 
 async function getUserByUidOrNull(auth, uid) {
   try {
@@ -105,6 +363,10 @@ function validateRequiredConfig(seedUser, config) {
 async function seedSingleUser({ db, auth, seedUser, ts }) {
   const userRecord = await ensureSeedAuthUser(auth, seedUser);
   const uid = userRecord.uid;
+  const cacheNowMs = Date.now();
+  const cacheNow = new Date(cacheNowMs);
+  const cacheNowIso = cacheNow.toISOString();
+  const { provider, deviceSN } = resolveProviderAndDeviceId(seedUser);
 
   await db.collection('users').doc(uid).set({
     uid,
@@ -147,6 +409,44 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
     updatedAt: ts
   }, { merge: true });
   console.log('Wrote users/%s/automation/state', uid);
+
+  const inverterCachePayload = buildInverterDataFrame(seedUser, deviceSN, cacheNowIso, false);
+  await db.collection('users').doc(uid).collection('cache').doc('inverter').set({
+    ...inverterCachePayload,
+    timestamp: cacheNowMs,
+    ttlMs: INVERTER_CACHE_TTL_MS,
+    provider,
+    deviceSN,
+    ttl: Math.floor(cacheNowMs / 1000) + Math.floor(INVERTER_CACHE_TTL_MS / 1000)
+  }, { merge: true });
+  console.log('Wrote users/%s/cache/inverter', uid);
+
+  const inverterRealtimePayload = buildInverterDataFrame(seedUser, deviceSN, cacheNowIso, true);
+  await db.collection('users').doc(uid).collection('cache').doc('inverter-realtime').set({
+    ...inverterRealtimePayload,
+    timestamp: cacheNowMs,
+    ttlMs: INVERTER_CACHE_TTL_MS,
+    provider,
+    deviceSN,
+    ttl: Math.floor(cacheNowMs / 1000) + Math.floor(INVERTER_CACHE_TTL_MS / 1000)
+  }, { merge: true });
+  console.log('Wrote users/%s/cache/inverter-realtime', uid);
+
+  const amberSites = buildAmberSites(seedUser);
+  await db.collection('users').doc(uid).collection('cache').doc('amber_sites').set({
+    sites: amberSites,
+    cachedAt: admin.firestore.Timestamp.fromDate(cacheNow)
+  }, { merge: true });
+  console.log('Wrote users/%s/cache/amber_sites', uid);
+
+  const amberSiteId = String(seedUser?.config?.amberSiteId || `seed-site-${provider}`);
+  const currentRows = buildAmberCurrentRows(seedUser);
+  await db.collection('users').doc(uid).collection('cache').doc(`amber_current_${amberSiteId}`).set({
+    siteId: amberSiteId,
+    prices: currentRows,
+    cachedAt: admin.firestore.Timestamp.fromDate(cacheNow)
+  }, { merge: true });
+  console.log(`Wrote users/${uid}/cache/amber_current_${amberSiteId}`);
 
   const rule = seedUser.rule || {};
   const ruleId = rule.id || `seed_rule_${seedUser.provider}`;

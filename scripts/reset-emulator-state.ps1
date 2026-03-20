@@ -10,6 +10,10 @@
 
 Set-StrictMode -Version Latest
 
+$scriptDir = Split-Path -Parent $PSCommandPath
+$pathBootstrap = Join-Path $scriptDir 'ensure-dev-runtime-path.ps1'
+if (Test-Path $pathBootstrap) { . $pathBootstrap }
+
 Write-Output "Starting full emulator reset..."
 
 # Stop running emulators (best-effort)

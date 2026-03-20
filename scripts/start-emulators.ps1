@@ -12,6 +12,9 @@ $scriptDir = Split-Path -Parent $PSCommandPath
 $repoRoot = Split-Path -Parent $scriptDir
 Set-Location $repoRoot
 
+$pathBootstrap = Join-Path $scriptDir 'ensure-dev-runtime-path.ps1'
+if (Test-Path $pathBootstrap) { . $pathBootstrap }
+
 $logDir = 'logs'
 if (!(Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
 $stdout = Join-Path $logDir 'emulator.out.log'

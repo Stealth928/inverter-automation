@@ -2395,16 +2395,18 @@
                 : 'Published market-data metadata and DataWorks workflow diagnostics are available.';
 
             if (marketSummary) {
-                const workflowLabel = marketSummary.workflow?.cadenceLabel || 'Workflow schedule unavailable';
+                const coverageWindow = marketSummary.bounds?.minPeriod && marketSummary.bounds?.maxPeriod
+                    ? `${marketSummary.bounds.minPeriod} to ${marketSummary.bounds.maxPeriod}`
+                    : '';
                 pipelinePanel.innerHTML = renderDataworksPanel(
                     'Pipeline',
                     '🧭',
                     renderDataworksBadge(marketSummary.status?.label || 'Unknown', marketSummary.status?.level),
                     `<div class="dataworks-metric-list">
-                        ${renderDataworksMetricRow('Workflow cadence', workflowLabel, marketSummary.workflow?.cron ? `cron ${marketSummary.workflow.cron}` : 'Hosted by GitHub Actions')}
                         ${renderDataworksMetricRow('Published', formatRelativeTime(marketSummary.generatedAt), marketSummary.generatedAt ? `index generated ${formatDate(marketSummary.generatedAt)}` : '')}
                         ${renderDataworksMetricRow('Source aggregate', formatRelativeTime(marketSummary.sourceGeneratedAt), marketSummary.sourceGeneratedAt ? `aggregate manifest ${formatDate(marketSummary.sourceGeneratedAt)}` : '')}
                         ${renderDataworksMetricRow('Latest market date', formatDateShort(marketSummary.latestDate), marketSummary.dataAgeDays !== null ? `${formatDayAge(marketSummary.dataAgeDays)} behind UTC` : '')}
+                        ${renderDataworksMetricRow('Coverage window', marketSummary.latestPeriod || '-', coverageWindow)}
                     </div>`,
                     'Static metadata from the published market-insights bundle.'
                 );
@@ -2523,9 +2525,6 @@
             }
             if (opsSummary?.latestRun?.createdAt || opsSummary?.latestRun?.updatedAt) {
                 updatedParts.push(`workflow run ${formatRelativeTime(opsSummary.latestRun.createdAt || opsSummary.latestRun.updatedAt)}`);
-            }
-            if (marketSummary?.workflow?.cadenceLabel) {
-                updatedParts.push(`cadence ${marketSummary.workflow.cadenceLabel}`);
             }
             updatedEl.textContent = updatedParts.length
                 ? `Last checked ${new Date().toLocaleDateString('en-AU')} ${new Date().toLocaleTimeString('en-AU')} · ${updatedParts.join(' · ')}`

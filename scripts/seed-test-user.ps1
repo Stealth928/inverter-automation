@@ -8,6 +8,9 @@ $scriptDir = Split-Path -Parent $PSCommandPath
 $repoRoot = Split-Path -Parent $scriptDir
 Set-Location $repoRoot
 
+$pathBootstrap = Join-Path $scriptDir 'ensure-dev-runtime-path.ps1'
+if (Test-Path $pathBootstrap) { . $pathBootstrap }
+
 $env:FIRESTORE_EMULATOR_HOST = '127.0.0.1:8080'
 $env:FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:9099'
 

@@ -66,8 +66,68 @@ function pidExists(pid) {
   }
 }
 
+function normalizePathEntryForComparison(value) {
+  if (!value) return '';
+  return String(value).trim().replace(/[\\/]+$/, '').toLowerCase();
+}
+
+function prependPathEntries(env, entries = []) {
+  const separator = process.platform === 'win32' ? ';' : ':';
+  const current = String(env.PATH || '');
+  const existing = current ? current.split(separator).filter(Boolean) : [];
+  const seen = new Set(existing.map(normalizePathEntryForComparison));
+  const additions = [];
+
+  for (const entry of entries) {
+    if (!entry || !fs.existsSync(entry)) continue;
+    const normalized = normalizePathEntryForComparison(entry);
+    if (seen.has(normalized)) continue;
+    additions.push(entry);
+    seen.add(normalized);
+  }
+
+  if (additions.length === 0) return;
+  env.PATH = `${additions.join(separator)}${current ? `${separator}${current}` : ''}`;
+}
+
+function getLatestAdoptiumJavaBin() {
+  if (process.platform !== 'win32') return null;
+  const root = 'C:\\Program Files\\Eclipse Adoptium';
+  if (!fs.existsSync(root)) return null;
+
+  try {
+    const candidates = fs.readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(root, entry.name, 'bin'))
+      .filter((binPath) => fs.existsSync(path.join(binPath, 'java.exe')))
+      .sort()
+      .reverse();
+    return candidates[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+function getWindowsRuntimePaths() {
+  if (process.platform !== 'win32') return [];
+  const runtimePaths = [
+    'C:\\Program Files\\nodejs',
+    'C:\\Program Files\\Git\\cmd'
+  ];
+
+  const javaBin = getLatestAdoptiumJavaBin();
+  if (javaBin) runtimePaths.push(javaBin);
+
+  return runtimePaths;
+}
+
 function buildEmulatorEnv() {
   const env = { ...process.env };
+
+  if (process.platform === 'win32') {
+    prependPathEntries(env, getWindowsRuntimePaths());
+    return env;
+  }
 
   const homebrewJavaBin = '/opt/homebrew/opt/openjdk/bin';
   const homebrewJavaHome = '/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home';
@@ -385,9 +445,9 @@ async function stopEmulators() {
   log(`Stopped emulators and cleaned ${killedCount} listener process(es).`);
 }
 
-async function seedEmulators() {
+async function seedEmulators({ requireSetupStatus = true } = {}) {
   const env = {
-    ...process.env,
+    ...buildEmulatorEnv(),
     FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080',
     FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099',
     GCLOUD_PROJECT: process.env.GCLOUD_PROJECT || DEFAULT_PROJECT
@@ -398,7 +458,12 @@ async function seedEmulators() {
 
   const setupOk = await verifySetupStatus();
   if (!setupOk) {
-    throw new Error('setup-status endpoint did not become healthy after seed');
+    const message = 'setup-status endpoint did not become healthy after seed';
+    if (requireSetupStatus) {
+      throw new Error(message);
+    }
+    log(`WARNING: ${message}`);
+    return;
   }
 
   log('Seed completed and setup-status is healthy.');
@@ -424,6 +489,7 @@ async function main() {
   try {
     if (command === 'start') {
       await startEmulators();
+      await seedEmulators({ requireSetupStatus: false });
       return;
     }
 
@@ -446,7 +512,7 @@ async function main() {
       const startTs = Date.now();
       await stopEmulators();
       await startEmulators();
-      await seedEmulators();
+      await seedEmulators({ requireSetupStatus: false });
       const elapsed = ((Date.now() - startTs) / 1000).toFixed(1);
       log(`Reset + reseed complete in ${elapsed}s.`);
       return;
