@@ -1239,19 +1239,8 @@
     }
 
     function initInstallPrompt() {
-        const ENABLE_IN_APP_INSTALL_PROMPTS = false;
-        if (!ENABLE_IN_APP_INSTALL_PROMPTS) {
-            const isMobilePromptSurface = /iphone|ipad|ipod|android/i.test(window.navigator.userAgent || '');
-            if (isMobilePromptSurface) {
-                window.addEventListener('beforeinstallprompt', (event) => {
-                    event.preventDefault();
-                });
-            }
-            const existingButton = document.getElementById('pwaInstallBtn');
-            if (existingButton) existingButton.style.display = 'none';
-            return;
-        }
-
+        const ENABLE_DESKTOP_IN_APP_INSTALL_CTA = true;
+        const ENABLE_MOBILE_IN_APP_INSTALL_CTA = false;
         let deferredInstallPrompt = null;
         let fallbackTimer = null;
 
@@ -1301,6 +1290,10 @@
         const isIOS = () => /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
         const isAndroid = () => /android/i.test(window.navigator.userAgent || '');
         const isMobileInstallFlow = () => isIOS() || isAndroid();
+        const getPromptSurface = () => (isMobileInstallFlow() ? 'mobile' : 'desktop');
+        const isInAppInstallEnabled = (surface = getPromptSurface()) => (
+            surface === 'desktop' ? ENABLE_DESKTOP_IN_APP_INSTALL_CTA : ENABLE_MOBILE_IN_APP_INSTALL_CTA
+        );
 
         const getDisplayMode = () => {
             if (document.referrer && document.referrer.startsWith('android-app://')) {
@@ -1363,9 +1356,9 @@
             return KNOWN_PWA_HOSTS.includes(refHost) && KNOWN_PWA_HOSTS.includes(currentHost);
         };
 
-        const shouldSuppressPrompts = () => {
+        const shouldSuppressPrompts = (surface = getPromptSurface()) => {
             if (isStandalone()) return true;
-            if (hasRecentInstalledSeen()) return true;
+            if (surface === 'mobile' && hasRecentInstalledSeen()) return true;
             if (isPromptSuppressedByCooldown()) return true;
             return false;
         };
@@ -1439,9 +1432,9 @@
             return button;
         };
 
-        const showButton = (label, onClick) => {
-            if (!isMobileInstallFlow()) return;
-            if (shouldSuppressPrompts()) return;
+        const showButton = (label, onClick, surface = getPromptSurface()) => {
+            if (!isInAppInstallEnabled(surface)) return;
+            if (shouldSuppressPrompts(surface)) return;
             const button = ensureInstallButton();
             button.textContent = label;
             button.onclick = onClick;
@@ -1477,14 +1470,15 @@
         };
 
         const scheduleFallbackPrompt = () => {
+            if (!ENABLE_MOBILE_IN_APP_INSTALL_CTA) return;
             if (!isIOS()) return;
-            if (shouldSuppressPrompts()) return;
+            if (shouldSuppressPrompts('mobile')) return;
             clearFallbackTimer();
 
             fallbackTimer = setTimeout(() => {
                 if (deferredInstallPrompt) return;
-                if (shouldSuppressPrompts()) return;
-                showButton('Install App', showManualInstallHelp);
+                if (shouldSuppressPrompts('mobile')) return;
+                showButton('Install App', showManualInstallHelp, 'mobile');
             }, 5000);
         };
 
@@ -1507,7 +1501,7 @@
         if (isStandalone()) {
             markInstalledSeen();
             clearStoredValue(PROMPT_DISMISS_UNTIL_KEY);
-        } else if (isCrossHostMigrationLaunch()) {
+        } else if (isMobileInstallFlow() && isCrossHostMigrationLaunch()) {
             // If a launch crossed known app hosts (www/apex/firebase hosts), treat it as
             // an existing app install context migration and suppress install nags.
             markInstalledSeen();
@@ -1515,21 +1509,22 @@
         }
 
         window.addEventListener('beforeinstallprompt', (event) => {
+            const promptSurface = getPromptSurface();
             if (isLocalhost()) {
                 deferredInstallPrompt = null;
                 hideButton();
                 return;
             }
-            event.preventDefault();
-            // On desktop, let the browser keep its own install/open-in-app UX.
-            // Suppressing it here creates a second install CTA and makes uninstall
-            // behavior feel inconsistent because PWA installs are browser-specific.
-            if (!isMobileInstallFlow()) {
+            if (!isInAppInstallEnabled(promptSurface)) {
+                if (promptSurface === 'mobile') {
+                    event.preventDefault();
+                }
                 deferredInstallPrompt = null;
                 hideButton();
                 return;
             }
-            if (shouldSuppressPrompts()) {
+            event.preventDefault();
+            if (shouldSuppressPrompts(promptSurface)) {
                 deferredInstallPrompt = null;
                 hideButton();
                 return;
@@ -1554,7 +1549,7 @@
                 }
                 deferredInstallPrompt = null;
                 hideButton();
-            });
+            }, promptSurface);
         });
 
         scheduleFallbackPrompt();
