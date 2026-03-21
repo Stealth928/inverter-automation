@@ -25,6 +25,9 @@ jobs:
     - name: Show firebase-tools version (diagnostic)
       run: npx firebase-tools --version
 
+    - name: Generate release manifest
+      run: node scripts/generate-release-manifest.js
+
     - name: Deploy to Firebase
       env:
         FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
@@ -36,3 +39,9 @@ jobs:
         else
           npx firebase-tools deploy --only functions,hosting --token "$FIREBASE_TOKEN"
         fi
+
+    - name: Verify hosted release manifest
+      env:
+        RELEASE_ALIGNMENT_RETRIES: 12
+        RELEASE_ALIGNMENT_DELAY_MS: 10000
+      run: node scripts/verify-release-alignment.js

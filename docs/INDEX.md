@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-03-17
+Last updated: 2026-03-21
 Purpose: canonical map of the actively maintained documentation set.
 
 ## Start Here
@@ -43,6 +43,9 @@ Purpose: canonical map of the actively maintained documentation set.
   investigation workflow.
 - [PROD_BACKUP_ROLLBACK_RUNBOOK.md](PROD_BACKUP_ROLLBACK_RUNBOOK.md): backup and
   rollback procedure.
+- [REPO_OPPORTUNITY_AUDIT_MAR21_2026.md](REPO_OPPORTUNITY_AUDIT_MAR21_2026.md): repo-wide
+  performance, Firebase cost, scheduler, docs, and debt audit with prioritized
+  opportunities.
 - [SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md](SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md):
   scheduler SLO alert response and escalation.
 - [guides/TESTING_GUIDE.md](guides/TESTING_GUIDE.md): backend/frontend test

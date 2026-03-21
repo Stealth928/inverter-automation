@@ -84,6 +84,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (requestUrl.pathname === '/data/release-manifest.json') {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
+  }
+
   // Screenshot carousel assets should always reflect latest deploys.
   // Bypass service-worker cache so same-filename replacements are picked up.
   if (requestUrl.pathname.startsWith('/images/screenshots/')) {

@@ -42,6 +42,12 @@ jobs:
         run: |
           node -e "const fs=require('fs');const p='frontend/data/aemo-market-insights/index.json';const index=JSON.parse(fs.readFileSync(p,'utf8'));const maxDate=index?.bounds?.maxDate||index?.dataworks?.freshness?.latestDate||null;if(!maxDate){console.error('Missing maxDate in generated index');process.exit(1);}console.log('[DataWorks] generatedAt=%s maxDate=%s',index.generatedAt,maxDate);"
 
+      - name: Verify live hosting release matches current checkout
+        run: node scripts/verify-release-alignment.js
+
+      - name: Generate release manifest
+        run: node scripts/generate-release-manifest.js
+
       - name: Deploy Firebase hosting
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
@@ -51,6 +57,12 @@ jobs:
             exit 1
           fi
           npx firebase-tools deploy --only hosting --project "inverter-automation-firebase" --token "$FIREBASE_TOKEN" --non-interactive
+
+      - name: Verify hosted release manifest
+        env:
+          RELEASE_ALIGNMENT_RETRIES: 12
+          RELEASE_ALIGNMENT_DELAY_MS: 10000
+        run: node scripts/verify-release-alignment.js
 
       - name: Verify hosted freshness matches generated index
         run: |

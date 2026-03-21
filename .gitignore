@@ -58,3 +58,6 @@ archive/
 
 # Exported data snapshots
 exports/
+
+# Deploy-time release metadata
+frontend/data/release-manifest.json
