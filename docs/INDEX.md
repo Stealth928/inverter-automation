@@ -13,9 +13,10 @@ Purpose: canonical map of the actively maintained documentation set.
 
 ## Product and API
 
-- [API.md](API.md): narrative API reference grouped by domain.
-- [openapi/openapi.v1.yaml](openapi/openapi.v1.yaml): API contract source of
-  truth used by `npm run openapi:check`.
+- [API.md](API.md): narrative API guide grouped by domain and common workflows;
+  not the exhaustive route inventory.
+- [openapi/openapi.v1.yaml](openapi/openapi.v1.yaml): incremental OpenAPI
+  contract baseline used by `npm run openapi:check`.
 - [AUTOMATION.md](AUTOMATION.md): rule engine, conditions, actions, and provider
   behavior.
 - [BACKGROUND_AUTOMATION.md](BACKGROUND_AUTOMATION.md): scheduler cadence,
@@ -53,12 +54,10 @@ Purpose: canonical map of the actively maintained documentation set.
 
 ## Architecture and Governance
 
-- [REFACTORING_IMPLEMENTATION_PLAN_MAR26.md](REFACTORING_IMPLEMENTATION_PLAN_MAR26.md):
-  active refactor tracker and status log.
 - [P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md](P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md):
   architecture and contract baseline.
 - [API_CONTRACT_BASELINE_MAR26.md](API_CONTRACT_BASELINE_MAR26.md): API drift
-  baseline used by contract checks.
+  baseline used by contract checks; currently the most complete route map.
 - [PHASE_GATE_DASHBOARD.md](PHASE_GATE_DASHBOARD.md): phase-gate tracking.
 - [adr/ADR-001-target-architecture-boundaries.md](adr/ADR-001-target-architecture-boundaries.md)
 - [adr/ADR-002-v2-data-model-and-migration-strategy.md](adr/ADR-002-v2-data-model-and-migration-strategy.md)
@@ -77,6 +76,9 @@ primary source of truth for day-to-day product or operations work.
 - [P4_G4_CLOSEOUT_EVIDENCE_MAR26.md](P4_G4_CLOSEOUT_EVIDENCE_MAR26.md)
 - [P5_G5_CLOSEOUT_EVIDENCE_MAR26.md](P5_G5_CLOSEOUT_EVIDENCE_MAR26.md)
 - [P6_G6_CLOSEOUT_EVIDENCE_MAR26.md](P6_G6_CLOSEOUT_EVIDENCE_MAR26.md)
+- [REFACTORING_IMPLEMENTATION_PLAN_MAR26.md](REFACTORING_IMPLEMENTATION_PLAN_MAR26.md):
+  historical refactor tracker retained for audit trail; some planning
+  assumptions are superseded by current runtime/docs.
 - [evidence/REFACTORING_EXECUTION_LOG_MAR26.md](evidence/REFACTORING_EXECUTION_LOG_MAR26.md)
 - [evidence/scheduler-soak/README.md](evidence/scheduler-soak/README.md)
 - [COST_ANALYSIS.md](COST_ANALYSIS.md)
@@ -84,8 +86,12 @@ primary source of truth for day-to-day product or operations work.
 ## Hygiene Rules
 
 - Prefer updating an existing canonical doc over adding a new overlapping one.
-- Treat [openapi/openapi.v1.yaml](openapi/openapi.v1.yaml) as the API contract
-  source of truth; keep [API.md](API.md) as the narrative companion.
+- Until OpenAPI coverage is complete, treat
+  [API_CONTRACT_BASELINE_MAR26.md](API_CONTRACT_BASELINE_MAR26.md) as the most
+  complete route inventory and
+  [openapi/openapi.v1.yaml](openapi/openapi.v1.yaml) as the incremental
+  machine-readable contract baseline; keep [API.md](API.md) as the narrative
+  companion.
 - Keep root-level docs minimal.
 - If a document becomes historical, either move it under a historical section or
   delete it when it no longer adds evidence value.

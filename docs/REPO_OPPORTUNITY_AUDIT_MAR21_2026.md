@@ -147,26 +147,35 @@ observations rather than billing-ground-truth.
 - Impact: High
 - Change risk: Low
 - Why:
-  The repo presents OpenAPI and narrative docs as authoritative, but the actual
-  parity gap is still large. Some narrative docs still describe outdated cache
-  behavior, and the main docs index promotes historical planning material as
-  if it were still current.
+  At audit time, the repo presented OpenAPI and narrative docs as
+  authoritative, but the actual parity gap was still large. Some narrative
+  docs described outdated cache behavior, and the main docs index promoted
+  historical planning material as if it were still current.
 - Evidence:
   - [docs/openapi/openapi.v1.yaml](openapi/openapi.v1.yaml):
     partial runtime coverage relative to the route inventory
   - [docs/API.md](API.md):
-    stale cache/rate-limit details, including Amber cache behavior
+    contained stale cache/rate-limit details, including Amber cache behavior
   - [docs/AUTOMATION.md](AUTOMATION.md):
-    stale cache TTL note
+    contained a stale cache TTL note
   - [docs/INDEX.md](INDEX.md):
-    still promotes the refactor plan in the active architecture section
+    promoted the refactor plan in the active architecture section
   - [docs/REFACTORING_IMPLEMENTATION_PLAN_MAR26.md](REFACTORING_IMPLEMENTATION_PLAN_MAR26.md):
     contains statements already invalidated by current code
   - [frontend/index.html](../frontend/index.html):
-    public landing page still labels some supported providers as "Soon"
+    public landing page labelled some supported providers as "Soon"
 - Notes:
   This is low implementation risk and high leverage for reducing operator and
   contributor confusion.
+- Status update (2026-03-21):
+  Partially addressed. `docs/API.md`, `docs/AUTOMATION.md`, `docs/INDEX.md`,
+  `README.md`, `docs/openapi/openapi.v1.yaml`, and
+  `docs/P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md` now describe the OpenAPI and
+  route-inventory split more accurately; `docs/REFACTORING_IMPLEMENTATION_PLAN_MAR26.md`
+  is now marked as historical context; and the landing page no longer
+  labels AlphaESS, SigenEnergy, and Sungrow as "Soon".
+- Remaining gap:
+  OpenAPI path coverage is still partial and needs a follow-up expansion pass.
 
 ### 6. Collapse or sample API metrics writes
 

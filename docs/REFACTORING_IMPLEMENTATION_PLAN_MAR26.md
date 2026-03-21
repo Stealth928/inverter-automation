@@ -6,6 +6,12 @@ Last Updated: 2026-03-11
 Primary Branch (historical execution): `RefactoringMar26`  
 Current Working Branch: `MarchWorks`
 
+Historical status note (2026-03-21): This file is retained as a planning and
+execution record, not the current source of truth for live product, provider,
+or API status. For current behavior, use `docs/guides/PRODUCT_GUIDE.md`,
+`docs/API.md`, `docs/API_CONTRACT_BASELINE_MAR26.md`, and
+`docs/openapi/openapi.v1.yaml`.
+
 ## Progress Tracker
 
 | Workstream | Sprint 1 Items | Status | Completion |
@@ -534,7 +540,10 @@ Total planned window: 20 weeks.
 
 1. Build EV integration from scratch with extensible adapter design.
 
-> **Audit correction:** The original plan references "moving EV integration from test-only to production." In reality, **no EV code exists** in the backend (`functions/`). There are Tesla key generation scripts in `scripts/` and documentation in `docs/TESLA_*.md`, but zero API endpoints, zero data model, zero feature flags, zero test code for EV/Tesla. This is entirely greenfield and the timeline should be evaluated accordingly. Three weeks may be tight for a production-grade integration starting from zero.
+> Historical note (2026-03-04, superseded): At the time of this planning
+> checkpoint, no EV backend implementation existed yet. That is no longer true;
+> Tesla EV routes, data handling, docs, and tests now exist in the main codebase.
+> Keep this section as planning context only, not as current product status.
 
 ### Tasks
 

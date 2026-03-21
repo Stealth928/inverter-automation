@@ -42,8 +42,9 @@ High-value entry points:
 | Document | Purpose |
 | --- | --- |
 | [docs/SETUP.md](docs/SETUP.md) | Local development, deployment prerequisites, provider onboarding, runtime configuration |
-| [docs/API.md](docs/API.md) | Narrative API reference; pair with OpenAPI for contract detail |
-| [docs/openapi/openapi.v1.yaml](docs/openapi/openapi.v1.yaml) | API contract source of truth used by contract checks |
+| [docs/API.md](docs/API.md) | Narrative API guide for common product and operator workflows; not the exhaustive route inventory |
+| [docs/openapi/openapi.v1.yaml](docs/openapi/openapi.v1.yaml) | Incremental OpenAPI contract baseline used by contract checks |
+| [docs/API_CONTRACT_BASELINE_MAR26.md](docs/API_CONTRACT_BASELINE_MAR26.md) | Current measured backend/frontend route inventory while OpenAPI coverage catches up |
 | [docs/AUTOMATION.md](docs/AUTOMATION.md) | Rule model, conditions, actions, and provider behavior |
 | [docs/BACKGROUND_AUTOMATION.md](docs/BACKGROUND_AUTOMATION.md) | Scheduler orchestration, cadence, concurrency, metrics, and alerting |
 | [docs/guides/PRODUCT_GUIDE.md](docs/guides/PRODUCT_GUIDE.md) | Product-facing description of shipped UI and capability |

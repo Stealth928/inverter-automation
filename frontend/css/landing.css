@@ -2805,28 +2805,13 @@ section { padding: 80px 0; }
 }
 
 /* ============================================================
-   BRAND LOGO — COMING SOON WRAPPER
+   BRAND LOGO WRAPPER
    ============================================================ */
 .brand-logo-wrap {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   vertical-align: middle;
-}
-.brand-logo-wrap--soon .brand-logo {
-  opacity: 0.35;
-  filter: grayscale(1);
-}
-.brand-soon {
-  font-size: 0.62rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  color: #c9daed;
-  background: rgba(88, 107, 129, 0.7);
-  padding: 1px 5px;
-  border-radius: 4px;
-  white-space: nowrap;
 }
 
 /* ============================================================

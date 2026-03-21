@@ -63,8 +63,9 @@
 
 ## 5. API Contract Verification
 
-- [ ] All `/api/**` routes are documented in `docs/API.md` or intentionally covered by domain-level narrative plus OpenAPI
-- [ ] `docs/openapi/openapi.v1.yaml` is in sync with actual routes and remains the contract source of truth
+- [ ] All `/api/**` routes are documented in `docs/API.md` or intentionally covered by domain-level narrative plus contract artifacts
+- [ ] `docs/API_CONTRACT_BASELINE_MAR26.md` reflects the current route inventory
+- [ ] `docs/openapi/openapi.v1.yaml` is in sync with the routes it declares and remains the incremental machine-readable contract baseline
 - [ ] Response envelope unchanged: `{ errno, result, error, msg }`
 - [ ] New endpoints follow auth pattern: `authenticateUser` for protected, `tryAttachUser` for optional-auth
 - [ ] No existing endpoint signatures were changed without a version bump

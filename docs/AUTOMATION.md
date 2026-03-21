@@ -2,7 +2,14 @@
 
 ## Overview
 
-The automation engine runs every minute via Cloud Scheduler, evaluating user-defined rules against real-time data from FoxESS inverters, Amber electricity prices, and weather forecasts. When conditions are met, it automatically configures the inverter's scheduler to optimize energy usage and costs.
+The automation engine runs every minute via Cloud Scheduler, evaluating
+user-defined rules against live inverter/provider data, Amber electricity
+prices, and weather forecasts. Supported inverter paths include FoxESS,
+Sungrow, SigenEnergy, and AlphaESS, although FoxESS remains the richest
+diagnostics and curtailment path.
+
+For the current provider support matrix and maturity notes, use
+`docs/guides/PRODUCT_GUIDE.md` alongside this document.
 
 ---
 
@@ -647,14 +654,14 @@ Discharge before predicted high prices.
 4. Verify all conditions are met (see debug panel)
 5. Check rule priority (higher priority rule may be blocking)
 
-### Segment Not Applied
-1. Check FoxESS API connectivity
-2. Verify device serial number in settings
-3. Check for API rate limiting (errno 41808)
-4. Review scheduler read-back (may be in different group)
+### Action Not Applied
+1. Check provider API connectivity for the configured inverter path
+2. Verify credentials and device identifiers in Settings
+3. Check for provider rate limiting or upstream errors (for example FoxESS `errno 41808`)
+4. Review scheduler read-back and provider-specific capability limits
 
 ### Stale Data
-1. Check cache TTLs (FoxESS Telemetry: 5min, Amber: 24hr, Weather: 30min, History: 30min)
+1. Check cache TTLs (FoxESS telemetry default: 5 min, FoxESS history default: 30 min, Amber current prices default: 60 sec per user, Amber sites: 7 days, Amber historical cache retention field: 30 days, Weather default: 30 min)
 2. Force refresh with automation cycle trigger
 3. Verify API keys are valid
 

@@ -1,6 +1,6 @@
 # API Reference
 
-Last updated: 2026-03-17
+Last updated: 2026-03-21
 
 ## Overview
 
@@ -11,8 +11,14 @@ Typical entry points:
 - **Local Hosting Emulator**: `http://127.0.0.1:5000/api/*`
 - **Direct Functions Emulator**: `http://127.0.0.1:5001/<project-id>/us-central1/api/api/*`
 
-Use this file as the narrative companion to `docs/openapi/openapi.v1.yaml`, which
-is the contract source of truth used by repository checks.
+Use this file as the narrative companion to the incremental OpenAPI baseline in
+`docs/openapi/openapi.v1.yaml`.
+
+For the most complete measured route inventory, use
+`docs/API_CONTRACT_BASELINE_MAR26.md` until OpenAPI coverage catches up.
+
+This document focuses on commonly used product and operator workflows rather
+than listing every backend route exhaustively.
 
 All authenticated endpoints require a Firebase ID token in the `Authorization` header:
 ```
@@ -998,11 +1004,20 @@ Authorization: Bearer <token>
 FoxESS, Sungrow, and SigenEnergy upstream errors are proxied in the `errno` field with the provider's original code. The `error` field contains a human-readable description.
 ---
 
-## Rate Limits
+## Provider Rate Limits and Cache Behavior
 
-| API | Limit | Cache TTL | Location |
-|-----|-------|-----------|----------|
-| FoxESS (Telemetry) | ~60 req/hour | 5 minutes | `users/{uid}/cache/inverter` |
-| FoxESS (History) | ~60 req/hour | 30 minutes | `users/{uid}/cache/history_*` (per 24h chunk) |
-| Amber (Prices) | ~100 req/hour | 24 hours | `amber_prices/{siteId}` (global, shared) |
-| Open-Meteo (Weather) | Unlimited | 30 minutes | `users/{uid}/cache/weather` |
+Provider quotas change over time and some integrations are user-configurable, so
+the table below documents current cache behavior in code rather than claiming a
+single hard quota contract.
+
+| Integration | Practical rate-limit note | Effective cache behavior | Location |
+|-------------|---------------------------|--------------------------|----------|
+| FoxESS telemetry | Treat `~60 req/hour` as rough planning guidance only | Default `5 minutes`; effective user value exposed by `GET /api/config` as `result.cacheTtl.inverter` | `users/{uid}/cache/inverter`, `users/{uid}/cache/inverter-realtime` |
+| FoxESS history | Upstream/provider pressure depends on requested ranges | Default `30 minutes` per history cache key | `users/{uid}/cache/history_*` |
+| Amber current prices | Upstream calls are deduplicated in-flight per `userId:siteId` | Default `60 seconds`; user override via `cache.amber` or server default | `users/{uid}/cache/amber_current_{siteId}` |
+| Amber site list | Low-churn metadata | `7 days` | `users/{uid}/cache/amber_sites` |
+| Amber historical prices | Range fetches fill gaps and merge into a per-user cache | Stored in a merged per-user cache with a `30 day` retention field | `users/{uid}/cache/amber_{siteId}` |
+| Open-Meteo weather | No meaningful app-level quota pressure is enforced here | Default `30 minutes`; user override via `cache.weather` or server default | `users/{uid}/cache/weather` |
+
+Current server defaults come from `getConfig().automation.cacheTtl`, and
+`GET /api/config` returns the effective user-specific TTLs used by the app.

@@ -3,8 +3,9 @@ info:
   title: Inverter Automation API
   version: 1.0.0
   description: >
-    Source-of-truth OpenAPI baseline started in Phase P1.
-    This spec will be expanded incrementally as routes are refactored.
+    Incremental OpenAPI contract baseline used by npm run openapi:check.
+    Coverage is still partial; use docs/API_CONTRACT_BASELINE_MAR26.md for the
+    current measured backend route inventory until spec parity is complete.
 servers:
   - url: /
 tags:

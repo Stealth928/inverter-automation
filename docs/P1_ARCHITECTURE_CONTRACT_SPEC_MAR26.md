@@ -20,7 +20,7 @@ This document is the implementation contract for:
 3. Billing/paywall adapter and entitlement contracts (weekly/monthly cadence).
 4. Cross-layer response and error taxonomy.
 5. Legacy-to-v2 data mapping rules for migration compatibility.
-6. OpenAPI source-of-truth workflow.
+6. Incremental OpenAPI workflow.
 
 ---
 
@@ -289,10 +289,12 @@ Fields intentionally out of v2 scope for this phase (remain in `config/main`):
 
 ---
 
-## 8. OpenAPI Source-of-Truth Workflow
+## 8. Incremental OpenAPI Workflow
 
 Source file:
 - `docs/openapi/openapi.v1.yaml`
+- `docs/API_CONTRACT_BASELINE_MAR26.md` remains the most complete measured route
+  inventory while OpenAPI coverage is still catching up.
 - Baseline coverage at P1 kickoff (2026-03-04): **3 of 73** backend routes documented; expand incrementally each PR.
 
 Rules:
@@ -301,7 +303,7 @@ Rules:
 3. Deprecated endpoints are tagged with deprecation date and replacement path.
 
 Validation workflow:
-1. Keep `scripts/api-contract-baseline.js` as current drift guard between runtime and frontend usage.
+1. Keep `scripts/api-contract-baseline.js` plus `docs/API_CONTRACT_BASELINE_MAR26.md` as the current drift guard and measured route inventory between runtime and frontend usage.
 2. Run `scripts/openapi-contract-check.js` in pre-deploy and CI for:
    - YAML syntax/structure validation
    - OpenAPI path+method parity against backend route declarations
