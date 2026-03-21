@@ -1,0 +1,62 @@
+<!-- Desktop/PWA variant: full badge so Windows taskbar icons do not read undersized -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="8%" y1="4%" x2="92%" y2="100%">
+      <stop offset="0%" style="stop-color:#11263c"/>
+      <stop offset="55%" style="stop-color:#0c1524"/>
+      <stop offset="100%" style="stop-color:#08101b"/>
+    </linearGradient>
+    <linearGradient id="arc2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#34d399"/>
+      <stop offset="100%" style="stop-color:#38bdf8"/>
+    </linearGradient>
+    <filter id="g2">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="c2"><circle cx="256" cy="256" r="245"/></clipPath>
+  </defs>
+
+  <rect x="0" y="0" width="512" height="512" fill="url(#bg)"/>
+  <rect x="18" y="18" width="476" height="476" rx="118" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="6"/>
+  <circle cx="256" cy="256" r="256" fill="#0a0e1a" opacity="0.32"/>
+
+  <g transform="translate(256,256) scale(1.12) translate(-256,-256)">
+    <circle cx="256" cy="256" r="248" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="22"/>
+    <circle cx="256" cy="256" r="248" fill="none" stroke="url(#arc2)"
+            stroke-width="22" stroke-linecap="round"
+            stroke-dasharray="1373 187"
+            stroke-dashoffset="390" filter="url(#g2)"/>
+
+    <g clip-path="url(#c2)">
+      <path d="M 308 44
+               C 342 49, 370 80, 374 119
+               C 378 154, 360 189, 347 218
+               C 333 244, 333 266, 335 288
+               C 337 311, 346 325, 342 349
+               C 335 375, 311 388, 285 395
+               C 268 399, 249 399, 249 414
+               L 249 518 L 153 518 L 153 414
+               C 153 399, 173 395, 195 390
+               C 219 384, 238 369, 242 345
+               C 246 321, 233 302, 231 279
+               C 229 258, 236 237, 231 213
+               C 225 182, 205 156, 205 121
+               C 205 80, 238 48, 275 47
+               C 290 46, 300 42, 308 44 Z"
+            fill="#e8e4dc"/>
+      <ellipse cx="348" cy="216" rx="21" ry="32" fill="#ddd8cc"/>
+      <ellipse cx="350" cy="216" rx="11" ry="19" fill="#ccc4b4"/>
+      <circle cx="233" cy="180" r="12" fill="#1a1f2e"/>
+      <circle cx="237" cy="177" r="3.8" fill="#ffffff" opacity="0.45"/>
+    </g>
+
+    <g filter="url(#g2)">
+      <path d="M 346 58 L 308 154 L 332 154 L 295 262 L 385 144 L 357 144 Z" fill="#fbbf24"/>
+    </g>
+    <path d="M 346 58 L 308 154 L 332 154 L 295 262 L 385 144 L 357 144 Z" fill="#f59e0b"/>
+  </g>
+</svg>
