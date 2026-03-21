@@ -115,6 +115,15 @@ function getWindowsRuntimePaths() {
     'C:\\Program Files\\Git\\cmd'
   ];
 
+  // Add global npm bin directory
+  const npmGlobalPrefix = execSync('npm config get prefix', {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore']
+  }).trim();
+  if (npmGlobalPrefix) {
+    runtimePaths.push(npmGlobalPrefix);
+  }
+
   const javaBin = getLatestAdoptiumJavaBin();
   if (javaBin) runtimePaths.push(javaBin);
 
@@ -310,11 +319,12 @@ function runNodeScript(scriptPath, env, label) {
 
 function getEmulatorSpawnCandidates() {
   if (process.platform === 'win32') {
-    const npxCommand = `npx ${EMULATOR_ARGS.join(' ')}`;
-    const npmExecCommand = `npm ${NPM_EXEC_ARGS.join(' ')}`;
+    // With shell: true, pass command as a single string
+    const firebaseCommandStr = `firebase ${EMULATOR_ARGS.slice(1).join(' ')}`;
+    const npxCommandStr = `npx ${EMULATOR_ARGS.join(' ')}`;
     return [
-      { command: 'cmd.exe', args: ['/d', '/s', '/c', npxCommand], label: 'cmd /c npx' },
-      { command: 'cmd.exe', args: ['/d', '/s', '/c', npmExecCommand], label: 'cmd /c npm exec --' }
+      { command: firebaseCommandStr, args: [], label: 'firebase direct (via shell)' },
+      { command: npxCommandStr, args: [], label: 'npx (via shell)' }
     ];
   }
 
@@ -347,6 +357,7 @@ async function spawnEmulatorProcess(env, logFd) {
     cwd: REPO_ROOT,
     env,
     detached: true,
+    shell: true,
     stdio: ['ignore', logFd, logFd]
   };
 
