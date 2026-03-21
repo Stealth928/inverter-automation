@@ -29,6 +29,11 @@ function registerAdminRoutes(app, deps = {}) {
   const githubRef = String(githubDataworks.ref || '').trim() || 'main';
   const githubDispatchToken = String(githubDataworks.dispatchToken || '').trim();
   const githubUserAgent = String(githubDataworks.userAgent || '').trim() || 'SoCrates-Admin-DataWorks';
+  const githubHostingOrigins = Array.from(new Set([
+    String(githubDataworks.hostingOrigin || '').trim(),
+    'https://inverter-automation-firebase.web.app',
+    'https://inverter-automation-firebase.firebaseapp.com'
+  ].filter(Boolean)));
 
   if (!app || typeof app.get !== 'function' || typeof app.post !== 'function') {
     throw new Error('registerAdminRoutes requires an Express app');
@@ -182,6 +187,42 @@ function registerAdminRoutes(app, deps = {}) {
     };
   };
 
+  const trimString = (value) => {
+    const text = String(value || '').trim();
+    return text || null;
+  };
+
+  const normalizeGithubBranch = (value) => {
+    const raw = trimString(value);
+    if (!raw) return null;
+    return raw
+      .replace(/^refs\/heads\//i, '')
+      .replace(/^origin\//i, '');
+  };
+
+  const shortenCommit = (value) => {
+    const text = trimString(value);
+    return text ? text.slice(0, 7) : null;
+  };
+
+  const normalizeHostedReleaseManifest = (manifest) => {
+    const source = manifest && typeof manifest === 'object' ? manifest : {};
+    const git = source.git && typeof source.git === 'object' ? source.git : {};
+    const commit = trimString(git.commit);
+    const branch = normalizeGithubBranch(git.branch || git.ref);
+    const ref = trimString(git.ref) || (branch ? `refs/heads/${branch}` : null);
+
+    return {
+      generatedAt: trimString(source.generatedAt),
+      git: {
+        commit,
+        shortCommit: trimString(git.shortCommit) || shortenCommit(commit),
+        branch,
+        ref
+      }
+    };
+  };
+
   async function callGithubApi(url, options = {}) {
     if (typeof fetchImpl !== 'function') {
       const error = new Error('fetch implementation not available on server');
@@ -227,6 +268,149 @@ function registerAdminRoutes(app, deps = {}) {
     return { data, rateLimit };
   }
 
+  async function fetchHostedReleaseManifest() {
+    if (typeof fetchImpl !== 'function') {
+      return {
+        manifest: null,
+        sourceUrl: null,
+        error: 'fetch implementation not available on server'
+      };
+    }
+
+    let lastError = null;
+    for (const origin of githubHostingOrigins) {
+      const baseUrl = String(origin || '').replace(/\/+$/, '');
+      if (!baseUrl) continue;
+
+      const releaseUrl = `${baseUrl}/data/release-manifest.json?ts=${Date.now()}`;
+      try {
+        const response = await fetchImpl(releaseUrl, {
+          method: 'GET',
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        });
+        const text = typeof response?.text === 'function' ? await response.text() : '';
+
+        if (!response?.ok) {
+          lastError = `HTTP ${response?.status || 500}`;
+          continue;
+        }
+
+        const manifest = text ? JSON.parse(text) : {};
+        return {
+          manifest: normalizeHostedReleaseManifest(manifest),
+          sourceUrl: releaseUrl,
+          error: null
+        };
+      } catch (error) {
+        lastError = error?.message || String(error);
+      }
+    }
+
+    return {
+      manifest: null,
+      sourceUrl: null,
+      error: lastError || 'hosted release manifest unavailable'
+    };
+  }
+
+  async function resolveGithubRefCommit(ref) {
+    const normalizedRef = trimString(ref);
+    if (!normalizedRef) {
+      return {
+        ref: null,
+        commit: null,
+        shortCommit: null,
+        error: 'workflow ref is not configured'
+      };
+    }
+
+    try {
+      const commitUrl = `https://api.github.com/repos/${encodeURIComponent(githubOwner)}/${encodeURIComponent(githubRepo)}/commits/${encodeURIComponent(normalizedRef)}`;
+      const { data } = await callGithubApi(commitUrl);
+      const commit = trimString(data?.sha);
+      return {
+        ref: normalizedRef,
+        commit,
+        shortCommit: shortenCommit(commit),
+        error: commit ? null : 'unable to resolve workflow ref commit'
+      };
+    } catch (error) {
+      return {
+        ref: normalizedRef,
+        commit: null,
+        shortCommit: null,
+        error: error?.message || String(error)
+      };
+    }
+  }
+
+  function buildReleaseAlignmentSummary({ liveRelease, targetRef }) {
+    const liveManifest = liveRelease && liveRelease.manifest ? liveRelease.manifest : null;
+    const liveCommit = trimString(liveManifest?.git?.commit);
+    const liveBranch = normalizeGithubBranch(liveManifest?.git?.branch || liveManifest?.git?.ref);
+    const targetCommit = trimString(targetRef?.commit);
+
+    if (!liveManifest || !liveCommit) {
+      return {
+        status: 'manifest-missing',
+        matches: null,
+        liveCommit: null,
+        liveShortCommit: null,
+        liveBranch: null,
+        targetCommit,
+        targetShortCommit: shortenCommit(targetCommit),
+        targetRef: targetRef?.ref || githubRef,
+        sourceUrl: liveRelease?.sourceUrl || null,
+        reason: liveRelease?.error || 'hosted release manifest unavailable'
+      };
+    }
+
+    if (!targetCommit) {
+      return {
+        status: 'target-unresolved',
+        matches: null,
+        liveCommit,
+        liveShortCommit: shortenCommit(liveCommit),
+        liveBranch,
+        targetCommit: null,
+        targetShortCommit: null,
+        targetRef: targetRef?.ref || githubRef,
+        sourceUrl: liveRelease?.sourceUrl || null,
+        reason: targetRef?.error || 'unable to resolve workflow ref commit'
+      };
+    }
+
+    if (liveCommit !== targetCommit) {
+      return {
+        status: 'mismatch',
+        matches: false,
+        liveCommit,
+        liveShortCommit: shortenCommit(liveCommit),
+        liveBranch,
+        targetCommit,
+        targetShortCommit: shortenCommit(targetCommit),
+        targetRef: targetRef?.ref || githubRef,
+        sourceUrl: liveRelease?.sourceUrl || null,
+        reason: `Live hosting is on ${liveBranch || 'unknown'} @ ${shortenCommit(liveCommit) || 'unknown'}, but ref ${targetRef?.ref || githubRef} resolves to ${shortenCommit(targetCommit) || 'unknown'}. Deploy the current release first.`
+      };
+    }
+
+    return {
+      status: 'aligned',
+      matches: true,
+      liveCommit,
+      liveShortCommit: shortenCommit(liveCommit),
+      liveBranch,
+      targetCommit,
+      targetShortCommit: shortenCommit(targetCommit),
+      targetRef: targetRef?.ref || githubRef,
+      sourceUrl: liveRelease?.sourceUrl || null,
+      reason: null
+    };
+  }
+
   async function loadGithubWorkflowOps(forceRefresh = false) {
     const nowMs = Date.now();
     if (!forceRefresh && dataworksOpsCache && nowMs < dataworksOpsCacheExpiresAtMs) {
@@ -261,6 +445,26 @@ function registerAdminRoutes(app, deps = {}) {
       latestJob = normalizeGithubJob(jobs[0] || null);
     }
 
+    const [liveRelease, targetRef] = await Promise.all([
+      fetchHostedReleaseManifest(),
+      resolveGithubRefCommit(githubRef)
+    ]);
+    const releaseAlignment = buildReleaseAlignmentSummary({ liveRelease, targetRef });
+    const workflowActive = String(workflowData?.state || '').toLowerCase() === 'active';
+    let dispatchEnabled = !!githubDispatchToken && workflowActive;
+    let dispatchReason = githubDispatchToken
+      ? (workflowActive ? null : 'workflow is not active')
+      : 'dispatch token not configured on the API runtime';
+
+    if (dispatchEnabled && releaseAlignment.status === 'mismatch') {
+      dispatchEnabled = false;
+      dispatchReason = releaseAlignment.reason;
+    }
+    if (dispatchEnabled && releaseAlignment.status === 'target-unresolved') {
+      dispatchEnabled = false;
+      dispatchReason = releaseAlignment.reason;
+    }
+
     const fetchedAtMs = Date.now();
     const result = {
       workflow: {
@@ -273,14 +477,13 @@ function registerAdminRoutes(app, deps = {}) {
         htmlUrl: workflowData?.html_url || null
       },
       dispatch: {
-        enabled: !!githubDispatchToken && String(workflowData?.state || '').toLowerCase() === 'active',
+        enabled: dispatchEnabled,
         configured: !!githubDispatchToken,
         ref: githubRef,
         cooldownMs: githubDispatchCooldownMs,
-        reason: githubDispatchToken
-          ? (String(workflowData?.state || '').toLowerCase() === 'active' ? null : 'workflow is not active')
-          : 'dispatch token not configured on the API runtime'
+        reason: dispatchReason
       },
+      releaseAlignment,
       latestRun,
       lastSuccessfulRun,
       latestJob,
@@ -2112,6 +2315,15 @@ app.post('/api/admin/dataworks/dispatch', authenticateUser, requireAdmin, async 
     }
 
     const latestOps = await loadGithubWorkflowOps(true);
+    if (latestOps?.dispatch?.enabled === false) {
+      return res.status(409).json({
+        errno: 409,
+        error: latestOps?.dispatch?.reason || 'DataWorks manual dispatch is currently blocked',
+        result: {
+          releaseAlignment: latestOps?.releaseAlignment || null
+        }
+      });
+    }
     if (latestOps?.latestRun?.status && latestOps.latestRun.status !== 'completed') {
       return res.status(409).json({
         errno: 409,

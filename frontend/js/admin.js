@@ -1756,6 +1756,7 @@
             dispatchConfigured: !!dispatch.configured,
             dispatchReason: dispatch.reason || null,
             dispatchCooldownMs: Number(dispatch.cooldownMs || 0),
+            releaseAlignment: result.releaseAlignment || null,
             latestRun,
             latestJob,
             latestStep,
@@ -2493,6 +2494,7 @@
                     renderDataworksBadge(opsSummary.badge.label, opsSummary.badge.level),
                     `<div class="dataworks-metric-list">
                         ${renderDataworksMetricRow('Workflow', formatStatusLabel(opsSummary.workflow.state), opsSummary.workflow.ref ? `ref ${opsSummary.workflow.ref}` : '')}
+                        ${renderDataworksMetricRow('Release guard', opsSummary.releaseAlignment?.matches === true ? 'Aligned' : (opsSummary.releaseAlignment?.status === 'mismatch' ? 'Needs deploy' : (opsSummary.releaseAlignment?.status === 'target-unresolved' ? 'Blocked' : 'Bootstrap')), opsSummary.releaseAlignment?.reason || (opsSummary.releaseAlignment?.liveShortCommit ? `live ${opsSummary.releaseAlignment.liveShortCommit}` : 'waiting for release metadata'))}
                         ${renderDataworksMetricRow('Latest run', opsSummary.latestRun ? formatRelativeTime(opsSummary.latestRun.createdAt || opsSummary.latestRun.updatedAt) : '-', latestRunLabel)}
                         ${renderDataworksMetricRow('Latest step', opsSummary.latestStep?.name || '-', latestStepMeta)}
                         ${renderDataworksMetricRow('Last success', opsSummary.lastSuccessfulRun ? formatRelativeTime(opsSummary.lastSuccessfulRun.updatedAt || opsSummary.lastSuccessfulRun.createdAt) : '-', opsSummary.lastSuccessfulRun ? `run #${opsSummary.lastSuccessfulRun.number || '-'}` : 'No recent success')}

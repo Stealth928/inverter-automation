@@ -4,7 +4,9 @@ const fs = require('fs/promises');
 const path = require('path');
 
 const {
+  collectPwaRuntimeFingerprintFromSources,
   collectPwaVersionContract,
+  comparePwaRuntimeFingerprints,
   getPwaVersionViolations
 } = require('../../scripts/lib/pwa-version-contract');
 
@@ -41,4 +43,25 @@ test('PWA version contract exposes non-empty release metadata', () => {
   assert.ok(contract.appReleaseId);
   assert.ok(contract.expectedVersions.appShell);
   assert.ok(contract.entrypoints.length > 0);
+});
+
+test('PWA runtime fingerprint comparison detects matching and mismatched shells', () => {
+  const matching = collectPwaRuntimeFingerprintFromSources({
+    swSource: "const CACHE_VERSION = 'socrates-v60'; const API_CLIENT_VERSION = '5'; const SHARED_UTILS_VERSION = '13'; const APP_SHELL_VERSION = '23'; const TOUR_VERSION = '31'; const ADMIN_VERSION = '9';",
+    appShellSource: "const APP_RELEASE_ID = '2026-03-20-pwa-refresh-1'; const SERVICE_WORKER_VERSION = '53';"
+  });
+  const same = collectPwaRuntimeFingerprintFromSources({
+    swSource: "const CACHE_VERSION = 'socrates-v60'; const API_CLIENT_VERSION = '5'; const SHARED_UTILS_VERSION = '13'; const APP_SHELL_VERSION = '23'; const TOUR_VERSION = '31'; const ADMIN_VERSION = '9';",
+    appShellSource: "const APP_RELEASE_ID = '2026-03-20-pwa-refresh-1'; const SERVICE_WORKER_VERSION = '53';"
+  });
+  const different = collectPwaRuntimeFingerprintFromSources({
+    swSource: "const CACHE_VERSION = 'socrates-v60'; const API_CLIENT_VERSION = '5'; const SHARED_UTILS_VERSION = '13'; const APP_SHELL_VERSION = '24'; const TOUR_VERSION = '31'; const ADMIN_VERSION = '9';",
+    appShellSource: "const APP_RELEASE_ID = '2026-03-20-pwa-refresh-2'; const SERVICE_WORKER_VERSION = '54';"
+  });
+
+  assert.deepEqual(comparePwaRuntimeFingerprints(matching, same), []);
+  assert.deepEqual(
+    comparePwaRuntimeFingerprints(matching, different).map((entry) => entry.key),
+    ['expectedVersions.appShell', 'serviceWorkerVersion', 'appReleaseId']
+  );
 });

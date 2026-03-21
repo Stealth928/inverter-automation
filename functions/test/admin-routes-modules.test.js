@@ -186,6 +186,16 @@ describe('admin route module', () => {
             ]
           }
         ]
+      }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        generatedAt: '2026-03-19T02:10:43Z',
+        git: {
+          commit: 'abc1234567890defabc1234567890defabc12345',
+          branch: 'main'
+        }
+      }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        sha: 'abc1234567890defabc1234567890defabc12345'
       }));
 
     const app = buildApp(createDeps({
@@ -211,9 +221,10 @@ describe('admin route module', () => {
     expect(firstResponse.body.result.workflow.state).toBe('active');
     expect(firstResponse.body.result.latestRun.conclusion).toBe('failure');
     expect(firstResponse.body.result.latestJob.steps[1].name).toBe('Deploy Firebase hosting');
+    expect(firstResponse.body.result.releaseAlignment.matches).toBe(true);
     expect(secondResponse.statusCode).toBe(200);
     expect(secondResponse.body.result.cache.hit).toBe(true);
-    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(fetchImpl).toHaveBeenCalledTimes(5);
   });
 
   test('dataworks dispatch triggers workflow and writes admin audit entry when configured', async () => {
@@ -250,6 +261,16 @@ describe('admin route module', () => {
           }
         ]
       }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        generatedAt: '2026-03-19T02:10:43Z',
+        git: {
+          commit: 'abc1234567890defabc1234567890defabc12345',
+          branch: 'main'
+        }
+      }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        sha: 'abc1234567890defabc1234567890defabc12345'
+      }))
       .mockResolvedValueOnce(makeFetchResponse(204, null));
 
     const app = buildApp(createDeps({
@@ -280,7 +301,7 @@ describe('admin route module', () => {
     expect(response.statusCode).toBe(202);
     expect(response.body.errno).toBe(0);
     expect(response.body.result.accepted).toBe(true);
-    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    expect(fetchImpl).toHaveBeenCalledTimes(6);
     expect(addMock).toHaveBeenCalledWith(expect.objectContaining({
       action: 'dataworks_dispatch',
       workflowOwner: 'Stealth928',
@@ -288,6 +309,72 @@ describe('admin route module', () => {
       workflowId: 'aemo-market-insights-delta.yml',
       ref: 'main'
     }));
+  });
+
+  test('dataworks dispatch is blocked when live hosting release does not match configured ref', async () => {
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        state: 'active',
+        path: '.github/workflows/aemo-market-insights-delta.yml',
+        html_url: 'https://github.com/example/repo/workflow'
+      }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        workflow_runs: [
+          {
+            id: 123,
+            run_number: 7,
+            status: 'completed',
+            conclusion: 'success',
+            event: 'workflow_dispatch',
+            created_at: '2026-03-19T02:08:53Z',
+            updated_at: '2026-03-19T02:10:43Z',
+            html_url: 'https://github.com/example/repo/actions/runs/123',
+            jobs_url: 'https://api.github.com/repos/example/repo/actions/runs/123/jobs'
+          }
+        ]
+      }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        jobs: [
+          {
+            id: 1,
+            name: 'delta-update-and-deploy',
+            status: 'completed',
+            conclusion: 'success',
+            steps: []
+          }
+        ]
+      }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        generatedAt: '2026-03-19T02:10:43Z',
+        git: {
+          commit: 'live1234567890defabc1234567890defabc1234',
+          branch: 'release/prod'
+        }
+      }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        sha: 'ref1234567890defabc1234567890defabc12345'
+      }));
+
+    const app = buildApp(createDeps({
+      fetchImpl,
+      githubDataworks: {
+        owner: 'Stealth928',
+        repo: 'inverter-automation',
+        workflowId: 'aemo-market-insights-delta.yml',
+        ref: 'main',
+        dispatchToken: 'token-123'
+      }
+    }));
+
+    const response = await request(app)
+      .post('/api/admin/dataworks/dispatch')
+      .set('Authorization', 'Bearer token')
+      .send({});
+
+    expect(response.statusCode).toBe(409);
+    expect(response.body.error).toMatch(/Deploy the current release first/);
+    expect(response.body.result.releaseAlignment.status).toBe('mismatch');
+    expect(fetchImpl).toHaveBeenCalledTimes(5);
   });
 
   test('firestore-metrics returns 503 when googleapis is unavailable', async () => {

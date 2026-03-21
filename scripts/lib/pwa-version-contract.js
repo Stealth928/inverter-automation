@@ -41,6 +41,61 @@ function extractConstantValue(source, constantName, filePath) {
   return match[1];
 }
 
+function collectPwaRuntimeFingerprintFromSources({ swSource, appShellSource, swPath = 'sw.js', appShellPath = 'app-shell.js' } = {}) {
+  return {
+    expectedVersions: {
+      apiClient: extractConstantValue(swSource, 'API_CLIENT_VERSION', swPath),
+      sharedUtils: extractConstantValue(swSource, 'SHARED_UTILS_VERSION', swPath),
+      appShell: extractConstantValue(swSource, 'APP_SHELL_VERSION', swPath),
+      tour: extractConstantValue(swSource, 'TOUR_VERSION', swPath),
+      admin: extractConstantValue(swSource, 'ADMIN_VERSION', swPath)
+    },
+    cacheVersion: extractConstantValue(swSource, 'CACHE_VERSION', swPath),
+    serviceWorkerVersion: extractConstantValue(appShellSource, 'SERVICE_WORKER_VERSION', appShellPath),
+    appReleaseId: extractConstantValue(appShellSource, 'APP_RELEASE_ID', appShellPath)
+  };
+}
+
+function collectPwaRuntimeFingerprint(repoRoot) {
+  const frontendDir = path.join(repoRoot, 'frontend');
+  const swPath = path.join(frontendDir, 'sw.js');
+  const appShellPath = path.join(frontendDir, 'js', 'app-shell.js');
+  const swSource = readRequiredFile(swPath);
+  const appShellSource = readRequiredFile(appShellPath);
+
+  return collectPwaRuntimeFingerprintFromSources({
+    swSource,
+    appShellSource,
+    swPath,
+    appShellPath
+  });
+}
+
+function comparePwaRuntimeFingerprints(left, right) {
+  const mismatches = [];
+  const addMismatch = (key, leftValue, rightValue) => {
+    if (String(leftValue || '') !== String(rightValue || '')) {
+      mismatches.push({
+        key,
+        left: leftValue ?? null,
+        right: rightValue ?? null
+      });
+    }
+  };
+
+  const leftExpected = (left && left.expectedVersions) || {};
+  const rightExpected = (right && right.expectedVersions) || {};
+
+  ['apiClient', 'sharedUtils', 'appShell', 'tour', 'admin'].forEach((key) => {
+    addMismatch(`expectedVersions.${key}`, leftExpected[key], rightExpected[key]);
+  });
+  addMismatch('cacheVersion', left && left.cacheVersion, right && right.cacheVersion);
+  addMismatch('serviceWorkerVersion', left && left.serviceWorkerVersion, right && right.serviceWorkerVersion);
+  addMismatch('appReleaseId', left && left.appReleaseId, right && right.appReleaseId);
+
+  return mismatches;
+}
+
 function collectPwaVersionContract(repoRoot) {
   const frontendDir = path.join(repoRoot, 'frontend');
   const swPath = path.join(frontendDir, 'sw.js');
@@ -71,16 +126,12 @@ function collectPwaVersionContract(repoRoot) {
   }).filter((entry) => Object.keys(entry.versions).length > 0);
 
   return {
-    expectedVersions: {
-      apiClient: extractConstantValue(swSource, 'API_CLIENT_VERSION', swPath),
-      sharedUtils: extractConstantValue(swSource, 'SHARED_UTILS_VERSION', swPath),
-      appShell: extractConstantValue(swSource, 'APP_SHELL_VERSION', swPath),
-      tour: extractConstantValue(swSource, 'TOUR_VERSION', swPath),
-      admin: extractConstantValue(swSource, 'ADMIN_VERSION', swPath)
-    },
-    cacheVersion: extractConstantValue(swSource, 'CACHE_VERSION', swPath),
-    serviceWorkerVersion: extractConstantValue(appShellSource, 'SERVICE_WORKER_VERSION', appShellPath),
-    appReleaseId: extractConstantValue(appShellSource, 'APP_RELEASE_ID', appShellPath),
+    ...collectPwaRuntimeFingerprintFromSources({
+      swSource,
+      appShellSource,
+      swPath,
+      appShellPath
+    }),
     entrypoints
   };
 }
@@ -121,6 +172,9 @@ function getPwaVersionViolations(repoRoot) {
 }
 
 module.exports = {
+  collectPwaRuntimeFingerprint,
+  collectPwaRuntimeFingerprintFromSources,
   collectPwaVersionContract,
+  comparePwaRuntimeFingerprints,
   getPwaVersionViolations
 };
