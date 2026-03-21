@@ -1,6 +1,9 @@
 {
   "hosting": {
     "public": "frontend",
+    "predeploy": [
+      "npm run release:manifest"
+    ],
     "ignore": [
       "firebase.json",
       "**/node_modules/**"
