@@ -108,6 +108,23 @@ function makeRulesQuery(docs = []) {
 }
 
 describe('admin route module', () => {
+  const originalGa4PropertyId = process.env.GA4_PROPERTY_ID;
+  const originalGa4MeasurementId = process.env.GA4_MEASUREMENT_ID;
+
+  afterEach(() => {
+    if (typeof originalGa4PropertyId === 'string') {
+      process.env.GA4_PROPERTY_ID = originalGa4PropertyId;
+    } else {
+      delete process.env.GA4_PROPERTY_ID;
+    }
+
+    if (typeof originalGa4MeasurementId === 'string') {
+      process.env.GA4_MEASUREMENT_ID = originalGa4MeasurementId;
+    } else {
+      delete process.env.GA4_MEASUREMENT_ID;
+    }
+  });
+
   test('throws when required dependencies are missing', () => {
     const app = express();
     expect(() => registerAdminRoutes(app, {}))
@@ -392,6 +409,521 @@ describe('admin route module', () => {
       errno: 503,
       error: 'googleapis dependency not available on server'
     });
+  });
+
+  test('behavior-metrics returns setup guidance when GA4 property id is not configured', async () => {
+    delete process.env.GA4_PROPERTY_ID;
+    delete process.env.GA4_MEASUREMENT_ID;
+
+    const app = buildApp(createDeps({
+      googleApis: {
+        auth: {
+          GoogleAuth: jest.fn(() => ({}))
+        },
+        analyticsadmin: jest.fn(() => ({
+          accountSummaries: {
+            list: jest.fn(async () => ({ data: { accountSummaries: [] } }))
+          },
+          properties: {
+            dataStreams: {
+              list: jest.fn(async () => ({ data: { dataStreams: [] } }))
+            }
+          }
+        })),
+        analyticsdata: jest.fn(() => ({
+          properties: {
+            runReport: jest.fn()
+          }
+        }))
+      }
+    }));
+
+    const response = await request(app)
+      .get('/api/admin/behavior-metrics')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.configured).toBe(false);
+    expect(response.body.result.setup.requiredEnv).toBe('GA4_PROPERTY_ID');
+    expect(response.body.result.setup.measurementId).toBe('G-MWF4ZBMREE');
+  });
+
+  test('behavior-metrics prefers Firebase project analytics details before measurement-id discovery', async () => {
+    delete process.env.GA4_PROPERTY_ID;
+    delete process.env.GA4_MEASUREMENT_ID;
+
+    const runReport = jest.fn()
+      .mockResolvedValueOnce({
+        data: {
+          metricHeaders: [
+            { name: 'activeUsers' },
+            { name: 'screenPageViews' },
+            { name: 'eventCount' },
+            { name: 'userEngagementDuration' }
+          ],
+          rows: [{ metricValues: [{ value: '5' }, { value: '17' }, { value: '22' }, { value: '80' }] }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          dimensionHeaders: [{ name: 'date' }],
+          metricHeaders: [
+            { name: 'activeUsers' },
+            { name: 'screenPageViews' },
+            { name: 'eventCount' }
+          ],
+          rows: [
+            {
+              dimensionValues: [{ value: '20260321' }],
+              metricValues: [{ value: '5' }, { value: '17' }, { value: '22' }]
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          rowCount: 1,
+          dimensionHeaders: [{ name: 'pagePath' }, { name: 'pageTitle' }],
+          metricHeaders: [
+            { name: 'screenPageViews' },
+            { name: 'activeUsers' },
+            { name: 'userEngagementDuration' }
+          ],
+          rows: [
+            {
+              dimensionValues: [{ value: '/admin.html' }, { value: 'Admin' }],
+              metricValues: [{ value: '17' }, { value: '5' }, { value: '80' }]
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          dimensionHeaders: [{ name: 'eventName' }],
+          metricHeaders: [{ name: 'eventCount' }, { name: 'activeUsers' }],
+          rows: [
+            {
+              dimensionValues: [{ value: 'settings_save_all' }],
+              metricValues: [{ value: '4' }, { value: '2' }]
+            }
+          ]
+        }
+      });
+    const batchRunReports = jest.fn(async () => ({
+      data: {
+        reports: [
+          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
+          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
+          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
+          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
+          {
+            dimensionHeaders: [{ name: 'date' }],
+            metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }],
+            rows: [
+              {
+                dimensionValues: [{ value: '20260321' }],
+                metricValues: [{ value: '5' }, { value: '17' }]
+              }
+            ]
+          }
+        ]
+      }
+    }));
+
+    const getAnalyticsDetails = jest.fn(async () => ({
+      data: {
+        analyticsProperty: { id: '456123789', displayName: 'Inverter Automation' },
+        streamMappings: [
+          {
+            app: 'projects/test-project/webApps/1:test:web:123',
+            streamId: '1234567',
+            measurementId: 'G-MWF4ZBMREE'
+          }
+        ]
+      }
+    }));
+
+    const analyticsAdminFactory = jest.fn(() => ({
+      accountSummaries: { list: jest.fn() },
+      properties: { dataStreams: { list: jest.fn() } }
+    }));
+
+    const app = buildApp(createDeps({
+      googleApis: {
+        auth: {
+          GoogleAuth: jest.fn(() => ({}))
+        },
+        firebase: jest.fn(() => ({
+          projects: {
+            getAnalyticsDetails
+          }
+        })),
+        analyticsadmin: analyticsAdminFactory,
+        analyticsdata: jest.fn(() => ({
+          properties: {
+            runReport,
+            batchRunReports
+          }
+        }))
+      }
+    }));
+
+    const response = await request(app)
+      .get('/api/admin/behavior-metrics?days=30&limit=5')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.configured).toBe(true);
+    expect(response.body.result.propertyId).toBe('456123789');
+    expect(response.body.result.measurementId).toBe('G-MWF4ZBMREE');
+    expect(response.body.result.propertySource).toBe('firebase-project-analytics');
+    expect(response.body.result.mainPageOptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'admin', label: 'Admin' })
+    ]));
+    expect(response.body.result.pageSeriesByKey.admin).toEqual([
+      { date: '2026-03-21', activeUsers: 5, pageViews: 17, eventCount: 0 }
+    ]);
+    expect(response.body.result.mainPageOptions).toEqual([
+      { key: 'admin', label: 'Admin' }
+    ]);
+    expect(getAnalyticsDetails).toHaveBeenCalledWith({
+      name: 'projects/test-project/analyticsDetails'
+    });
+    expect(analyticsAdminFactory).not.toHaveBeenCalled();
+    expect(batchRunReports).toHaveBeenCalledTimes(1);
+    expect(batchRunReports).toHaveBeenCalledWith(expect.objectContaining({
+      property: 'properties/456123789',
+      requestBody: expect.objectContaining({
+        requests: expect.any(Array)
+      })
+    }));
+  });
+
+  test('behavior-metrics can discover property id from GA4 measurement id', async () => {
+    delete process.env.GA4_PROPERTY_ID;
+    process.env.GA4_MEASUREMENT_ID = 'G-MWF4ZBMREE';
+
+    const runReport = jest.fn()
+      .mockResolvedValueOnce({
+        data: {
+          metricHeaders: [
+            { name: 'activeUsers' },
+            { name: 'screenPageViews' },
+            { name: 'eventCount' },
+            { name: 'userEngagementDuration' }
+          ],
+          rows: [{ metricValues: [{ value: '4' }, { value: '21' }, { value: '31' }, { value: '120' }] }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          dimensionHeaders: [{ name: 'date' }],
+          metricHeaders: [
+            { name: 'activeUsers' },
+            { name: 'screenPageViews' },
+            { name: 'eventCount' }
+          ],
+          rows: [
+            {
+              dimensionValues: [{ value: '20260320' }],
+              metricValues: [{ value: '4' }, { value: '21' }, { value: '31' }]
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          rowCount: 1,
+          dimensionHeaders: [{ name: 'pagePath' }, { name: 'pageTitle' }],
+          metricHeaders: [
+            { name: 'screenPageViews' },
+            { name: 'activeUsers' },
+            { name: 'userEngagementDuration' }
+          ],
+          rows: [
+            {
+              dimensionValues: [{ value: '/admin.html' }, { value: 'Admin' }],
+              metricValues: [{ value: '21' }, { value: '4' }, { value: '120' }]
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          dimensionHeaders: [{ name: 'eventName' }],
+          metricHeaders: [{ name: 'eventCount' }, { name: 'activeUsers' }],
+          rows: [
+            {
+              dimensionValues: [{ value: 'control_settings_save' }],
+              metricValues: [{ value: '6' }, { value: '2' }]
+            }
+          ]
+        }
+      });
+    const batchRunReports = jest.fn(async () => ({
+      data: {
+        reports: [
+          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
+          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
+          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
+          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
+          {
+            dimensionHeaders: [{ name: 'date' }],
+            metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }],
+            rows: [
+              {
+                dimensionValues: [{ value: '20260320' }],
+                metricValues: [{ value: '4' }, { value: '21' }]
+              }
+            ]
+          }
+        ]
+      }
+    }));
+
+    const listAccountSummaries = jest.fn(async () => ({
+      data: {
+        accountSummaries: [
+          {
+            propertySummaries: [
+              { property: 'properties/987654321' }
+            ]
+          }
+        ]
+      }
+    }));
+    const listDataStreams = jest.fn(async () => ({
+      data: {
+        dataStreams: [
+          {
+            webStreamData: {
+              measurementId: 'G-MWF4ZBMREE'
+            }
+          }
+        ]
+      }
+    }));
+
+    const app = buildApp(createDeps({
+      googleApis: {
+        auth: {
+          GoogleAuth: jest.fn(() => ({}))
+        },
+        firebase: jest.fn(() => ({
+          projects: {
+            getAnalyticsDetails: jest.fn(async () => {
+              throw new Error('Firebase analytics details lookup failed');
+            })
+          }
+        })),
+        analyticsadmin: jest.fn(() => ({
+          accountSummaries: {
+            list: listAccountSummaries
+          },
+          properties: {
+            dataStreams: {
+              list: listDataStreams
+            }
+          }
+        })),
+        analyticsdata: jest.fn(() => ({
+          properties: {
+            runReport,
+            batchRunReports
+          }
+        }))
+      }
+    }));
+
+    const response = await request(app)
+      .get('/api/admin/behavior-metrics?days=30&limit=5')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.configured).toBe(true);
+    expect(response.body.result.propertyId).toBe('987654321');
+    expect(response.body.result.measurementId).toBe('G-MWF4ZBMREE');
+    expect(response.body.result.propertySource).toBe('measurement-id-discovery');
+    expect(listAccountSummaries).toHaveBeenCalledTimes(1);
+    expect(listDataStreams).toHaveBeenCalledWith({
+      parent: 'properties/987654321',
+      pageSize: 50
+    });
+  });
+
+  test('behavior-metrics returns aggregated GA4 usage and filters generic events', async () => {
+    process.env.GA4_PROPERTY_ID = '123456789';
+
+    const runReport = jest.fn()
+      .mockResolvedValueOnce({
+        data: {
+          metricHeaders: [
+            { name: 'activeUsers' },
+            { name: 'screenPageViews' },
+            { name: 'eventCount' },
+            { name: 'userEngagementDuration' }
+          ],
+          rows: [
+            {
+              metricValues: [
+                { value: '18' },
+                { value: '146' },
+                { value: '221' },
+                { value: '932' }
+              ]
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          dimensionHeaders: [{ name: 'date' }],
+          metricHeaders: [
+            { name: 'activeUsers' },
+            { name: 'screenPageViews' },
+            { name: 'eventCount' }
+          ],
+          rows: [
+            {
+              dimensionValues: [{ value: '20260318' }],
+              metricValues: [{ value: '7' }, { value: '44' }, { value: '65' }]
+            },
+            {
+              dimensionValues: [{ value: '20260319' }],
+              metricValues: [{ value: '11' }, { value: '52' }, { value: '81' }]
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          rowCount: 3,
+          dimensionHeaders: [{ name: 'pagePath' }, { name: 'pageTitle' }],
+          metricHeaders: [
+            { name: 'screenPageViews' },
+            { name: 'activeUsers' },
+            { name: 'userEngagementDuration' }
+          ],
+          rows: [
+            {
+              dimensionValues: [{ value: '/app.html' }, { value: 'Overview' }],
+              metricValues: [{ value: '81' }, { value: '14' }, { value: '610' }]
+            },
+            {
+              dimensionValues: [{ value: '/settings.html' }, { value: 'Settings' }],
+              metricValues: [{ value: '32' }, { value: '8' }, { value: '214' }]
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          dimensionHeaders: [{ name: 'eventName' }],
+          metricHeaders: [{ name: 'eventCount' }, { name: 'activeUsers' }],
+          rows: [
+            {
+              dimensionValues: [{ value: 'page_view' }],
+              metricValues: [{ value: '146' }, { value: '18' }]
+            },
+            {
+              dimensionValues: [{ value: 'settings_save_all' }],
+              metricValues: [{ value: '19' }, { value: '6' }]
+            },
+            {
+              dimensionValues: [{ value: 'history_fetch_report' }],
+              metricValues: [{ value: '12' }, { value: '5' }]
+            }
+          ]
+        }
+      });
+    const batchRunReports = jest.fn(async () => ({
+      data: {
+        reports: [
+          {
+            dimensionHeaders: [{ name: 'date' }],
+            metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }],
+            rows: [
+              {
+                dimensionValues: [{ value: '20260318' }],
+                metricValues: [{ value: '7' }, { value: '44' }]
+              }
+            ]
+          },
+          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
+          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
+          {
+            dimensionHeaders: [{ name: 'date' }],
+            metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }],
+            rows: [
+              {
+                dimensionValues: [{ value: '20260319' }],
+                metricValues: [{ value: '8' }, { value: '32' }]
+              }
+            ]
+          },
+          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] }
+        ]
+      }
+    }));
+
+    const app = buildApp(createDeps({
+      googleApis: {
+        auth: {
+          GoogleAuth: jest.fn(() => ({}))
+        },
+        analyticsdata: jest.fn(() => ({
+          properties: {
+            runReport,
+            batchRunReports
+          }
+        }))
+      }
+    }));
+
+    const response = await request(app)
+      .get('/api/admin/behavior-metrics?days=30&limit=5')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.configured).toBe(true);
+    expect(response.body.result.propertyId).toBe('123456789');
+    expect(response.body.result.summary).toEqual(expect.objectContaining({
+      activeUsers: 18,
+      pageViews: 146,
+      eventCount: 221,
+      customEventTypes: 2
+    }));
+    expect(response.body.result.pageSeries).toEqual([
+      { date: '2026-03-18', activeUsers: 7, pageViews: 44, eventCount: 65 },
+      { date: '2026-03-19', activeUsers: 11, pageViews: 52, eventCount: 81 }
+    ]);
+    expect(response.body.result.topPages[0]).toEqual(expect.objectContaining({
+      path: '/app.html',
+      title: 'Overview',
+      pageViews: 81
+    }));
+    expect(response.body.result.topEvents.map((entry) => entry.eventName)).toEqual([
+      'settings_save_all',
+      'history_fetch_report'
+    ]);
+    expect(response.body.result.mainPageOptions).toEqual([
+      { key: 'app', label: 'Dashboard' },
+      { key: 'settings', label: 'Settings' }
+    ]);
+    expect(response.body.result.pageSeriesByKey.app).toEqual([
+      { date: '2026-03-18', activeUsers: 7, pageViews: 44, eventCount: 0 },
+      { date: '2026-03-19', activeUsers: 0, pageViews: 0, eventCount: 0 }
+    ]);
+    expect(response.body.result.pageSeriesByKey.settings).toEqual([
+      { date: '2026-03-18', activeUsers: 0, pageViews: 0, eventCount: 0 },
+      { date: '2026-03-19', activeUsers: 8, pageViews: 32, eventCount: 0 }
+    ]);
+    expect(runReport).toHaveBeenCalledTimes(4);
+    expect(batchRunReports).toHaveBeenCalledTimes(1);
   });
 
   test('firestore-metrics returns separate project cost and firestore doc-ops estimate fields', async () => {

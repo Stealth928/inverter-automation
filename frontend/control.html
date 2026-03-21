@@ -24,11 +24,13 @@
   <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics-compat.js"></script>
   <script defer src="js/firebase-config.js"></script>
   <script defer src="js/firebase-auth.js"></script>
   <script defer src="js/api-client.js?v=5"></script>
   <script defer src="js/shared-utils.js?v=13"></script>
   <script defer src="js/app-shell.js?v=23"></script>
+  <script defer src="js/app-analytics.js?v=1"></script>
   <script defer src="js/tour.js?v=31"></script>
   <style>
     /* Page-specific styles */
@@ -559,7 +561,7 @@
     }
   </style>
 </head>
-<body>
+<body data-analytics-page="control">
   <nav class="nav-main">
     <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
     <div class="nav-links">
@@ -632,7 +634,7 @@
             </div>
             <div id="status-batterySoc"></div>
             <div class="form-actions">
-              <button type="submit" class="btn btn-primary" style="flex:1">Save Settings</button>
+              <button type="submit" class="btn btn-primary" style="flex:1" data-analytics-event="control_settings_save" data-analytics-location="battery_soc_card">Save Settings</button>
               <button type="button" class="btn" onclick="getBatterySoc()">Load Current</button>
             </div>
           </form>
@@ -660,7 +662,7 @@
             </div>
             <div id="status-workMode"></div>
             <div class="form-actions">
-              <button type="submit" class="btn btn-primary" style="flex:1">Apply Mode</button>
+              <button type="submit" class="btn btn-primary" style="flex:1" data-analytics-event="control_work_mode_apply" data-analytics-location="work_mode_card">Apply Mode</button>
               <button type="button" class="btn" onclick="getWorkMode()">Check Current</button>
             </div>
           </form>
@@ -739,7 +741,7 @@
             </div>
             <div id="status-forceCharge"></div>
             <div class="form-actions">
-              <button type="submit" class="btn btn-primary" style="flex:1">Save Times</button>
+              <button type="submit" class="btn btn-primary" style="flex:1" data-analytics-event="control_force_charge_save" data-analytics-location="force_charge_card">Save Times</button>
               <button type="button" class="btn" onclick="getForceChargeTimes()">Load Current</button>
             </div>
           </form>
@@ -774,7 +776,7 @@
         <div style="display: grid; gap: 12px;">
           <!-- Discover Variables -->
           <div>
-            <button type="button" class="btn" onclick="discoverVariables()" id="btnDiscoverVars" style="width: 100%;">
+            <button type="button" class="btn" onclick="discoverVariables()" id="btnDiscoverVars" style="width: 100%;" data-analytics-event="control_variable_discovery" data-analytics-location="topology_diagnostics">
               Discover Available Variables
             </button>
             <div id="status-discover" style="margin-top: 8px;"></div>
@@ -782,7 +784,7 @@
 
           <!-- Get All Real-Time Data -->
           <div>
-            <button type="button" class="btn" onclick="getAllRealtimeData()" id="btnAllData" style="width: 100%;">
+            <button type="button" class="btn" onclick="getAllRealtimeData()" id="btnAllData" style="width: 100%;" data-analytics-event="control_realtime_scan" data-analytics-location="topology_diagnostics">
               Get All Real-Time Data (No Filters)
             </button>
             <div id="status-alldata" style="margin-top: 8px;"></div>
@@ -841,7 +843,7 @@
             <div id="acSolarRecommendation" class="telemetry-mapping-panel__recommendation"></div>
 
             <div class="form-actions" style="margin-top:14px;">
-              <button type="button" class="btn btn-primary" id="btnSaveAcSolarMapping" onclick="saveTelemetryMappings()" style="flex:1">Save AC Mapping</button>
+              <button type="button" class="btn btn-primary" id="btnSaveAcSolarMapping" onclick="saveTelemetryMappings()" style="flex:1" data-analytics-event="control_mapping_save" data-analytics-location="ac_mapping_panel">Save AC Mapping</button>
               <button type="button" class="btn" id="btnClearAcSolarMapping" onclick="clearTelemetryMappings()">Use Auto-detect</button>
             </div>
 

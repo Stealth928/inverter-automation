@@ -1389,6 +1389,108 @@
             }
         }
 
+        .behavior-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+            margin-top: 18px;
+        }
+        .behavior-panel {
+            background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+        }
+        .behavior-panel h3 {
+            margin: 0 0 6px;
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+        .behavior-panel p {
+            margin: 0 0 12px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .behavior-chart-wrap {
+            position: relative;
+            min-height: 280px;
+        }
+        .behavior-chart-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .behavior-chart-filter {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+        .behavior-chart-filter select {
+            background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+            border: 1px solid var(--border-primary);
+            color: var(--text-primary);
+            border-radius: 10px;
+            padding: 8px 10px;
+            min-width: 180px;
+        }
+        .behavior-setup {
+            display: none;
+            margin-top: 16px;
+            padding: 14px 16px;
+            border-radius: var(--radius-lg);
+            background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+            border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
+            color: var(--color-warning);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .behavior-empty {
+            color: var(--text-secondary);
+            font-size: 13px;
+            padding: 14px 0 4px;
+        }
+        .behavior-table-wrap {
+            overflow-x: auto;
+        }
+        .behavior-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .behavior-table th,
+        .behavior-table td {
+            padding: 9px 8px;
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
+            text-align: left;
+            vertical-align: top;
+        }
+        .behavior-table th {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .behavior-table .path {
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+            color: var(--text-primary);
+        }
+        .behavior-table .meta {
+            display: block;
+            margin-top: 4px;
+            color: var(--text-secondary);
+            font-size: 11px;
+        }
+        @media (max-width: 900px) {
+            .behavior-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         /* Admin Tabs */
         .admin-tab-nav {
             display: flex;
@@ -1480,6 +1582,7 @@
 
         <nav class="admin-tab-nav" role="tablist">
             <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">📈 Overview</button>
+            <button class="tab-btn" data-tab="behavior" onclick="switchTab('behavior')">🧭 Behaviour</button>
             <button class="tab-btn" data-tab="scheduler" onclick="switchTab('scheduler')">⚙️ Scheduler</button>
             <button class="tab-btn" data-tab="dataworks" onclick="switchTab('dataworks')">🛰️ DataWorks</button>
             <button class="tab-btn" data-tab="users" onclick="switchTab('users')">👥 Users</button>
@@ -1565,6 +1668,102 @@
             </div>
         </div>
         </div><!-- /tab-overview -->
+
+        <div id="tab-behavior" class="tab-panel">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">🧭</span> Behaviour Analytics</div>
+                <button class="action-btn" onclick="loadBehaviorMetrics({ force: true })" id="refreshBehaviorBtn">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div class="firestore-updated" id="behaviorMetricsUpdated">Loading behaviour analytics...</div>
+                <div class="platform-kpis-wrap">
+                    <div class="platform-kpis" id="behaviorKpis">
+                        <div class="kpi-item">
+                            <div class="label">Active Users</div>
+                            <div class="value" id="behaviorActiveUsers">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Page Views</div>
+                            <div class="value" id="behaviorPageViews">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Tracked Actions</div>
+                            <div class="value" id="behaviorEvents">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Avg Engagement / User</div>
+                            <div class="value" id="behaviorAvgEngagement">-</div>
+                        </div>
+                    </div>
+                </div>
+                <div id="behaviorSetup" class="behavior-setup"></div>
+                <div class="behavior-grid">
+                    <section class="behavior-panel">
+                        <h3>Daily Activity</h3>
+                        <p>Page views and active users over the selected GA4 window.</p>
+                        <div class="behavior-chart-toolbar">
+                            <div class="behavior-empty" id="behaviorPageFilterSummary" style="padding:0;">Showing all tracked product pages.</div>
+                            <label class="behavior-chart-filter" for="behaviorPageFilter">
+                                <span>Page</span>
+                                <select id="behaviorPageFilter" onchange="applyBehaviorPageFilter()" disabled>
+                                    <option value="all">All main pages</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="behavior-chart-wrap">
+                            <canvas id="behaviorTrendChart"></canvas>
+                        </div>
+                    </section>
+                    <section class="behavior-panel">
+                        <h3>Top Product Actions</h3>
+                        <p>Custom events emitted from the app for key user interactions.</p>
+                        <div class="behavior-chart-wrap">
+                            <canvas id="behaviorEventsChart"></canvas>
+                        </div>
+                    </section>
+                </div>
+                <div class="behavior-grid">
+                    <section class="behavior-panel">
+                        <h3>Top Pages</h3>
+                        <p>Pages users open most often, ordered by total views.</p>
+                        <div class="behavior-table-wrap">
+                            <table class="behavior-table">
+                                <thead>
+                                    <tr>
+                                        <th>Page</th>
+                                        <th>Views</th>
+                                        <th>Users</th>
+                                        <th>Avg Eng.</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="behaviorTopPagesBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="behavior-empty" id="behaviorTopPagesEmpty">No page data yet.</div>
+                    </section>
+                    <section class="behavior-panel">
+                        <h3>Top Actions</h3>
+                        <p>High-value clicks and saves captured via lightweight app events.</p>
+                        <div class="behavior-table-wrap">
+                            <table class="behavior-table">
+                                <thead>
+                                    <tr>
+                                        <th>Event</th>
+                                        <th>Count</th>
+                                        <th>Users</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="behaviorTopEventsBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="behavior-empty" id="behaviorTopEventsEmpty">No custom interaction data yet.</div>
+                    </section>
+                </div>
+                <div class="firestore-warning" id="behaviorMetricsWarning" style="display: none;"></div>
+            </div>
+        </div>
+        </div><!-- /tab-behavior -->
 
         <div id="tab-scheduler" class="tab-panel">
         <div class="card scheduler-metrics-card">
@@ -1835,6 +2034,6 @@
         </div>
     </div>
 
-    <script defer src="js/admin.js?v=9"></script>
+    <script defer src="js/admin.js?v=11"></script>
 </body>
 </html>

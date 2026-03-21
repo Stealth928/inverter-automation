@@ -23,11 +23,13 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics-compat.js"></script>
     <script defer src="js/firebase-config.js"></script>
     <script defer src="js/firebase-auth.js"></script>
     <script defer src="js/api-client.js?v=5"></script>
     <script defer src="js/shared-utils.js?v=13"></script>
     <script defer src="js/app-shell.js?v=23"></script>
+    <script defer src="js/app-analytics.js?v=1"></script>
     <script defer src="js/tour.js?v=31"></script>
     <style>
         /* Page-specific styles */
@@ -1150,7 +1152,7 @@
         }
     </style>
 </head>
-<body>
+<body data-analytics-page="settings">
     <nav class="nav-main">
         <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
         <div class="nav-links">
@@ -1200,8 +1202,8 @@
                 </div>
             </div>
             <div class="actions">
-                <button class="btn-secondary" onclick="reloadFromServer()">🔄 Reload from Server</button>
-                <button class="btn-primary" onclick="saveAllSettings()">💾 Save All Changes</button>
+                <button class="btn-secondary" onclick="reloadFromServer()" data-analytics-event="settings_reload" data-analytics-location="settings_header">🔄 Reload from Server</button>
+                <button class="btn-primary" onclick="saveAllSettings()" data-analytics-event="settings_save_all" data-analytics-location="settings_header">💾 Save All Changes</button>
             </div>
         </div>
 
@@ -1639,7 +1641,7 @@
             </div>
 
             <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                <button class="btn-primary" onclick="saveCredentials()" id="credentialsSaveBtn">💾 Save Credentials</button>
+                <button class="btn-primary" onclick="saveCredentials()" id="credentialsSaveBtn" data-analytics-event="settings_credentials_save" data-analytics-location="credentials_section">💾 Save Credentials</button>
                 <button class="btn-secondary" onclick="clearCredentials()">🧹 Clear Credentials</button>
                 <div style="color:var(--muted);font-size:13px;min-width:0;flex-shrink:1;" id="credentialsStatus">Checking...</div>
             </div>
@@ -2136,8 +2138,8 @@
 
         <div class="actions">
             <!-- Factory Reset button removed for safety -->
-            <button class="btn-secondary" onclick="loadSettings()">🔄 Reload from Server</button>
-            <button class="btn-primary" onclick="saveAllSettings()">💾 Save All Changes</button>
+            <button class="btn-secondary" onclick="loadSettings()" data-analytics-event="settings_reload" data-analytics-location="settings_footer">🔄 Reload from Server</button>
+            <button class="btn-primary" onclick="saveAllSettings()" data-analytics-event="settings_save_all" data-analytics-location="settings_footer">💾 Save All Changes</button>
         </div>
     </div>
 

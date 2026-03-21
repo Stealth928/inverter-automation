@@ -1,8 +1,8 @@
 (function (window, document) {
-    const APP_RELEASE_ID = '2026-03-20-pwa-refresh-1';
+    const APP_RELEASE_ID = '2026-03-21-admin-behavior-1';
     const APP_RELEASE_STORAGE_KEY = 'socratesAppReleaseId';
     const APP_RELEASE_RELOAD_SESSION_KEY = `socratesAppReleaseReload:${APP_RELEASE_ID}`;
-    const SERVICE_WORKER_VERSION = '53';
+    const SERVICE_WORKER_VERSION = '54';
     const SOCRATES_CACHE_PREFIX = 'socrates-';
     const defaultOptions = {
         pageName: 'app',

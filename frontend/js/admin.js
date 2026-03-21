@@ -94,6 +94,10 @@
     let adminApiClient = null;
     let currentSort = { key: 'lastSignedInAt', direction: 'desc' };
     let platformTrendChart = null;
+    let behaviorTrendChart = null;
+    let behaviorEventsChart = null;
+    let behaviorMetricsData = null;
+    let behaviorSelectedPageKey = 'all';
     let firestoreMetricsChart = null;
     let schedulerMetricsChart = null;
     let usersProviderChart = null;
@@ -102,7 +106,7 @@
     let usersCouplingChart = null;
     let usersTourChart = null;
     let activeTab = 'overview';
-    let tabsLoaded = { overview: false, scheduler: false, dataworks: false, users: false };
+    let tabsLoaded = { overview: false, behavior: false, scheduler: false, dataworks: false, users: false };
     let usersTableRequestSequence = 0;
     let usersSummaryRequestSequence = 0;
 
@@ -821,6 +825,8 @@
             if (name === 'overview') {
                 loadPlatformStats();
                 loadFirestoreCostMetrics();
+            } else if (name === 'behavior') {
+                loadBehaviorMetrics();
             } else if (name === 'scheduler') {
                 loadSchedulerMetrics();
             } else if (name === 'dataworks') {
@@ -1122,6 +1128,339 @@
                 }
             }
         });
+    }
+
+    function destroyBehaviorCharts() {
+        if (behaviorTrendChart) {
+            behaviorTrendChart.destroy();
+            behaviorTrendChart = null;
+        }
+        if (behaviorEventsChart) {
+            behaviorEventsChart.destroy();
+            behaviorEventsChart = null;
+        }
+    }
+
+    function formatCount(value) {
+        const num = Number(value || 0);
+        if (!Number.isFinite(num)) return '-';
+        return num.toLocaleString('en-AU');
+    }
+
+    function formatSeconds(value) {
+        const seconds = Number(value || 0);
+        if (!Number.isFinite(seconds) || seconds <= 0) return '0s';
+        if (seconds < 60) return `${Math.round(seconds)}s`;
+        const minutes = Math.floor(seconds / 60);
+        const remSeconds = Math.round(seconds % 60);
+        if (minutes < 60) return `${minutes}m ${remSeconds}s`;
+        const hours = Math.floor(minutes / 60);
+        const remMinutes = minutes % 60;
+        return `${hours}h ${remMinutes}m`;
+    }
+
+    function humanizeEventName(value) {
+        const text = String(value || '').trim();
+        if (!text) return '-';
+        return text
+            .replace(/[_-]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+    }
+
+    function resetBehaviorView() {
+        destroyBehaviorCharts();
+        behaviorMetricsData = null;
+        behaviorSelectedPageKey = 'all';
+        const setupEl = document.getElementById('behaviorSetup');
+        const pagesBody = document.getElementById('behaviorTopPagesBody');
+        const eventsBody = document.getElementById('behaviorTopEventsBody');
+        const pagesEmpty = document.getElementById('behaviorTopPagesEmpty');
+        const eventsEmpty = document.getElementById('behaviorTopEventsEmpty');
+        const pageFilter = document.getElementById('behaviorPageFilter');
+        const pageFilterSummary = document.getElementById('behaviorPageFilterSummary');
+        ['behaviorActiveUsers', 'behaviorPageViews', 'behaviorEvents', 'behaviorAvgEngagement'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '-';
+        });
+        if (setupEl) {
+            setupEl.style.display = 'none';
+            setupEl.textContent = '';
+        }
+        if (pagesBody) pagesBody.innerHTML = '';
+        if (eventsBody) eventsBody.innerHTML = '';
+        if (pagesEmpty) pagesEmpty.style.display = '';
+        if (eventsEmpty) eventsEmpty.style.display = '';
+        if (pageFilter) {
+            pageFilter.innerHTML = '<option value="all">All main pages</option>';
+            pageFilter.value = 'all';
+            pageFilter.disabled = true;
+        }
+        if (pageFilterSummary) pageFilterSummary.textContent = 'Showing all tracked product pages.';
+    }
+
+    function getBehaviorSelectedPageOption() {
+        const options = Array.isArray(behaviorMetricsData?.mainPageOptions) ? behaviorMetricsData.mainPageOptions : [];
+        return options.find((option) => option.key === behaviorSelectedPageKey) || null;
+    }
+
+    function getBehaviorTrendSeries() {
+        if (!behaviorMetricsData) return [];
+        if (behaviorSelectedPageKey === 'all') {
+            return Array.isArray(behaviorMetricsData.pageSeries) ? behaviorMetricsData.pageSeries : [];
+        }
+        const byKey = behaviorMetricsData.pageSeriesByKey && typeof behaviorMetricsData.pageSeriesByKey === 'object'
+            ? behaviorMetricsData.pageSeriesByKey
+            : {};
+        return Array.isArray(byKey[behaviorSelectedPageKey]) ? byKey[behaviorSelectedPageKey] : [];
+    }
+
+    function updateBehaviorFilterSummary() {
+        const summaryEl = document.getElementById('behaviorPageFilterSummary');
+        if (!summaryEl) return;
+        const selected = getBehaviorSelectedPageOption();
+        summaryEl.textContent = selected
+            ? `Showing ${selected.label} only.`
+            : 'Showing all tracked product pages.';
+    }
+
+    function populateBehaviorPageFilter() {
+        const pageFilter = document.getElementById('behaviorPageFilter');
+        if (!pageFilter) return;
+        const options = Array.isArray(behaviorMetricsData?.mainPageOptions) ? behaviorMetricsData.mainPageOptions : [];
+        pageFilter.innerHTML = ['<option value="all">All main pages</option>']
+            .concat(options.map((option) => `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`))
+            .join('');
+        pageFilter.disabled = options.length === 0;
+        if (!options.some((option) => option.key === behaviorSelectedPageKey)) {
+            behaviorSelectedPageKey = 'all';
+        }
+        pageFilter.value = behaviorSelectedPageKey;
+        updateBehaviorFilterSummary();
+    }
+
+    function applyBehaviorPageFilter() {
+        const pageFilter = document.getElementById('behaviorPageFilter');
+        if (!pageFilter) return;
+        behaviorSelectedPageKey = String(pageFilter.value || 'all');
+        updateBehaviorFilterSummary();
+        destroyBehaviorCharts();
+        renderBehaviorTrendChart(getBehaviorTrendSeries());
+    }
+
+    function renderBehaviorTrendChart(series) {
+        const canvas = document.getElementById('behaviorTrendChart');
+        if (!canvas || typeof Chart === 'undefined' || !Array.isArray(series) || !series.length) return;
+
+        const palette = getChartPalette();
+        const labels = series.map((point) => {
+            const date = new Date(`${point.date}T00:00:00Z`);
+            return Number.isNaN(date.getTime())
+                ? point.date
+                : date.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+        });
+
+        behaviorTrendChart = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        type: 'bar',
+                        label: 'Page views',
+                        data: series.map((point) => Number(point.pageViews || 0)),
+                        backgroundColor: withAlpha(palette.accentBlue, 0.38),
+                        borderColor: palette.accentBlue,
+                        borderWidth: 1,
+                        borderRadius: 8,
+                        yAxisID: 'y'
+                    },
+                    {
+                        type: 'line',
+                        label: 'Active users',
+                        data: series.map((point) => Number(point.activeUsers || 0)),
+                        borderColor: palette.accentGreen,
+                        backgroundColor: withAlpha(palette.accentGreen, 0.12),
+                        pointBackgroundColor: palette.accentGreen,
+                        pointBorderColor: palette.accentGreen,
+                        tension: 0.3,
+                        borderWidth: 2,
+                        fill: false,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: palette.textPrimary
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: palette.textSecondary },
+                        grid: { color: withAlpha(palette.textSecondary, 0.08) }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: palette.textSecondary },
+                        grid: { color: withAlpha(palette.textSecondary, 0.08) }
+                    },
+                    y1: {
+                        beginAtZero: true,
+                        position: 'right',
+                        ticks: { color: palette.textSecondary },
+                        grid: { drawOnChartArea: false }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderBehaviorEventsChart(events) {
+        const canvas = document.getElementById('behaviorEventsChart');
+        if (!canvas || typeof Chart === 'undefined' || !Array.isArray(events) || !events.length) return;
+
+        const palette = getChartPalette();
+        behaviorEventsChart = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: events.map((entry) => humanizeEventName(entry.eventName)),
+                datasets: [{
+                    label: 'Events',
+                    data: events.map((entry) => Number(entry.eventCount || 0)),
+                    backgroundColor: createVerticalGradient(canvas, withAlpha(palette.accentOrange, 0.92), withAlpha(palette.accentPink, 0.72)),
+                    borderColor: palette.accentOrange,
+                    borderWidth: 1,
+                    borderRadius: 12,
+                    borderSkipped: false,
+                    maxBarThickness: 56
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label(context) {
+                                return ` ${formatCount(context.raw)} events`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: { color: palette.textSecondary },
+                        grid: { color: withAlpha(palette.textSecondary, 0.08) }
+                    },
+                    y: {
+                        ticks: { color: palette.textPrimary },
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderBehaviorTables(topPages, topEvents) {
+        const pagesBody = document.getElementById('behaviorTopPagesBody');
+        const eventsBody = document.getElementById('behaviorTopEventsBody');
+        const pagesEmpty = document.getElementById('behaviorTopPagesEmpty');
+        const eventsEmpty = document.getElementById('behaviorTopEventsEmpty');
+
+        if (pagesBody) {
+            pagesBody.innerHTML = Array.isArray(topPages) && topPages.length
+                ? topPages.map((entry) => `
+                    <tr>
+                        <td><span class="path">${escapeHtml(entry.path || '/')}</span><span class="meta">${escapeHtml(entry.title || 'Untitled')}</span></td>
+                        <td>${escapeHtml(formatCount(entry.pageViews))}</td>
+                        <td>${escapeHtml(formatCount(entry.activeUsers))}</td>
+                        <td>${escapeHtml(formatSeconds(entry.avgEngagementSeconds))}</td>
+                    </tr>`).join('')
+                : '';
+        }
+
+        if (eventsBody) {
+            eventsBody.innerHTML = Array.isArray(topEvents) && topEvents.length
+                ? topEvents.map((entry) => `
+                    <tr>
+                        <td>${escapeHtml(humanizeEventName(entry.eventName))}<span class="meta">${escapeHtml(entry.eventName || '')}</span></td>
+                        <td>${escapeHtml(formatCount(entry.eventCount))}</td>
+                        <td>${escapeHtml(formatCount(entry.activeUsers))}</td>
+                    </tr>`).join('')
+                : '';
+        }
+
+        if (pagesEmpty) pagesEmpty.style.display = Array.isArray(topPages) && topPages.length ? 'none' : '';
+        if (eventsEmpty) eventsEmpty.style.display = Array.isArray(topEvents) && topEvents.length ? 'none' : '';
+    }
+
+    async function loadBehaviorMetrics(options = {}) {
+        const updatedEl = document.getElementById('behaviorMetricsUpdated');
+        const warningEl = document.getElementById('behaviorMetricsWarning');
+        const setupEl = document.getElementById('behaviorSetup');
+        if (!adminApiClient || !updatedEl || !warningEl || !setupEl) return;
+
+        updatedEl.textContent = 'Loading behaviour analytics...';
+        warningEl.style.display = 'none';
+        warningEl.textContent = '';
+        resetBehaviorView();
+
+        try {
+            const params = new URLSearchParams({ days: '30', limit: '8' });
+            if (options.force) params.set('refresh', '1');
+            const resp = await adminApiClient.fetch(`/api/admin/behavior-metrics?${params.toString()}`);
+            const data = await resp.json();
+            if (data.errno !== 0) throw new Error(data.error || 'Failed to load behavior metrics');
+
+            const result = data.result || {};
+            const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+
+            if (!result.configured) {
+                setupEl.style.display = '';
+                setupEl.textContent = result.setup?.message || 'Behavior analytics is not configured yet.';
+                updatedEl.textContent = 'Behaviour analytics setup required';
+                if (warnings.length) {
+                    warningEl.style.display = '';
+                    warningEl.textContent = warnings.join(' · ');
+                }
+                return;
+            }
+
+            const summary = result.summary || {};
+            behaviorMetricsData = result;
+            document.getElementById('behaviorActiveUsers').textContent = formatCount(summary.activeUsers);
+            document.getElementById('behaviorPageViews').textContent = formatCount(summary.pageViews);
+            document.getElementById('behaviorEvents').textContent = formatCount(summary.eventCount);
+            document.getElementById('behaviorAvgEngagement').textContent = formatSeconds(summary.avgEngagementSecondsPerUser);
+
+            populateBehaviorPageFilter();
+            renderBehaviorTrendChart(getBehaviorTrendSeries());
+            renderBehaviorEventsChart(Array.isArray(result.topEvents) ? result.topEvents : []);
+            renderBehaviorTables(result.topPages, result.topEvents);
+
+            const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
+            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} · last ${Number(result.window?.days || 30)} days · GA4 property ${result.propertyId}`;
+            if (warnings.length) {
+                warningEl.style.display = '';
+                warningEl.textContent = warnings.join(' · ');
+            }
+        } catch (e) {
+            console.error('[Admin] Failed to load behavior metrics:', e);
+            updatedEl.textContent = 'Unable to load behaviour analytics';
+            warningEl.style.display = '';
+            warningEl.textContent = e.message || String(e);
+            showMessage('warning', `⚠️ Failed to load behaviour analytics: ${e.message}`);
+        }
     }
 
     // ==================== Render Users Table ====================

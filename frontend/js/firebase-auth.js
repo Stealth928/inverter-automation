@@ -164,7 +164,10 @@ class FirebaseAuth {
       
       try {
         if (firebase.analytics && typeof firebase.analytics === 'function') {
-          firebase.analytics();
+          const analytics = firebase.analytics();
+          if (analytics && typeof analytics.setAnalyticsCollectionEnabled === 'function') {
+            analytics.setAnalyticsCollectionEnabled(!isLocalhost);
+          }
         }
       } catch (analyticsError) {
         console.error('[FirebaseAuth] Analytics initialization failed (not critical):', analyticsError.message);

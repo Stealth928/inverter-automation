@@ -694,6 +694,423 @@ function registerAdminRoutes(app, deps = {}) {
     adminUsersSummaryCache.pending = pending;
     return pending;
   }
+
+  const ADMIN_BEHAVIOR_CACHE_TTL_MS = 5 * 60 * 1000;
+  const ADMIN_BEHAVIOR_PROPERTY_ENV_NAMES = [
+    'GA4_PROPERTY_ID',
+    'GOOGLE_ANALYTICS_PROPERTY_ID',
+    'ANALYTICS_PROPERTY_ID'
+  ];
+  const ADMIN_BEHAVIOR_MEASUREMENT_ENV_NAMES = [
+    'GA4_MEASUREMENT_ID',
+    'GOOGLE_ANALYTICS_MEASUREMENT_ID',
+    'ANALYTICS_MEASUREMENT_ID'
+  ];
+  const DEFAULT_GA4_MEASUREMENT_ID = 'G-MWF4ZBMREE';
+  const ADMIN_BEHAVIOR_MAX_PROPERTY_SCAN_COUNT = 25;
+  const ADMIN_BEHAVIOR_MAIN_PAGES = [
+    {
+      key: 'app',
+      label: 'Dashboard',
+      buildFilter: () => ({
+        orGroup: {
+          expressions: [
+            {
+              filter: {
+                fieldName: 'pagePath',
+                stringFilter: { matchType: 'EXACT', value: '/' }
+              }
+            },
+            {
+              filter: {
+                fieldName: 'pagePath',
+                stringFilter: { matchType: 'EXACT', value: '/app' }
+              }
+            },
+            {
+              filter: {
+                fieldName: 'pagePath',
+                stringFilter: { matchType: 'BEGINS_WITH', value: '/app' }
+              }
+            }
+          ]
+        }
+      })
+    },
+    {
+      key: 'control',
+      label: 'Control',
+      buildFilter: () => ({
+        filter: {
+          fieldName: 'pagePath',
+          stringFilter: { matchType: 'BEGINS_WITH', value: '/control' }
+        }
+      })
+    },
+    {
+      key: 'history',
+      label: 'History',
+      buildFilter: () => ({
+        filter: {
+          fieldName: 'pagePath',
+          stringFilter: { matchType: 'BEGINS_WITH', value: '/history' }
+        }
+      })
+    },
+    {
+      key: 'settings',
+      label: 'Settings',
+      buildFilter: () => ({
+        filter: {
+          fieldName: 'pagePath',
+          stringFilter: { matchType: 'BEGINS_WITH', value: '/settings' }
+        }
+      })
+    },
+    {
+      key: 'admin',
+      label: 'Admin',
+      buildFilter: () => ({
+        filter: {
+          fieldName: 'pagePath',
+          stringFilter: { matchType: 'BEGINS_WITH', value: '/admin' }
+        }
+      })
+    }
+  ];
+  let adminBehaviorMetricsCache = {
+    key: '',
+    data: null,
+    expiresAtMs: 0,
+    pending: null
+  };
+  let adminBehaviorProjectAnalyticsCache = {
+    projectId: '',
+    data: null,
+    expiresAtMs: 0,
+    pending: null
+  };
+  let adminBehaviorPropertyDiscoveryCache = {
+    measurementId: '',
+    propertyId: null,
+    expiresAtMs: 0,
+    pending: null
+  };
+
+  const normalizeGa4PropertyId = (value) => {
+    const raw = trimString(value);
+    if (!raw) return null;
+    const normalized = raw.replace(/^properties\//i, '');
+    return /^\d+$/.test(normalized) ? normalized : null;
+  };
+
+  const normalizeGa4MeasurementId = (value) => {
+    const raw = trimString(value);
+    if (!raw) return null;
+    return /^G-[A-Z0-9]+$/i.test(raw) ? raw.toUpperCase() : null;
+  };
+
+  const resolveGa4PropertyId = () => {
+    for (const envName of ADMIN_BEHAVIOR_PROPERTY_ENV_NAMES) {
+      const propertyId = normalizeGa4PropertyId(process.env[envName]);
+      if (propertyId) return propertyId;
+    }
+    return null;
+  };
+
+  const resolveGa4MeasurementId = () => {
+    for (const envName of ADMIN_BEHAVIOR_MEASUREMENT_ENV_NAMES) {
+      const measurementId = normalizeGa4MeasurementId(process.env[envName]);
+      if (measurementId) return measurementId;
+    }
+    return normalizeGa4MeasurementId(DEFAULT_GA4_MEASUREMENT_ID);
+  };
+
+  const normalizeGa4Date = (value) => {
+    const raw = trimString(value);
+    if (!raw || !/^\d{8}$/.test(raw)) return null;
+    return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+  };
+
+  const getGa4HeaderIndex = (headers, name) => Array.isArray(headers)
+    ? headers.findIndex((header) => header && header.name === name)
+    : -1;
+
+  const parseGa4DimensionValue = (row, headers, name) => {
+    const index = getGa4HeaderIndex(headers, name);
+    if (index < 0) return null;
+    return trimString(row?.dimensionValues?.[index]?.value);
+  };
+
+  const parseGa4MetricValue = (row, headers, name) => {
+    const index = getGa4HeaderIndex(headers, name);
+    if (index < 0) return 0;
+    const numeric = Number(row?.metricValues?.[index]?.value || 0);
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
+
+  const buildBehaviorPageSeriesTemplate = (dates = []) => dates.map((date) => ({
+    date,
+    activeUsers: 0,
+    pageViews: 0,
+    eventCount: 0
+  }));
+
+  const buildGa4ApiErrorMessage = (error) => {
+    const message = String(error?.message || error || 'Unable to load GA4 behavior metrics');
+    if (/firebase\.googleapis\.com/i.test(message)) {
+      return 'Firebase Management API is not enabled for this project. Enable firebase.googleapis.com and retry.';
+    }
+    if (/analyticsadmin\.googleapis\.com/i.test(message)) {
+      return 'GA4 Admin API is not enabled for this project. Enable analyticsadmin.googleapis.com and retry.';
+    }
+    if (/analyticsdata\.googleapis\.com|SERVICE_DISABLED|has not been used/i.test(message)) {
+      return 'GA4 Data API is not enabled for this project. Enable analyticsdata.googleapis.com and retry.';
+    }
+    if (/firebase/i.test(message) && /PERMISSION_DENIED|permission|access denied|insufficient/i.test(message)) {
+      return 'Firebase project analytics lookup denied. Grant the Cloud Functions service account Firebase Viewer access or set GA4_PROPERTY_ID explicitly.';
+    }
+    if (/PERMISSION_DENIED|permission|access denied|insufficient/i.test(message)) {
+      return 'GA4 Data API access denied. Grant the Cloud Functions service account Viewer or Analyst access to the configured GA4 property.';
+    }
+    if (/not found|404/i.test(message)) {
+      return 'Configured GA4 property id was not found. Set GA4_PROPERTY_ID to the numeric GA4 property id and retry.';
+    }
+    return message;
+  };
+
+  async function resolveGa4PropertyFromFirebaseProject(projectId, preferredMeasurementId) {
+    const normalizedProjectId = trimString(projectId);
+    const normalizedPreferredMeasurementId = normalizeGa4MeasurementId(preferredMeasurementId);
+    if (!normalizedProjectId || !googleApis || typeof googleApis.firebase !== 'function') {
+      return { propertyId: null, measurementId: null, warning: null };
+    }
+
+    const now = Date.now();
+    const hasFreshValue = adminBehaviorProjectAnalyticsCache.projectId === normalizedProjectId
+      && adminBehaviorProjectAnalyticsCache.data
+      && adminBehaviorProjectAnalyticsCache.expiresAtMs > now;
+
+    if (hasFreshValue) {
+      const cachedMeasurementIds = Array.isArray(adminBehaviorProjectAnalyticsCache.data.measurementIds)
+        ? adminBehaviorProjectAnalyticsCache.data.measurementIds
+        : [];
+      const cachedMeasurementId = normalizedPreferredMeasurementId && cachedMeasurementIds.includes(normalizedPreferredMeasurementId)
+        ? normalizedPreferredMeasurementId
+        : (cachedMeasurementIds[0] || null);
+      return {
+        propertyId: adminBehaviorProjectAnalyticsCache.data.propertyId,
+        measurementId: cachedMeasurementId,
+        warning: adminBehaviorProjectAnalyticsCache.data.warning || null
+      };
+    }
+
+    if (adminBehaviorProjectAnalyticsCache.projectId === normalizedProjectId && adminBehaviorProjectAnalyticsCache.pending) {
+      return adminBehaviorProjectAnalyticsCache.pending;
+    }
+
+    const pending = (async () => {
+      try {
+        const auth = new googleApis.auth.GoogleAuth({
+          scopes: ['https://www.googleapis.com/auth/firebase.readonly']
+        });
+        const firebaseManagement = googleApis.firebase({ version: 'v1beta1', auth });
+        const response = await firebaseManagement.projects.getAnalyticsDetails({
+          name: `projects/${normalizedProjectId}/analyticsDetails`
+        });
+        const propertyId = normalizeGa4PropertyId(response?.data?.analyticsProperty?.id);
+        const measurementIds = Array.isArray(response?.data?.streamMappings)
+          ? response.data.streamMappings
+            .map((mapping) => normalizeGa4MeasurementId(mapping?.measurementId))
+            .filter(Boolean)
+          : [];
+        const data = {
+          propertyId,
+          measurementIds,
+          warning: null
+        };
+        adminBehaviorProjectAnalyticsCache = {
+          projectId: normalizedProjectId,
+          data,
+          expiresAtMs: Date.now() + ADMIN_BEHAVIOR_CACHE_TTL_MS,
+          pending: null
+        };
+        return {
+          propertyId,
+          measurementId: normalizedPreferredMeasurementId && measurementIds.includes(normalizedPreferredMeasurementId)
+            ? normalizedPreferredMeasurementId
+            : (measurementIds[0] || null),
+          warning: null
+        };
+      } catch (error) {
+        const message = String(error?.message || error || '');
+        const isNotFound = /NOT_FOUND|not found|404/i.test(message);
+        const warning = isNotFound ? null : buildGa4ApiErrorMessage(error);
+        const data = {
+          propertyId: null,
+          measurementIds: [],
+          warning
+        };
+        adminBehaviorProjectAnalyticsCache = {
+          projectId: normalizedProjectId,
+          data,
+          expiresAtMs: Date.now() + (warning ? 60 * 1000 : ADMIN_BEHAVIOR_CACHE_TTL_MS),
+          pending: null
+        };
+        return { propertyId: null, measurementId: null, warning };
+      }
+    })().catch((error) => {
+      adminBehaviorProjectAnalyticsCache.pending = null;
+      throw error;
+    });
+
+    adminBehaviorProjectAnalyticsCache = {
+      projectId: normalizedProjectId,
+      data: null,
+      expiresAtMs: 0,
+      pending
+    };
+
+    return pending;
+  }
+
+  async function discoverGa4PropertyIdFromMeasurementId(measurementId) {
+    const normalizedMeasurementId = normalizeGa4MeasurementId(measurementId);
+    if (!normalizedMeasurementId) return null;
+    if (!googleApis) return null;
+
+    const now = Date.now();
+    const hasFreshDiscovery = adminBehaviorPropertyDiscoveryCache.measurementId === normalizedMeasurementId
+      && adminBehaviorPropertyDiscoveryCache.propertyId
+      && adminBehaviorPropertyDiscoveryCache.expiresAtMs > now;
+    if (hasFreshDiscovery) {
+      return adminBehaviorPropertyDiscoveryCache.propertyId;
+    }
+
+    if (adminBehaviorPropertyDiscoveryCache.measurementId === normalizedMeasurementId
+      && adminBehaviorPropertyDiscoveryCache.pending) {
+      return adminBehaviorPropertyDiscoveryCache.pending;
+    }
+
+    const pending = (async () => {
+      const auth = new googleApis.auth.GoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/analytics.readonly']
+      });
+      const analyticsadmin = googleApis.analyticsadmin({ version: 'v1beta', auth });
+
+      const summariesResponse = await analyticsadmin.accountSummaries.list({ pageSize: 50 });
+      const accountSummaries = Array.isArray(summariesResponse?.data?.accountSummaries)
+        ? summariesResponse.data.accountSummaries
+        : [];
+      let scannedPropertyCount = 0;
+
+      for (const summary of accountSummaries) {
+        const propertySummaries = Array.isArray(summary?.propertySummaries)
+          ? summary.propertySummaries
+          : [];
+
+        for (const propertySummary of propertySummaries) {
+          if (scannedPropertyCount >= ADMIN_BEHAVIOR_MAX_PROPERTY_SCAN_COUNT) {
+            adminBehaviorPropertyDiscoveryCache = {
+              measurementId: normalizedMeasurementId,
+              propertyId: null,
+              expiresAtMs: Date.now() + 60 * 1000,
+              pending: null
+            };
+            return null;
+          }
+          const propertyName = trimString(propertySummary?.property);
+          const propertyId = normalizeGa4PropertyId(propertyName);
+          if (!propertyName || !propertyId) continue;
+          scannedPropertyCount += 1;
+
+          const streamsResponse = await analyticsadmin.properties.dataStreams.list({
+            parent: propertyName,
+            pageSize: 50
+          });
+          const dataStreams = Array.isArray(streamsResponse?.data?.dataStreams)
+            ? streamsResponse.data.dataStreams
+            : [];
+
+          const matchingStream = dataStreams.find((stream) => {
+            const candidateMeasurementId = normalizeGa4MeasurementId(stream?.webStreamData?.measurementId);
+            return candidateMeasurementId === normalizedMeasurementId;
+          });
+
+          if (matchingStream) {
+            adminBehaviorPropertyDiscoveryCache = {
+              measurementId: normalizedMeasurementId,
+              propertyId,
+              expiresAtMs: Date.now() + ADMIN_BEHAVIOR_CACHE_TTL_MS,
+              pending: null
+            };
+            return propertyId;
+          }
+        }
+      }
+
+      adminBehaviorPropertyDiscoveryCache = {
+        measurementId: normalizedMeasurementId,
+        propertyId: null,
+        expiresAtMs: Date.now() + 60 * 1000,
+        pending: null
+      };
+      return null;
+    })().catch((error) => {
+      adminBehaviorPropertyDiscoveryCache.pending = null;
+      throw error;
+    });
+
+    adminBehaviorPropertyDiscoveryCache = {
+      measurementId: normalizedMeasurementId,
+      propertyId: null,
+      expiresAtMs: 0,
+      pending
+    };
+
+    return pending;
+  }
+
+  async function getCachedAdminBehaviorMetrics(cacheKey, loadMetrics, { forceRefresh = false } = {}) {
+    const now = Date.now();
+    const hasFreshValue = !forceRefresh
+      && adminBehaviorMetricsCache.key === cacheKey
+      && adminBehaviorMetricsCache.data
+      && adminBehaviorMetricsCache.expiresAtMs > now;
+
+    if (hasFreshValue) {
+      return { ...adminBehaviorMetricsCache.data, cache: { hit: true, ttlMs: ADMIN_BEHAVIOR_CACHE_TTL_MS } };
+    }
+
+    if (!forceRefresh && adminBehaviorMetricsCache.key === cacheKey && adminBehaviorMetricsCache.pending) {
+      return adminBehaviorMetricsCache.pending;
+    }
+
+    const pending = Promise.resolve()
+      .then(loadMetrics)
+      .then((data) => {
+        adminBehaviorMetricsCache = {
+          key: cacheKey,
+          data,
+          expiresAtMs: Date.now() + ADMIN_BEHAVIOR_CACHE_TTL_MS,
+          pending: null
+        };
+        return { ...data, cache: { hit: false, ttlMs: ADMIN_BEHAVIOR_CACHE_TTL_MS } };
+      })
+      .catch((error) => {
+        adminBehaviorMetricsCache.pending = null;
+        throw error;
+      });
+
+    adminBehaviorMetricsCache = {
+      key: cacheKey,
+      data: adminBehaviorMetricsCache.key === cacheKey ? adminBehaviorMetricsCache.data : null,
+      expiresAtMs: adminBehaviorMetricsCache.key === cacheKey ? adminBehaviorMetricsCache.expiresAtMs : 0,
+      pending
+    };
+
+    return pending;
+  }
 /**
  * GET /api/admin/firestore-metrics - Pull Firestore usage + billing signals from GCP Monitoring
  * Query: ?hours=36 (default 36, min 6, max 168)
@@ -976,6 +1393,296 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
   } catch (error) {
     console.error('[Admin] Error loading Firestore metrics:', error);
     res.status(500).json({ errno: 500, error: error.message || String(error), result: { warnings } });
+  }
+});
+
+/**
+ * GET /api/admin/behavior-metrics - Pull aggregated GA4 behavior metrics for admin UI.
+ * Query: ?days=30&limit=8&refresh=1
+ */
+app.get('/api/admin/behavior-metrics', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    if (!googleApis) {
+      return res.status(503).json({ errno: 503, error: 'googleapis dependency not available on server' });
+    }
+
+    const projectId = getRuntimeProjectId();
+    const preferredMeasurementId = resolveGa4MeasurementId();
+    const configuredPropertyId = resolveGa4PropertyId();
+    const firebaseProjectAnalytics = configuredPropertyId
+      ? { propertyId: null, measurementId: null, warning: null }
+      : await resolveGa4PropertyFromFirebaseProject(projectId, preferredMeasurementId);
+    const measurementId = firebaseProjectAnalytics.measurementId || preferredMeasurementId;
+    const propertyId = configuredPropertyId
+      || firebaseProjectAnalytics.propertyId
+      || await discoverGa4PropertyIdFromMeasurementId(measurementId);
+    const daysRaw = Number(req.query?.days);
+    const limitRaw = Number(req.query?.limit);
+    const days = Number.isFinite(daysRaw) ? Math.max(7, Math.min(90, Math.floor(daysRaw))) : 30;
+    const limit = Number.isFinite(limitRaw) ? Math.max(5, Math.min(20, Math.floor(limitRaw))) : 8;
+    const forceRefresh = String(req.query?.refresh || req.query?.force || '').trim() === '1';
+    const resolutionWarnings = [];
+    if (firebaseProjectAnalytics.warning) {
+      resolutionWarnings.push(firebaseProjectAnalytics.warning);
+    }
+
+    if (!propertyId) {
+      return res.json({
+        errno: 0,
+        result: {
+          configured: false,
+          source: 'ga4-data-api',
+          updatedAt: new Date().toISOString(),
+          window: { days, startDate: `${days}daysAgo`, endDate: 'today' },
+          summary: null,
+          pageSeries: [],
+          topPages: [],
+          topEvents: [],
+          warnings: ['GA4 property id could not be resolved on server', ...resolutionWarnings],
+          setup: {
+            requiredEnv: 'GA4_PROPERTY_ID',
+            acceptedEnvNames: ADMIN_BEHAVIOR_PROPERTY_ENV_NAMES,
+            projectId,
+            measurementId,
+            acceptedMeasurementEnvNames: ADMIN_BEHAVIOR_MEASUREMENT_ENV_NAMES,
+            message: measurementId
+              ? `Unable to resolve a GA4 property for Firebase project ${projectId || 'unknown-project'} from measurement id ${measurementId}. Set GA4_PROPERTY_ID explicitly, or grant the Functions service account Firebase project analytics read access and GA4 Admin/Data API access.`
+              : 'Set GA4_PROPERTY_ID to the numeric Google Analytics 4 property id for your web property to enable the Behaviour tab.'
+          }
+        }
+      });
+    }
+
+    const cacheKey = `${propertyId}:${days}:${limit}`;
+    const loadMetrics = async () => {
+      const auth = new googleApis.auth.GoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/analytics.readonly']
+      });
+      const analyticsdata = googleApis.analyticsdata({ version: 'v1beta', auth });
+      const property = `properties/${propertyId}`;
+      const dateRanges = [{ startDate: `${days}daysAgo`, endDate: 'today' }];
+
+      const [summaryResponse, dailyResponse, topPagesResponse, topEventsResponse, mainPagesResponse] = await Promise.all([
+        analyticsdata.properties.runReport({
+          property,
+          requestBody: {
+            dateRanges,
+            metrics: [
+              { name: 'activeUsers' },
+              { name: 'screenPageViews' },
+              { name: 'eventCount' },
+              { name: 'userEngagementDuration' }
+            ],
+            limit: '1'
+          }
+        }),
+        analyticsdata.properties.runReport({
+          property,
+          requestBody: {
+            dateRanges,
+            dimensions: [{ name: 'date' }],
+            metrics: [
+              { name: 'activeUsers' },
+              { name: 'screenPageViews' },
+              { name: 'eventCount' }
+            ],
+            orderBys: [{ dimension: { dimensionName: 'date' } }],
+            limit: String(Math.max(days, 31))
+          }
+        }),
+        analyticsdata.properties.runReport({
+          property,
+          requestBody: {
+            dateRanges,
+            dimensions: [
+              { name: 'pagePath' },
+              { name: 'pageTitle' }
+            ],
+            metrics: [
+              { name: 'screenPageViews' },
+              { name: 'activeUsers' },
+              { name: 'userEngagementDuration' }
+            ],
+            orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
+            limit: String(limit)
+          }
+        }),
+        analyticsdata.properties.runReport({
+          property,
+          requestBody: {
+            dateRanges,
+            dimensions: [{ name: 'eventName' }],
+            metrics: [
+              { name: 'eventCount' },
+              { name: 'activeUsers' }
+            ],
+            orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+            limit: '50'
+          }
+        }),
+        analyticsdata.properties.batchRunReports({
+          property,
+          requestBody: {
+            requests: ADMIN_BEHAVIOR_MAIN_PAGES.map((page) => ({
+              dateRanges,
+              dimensions: [{ name: 'date' }],
+              metrics: [
+                { name: 'activeUsers' },
+                { name: 'screenPageViews' }
+              ],
+              dimensionFilter: page.buildFilter(),
+              orderBys: [{ dimension: { dimensionName: 'date' } }],
+              limit: String(Math.max(days, 31))
+            }))
+          }
+        })
+      ]);
+
+      const summaryData = summaryResponse?.data || {};
+      const summaryHeaders = summaryData.metricHeaders || [];
+      const summaryRow = Array.isArray(summaryData.rows) ? summaryData.rows[0] : null;
+
+      const dailyData = dailyResponse?.data || {};
+      const dailyDimensionHeaders = dailyData.dimensionHeaders || [];
+      const dailyMetricHeaders = dailyData.metricHeaders || [];
+      const pageSeries = Array.isArray(dailyData.rows)
+        ? dailyData.rows.map((row) => ({
+          date: normalizeGa4Date(parseGa4DimensionValue(row, dailyDimensionHeaders, 'date')),
+          activeUsers: Math.round(parseGa4MetricValue(row, dailyMetricHeaders, 'activeUsers')),
+          pageViews: Math.round(parseGa4MetricValue(row, dailyMetricHeaders, 'screenPageViews')),
+          eventCount: Math.round(parseGa4MetricValue(row, dailyMetricHeaders, 'eventCount'))
+        })).filter((entry) => !!entry.date)
+        : [];
+
+      const topPagesData = topPagesResponse?.data || {};
+      const topPagesDimensionHeaders = topPagesData.dimensionHeaders || [];
+      const topPagesMetricHeaders = topPagesData.metricHeaders || [];
+      const topPages = Array.isArray(topPagesData.rows)
+        ? topPagesData.rows.map((row) => {
+          const path = parseGa4DimensionValue(row, topPagesDimensionHeaders, 'pagePath');
+          const title = parseGa4DimensionValue(row, topPagesDimensionHeaders, 'pageTitle');
+          const pageViews = Math.round(parseGa4MetricValue(row, topPagesMetricHeaders, 'screenPageViews'));
+          const activeUsers = Math.round(parseGa4MetricValue(row, topPagesMetricHeaders, 'activeUsers'));
+          const engagementDurationSeconds = parseGa4MetricValue(row, topPagesMetricHeaders, 'userEngagementDuration');
+          return {
+            path: path || '/',
+            title: title || path || 'Untitled',
+            pageViews,
+            activeUsers,
+            avgEngagementSeconds: activeUsers > 0
+              ? Math.round((engagementDurationSeconds / activeUsers) * 10) / 10
+              : 0
+          };
+        }).filter((entry) => entry.pageViews > 0)
+        : [];
+
+      const genericEventNames = new Set([
+        'page_view',
+        'user_engagement',
+        'session_start',
+        'first_visit',
+        'scroll',
+        'click',
+        'form_start',
+        'form_submit',
+        'view_search_results',
+        'file_download'
+      ]);
+      const topEventsData = topEventsResponse?.data || {};
+      const topEventsDimensionHeaders = topEventsData.dimensionHeaders || [];
+      const topEventsMetricHeaders = topEventsData.metricHeaders || [];
+      const topEvents = Array.isArray(topEventsData.rows)
+        ? topEventsData.rows.map((row) => ({
+          eventName: parseGa4DimensionValue(row, topEventsDimensionHeaders, 'eventName') || 'unknown_event',
+          eventCount: Math.round(parseGa4MetricValue(row, topEventsMetricHeaders, 'eventCount')),
+          activeUsers: Math.round(parseGa4MetricValue(row, topEventsMetricHeaders, 'activeUsers'))
+        }))
+          .filter((entry) => entry.eventCount > 0 && !genericEventNames.has(entry.eventName))
+          .slice(0, limit)
+        : [];
+
+      const seriesDates = pageSeries.map((entry) => entry.date);
+      const mainPageSeriesAll = Object.fromEntries(
+        ADMIN_BEHAVIOR_MAIN_PAGES.map((page) => [page.key, buildBehaviorPageSeriesTemplate(seriesDates)])
+      );
+      const mainPagesReports = Array.isArray(mainPagesResponse?.data?.reports)
+        ? mainPagesResponse.data.reports
+        : [];
+      for (const [pageIndex, page] of ADMIN_BEHAVIOR_MAIN_PAGES.entries()) {
+        const report = mainPagesReports[pageIndex] || {};
+        const dimensionHeaders = report.dimensionHeaders || [];
+        const metricHeaders = report.metricHeaders || [];
+        const seriesDateIndex = new Map(seriesDates.map((date, index) => [date, index]));
+        if (!Array.isArray(report.rows)) continue;
+        for (const row of report.rows) {
+          const date = normalizeGa4Date(parseGa4DimensionValue(row, dimensionHeaders, 'date'));
+          if (!date) continue;
+          let targetIndex = seriesDateIndex.get(date);
+          if (typeof targetIndex !== 'number') continue;
+          const target = mainPageSeriesAll[page.key][targetIndex];
+          target.activeUsers = Math.round(parseGa4MetricValue(row, metricHeaders, 'activeUsers'));
+          target.pageViews = Math.round(parseGa4MetricValue(row, metricHeaders, 'screenPageViews'));
+        }
+      }
+
+      const mainPageOptions = ADMIN_BEHAVIOR_MAIN_PAGES
+        .map((page) => {
+          const series = mainPageSeriesAll[page.key] || [];
+          const totalPageViews = series.reduce((sum, entry) => sum + Number(entry.pageViews || 0), 0);
+          return totalPageViews > 0
+            ? { key: page.key, label: page.label, series }
+            : null;
+        })
+        .filter(Boolean);
+      const pageSeriesByKey = Object.fromEntries(mainPageOptions.map((page) => [page.key, page.series]));
+
+      const activeUsers = Math.round(parseGa4MetricValue(summaryRow, summaryHeaders, 'activeUsers'));
+      const pageViews = Math.round(parseGa4MetricValue(summaryRow, summaryHeaders, 'screenPageViews'));
+      const eventCount = Math.round(parseGa4MetricValue(summaryRow, summaryHeaders, 'eventCount'));
+      const engagementDurationSeconds = parseGa4MetricValue(summaryRow, summaryHeaders, 'userEngagementDuration');
+      const warnings = [];
+      if (!pageSeries.length) warnings.push('No GA4 daily activity data returned for the selected window');
+      if (!topPages.length) warnings.push('No page-view data returned by GA4 yet');
+      if (!topEvents.length) warnings.push('No custom engagement events found yet. Add data-analytics-event markers to key UI actions to enrich this view.');
+
+      return {
+        configured: true,
+        source: 'ga4-data-api',
+        propertyId,
+        measurementId,
+        propertySource: configuredPropertyId
+          ? 'env'
+          : (firebaseProjectAnalytics.propertyId ? 'firebase-project-analytics' : 'measurement-id-discovery'),
+        updatedAt: new Date().toISOString(),
+        window: { days, startDate: `${days}daysAgo`, endDate: 'today' },
+        summary: {
+          activeUsers,
+          pageViews,
+          eventCount,
+          avgEngagementSecondsPerUser: activeUsers > 0
+            ? Math.round((engagementDurationSeconds / activeUsers) * 10) / 10
+            : 0,
+          avgEventsPerUser: activeUsers > 0
+            ? Math.round((eventCount / activeUsers) * 10) / 10
+            : 0,
+          trackedPageCount: Number(topPagesData.rowCount || topPages.length || 0),
+          customEventTypes: topEvents.length
+        },
+        pageSeries,
+        mainPageOptions: mainPageOptions.map((page) => ({ key: page.key, label: page.label })),
+        pageSeriesByKey,
+        topPages,
+        topEvents,
+        warnings: warnings.concat(resolutionWarnings)
+      };
+    };
+
+    const result = await getCachedAdminBehaviorMetrics(cacheKey, loadMetrics, { forceRefresh });
+    res.json({ errno: 0, result });
+  } catch (error) {
+    const message = buildGa4ApiErrorMessage(error);
+    console.error('[Admin] Error fetching behavior metrics:', error);
+    res.status(502).json({ errno: 502, error: message });
   }
 });
 

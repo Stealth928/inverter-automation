@@ -20,11 +20,13 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics-compat.js"></script>
     <script defer src="js/firebase-config.js"></script>
     <script defer src="js/firebase-auth.js"></script>
     <script defer src="js/api-client.js?v=5"></script>
     <script defer src="js/shared-utils.js?v=13"></script>
     <script defer src="js/app-shell.js?v=23"></script>
+    <script defer src="js/app-analytics.js?v=1"></script>
     <script defer src="js/tour.js?v=31"></script>
     <link rel="stylesheet" href="css/shared-styles.css?v=9">
     <script src="js/theme-init.js"></script>
@@ -537,7 +539,7 @@
         }
     </style>
 </head>
-<body>
+<body data-analytics-page="history">
     <nav class="nav-main">
         <button type="button" class="nav-toggle" data-nav-toggle="1" aria-label="Toggle navigation menu" aria-expanded="false">☰</button>
         <div class="nav-links">
@@ -611,7 +613,7 @@
                             <option value="30" selected>30-minute</option>
                         </select>
                     </div>
-                    <button class="btn btn-primary" onclick="fetchAmberHistoricalPrices()" id="btnFetchPrices">
+                    <button class="btn btn-primary" onclick="fetchAmberHistoricalPrices()" id="btnFetchPrices" data-analytics-event="history_fetch_prices" data-analytics-location="amber_history_card">
                         📈 Fetch Prices
                     </button>
                 </div>
@@ -681,7 +683,7 @@
                             <option value="168">Last 7 days ⚠️</option>
                         </select>
                     </div>
-                    <button class="btn btn-primary" onclick="fetchHistory()" id="btnFetchHistory">
+                    <button class="btn btn-primary" onclick="fetchHistory()" id="btnFetchHistory" data-analytics-event="history_fetch_log" data-analytics-location="realtime_history_card">
                         📈 Fetch History Data
                     </button>
                     <button class="btn btn-secondary" onclick="toggleHistoryVariables()" id="btnToggleVariables" style="display:none;">
@@ -737,7 +739,7 @@
                             <option value="12">December</option>
                         </select>
                     </div>
-                    <button class="btn btn-accent" onclick="fetchReport()" id="btnFetchReport">
+                    <button class="btn btn-accent" onclick="fetchReport()" id="btnFetchReport" data-analytics-event="history_fetch_report" data-analytics-location="energy_reports_card">
                         📊 Fetch Report
                     </button>
                 </div>
@@ -761,7 +763,7 @@
             </div>
             <div class="card-body">
                 <div class="controls-row">
-                    <button class="btn btn-primary" onclick="fetchGeneration()" id="btnFetchGeneration">
+                    <button class="btn btn-primary" onclick="fetchGeneration()" id="btnFetchGeneration" data-analytics-event="history_fetch_generation" data-analytics-location="generation_summary_card">
                         🔋 Fetch Generation Data
                     </button>
                 </div>

@@ -20,6 +20,83 @@ For the most complete measured route inventory, use
 This document focuses on commonly used product and operator workflows rather
 than listing every backend route exhaustively.
 
+## Admin Operator Metrics
+
+### Behaviour Analytics
+```
+GET /api/admin/behavior-metrics?days=30&limit=8
+Authorization: Bearer <token>
+```
+Admin-only endpoint that returns aggregated GA4 usage data for the admin Behaviour tab.
+
+- Uses the GA4 Data API via the Cloud Functions service account.
+- Uses one of two property resolution paths:
+  - Preferred automatic path: read the linked GA4 property directly from Firebase project analytics details
+  - Secondary automatic path: resolve the GA4 property from the measurement id
+  - Fallback explicit path: use a configured numeric property id
+- Numeric property id can be configured on the server via one of:
+  - `GA4_PROPERTY_ID`
+  - `GOOGLE_ANALYTICS_PROPERTY_ID`
+  - `ANALYTICS_PROPERTY_ID`
+- Measurement id can be configured via one of:
+  - `GA4_MEASUREMENT_ID`
+  - `GOOGLE_ANALYTICS_MEASUREMENT_ID`
+  - `ANALYTICS_MEASUREMENT_ID`
+- This repo also defaults to the production measurement id already used by the web app: `G-MWF4ZBMREE`.
+- When the Firebase project is linked to Google Analytics, the server first calls `projects.getAnalyticsDetails` on the Firebase Management API and can resolve the numeric GA4 property id without scanning GA accounts.
+- Returns a non-failing setup payload when the property cannot be resolved yet.
+
+Typical success payload:
+
+```json
+{
+  "errno": 0,
+  "result": {
+    "configured": true,
+    "source": "ga4-data-api",
+    "propertyId": "123456789",
+    "measurementId": "G-MWF4ZBMREE",
+    "propertySource": "firebase-project-analytics",
+    "updatedAt": "2026-03-21T03:14:15.000Z",
+    "window": {
+      "days": 30,
+      "startDate": "30daysAgo",
+      "endDate": "today"
+    },
+    "summary": {
+      "activeUsers": 18,
+      "pageViews": 146,
+      "eventCount": 221,
+      "avgEngagementSecondsPerUser": 51.8,
+      "avgEventsPerUser": 12.3,
+      "trackedPageCount": 6,
+      "customEventTypes": 4
+    },
+    "pageSeries": [],
+    "mainPageOptions": [
+      { "key": "app", "label": "Dashboard" },
+      { "key": "control", "label": "Control" },
+      { "key": "history", "label": "History" },
+      { "key": "settings", "label": "Settings" },
+      { "key": "admin", "label": "Admin" }
+    ],
+    "pageSeriesByKey": {
+      "app": [],
+      "control": [],
+      "history": [],
+      "settings": [],
+      "admin": []
+    },
+    "topPages": [],
+    "topEvents": [],
+    "warnings": []
+  }
+}
+```
+
+`pageSeries` remains the all-pages aggregate used by default.
+`mainPageOptions` and `pageSeriesByKey` allow the admin UI to filter the daily chart client-side for the core product pages without issuing extra requests after the initial cached fetch.
+
 All authenticated endpoints require a Firebase ID token in the `Authorization` header:
 ```
 Authorization: Bearer <firebase-id-token>

@@ -3352,7 +3352,7 @@
             return '—';
         }
 
-        function setEVOverviewMessage(kind, text) {
+        function setEVOverviewMessage(kind, text, isHtml = false) {
             const messageEl = document.getElementById('evOverviewMessage');
             if (!messageEl) return;
             if (!text) {
@@ -3362,7 +3362,11 @@
             }
             const safeKind = ['info', 'success', 'warning', 'error'].includes(kind) ? kind : 'info';
             messageEl.className = `ev-message ${safeKind}`;
-            messageEl.textContent = text;
+            if (isHtml) {
+                messageEl.innerHTML = text;
+            } else {
+                messageEl.textContent = text;
+            }
         }
 
         function setEVCommandHint(kind, text) {
@@ -3632,11 +3636,6 @@
             }
 
             if (evDashboardState.vehicles.length === 0) {
-                const empty = document.createElement('div');
-                empty.style.fontSize = '12px';
-                empty.style.color = 'var(--text-secondary)';
-                empty.innerHTML = 'No Tesla vehicles linked yet. Connect a Tesla vehicle in <a href="/settings.html" style="color:var(--accent-blue);text-decoration:none;">Settings</a>.';
-                tabsEl.appendChild(empty);
                 return;
             }
 
@@ -3668,6 +3667,10 @@
 
             summaryEl.innerHTML = '';
             pillsEl.innerHTML = '';
+
+            if (evDashboardState.vehicles.length === 0) {
+                return;
+            }
 
             const selectedVehicle = getSelectedEVVehicle();
             if (!selectedVehicle) {
@@ -4198,7 +4201,7 @@
 
                 if (evDashboardState.vehicles.length === 0) {
                     evDashboardState.selectedVehicleId = '';
-                    setEVOverviewMessage('info', 'No Tesla vehicles linked yet. Connect your Tesla vehicle in Settings.');
+                    setEVOverviewMessage('info', 'No Tesla vehicles linked yet. <a href="/settings.html" style="color:var(--accent-blue);text-decoration:none;">Connect one in Settings</a>.', true);
                     renderEVOverview();
                     return;
                 }
