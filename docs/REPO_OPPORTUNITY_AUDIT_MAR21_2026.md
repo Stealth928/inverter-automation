@@ -172,10 +172,12 @@ observations rather than billing-ground-truth.
   `README.md`, `docs/openapi/openapi.v1.yaml`, and
   `docs/P1_ARCHITECTURE_CONTRACT_SPEC_MAR26.md` now describe the OpenAPI and
   route-inventory split more accurately; `docs/REFACTORING_IMPLEMENTATION_PLAN_MAR26.md`
-  is now marked as historical context; and the landing page no longer
-  labels AlphaESS, SigenEnergy, and Sungrow as "Soon".
+  is now marked as historical context. The landing page provider badges were
+  later restored to "Soon" for current public positioning, so that specific
+  public/runtime mismatch still remains.
 - Remaining gap:
-  OpenAPI path coverage is still partial and needs a follow-up expansion pass.
+  OpenAPI path coverage is still partial and the public landing page still
+  undersells some supported providers.
 
 ### 6. Collapse or sample API metrics writes
 
