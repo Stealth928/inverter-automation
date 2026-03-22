@@ -2302,12 +2302,19 @@
                                     <div class="announcement-helper">Leave blank or 0 for no minimum age filter.</div>
                                 </div>
                                 <div class="announcement-field full">
-                                    <label for="announcementIncludeUidsInput">Always include these UIDs</label>
-                                    <textarea id="announcementIncludeUidsInput" class="announcement-textarea" style="min-height:88px;" placeholder="One UID per line or comma-separated"></textarea>
+                                    <label for="announcementOnlyIncludeUidsInput">Only include these users</label>
+                                    <textarea id="announcementOnlyIncludeUidsInput" class="announcement-textarea" style="min-height:88px;" placeholder="One email or UID per line, or comma-separated"></textarea>
+                                    <div class="announcement-helper">If this list has entries, everyone else is excluded before the normal audience filters run.</div>
                                 </div>
                                 <div class="announcement-field full">
-                                    <label for="announcementExcludeUidsInput">Always exclude these UIDs</label>
-                                    <textarea id="announcementExcludeUidsInput" class="announcement-textarea" style="min-height:88px;" placeholder="One UID per line or comma-separated"></textarea>
+                                    <label for="announcementIncludeUidsInput">Always include these users</label>
+                                    <textarea id="announcementIncludeUidsInput" class="announcement-textarea" style="min-height:88px;" placeholder="One email or UID per line, or comma-separated"></textarea>
+                                    <div class="announcement-helper">Emails are resolved to the current Firebase UID on save. These entries bypass the maturity filters, but not the only-include allowlist.</div>
+                                </div>
+                                <div class="announcement-field full">
+                                    <label for="announcementExcludeUidsInput">Always exclude these users</label>
+                                    <textarea id="announcementExcludeUidsInput" class="announcement-textarea" style="min-height:88px;" placeholder="One email or UID per line, or comma-separated"></textarea>
+                                    <div class="announcement-helper">Exclude is evaluated first and overrides every other targeting rule.</div>
                                 </div>
                             </div>
 
@@ -2318,7 +2325,7 @@
                                     <span class="announcement-summary-icon">⚡</span>
                                     <div class="announcement-summary-content">
                                         <strong>Targeting approach</strong>
-                                        <div class="announcement-meta">Uses only low-cost runtime fields: tour completion, setup completion, account age, automation enabled, plus manual include and exclude overrides.</div>
+                                        <div class="announcement-meta">Uses only low-cost runtime fields: tour completion, setup completion, account age, automation enabled, plus manual only-include, include, and exclude overrides.</div>
                                     </div>
                                 </div>
                                 <div class="announcement-summary-row">

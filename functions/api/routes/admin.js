@@ -133,6 +133,7 @@ function registerAdminRoutes(app, deps = {}) {
       requireSetupComplete: true,
       requireAutomationEnabled: false,
       minAccountAgeDays: null,
+      onlyIncludeUids: [],
       includeUids: [],
       excludeUids: []
     }
@@ -259,6 +260,7 @@ function registerAdminRoutes(app, deps = {}) {
       requireSetupComplete: source.requireSetupComplete !== false,
       requireAutomationEnabled: source.requireAutomationEnabled === true,
       minAccountAgeDays: minAccountAgeDays > 0 ? minAccountAgeDays : null,
+      onlyIncludeUids: normalizeUidList(source.onlyIncludeUids),
       includeUids: normalizeUidList(source.includeUids),
       excludeUids: normalizeUidList(source.excludeUids)
     };
@@ -276,6 +278,49 @@ function registerAdminRoutes(app, deps = {}) {
       severity: ANNOUNCEMENT_SEVERITIES.has(severity) ? severity : ANNOUNCEMENT_DEFAULTS.severity,
       showOnce: source.showOnce !== false,
       audience: normalizeAnnouncementAudience(source.audience)
+    };
+  };
+
+  const resolveAnnouncementAudienceIdentifiers = async (value, fieldLabel) => {
+    const identifiers = normalizeUidList(value);
+    if (!identifiers.length) return [];
+
+    const authApi = admin.auth();
+    const resolved = await Promise.all(identifiers.map(async (identifier) => {
+      if (!identifier.includes('@')) return identifier;
+
+      const email = identifier.toLowerCase();
+      try {
+        const userRecord = await authApi.getUserByEmail(email);
+        return trimString(userRecord?.uid);
+      } catch (error) {
+        if (error?.code === 'auth/user-not-found') {
+          const resolutionError = new Error(`No user found for ${fieldLabel}: ${email}`);
+          resolutionError.statusCode = 400;
+          throw resolutionError;
+        }
+        throw error;
+      }
+    }));
+
+    return normalizeUidList(resolved);
+  };
+
+  const resolveAnnouncementAudience = async (value) => {
+    const audience = normalizeAnnouncementAudience(value);
+    return {
+      ...audience,
+      onlyIncludeUids: await resolveAnnouncementAudienceIdentifiers(audience.onlyIncludeUids, 'only include'),
+      includeUids: await resolveAnnouncementAudienceIdentifiers(audience.includeUids, 'always include'),
+      excludeUids: await resolveAnnouncementAudienceIdentifiers(audience.excludeUids, 'always exclude')
+    };
+  };
+
+  const resolveAnnouncementConfig = async (value) => {
+    const announcement = normalizeAnnouncementConfig(value);
+    return {
+      ...announcement,
+      audience: await resolveAnnouncementAudience(announcement.audience)
     };
   };
 
@@ -802,7 +847,7 @@ function registerAdminRoutes(app, deps = {}) {
       const announcementInput = req.body?.announcement && typeof req.body.announcement === 'object'
         ? req.body.announcement
         : req.body;
-      const announcement = normalizeAnnouncementConfig(announcementInput);
+      const announcement = await resolveAnnouncementConfig(announcementInput);
       const validationError = validateAnnouncementConfig(announcement);
       if (validationError) {
         return res.status(400).json({ errno: 400, error: validationError });
@@ -820,6 +865,9 @@ function registerAdminRoutes(app, deps = {}) {
       const { announcement: savedAnnouncement } = await readAnnouncementConfigDoc();
       return res.json({ errno: 0, result: { announcement: savedAnnouncement } });
     } catch (error) {
+      if (Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode < 500) {
+        return res.status(error.statusCode).json({ errno: error.statusCode, error: error.message });
+      }
       console.error('[Admin] Failed to save announcement config:', error?.message || error);
       return res.status(500).json({ errno: 500, error: error?.message || 'Failed to save announcement config' });
     }

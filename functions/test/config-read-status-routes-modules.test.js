@@ -280,6 +280,7 @@ describe('config/status read route module', () => {
             requireSetupComplete: true,
             requireAutomationEnabled: false,
             minAccountAgeDays: 3,
+            onlyIncludeUids: [],
             includeUids: [],
             excludeUids: []
           }
@@ -332,6 +333,7 @@ describe('config/status read route module', () => {
           requireSetupComplete: true,
           requireAutomationEnabled: true,
           minAccountAgeDays: 60,
+          onlyIncludeUids: [],
           includeUids: ['u-config']
         }
       },
@@ -359,6 +361,42 @@ describe('config/status read route module', () => {
       id: 'release-note-2',
       title: 'Direct target'
     }));
+  });
+
+  test('announcement route suppresses users outside only-include allowlist before force-include checks', async () => {
+    const dbMock = createDbMock({
+      announcement: {
+        enabled: true,
+        id: 'exclusive-rollout-1',
+        title: 'Exclusive rollout',
+        body: 'Only the named allowlist should see this.',
+        audience: {
+          requireTourComplete: false,
+          requireSetupComplete: false,
+          onlyIncludeUids: ['different-user'],
+          includeUids: ['u-config']
+        }
+      },
+      userProfile: {
+        createdAt: Date.now() - (30 * 24 * 60 * 60 * 1000)
+      }
+    });
+    const deps = createDeps({
+      db: dbMock.db,
+      getUserConfig: jest.fn(async () => ({
+        setupComplete: false,
+        tourComplete: false,
+        announcementDismissedIds: []
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/config/announcement')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ errno: 0, result: { announcement: null } });
   });
 
   test('announcement route prefers automation state over stale profile automationEnabled mirror', async () => {

@@ -44,6 +44,7 @@ function createDeps(overrides = {}) {
     admin: {
       auth: jest.fn(() => ({
         getUser: jest.fn(async () => ({ uid: 'target-uid', email: 'target@example.com', customClaims: {} })),
+        getUserByEmail: jest.fn(async (email) => ({ uid: `resolved-${String(email).replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '')}`, email })),
         setCustomUserClaims: jest.fn(async () => undefined),
         deleteUser
       }))
@@ -172,6 +173,7 @@ describe('admin route module', () => {
               requireSetupComplete: false,
               requireAutomationEnabled: true,
               minAccountAgeDays: 7,
+              onlyIncludeUids: ['delta'],
               includeUids: ['alpha', 'beta'],
               excludeUids: ['gamma']
             },
@@ -219,6 +221,7 @@ describe('admin route module', () => {
         requireSetupComplete: false,
         requireAutomationEnabled: true,
         minAccountAgeDays: 7,
+        onlyIncludeUids: ['delta'],
         includeUids: ['alpha', 'beta'],
         excludeUids: ['gamma']
       }
@@ -242,6 +245,7 @@ describe('admin route module', () => {
             requireSetupComplete: true,
             requireAutomationEnabled: false,
             minAccountAgeDays: 14,
+            onlyIncludeUids: ['user-z'],
             includeUids: ['user-a'],
             excludeUids: []
           },
@@ -288,7 +292,8 @@ describe('admin route module', () => {
             requireTourComplete: true,
             requireSetupComplete: true,
             minAccountAgeDays: 14,
-            includeUids: 'user-a\nuser-a',
+            onlyIncludeUids: 'vip@example.com',
+            includeUids: 'user-a\nlaunch@example.com',
             excludeUids: []
           }
         }
@@ -308,7 +313,8 @@ describe('admin route module', () => {
           requireSetupComplete: true,
           requireAutomationEnabled: false,
           minAccountAgeDays: 14,
-          includeUids: ['user-a'],
+          onlyIncludeUids: ['resolved-vip-example-com'],
+          includeUids: ['user-a', 'resolved-launch-example-com'],
           excludeUids: []
         },
         updatedAt: '__TS__',
@@ -320,6 +326,45 @@ describe('admin route module', () => {
       id: 'spring-launch-2026',
       title: 'New announcement'
     }));
+  });
+
+  test('admin announcement rejects unknown email identifiers during audience resolution', async () => {
+    const getUserByEmail = jest.fn(async () => {
+      const error = new Error('User not found');
+      error.code = 'auth/user-not-found';
+      throw error;
+    });
+
+    const app = buildApp(createDeps({
+      admin: {
+        auth: jest.fn(() => ({
+          getUser: jest.fn(async () => ({ uid: 'target-uid', email: 'target@example.com', customClaims: {} })),
+          getUserByEmail,
+          setCustomUserClaims: jest.fn(async () => undefined),
+          deleteUser: jest.fn(async () => undefined)
+        }))
+      }
+    }));
+
+    const response = await request(app)
+      .post('/api/admin/announcement')
+      .set('Authorization', 'Bearer token')
+      .send({
+        announcement: {
+          enabled: true,
+          title: 'New announcement',
+          showOnce: false,
+          audience: {
+            onlyIncludeUids: ['missing@example.com']
+          }
+        }
+      });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({
+      errno: 400,
+      error: 'No user found for only include: missing@example.com'
+    });
   });
 
   test('admin announcement rejects enabled show-once announcements without an id', async () => {

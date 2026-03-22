@@ -36,21 +36,6 @@
         "type": 301
       },
       {
-        "source": "/blog",
-        "destination": "/blog/",
-        "type": 301
-      },
-      {
-        "source": "/battery-automation-roi-examples",
-        "destination": "/battery-automation-roi-examples/",
-        "type": 301
-      },
-      {
-        "source": "/home-battery-automation-options-compared",
-        "destination": "/home-battery-automation-options-compared/",
-        "type": 301
-      },
-      {
         "source": "/blog/battery-automation-roi-examples",
         "destination": "/battery-automation-roi-examples/",
         "type": 301

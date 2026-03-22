@@ -24,6 +24,7 @@ async function mockAdminAnnouncementEnvironment(page, options = {}) {
       requireSetupComplete: true,
       requireAutomationEnabled: false,
       minAccountAgeDays: 7,
+      onlyIncludeUids: [],
       includeUids: ['user-a'],
       excludeUids: []
     },
@@ -175,12 +176,14 @@ test.describe('Admin Announcement Tab', () => {
     await page.locator('#announcementTitleInput').fill('Updated announcement');
     await page.locator('#announcementBodyInput').fill('Updated body for eligible users.');
     await page.locator('#announcementMinAccountAgeInput').fill('14');
-    await page.locator('#announcementIncludeUidsInput').fill('user-a\nuser-b');
+    await page.locator('#announcementOnlyIncludeUidsInput').fill('vip@example.com');
+    await page.locator('#announcementIncludeUidsInput').fill('user-a\nuser-b@example.com');
     await page.locator('#announcementSeveritySelect').selectOption('danger');
     await page.locator('#announcementShowOnceInput').uncheck();
 
     await expect(page.locator('#announcementPreview')).toHaveClass(/danger/);
     await expect(page.locator('#announcementAudienceSummary')).toContainText('Account age >= 14 days');
+    await expect(page.locator('#announcementAudienceSummary')).toContainText('Only include allowlist: 1 user');
 
     await page.locator('#saveAnnouncementBtn').click();
 
@@ -201,7 +204,8 @@ test.describe('Admin Announcement Tab', () => {
             requireSetupComplete: true,
             requireAutomationEnabled: false,
             minAccountAgeDays: 14,
-            includeUids: ['user-a', 'user-b'],
+            onlyIncludeUids: ['vip@example.com'],
+            includeUids: ['user-a', 'user-b@example.com'],
             excludeUids: []
           }
         }

@@ -67,6 +67,7 @@ function normalizeAnnouncementAudience(value) {
     requireSetupComplete: source.requireSetupComplete !== false,
     requireAutomationEnabled: source.requireAutomationEnabled === true,
     minAccountAgeDays: minAccountAgeDays > 0 ? minAccountAgeDays : null,
+    onlyIncludeUids: normalizeUidList(source.onlyIncludeUids),
     includeUids: normalizeUidList(source.includeUids),
     excludeUids: normalizeUidList(source.excludeUids)
   };
@@ -115,6 +116,7 @@ function isAnnouncementEligible(announcement, userId, userConfig, userProfile, a
   if (!announcement || !announcement.enabled) return false;
 
   const audience = announcement.audience || {};
+  const onlyIncludeUids = Array.isArray(audience.onlyIncludeUids) ? audience.onlyIncludeUids : [];
   const includeUids = Array.isArray(audience.includeUids) ? audience.includeUids : [];
   const excludeUids = Array.isArray(audience.excludeUids) ? audience.excludeUids : [];
   const automationEnabled = typeof automationState?.enabled === 'boolean'
@@ -122,6 +124,7 @@ function isAnnouncementEligible(announcement, userId, userConfig, userProfile, a
     : userProfile?.automationEnabled === true;
 
   if (excludeUids.includes(userId)) return false;
+  if (onlyIncludeUids.length && !onlyIncludeUids.includes(userId)) return false;
 
   const forceInclude = includeUids.includes(userId);
   if (forceInclude) return true;

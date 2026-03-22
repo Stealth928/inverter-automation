@@ -384,6 +384,10 @@ components:
         minAccountAgeDays:
           type: integer
           nullable: true
+        onlyIncludeUids:
+          type: array
+          items:
+            type: string
         includeUids:
           type: array
           items:

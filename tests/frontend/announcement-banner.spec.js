@@ -44,6 +44,7 @@ async function mockAuthenticatedAnnouncementShell(page, options = {}) {
       requireSetupComplete: true,
       requireAutomationEnabled: false,
       minAccountAgeDays: 3,
+      onlyIncludeUids: [],
       includeUids: [],
       excludeUids: []
     }

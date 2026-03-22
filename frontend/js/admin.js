@@ -1480,6 +1480,7 @@
                 requireSetupComplete: true,
                 requireAutomationEnabled: false,
                 minAccountAgeDays: null,
+                onlyIncludeUids: [],
                 includeUids: [],
                 excludeUids: []
             },
@@ -1542,6 +1543,7 @@
             requireSetupInput: document.getElementById('announcementRequireSetupInput'),
             requireAutomationInput: document.getElementById('announcementRequireAutomationInput'),
             minAccountAgeInput: document.getElementById('announcementMinAccountAgeInput'),
+            onlyIncludeUidsInput: document.getElementById('announcementOnlyIncludeUidsInput'),
             includeUidsInput: document.getElementById('announcementIncludeUidsInput'),
             excludeUidsInput: document.getElementById('announcementExcludeUidsInput'),
             preview: document.getElementById('announcementPreview'),
@@ -1572,6 +1574,7 @@
             els.requireSetupInput,
             els.requireAutomationInput,
             els.minAccountAgeInput,
+            els.onlyIncludeUidsInput,
             els.includeUidsInput,
             els.excludeUidsInput
         ].forEach((el) => {
@@ -1609,14 +1612,17 @@
         if (Number(audience.minAccountAgeDays || 0) > 0) filters.push(`Account age >= ${Number(audience.minAccountAgeDays)} days`);
         if (!filters.length) filters.push('No automatic maturity filters');
 
+        const onlyIncludeSummary = Array.isArray(audience.onlyIncludeUids) && audience.onlyIncludeUids.length
+            ? `Only include allowlist: ${audience.onlyIncludeUids.length} user${audience.onlyIncludeUids.length === 1 ? '' : 's'}`
+            : 'Only include allowlist: none';
         const includeSummary = Array.isArray(audience.includeUids) && audience.includeUids.length
-            ? `Manual include: ${audience.includeUids.length} UID${audience.includeUids.length === 1 ? '' : 's'}`
-            : 'Manual include: none';
+            ? `Always include override: ${audience.includeUids.length} user${audience.includeUids.length === 1 ? '' : 's'}`
+            : 'Always include override: none';
         const excludeSummary = Array.isArray(audience.excludeUids) && audience.excludeUids.length
-            ? `Manual exclude: ${audience.excludeUids.length} UID${audience.excludeUids.length === 1 ? '' : 's'}`
-            : 'Manual exclude: none';
+            ? `Always exclude override: ${audience.excludeUids.length} user${audience.excludeUids.length === 1 ? '' : 's'}`
+            : 'Always exclude override: none';
 
-        return [filters.join(' · '), includeSummary, excludeSummary];
+        return [filters.join(' · '), onlyIncludeSummary, includeSummary, excludeSummary];
     }
 
     function renderAnnouncementPreview(announcement) {
@@ -1667,6 +1673,7 @@
         if (els.requireSetupInput) els.requireSetupInput.checked = next.audience.requireSetupComplete !== false;
         if (els.requireAutomationInput) els.requireAutomationInput.checked = next.audience.requireAutomationEnabled === true;
         if (els.minAccountAgeInput) els.minAccountAgeInput.value = Number(next.audience.minAccountAgeDays || 0) > 0 ? String(next.audience.minAccountAgeDays) : '';
+        if (els.onlyIncludeUidsInput) els.onlyIncludeUidsInput.value = formatAnnouncementUidList(next.audience.onlyIncludeUids);
         if (els.includeUidsInput) els.includeUidsInput.value = formatAnnouncementUidList(next.audience.includeUids);
         if (els.excludeUidsInput) els.excludeUidsInput.value = formatAnnouncementUidList(next.audience.excludeUids);
 
@@ -1699,6 +1706,7 @@
                 requireSetupComplete: els.requireSetupInput?.checked !== false,
                 requireAutomationEnabled: els.requireAutomationInput?.checked === true,
                 minAccountAgeDays,
+                onlyIncludeUids: parseAnnouncementUidList(els.onlyIncludeUidsInput?.value || ''),
                 includeUids: parseAnnouncementUidList(els.includeUidsInput?.value || ''),
                 excludeUids: parseAnnouncementUidList(els.excludeUidsInput?.value || '')
             }

@@ -218,6 +218,41 @@ commonMistakes.forEach(({ pattern, name, shouldNotFind }) => {
 section('7. Verifying firebase.json Configuration');
 
 const firebaseJsonPath = path.join(repoRoot, 'firebase.json');
+const normalizeHostingPath = (value) => {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return '';
+  const withoutQuery = raw.split('?')[0].split('#')[0].replace(/\\+/g, '/');
+  if (!withoutQuery.startsWith('/')) {
+    return `/${withoutQuery.replace(/^\/+/, '')}`;
+  }
+  return withoutQuery;
+};
+
+const normalizeWithoutTrailingSlash = (value) => normalizeHostingPath(value).replace(/\/+$/, '') || '/';
+
+const getDirectoryBackedPaths = (publicDirPath) => {
+  const backedPaths = new Set(['/']);
+  const walk = (currentDir, relativeDir = '') => {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    const hasIndexHtml = entries.some((entry) => entry.isFile() && entry.name.toLowerCase() === 'index.html');
+    if (hasIndexHtml) {
+      const normalizedRelative = relativeDir.replace(/\\+/g, '/').replace(/^\/+|\/+$/g, '');
+      const routePath = normalizedRelative ? `/${normalizedRelative}` : '/';
+      backedPaths.add(routePath);
+    }
+
+    entries
+      .filter((entry) => entry.isDirectory())
+      .forEach((entry) => {
+        const nextRelative = relativeDir ? path.join(relativeDir, entry.name) : entry.name;
+        walk(path.join(currentDir, entry.name), nextRelative);
+      });
+  };
+
+  walk(publicDirPath);
+  return backedPaths;
+};
+
 if (fs.existsSync(firebaseJsonPath)) {
   try {
     const firebaseConfig = JSON.parse(fs.readFileSync(firebaseJsonPath, 'utf8'));
@@ -231,6 +266,28 @@ if (fs.existsSync(firebaseJsonPath)) {
       } else {
         checkFail('API rewrite misconfigured in firebase.json');
         failures.push('FIREBASE_CONFIG_FAILURE');
+      }
+
+      const publicDir = path.join(repoRoot, firebaseConfig.hosting.public || 'frontend');
+      if (fs.existsSync(publicDir)) {
+        const directoryBackedPaths = getDirectoryBackedPaths(publicDir);
+        const redirects = Array.isArray(firebaseConfig.hosting.redirects) ? firebaseConfig.hosting.redirects : [];
+        const riskyRedirects = redirects.filter((redirect) => {
+          const source = normalizeHostingPath(redirect && redirect.source);
+          const destination = normalizeHostingPath(redirect && redirect.destination);
+          if (!source || !destination) return false;
+          if (!directoryBackedPaths.has(normalizeWithoutTrailingSlash(destination))) return false;
+          return normalizeWithoutTrailingSlash(source) === normalizeWithoutTrailingSlash(destination);
+        });
+
+        if (riskyRedirects.length) {
+          checkFail(`firebase.json has self-redirect risks for directory-backed routes: ${riskyRedirects.map((redirect) => redirect.source).join(', ')}`);
+          failures.push('FIREBASE_CONFIG_FAILURE');
+        } else {
+          checkPass('firebase.json avoids self-redirects on directory-backed routes');
+        }
+      } else {
+        checkWarn(`Hosting public directory not found for redirect validation: ${publicDir}`);
       }
     } else {
       checkWarn('firebase.json missing hosting rewrites');

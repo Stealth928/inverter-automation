@@ -41,8 +41,11 @@ The payload supports:
 - `audience.requireSetupComplete`
 - `audience.requireAutomationEnabled`
 - `audience.minAccountAgeDays`
+- `audience.onlyIncludeUids`
 - `audience.includeUids`
 - `audience.excludeUids`
+
+For admin writes, the three manual audience lists accept either Firebase UIDs or login email addresses. Email entries are resolved to the current UID on save and the stored config remains UID-based.
 
 The saved response also includes `updatedAt`, `updatedByUid`, and `updatedByEmail` metadata.
 
@@ -258,8 +261,15 @@ Eligibility is evaluated server-side from the shared announcement config plus li
 - `setupComplete`
 - `automationEnabled`
 - account age from `users/{uid}.createdAt`
+- manual `onlyIncludeUids`
 - manual `includeUids` and `excludeUids`
 - previously dismissed show-once IDs from `announcementDismissedIds`
+
+Audience precedence is:
+- `excludeUids` always blocks
+- when `onlyIncludeUids` has entries, users outside that list are blocked
+- `includeUids` bypasses the maturity filters for remaining users
+- otherwise the standard tour/setup/automation/account-age filters apply
 
 **Response:**
 ```json
@@ -278,6 +288,7 @@ Eligibility is evaluated server-side from the shared announcement config plus li
         "requireSetupComplete": true,
         "requireAutomationEnabled": false,
         "minAccountAgeDays": 3,
+        "onlyIncludeUids": [],
         "includeUids": [],
         "excludeUids": []
       }
