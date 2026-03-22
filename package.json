@@ -2,6 +2,8 @@
   "scripts": {
     "aemo:dashboard:build": "node scripts/generate-aemo-market-insights.js",
     "aemo:dashboard:update:delta": "node scripts/aemo-market-insights-delta-update.js",
+    "aemo:dashboard:sync:hosting": "node scripts/sync-hosted-market-insights.js",
+    "test:market-insights:contracts": "node --test tests/scripts/aemo-market-insights-*.test.js",
     "release:manifest": "node scripts/generate-release-manifest.js",
     "release:verify-live": "node scripts/verify-release-alignment.js",
     "emu:start": "node scripts/emulator-cli.js start",

@@ -2,6 +2,7 @@
   "hosting": {
     "public": "frontend",
     "predeploy": [
+      "npm run aemo:dashboard:sync:hosting -- --strict",
       "npm run release:manifest"
     ],
     "ignore": [
@@ -32,7 +33,7 @@
       },
       {
         "source": "/market-insights",
-        "destination": "/market-insights.html",
+        "destination": "/market-insights/",
         "type": 301
       },
       {
@@ -219,11 +220,38 @@
         ]
       },
       {
-        "source": "/market-insights.html",
+        "source": "/market-insights/**",
         "headers": [
           {
             "key": "X-Robots-Tag",
             "value": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+          }
+        ]
+      },
+      {
+        "source": "/market-insights.html",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, nofollow, noarchive"
+          }
+        ]
+      },
+      {
+        "source": "/llms.txt",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600, stale-while-revalidate=86400"
+          }
+        ]
+      },
+      {
+        "source": "/llms-full.txt",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600, stale-while-revalidate=86400"
           }
         ]
       },

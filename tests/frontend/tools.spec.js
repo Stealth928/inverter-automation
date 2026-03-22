@@ -1,13 +1,14 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Public Tools', () => {
-  test('homepage tools section exposes one live calculator and marks the rest as coming soon', async ({ page }) => {
+  test('homepage tools section exposes two live tools and keeps the remaining cards on the waitlist', async ({ page }) => {
     await page.goto('/index.html');
 
     await expect(page.locator('#tools .tool-card__cta[href="/battery-roi-calculator.html"]')).toHaveCount(1);
-    await expect(page.locator('#tools .tool-card__cta--waitlist')).toHaveCount(3);
-    await expect(page.locator('#tools .tool-card__badge--live')).toHaveCount(1);
-    await expect(page.locator('#tools .tool-card--coming')).toHaveCount(3);
+    await expect(page.locator('#tools .tool-card__cta[href="/market-insights/"]')).toHaveCount(1);
+    await expect(page.locator('#tools .tool-card__cta--waitlist')).toHaveCount(2);
+    await expect(page.locator('#tools .tool-card__badge--live')).toHaveCount(2);
+    await expect(page.locator('#tools .tool-card--coming')).toHaveCount(2);
   });
 
   test('battery ROI calculator recomputes results when the scenario changes', async ({ page }) => {

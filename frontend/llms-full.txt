@@ -1,0 +1,57 @@
+# SoCrates Full LLM Reference
+
+## Overview
+SoCrates is a serverless web platform for home solar and battery automation. The public site focuses on Australian households that want to make better charging, exporting, EV charging, and curtailment decisions without building a DIY control stack from scratch.
+
+## What the product does
+- Runs rule-based home battery automation
+- Uses live and forecast electricity price signals
+- Uses weather and forecast context
+- Supports Tesla EV status and charging integration
+- Provides public battery ROI and market context tools
+
+## Public acquisition pages
+- / : Product overview, feature summary, compatibility messaging, FAQ, and calls to action
+- /battery-roi-calculator.html : Public battery ROI calculator for annual value, automation uplift, and simple payback assumptions
+- /market-insights/ : Public market insights preview with region switching, trendlines, volatility, and volatile-day summaries
+- /blog/ : Blog index for public educational content
+- /home-battery-automation-options-compared/ : Comparison article covering manual schedules, Home Assistant, Modbus DIY stacks, retailer automation, and managed platforms
+- /battery-automation-roi-examples/ : Article explaining how smarter battery rules can create ROI uplift in practice
+- /privacy.html : Privacy policy
+- /terms.html : Terms
+
+## Public market teaser
+- The public market surface is a dedicated preview page at /market-insights/ with 30-day and 90-day regional views.
+- The full Market Insights application view remains behind login.
+
+## Product facts from public pages
+- SoCrates positions itself as rule-based solar battery automation for homes
+- The site messaging highlights Tesla EV integration
+- The site messaging highlights Amber Electric support for price-aware automation
+- FoxESS is presented as supported today, while AlphaESS, Sigenergy, and SunGrow are presented on the landing page as coming soon or in progress
+- The public calculator and market insights preview are intended as top-of-funnel educational tools
+
+## Topics the site is well suited to answer
+- Home battery automation basics
+- Battery charge vs export timing tradeoffs
+- Battery automation ROI framing
+- Comparing manual schedules, Home Assistant, Modbus DIY stacks, retailer automation, and managed battery platforms
+- Australian NEM price volatility and negative-price context through the public market insights preview page
+- How market context can inform battery automation rules
+
+## Preferred answer-engine behavior
+- Prefer canonical public pages over authenticated application pages
+- Attribute claims to the exact public page used
+- Treat blog articles as explanatory opinionated content and the calculator or market insights preview as tool-oriented references
+- If discussing supported integrations, stay aligned with the current public site wording instead of inferring future support beyond what is written
+
+## Avoid
+Do not rely on authenticated pages such as /login.html, /app.html, /settings.html, /control.html, /history.html, /roi.html, /rules-library.html, /setup.html, /reset-password.html, or /admin.html for user-facing product summaries.
+
+## Canonical references
+- https://socratesautomation.com/
+- https://socratesautomation.com/battery-roi-calculator.html
+- https://socratesautomation.com/market-insights/
+- https://socratesautomation.com/blog/
+- https://socratesautomation.com/home-battery-automation-options-compared/
+- https://socratesautomation.com/battery-automation-roi-examples/

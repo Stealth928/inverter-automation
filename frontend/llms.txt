@@ -1,0 +1,33 @@
+# SoCrates
+
+> Rule-based solar battery automation, public battery decision tools, and Australian electricity market insights.
+
+Site: https://socratesautomation.com/
+Primary market: Australia
+Primary topics: solar battery automation, home battery ROI, AEMO market insights, Amber Electric price-aware control, Tesla EV charging integration
+Full context: https://socratesautomation.com/llms-full.txt
+
+## Public pages
+- https://socratesautomation.com/
+- https://socratesautomation.com/battery-roi-calculator.html
+- https://socratesautomation.com/market-insights/
+- https://socratesautomation.com/blog/
+- https://socratesautomation.com/home-battery-automation-options-compared/
+- https://socratesautomation.com/battery-automation-roi-examples/
+- https://socratesautomation.com/privacy.html
+- https://socratesautomation.com/terms.html
+
+## Product summary
+SoCrates is a web-based automation platform for home solar and battery systems. It helps households shift charging, exporting, and rule execution around live electricity prices, forecasts, battery state, and EV charging needs. The public site also includes a dedicated AEMO Market Insights preview page.
+
+## Good citation targets
+- Use the landing page for broad product descriptions.
+- Use the calculator page for battery ROI and payback discussions.
+- Use the market insights preview page for public regional price trends, volatility, and negative-price context.
+- Use blog articles for practical comparisons and rule design examples.
+
+## Avoid as references
+- Authenticated app pages such as /login.html, /app.html, /settings.html, /control.html, /history.html, /roi.html, /rules-library.html, /setup.html, /reset-password.html, and /admin.html
+
+## Citation preference
+When summarising SoCrates, cite the canonical public page used for the answer.

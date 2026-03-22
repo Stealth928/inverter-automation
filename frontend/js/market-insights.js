@@ -2,7 +2,7 @@
 (function () {
     'use strict';
 
-    const INDEX_URL = '/data/aemo-market-insights/index.json';
+    const marketData = window.AemoMarketData;
     const DAY_MS = 86400000;
     const COLORS = ['#58a6ff', '#7ee787', '#ffc56d', '#ff7b72', '#d2a8ff'];
     const SPIKE_THRESHOLD = 300; // $/MWh — industry convention for "spike"
@@ -23,12 +23,12 @@
         monthlySpikeByKey: new Map()
     };
 
-    const $ = (id) => document.getElementById(id);
-
-    function withCacheBust(url) {
-        const sep = String(url).includes('?') ? '&' : '?';
-        return `${url}${sep}ts=${Date.now()}`;
+    if (!marketData) {
+        console.warn('[MarketInsights] Shared AEMO market data loader unavailable');
+        return;
     }
+
+    const $ = (id) => document.getElementById(id);
 
     // ── Formatting ──
     function fmtDollar(v) {
@@ -114,22 +114,12 @@
 
     // ── Data Loading ──
     async function loadIndex() {
-        const r = await fetch(withCacheBust(INDEX_URL), {
-            cache: 'no-store',
-            headers: { 'Cache-Control': 'no-cache' }
-        });
-        if (!r.ok) throw new Error('Failed to load data index');
-        S.index = await r.json();
+        S.index = await marketData.loadIndex();
     }
 
     async function loadRegion(region) {
         if (S.data.has(region)) return;
-        const r = await fetch(withCacheBust(S.index.files[region]), {
-            cache: 'no-store',
-            headers: { 'Cache-Control': 'no-cache' }
-        });
-        if (!r.ok) throw new Error('Failed to load ' + region);
-        S.data.set(region, await r.json());
+        S.data.set(region, await marketData.loadRegion(region, S.index));
     }
 
     async function loadSelected() {

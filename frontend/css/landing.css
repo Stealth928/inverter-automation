@@ -557,6 +557,11 @@ section { padding: 80px 0; }
   --tool-glow: rgba(255, 141, 184, 0.45);
 }
 
+.tool-card__icon--market {
+  --tool-glyph: #9ff0ff;
+  --tool-glow: rgba(159, 240, 255, 0.46);
+}
+
 .tool-card:hover .tool-card__icon {
   transform: translateY(-2px) scale(1.03);
   border-color: rgba(162, 203, 255, 0.62);
@@ -708,6 +713,13 @@ section { padding: 80px 0; }
 
 .tool-card--coming {
   background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(247,249,252,.94));
+}
+
+.tool-card--market {
+  background:
+    radial-gradient(140% 120% at 100% 0%, rgba(110, 231, 255, .12), rgba(110, 231, 255, 0) 44%),
+    linear-gradient(165deg, rgba(255,255,255,.96) 0%, rgba(241,250,255,.95) 52%, rgba(235,247,255,.95) 100%);
+  border-color: rgba(82, 190, 222, .36);
 }
 
 .tools-footer {

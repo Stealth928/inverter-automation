@@ -5,6 +5,7 @@ const ROOT = path.resolve(__dirname, '..');
 const OUTPUT_DIR = path.join(ROOT, 'frontend', 'data', 'aemo-market-insights');
 const LOCAL_INDEX_PATH = path.join(OUTPUT_DIR, 'index.json');
 const REMOTE_DATA_PREFIX = '/data/aemo-market-insights/';
+const STRICT_MODE = process.argv.includes('--strict') || String(process.env.MARKET_INSIGHTS_SYNC_STRICT || '').trim() === '1';
 const DEFAULT_HOSTS = [
   'https://inverter-automation-firebase.web.app',
   'https://inverter-automation-firebase.firebaseapp.com'
@@ -146,6 +147,9 @@ async function main() {
   }
 
   if (!remoteBundle) {
+    if (STRICT_MODE) {
+      throw new Error(`[MarketInsightsSync] Unable to fetch hosted market insights bundle in strict mode.${lastError ? ` Last error: ${lastError.message || lastError}` : ''}`);
+    }
     console.warn(`[MarketInsightsSync] Unable to fetch hosted market insights bundle. Keeping local files as-is.${lastError ? ` Last error: ${lastError.message || lastError}` : ''}`);
     return;
   }

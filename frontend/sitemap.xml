@@ -31,6 +31,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://socratesautomation.com/market-insights/</loc>
+    <lastmod>2026-03-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://socratesautomation.com/terms.html</loc>
     <lastmod>2026-03-17</lastmod>
     <changefreq>yearly</changefreq>

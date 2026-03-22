@@ -5,4 +5,7 @@ Allow: /
 Disallow: /api/
 Disallow: /__/
 
+# LLM-friendly site summary for answer engines.
+# https://socratesautomation.com/llms.txt
+
 Sitemap: https://socratesautomation.com/sitemap.xml

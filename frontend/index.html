@@ -699,7 +699,7 @@
             </svg>
           </div>
           <h3 class="feature-card__title">Market Insights</h3>
-          <p class="feature-card__body">Track AEMO price trends, volatility, and negative-price events across NEM regions. Compare markets, inspect spikes, and tune your automation with clearer market context.</p>
+          <p class="feature-card__body">Track AEMO price trends, volatility, and negative-price events across NEM regions. <a href="/market-insights/" data-analytics-event="tool_open_click" data-analytics-location="features_section" data-analytics-label="AEMO Market Insights Preview">Open the public preview</a>.</p>
         </div>
 
       </div>
@@ -960,26 +960,30 @@
           </div>
         </article>
 
-        <article class="tool-card tool-card--coming reveal">
+        <article class="tool-card tool-card--market reveal">
           <div class="tool-card__topline">
-            <span class="tool-card__eyebrow">Tomorrow plan</span>
+            <span class="tool-card__eyebrow">Market snapshot</span>
           </div>
           <div class="tool-card__media">
-            <div class="tool-card__icon tool-card__icon--daily" aria-hidden="true">
+            <div class="tool-card__icon tool-card__icon--market" aria-hidden="true">
               <svg class="tool-card__glyph" viewBox="0 0 24 24" focusable="false">
-                <path d="M3 6H8" />
-                <path d="M3 12H7" />
-                <path d="M3 18H6" />
-                <path d="M13.4 2L8.4 12H13L11.2 22L19.8 10H14.6L13.4 2Z" />
+                <path d="M3 20H21" />
+                <path d="M5 15.5L8.7 11.6L12.2 13.8L18.5 6.8" />
+                <circle cx="5" cy="15.5" r="1" />
+                <circle cx="8.7" cy="11.6" r="1" />
+                <circle cx="12.2" cy="13.8" r="1" />
+                <circle cx="18.5" cy="6.8" r="1" />
+                <path d="M16.2 6.8H18.5V9.1" />
               </svg>
             </div>
-            <span class="tool-card__badge">Coming soon</span>
+            <span class="tool-card__badge tool-card__badge--live">Live now</span>
           </div>
-          <h3 class="tool-card__title">Charge Window Planner</h3>
-          <p class="tool-card__body">Compare overnight import prices with tomorrow&apos;s solar outlook and evening demand.</p>
-          <p class="tool-card__hint">Best for: deciding if tonight&apos;s grid charge is worth it.</p>
+          <h3 class="tool-card__title">AEMO Market Snapshot</h3>
+          <p class="tool-card__body">See the recent price moves, volatility, and negative-price activity in your region.</p>
+          <p class="tool-card__hint">Best for: checking if your market is active enough to justify deeper analysis.</p>
+          <p class="tool-card__micro">Fast public preview. Full workspace stays behind login.</p>
           <div class="tool-card__actions">
-            <a href="/login.html?tab=signup" class="tool-card__cta tool-card__cta--waitlist" data-analytics-event="tool_waitlist_click" data-analytics-location="tools_section" data-analytics-label="Charge Window Planner">Notify me</a>
+            <a href="/market-insights/" class="tool-card__cta" data-analytics-event="tool_open_click" data-analytics-location="tools_section" data-analytics-label="AEMO Market Insights Preview">Open preview</a>
           </div>
         </article>
 
@@ -1014,7 +1018,7 @@
       </div>
 
       <div class="tools-footer reveal">
-        <p class="tools-footer__copy">Battery ROI Calculator is live now. Next up: Curtailment Threshold Checker, then Charge Window Planner and Rule Simulator.</p>
+        <p class="tools-footer__copy">Battery ROI Calculator and the AEMO Market Snapshot preview are live now. Next up: Curtailment Threshold Checker and Rule Simulator.</p>
         <div class="tools-footer__actions">
           <a href="/login.html?tab=signup" class="btn btn-primary" data-analytics-event="claim_spot_click" data-analytics-location="tools_section">Claim free access</a>
           <a href="#screenshots" class="btn btn-ghost" data-analytics-event="view_screenshots_click" data-analytics-location="tools_section">See the full platform</a>

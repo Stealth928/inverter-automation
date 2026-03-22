@@ -265,7 +265,7 @@ test.describe('Market Insights Page', () => {
   test('30 day preset uses the exact daily window and keeps the summary aligned with the chart', async ({ page }) => {
     const fixture = buildExactThirtyDayFixture();
 
-    await page.route('**/data/aemo-market-insights/index.json', async (route) => {
+    await page.route('**/data/aemo-market-insights/index.json*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -273,7 +273,7 @@ test.describe('Market Insights Page', () => {
       });
     });
 
-    await page.route('**/data/aemo-market-insights/NSW.json', async (route) => {
+    await page.route('**/data/aemo-market-insights/NSW.json*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

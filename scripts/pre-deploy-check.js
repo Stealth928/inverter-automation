@@ -71,6 +71,19 @@ try {
 }
 
 // ============================================================================
+// 1B. RUN MARKET INSIGHTS CONTRACT TESTS
+// ============================================================================
+section('1B. Running Market Insights Contract Tests');
+try {
+  log(colors.cyan, 'Running: npm run test:market-insights:contracts');
+  execSync('npm run test:market-insights:contracts', { stdio: 'inherit', cwd: repoRoot });
+  checkPass('Market Insights contract tests passed');
+} catch (e) {
+  checkFail('Market Insights contract tests failed - see output above');
+  failures.push('MARKET_INSIGHTS_CONTRACT_FAILURE');
+}
+
+// ============================================================================
 // 2. RUN LINTER
 // ============================================================================
 section('2. Running ESLint');
@@ -277,6 +290,7 @@ if (fs.existsSync(firebaseJsonPath)) {
           const destination = normalizeHostingPath(redirect && redirect.destination);
           if (!source || !destination) return false;
           if (!directoryBackedPaths.has(normalizeWithoutTrailingSlash(destination))) return false;
+          if (!source.endsWith('/') && destination.endsWith('/')) return false;
           return normalizeWithoutTrailingSlash(source) === normalizeWithoutTrailingSlash(destination);
         });
 

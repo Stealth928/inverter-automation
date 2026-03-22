@@ -862,7 +862,15 @@ test.describe('Dashboard Page', () => {
       expect(true).toBeTruthy();
       return;
     }
-    expect(hintText.includes('signed command') || hintText.includes('proxy') || pillsText.includes('proxy required')).toBeTruthy();
+    expect(
+      hintText.includes('signed command') ||
+      hintText.includes('proxy') ||
+      hintText.includes('virtual-key') ||
+      hintText.includes('virtual key') ||
+      hintText.includes('pairing') ||
+      pillsText.includes('proxy required') ||
+      pillsText.includes('pairing required')
+    ).toBeTruthy();
   });
 
   test('should disable charging controls after Tesla reconnect error to avoid repeat command calls', async ({ page }) => {

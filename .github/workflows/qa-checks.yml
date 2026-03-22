@@ -28,6 +28,9 @@ jobs:
     
     - name: Install functions dependencies
       run: npm --prefix functions ci
+
+    - name: Verify Market Insights hosted freshness contract
+      run: npm run test:market-insights:contracts
     
     - name: Run pre-deployment checks
       run: node scripts/pre-deploy-check.js

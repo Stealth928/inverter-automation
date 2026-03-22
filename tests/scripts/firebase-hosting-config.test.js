@@ -47,6 +47,7 @@ test('directory-backed routes do not redirect to themselves with only trailing-s
     const destination = normalizeHostingPath(redirect && redirect.destination);
     if (!source || !destination) return false;
     if (!directoryBackedPaths.has(normalizeWithoutTrailingSlash(destination))) return false;
+    if (!source.endsWith('/') && destination.endsWith('/')) return false;
     return normalizeWithoutTrailingSlash(source) === normalizeWithoutTrailingSlash(destination);
   });
 

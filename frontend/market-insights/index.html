@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AEMO Market Insights Preview | SoCrates</title>
+    <meta name="description" content="Explore a public AEMO market insights preview with region-by-region electricity price trends, volatility, spike days, and negative-price activity across the NEM.">
+    <meta name="robots" content="index, follow">
+    <meta name="googlebot" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <link rel="canonical" href="https://socratesautomation.com/market-insights/">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/icons/favicon.ico" sizes="any">
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <meta property="og:site_name" content="SoCrates">
+    <meta property="og:locale" content="en_AU">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="AEMO Market Insights Preview | SoCrates">
+    <meta property="og:description" content="Preview regional electricity price trends, volatility, and spike days before stepping into the full SoCrates market workspace.">
+    <meta property="og:url" content="https://socratesautomation.com/market-insights/">
+    <meta property="og:image" content="https://socratesautomation.com/images/screenshots/screen-1.png">
+    <meta property="og:image:width" content="3832">
+    <meta property="og:image:height" content="1516">
+    <meta property="og:image:alt" content="SoCrates market insights preview showing AEMO trend charts and regional comparisons">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="AEMO Market Insights Preview | SoCrates">
+    <meta name="twitter:description" content="Public preview of AEMO market trends, volatility, and region comparisons across the NEM.">
+    <meta name="twitter:url" content="https://socratesautomation.com/market-insights/">
+    <meta name="twitter:image" content="https://socratesautomation.com/images/screenshots/screen-1.png">
+    <meta name="twitter:image:alt" content="SoCrates market insights preview showing AEMO trend charts and regional comparisons">
+    <script src="/js/theme-init.js"></script>
+    <link rel="stylesheet" href="/css/shared-styles.css?v=9">
+    <link rel="stylesheet" href="/css/market-insights.css?v=3">
+    <link rel="stylesheet" href="/css/market-insights-preview.css?v=2">
+    <script src="/js/marketing-analytics.js" defer></script>
+    <script src="/js/aemo-market-data.js?v=1" defer></script>
+    <script src="/js/market-insights-preview.js?v=2" defer></script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebPage",
+          "name": "AEMO Market Insights Preview",
+          "description": "Public preview of regional AEMO electricity market trends, volatility, and negative-price activity.",
+          "url": "https://socratesautomation.com/market-insights/",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "SoCrates",
+            "url": "https://socratesautomation.com/"
+          }
+        },
+        {
+          "@type": "Dataset",
+          "name": "AEMO Market Insights Preview",
+          "description": "A public preview of SoCrates market analytics across Australian NEM regions using daily electricity market summaries.",
+          "url": "https://socratesautomation.com/market-insights/",
+          "creator": {
+            "@type": "Organization",
+            "name": "SoCrates"
+          },
+          "spatialCoverage": "Australia",
+          "keywords": ["AEMO", "NEM", "electricity prices", "battery automation", "market volatility"]
+        },
+        {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://socratesautomation.com/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Market Insights Preview",
+              "item": "https://socratesautomation.com/market-insights/"
+            }
+          ]
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What does the public market preview include?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "The public preview includes region-level price trends, volatility, spike-day counts, negative-price activity, and a compact comparison view across NEM regions."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What stays inside the full member view?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "The full member experience keeps deeper heatmaps, day inspection, broader presets, and richer multi-region workflow views behind login."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How often is the preview updated?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "The preview reads from the published AEMO market dataset and shows the latest available update date so visitors can judge freshness directly."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+</head>
+<body>
+    <header class="mip-topbar">
+        <a class="mip-brand" href="/">
+            <span class="mip-brand__mark">S</span>
+            <span class="mip-brand__text">SoCrates</span>
+        </a>
+        <nav class="mip-topbar__nav" aria-label="Primary">
+            <a href="/">Home</a>
+            <a href="/battery-roi-calculator.html">ROI Calculator</a>
+            <a href="/blog/">Blog</a>
+            <a href="/login.html?tab=signup&amp;returnTo=%2Fmarket-insights.html" class="mip-topbar__cta" data-analytics-event="cta_click" data-analytics-location="market_insights_topbar" data-analytics-label="Unlock Full Market Insights">Unlock full view</a>
+        </nav>
+    </header>
+
+    <main class="mip-page mi-page">
+        <section class="mip-hero">
+            <div class="mip-hero__copy">
+                <span class="mip-eyebrow">Public preview</span>
+                <h1>Is your region worth chasing?</h1>
+                <p class="mip-lead">Check price arc, spike days, and negative-price activity across NEM regions before stepping into the full member view.</p>
+                <div class="mip-hero__actions">
+                    <a href="/login.html?tab=signup&amp;returnTo=%2Fmarket-insights.html" class="mip-button mip-button--primary" data-analytics-event="cta_click" data-analytics-location="market_insights_hero" data-analytics-label="Unlock Full Market Insights">Unlock full insights</a>
+                    <a href="#previewControls" class="mip-button mip-button--secondary">Explore preview</a>
+                </div>
+                <ul class="mip-value-points">
+                    <li>Five NEM regions</li>
+                    <li>30-day and 90-day views</li>
+                    <li>Same published data feed as the member page</li>
+                </ul>
+            </div>
+            <aside class="mip-hero__panel">
+                <div class="mip-hero-card">
+                    <div class="mip-hero-card__head">
+                        <span class="mip-pill mip-pill--live">Live preview</span>
+                        <span class="mip-pill" id="previewFreshness">Loading market data...</span>
+                    </div>
+                    <h2 id="previewHeadline">Preparing regional market summary...</h2>
+                    <p id="previewSummary">Loading the latest regional snapshot.</p>
+                    <dl class="mip-hero-card__stats">
+                        <div>
+                            <dt>Selected region</dt>
+                            <dd id="previewRegionLabel">NSW</dd>
+                        </div>
+                        <div>
+                            <dt>Lookback</dt>
+                            <dd id="previewWindowLabel">30 days</dd>
+                        </div>
+                        <div>
+                            <dt>Data quality</dt>
+                            <dd id="previewCoverage">--</dd>
+                        </div>
+                    </dl>
+                </div>
+            </aside>
+        </section>
+
+        <section class="mi-summary mip-summary-band" id="previewSummaryBand" aria-live="polite">
+            <div class="mi-summary__icon mi-summary__icon--normal" aria-hidden="true">↗</div>
+            <div class="mi-summary__body">
+                <div class="mi-summary__signal mi-summary__signal--normal">Preview</div>
+                <p class="mi-summary__text">Loading the latest market signal.</p>
+            </div>
+        </section>
+
+        <section class="mip-controls mi-controls" id="previewControls" aria-label="Preview controls">
+            <div class="mip-control-group">
+                <span class="mip-control-group__label">Region</span>
+                <div class="mip-chip-row" id="previewRegionChips"></div>
+            </div>
+            <div class="mip-control-group">
+                <span class="mip-control-group__label">Window</span>
+                <div class="mip-chip-row" id="previewRangeChips"></div>
+            </div>
+        </section>
+
+        <section class="mip-kpis mi-kpis" aria-label="Market snapshot metrics">
+            <article class="mi-kpi">
+                <span class="mi-kpi__label">Average price</span>
+                <strong class="mi-kpi__value" id="previewAvgPrice">--</strong>
+                <p class="mi-kpi__sub">Mean daily price</p>
+            </article>
+            <article class="mi-kpi mi-kpi--accent">
+                <span class="mi-kpi__label">Peak day</span>
+                <strong class="mi-kpi__value" id="previewPeakPrice">--</strong>
+                <p class="mi-kpi__sub" id="previewPeakMeta">Waiting for latest spike day</p>
+            </article>
+            <article class="mi-kpi">
+                <span class="mi-kpi__label">Negative intervals</span>
+                <strong class="mi-kpi__value" id="previewNegative">--</strong>
+                <p class="mi-kpi__sub">Below $0/MWh</p>
+            </article>
+            <article class="mi-kpi">
+                <span class="mi-kpi__label">Volatility</span>
+                <strong class="mi-kpi__value" id="previewVolatility">--</strong>
+                <p class="mi-kpi__sub">Average daily spread</p>
+            </article>
+            <article class="mi-kpi">
+                <span class="mi-kpi__label">Spike days</span>
+                <strong class="mi-kpi__value" id="previewSpikeDays">--</strong>
+                <p class="mi-kpi__sub">Peak above $300/MWh</p>
+            </article>
+            <article class="mi-kpi">
+                <span class="mi-kpi__label">Lowest day</span>
+                <strong class="mi-kpi__value" id="previewLowestPrice">--</strong>
+                <p class="mi-kpi__sub" id="previewLowestMeta">Waiting for calmest day</p>
+            </article>
+        </section>
+
+        <section class="mip-grid mip-grid--primary">
+            <article class="mip-card mip-card--chart mi-card">
+                <div class="mip-card__head mi-card__head">
+                    <div>
+                        <span class="mip-card__eyebrow">Trend</span>
+                        <h2 class="mi-card__title">Daily price arc</h2>
+                    </div>
+                    <p id="previewTrendCaption">Loading the latest price movement.</p>
+                </div>
+                <div class="mip-chart" id="previewTrendChart" role="img" aria-label="Market trend chart"></div>
+            </article>
+
+            <article class="mip-card mi-card">
+                <div class="mip-card__head mi-card__head">
+                    <div>
+                        <span class="mip-card__eyebrow">Readout</span>
+                        <h2 class="mi-card__title">What this means</h2>
+                    </div>
+                </div>
+                <ul class="mip-takeaways" id="previewTakeaways">
+                    <li>Loading regional readout...</li>
+                </ul>
+                <div class="mip-note">
+                    <strong>Why this page exists</strong>
+                    <p>It gives a quick public read. The denser workflow stays in the member app.</p>
+                </div>
+            </article>
+        </section>
+
+        <section class="mip-card mip-card--wide mi-card">
+            <div class="mip-card__head mi-card__head">
+                <div>
+                    <span class="mip-card__eyebrow">Cross-region</span>
+                    <h2 class="mi-card__title">Region snapshot</h2>
+                </div>
+                <p>See where the real movement is clustering.</p>
+            </div>
+            <div class="mip-region-grid mi-region-cards" id="previewRegionCards">
+                <div class="mi-empty">Loading region comparison...</div>
+            </div>
+        </section>
+
+        <section class="mip-grid">
+            <article class="mip-card mip-card--wide mi-card">
+                <div class="mip-card__head mi-card__head">
+                    <div>
+                        <span class="mip-card__eyebrow">Volatility rank</span>
+                        <h2 class="mi-card__title">Days worth attention</h2>
+                    </div>
+                    <p>Ranked by spread, peaks, and negative pricing.</p>
+                </div>
+                <div class="mi-ranking" id="previewRankingList">
+                    <div class="mi-empty">Building the volatile days list...</div>
+                </div>
+            </article>
+        </section>
+
+        <section class="mip-upgrade">
+            <div class="mip-upgrade__copy">
+                <span class="mip-eyebrow">Full member view</span>
+                <h2>If the preview looks useful, the full workspace goes much deeper.</h2>
+                <p>Heatmaps, denser history, and working views stay inside login.</p>
+            </div>
+            <div class="mip-upgrade__grid">
+                <article class="mip-upgrade-card">
+                    <h3>Deeper diagnostics</h3>
+                    <p>Heatmaps, day inspection, and broader time controls.</p>
+                </article>
+                <article class="mip-upgrade-card">
+                    <h3>Rule design context</h3>
+                    <p>Connect market movement to battery timing decisions.</p>
+                </article>
+                <article class="mip-upgrade-card">
+                    <h3>Private working view</h3>
+                    <p>Keep the higher-density operational workspace private.</p>
+                </article>
+            </div>
+            <div class="mip-upgrade__actions">
+                <a href="/login.html?tab=signup&amp;returnTo=%2Fmarket-insights.html" class="mip-button mip-button--primary" data-analytics-event="cta_click" data-analytics-location="market_insights_upgrade" data-analytics-label="Unlock Full Market Insights">Unlock full insights</a>
+                <a href="/battery-automation-roi-examples/" class="mip-button mip-button--secondary" data-analytics-event="blog_post_click" data-analytics-location="market_insights_upgrade" data-analytics-label="Battery Automation ROI Examples">See why timing matters</a>
+            </div>
+        </section>
+
+        <section class="mip-faq" id="marketInsightsFaq">
+            <div class="mip-card__head">
+                <div>
+                    <span class="mip-card__eyebrow">FAQ</span>
+                    <h2>Questions this preview should answer quickly</h2>
+                </div>
+            </div>
+            <div class="mip-faq__grid">
+                <article class="mip-faq__item">
+                    <h3>What makes a region interesting for automation?</h3>
+                    <p>Repeated volatility, negative-price intervals, and sharp peaks all make timing rules more valuable.</p>
+                </article>
+                <article class="mip-faq__item">
+                    <h3>Why keep part of Market Insights behind login?</h3>
+                    <p>The public preview is for discovery. The full view is the denser working surface.</p>
+                </article>
+                <article class="mip-faq__item">
+                    <h3>Does the preview cover all NEM regions?</h3>
+                    <p>Yes. NSW, QLD, SA, TAS, and VIC are all included using the published market dataset.</p>
+                </article>
+            </div>
+        </section>
+    </main>
+</body>
+</html>
