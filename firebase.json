@@ -32,11 +32,6 @@
         "type": 301
       },
       {
-        "source": "/market-insights",
-        "destination": "/market-insights/",
-        "type": 301
-      },
-      {
         "source": "/blog/battery-automation-roi-examples",
         "destination": "/battery-automation-roi-examples/",
         "type": 301
