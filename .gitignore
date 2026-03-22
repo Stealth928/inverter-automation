@@ -59,5 +59,16 @@ archive/
 # Exported data snapshots
 exports/
 
+# Local generated snapshots and pipeline artifacts
+aemo-run-*/
+aemo-run-*.zip
+firebase-export-*/
+emulator-state/
+emulator.log
+firebase-debug.log
+firestore-debug.log
+pubsub-debug.log
+predeploy-last.log
+
 # Deploy-time release metadata
 frontend/data/release-manifest.json

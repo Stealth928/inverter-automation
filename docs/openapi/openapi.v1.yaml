@@ -164,6 +164,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiEnvelopeSetupStatus"
+  /api/config/announcement:
+    get:
+      tags: [Config]
+      summary: Get the current eligible shared announcement for the signed-in user
+      operationId: getAnnouncement
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Announcement payload or null when nothing is eligible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopeAnnouncement"
+  /api/config/announcement/dismiss:
+    post:
+      tags: [Config]
+      summary: Dismiss a show-once announcement for the current user
+      operationId: dismissAnnouncement
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+                  description: Normalized show-once announcement ID to persist as dismissed
+      responses:
+        "200":
+          description: Dismissal recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopeAnnouncementDismiss"
   /api/automation/status:
     get:
       tags: [Automation]
@@ -192,6 +231,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiEnvelopeAdminCheck"
+  /api/admin/announcement:
+    get:
+      tags: [Admin]
+      summary: Get the shared announcement configuration
+      operationId: getAdminAnnouncement
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Shared announcement config payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopeAdminAnnouncement"
+    post:
+      tags: [Admin]
+      summary: Save the shared announcement configuration
+      operationId: saveAdminAnnouncement
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                announcement:
+                  $ref: "#/components/schemas/AnnouncementPayload"
+      responses:
+        "200":
+          description: Saved shared announcement config payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopeAdminAnnouncement"
   /api/admin/platform-stats:
     get:
       tags: [Admin]
@@ -297,6 +372,58 @@ components:
           properties:
             result:
               type: object
+    AnnouncementAudience:
+      type: object
+      properties:
+        requireTourComplete:
+          type: boolean
+        requireSetupComplete:
+          type: boolean
+        requireAutomationEnabled:
+          type: boolean
+        minAccountAgeDays:
+          type: integer
+          nullable: true
+        includeUids:
+          type: array
+          items:
+            type: string
+        excludeUids:
+          type: array
+          items:
+            type: string
+    AnnouncementPayload:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        id:
+          type: string
+          nullable: true
+        title:
+          type: string
+        body:
+          type: string
+        severity:
+          type: string
+          enum: [info, success, warning, danger]
+        showOnce:
+          type: boolean
+        audience:
+          $ref: "#/components/schemas/AnnouncementAudience"
+    AnnouncementPayloadWithMetadata:
+      allOf:
+        - $ref: "#/components/schemas/AnnouncementPayload"
+        - type: object
+          properties:
+            updatedAt:
+              nullable: true
+            updatedByUid:
+              type: string
+              nullable: true
+            updatedByEmail:
+              type: string
+              nullable: true
     ApiEnvelopeSetupStatus:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeBase"
@@ -364,6 +491,45 @@ components:
               properties:
                 isAdmin:
                   type: boolean
+    ApiEnvelopeAnnouncement:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            result:
+              type: object
+              properties:
+                announcement:
+                  anyOf:
+                    - $ref: "#/components/schemas/AnnouncementPayload"
+                    - type: 'null'
+    ApiEnvelopeAnnouncementDismiss:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            msg:
+              type: string
+              nullable: true
+            result:
+              type: object
+              properties:
+                id:
+                  type: string
+                announcementDismissedIds:
+                  type: array
+                  items:
+                    type: string
+    ApiEnvelopeAdminAnnouncement:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            result:
+              type: object
+              properties:
+                announcement:
+                  $ref: "#/components/schemas/AnnouncementPayloadWithMetadata"
     ApiEnvelopeAdminPlatformStats:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeBase"

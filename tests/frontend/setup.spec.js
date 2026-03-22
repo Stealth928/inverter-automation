@@ -1,374 +1,172 @@
 const { test, expect } = require('@playwright/test');
+const { installInternalPageHarness, jsonResponse } = require('./support/browser-harness');
 
 test.use({ serviceWorkers: 'block' });
 
-/**
- * Setup Wizard Page Tests
- * 
- * Tests the first-time setup wizard at setup.html
- */
+async function waitForSetupReady(page) {
+  await expect(page.locator('#submitBtn')).toBeVisible();
+  await expect(page.locator('#previewLaunchBtn')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.getElementById('previewLaunchBtn')?.dataset.bound || null)).toBe('1');
+}
 
-test.describe('Setup Wizard Page', () => {
-  
-  test.beforeEach(async ({ page }) => {
-    await page.route('**/js/firebase-config.js', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/javascript',
-        body: 'window.firebaseConfig = { apiKey: "YOUR_TEST_KEY" };'
-      });
+async function mountSetupPage(page, options = {}) {
+  const validateCalls = [];
+  const validateResponse = options.validateResponse || jsonResponse({ errno: 0, result: { valid: true } });
+
+  await installInternalPageHarness(page, {
+    user: {
+      uid: 'test-user-123',
+      email: 'test@example.com',
+      displayName: 'test'
+    },
+    trackRedirects: true
+  });
+
+  await page.route('**/api/**', async (route) => {
+    const requestUrl = new URL(route.request().url());
+    const path = requestUrl.pathname;
+    const method = route.request().method().toUpperCase();
+
+    if (path === '/api/config/setup-status') {
+      await route.fulfill(jsonResponse({ errno: 0, result: { setupComplete: false } }));
+      return;
+    }
+
+    if (path === '/api/user/init-profile') {
+      await route.fulfill(jsonResponse({ errno: 0, result: { initialized: true } }));
+      return;
+    }
+
+    if (path === '/api/config/validate-keys' && method === 'POST') {
+      const body = route.request().postDataJSON ? route.request().postDataJSON() : {};
+      validateCalls.push(body || {});
+      await route.fulfill(validateResponse);
+      return;
+    }
+
+    await route.fulfill(jsonResponse({ errno: 0, result: {} }));
+  });
+
+  await page.goto('/setup.html', { waitUntil: 'domcontentloaded' });
+  await waitForSetupReady(page);
+
+  return { validateCalls };
+}
+
+test.describe('Setup Page', () => {
+  test('renders the setup form with FoxESS selected by default @smoke', async ({ page }) => {
+    await mountSetupPage(page);
+
+    await expect(page).toHaveTitle(/Setup/i);
+    await expect(page.locator('#providerFoxess')).toBeChecked();
+    await expect(page.locator('#deviceSn')).toBeVisible();
+    await expect(page.locator('#foxessToken')).toBeVisible();
+    await expect(page.locator('#weatherPlace')).toBeVisible();
+    await expect(page.locator('#previewLaunchBtn')).toContainText(/Preview With Sample Data/i);
+  });
+
+  test('shows field validation before posting incomplete FoxESS credentials', async ({ page }) => {
+    const { validateCalls } = await mountSetupPage(page);
+
+    await page.locator('#foxessToken').fill('placeholder-token');
+    await page.locator('#weatherPlace').fill('Sydney, Australia');
+    await page.locator('#inverterCapacityKw').fill('10');
+    await page.locator('#batteryCapacityKwh').fill('13.5');
+    await page.locator('#submitBtn').click();
+
+    await expect(page.locator('#deviceSnGroup')).toHaveClass(/error/);
+    await expect(page.locator('#deviceSnGroup .error-message .message-text')).toContainText(/Device Serial Number is required/i);
+    await expect.poll(() => validateCalls.length).toBe(0);
+  });
+
+  test('switches provider-specific fields when AlphaESS is selected', async ({ page }) => {
+    await mountSetupPage(page);
+
+    await page.locator('#providerAlphaEssOption').click();
+
+    await expect(page.locator('#alphaessFields')).toBeVisible();
+    await expect(page.locator('#foxessFields')).toBeHidden();
+    await expect(page.locator('#providerAlphaEss')).toBeChecked();
+  });
+
+  test('posts normalized FoxESS setup payload and stores success state @smoke', async ({ page }) => {
+    const { validateCalls } = await mountSetupPage(page);
+
+    await page.locator('#deviceSn').fill(' TEST-SN-001 ');
+    await page.locator('#foxessToken').fill(' foxess-token ');
+    await page.locator('#amberApiKey').fill(' amber-key ');
+    await page.locator('#weatherPlace').fill('Sydney,Australia');
+    await page.locator('#inverterCapacityKw').fill('10');
+    await page.locator('#batteryCapacityKwh').fill('13.5');
+
+    await page.locator('#submitBtn').click();
+
+    await expect.poll(() => validateCalls.length).toBe(1);
+    expect(validateCalls[0]).toMatchObject({
+      device_sn: 'TEST-SN-001',
+      foxess_token: 'foxess-token',
+      amber_api_key: 'amber-key',
+      weather_place: 'Sydney, Australia',
+      inverter_capacity_w: 10000,
+      battery_capacity_kwh: 13.5
     });
 
-    await page.route('**/api/config/setup-status', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ errno: 0, result: { setupComplete: false } })
-      });
-    });
+    await expect(page.locator('#submitBtn')).toContainText(/Success! Redirecting/i);
+    await expect(page.locator('#deviceSnGroup')).toHaveClass(/success/);
+    await expect(page.locator('#foxessTokenGroup')).toHaveClass(/success/);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('foxess_setup_device_sn'))).toBe('TEST-SN-001');
+    await expect.poll(() => page.evaluate(() => sessionStorage.getItem('tourAutoLaunch'))).toBe('1');
+  });
 
-    await page.route('**/api/user/init-profile', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ errno: 0, result: { initialized: true } })
-      });
-    });
-
-    // Mock Firebase auth for authenticated setup and prevent redirects
-    await page.addInitScript(() => {
-      window.__DISABLE_AUTH_REDIRECTS__ = true;
-      try {
-        localStorage.setItem('mockAuthUser', JSON.stringify({
-          uid: 'test-user-123',
-          email: 'test@example.com',
-          displayName: 'test'
-        }));
-        localStorage.setItem('mockAuthToken', 'mock-token');
-      } catch (e) {
-        // ignore
-      }
-
-      window.mockFirebaseAuth = {
-        currentUser: {
-          uid: 'test-user-123',
-          email: 'test@example.com',
-          getIdToken: () => Promise.resolve('mock-token')
+  test('surfaces validate-keys errors on the mapped field and restores the submit button', async ({ page }) => {
+    await mountSetupPage(page, {
+      validateResponse: jsonResponse({
+        errno: 400,
+        msg: 'Validation failed for: foxess_token',
+        failed_keys: ['foxess_token'],
+        errors: {
+          foxess_token: 'FoxESS API Token is required'
         }
-      };
-      // Prevent AppShell safeRedirect from navigating away during tests.
-      try {
-        Object.defineProperty(window, 'safeRedirect', {
-          configurable: false,
-          writable: false,
-          value: function () {}
-        });
-      } catch (e) {
-        window.safeRedirect = function () {};
-      }
-
-      try {
-        window.location.assign = function () {};
-      } catch (e) {
-        // ignore
-      }
+      }, 400)
     });
 
-    await page.goto('/setup.html');
+    await page.locator('#deviceSn').fill('TEST-SN-001');
+    await page.locator('#foxessToken').fill('bad-token');
+    await page.locator('#weatherPlace').fill('Sydney, Australia');
+    await page.locator('#inverterCapacityKw').fill('10');
+    await page.locator('#batteryCapacityKwh').fill('13.5');
+
+    await page.locator('#submitBtn').click();
+
+    await expect(page.locator('#foxessToken').locator('xpath=ancestor::div[contains(@class,"form-group")]')).toHaveClass(/error/);
+    await expect(page.locator('#submitBtn')).toContainText(/Validate & Continue/i);
   });
 
-  test('should load setup wizard page', async ({ page }) => {
-    await expect(page).toHaveTitle(/Setup|Configuration|Welcome|Getting Started/i);
-  });
+  test('preview launch seeds preview mode and queues an app redirect', async ({ page }) => {
+    await mountSetupPage(page);
 
-  test('should display welcome message', async ({ page }) => {
-    const hasWelcome = await page.getByText(/welcome|getting started|setup|configure/i).count() > 0;
-    expect(hasWelcome).toBeTruthy();
-  });
-
-  test('should have step indicator or progress', async ({ page }) => {
-    const hasSteps = await page.locator('.steps, .wizard-steps, .progress, [data-step]').count() > 0;
-    const hasStepText = await page.getByText(/step|1|2|3/i).count() > 0;
-    
-    expect(hasSteps || hasStepText).toBeTruthy();
-  });
-
-  test('should display FoxESS configuration step', async ({ page }) => {
-    const hasFoxESS = await page.getByText(/foxess|inverter|device|serial/i).count() > 0;
-    expect(hasFoxESS).toBeTruthy();
-  });
-
-  test('should have FoxESS input fields', async ({ page }) => {
-    const hasInput = await page.locator('input[name*="foxess"], input[id*="foxess"], input[placeholder*="foxess"]').count() > 0;
-    const hasDeviceId = await page.getByText(/device|serial|id/i).count() > 0;
-    
-    expect(hasInput || hasDeviceId).toBeTruthy();
-  });
-
-  test('should display Amber configuration step', async ({ page }) => {
-    const hasAmber = await page.getByText(/amber|electric|site|api key/i).count() > 0;
-    expect(hasAmber).toBeTruthy();
-  });
-
-  test('should have Amber input fields', async ({ page }) => {
-    const hasInput = await page.locator('input[name*="amber"], input[id*="amber"], input[placeholder*="amber"]').count() > 0;
-    const hasSiteId = await page.getByText(/site|api|key/i).count() > 0;
-    
-    expect(hasInput || hasSiteId).toBeTruthy();
-  });
-
-  test('should have next button', async ({ page }) => {
-    const nextBtn = page.locator('button:has-text("Next"), button:has-text("Continue")').first();
-    const hasNext = await nextBtn.count() > 0;
-    
-    expect(hasNext).toBeTruthy();
-  });
-
-  test('should have back/previous button after first step', async ({ page }) => {
-    const nextBtn = page.locator('button:has-text("Next"), button:has-text("Continue")').first();
-    
-    if (await nextBtn.count() > 0) {
-      await nextBtn.click();
-      await page.waitForTimeout(500);
-      
-      // Now should have back button
-      const backBtn = page.locator('button:has-text("Back"), button:has-text("Previous")').first();
-      const hasBack = await backBtn.count() > 0;
-      
-      expect(typeof hasBack).toBe('boolean');
-    } else {
-      expect(true).toBeTruthy();
-    }
-  });
-
-  test('should validate required fields before advancing', async ({ page }) => {
-    const nextBtn = page.locator('button:has-text("Next")').first();
-    
-    if (await nextBtn.count() > 0) {
-      // Try to advance without filling fields
-      await nextBtn.click();
-      await page.waitForTimeout(500);
-      
-      // Should show error or stay on same step
-      const hasError = await page.locator('.error, .invalid, [aria-invalid="true"]').count() > 0;
-      
-      expect(typeof hasError).toBe('number');
-    } else {
-      expect(true).toBeTruthy();
-    }
-  });
-
-  test('should test API keys before advancing', async ({ page }) => {
-    const testBtn = page.locator('button:has-text("Test"), button:has-text("Validate"), button:has-text("Check")').first();
-    
-    if (await testBtn.count() > 0) {
-      // Button might navigate - use Promise.race to handle timeout
-      const clickPromise = testBtn.click().catch(() => {});
-      const timeoutPromise = page.waitForTimeout(1000);
-      
-      await Promise.race([clickPromise, timeoutPromise]);
-      
-      // Check if still on same page or navigated
-      const url = page.url();
-      expect(typeof url).toBe('string');
-    } else {
-      expect(true).toBeTruthy();
-    }
-  });
-
-  test('should display completion/success step', async ({ page }) => {
-    // Last step should show success
-    const hasComplete = await page.getByText(/complete|success|done|finish|ready/i).count() > 0;
-    
-    expect(hasComplete || true).toBeTruthy();
-  });
-
-  test('should have finish button on last step', async ({ page }) => {
-    const finishBtn = page.locator('button:has-text("Finish"), button:has-text("Complete"), button:has-text("Done")').first();
-    const hasFinish = await finishBtn.count() > 0;
-    
-    expect(typeof hasFinish).toBe('boolean');
-  });
-
-  test('should navigate to dashboard after completion', async ({ page }) => {
-    const finishBtn = page.locator('button:has-text("Finish"), button:has-text("Dashboard")').first();
-    
-    if (await finishBtn.count() > 0) {
-      await finishBtn.click();
-      await page.waitForTimeout(1000);
-      
-      // Should redirect to dashboard
-      const url = page.url();
-      const isRedirected = url.includes('index') || url.includes('dashboard');
-      
-      expect(typeof isRedirected).toBe('boolean');
-    } else {
-      expect(true).toBeTruthy();
-    }
-  });
-
-  test('should show help text for each field', async ({ page }) => {
-    const hasHelp = await page.locator('.help-text, .hint, [data-help], small').count() > 0;
-    const hasHelpIcon = await page.locator('.help-icon, [data-tooltip]').count() > 0;
-    
-    expect(hasHelp || hasHelpIcon || true).toBeTruthy();
-  });
-
-  test('should display step numbers correctly', async ({ page }) => {
-    const stepNumbers = await page.locator('.step-number, [data-step-number]').count();
-    
-    expect(stepNumbers).toBeGreaterThanOrEqual(0);
-  });
-
-  test('should show current step as active', async ({ page }) => {
-    const activeStep = await page.locator('.step.active, .step--active, [data-active="true"]').count();
-    
-    expect(activeStep).toBeGreaterThanOrEqual(0);
-  });
-
-  test('should disable next button during validation', async ({ page }) => {
-    const testBtn = page.locator('button:has-text("Test"), button:has-text("Validate")').first();
-    const nextBtn = page.locator('button:has-text("Next")').first();
-    
-    if (await testBtn.count() > 0 && await nextBtn.count() > 0) {
-      await testBtn.click();
-      
-      // Next should be disabled during validation
-      const isDisabled = await nextBtn.isDisabled().catch(() => false);
-      
-      expect(typeof isDisabled).toBe('boolean');
-    } else {
-      expect(true).toBeTruthy();
-    }
-  });
-
-  test('should persist data between steps', async ({ page }) => {
-    const input = page.locator('input[type="text"]').first();
-    const nextBtn = page.locator('button:has-text("Next")').first();
-    const backBtn = page.locator('button:has-text("Back")').first();
-    
-    if (await input.count() > 0 && await nextBtn.count() > 0) {
-      // Fill first step
-      await input.fill('test-value-123');
-      const originalValue = await input.inputValue();
-      
-      // Go to next step
-      await nextBtn.click();
-      await page.waitForTimeout(500);
-      
-      // Go back
-      if (await backBtn.count() > 0) {
-        await backBtn.click();
-        await page.waitForTimeout(500);
-        
-        // Value should persist
-        const newValue = await input.inputValue();
-        
-        expect(typeof newValue).toBe('string');
-      }
-    }
-    
-    expect(true).toBeTruthy();
-  });
-
-  test('should display skip option for optional steps', async ({ page }) => {
-    const skipBtn = page.locator('button:has-text("Skip"), a:has-text("Skip")').first();
-    const hasSkip = await skipBtn.count() > 0;
-    
-    // Skip is optional
-    expect(typeof hasSkip).toBe('boolean');
-  });
-
-  test('should show loading state during API validation', async ({ page }) => {
-    const testBtn = page.locator('button:has-text("Test"), button:has-text("Validate")').first();
-    
-    if (await testBtn.count() > 0) {
-      // Button might navigate - use Promise.race to handle timeout
-      const clickPromise = testBtn.click().catch(() => {});
-      const timeoutPromise = page.waitForTimeout(500);
-      
-      await Promise.race([clickPromise, timeoutPromise]);
-      
-      // Check page state
-      const url = page.url();
-      expect(typeof url).toBe('string');
-    } else {
-      expect(true).toBeTruthy();
-    }
-  });
-
-  test('should display responsive layout', async ({ page }) => {
-    // Desktop
-    await page.setViewportSize({ width: 1920, height: 1080 });
-    await page.waitForLoadState('networkidle');
-    await expect(page.locator('body')).toBeVisible();
-
-    // Mobile
-    await page.setViewportSize({ width: 375, height: 667 });
-    await page.waitForLoadState('networkidle');
-    await expect(page.locator('body')).toBeVisible();
-  });
-
-  test('should still launch preview after returning from dashboard to setup', async ({ page }) => {
-    await page.evaluate(() => {
-      window.__redirectTargets = [];
-      window.safeRedirect = function (target) {
-        window.__redirectTargets.push(target);
-      };
-      sessionStorage.setItem('lastRedirect', JSON.stringify({ from: '/app.html', to: '/setup.html', ts: Date.now() }));
-    });
-
-    await expect.poll(() => page.evaluate(() => document.getElementById('previewLaunchBtn')?.dataset.bound || null)).toBe('1');
-
-    await page.evaluate(() => {
-      document.getElementById('previewLaunchBtn').click();
-    });
+    await page.locator('#previewLaunchBtn').click();
 
     const result = await page.evaluate(() => ({
-      redirectTargets: window.__redirectTargets || [],
-      previewSession: window.PreviewSession ? window.PreviewSession.get() : null,
-      lastRedirect: sessionStorage.getItem('lastRedirect')
-    }));
-
-    const hasRedirect = (result.redirectTargets || []).includes('/app.html');
-    const hasPreviewSession = !!(result.previewSession && result.previewSession.active);
-    expect(hasRedirect || hasPreviewSession).toBeTruthy();
-    expect(result.previewSession && result.previewSession.active).toBeTruthy();
-    expect(result.previewSession && result.previewSession.allowedPaths).toContain('/app.html');
-    expect(result.lastRedirect).toBeNull();
-  });
-
-  test('should launch preview tour from the profile menu on setup', async ({ page }) => {
-    await page.evaluate(() => {
-      window.__redirectTargets = [];
-      window.safeRedirect = function (target) {
-        window.__redirectTargets.push(target);
-      };
-    });
-
-    await page.locator('[data-user-avatar]').click();
-    await expect.poll(() => page.evaluate(() => !!document.querySelector('[data-take-tour]'))).toBeTruthy();
-    await page.evaluate(() => {
-      document.querySelector('[data-take-tour]').click();
-    });
-
-    const result = await page.evaluate(() => ({
-      redirectTargets: window.__redirectTargets || [],
       previewSession: window.PreviewSession ? window.PreviewSession.get() : null,
       autoLaunch: sessionStorage.getItem('tourAutoLaunch')
     }));
 
-    const hasRedirect = (result.redirectTargets || []).includes('/app.html');
-    const hasPreviewSession = !!(result.previewSession && result.previewSession.active);
-    expect(hasRedirect || hasPreviewSession).toBeTruthy();
     expect(result.previewSession && result.previewSession.active).toBeTruthy();
     expect(result.autoLaunch).toBe('1');
   });
 
-  test('should show documentation links', async ({ page }) => {
-    const hasLinks = await page.locator('a[href*="doc"], a[href*="help"], a[href*="guide"]').count() > 0;
-    const hasDocText = await page.getByText(/documentation|help|guide|learn more/i).count() > 0;
-    
-    expect(typeof (hasLinks || hasDocText)).toBeTruthy();
+  test('profile menu tour action also enters preview mode from setup', async ({ page }) => {
+    await mountSetupPage(page);
+
+    await page.locator('[data-user-avatar]').click();
+    await expect(page.locator('[data-take-tour]')).toBeVisible();
+    await page.locator('[data-take-tour]').click();
+
+    const result = await page.evaluate(() => ({
+      previewSession: window.PreviewSession ? window.PreviewSession.get() : null
+    }));
+
+    expect(result.previewSession && result.previewSession.active).toBeTruthy();
   });
 });

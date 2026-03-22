@@ -1,10 +1,10 @@
-const CACHE_VERSION = 'socrates-v62';
+const CACHE_VERSION = 'socrates-v63';
 const CACHE_PREFIX = 'socrates-';
 const API_CLIENT_VERSION = '5';
 const SHARED_UTILS_VERSION = '13';
-const APP_SHELL_VERSION = '23';
-const TOUR_VERSION = '31';
-const ADMIN_VERSION = '11';
+const APP_SHELL_VERSION = '24';
+const TOUR_VERSION = '33';
+const ADMIN_VERSION = '12';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const OFFLINE_FALLBACK_PAGE = '/app.html';
 

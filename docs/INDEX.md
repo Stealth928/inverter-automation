@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-03-21
+Last updated: 2026-03-22
 Purpose: canonical map of the actively maintained documentation set.
 
 ## Start Here
@@ -10,6 +10,11 @@ Purpose: canonical map of the actively maintained documentation set.
   runtime configuration, and Firestore model summary.
 - [guides/PRODUCT_GUIDE.md](guides/PRODUCT_GUIDE.md): shipped product surface,
   current provider status, and user-facing capability framing.
+- [guides/PRODUCT_CAPABILITY_GUIDE.md](guides/PRODUCT_CAPABILITY_GUIDE.md):
+  detailed product capability reference covering surfaces, workflows,
+  integrations, admin tooling, and product boundaries.
+- [guides/FRONTEND_CONTENT_GUIDE.md](guides/FRONTEND_CONTENT_GUIDE.md):
+  public page, blog slug, SEO, and marketing-content workflow guide.
 
 ## Product and API
 
@@ -51,6 +56,8 @@ Purpose: canonical map of the actively maintained documentation set.
   scheduler SLO alert response and escalation.
 - [guides/TESTING_GUIDE.md](guides/TESTING_GUIDE.md): backend/frontend test
   execution and CI alignment.
+- [guides/REPO_HYGIENE.md](guides/REPO_HYGIENE.md): generated-artifact,
+  temp-file, emulator-state, and cleanup policy.
 
 ## Architecture and Governance
 

@@ -128,6 +128,20 @@ test.describe('Market Insights Page', () => {
     await expect(page.locator('#monthlyChart')).toBeVisible();
   });
 
+  test('renders the Market Insights tour step with the correct highlight target', async ({ page }) => {
+    await page.goto('/market-insights.html');
+
+    await page.waitForFunction(() => Boolean(window.TourEngine));
+    await page.evaluate(() => {
+      window.TourEngine.start(20);
+    });
+
+    await expect(page.locator('.tour-tooltip')).toBeVisible();
+    await expect(page.locator('.tour-title')).toHaveText(/Market Insights Dashboard/i);
+    await expect(page.locator('.page-header')).toHaveClass(/tour-highlight/);
+    await expect(page.locator('.tour-highlight-ring')).toBeVisible();
+  });
+
   test('region chips are interactive', async ({ page }) => {
     await page.goto('/market-insights.html');
     const chips = page.locator('#regionChips .mi-chip');

@@ -26,7 +26,7 @@
     <script defer src="js/firebase-auth.js"></script>
     <script defer src="js/api-client.js?v=5"></script>
     <script defer src="js/shared-utils.js?v=13"></script>
-    <script defer src="js/app-shell.js?v=23"></script>
+    <script defer src="js/app-shell.js?v=24"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         .container {
@@ -1528,6 +1528,402 @@
         }
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
+
+        /* ── Announcement grid ── */
+        .announcement-grid {
+            display: grid;
+            gap: 20px;
+            grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
+        }
+
+        /* Panel containers */
+        .announcement-panel {
+            background: color-mix(in srgb, var(--bg-overlay) 84%, transparent);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 70%, transparent);
+            border-radius: var(--radius-xl);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .announcement-panel-head {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            padding: 14px 18px 13px;
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 45%, transparent);
+            background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+        }
+        .announcement-panel-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: var(--radius-lg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .announcement-panel-icon.blue {
+            background: color-mix(in srgb, var(--accent-blue) 14%, transparent);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 24%, transparent);
+        }
+        .announcement-panel-icon.green {
+            background: color-mix(in srgb, var(--color-success) 13%, transparent);
+            border: 1px solid color-mix(in srgb, var(--color-success) 22%, transparent);
+        }
+        .announcement-panel-title-wrap h3 {
+            margin: 0 0 2px;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .announcement-panel-title-wrap p {
+            margin: 0;
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.45;
+        }
+        .announcement-panel-body {
+            padding: 16px 18px 20px;
+            flex: 1;
+        }
+
+        /* Section dividers */
+        .an-divider {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 18px 0 12px;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            user-select: none;
+        }
+        .an-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: color-mix(in srgb, var(--border-primary) 50%, transparent);
+        }
+
+        /* Form grid */
+        .announcement-form-grid {
+            display: grid;
+            gap: 14px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .announcement-field {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .announcement-field.full {
+            grid-column: 1 / -1;
+        }
+        .announcement-field label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .announcement-input,
+        .announcement-textarea,
+        .announcement-select {
+            width: 100%;
+            border-radius: var(--radius-lg);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 82%, transparent);
+            background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+            color: var(--text-primary);
+            padding: 9px 12px;
+            font-size: 13px;
+            line-height: 1.45;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .announcement-input:focus,
+        .announcement-textarea:focus,
+        .announcement-select:focus {
+            outline: none;
+            border-color: color-mix(in srgb, var(--accent-blue) 55%, transparent);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 16%, transparent);
+        }
+        .announcement-textarea {
+            min-height: 132px;
+            resize: vertical;
+        }
+        .announcement-helper {
+            color: var(--text-secondary);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        /* Severity pill indicator */
+        .announcement-severity-wrap {
+            position: relative;
+        }
+        .announcement-severity-dot {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 1;
+            transition: background 0.15s;
+        }
+        .announcement-select.has-dot {
+            padding-left: 26px;
+        }
+
+        /* Toggle switches */
+        .announcement-toggle-grid {
+            display: grid;
+            gap: 8px;
+        }
+        .announcement-toggle {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 11px 13px;
+            border-radius: var(--radius-lg);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 60%, transparent);
+            background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .announcement-toggle:hover {
+            border-color: color-mix(in srgb, var(--accent-blue) 28%, var(--border-primary));
+            background: color-mix(in srgb, var(--bg-secondary) 75%, transparent);
+        }
+        /* Native checkbox styled as a toggle track (appearance: none) */
+        .a-toggle-cb {
+            appearance: none;
+            -webkit-appearance: none;
+            position: relative;
+            flex-shrink: 0;
+            width: 36px;
+            height: 20px;
+            border-radius: 10px;
+            background: color-mix(in srgb, var(--bg-overlay) 70%, var(--text-muted));
+            border: 1.5px solid color-mix(in srgb, var(--border-primary) 85%, transparent);
+            margin-top: 2px;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+        }
+        .a-toggle-cb::before {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+        }
+        .a-toggle-cb:checked {
+            background: color-mix(in srgb, var(--accent-blue) 82%, black 18%);
+            border-color: color-mix(in srgb, var(--accent-blue) 60%, transparent);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 18%, transparent);
+        }
+        .a-toggle-cb:checked::before {
+            transform: translateX(16px);
+            background: #ffffff;
+        }
+        .announcement-toggle-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            letter-spacing: 0;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .announcement-toggle-copy small,
+        .announcement-meta,
+        .announcement-audience-list {
+            color: var(--text-secondary);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+        .announcement-toggle-copy {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Live preview */
+        .announcement-preview-wrap {
+            margin-top: 20px;
+        }
+        .announcement-preview-label {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 8px;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        .announcement-preview-label-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--color-success);
+            box-shadow: 0 0 5px color-mix(in srgb, var(--color-success) 55%, transparent);
+            flex-shrink: 0;
+            animation: a-pulse-dot 2.5s ease-in-out infinite;
+        }
+        @keyframes a-pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.75); }
+        }
+        .announcement-preview {
+            display: none;
+            border-radius: var(--radius-xl);
+            border: 1px solid transparent;
+            padding: 13px 15px 13px 19px;
+            position: relative;
+            overflow: hidden;
+        }
+        .announcement-preview.active {
+            display: block;
+        }
+        .announcement-preview::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 4px;
+            border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+        }
+        .announcement-preview.info {
+            background: rgba(56, 139, 253, 0.09);
+            border-color: rgba(56, 139, 253, 0.24);
+        }
+        .announcement-preview.info::before { background: #388bfd; }
+        .announcement-preview.success {
+            background: rgba(46, 160, 67, 0.09);
+            border-color: rgba(46, 160, 67, 0.24);
+        }
+        .announcement-preview.success::before { background: var(--color-success); }
+        .announcement-preview.warning {
+            background: rgba(210, 153, 34, 0.09);
+            border-color: rgba(210, 153, 34, 0.28);
+        }
+        .announcement-preview.warning::before { background: var(--color-warning); }
+        .announcement-preview.danger {
+            background: rgba(248, 81, 73, 0.09);
+            border-color: rgba(248, 81, 73, 0.24);
+        }
+        .announcement-preview.danger::before { background: var(--color-danger); }
+        .announcement-preview-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 5px;
+        }
+        .announcement-preview-title {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.3;
+        }
+        .announcement-preview-close {
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 60%, transparent);
+            background: color-mix(in srgb, var(--bg-overlay) 70%, transparent);
+            color: var(--text-secondary);
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: default;
+            opacity: 0.65;
+            line-height: 1;
+        }
+        .announcement-preview-body {
+            margin: 0;
+            white-space: pre-wrap;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .announcement-preview-meta {
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .announcement-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--bg-tertiary) 88%, transparent);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 78%, transparent);
+            color: var(--text-secondary);
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+
+        /* Audience summary info cards */
+        .announcement-summary-list {
+            display: grid;
+            gap: 9px;
+        }
+        .announcement-summary-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 11px 13px;
+            border-radius: var(--radius-lg);
+            background: color-mix(in srgb, var(--bg-secondary) 65%, transparent);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 60%, transparent);
+            transition: border-color 0.15s;
+        }
+        .announcement-summary-icon {
+            font-size: 15px;
+            line-height: 1;
+            flex-shrink: 0;
+            margin-top: 1px;
+            opacity: 0.82;
+        }
+        .announcement-summary-row strong {
+            display: block;
+            margin-bottom: 3px;
+            color: var(--text-primary);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.045em;
+        }
+
+        @media (max-width: 1100px) {
+            .announcement-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .announcement-form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1582,10 +1978,11 @@
 
         <nav class="admin-tab-nav" role="tablist">
             <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">📈 Overview</button>
-            <button class="tab-btn" data-tab="behavior" onclick="switchTab('behavior')">🧭 Behaviour</button>
+            <button class="tab-btn" data-tab="users" onclick="switchTab('users')">👥 Users</button>
             <button class="tab-btn" data-tab="scheduler" onclick="switchTab('scheduler')">⚙️ Scheduler</button>
             <button class="tab-btn" data-tab="dataworks" onclick="switchTab('dataworks')">🛰️ DataWorks</button>
-            <button class="tab-btn" data-tab="users" onclick="switchTab('users')">👥 Users</button>
+            <button class="tab-btn" data-tab="behavior" onclick="switchTab('behavior')">🧭 Behaviour</button>
+            <button class="tab-btn" data-tab="announcement" onclick="switchTab('announcement')">📣 Announcement</button>
         </nav>
 
         <div id="tab-overview" class="tab-panel active">
@@ -1764,6 +2161,189 @@
             </div>
         </div>
         </div><!-- /tab-behavior -->
+
+        <div id="tab-announcement" class="tab-panel">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">📣</span> Announcement Control</div>
+                <div class="actions-cell">
+                    <button class="action-btn" onclick="loadAdminAnnouncement({ force: true })" id="refreshAnnouncementBtn">Refresh</button>
+                    <button class="action-btn danger" onclick="disableAdminAnnouncement()" id="disableAnnouncementBtn">Disable</button>
+                    <button class="action-btn success" onclick="saveAdminAnnouncement()" id="saveAnnouncementBtn">Save</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="firestore-updated" id="announcementUpdated">Loading announcement settings...</div>
+                <div class="firestore-warning" id="announcementWarning" style="display:none;"></div>
+                <div class="announcement-grid">
+
+                    <!-- ── Left: Content ── -->
+                    <section class="announcement-panel">
+                        <div class="announcement-panel-head">
+                            <span class="announcement-panel-icon blue">✏️</span>
+                            <div class="announcement-panel-title-wrap">
+                                <h3>Content</h3>
+                                <p>Payload stored under global server config. Keep the ID stable while iterating; change it to re-show to dismissed users.</p>
+                            </div>
+                        </div>
+                        <div class="announcement-panel-body">
+
+                            <div class="announcement-form-grid">
+                                <div class="announcement-field">
+                                    <label for="announcementIdInput">Announcement ID</label>
+                                    <input id="announcementIdInput" class="announcement-input" type="text" maxlength="80" placeholder="e.g. 2026-04-maintenance-1">
+                                    <div class="announcement-helper">Required for show-once announcements. Use a new ID to re-show to previously dismissed users.</div>
+                                </div>
+                                <div class="announcement-field">
+                                    <label for="announcementSeveritySelect">Severity</label>
+                                    <div class="announcement-severity-wrap">
+                                        <span class="announcement-severity-dot" id="announcementSeverityDot"></span>
+                                        <select id="announcementSeveritySelect" class="announcement-select has-dot">
+                                            <option value="info">Info</option>
+                                            <option value="success">Success</option>
+                                            <option value="warning">Warning</option>
+                                            <option value="danger">Danger</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="an-divider">Message</div>
+
+                            <div class="announcement-form-grid">
+                                <div class="announcement-field full">
+                                    <label for="announcementTitleInput">Title</label>
+                                    <input id="announcementTitleInput" class="announcement-input" type="text" maxlength="160" placeholder="Short headline">
+                                </div>
+                                <div class="announcement-field full">
+                                    <label for="announcementBodyInput">Body</label>
+                                    <textarea id="announcementBodyInput" class="announcement-textarea" placeholder="Message shown to eligible users"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="an-divider">Visibility</div>
+
+                            <div class="announcement-toggle-grid">
+                                <label class="announcement-toggle">
+                                    <input id="announcementEnabledInput" type="checkbox" class="a-toggle-cb">
+                                    <span class="announcement-toggle-copy">
+                                        <span class="announcement-toggle-label">Enable announcement</span>
+                                        <small>When disabled, the saved payload stays in config but should not be shown to users.</small>
+                                    </span>
+                                </label>
+                                <label class="announcement-toggle">
+                                    <input id="announcementShowOnceInput" type="checkbox" class="a-toggle-cb" checked>
+                                    <span class="announcement-toggle-copy">
+                                        <span class="announcement-toggle-label">Show once per eligible user</span>
+                                        <small>Requires an announcement ID. Future user-facing runtime can use this ID as the dismissal key.</small>
+                                    </span>
+                                </label>
+                            </div>
+
+                            <div class="announcement-preview-wrap">
+                                <div class="announcement-preview-label">
+                                    <span class="announcement-preview-label-dot"></span>
+                                    Live preview
+                                </div>
+                                <div id="announcementPreview" class="announcement-preview info">
+                                    <div class="announcement-preview-header">
+                                        <span class="announcement-preview-title" id="announcementPreviewTitle">Announcement preview</span>
+                                        <span class="announcement-preview-close" aria-hidden="true">✕</span>
+                                    </div>
+                                    <p class="announcement-preview-body" id="announcementPreviewBody"></p>
+                                    <div class="announcement-preview-meta" id="announcementPreviewMeta"></div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </section>
+
+                    <!-- ── Right: Audience Filters ── -->
+                    <section class="announcement-panel">
+                        <div class="announcement-panel-head">
+                            <span class="announcement-panel-icon green">🎯</span>
+                            <div class="announcement-panel-title-wrap">
+                                <h3>Audience Filters</h3>
+                                <p>Low-load onboarding maturity filters plus optional manual targeting. No analytics joins or heavy runtime scoring.</p>
+                            </div>
+                        </div>
+                        <div class="announcement-panel-body">
+
+                            <div class="announcement-toggle-grid">
+                                <label class="announcement-toggle">
+                                    <input id="announcementRequireTourInput" type="checkbox" class="a-toggle-cb" checked>
+                                    <span class="announcement-toggle-copy">
+                                        <span class="announcement-toggle-label">Require tour completion</span>
+                                        <small>Protects first-login users from being hit immediately after onboarding.</small>
+                                    </span>
+                                </label>
+                                <label class="announcement-toggle">
+                                    <input id="announcementRequireSetupInput" type="checkbox" class="a-toggle-cb" checked>
+                                    <span class="announcement-toggle-copy">
+                                        <span class="announcement-toggle-label">Require setup complete</span>
+                                        <small>Only target users who have completed the main product setup flow.</small>
+                                    </span>
+                                </label>
+                                <label class="announcement-toggle">
+                                    <input id="announcementRequireAutomationInput" type="checkbox" class="a-toggle-cb">
+                                    <span class="announcement-toggle-copy">
+                                        <span class="announcement-toggle-label">Require automation enabled</span>
+                                        <small>Useful for announcements that only matter to active automation users.</small>
+                                    </span>
+                                </label>
+                            </div>
+
+                            <div class="an-divider">Targeting Rules</div>
+
+                            <div class="announcement-form-grid">
+                                <div class="announcement-field">
+                                    <label for="announcementMinAccountAgeInput">Minimum account age (days)</label>
+                                    <input id="announcementMinAccountAgeInput" class="announcement-input" type="number" min="0" max="3650" placeholder="e.g. 7">
+                                    <div class="announcement-helper">Leave blank or 0 for no minimum age filter.</div>
+                                </div>
+                                <div class="announcement-field full">
+                                    <label for="announcementIncludeUidsInput">Always include these UIDs</label>
+                                    <textarea id="announcementIncludeUidsInput" class="announcement-textarea" style="min-height:88px;" placeholder="One UID per line or comma-separated"></textarea>
+                                </div>
+                                <div class="announcement-field full">
+                                    <label for="announcementExcludeUidsInput">Always exclude these UIDs</label>
+                                    <textarea id="announcementExcludeUidsInput" class="announcement-textarea" style="min-height:88px;" placeholder="One UID per line or comma-separated"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="an-divider">Summary</div>
+
+                            <div class="announcement-summary-list">
+                                <div class="announcement-summary-row">
+                                    <span class="announcement-summary-icon">⚡</span>
+                                    <div class="announcement-summary-content">
+                                        <strong>Targeting approach</strong>
+                                        <div class="announcement-meta">Uses only low-cost runtime fields: tour completion, setup completion, account age, automation enabled, plus manual include and exclude overrides.</div>
+                                    </div>
+                                </div>
+                                <div class="announcement-summary-row">
+                                    <span class="announcement-summary-icon">🛡️</span>
+                                    <div class="announcement-summary-content">
+                                        <strong>What this avoids</strong>
+                                        <div class="announcement-meta">No GA4 per-user targeting, no scoring model, no extra background job, and no subcollection scans on every app load.</div>
+                                    </div>
+                                </div>
+                                <div class="announcement-summary-row">
+                                    <span class="announcement-summary-icon">👥</span>
+                                    <div class="announcement-summary-content">
+                                        <strong>Current audience summary</strong>
+                                        <div class="announcement-audience-list" id="announcementAudienceSummary">No filters loaded yet.</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </section>
+
+                </div>
+            </div>
+        </div>
+        </div><!-- /tab-announcement -->
 
         <div id="tab-scheduler" class="tab-panel">
         <div class="card scheduler-metrics-card">
@@ -2034,6 +2614,6 @@
         </div>
     </div>
 
-    <script defer src="js/admin.js?v=11"></script>
+    <script defer src="js/admin.js?v=12"></script>
 </body>
 </html>

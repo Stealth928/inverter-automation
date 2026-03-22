@@ -27,7 +27,9 @@ const MIME_TYPES = {
 function resolveRequestPath(requestUrl) {
   const parsed = new URL(requestUrl, `http://${HOST}:${PORT}`);
   const normalizedPath = path.posix.normalize(decodeURIComponent(parsed.pathname || '/'));
-  return normalizedPath === '/' ? '/index.html' : normalizedPath;
+  if (normalizedPath === '/') return '/index.html';
+  if (normalizedPath.endsWith('/')) return `${normalizedPath}index.html`;
+  return normalizedPath;
 }
 
 function resolveFilePath(requestPath) {

@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { installInternalPageHarness } = require('./support/browser-harness');
 
 test.use({ serviceWorkers: 'block' });
 
@@ -22,7 +23,6 @@ async function reloadSettingsPage(page) {
 }
 
 async function waitForSettingsReady(page) {
-  await page.waitForLoadState('networkidle');
   await expect(page.locator('body')).toBeVisible();
   await page.evaluate(() => {
     const weatherPlace = document.getElementById('preferences_weatherPlace');
@@ -82,42 +82,15 @@ function getSaveAllButton(page) {
 test.describe('Settings Page - Data Persistence', () => {
   
   test.beforeEach(async ({ page }) => {
-    // Mock Firebase auth
+    await installInternalPageHarness(page, {
+      user: {
+        uid: 'test-persist-123',
+        email: 'persist@example.com',
+        displayName: 'persist'
+      }
+    });
+
     await page.addInitScript(() => {
-      window.__DISABLE_AUTH_REDIRECTS__ = true;
-      try {
-        localStorage.setItem('mockAuthUser', JSON.stringify({
-          uid: 'test-persist-123',
-          email: 'persist@example.com',
-          displayName: 'persist'
-        }));
-        localStorage.setItem('mockAuthToken', 'mock-token');
-      } catch (e) {
-        // ignore
-      }
-      try {
-        Object.defineProperty(window, 'safeRedirect', {
-          configurable: false,
-          writable: false,
-          value: function () {}
-        });
-      } catch (e) {
-        window.safeRedirect = function () {};
-      }
-
-      try {
-        window.location.assign = function () {};
-      } catch (e) {
-        // ignore
-      }
-
-      window.mockFirebaseAuth = {
-        currentUser: {
-          uid: 'test-persist-123',
-          email: 'persist@example.com',
-          getIdToken: () => Promise.resolve('mock-token')
-        }
-      };
       
       // Initialize a mock config object that persists across API calls
       window.mockServerConfig = {
@@ -243,15 +216,7 @@ test.describe('Settings Page - Data Persistence', () => {
       };
     });
 
-    await page.route('**/js/firebase-config.js', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/javascript',
-        body: 'window.firebaseConfig = { apiKey: "YOUR_TEST_KEY" };'
-      });
-    });
-
-    await page.goto('/settings.html');
+    await page.goto('/settings.html', { waitUntil: 'domcontentloaded' });
     await waitForSettingsReady(page);
     await page.evaluate(() => {
       function numValue(id) {

@@ -5,29 +5,48 @@ const request = require('supertest');
 
 const { registerConfigReadStatusRoutes } = require('../api/routes/config-read-status');
 
-function createDbMock({ automationEnabled = false } = {}) {
+function createDbMock({
+  automationEnabled = false,
+  announcement = null,
+  userProfile = null
+} = {}) {
   const userDocGet = jest.fn(async () => ({
     exists: true,
-    data: () => ({ automationEnabled })
+    data: () => ({
+      automationEnabled,
+      ...(userProfile || {})
+    })
   }));
   const userDocSet = jest.fn(async () => undefined);
+  const sharedDocGet = jest.fn(async () => ({
+    exists: announcement !== null,
+    data: () => (announcement === null ? {} : { announcement })
+  }));
 
   return {
     db: {
       collection: jest.fn((name) => {
-        if (name !== 'users') {
-          throw new Error(`Unexpected collection: ${name}`);
+        if (name === 'users') {
+          return {
+            doc: jest.fn(() => ({
+              get: userDocGet,
+              set: userDocSet
+            }))
+          };
         }
-        return {
-          doc: jest.fn(() => ({
-            get: userDocGet,
-            set: userDocSet
-          }))
-        };
+        if (name === 'shared') {
+          return {
+            doc: jest.fn(() => ({
+              get: sharedDocGet
+            }))
+          };
+        }
+        throw new Error(`Unexpected collection: ${name}`);
       })
     },
     userDocGet,
-    userDocSet
+    userDocSet,
+    sharedDocGet
   };
 }
 
@@ -210,6 +229,170 @@ describe('config/status read route module', () => {
     const response = await request(app).get('/api/config/tour-status');
 
     expect(response.statusCode).toBe(401);
+  });
+
+  test('announcement route returns normalized announcement for eligible users', async () => {
+    const dbMock = createDbMock({
+      announcement: {
+        enabled: true,
+        id: '  release-note-1 ',
+        title: ' Platform update ',
+        body: ' New market insights are live. ',
+        severity: 'warning',
+        showOnce: true,
+        audience: {
+          requireTourComplete: true,
+          requireSetupComplete: true,
+          minAccountAgeDays: 3
+        }
+      },
+      userProfile: {
+        createdAt: Date.now() - (7 * 24 * 60 * 60 * 1000)
+      }
+    });
+    const deps = createDeps({
+      db: dbMock.db,
+      getUserConfig: jest.fn(async () => ({
+        setupComplete: true,
+        tourComplete: true,
+        announcementDismissedIds: []
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/config/announcement')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      result: {
+        announcement: {
+          enabled: true,
+          id: 'release-note-1',
+          title: 'Platform update',
+          body: 'New market insights are live.',
+          severity: 'warning',
+          showOnce: true,
+          audience: {
+            requireTourComplete: true,
+            requireSetupComplete: true,
+            requireAutomationEnabled: false,
+            minAccountAgeDays: 3,
+            includeUids: [],
+            excludeUids: []
+          }
+        }
+      }
+    });
+  });
+
+  test('announcement route suppresses show-once announcement after dismissal', async () => {
+    const dbMock = createDbMock({
+      announcement: {
+        enabled: true,
+        id: 'release-note-1',
+        title: 'Platform update',
+        body: 'New market insights are live.',
+        showOnce: true,
+        audience: {
+          requireTourComplete: true,
+          requireSetupComplete: true
+        }
+      }
+    });
+    const deps = createDeps({
+      db: dbMock.db,
+      getUserConfig: jest.fn(async () => ({
+        setupComplete: true,
+        tourComplete: true,
+        announcementDismissedIds: ['release-note-1']
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/config/announcement')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ errno: 0, result: { announcement: null } });
+  });
+
+  test('announcement route allows explicit include UID to bypass maturity filters', async () => {
+    const dbMock = createDbMock({
+      announcement: {
+        enabled: true,
+        id: 'release-note-2',
+        title: 'Direct target',
+        body: 'This should still show.',
+        audience: {
+          requireTourComplete: true,
+          requireSetupComplete: true,
+          requireAutomationEnabled: true,
+          minAccountAgeDays: 60,
+          includeUids: ['u-config']
+        }
+      },
+      userProfile: {
+        automationEnabled: false,
+        createdAt: Date.now()
+      }
+    });
+    const deps = createDeps({
+      db: dbMock.db,
+      getUserConfig: jest.fn(async () => ({
+        setupComplete: false,
+        tourComplete: false,
+        announcementDismissedIds: []
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/config/announcement')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.result.announcement).toEqual(expect.objectContaining({
+      id: 'release-note-2',
+      title: 'Direct target'
+    }));
+  });
+
+  test('announcement route prefers automation state over stale profile automationEnabled mirror', async () => {
+    const dbMock = createDbMock({
+      automationEnabled: true,
+      announcement: {
+        enabled: true,
+        id: 'automation-audience-1',
+        title: 'Automation users only',
+        body: 'Shown only when automation is currently enabled.',
+        audience: {
+          requireTourComplete: true,
+          requireSetupComplete: true,
+          requireAutomationEnabled: true
+        }
+      }
+    });
+    const deps = createDeps({
+      db: dbMock.db,
+      getUserAutomationState: jest.fn(async () => ({ enabled: false })),
+      getUserConfig: jest.fn(async () => ({
+        setupComplete: true,
+        tourComplete: true,
+        announcementDismissedIds: []
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/config/announcement')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ errno: 0, result: { announcement: null } });
   });
 
   test('automation-status syncs automationEnabled and evaluates blackout windows', async () => {

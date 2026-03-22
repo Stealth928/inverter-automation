@@ -120,6 +120,24 @@ function registerAdminRoutes(app, deps = {}) {
     !!(config.setupComplete || config.deviceSn || config.foxessToken || config.amberApiKey)
   );
 
+  const ANNOUNCEMENT_SEVERITIES = new Set(['info', 'success', 'warning', 'danger']);
+  const ANNOUNCEMENT_DEFAULTS = Object.freeze({
+    enabled: false,
+    id: null,
+    title: '',
+    body: '',
+    severity: 'info',
+    showOnce: true,
+    audience: {
+      requireTourComplete: true,
+      requireSetupComplete: true,
+      requireAutomationEnabled: false,
+      minAccountAgeDays: null,
+      includeUids: [],
+      excludeUids: []
+    }
+  });
+
   const readHeader = (headers, key) => {
     if (!headers || !key) return null;
     if (typeof headers.get === 'function') return headers.get(key);
@@ -190,6 +208,112 @@ function registerAdminRoutes(app, deps = {}) {
   const trimString = (value) => {
     const text = String(value || '').trim();
     return text || null;
+  };
+
+  const normalizeAnnouncementId = (value) => {
+    const raw = trimString(value);
+    if (!raw) return null;
+    const normalized = raw
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/-{2,}/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80);
+    return normalized || null;
+  };
+
+  const normalizeAnnouncementText = (value, maxLength = 4000) => {
+    if (value === undefined || value === null) return '';
+    return String(value)
+      .replace(/\r\n/g, '\n')
+      .trim()
+      .slice(0, maxLength);
+  };
+
+  const normalizeUidList = (value, maxItems = 200) => {
+    const items = Array.isArray(value)
+      ? value
+      : String(value || '').split(/[\n,]+/);
+    const seen = new Set();
+    const normalized = [];
+
+    items.forEach((item) => {
+      const uid = trimString(item);
+      if (!uid || seen.has(uid)) return;
+      seen.add(uid);
+      normalized.push(uid);
+    });
+
+    return normalized.slice(0, maxItems);
+  };
+
+  const normalizeAnnouncementAudience = (value) => {
+    const source = value && typeof value === 'object' ? value : {};
+    const parsedAge = Number(source.minAccountAgeDays);
+    const minAccountAgeDays = Number.isFinite(parsedAge)
+      ? Math.max(0, Math.min(3650, Math.round(parsedAge)))
+      : null;
+
+    return {
+      requireTourComplete: source.requireTourComplete !== false,
+      requireSetupComplete: source.requireSetupComplete !== false,
+      requireAutomationEnabled: source.requireAutomationEnabled === true,
+      minAccountAgeDays: minAccountAgeDays > 0 ? minAccountAgeDays : null,
+      includeUids: normalizeUidList(source.includeUids),
+      excludeUids: normalizeUidList(source.excludeUids)
+    };
+  };
+
+  const normalizeAnnouncementConfig = (value) => {
+    const source = value && typeof value === 'object' ? value : {};
+    const severity = trimString(source.severity);
+
+    return {
+      enabled: source.enabled === true,
+      id: normalizeAnnouncementId(source.id),
+      title: normalizeAnnouncementText(source.title, 160),
+      body: normalizeAnnouncementText(source.body, 4000),
+      severity: ANNOUNCEMENT_SEVERITIES.has(severity) ? severity : ANNOUNCEMENT_DEFAULTS.severity,
+      showOnce: source.showOnce !== false,
+      audience: normalizeAnnouncementAudience(source.audience)
+    };
+  };
+
+  const buildAnnouncementResponse = (value) => {
+    const normalized = normalizeAnnouncementConfig(value);
+    const source = value && typeof value === 'object' ? value : {};
+    return {
+      ...normalized,
+      updatedAt: source.updatedAt || null,
+      updatedByUid: trimString(source.updatedByUid),
+      updatedByEmail: trimString(source.updatedByEmail)
+    };
+  };
+
+  const readAnnouncementConfigDoc = async () => {
+    const sharedDoc = await db.collection('shared').doc('serverConfig').get();
+    if (!sharedDoc.exists) {
+      return { announcement: buildAnnouncementResponse(null), exists: false };
+    }
+    const data = sharedDoc.data() || {};
+    return {
+      announcement: buildAnnouncementResponse(data.announcement),
+      exists: true
+    };
+  };
+
+  const validateAnnouncementConfig = (announcement) => {
+    if (!announcement || typeof announcement !== 'object') {
+      return 'Announcement payload is required';
+    }
+    if (announcement.enabled !== true) return null;
+    if (!announcement.title && !announcement.body) {
+      return 'Enabled announcements need a title or body';
+    }
+    if (announcement.showOnce && !announcement.id) {
+      return 'Show-once announcements require an ID';
+    }
+    return null;
   };
 
   const normalizeGithubBranch = (value) => {
@@ -662,6 +786,44 @@ function registerAdminRoutes(app, deps = {}) {
       pending: null
     };
   }
+
+  app.get('/api/admin/announcement', authenticateUser, requireAdmin, async (req, res) => {
+    try {
+      const { announcement } = await readAnnouncementConfigDoc();
+      res.json({ errno: 0, result: { announcement } });
+    } catch (error) {
+      console.error('[Admin] Failed to load announcement config:', error?.message || error);
+      res.status(500).json({ errno: 500, error: error?.message || 'Failed to load announcement config' });
+    }
+  });
+
+  app.post('/api/admin/announcement', authenticateUser, requireAdmin, async (req, res) => {
+    try {
+      const announcementInput = req.body?.announcement && typeof req.body.announcement === 'object'
+        ? req.body.announcement
+        : req.body;
+      const announcement = normalizeAnnouncementConfig(announcementInput);
+      const validationError = validateAnnouncementConfig(announcement);
+      if (validationError) {
+        return res.status(400).json({ errno: 400, error: validationError });
+      }
+
+      await db.collection('shared').doc('serverConfig').set({
+        announcement: {
+          ...announcement,
+          updatedAt: serverTimestamp(),
+          updatedByUid: req.user.uid,
+          updatedByEmail: req.user.email || ''
+        }
+      }, { merge: true });
+
+      const { announcement: savedAnnouncement } = await readAnnouncementConfigDoc();
+      return res.json({ errno: 0, result: { announcement: savedAnnouncement } });
+    } catch (error) {
+      console.error('[Admin] Failed to save announcement config:', error?.message || error);
+      return res.status(500).json({ errno: 500, error: error?.message || 'Failed to save announcement config' });
+    }
+  });
 
   async function getCachedAdminUsersSummary(loadSummary, { forceRefresh = false } = {}) {
     const now = Date.now();

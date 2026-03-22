@@ -65,6 +65,55 @@ test.describe('SEO Metadata', () => {
     await expect(page.locator('#calculator-faq .faq-item')).toHaveCount(4);
   });
 
+  test('blog index and first post are crawlable with structured metadata', async ({ page }) => {
+    await page.goto('/blog/');
+
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/blog/');
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow');
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://socratesautomation.com/blog/');
+    await expect(page.locator('h1')).toContainText('SoCrates blog');
+
+    let structuredData = page.locator('script[type="application/ld+json"]');
+    await expect(structuredData).toHaveCount(1);
+    let ldJsonText = await structuredData.first().textContent();
+    expect(ldJsonText).toContain('"@type": "CollectionPage"');
+    expect(ldJsonText).toContain('"@type": "ItemList"');
+    expect(ldJsonText).toContain('Home Battery Automation Options Compared: Manual Schedules, Home Assistant, Modbus and Managed Platforms');
+    expect(ldJsonText).toContain('Battery Automation ROI: What Smarter Rules Actually Look Like');
+
+    await page.goto('/home-battery-automation-options-compared/');
+
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/home-battery-automation-options-compared/');
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow');
+    await expect(page.locator('meta[property="og:type"]')).toHaveAttribute('content', 'article');
+    await expect(page.locator('meta[property="article:published_time"]')).toHaveAttribute('content', '2026-03-22');
+    await expect(page.locator('article h1')).toContainText('Home Battery Automation Options Compared: Manual Schedules, Home Assistant, Modbus and Managed Platforms');
+
+    structuredData = page.locator('script[type="application/ld+json"]');
+    await expect(structuredData).toHaveCount(1);
+    ldJsonText = await structuredData.first().textContent();
+    expect(ldJsonText).toContain('"@type": "BlogPosting"');
+    expect(ldJsonText).toContain('"@type": "BreadcrumbList"');
+    expect(ldJsonText).toContain('"@type": "FAQPage"');
+    expect(ldJsonText).toContain('"datePublished": "2026-03-22"');
+
+    await page.goto('/battery-automation-roi-examples/');
+
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/battery-automation-roi-examples/');
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow');
+    await expect(page.locator('meta[property="og:type"]')).toHaveAttribute('content', 'article');
+    await expect(page.locator('meta[property="article:published_time"]')).toHaveAttribute('content', '2026-03-22');
+    await expect(page.locator('article h1')).toContainText('Battery Automation ROI: What Smarter Rules Actually Look Like');
+
+    structuredData = page.locator('script[type="application/ld+json"]');
+    await expect(structuredData).toHaveCount(1);
+    ldJsonText = await structuredData.first().textContent();
+    expect(ldJsonText).toContain('"@type": "BlogPosting"');
+    expect(ldJsonText).toContain('"@type": "BreadcrumbList"');
+    expect(ldJsonText).toContain('"@type": "FAQPage"');
+    expect(ldJsonText).toContain('"datePublished": "2026-03-22"');
+  });
+
   test('robots and sitemap expose only public crawl targets', async ({ request }) => {
     const robotsResponse = await request.get('/robots.txt');
     expect(robotsResponse.ok()).toBeTruthy();
@@ -77,6 +126,9 @@ test.describe('SEO Metadata', () => {
     expect(sitemapResponse.ok()).toBeTruthy();
     const sitemapText = await sitemapResponse.text();
     expect(sitemapText).toContain('<loc>https://socratesautomation.com/</loc>');
+    expect(sitemapText).toContain('<loc>https://socratesautomation.com/blog/</loc>');
+    expect(sitemapText).toContain('<loc>https://socratesautomation.com/battery-automation-roi-examples/</loc>');
+    expect(sitemapText).toContain('<loc>https://socratesautomation.com/home-battery-automation-options-compared/</loc>');
     expect(sitemapText).toContain('<loc>https://socratesautomation.com/battery-roi-calculator.html</loc>');
     expect(sitemapText).not.toContain('/login.html');
     expect(sitemapText).not.toContain('/app.html');

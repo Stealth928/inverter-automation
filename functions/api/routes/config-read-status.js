@@ -11,6 +11,136 @@ const WRITE_ONLY_SECRET_FIELDS = Object.freeze([
 const TESLA_STATUS_CACHE_MIN_MS = 120000;
 const TESLA_STATUS_CACHE_MAX_MS = 10000000;
 const TESLA_STATUS_CACHE_DEFAULT_MS = 600000;
+const ANNOUNCEMENT_SEVERITIES = new Set(['info', 'success', 'warning', 'danger']);
+
+function trimString(value) {
+  const text = String(value || '').trim();
+  return text || null;
+}
+
+function normalizeAnnouncementId(value) {
+  const raw = trimString(value);
+  if (!raw) return null;
+  const normalized = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return normalized || null;
+}
+
+function normalizeAnnouncementText(value, maxLength = 4000) {
+  if (value === undefined || value === null) return '';
+  return String(value)
+    .replace(/\r\n/g, '\n')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function normalizeUidList(value, maxItems = 200) {
+  const items = Array.isArray(value)
+    ? value
+    : String(value || '').split(/[\n,]+/);
+  const seen = new Set();
+  const normalized = [];
+
+  items.forEach((item) => {
+    const uid = trimString(item);
+    if (!uid || seen.has(uid)) return;
+    seen.add(uid);
+    normalized.push(uid);
+  });
+
+  return normalized.slice(0, maxItems);
+}
+
+function normalizeAnnouncementAudience(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const parsedAge = Number(source.minAccountAgeDays);
+  const minAccountAgeDays = Number.isFinite(parsedAge)
+    ? Math.max(0, Math.min(3650, Math.round(parsedAge)))
+    : null;
+
+  return {
+    requireTourComplete: source.requireTourComplete !== false,
+    requireSetupComplete: source.requireSetupComplete !== false,
+    requireAutomationEnabled: source.requireAutomationEnabled === true,
+    minAccountAgeDays: minAccountAgeDays > 0 ? minAccountAgeDays : null,
+    includeUids: normalizeUidList(source.includeUids),
+    excludeUids: normalizeUidList(source.excludeUids)
+  };
+}
+
+function normalizeAnnouncementConfig(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const severity = trimString(source.severity);
+
+  return {
+    enabled: source.enabled === true,
+    id: normalizeAnnouncementId(source.id),
+    title: normalizeAnnouncementText(source.title, 160),
+    body: normalizeAnnouncementText(source.body, 4000),
+    severity: ANNOUNCEMENT_SEVERITIES.has(severity) ? severity : 'info',
+    showOnce: source.showOnce !== false,
+    audience: normalizeAnnouncementAudience(source.audience)
+  };
+}
+
+function toMillis(value) {
+  if (!value) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  if (typeof value.toDate === 'function') {
+    const date = value.toDate();
+    return date && typeof date.getTime === 'function' ? date.getTime() : null;
+  }
+  if (Number.isFinite(value._seconds)) return value._seconds * 1000;
+  if (Number.isFinite(value.seconds)) return value.seconds * 1000;
+  return null;
+}
+
+function buildClientAnnouncement(value) {
+  const normalized = normalizeAnnouncementConfig(value);
+  if (!normalized.enabled) return null;
+  if (!normalized.title && !normalized.body) return null;
+  if (normalized.showOnce && !normalized.id) return null;
+  return normalized;
+}
+
+function isAnnouncementEligible(announcement, userId, userConfig, userProfile, automationState) {
+  if (!announcement || !announcement.enabled) return false;
+
+  const audience = announcement.audience || {};
+  const includeUids = Array.isArray(audience.includeUids) ? audience.includeUids : [];
+  const excludeUids = Array.isArray(audience.excludeUids) ? audience.excludeUids : [];
+  const automationEnabled = typeof automationState?.enabled === 'boolean'
+    ? automationState.enabled === true
+    : userProfile?.automationEnabled === true;
+
+  if (excludeUids.includes(userId)) return false;
+
+  const forceInclude = includeUids.includes(userId);
+  if (forceInclude) return true;
+
+  if (audience.requireTourComplete && !userConfig?.tourComplete) return false;
+  if (audience.requireSetupComplete && !userConfig?.setupComplete) return false;
+  if (audience.requireAutomationEnabled && automationEnabled !== true) return false;
+
+  if (Number.isFinite(audience.minAccountAgeDays) && audience.minAccountAgeDays > 0) {
+    const createdAtMs = toMillis(userProfile?.createdAt);
+    if (!createdAtMs) return false;
+    const ageMs = Date.now() - createdAtMs;
+    if (ageMs < audience.minAccountAgeDays * 24 * 60 * 60 * 1000) {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 function sanitizeConfigForClient(userConfig) {
   if (!userConfig || typeof userConfig !== 'object') return {};
@@ -190,6 +320,36 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
     } catch (error) {
       console.error('[API] /api/config/tour-status GET error:', error && error.stack ? error.stack : String(error));
       res.status(500).json({ errno: 500, error: error.message || String(error) });
+    }
+  });
+
+  app.get('/api/config/announcement', authenticateUser, async (req, res) => {
+    try {
+      const userId = req.user.uid;
+      const [userConfig, sharedDoc, userProfileDoc, automationState] = await Promise.all([
+        getUserConfig(userId),
+        db.collection('shared').doc('serverConfig').get(),
+        db.collection('users').doc(userId).get(),
+        getUserAutomationState(userId)
+      ]);
+
+      const userProfile = userProfileDoc.exists ? (userProfileDoc.data() || {}) : {};
+      const sharedConfig = sharedDoc.exists ? (sharedDoc.data() || {}) : {};
+      const announcement = buildClientAnnouncement(sharedConfig.announcement);
+      const dismissedIds = normalizeUidList(userConfig?.announcementDismissedIds, 500);
+
+      if (!announcement || !isAnnouncementEligible(announcement, userId, userConfig, userProfile, automationState)) {
+        return res.json({ errno: 0, result: { announcement: null } });
+      }
+
+      if (announcement.showOnce && announcement.id && dismissedIds.includes(announcement.id)) {
+        return res.json({ errno: 0, result: { announcement: null } });
+      }
+
+      return res.json({ errno: 0, result: { announcement } });
+    } catch (error) {
+      console.error('[API] /api/config/announcement GET error:', error && error.stack ? error.stack : String(error));
+      return res.status(500).json({ errno: 500, error: error.message || String(error) });
     }
   });
 

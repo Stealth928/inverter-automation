@@ -25,7 +25,7 @@
   var TOUR_STEP_KEY = 'tourStep';
   var TOUR_STEP_VERSION_KEY = 'tourStepVersion';
   var TOUR_STEP_AT_KEY = 'tourStepAt';
-  var TOUR_FLOW_VERSION = 'tour-v2026-03-15-ev-step';
+  var TOUR_FLOW_VERSION = 'tour-v2026-03-22-market-insights';
   var TOUR_PENDING_MAX_AGE_MS = 5 * 60 * 1000;
 
   /* ------------------------------------------------------------------ */
@@ -284,7 +284,16 @@
       body: 'Track the financial value of your automation. The ROI calculator estimates grid import savings, feed-in revenue gains and avoided peak costs over a date range you choose.'
     },
 
-    /* 20 — Light / Dark theme */
+    /* 20 — Market Insights */
+    {
+      page: '/market-insights.html',
+      selector: '.page-header',
+      position: 'bottom',
+      title: '⚡ Market Insights Dashboard',
+      body: 'Explore AEMO market behavior with live regional trends, volatility, spike activity, and negative-price patterns. Use the filters and charts to compare market conditions before tuning your automation rules.'
+    },
+
+    /* 21 — Light / Dark theme */
     {
       page: '/app.html',
       selector: null,
@@ -294,7 +303,7 @@
       themeOverride: 'light'
     },
 
-    /* 21 — Outro splash */
+    /* 22 — Outro splash */
     {
       page: '/app.html',
       selector: null,

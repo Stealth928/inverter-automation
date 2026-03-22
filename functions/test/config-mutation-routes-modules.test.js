@@ -432,4 +432,59 @@ describe('config mutation route module', () => {
       tourCompletedAt: 1700000000999
     });
   });
+
+  test('announcement dismiss route rejects missing id', async () => {
+    const deps = buildDeps({
+      authenticateUser: (req, _res, next) => {
+        req.user = { uid: 'u-config' };
+        next();
+      }
+    });
+
+    const app = buildApp((instance) => {
+      registerConfigMutationRoutes(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/config/announcement/dismiss')
+      .send({});
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ errno: 400, error: 'Announcement ID is required' });
+    expect(deps.updateUserConfig).not.toHaveBeenCalled();
+  });
+
+  test('announcement dismiss route normalizes and persists unique ids', async () => {
+    const deps = buildDeps({
+      authenticateUser: (req, _res, next) => {
+        req.user = { uid: 'u-config' };
+        next();
+      },
+      getUserConfig: jest.fn(async () => ({
+        announcementDismissedIds: ['existing-note', ' release-note-1 ']
+      }))
+    });
+
+    const app = buildApp((instance) => {
+      registerConfigMutationRoutes(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/config/announcement/dismiss')
+      .send({ id: ' Release Note 1 ' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      msg: 'Announcement dismissed',
+      result: {
+        id: 'release-note-1',
+        announcementDismissedIds: ['existing-note', 'release-note-1']
+      }
+    });
+    expect(deps.updateUserConfig).toHaveBeenCalledWith('u-config', {
+      announcementDismissedIds: ['existing-note', 'release-note-1'],
+      announcementLastDismissedAt: '__TS__'
+    });
+  });
 });

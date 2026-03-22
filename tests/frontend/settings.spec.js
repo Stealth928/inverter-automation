@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { installInternalPageHarness } = require('./support/browser-harness');
 
 test.use({ serviceWorkers: 'block' });
 
@@ -37,37 +38,6 @@ const BASE_CONFIG = {
 
 function cloneConfig(config) {
   return JSON.parse(JSON.stringify(config));
-}
-
-function authInitScript(uid, email) {
-  return ({ userUid, userEmail }) => {
-    window.__DISABLE_AUTH_REDIRECTS__ = true;
-    try {
-      localStorage.setItem('mockAuthUser', JSON.stringify({
-        uid: userUid,
-        email: userEmail,
-        displayName: userEmail.split('@')[0]
-      }));
-      localStorage.setItem('mockAuthToken', 'mock-token');
-    } catch (e) {
-      // ignore
-    }
-    try {
-      Object.defineProperty(window, 'safeRedirect', {
-        configurable: false,
-        writable: false,
-        value: function () {}
-      });
-    } catch (e) {
-      window.safeRedirect = function () {};
-    }
-
-    try {
-      window.location.assign = function () {};
-    } catch (e) {
-      // ignore
-    }
-  };
 }
 
 async function mockSettingsApi(page, config = BASE_CONFIG) {
@@ -210,7 +180,6 @@ async function waitForNonEmptyText(locator) {
 }
 
 async function waitForSettingsReady(page) {
-  await page.waitForLoadState('networkidle');
   await expect(page.locator('body')).toBeVisible();
   await page.evaluate(() => {
     const weatherPlace = document.getElementById('preferences_weatherPlace');
@@ -248,23 +217,19 @@ test.describe('Settings Page', () => {
   let apiMock;
   
   test.beforeEach(async ({ page }) => {
-    await page.route('**/js/firebase-config.js', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/javascript',
-        body: 'window.firebaseConfig = { apiKey: "YOUR_TEST_KEY" };'
-      });
+    await installInternalPageHarness(page, {
+      user: {
+        uid: 'test-user-123',
+        email: 'test@example.com',
+        displayName: 'test'
+      }
     });
     apiMock = await mockSettingsApi(page);
-    await page.addInitScript(authInitScript('test-user-123', 'test@example.com'), {
-      userUid: 'test-user-123',
-      userEmail: 'test@example.com'
-    });
-    await page.goto('/settings.html');
+    await page.goto('/settings.html', { waitUntil: 'domcontentloaded' });
     await waitForSettingsReady(page);
   });
 
-  test('should load settings page', async ({ page }) => {
+  test('should load settings page @smoke', async ({ page }) => {
     await expect(page).toHaveTitle(/Settings|Configuration|Inverter/i);
   });
 
@@ -826,19 +791,15 @@ test.describe('Settings Page', () => {
 test.describe('Settings Page - Change Detection', () => {
   
   test.beforeEach(async ({ page }) => {
-    await page.route('**/js/firebase-config.js', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/javascript',
-        body: 'window.firebaseConfig = { apiKey: "YOUR_TEST_KEY" };'
-      });
+    await installInternalPageHarness(page, {
+      user: {
+        uid: 'test-user-456',
+        email: 'changedetection@example.com',
+        displayName: 'changedetection'
+      }
     });
     await mockSettingsApi(page);
-    await page.addInitScript(authInitScript('test-user-456', 'changedetection@example.com'), {
-      userUid: 'test-user-456',
-      userEmail: 'changedetection@example.com'
-    });
-    await page.goto('/settings.html');
+    await page.goto('/settings.html', { waitUntil: 'domcontentloaded' });
     await waitForSettingsReady(page);
   });
 

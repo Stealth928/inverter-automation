@@ -106,9 +106,11 @@
     let usersCouplingChart = null;
     let usersTourChart = null;
     let activeTab = 'overview';
-    let tabsLoaded = { overview: false, behavior: false, scheduler: false, dataworks: false, users: false };
+    let tabsLoaded = { overview: false, behavior: false, announcement: false, scheduler: false, dataworks: false, users: false };
     let usersTableRequestSequence = 0;
     let usersSummaryRequestSequence = 0;
+    let currentAdminAnnouncement = null;
+    let announcementEditorBound = false;
 
     function showMessage(type, msg, duration = 5000) {
         const area = document.getElementById('messageArea');
@@ -827,6 +829,8 @@
                 loadFirestoreCostMetrics();
             } else if (name === 'behavior') {
                 loadBehaviorMetrics();
+            } else if (name === 'announcement') {
+                loadAdminAnnouncement();
             } else if (name === 'scheduler') {
                 loadSchedulerMetrics();
             } else if (name === 'dataworks') {
@@ -1461,6 +1465,329 @@
             warningEl.textContent = e.message || String(e);
             showMessage('warning', `⚠️ Failed to load behaviour analytics: ${e.message}`);
         }
+    }
+
+    function createDefaultAnnouncementConfig() {
+        return {
+            enabled: false,
+            id: '',
+            title: '',
+            body: '',
+            severity: 'info',
+            showOnce: true,
+            audience: {
+                requireTourComplete: true,
+                requireSetupComplete: true,
+                requireAutomationEnabled: false,
+                minAccountAgeDays: null,
+                includeUids: [],
+                excludeUids: []
+            },
+            updatedAt: null,
+            updatedByUid: null,
+            updatedByEmail: null
+        };
+    }
+
+    function normalizeAnnouncementSeverity(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        return ['info', 'success', 'warning', 'danger'].includes(normalized) ? normalized : 'info';
+    }
+
+    const SEVERITY_COLORS = { info: '#388bfd', success: '#7ee787', warning: '#d29922', danger: '#f85149' };
+
+    function updateSeverityDot() {
+        const sel = document.getElementById('announcementSeveritySelect');
+        const dot = document.getElementById('announcementSeverityDot');
+        if (!sel || !dot) return;
+        dot.style.background = SEVERITY_COLORS[normalizeAnnouncementSeverity(sel.value)] || '#388bfd';
+    }
+
+    function normalizeAnnouncementId(value) {
+        return String(value || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9._-]+/g, '-')
+            .replace(/-{2,}/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 80);
+    }
+
+    function parseAnnouncementUidList(value) {
+        const items = String(value || '')
+            .split(/[\n,]+/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+        return Array.from(new Set(items)).slice(0, 200);
+    }
+
+    function formatAnnouncementUidList(value) {
+        return Array.isArray(value) && value.length ? value.join('\n') : '';
+    }
+
+    function getAnnouncementElements() {
+        return {
+            updated: document.getElementById('announcementUpdated'),
+            warning: document.getElementById('announcementWarning'),
+            refreshBtn: document.getElementById('refreshAnnouncementBtn'),
+            saveBtn: document.getElementById('saveAnnouncementBtn'),
+            disableBtn: document.getElementById('disableAnnouncementBtn'),
+            idInput: document.getElementById('announcementIdInput'),
+            severitySelect: document.getElementById('announcementSeveritySelect'),
+            titleInput: document.getElementById('announcementTitleInput'),
+            bodyInput: document.getElementById('announcementBodyInput'),
+            enabledInput: document.getElementById('announcementEnabledInput'),
+            showOnceInput: document.getElementById('announcementShowOnceInput'),
+            requireTourInput: document.getElementById('announcementRequireTourInput'),
+            requireSetupInput: document.getElementById('announcementRequireSetupInput'),
+            requireAutomationInput: document.getElementById('announcementRequireAutomationInput'),
+            minAccountAgeInput: document.getElementById('announcementMinAccountAgeInput'),
+            includeUidsInput: document.getElementById('announcementIncludeUidsInput'),
+            excludeUidsInput: document.getElementById('announcementExcludeUidsInput'),
+            preview: document.getElementById('announcementPreview'),
+            previewTitle: document.getElementById('announcementPreviewTitle'),
+            previewBody: document.getElementById('announcementPreviewBody'),
+            previewMeta: document.getElementById('announcementPreviewMeta'),
+            audienceSummary: document.getElementById('announcementAudienceSummary')
+        };
+    }
+
+    function bindAnnouncementEditorHandlers() {
+        if (announcementEditorBound) return;
+        announcementEditorBound = true;
+
+        const els = getAnnouncementElements();
+        const previewHandler = () => {
+            renderAnnouncementPreview(collectAdminAnnouncementForm());
+        };
+
+        [
+            els.idInput,
+            els.severitySelect,
+            els.titleInput,
+            els.bodyInput,
+            els.enabledInput,
+            els.showOnceInput,
+            els.requireTourInput,
+            els.requireSetupInput,
+            els.requireAutomationInput,
+            els.minAccountAgeInput,
+            els.includeUidsInput,
+            els.excludeUidsInput
+        ].forEach((el) => {
+            if (!el || typeof el.addEventListener !== 'function') return;
+            el.addEventListener('input', previewHandler);
+            el.addEventListener('change', previewHandler);
+        });
+    }
+
+    function setAnnouncementEditorBusy(isBusy) {
+        const els = getAnnouncementElements();
+        if (els.refreshBtn) els.refreshBtn.disabled = isBusy;
+        if (els.saveBtn) els.saveBtn.disabled = isBusy;
+        if (els.disableBtn) els.disableBtn.disabled = isBusy;
+    }
+
+    function setAnnouncementEditorWarning(message = '') {
+        const { warning } = getAnnouncementElements();
+        if (!warning) return;
+        if (!message) {
+            warning.style.display = 'none';
+            warning.textContent = '';
+            return;
+        }
+        warning.style.display = '';
+        warning.textContent = message;
+    }
+
+    function buildAudienceSummaryLines(announcement) {
+        const audience = announcement && announcement.audience ? announcement.audience : {};
+        const filters = [];
+        if (audience.requireTourComplete) filters.push('Tour complete only');
+        if (audience.requireSetupComplete) filters.push('Setup-complete users only');
+        if (audience.requireAutomationEnabled) filters.push('Automation-enabled users only');
+        if (Number(audience.minAccountAgeDays || 0) > 0) filters.push(`Account age >= ${Number(audience.minAccountAgeDays)} days`);
+        if (!filters.length) filters.push('No automatic maturity filters');
+
+        const includeSummary = Array.isArray(audience.includeUids) && audience.includeUids.length
+            ? `Manual include: ${audience.includeUids.length} UID${audience.includeUids.length === 1 ? '' : 's'}`
+            : 'Manual include: none';
+        const excludeSummary = Array.isArray(audience.excludeUids) && audience.excludeUids.length
+            ? `Manual exclude: ${audience.excludeUids.length} UID${audience.excludeUids.length === 1 ? '' : 's'}`
+            : 'Manual exclude: none';
+
+        return [filters.join(' · '), includeSummary, excludeSummary];
+    }
+
+    function renderAnnouncementPreview(announcement) {
+        const els = getAnnouncementElements();
+        if (!els.preview || !els.previewTitle || !els.previewBody || !els.previewMeta || !els.audienceSummary) return;
+
+        const hasCopy = !!(announcement.title || announcement.body);
+        els.preview.className = `announcement-preview ${normalizeAnnouncementSeverity(announcement.severity)}${hasCopy ? ' active' : ''}`;
+        els.previewTitle.textContent = announcement.title || 'Announcement preview';
+        els.previewBody.textContent = announcement.body || 'No announcement body set yet.';
+        updateSeverityDot();
+
+        const chips = [];
+        chips.push(`<span class="announcement-chip">${announcement.enabled ? 'Enabled' : 'Disabled'}</span>`);
+        chips.push(`<span class="announcement-chip">${announcement.showOnce ? 'Show once' : 'Repeatable'}</span>`);
+        chips.push(`<span class="announcement-chip">${escapeHtml(normalizeAnnouncementSeverity(announcement.severity))}</span>`);
+        if (announcement.id) {
+            chips.push(`<span class="announcement-chip">ID: ${escapeHtml(announcement.id)}</span>`);
+        }
+        els.previewMeta.innerHTML = chips.join('');
+        els.audienceSummary.innerHTML = buildAudienceSummaryLines(announcement)
+            .map((line) => `<div>${escapeHtml(line)}</div>`)
+            .join('');
+    }
+
+    function renderAdminAnnouncement(announcement) {
+        const els = getAnnouncementElements();
+        if (!els.updated) return;
+
+        const next = {
+            ...createDefaultAnnouncementConfig(),
+            ...(announcement || {}),
+            audience: {
+                ...createDefaultAnnouncementConfig().audience,
+                ...((announcement && announcement.audience) || {})
+            }
+        };
+        currentAdminAnnouncement = next;
+
+        if (els.idInput) els.idInput.value = next.id || '';
+        if (els.severitySelect) els.severitySelect.value = normalizeAnnouncementSeverity(next.severity);
+        updateSeverityDot();
+        if (els.titleInput) els.titleInput.value = next.title || '';
+        if (els.bodyInput) els.bodyInput.value = next.body || '';
+        if (els.enabledInput) els.enabledInput.checked = next.enabled === true;
+        if (els.showOnceInput) els.showOnceInput.checked = next.showOnce !== false;
+        if (els.requireTourInput) els.requireTourInput.checked = next.audience.requireTourComplete !== false;
+        if (els.requireSetupInput) els.requireSetupInput.checked = next.audience.requireSetupComplete !== false;
+        if (els.requireAutomationInput) els.requireAutomationInput.checked = next.audience.requireAutomationEnabled === true;
+        if (els.minAccountAgeInput) els.minAccountAgeInput.value = Number(next.audience.minAccountAgeDays || 0) > 0 ? String(next.audience.minAccountAgeDays) : '';
+        if (els.includeUidsInput) els.includeUidsInput.value = formatAnnouncementUidList(next.audience.includeUids);
+        if (els.excludeUidsInput) els.excludeUidsInput.value = formatAnnouncementUidList(next.audience.excludeUids);
+
+        const updatedAtText = next.updatedAt ? formatDate(next.updatedAt) : 'Never saved';
+        const updatedByText = next.updatedByEmail || next.updatedByUid || 'unknown admin';
+        els.updated.textContent = next.updatedAt
+            ? `Last updated ${updatedAtText} by ${updatedByText}`
+            : 'Announcement has not been saved yet.';
+
+        setAnnouncementEditorWarning('');
+        renderAnnouncementPreview(next);
+    }
+
+    function collectAdminAnnouncementForm() {
+        const els = getAnnouncementElements();
+        const minAccountAgeRaw = Number(els.minAccountAgeInput?.value || 0);
+        const minAccountAgeDays = Number.isFinite(minAccountAgeRaw) && minAccountAgeRaw > 0
+            ? Math.min(3650, Math.round(minAccountAgeRaw))
+            : null;
+
+        return {
+            enabled: els.enabledInput?.checked === true,
+            id: normalizeAnnouncementId(els.idInput?.value || ''),
+            title: String(els.titleInput?.value || '').trim().slice(0, 160),
+            body: String(els.bodyInput?.value || '').replace(/\r\n/g, '\n').trim().slice(0, 4000),
+            severity: normalizeAnnouncementSeverity(els.severitySelect?.value || 'info'),
+            showOnce: els.showOnceInput?.checked !== false,
+            audience: {
+                requireTourComplete: els.requireTourInput?.checked !== false,
+                requireSetupComplete: els.requireSetupInput?.checked !== false,
+                requireAutomationEnabled: els.requireAutomationInput?.checked === true,
+                minAccountAgeDays,
+                includeUids: parseAnnouncementUidList(els.includeUidsInput?.value || ''),
+                excludeUids: parseAnnouncementUidList(els.excludeUidsInput?.value || '')
+            }
+        };
+    }
+
+    function validateAdminAnnouncement(announcement) {
+        if (announcement.enabled && !announcement.title && !announcement.body) {
+            return 'Enabled announcements need a title or body.';
+        }
+        if (announcement.enabled && announcement.showOnce && !announcement.id) {
+            return 'Show-once announcements require an ID.';
+        }
+        return null;
+    }
+
+    async function persistAdminAnnouncement(payload, options = {}) {
+        const els = getAnnouncementElements();
+        const validationError = validateAdminAnnouncement(payload);
+        renderAnnouncementPreview(payload);
+        if (validationError) {
+            setAnnouncementEditorWarning(validationError);
+            return false;
+        }
+
+        setAnnouncementEditorBusy(true);
+        setAnnouncementEditorWarning('');
+
+        try {
+            const resp = await adminApiClient.fetch('/api/admin/announcement', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ announcement: payload })
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.errno !== 0) {
+                throw new Error(data.error || `Save failed (${resp.status})`);
+            }
+            renderAdminAnnouncement(data.result?.announcement || payload);
+            showMessage('success', options.successMessage || 'Announcement settings saved.');
+            return true;
+        } catch (error) {
+            const message = error?.message || String(error);
+            setAnnouncementEditorWarning(message);
+            if (els.updated) els.updated.textContent = 'Failed to save announcement settings';
+            showMessage('error', `Failed to save announcement settings: ${message}`);
+            return false;
+        } finally {
+            setAnnouncementEditorBusy(false);
+        }
+    }
+
+    async function loadAdminAnnouncement(options = {}) {
+        const els = getAnnouncementElements();
+        if (!adminApiClient || !els.updated) return;
+
+        setAnnouncementEditorBusy(true);
+        setAnnouncementEditorWarning('');
+        els.updated.textContent = options.force ? 'Refreshing announcement settings...' : 'Loading announcement settings...';
+
+        try {
+            const resp = await adminApiClient.fetch('/api/admin/announcement');
+            const data = await resp.json();
+            if (!resp.ok || data.errno !== 0) {
+                throw new Error(data.error || `Request failed (${resp.status})`);
+            }
+            renderAdminAnnouncement(data.result?.announcement || createDefaultAnnouncementConfig());
+        } catch (error) {
+            const message = error?.message || String(error);
+            renderAdminAnnouncement(currentAdminAnnouncement || createDefaultAnnouncementConfig());
+            els.updated.textContent = 'Unable to load announcement settings';
+            setAnnouncementEditorWarning(message);
+            showMessage('warning', `Failed to load announcement settings: ${message}`);
+        } finally {
+            setAnnouncementEditorBusy(false);
+        }
+    }
+
+    async function saveAdminAnnouncement() {
+        if (!adminApiClient) return;
+        const payload = collectAdminAnnouncementForm();
+        await persistAdminAnnouncement(payload, { successMessage: 'Announcement settings saved.' });
+    }
+
+    async function disableAdminAnnouncement() {
+        if (!adminApiClient) return;
+        const payload = collectAdminAnnouncementForm();
+        payload.enabled = false;
+        await persistAdminAnnouncement(payload, { successMessage: 'Announcement disabled.' });
     }
 
     // ==================== Render Users Table ====================
@@ -3330,6 +3657,7 @@
     AppShell.init({ pageName: 'admin', requireAuth: true, checkSetup: false });
     AppShell.onReady(async (ctx) => {
         adminApiClient = ctx.apiClient;
+        bindAnnouncementEditorHandlers();
         if (!adminApiClient) {
             document.getElementById('accessDenied').style.display = '';
             return;

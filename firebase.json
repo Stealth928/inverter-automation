@@ -34,6 +34,51 @@
         "source": "/market-insights",
         "destination": "/market-insights.html",
         "type": 301
+      },
+      {
+        "source": "/blog",
+        "destination": "/blog/",
+        "type": 301
+      },
+      {
+        "source": "/battery-automation-roi-examples",
+        "destination": "/battery-automation-roi-examples/",
+        "type": 301
+      },
+      {
+        "source": "/home-battery-automation-options-compared",
+        "destination": "/home-battery-automation-options-compared/",
+        "type": 301
+      },
+      {
+        "source": "/blog/battery-automation-roi-examples",
+        "destination": "/battery-automation-roi-examples/",
+        "type": 301
+      },
+      {
+        "source": "/blog/battery-automation-roi-examples/",
+        "destination": "/battery-automation-roi-examples/",
+        "type": 301
+      },
+      {
+        "source": "/blog/home-battery-automation-options-compared",
+        "destination": "/home-battery-automation-options-compared/",
+        "type": 301
+      },
+      {
+        "source": "/blog/home-battery-automation-options-compared/",
+        "destination": "/home-battery-automation-options-compared/",
+        "type": 301
+      },
+      {
+        "source": "/blog/what-smarter-battery-automation-looks-like-as-you-level-up",
+        "destination": "/battery-automation-roi-examples/",
+        "type": 301
+      },
+      {
+        "source": "/blog/what-smarter-battery-automation-looks-like-as-you-level-up/",
+        "destination": "/battery-automation-roi-examples/",
+        "type": 301
       }
     ],
 
@@ -55,6 +100,24 @@
       },
       {
         "source": "/battery-roi-calculator.html",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+          }
+        ]
+      },
+      {
+        "source": "/battery-automation-roi-examples/**",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+          }
+        ]
+      },
+      {
+        "source": "/home-battery-automation-options-compared/**",
         "headers": [
           {
             "key": "X-Robots-Tag",
@@ -172,6 +235,15 @@
       },
       {
         "source": "/market-insights.html",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+          }
+        ]
+      },
+      {
+        "source": "/blog/**",
         "headers": [
           {
             "key": "X-Robots-Tag",

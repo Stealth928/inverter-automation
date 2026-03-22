@@ -155,6 +155,192 @@ describe('admin route module', () => {
     expect(response.body).toEqual({ errno: 0, result: { isAdmin: true } });
   });
 
+  test('admin announcement returns normalized shared config payload', async () => {
+    const sharedServerConfigDoc = {
+      get: jest.fn(async () => ({
+        exists: true,
+        data: () => ({
+          announcement: {
+            enabled: true,
+            id: 'Spring Launch 2026',
+            title: '  New announcement  ',
+            body: 'Line one\r\nLine two',
+            severity: 'warning',
+            showOnce: true,
+            audience: {
+              requireTourComplete: true,
+              requireSetupComplete: false,
+              requireAutomationEnabled: true,
+              minAccountAgeDays: 7,
+              includeUids: ['alpha', 'beta'],
+              excludeUids: ['gamma']
+            },
+            updatedByEmail: 'admin@example.com'
+          }
+        })
+      }))
+    };
+
+    const app = buildApp(createDeps({
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'shared') {
+            return {
+              doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
+              where: jest.fn(() => ({})),
+              add: jest.fn(async () => undefined)
+            };
+          }
+          return {
+            doc: jest.fn((docId) => {
+              if (docId !== 'serverConfig') throw new Error(`Unexpected shared doc: ${docId}`);
+              return sharedServerConfigDoc;
+            })
+          };
+        })
+      }
+    }));
+
+    const response = await request(app)
+      .get('/api/admin/announcement')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.result.announcement).toEqual(expect.objectContaining({
+      enabled: true,
+      id: 'spring-launch-2026',
+      title: 'New announcement',
+      body: 'Line one\nLine two',
+      severity: 'warning',
+      showOnce: true,
+      updatedByEmail: 'admin@example.com',
+      audience: {
+        requireTourComplete: true,
+        requireSetupComplete: false,
+        requireAutomationEnabled: true,
+        minAccountAgeDays: 7,
+        includeUids: ['alpha', 'beta'],
+        excludeUids: ['gamma']
+      }
+    }));
+  });
+
+  test('admin announcement saves normalized config into shared serverConfig', async () => {
+    const set = jest.fn(async () => undefined);
+    const get = jest.fn(async () => ({
+      exists: true,
+      data: () => ({
+        announcement: {
+          enabled: true,
+          id: 'spring-launch-2026',
+          title: 'New announcement',
+          body: 'Hello users',
+          severity: 'warning',
+          showOnce: true,
+          audience: {
+            requireTourComplete: true,
+            requireSetupComplete: true,
+            requireAutomationEnabled: false,
+            minAccountAgeDays: 14,
+            includeUids: ['user-a'],
+            excludeUids: []
+          },
+          updatedAt: '__TS__',
+          updatedByUid: 'admin-uid',
+          updatedByEmail: 'admin@example.com'
+        }
+      })
+    }));
+    const sharedServerConfigDoc = { get, set };
+
+    const app = buildApp(createDeps({
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'shared') {
+            return {
+              doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
+              where: jest.fn(() => ({})),
+              add: jest.fn(async () => undefined)
+            };
+          }
+          return {
+            doc: jest.fn((docId) => {
+              if (docId !== 'serverConfig') throw new Error(`Unexpected shared doc: ${docId}`);
+              return sharedServerConfigDoc;
+            })
+          };
+        })
+      }
+    }));
+
+    const response = await request(app)
+      .post('/api/admin/announcement')
+      .set('Authorization', 'Bearer token')
+      .send({
+        announcement: {
+          enabled: true,
+          id: 'Spring Launch 2026',
+          title: ' New announcement ',
+          body: 'Hello users',
+          severity: 'warning',
+          showOnce: true,
+          audience: {
+            requireTourComplete: true,
+            requireSetupComplete: true,
+            minAccountAgeDays: 14,
+            includeUids: 'user-a\nuser-a',
+            excludeUids: []
+          }
+        }
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(set).toHaveBeenCalledWith({
+      announcement: {
+        enabled: true,
+        id: 'spring-launch-2026',
+        title: 'New announcement',
+        body: 'Hello users',
+        severity: 'warning',
+        showOnce: true,
+        audience: {
+          requireTourComplete: true,
+          requireSetupComplete: true,
+          requireAutomationEnabled: false,
+          minAccountAgeDays: 14,
+          includeUids: ['user-a'],
+          excludeUids: []
+        },
+        updatedAt: '__TS__',
+        updatedByUid: 'admin-uid',
+        updatedByEmail: 'admin@example.com'
+      }
+    }, { merge: true });
+    expect(response.body.result.announcement).toEqual(expect.objectContaining({
+      id: 'spring-launch-2026',
+      title: 'New announcement'
+    }));
+  });
+
+  test('admin announcement rejects enabled show-once announcements without an id', async () => {
+    const app = buildApp(createDeps());
+
+    const response = await request(app)
+      .post('/api/admin/announcement')
+      .set('Authorization', 'Bearer token')
+      .send({
+        announcement: {
+          enabled: true,
+          title: 'Heads up',
+          body: 'Important update',
+          showOnce: true
+        }
+      });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ errno: 400, error: 'Show-once announcements require an ID' });
+  });
+
   test('dataworks ops returns cached GitHub diagnostics without refetching immediately', async () => {
     const fetchImpl = jest.fn()
       .mockResolvedValueOnce(makeFetchResponse(200, {

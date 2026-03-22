@@ -28,23 +28,27 @@ module.exports = defineConfig({
   workers: process.env.CI ? 1 : undefined,
   
   // Reporter to use
-  reporter: [
-    ['html', { outputFolder: 'playwright-report' }],
-    ['list']
-  ],
+  reporter: process.env.CI
+    ? [
+        ['html', { outputFolder: 'playwright-report' }],
+        ['list']
+      ]
+    : [
+        ['list']
+      ],
   
   use: {
     // Base URL for page.goto() calls
     baseURL: 'http://localhost:8000',
     
     // Collect trace when retrying the failed test
-    trace: 'on-first-retry',
+    trace: process.env.CI ? 'on-first-retry' : 'off',
     
     // Screenshot on failure
-    screenshot: 'only-on-failure',
+    screenshot: process.env.CI ? 'only-on-failure' : 'off',
     
     // Video on failure
-    video: 'retain-on-failure',
+    video: process.env.CI ? 'retain-on-failure' : 'off',
   },
 
   // Configure projects for different browsers

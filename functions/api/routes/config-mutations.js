@@ -11,6 +11,40 @@ const WRITE_ONLY_SECRET_FIELDS = Object.freeze([
 const TESLA_STATUS_CACHE_MIN_MS = 120000;
 const TESLA_STATUS_CACHE_MAX_MS = 10000000;
 
+function trimString(value) {
+  const text = String(value || '').trim();
+  return text || null;
+}
+
+function normalizeAnnouncementId(value) {
+  const raw = trimString(value);
+  if (!raw) return null;
+  const normalized = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return normalized || null;
+}
+
+function normalizeStringList(value, maxItems = 500) {
+  const items = Array.isArray(value)
+    ? value
+    : String(value || '').split(/[\n,]+/);
+  const seen = new Set();
+  const normalized = [];
+
+  items.forEach((item) => {
+    const entry = trimString(item);
+    if (!entry || seen.has(entry)) return;
+    seen.add(entry);
+    normalized.push(entry);
+  });
+
+  return normalized.slice(0, maxItems);
+}
+
 function stripWriteOnlySecrets(config) {
   if (!config || typeof config !== 'object') return config;
   const sanitized = { ...config };
@@ -284,6 +318,38 @@ function registerConfigMutationRoutes(app, deps = {}) {
       return res.json({ errno: 0, msg: 'Tour status updated' });
     } catch (error) {
       console.error('[API] /api/config/tour-status POST error:', error && error.stack ? error.stack : String(error));
+      return res.status(500).json({ errno: 500, error: error.message || String(error) });
+    }
+  });
+
+  app.post('/api/config/announcement/dismiss', authenticateUser, async (req, res) => {
+    try {
+      const announcementId = normalizeAnnouncementId(req.body?.id);
+      if (!announcementId) {
+        return res.status(400).json({ errno: 400, error: 'Announcement ID is required' });
+      }
+
+      const existingConfig = await getUserConfig(req.user.uid);
+      const dismissedIds = normalizeStringList(existingConfig?.announcementDismissedIds, 500);
+      if (!dismissedIds.includes(announcementId)) {
+        dismissedIds.push(announcementId);
+      }
+
+      await updateUserConfig(req.user.uid, {
+        announcementDismissedIds: dismissedIds,
+        announcementLastDismissedAt: serverTimestamp()
+      });
+
+      return res.json({
+        errno: 0,
+        msg: 'Announcement dismissed',
+        result: {
+          id: announcementId,
+          announcementDismissedIds: dismissedIds
+        }
+      });
+    } catch (error) {
+      console.error('[API] /api/config/announcement/dismiss POST error:', error && error.stack ? error.stack : String(error));
       return res.status(500).json({ errno: 500, error: error.message || String(error) });
     }
   });

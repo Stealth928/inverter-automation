@@ -20,7 +20,9 @@
     "scheduler:soak:status": "node scripts/scheduler-soak-evidence-status.js",
     "scheduler:soak:ready": "node scripts/scheduler-soak-evidence-status.js --require-ready",
     "icons:generate": "node scripts/generate-icons.js",
-    "test:e2e:frontend": "playwright test"
+    "test:e2e:frontend": "playwright test",
+    "test:e2e:frontend:smoke": "playwright test --grep @smoke",
+    "test:e2e:frontend:heavy-pages": "playwright test tests/frontend/settings.spec.js tests/frontend/setup.spec.js tests/frontend/reset-password.spec.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

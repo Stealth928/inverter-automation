@@ -1,6 +1,6 @@
 # API Reference
 
-Last updated: 2026-03-21
+Last updated: 2026-03-22
 
 ## Overview
 
@@ -21,6 +21,30 @@ This document focuses on commonly used product and operator workflows rather
 than listing every backend route exhaustively.
 
 ## Admin Operator Metrics
+
+### Shared Announcement Configuration
+```
+GET /api/admin/announcement
+POST /api/admin/announcement
+Authorization: Bearer <token>
+```
+Admin-only read/write endpoint for the shared announcement payload stored in `shared/serverConfig.announcement`.
+
+The payload supports:
+- `enabled`
+- `id`
+- `title`
+- `body`
+- `severity`: `info | success | warning | danger`
+- `showOnce`
+- `audience.requireTourComplete`
+- `audience.requireSetupComplete`
+- `audience.requireAutomationEnabled`
+- `audience.minAccountAgeDays`
+- `audience.includeUids`
+- `audience.excludeUids`
+
+The saved response also includes `updatedAt`, `updatedByUid`, and `updatedByEmail` metadata.
 
 ### Behaviour Analytics
 ```
@@ -220,6 +244,79 @@ Content-Type: application/json
 **Response:**
 ```json
 { "errno": 0, "msg": "Config saved" }
+```
+
+### Get Eligible Announcement
+```
+GET /api/config/announcement
+Authorization: Bearer <token>
+```
+Returns the currently eligible shared announcement for the signed-in user, or `null` when no announcement should be shown.
+
+Eligibility is evaluated server-side from the shared announcement config plus lightweight user state:
+- `tourComplete`
+- `setupComplete`
+- `automationEnabled`
+- account age from `users/{uid}.createdAt`
+- manual `includeUids` and `excludeUids`
+- previously dismissed show-once IDs from `announcementDismissedIds`
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "result": {
+    "announcement": {
+      "enabled": true,
+      "id": "release-note-1",
+      "title": "Platform update",
+      "body": "New market insights are live.",
+      "severity": "warning",
+      "showOnce": true,
+      "audience": {
+        "requireTourComplete": true,
+        "requireSetupComplete": true,
+        "requireAutomationEnabled": false,
+        "minAccountAgeDays": 3,
+        "includeUids": [],
+        "excludeUids": []
+      }
+    }
+  }
+}
+```
+
+When nothing is eligible, the endpoint still returns success:
+
+```json
+{
+  "errno": 0,
+  "result": {
+    "announcement": null
+  }
+}
+```
+
+### Dismiss Show-Once Announcement
+```
+POST /api/config/announcement/dismiss
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "id": "release-note-1" }
+```
+Persists a dismissed announcement ID for the current user. This is used by show-once announcements so they are not shown again after dismissal.
+
+**Response:**
+```json
+{
+  "errno": 0,
+  "msg": "Announcement dismissed",
+  "result": {
+    "id": "release-note-1",
+    "announcementDismissedIds": ["release-note-1"]
+  }
+}
 ```
 
 ### Get System Topology

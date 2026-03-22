@@ -1,8 +1,8 @@
 (function (window, document) {
-    const APP_RELEASE_ID = '2026-03-21-admin-behavior-1';
+    const APP_RELEASE_ID = '2026-03-22-announcement-runtime-1';
     const APP_RELEASE_STORAGE_KEY = 'socratesAppReleaseId';
     const APP_RELEASE_RELOAD_SESSION_KEY = `socratesAppReleaseReload:${APP_RELEASE_ID}`;
-    const SERVICE_WORKER_VERSION = '54';
+    const SERVICE_WORKER_VERSION = '55';
     const SOCRATES_CACHE_PREFIX = 'socrates-';
     const defaultOptions = {
         pageName: 'app',
@@ -27,7 +27,11 @@
         readyCallbacks: [],
         signOutCallbacks: [],
         metricsTimer: null,
-        redirectTimer: null
+        redirectTimer: null,
+        activeAnnouncementId: '',
+        announcementRequestToken: 0,
+        announcementDismissPending: false,
+        sessionHiddenAnnouncementIds: []
     };
 
     function mergeOptions(options) {
@@ -39,7 +43,16 @@
             const host = String(window.location?.hostname || '').toLowerCase();
             const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
             const isPlaywright = typeof navigator !== 'undefined' && navigator.webdriver === true;
-            if (isLocalHost && isPlaywright) {
+            let hasSeededMockUser = false;
+            try {
+                hasSeededMockUser = Boolean(
+                    window.mockFirebaseAuth?.currentUser ||
+                    localStorage.getItem('mockAuthUser')
+                );
+            } catch (storageError) {
+                hasSeededMockUser = Boolean(window.mockFirebaseAuth?.currentUser);
+            }
+            if (isLocalHost && isPlaywright && !hasSeededMockUser) {
                 state.options.requireAuth = false;
             }
         } catch (error) {
@@ -250,6 +263,339 @@
         }
     }
 
+    function hasSessionHiddenAnnouncement(id) {
+        return !!(id && Array.isArray(state.sessionHiddenAnnouncementIds) && state.sessionHiddenAnnouncementIds.includes(id));
+    }
+
+    function markSessionHiddenAnnouncement(id) {
+        if (!id) return;
+        if (!Array.isArray(state.sessionHiddenAnnouncementIds)) {
+            state.sessionHiddenAnnouncementIds = [];
+        }
+        if (!state.sessionHiddenAnnouncementIds.includes(id)) {
+            state.sessionHiddenAnnouncementIds.push(id);
+        }
+    }
+
+    function injectAnnouncementBannerStyles() {
+        if (document.getElementById('globalAnnouncementBannerStyles')) return;
+        const style = document.createElement('style');
+        style.id = 'globalAnnouncementBannerStyles';
+        style.textContent = `
+            #globalAnnouncementBanner {
+                display: none;
+                position: sticky;
+                top: 64px;
+                z-index: 9998;
+                width: 100%;
+                overflow: hidden;
+            }
+            #globalAnnouncementBanner.gab-visible {
+                display: block;
+                animation: gabSlideDown 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+            }
+            @keyframes gabSlideDown {
+                from { transform: translateY(-110%); opacity: 0; }
+                to   { transform: translateY(0);    opacity: 1; }
+            }
+            .gab-shimmer {
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(105deg,
+                    transparent 40%,
+                    rgba(255,255,255,0.07) 50%,
+                    transparent 60%);
+                background-size: 200% 100%;
+                animation: gabShimmer 4s linear 0.4s infinite;
+                pointer-events: none;
+            }
+            @keyframes gabShimmer {
+                0%   { background-position: 200% 0; }
+                100% { background-position: -200% 0; }
+            }
+            .gab-inner {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 16px;
+                max-width: 1280px;
+                margin: 0 auto;
+                padding: 13px 18px;
+                position: relative;
+                z-index: 1;
+            }
+            .gab-left {
+                display: flex;
+                align-items: flex-start;
+                gap: 12px;
+                min-width: 0;
+                flex: 1;
+            }
+            .gab-icon {
+                font-size: 20px;
+                line-height: 1;
+                flex-shrink: 0;
+                margin-top: 1px;
+                filter: drop-shadow(0 1px 4px rgba(0,0,0,0.3));
+            }
+            .gab-content {
+                min-width: 0;
+                flex: 1;
+            }
+            #globalAnnouncementBannerTitle {
+                font-size: 14px;
+                font-weight: 800;
+                line-height: 1.35;
+                margin-bottom: 3px;
+                letter-spacing: 0.01em;
+            }
+            #globalAnnouncementBannerBody {
+                font-size: 13px;
+                line-height: 1.6;
+                white-space: pre-line;
+                opacity: 0.92;
+            }
+            .gab-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex: 0 0 auto;
+                padding-top: 1px;
+            }
+            #globalAnnouncementDismissButton {
+                padding: 7px 16px;
+                border-radius: 999px;
+                border: 1.5px solid rgba(255,255,255,0.45);
+                background: rgba(0,0,0,0.18);
+                color: inherit;
+                cursor: pointer;
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.03em;
+                transition: background 0.18s, border-color 0.18s, transform 0.12s;
+                white-space: nowrap;
+            }
+            #globalAnnouncementDismissButton:hover:not(:disabled) {
+                background: rgba(0,0,0,0.32);
+                border-color: rgba(255,255,255,0.72);
+                transform: translateY(-1px);
+            }
+            #globalAnnouncementDismissButton:active:not(:disabled) {
+                transform: translateY(0);
+            }
+            #globalAnnouncementDismissButton:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
+        `;
+        (document.head || document.documentElement).appendChild(style);
+    }
+
+    const ANNOUNCEMENT_THEMES = {
+        info: {
+            background: 'linear-gradient(100deg, #0c2d52 0%, #1d4ed8 60%, #1e40af 100%)',
+            color: '#eff6ff',
+            icon: 'ℹ️',
+            borderBottom: '1px solid rgba(147,197,253,0.2)'
+        },
+        success: {
+            background: 'linear-gradient(100deg, #052e16 0%, #166534 60%, #14532d 100%)',
+            color: '#f0fdf4',
+            icon: '✅',
+            borderBottom: '1px solid rgba(134,239,172,0.2)'
+        },
+        warning: {
+            background: 'linear-gradient(100deg, #431407 0%, #b45309 60%, #92400e 100%)',
+            color: '#fffbeb',
+            icon: '⚠️',
+            borderBottom: '1px solid rgba(252,211,77,0.22)'
+        },
+        danger: {
+            background: 'linear-gradient(100deg, #450a0a 0%, #b91c1c 60%, #991b1b 100%)',
+            color: '#fef2f2',
+            icon: '🚨',
+            borderBottom: '1px solid rgba(252,165,165,0.2)'
+        }
+    };
+
+    function ensureAnnouncementBanner() {
+        let banner = document.getElementById('globalAnnouncementBanner');
+        if (banner) return banner;
+
+        injectAnnouncementBannerStyles();
+
+        banner = document.createElement('section');
+        banner.id = 'globalAnnouncementBanner';
+        banner.setAttribute('role', 'status');
+        banner.setAttribute('aria-live', 'polite');
+
+        // Shimmer overlay
+        const shimmer = document.createElement('div');
+        shimmer.className = 'gab-shimmer';
+
+        const inner = document.createElement('div');
+        inner.className = 'gab-inner';
+
+        const left = document.createElement('div');
+        left.className = 'gab-left';
+
+        const iconEl = document.createElement('span');
+        iconEl.className = 'gab-icon';
+        iconEl.id = 'globalAnnouncementBannerIcon';
+        iconEl.setAttribute('aria-hidden', 'true');
+
+        const content = document.createElement('div');
+        content.className = 'gab-content';
+
+        const title = document.createElement('div');
+        title.id = 'globalAnnouncementBannerTitle';
+
+        const message = document.createElement('div');
+        message.id = 'globalAnnouncementBannerBody';
+
+        const actions = document.createElement('div');
+        actions.className = 'gab-actions';
+
+        const dismissBtn = document.createElement('button');
+        dismissBtn.type = 'button';
+        dismissBtn.id = 'globalAnnouncementDismissButton';
+        dismissBtn.textContent = 'Dismiss';
+        dismissBtn.addEventListener('click', async () => {
+            const announcementId = banner.dataset.announcementId || '';
+            const showOnce = banner.dataset.showOnce === 'true';
+            if (showOnce && announcementId) {
+                if (state.announcementDismissPending) return;
+                state.announcementDismissPending = true;
+                dismissBtn.disabled = true;
+                dismissBtn.textContent = 'Saving...';
+                try {
+                    const response = await authFetch('/api/config/announcement/dismiss', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: announcementId })
+                    });
+                    const data = await response.json().catch(() => null);
+                    if (!response.ok || !data || data.errno !== 0) {
+                        throw new Error(data?.error || `Request failed: ${response.status}`);
+                    }
+                    markSessionHiddenAnnouncement(announcementId);
+                    clearAnnouncementBanner();
+                } catch (error) {
+                    dismissBtn.disabled = false;
+                    dismissBtn.textContent = 'Dismiss';
+                    if (typeof showMessage === 'function') {
+                        showMessage('warning', `Failed to dismiss announcement: ${error.message || error}`);
+                    }
+                } finally {
+                    state.announcementDismissPending = false;
+                }
+                return;
+            }
+
+            if (announcementId) {
+                markSessionHiddenAnnouncement(announcementId);
+            }
+            clearAnnouncementBanner();
+        });
+
+        content.appendChild(title);
+        content.appendChild(message);
+        left.appendChild(iconEl);
+        left.appendChild(content);
+        actions.appendChild(dismissBtn);
+        inner.appendChild(left);
+        inner.appendChild(actions);
+        banner.appendChild(shimmer);
+        banner.appendChild(inner);
+
+        const impersonationBanner = document.getElementById('globalImpersonationBanner');
+        const nav = document.querySelector('.nav-main');
+        if (impersonationBanner && impersonationBanner.parentNode) {
+            impersonationBanner.parentNode.insertBefore(banner, impersonationBanner.nextSibling);
+        } else if (nav && nav.parentNode) {
+            nav.parentNode.insertBefore(banner, nav.nextSibling);
+        } else if (document.body) {
+            document.body.insertBefore(banner, document.body.firstChild);
+        }
+
+        return banner;
+    }
+
+    function clearAnnouncementBanner() {
+        const banner = document.getElementById('globalAnnouncementBanner');
+        state.activeAnnouncementId = '';
+        if (!banner) return;
+        banner.classList.remove('gab-visible');
+        banner.style.display = 'none';
+        banner.dataset.announcementId = '';
+        banner.dataset.showOnce = 'false';
+    }
+
+    function renderAnnouncementBanner(announcement) {
+        if (!announcement || (!announcement.title && !announcement.body)) {
+            clearAnnouncementBanner();
+            return;
+        }
+
+        if (announcement.id && hasSessionHiddenAnnouncement(announcement.id)) {
+            clearAnnouncementBanner();
+            return;
+        }
+
+        const banner = ensureAnnouncementBanner();
+        const title = document.getElementById('globalAnnouncementBannerTitle');
+        const body = document.getElementById('globalAnnouncementBannerBody');
+        const iconEl = document.getElementById('globalAnnouncementBannerIcon');
+        const dismissBtn = document.getElementById('globalAnnouncementDismissButton');
+        const sev = String(announcement.severity || 'info').toLowerCase();
+        const theme = ANNOUNCEMENT_THEMES[sev] || ANNOUNCEMENT_THEMES.info;
+        const impersonationVisible = !!(document.getElementById('globalImpersonationBanner') &&
+            document.getElementById('globalImpersonationBanner').style.display !== 'none');
+
+        banner.style.background = theme.background;
+        banner.style.color = theme.color;
+        banner.style.borderBottom = theme.borderBottom;
+        banner.style.boxShadow = '0 8px 32px rgba(0,0,0,0.28), 0 2px 8px rgba(0,0,0,0.2)';
+        banner.style.top = impersonationVisible ? '108px' : '64px';
+        banner.dataset.announcementId = announcement.id || '';
+        banner.dataset.showOnce = announcement.showOnce ? 'true' : 'false';
+        if (iconEl) iconEl.textContent = theme.icon;
+        title.textContent = announcement.title || 'Announcement';
+        body.textContent = announcement.body || '';
+        dismissBtn.textContent = announcement.showOnce ? 'Dismiss' : 'Hide';
+        dismissBtn.disabled = false;
+        // Trigger slide-down animation on each show.
+        // Remove inline display so CSS class rules take over, then add class.
+        banner.style.removeProperty('display');
+        banner.classList.remove('gab-visible');
+        void banner.offsetWidth; // force reflow so animation re-triggers
+        banner.classList.add('gab-visible');
+        state.activeAnnouncementId = announcement.id || '';
+    }
+
+    async function refreshAnnouncementBanner() {
+        if (!state.user || !state.options.requireAuth) {
+            clearAnnouncementBanner();
+            return;
+        }
+
+        const requestToken = ++state.announcementRequestToken;
+        try {
+            const response = await authFetch('/api/config/announcement');
+            const data = await response.json().catch(() => null);
+            if (requestToken !== state.announcementRequestToken) return;
+            if (!response.ok || !data || data.errno !== 0) {
+                clearAnnouncementBanner();
+                return;
+            }
+            renderAnnouncementBanner(data.result?.announcement || null);
+        } catch (error) {
+            if (requestToken !== state.announcementRequestToken) return;
+            console.warn('[AppShell] Failed to load announcement banner', error);
+            clearAnnouncementBanner();
+        }
+    }
+
     function renderImpersonationBanner(user) {
         const stateData = getImpersonationState();
         if (stateData.mode === 'header') {
@@ -305,12 +651,20 @@
         const message = document.getElementById('globalImpersonationBannerText');
         if (!isImpersonating) {
             banner.style.display = 'none';
+            const announcementBanner = document.getElementById('globalAnnouncementBanner');
+            if (announcementBanner && announcementBanner.style.display !== 'none') {
+                announcementBanner.style.top = '64px';
+            }
             return;
         }
 
         const target = stateData.email || user.email || user.uid || 'unknown user';
         message.textContent = `\u26A0\uFE0F IMPERSONATION ACTIVE - You are viewing as: ${target}`;
         banner.style.display = 'block';
+        const announcementBanner = document.getElementById('globalAnnouncementBanner');
+        if (announcementBanner && announcementBanner.style.display !== 'none') {
+            announcementBanner.style.top = '108px';
+        }
     }
 
     async function refreshAdminNavVisibility(user) {
@@ -349,6 +703,9 @@
         // Keep admin nav visibility in sync even if user-menu is not rendered yet.
         refreshAdminNavVisibility(user);
         renderImpersonationBanner(user);
+        if (!user) {
+            clearAnnouncementBanner();
+        }
 
         const menu = document.querySelector('[data-user-menu]');
         if (!menu) return;
@@ -727,7 +1084,7 @@
                     // TourEngine not loaded on this page - navigate to dashboard and start there
                     try {
                         sessionStorage.setItem('tourStep', '0');
-                        sessionStorage.setItem('tourStepVersion', 'tour-v2026-03-15-ev-step');
+                        sessionStorage.setItem('tourStepVersion', 'tour-v2026-03-22-market-insights');
                         sessionStorage.setItem('tourStepAt', String(Date.now()));
                     } catch (e) {}
                     if (typeof safeRedirect === 'function') {
@@ -1018,6 +1375,9 @@
         state.ready = false;
         state.profileInitUid = '';
         state.profileInitPromise = null;
+        state.announcementRequestToken += 1;
+        state.announcementDismissPending = false;
+        state.sessionHiddenAnnouncementIds = [];
         stopMetricsTimer();
         updateUserIdentity(null);
         state.signOutCallbacks.forEach(cb => {
@@ -1072,6 +1432,7 @@
                         updateUserIdentity(user);
                         const setupOk = await ensureSetupComplete();
                         if (!setupOk) return;
+                        refreshAnnouncementBanner();
                         resolveReady(getContext());
                         if (!state.initResolved) {
                             resolve(getContext());
@@ -1700,6 +2061,9 @@
         onReady,
         onSignOut,
         authFetch,
+        refreshAnnouncement: refreshAnnouncementBanner,
+        showAnnouncement: renderAnnouncementBanner,
+        hideAnnouncement: clearAnnouncementBanner,
         signOut,
         getUser: () => state.user,
         getApiClient: () => window.apiClient || null

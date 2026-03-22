@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blog | SoCrates</title>
+  <meta name="description" content="SoCrates blog posts about smarter battery automation, rule design, pricing-aware control, forecast-aware charging, and practical solar-battery ROI decisions.">
+  <meta name="robots" content="index, follow">
+  <meta name="googlebot" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <link rel="canonical" href="https://socratesautomation.com/blog/">
+  <link rel="icon" href="/icons/favicon.ico" sizes="any">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+  <meta property="og:site_name" content="SoCrates">
+  <meta property="og:locale" content="en_AU">
+  <meta property="og:title" content="Blog | SoCrates">
+  <meta property="og:description" content="Practical posts on smarter battery automation, rule design, price-aware exporting, and forecast-aware charging.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://socratesautomation.com/blog/">
+  <meta property="og:image" content="https://socratesautomation.com/images/screenshots/screen-1.png">
+  <meta property="og:image:width" content="3832">
+  <meta property="og:image:height" content="1516">
+  <meta property="og:image:alt" content="SoCrates dashboard showing automation rules and battery status">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Blog | SoCrates">
+  <meta name="twitter:description" content="Practical posts on smarter battery automation, rule design, price-aware exporting, and forecast-aware charging.">
+  <meta name="twitter:url" content="https://socratesautomation.com/blog/">
+  <meta name="twitter:image" content="https://socratesautomation.com/images/screenshots/screen-1.png">
+  <meta name="twitter:image:alt" content="SoCrates dashboard showing automation rules and battery status">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://socratesautomation.com/#website",
+        "url": "https://socratesautomation.com/",
+        "name": "SoCrates",
+        "inLanguage": "en-AU"
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://socratesautomation.com/#organization",
+        "name": "SoCrates",
+        "url": "https://socratesautomation.com/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://socratesautomation.com/icons/icon-512.png"
+        }
+      },
+      {
+        "@type": "CollectionPage",
+        "@id": "https://socratesautomation.com/blog/#webpage",
+        "url": "https://socratesautomation.com/blog/",
+        "name": "SoCrates blog",
+        "description": "Posts on smarter battery automation, rule design, pricing-aware control, and practical operating tradeoffs.",
+        "isPartOf": {
+          "@id": "https://socratesautomation.com/#website"
+        },
+        "about": {
+          "@id": "https://socratesautomation.com/#organization"
+        },
+        "inLanguage": "en-AU"
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": "https://socratesautomation.com/blog/#breadcrumbs",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "SoCrates",
+            "item": "https://socratesautomation.com/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Blog",
+            "item": "https://socratesautomation.com/blog/"
+          }
+        ]
+      },
+      {
+        "@type": "ItemList",
+        "@id": "https://socratesautomation.com/blog/#posts",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "url": "https://socratesautomation.com/home-battery-automation-options-compared/",
+            "name": "Home Battery Automation Options Compared: Manual Schedules, Home Assistant, Modbus and Managed Platforms"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "url": "https://socratesautomation.com/battery-automation-roi-examples/",
+            "name": "Battery Automation ROI: What Smarter Rules Actually Look Like"
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="/css/landing.css">
+</head>
+<body>
+  <nav class="land-nav" role="navigation" aria-label="Main navigation">
+    <div class="container land-nav__inner">
+      <a href="/" class="land-nav__logo" aria-label="SoCrates home">
+        <img src="/icons/logo-login.svg" width="32" height="32" alt="" class="land-nav__logo-img" aria-hidden="true">
+        SoCrates
+      </a>
+
+      <ul class="land-nav__links" id="navLinks" role="list">
+        <li><a href="/">Home</a></li>
+        <li><a href="/#tools">Tools</a></li>
+        <li><a href="/battery-roi-calculator.html">Calculator</a></li>
+        <li><a href="/blog/">Blog</a></li>
+        <li><a href="/login.html" class="btn btn-ghost" style="padding:7px 18px;font-size:0.88rem;" data-analytics-event="sign_in_click" data-analytics-location="blog_nav">Sign In</a></li>
+        <li><a href="/login.html?tab=signup" class="btn btn-primary" style="padding:7px 18px;font-size:0.88rem;" data-analytics-event="claim_spot_click" data-analytics-location="blog_nav">Claim your spot</a></li>
+      </ul>
+
+      <button class="land-nav__burger" id="navBurger" aria-expanded="false" aria-controls="navLinks" aria-label="Open menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <main class="blog-shell">
+    <div class="container">
+      <section class="blog-hero" aria-labelledby="blogHeroTitle">
+        <div class="blog-hero__card">
+          <span class="blog-hero__eyebrow">SoCrates blog</span>
+          <h1 class="blog-hero__title" id="blogHeroTitle">SoCrates blog</h1>
+          <p class="blog-hero__sub">Practical writing about how battery automation actually gets smarter: rule by rule, guardrail by guardrail, and with enough context to avoid the dumb decisions that flatten ROI.</p>
+          <div class="blog-hero__actions">
+            <a href="/home-battery-automation-options-compared/" class="btn btn-primary" data-analytics-event="blog_post_click" data-analytics-location="blog_index_hero" data-analytics-label="Home Battery Automation Options Compared: Manual Schedules, Home Assistant, Modbus and Managed Platforms">Read the latest post</a>
+            <a href="/login.html?tab=signup" class="btn btn-ghost" data-analytics-event="claim_spot_click" data-analytics-location="blog_index_hero">Claim your spot</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="blog-index-grid" aria-label="Blog posts">
+        <article class="blog-index-card reveal is-visible">
+          <div class="blog-post-meta">
+            <span class="blog-chip">Featured</span>
+            <span>22 March 2026</span>
+            <span>11 min read</span>
+          </div>
+          <h2 class="blog-index-card__title"><a href="/home-battery-automation-options-compared/" data-analytics-event="blog_post_click" data-analytics-location="blog_index_card" data-analytics-label="Home Battery Automation Options Compared: Manual Schedules, Home Assistant, Modbus and Managed Platforms">Home Battery Automation Options Compared: Manual Schedules, Home Assistant, Modbus and Managed Platforms</a></h2>
+          <p class="blog-index-card__excerpt">Comparing the real battery automation paths people take today: no automation, vendor schedules, retailer automation, Home Assistant monitoring, Modbus DIY stacks, and managed platforms like SoCrates.</p>
+          <div class="blog-index-card__actions">
+            <a href="/home-battery-automation-options-compared/" class="btn btn-primary" data-analytics-event="blog_post_click" data-analytics-location="blog_index_card" data-analytics-label="Home Battery Automation Options Compared: Manual Schedules, Home Assistant, Modbus and Managed Platforms">Read post</a>
+            <a href="/login.html?tab=signup" class="btn btn-ghost" data-analytics-event="claim_spot_click" data-analytics-location="blog_index_card">Claim your spot</a>
+          </div>
+        </article>
+
+        <article class="blog-index-card reveal is-visible">
+          <div class="blog-post-meta">
+            <span class="blog-chip">Earlier post</span>
+            <span>22 March 2026</span>
+            <span>12 min read</span>
+          </div>
+          <h2 class="blog-index-card__title"><a href="/battery-automation-roi-examples/" data-analytics-event="blog_post_click" data-analytics-location="blog_index_card" data-analytics-label="Battery Automation ROI: What Smarter Rules Actually Look Like">Battery Automation ROI: What Smarter Rules Actually Look Like</a></h2>
+          <p class="blog-index-card__excerpt">Battery automation ROI is the uplift created by better timing decisions. This article shows what smarter energy automation rules look like in practice, from simple price triggers to forecast-aware battery planning and layered rule stacks.</p>
+          <div class="blog-index-card__actions">
+            <a href="/battery-automation-roi-examples/" class="btn btn-primary" data-analytics-event="blog_post_click" data-analytics-location="blog_index_card" data-analytics-label="Battery Automation ROI: What Smarter Rules Actually Look Like">Read post</a>
+            <a href="/battery-roi-calculator.html" class="btn btn-ghost" data-analytics-event="tool_open_click" data-analytics-location="blog_index_card" data-analytics-label="Battery ROI Calculator">Try the ROI calculator</a>
+          </div>
+        </article>
+
+        <div class="blog-empty">
+          <strong>More posts are coming.</strong>
+          <p>Next up: curtailment thresholds, schedule design patterns, and when forecast look-ahead actually improves battery decisions instead of just adding noise.</p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="land-footer" role="contentinfo">
+    <div class="container land-footer__inner">
+      <span class="land-footer__brand">
+        <img src="/icons/logo-login.svg" width="24" height="24" alt="" aria-hidden="true" style="vertical-align:middle;">
+        SoCrates
+      </span>
+      <ul class="land-footer__links" role="list">
+        <li><a href="/">Home</a></li>
+        <li><a href="/blog/">Blog</a></li>
+        <li><a href="/battery-roi-calculator.html">Calculator</a></li>
+        <li><a href="/login.html" data-analytics-event="sign_in_click" data-analytics-location="blog_footer">Sign In</a></li>
+        <li><a href="mailto:socrates.team.comms@gmail.com" data-analytics-event="contact_click" data-analytics-location="blog_footer">Contact</a></li>
+      </ul>
+      <span>&copy; <span id="footerYear"></span> SoCrates. All rights reserved.</span>
+    </div>
+  </footer>
+
+  <script>
+  (function () {
+    'use strict';
+
+    var fy = document.getElementById('footerYear');
+    if (fy) fy.textContent = new Date().getFullYear();
+
+    var burger = document.getElementById('navBurger');
+    var navLinks = document.getElementById('navLinks');
+    if (burger && navLinks) {
+      burger.addEventListener('click', function () {
+        var open = navLinks.classList.toggle('is-open');
+        burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      navLinks.addEventListener('click', function (e) {
+        if (e.target.tagName === 'A') {
+          navLinks.classList.remove('is-open');
+          burger.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+  })();
+  </script>
+  <script src="/js/marketing-analytics.js" defer></script>
+</body>
+</html>

@@ -1232,23 +1232,29 @@
     }
 
     let started = false;
+    let startPromise = null;
     const startApp = () => {
-        if (started) return;
+        if (startPromise) return startPromise;
         started = true;
-        init().catch((err) => {
+        startPromise = init().catch((err) => {
             const el = $('selWarn');
             if (el) {
                 el.hidden = false;
                 el.textContent = err && err.message ? err.message : String(err);
             }
         });
+        return startPromise;
     };
 
     if (window.AppShell && typeof window.AppShell.init === 'function') {
         window.AppShell.init({
             pageName: 'market-insights',
             autoMetrics: true,
-            onReady: () => startApp()
+            onReady: () => {
+                startApp().finally(() => {
+                    try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch (e) { }
+                });
+            }
         }).catch(() => startApp());
     } else {
         startApp();
