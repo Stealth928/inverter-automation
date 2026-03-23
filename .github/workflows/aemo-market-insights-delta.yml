@@ -43,12 +43,32 @@ jobs:
           node -e "const fs=require('fs');const p='frontend/data/aemo-market-insights/index.json';const index=JSON.parse(fs.readFileSync(p,'utf8'));const maxDate=index?.bounds?.maxDate||index?.dataworks?.freshness?.latestDate||null;if(!maxDate){console.error('Missing maxDate in generated index');process.exit(1);}console.log('[DataWorks] generatedAt=%s maxDate=%s',index.generatedAt,maxDate);"
 
       - name: Verify live hosting release matches current checkout
-        run: node scripts/verify-release-alignment.js
+        id: release_guard
+        run: |
+          set +e
+          ALIGNMENT_OUTPUT=$(node scripts/verify-release-alignment.js 2>&1)
+          ALIGNMENT_STATUS=$?
+          printf '%s\n' "$ALIGNMENT_OUTPUT"
+
+          if [ "$ALIGNMENT_STATUS" -eq 0 ]; then
+            echo "aligned=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if printf '%s' "$ALIGNMENT_OUTPUT" | grep -q "Live hosting is on commit"; then
+            echo "aligned=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping hosting deploy because the live site is behind the current checkout. Run the full Firebase deploy workflow first."
+            exit 0
+          fi
+
+          exit "$ALIGNMENT_STATUS"
 
       - name: Generate release manifest
+        if: steps.release_guard.outputs.aligned == 'true'
         run: node scripts/generate-release-manifest.js
 
       - name: Deploy Firebase hosting
+        if: steps.release_guard.outputs.aligned == 'true'
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
@@ -59,12 +79,14 @@ jobs:
           npx firebase-tools deploy --only hosting --project "inverter-automation-firebase" --token "$FIREBASE_TOKEN" --non-interactive
 
       - name: Verify hosted release manifest
+        if: steps.release_guard.outputs.aligned == 'true'
         env:
           RELEASE_ALIGNMENT_RETRIES: 12
           RELEASE_ALIGNMENT_DELAY_MS: 10000
         run: node scripts/verify-release-alignment.js
 
       - name: Verify hosted freshness matches generated index
+        if: steps.release_guard.outputs.aligned == 'true'
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -135,3 +157,7 @@ jobs:
             process.exit(1);
           });
           NODE
+
+      - name: Report skipped hosting deploy
+        if: steps.release_guard.outputs.aligned == 'false'
+        run: echo "[DataWorks] Hosting deploy skipped because production hosting is not yet aligned with this checkout."

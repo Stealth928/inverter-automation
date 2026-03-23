@@ -48,6 +48,24 @@ test.describe('SEO Metadata', () => {
     await expect(marketTool).toContainText('Fast public preview');
   });
 
+  test('landing page links to the battery wear estimator from the tools section', async ({ page }) => {
+    await page.goto('/index.html');
+
+    const wearTool = page.locator('.tool-card', { has: page.locator('h3', { hasText: 'Battery Wear Estimator' }) });
+    await expect(wearTool).toHaveCount(1);
+    await expect(wearTool.locator('a[href="/battery-wear-estimator.html"]')).toHaveCount(1);
+    await expect(wearTool).toContainText('No fake battery health claims');
+  });
+
+  test('landing page links to the rule template recommender from the tools section', async ({ page }) => {
+    await page.goto('/index.html');
+
+    const recommenderTool = page.locator('.tool-card', { has: page.locator('h3', { hasText: 'Rule Template Recommender' }) });
+    await expect(recommenderTool).toHaveCount(1);
+    await expect(recommenderTool.locator('a[href="/rule-template-recommender/"]')).toHaveCount(1);
+    await expect(recommenderTool).toContainText('Import stays in the authenticated rules library');
+  });
+
   test('public market insights preview is crawlable and loads live market data', async ({ page }) => {
     await page.goto('/market-insights/');
 
@@ -97,6 +115,53 @@ test.describe('SEO Metadata', () => {
     expect(ldJsonText).toContain('"@type": "FAQPage"');
 
     await expect(page.locator('#calculator-faq .faq-item')).toHaveCount(4);
+  });
+
+  test('public battery wear estimator is crawlable and instrumented', async ({ page }) => {
+    await page.goto('/battery-wear-estimator.html');
+
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/battery-wear-estimator.html');
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow');
+    await expect(page.locator('meta[name="googlebot"]')).toHaveAttribute('content', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
+    await expect(page.locator('meta[property="og:locale"]')).toHaveAttribute('content', 'en_AU');
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://socratesautomation.com/battery-wear-estimator.html');
+    await expect(page.locator('meta[property="og:image:width"]')).toHaveAttribute('content', '2088');
+    await expect(page.locator('meta[property="og:image:height"]')).toHaveAttribute('content', '1201');
+    await expect(page.locator('meta[name="twitter:url"]')).toHaveAttribute('content', 'https://socratesautomation.com/battery-wear-estimator.html');
+    await expect(page.locator('meta[name="twitter:image:alt"]')).toHaveAttribute('content', 'SoCrates battery wear estimator workbench');
+    await expect(page.locator('script[src="/js/marketing-analytics.js"]')).toHaveCount(1);
+
+    const structuredData = page.locator('script[type="application/ld+json"]');
+    await expect(structuredData).toHaveCount(1);
+    const ldJsonText = await structuredData.first().textContent();
+    expect(ldJsonText).toContain('Battery Wear Estimator');
+    expect(ldJsonText).toContain('WebApplication');
+    expect(ldJsonText).toContain('FAQPage');
+
+    await expect(page.locator('#estimator-faq .faq-item')).toHaveCount(4);
+  });
+
+  test('rule template recommender is crawlable, instrumented, and maps into the rules library', async ({ page }) => {
+    await page.goto('/rule-template-recommender/');
+
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/rule-template-recommender/');
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow');
+    await expect(page.locator('meta[name="googlebot"]')).toHaveAttribute('content', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://socratesautomation.com/rule-template-recommender/');
+    await expect(page.locator('script[src="/js/marketing-analytics.js"]')).toHaveCount(1);
+    await expect(page.locator('h1')).toContainText('Rule Template Recommender');
+
+    const structuredData = page.locator('script[type="application/ld+json"]');
+    await expect(structuredData).toHaveCount(1);
+    const ldJsonText = await structuredData.first().textContent();
+    expect(ldJsonText).toContain('Rule Template Recommender');
+    expect(ldJsonText).toContain('WebApplication');
+    expect(ldJsonText).toContain('FAQPage');
+
+    await expect(page.locator('#questionRail .rtr-question')).toHaveCount(7);
+    await expect(page.locator('#guardrailList li')).toHaveCount(6);
+    await expect(page.locator('#templateCardGrid .rtr-rule-card')).toHaveCount(4);
+    await expect(page.locator('#importStarterPackLink')).toHaveAttribute('href', /\/rules-library\.html\?recommend=/);
   });
 
   test('blog index and first post are crawlable with structured metadata', async ({ page }) => {
@@ -165,7 +230,9 @@ test.describe('SEO Metadata', () => {
     expect(sitemapText).toContain('<loc>https://socratesautomation.com/battery-automation-roi-examples/</loc>');
     expect(sitemapText).toContain('<loc>https://socratesautomation.com/home-battery-automation-options-compared/</loc>');
     expect(sitemapText).toContain('<loc>https://socratesautomation.com/battery-roi-calculator.html</loc>');
+    expect(sitemapText).toContain('<loc>https://socratesautomation.com/battery-wear-estimator.html</loc>');
     expect(sitemapText).toContain('<loc>https://socratesautomation.com/market-insights/</loc>');
+    expect(sitemapText).toContain('<loc>https://socratesautomation.com/rule-template-recommender/</loc>');
     expect(sitemapText).not.toContain('<loc>https://socratesautomation.com/market-insights.html</loc>');
     expect(sitemapText).not.toContain('/login.html');
     expect(sitemapText).not.toContain('/app.html');
@@ -176,7 +243,9 @@ test.describe('SEO Metadata', () => {
     expect(llmsResponse.ok()).toBeTruthy();
     const llmsText = await llmsResponse.text();
     expect(llmsText).toContain('SoCrates');
+    expect(llmsText).toContain('/battery-wear-estimator.html');
     expect(llmsText).toContain('/market-insights/');
+    expect(llmsText).toContain('/rule-template-recommender/');
     expect(llmsText).not.toContain('/market-insights.html');
     expect(llmsText).toContain('/llms-full.txt');
 
@@ -184,7 +253,9 @@ test.describe('SEO Metadata', () => {
     expect(llmsFullResponse.ok()).toBeTruthy();
     const llmsFullText = await llmsFullResponse.text();
     expect(llmsFullText).toContain('battery-roi-calculator.html');
+    expect(llmsFullText).toContain('battery-wear-estimator.html');
     expect(llmsFullText).toContain('/market-insights/');
+    expect(llmsFullText).toContain('/rule-template-recommender/');
     expect(llmsFullText).toContain('home-battery-automation-options-compared');
     expect(llmsFullText).toContain('Do not rely on authenticated pages');
     expect(llmsFullText).toContain('full Market Insights application view remains behind login');

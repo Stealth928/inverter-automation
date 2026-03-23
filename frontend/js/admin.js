@@ -2304,12 +2304,17 @@
 
     function renderDataworksPanel(title, icon, badgeHtml, bodyHtml, subtitle = '') {
         return `
-            <div class="dataworks-panel-title">
-                <span class="label"><span>${escapeHtml(icon)}</span><span>${escapeHtml(title)}</span></span>
+            <div class="dw-panel-head">
+                <div class="dw-head-main">
+                    <span class="dw-icon-box">${escapeHtml(icon)}</span>
+                    <div class="dw-head-text">
+                        <span class="dw-title">${escapeHtml(title)}</span>
+                        ${subtitle ? `<span class="dw-subtitle">${escapeHtml(subtitle)}</span>` : ''}
+                    </div>
+                </div>
                 ${badgeHtml || ''}
             </div>
-            ${subtitle ? `<div class="dataworks-panel-subtitle">${escapeHtml(subtitle)}</div>` : ''}
-            ${bodyHtml}
+            <div class="dw-panel-body">${bodyHtml}</div>
         `;
     }
 
@@ -3072,6 +3077,12 @@
             leadEl.innerHTML = leadParts.length
                 ? leadParts.join(' ')
                 : 'Published market-data metadata and DataWorks workflow diagnostics are available.';
+
+            // Status-aware accents on KPI items and lead bar
+            const kpiEls = document.querySelectorAll('#dataworksKpis .kpi-item');
+            if (kpiEls[0]) kpiEls[0].dataset.level = dataworksTone(marketSummary?.status?.level || 'neutral');
+            if (kpiEls[3]) kpiEls[3].dataset.level = dataworksTone(opsSummary?.badge?.level || 'neutral');
+            leadEl.dataset.level = dataworksTone(marketSummary?.status?.level || 'neutral');
 
             if (marketSummary) {
                 const coverageWindow = marketSummary.bounds?.minPeriod && marketSummary.bounds?.maxPeriod

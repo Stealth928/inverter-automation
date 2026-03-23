@@ -1529,7 +1529,7 @@
                             <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
                                 <div>
                                     <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Power (W)</label>
-                                    <input type="number" id="actionFdPwr" value="${editData?.action?.fdPwr || 7000}" min="0" max="10500" step="100" style="width:100%">
+                                    <input type="number" id="actionFdPwr" value="${editData?.action?.fdPwr || 7000}" min="0" max="10000" step="100" style="width:100%">
                                 </div>
                                 <div>
                                     <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Stop SoC (%)</label>

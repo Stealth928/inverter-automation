@@ -4,16 +4,65 @@
  * Events are captured from data-analytics-event attributes on HTML elements.
  */
 
-// Wait for Firebase to be ready
+const ANALYTICS_RETRY_DELAY_MS = 100;
+const ANALYTICS_MAX_RETRIES = 50;
+
+let analyticsInitialized = false;
+let analyticsRetryCount = 0;
+
+function getFirebaseAppRef() {
+  if (typeof firebase === 'undefined') {
+    return null;
+  }
+
+  if (Array.isArray(firebase.apps) && firebase.apps.length > 0) {
+    return firebase.apps[0];
+  }
+
+  if (typeof firebase.app === 'function') {
+    try {
+      return firebase.app();
+    } catch (error) {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function scheduleAnalyticsRetry(reason) {
+  if (analyticsInitialized) {
+    return;
+  }
+
+  if (analyticsRetryCount >= ANALYTICS_MAX_RETRIES) {
+    console.warn('[Analytics] Initialization skipped after waiting for Firebase app:', reason);
+    return;
+  }
+
+  analyticsRetryCount += 1;
+  setTimeout(initializeAnalytics, ANALYTICS_RETRY_DELAY_MS);
+}
+
+// Wait for Firebase SDK and default app to be ready.
 function initializeAnalytics() {
-  if (typeof firebase === 'undefined' || !firebase.analytics) {
-    console.warn('[Analytics] Firebase not yet initialized, retrying...');
-    setTimeout(initializeAnalytics, 100);
+  if (analyticsInitialized) {
+    return;
+  }
+
+  if (typeof firebase === 'undefined' || typeof firebase.analytics !== 'function') {
+    scheduleAnalyticsRetry('analytics SDK unavailable');
+    return;
+  }
+
+  if (!getFirebaseAppRef()) {
+    scheduleAnalyticsRetry('default app unavailable');
     return;
   }
 
   try {
     const analytics = firebase.analytics();
+    analyticsInitialized = true;
     
     // Track clicks on elements with data-analytics-event attribute
     document.addEventListener('click', function(event) {
@@ -43,6 +92,14 @@ function initializeAnalytics() {
     
     console.log('[Analytics] Initialized');
   } catch (error) {
+    const isMissingDefaultApp = typeof error.message === 'string'
+      && error.message.includes("No Firebase App '[DEFAULT]' has been created");
+
+    if (isMissingDefaultApp) {
+      scheduleAnalyticsRetry('default app unavailable');
+      return;
+    }
+
     console.error('[Analytics] Initialization error:', error);
   }
 }

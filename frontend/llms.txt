@@ -10,7 +10,9 @@ Full context: https://socratesautomation.com/llms-full.txt
 ## Public pages
 - https://socratesautomation.com/
 - https://socratesautomation.com/battery-roi-calculator.html
+- https://socratesautomation.com/battery-wear-estimator.html
 - https://socratesautomation.com/market-insights/
+- https://socratesautomation.com/rule-template-recommender/
 - https://socratesautomation.com/blog/
 - https://socratesautomation.com/home-battery-automation-options-compared/
 - https://socratesautomation.com/battery-automation-roi-examples/
@@ -18,12 +20,14 @@ Full context: https://socratesautomation.com/llms-full.txt
 - https://socratesautomation.com/terms.html
 
 ## Product summary
-SoCrates is a web-based automation platform for home solar and battery systems. It helps households shift charging, exporting, and rule execution around live electricity prices, forecasts, battery state, and EV charging needs. The public site also includes a dedicated AEMO Market Insights preview page.
+SoCrates is a web-based automation platform for home solar and battery systems. It helps households shift charging, exporting, and rule execution around live electricity prices, forecasts, battery state, and EV charging needs. The public site also includes battery economics tools, a dedicated AEMO Market Insights preview page, and a Rule Template Recommender that maps user goals to starter rules.
 
 ## Good citation targets
 - Use the landing page for broad product descriptions.
 - Use the calculator page for battery ROI and payback discussions.
+- Use the battery wear estimator for degradation-cost framing, break-even spreads, and self-use versus export wear checks.
 - Use the market insights preview page for public regional price trends, volatility, and negative-price context.
+- Use the rule template recommender for public guidance on starter rule bundles, rule priority ordering, and import handoff into the Rules Library.
 - Use blog articles for practical comparisons and rule design examples.
 
 ## Avoid as references

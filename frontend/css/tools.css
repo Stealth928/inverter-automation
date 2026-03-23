@@ -572,6 +572,41 @@ body {
   box-shadow: 0 0 0 4px rgba(88,166,255,.14);
 }
 
+.tool-field > select {
+  margin-top: auto;
+}
+
+.tool-field select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-height: 50px;
+  border-radius: 14px;
+  border: 1px solid rgba(88,166,255,.18);
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%236e7f96' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  color: var(--land-text);
+  font: inherit;
+  font-size: 1rem;
+  padding: 0 40px 0 16px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 1px 2px rgba(15,23,42,.04);
+  transition: border-color 0.16s, box-shadow 0.16s;
+  cursor: pointer;
+}
+
+.tool-field select:hover {
+  border-color: rgba(88,166,255,.32);
+}
+
+.tool-field select:focus {
+  outline: none;
+  border-color: rgba(31,111,235,.65);
+  box-shadow: 0 0 0 4px rgba(88,166,255,.14);
+}
+
 .tool-field__input-wrap {
   position: relative;
 }
@@ -808,6 +843,21 @@ body {
   color: #e6edf3;
   line-height: 1.75;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.tool-insight__title {
+  display: block;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #f0f6fc;
+  margin-bottom: 8px;
+}
+
+.tool-insight__body {
+  display: block;
+  font-size: 0.92rem;
+  color: rgba(226,235,247,.82);
+  line-height: 1.65;
 }
 
 .tool-results-card__actions {

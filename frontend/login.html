@@ -30,111 +30,141 @@
             display: none;
         }
 
+        /* Ambient page background glow */
+        .login-page {
+            background:
+                radial-gradient(ellipse 110% 55% at 50% -8%, color-mix(in srgb, var(--accent-blue) 9%, transparent) 0%, transparent 62%),
+                radial-gradient(ellipse 55% 45% at 95% 98%, color-mix(in srgb, var(--color-success-dark) 6%, transparent) 0%, transparent 65%),
+                var(--bg-primary);
+        }
+
         /* Layout containers */
         .login-container {
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 40px;
+            min-height: 100dvh;
+            padding: 32px 16px;
             box-sizing: border-box;
         }
 
         .login-card {
-            max-width: 720px;
+            max-width: 460px;
             width: 100%;
-            margin: 24px;
-            background: color-mix(in srgb, var(--bg-primary) 70%, transparent);
-            border-radius: 16px;
+            background: color-mix(in srgb, var(--bg-secondary) 90%, transparent);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 20px;
             overflow: hidden;
-            border: 1px solid color-mix(in srgb, var(--border-primary) 35%, transparent);
-            box-shadow: var(--shadow-xl);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 55%, transparent);
+            box-shadow: var(--shadow-xl), 0 0 0 1px color-mix(in srgb, white 3%, transparent) inset;
         }
 
         .login-header {
             text-align: center;
-            background: linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 8%, transparent) 0%, transparent 100%);
+            background: linear-gradient(180deg,
+                color-mix(in srgb, var(--accent-blue) 10%, transparent) 0%,
+                color-mix(in srgb, var(--accent-blue) 4%, transparent) 50%,
+                transparent 100%);
             border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
-            padding: 32px;
+            padding: 32px 32px 24px;
         }
 
         .logo {
-            width: 96px;
-            height: 96px;
-            margin: 0 auto 20px;
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 16px;
             display: flex;
             align-items: center;
             justify-content: center;
-            filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.45));
+            filter: drop-shadow(0 6px 20px rgba(0, 0, 0, 0.4));
         }
         .logo img {
-            width: 96px;
-            height: 96px;
+            width: 72px;
+            height: 72px;
             object-fit: contain;
             display: block;
         }
 
         .login-header h1 {
-            font-size: 22px;
-            font-weight: 600;
+            font-size: 21px;
+            font-weight: 700;
             color: var(--text-primary);
-            margin-bottom: 8px;
+            margin: 0 0 6px;
+            letter-spacing: -0.3px;
         }
 
         .login-header p {
-            font-size: 14px;
+            font-size: 13px;
             color: var(--text-secondary);
-            line-height: 1.4;
+            line-height: 1.45;
+            margin: 0;
         }
 
         .login-body {
-            padding: 28px 32px 32px;
+            padding: 24px 28px 28px;
         }
 
+        /* Tab switching with animated sliding indicator */
         .tab-buttons {
             display: flex;
-            gap: 8px;
+            position: relative;
             margin-bottom: 24px;
-            background: color-mix(in srgb, var(--bg-primary) 40%, transparent);
+            background: color-mix(in srgb, var(--bg-primary) 55%, transparent);
             padding: 4px;
-            border-radius: 10px;
+            border-radius: 12px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
+        }
+
+        .tab-indicator {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            height: calc(100% - 8px);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--accent-blue) 14%, transparent);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 28%, transparent);
+            transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1), width 0.24s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s;
+            pointer-events: none;
+            z-index: 0;
         }
 
         .tab-btn {
             flex: 1;
-            padding: 10px 16px;
+            padding: 9px 16px;
             background: transparent;
             border: none;
             border-radius: 8px;
             color: var(--text-secondary);
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 500;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: color 0.2s ease;
+            position: relative;
+            z-index: 1;
         }
 
         .tab-btn:hover:not(.active) {
             color: var(--text-primary);
-            background: color-mix(in srgb, var(--border-primary) 30%, transparent);
         }
 
         .tab-btn.active {
-            background: color-mix(in srgb, var(--accent-blue) 15%, transparent);
             color: var(--accent-blue);
-            box-shadow: 0 2px 8px var(--accent-blue-bg);
+            font-weight: 600;
         }
 
         .form-group {
-            margin-bottom: 18px;
+            margin-bottom: 16px;
         }
 
         .form-group label {
             display: block;
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-secondary);
-            margin-bottom: 8px;
+            margin-bottom: 7px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 500;
+            letter-spacing: 0.6px;
+            font-weight: 600;
         }
 
         .input-wrapper {
@@ -143,82 +173,131 @@
 
         .input-icon {
             position: absolute;
-            left: 14px;
+            left: 13px;
             top: 50%;
             transform: translateY(-50%);
             color: var(--text-placeholder);
-            font-size: 16px;
             pointer-events: none;
             transition: color 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
         }
 
         .form-group input {
             width: 100%;
-            padding: 14px 14px 14px 42px;
+            padding: 12px 12px 12px 40px;
             background: var(--bg-input);
-            border: 1px solid var(--border-primary);
+            border: 1.5px solid color-mix(in srgb, var(--border-primary) 80%, transparent);
             border-radius: 10px;
             color: var(--text-primary);
-            font-size: 15px;
-            transition: all 0.2s ease;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+            box-sizing: border-box;
         }
 
         .form-group input:focus {
             outline: none;
             border-color: var(--accent-blue);
             box-shadow: 0 0 0 3px var(--accent-blue-bg);
-            background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
+            background: color-mix(in srgb, var(--bg-primary) 90%, transparent);
         }
 
-        .form-group input:focus + .input-icon,
-        .form-group input:not(:placeholder-shown) + .input-icon {
+        .input-wrapper:focus-within .input-icon {
             color: var(--accent-blue);
         }
 
         .form-group input::placeholder {
             color: var(--text-placeholder);
+            opacity: 0.7;
         }
 
         .password-toggle {
             position: absolute;
-            right: 14px;
+            right: 11px;
             top: 50%;
             transform: translateY(-50%);
             background: none;
             border: none;
-            color: var(--text-placeholder);
+            color: var(--text-muted);
             cursor: pointer;
             padding: 4px;
-            font-size: 16px;
-            transition: color 0.2s ease;
+            border-radius: 6px;
+            transition: color 0.2s ease, background 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
         }
 
         .password-toggle:hover {
             color: var(--text-secondary);
+            background: color-mix(in srgb, var(--border-primary) 30%, transparent);
+        }
+
+        /* Password strength indicator */
+        .password-strength {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .strength-bars {
+            display: flex;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .strength-bar {
+            height: 3px;
+            flex: 1;
+            border-radius: 3px;
+            background: color-mix(in srgb, var(--border-primary) 60%, transparent);
+            transition: background 0.3s ease;
+        }
+
+        .strength-bar.filled-1 { background: #ef4444; }
+        .strength-bar.filled-2 { background: #f97316; }
+        .strength-bar.filled-3 { background: #eab308; }
+        .strength-bar.filled-4 { background: #22c55e; }
+
+        .strength-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            white-space: nowrap;
+            min-width: 56px;
+            text-align: right;
+            transition: color 0.3s ease;
         }
 
         .btn {
             width: 100%;
-            padding: 14px 20px;
+            padding: 13px 20px;
             background: var(--gradient-success);
             border: none;
             border-radius: 10px;
             color: #fff;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 600;
+            font-family: inherit;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: opacity 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
-            box-shadow: 0 4px 12px color-mix(in srgb, var(--color-success-dark) 20%, transparent);
+            box-shadow: 0 4px 12px color-mix(in srgb, var(--color-success-dark) 25%, transparent);
+            letter-spacing: 0.1px;
         }
 
         .btn:hover:not(:disabled) {
-            filter: brightness(1.1);
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-md);
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px color-mix(in srgb, var(--color-success-dark) 30%, transparent);
         }
 
         .btn:active:not(:disabled) {
@@ -226,32 +305,34 @@
         }
 
         .btn:disabled {
-            opacity: 0.6;
+            opacity: 0.55;
             cursor: not-allowed;
             transform: none;
         }
 
         .btn-google {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-primary);
-            margin-top: 16px;
+            background: color-mix(in srgb, var(--bg-tertiary) 80%, transparent);
+            border: 1.5px solid color-mix(in srgb, var(--border-primary) 70%, transparent);
+            color: var(--text-primary);
             box-shadow: none;
+            margin-top: 0;
         }
 
         .btn-google:hover:not(:disabled) {
-            background: var(--bg-card);
-            border-color: var(--border-accent);
-            box-shadow: var(--shadow-sm);
+            background: var(--bg-tertiary);
+            border-color: color-mix(in srgb, var(--accent-blue) 35%, transparent);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            opacity: 1;
         }
 
         .divider {
             display: flex;
             align-items: center;
-            margin: 24px 0;
+            margin: 20px 0;
             color: var(--text-muted);
-            font-size: 12px;
+            font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.8px;
         }
 
         .divider::before,
@@ -259,26 +340,26 @@
             content: '';
             flex: 1;
             height: 1px;
-            background: linear-gradient(90deg, transparent, var(--border-primary), transparent);
+            background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--border-primary) 80%, transparent), transparent);
         }
 
         .divider span {
-            padding: 0 16px;
+            padding: 0 14px;
         }
 
         .message {
             border-radius: 10px;
-            padding: 14px 16px;
+            padding: 12px 14px;
             font-size: 13px;
-            margin-bottom: 20px;
+            margin-bottom: 18px;
             display: none;
-            align-items: center;
+            align-items: flex-start;
             gap: 10px;
-            animation: fadeIn 0.3s ease;
+            animation: fadeInDown 0.25s ease;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-8px); }
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-6px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
@@ -287,8 +368,9 @@
         }
 
         .message-icon {
-            font-size: 18px;
+            font-size: 15px;
             flex-shrink: 0;
+            margin-top: 1px;
         }
 
         .error-message {
@@ -305,19 +387,18 @@
 
         .forgot-password {
             text-align: center;
-            margin-top: 18px;
+            margin-top: 16px;
         }
 
         .forgot-password a {
-            color: var(--accent-blue);
+            color: var(--text-secondary);
             text-decoration: none;
             font-size: 13px;
             transition: color 0.2s ease;
         }
 
         .forgot-password a:hover {
-            color: var(--accent-blue-hover);
-            text-decoration: underline;
+            color: var(--accent-blue);
         }
 
         .form-section {
@@ -326,16 +407,29 @@
 
         .form-section.active {
             display: block;
-            animation: fadeIn 0.3s ease;
+            animation: fadeIn 0.25s ease;
+        }
+
+        .reset-context {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.55;
+            margin: 0 0 18px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .spinner {
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
             border: 2px solid rgba(255, 255, 255, 0.3);
             border-top-color: #fff;
             border-radius: 50%;
-            animation: spin 0.8s linear infinite;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
         }
 
         @keyframes spin {
@@ -343,16 +437,18 @@
         }
 
         .google-icon {
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
         }
 
         .login-footer {
             text-align: center;
-            padding: 16px 32px 24px;
+            padding: 14px 28px 20px;
             border-top: 1px solid color-mix(in srgb, var(--border-primary) 30%, transparent);
             font-size: 12px;
             color: var(--text-muted);
+            line-height: 1.5;
         }
 
         .login-footer a {
@@ -365,14 +461,15 @@
         }
 
         .trust-note {
-            margin: 0 32px 24px;
-            padding: 14px 16px;
-            border-radius: 12px;
-            border: 1px solid color-mix(in srgb, var(--border-primary) 45%, transparent);
-            background: color-mix(in srgb, var(--bg-tertiary) 60%, transparent);
+            margin: 0 0 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
+            background: color-mix(in srgb, var(--bg-tertiary) 55%, transparent);
             color: var(--text-secondary);
-            font-size: 13px;
-            line-height: 1.5;
+            font-size: 12px;
+            line-height: 1.45;
+            text-align: left;
         }
 
         .trust-note strong {
@@ -392,29 +489,27 @@
         @media (max-width: 480px) {
             .login-container {
                 padding: 0;
+                align-items: stretch;
             }
 
             .login-card {
-                margin: 0;
-                width: 100%;
                 max-width: none;
                 border-radius: 0;
                 min-height: 100dvh;
+                border-left: 0;
+                border-right: 0;
             }
 
             .login-header {
-                padding: 32px 24px 24px;
+                padding: 28px 20px 20px;
             }
 
             .login-body {
-                padding: 24px;
+                padding: 20px 20px 24px;
             }
 
-            .trust-note,
             .login-footer {
-                margin: 0 24px 24px;
-                padding-left: 0;
-                padding-right: 0;
+                padding: 14px 20px 24px;
             }
         }
     </style>
@@ -466,6 +561,7 @@
 
             <div class="login-body">
                 <div class="tab-buttons">
+                    <div class="tab-indicator" id="tabIndicator"></div>
                     <button class="tab-btn active" data-tab="signin">Sign In</button>
                     <button class="tab-btn" data-tab="signup">Sign Up</button>
                 </div>
@@ -486,15 +582,15 @@
                             <label for="signinEmail">Email</label>
                             <div class="input-wrapper">
                                 <input type="email" id="signinEmail" placeholder="you@example.com" autocomplete="username" required>
-                                <span class="input-icon">✉️</span>
+                                <span class="input-icon"><svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" aria-hidden="true"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg></span>
                             </div>
                         </div>
                         <div class="form-group">
                             <label for="signinPassword">Password</label>
                             <div class="input-wrapper">
                                 <input type="password" id="signinPassword" placeholder="••••••••" autocomplete="current-password" required>
-                                <span class="input-icon">🔒</span>
-                                <button type="button" class="password-toggle" data-target="signinPassword" aria-label="Toggle password visibility">👁️</button>
+                                <span class="input-icon"><svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg></span>
+                                <button type="button" class="password-toggle" data-target="signinPassword" aria-label="Show password"><svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" aria-hidden="true"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg></button>
                             </div>
                         </div>
                         <button type="submit" class="btn" id="signinBtn">
@@ -514,30 +610,39 @@
                             <label for="signupName">Display Name</label>
                             <div class="input-wrapper">
                                 <input type="text" id="signupName" placeholder="John Doe" autocomplete="name">
-                                <span class="input-icon">👤</span>
+                                <span class="input-icon"><svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg></span>
                             </div>
                         </div>
                         <div class="form-group">
                             <label for="signupEmail">Email</label>
                             <div class="input-wrapper">
                                 <input type="email" id="signupEmail" placeholder="you@example.com" autocomplete="email" required>
-                                <span class="input-icon">✉️</span>
+                                <span class="input-icon"><svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" aria-hidden="true"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg></span>
                             </div>
                         </div>
                         <div class="form-group">
                             <label for="signupPassword">Password</label>
                             <div class="input-wrapper">
                                 <input type="password" id="signupPassword" placeholder="••••••••" minlength="6" autocomplete="new-password" required>
-                                <span class="input-icon">🔒</span>
-                                <button type="button" class="password-toggle" data-target="signupPassword" aria-label="Toggle password visibility">👁️</button>
+                                <span class="input-icon"><svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg></span>
+                                <button type="button" class="password-toggle" data-target="signupPassword" aria-label="Show password"><svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" aria-hidden="true"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg></button>
+                            </div>
+                            <div id="signupPasswordStrength" class="password-strength" style="display:none">
+                                <div class="strength-bars">
+                                    <div class="strength-bar"></div>
+                                    <div class="strength-bar"></div>
+                                    <div class="strength-bar"></div>
+                                    <div class="strength-bar"></div>
+                                </div>
+                                <span class="strength-label"></span>
                             </div>
                         </div>
                         <div class="form-group">
                             <label for="signupPasswordConfirm">Confirm Password</label>
                             <div class="input-wrapper">
                                 <input type="password" id="signupPasswordConfirm" placeholder="••••••••" autocomplete="new-password" required>
-                                <span class="input-icon">🔒</span>
-                                <button type="button" class="password-toggle" data-target="signupPasswordConfirm" aria-label="Toggle password visibility">👁️</button>
+                                <span class="input-icon"><svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg></span>
+                                <button type="button" class="password-toggle" data-target="signupPasswordConfirm" aria-label="Show password"><svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" aria-hidden="true"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg></button>
                             </div>
                         </div>
                         <button type="submit" class="btn" id="signupBtn">
@@ -549,14 +654,12 @@
                 <!-- Reset Password Form -->
                 <div id="resetForm" class="form-section">
                     <form id="resetFormElement">
-                        <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px; line-height: 1.5;">
-                            Enter your email address and we'll send you a link to reset your password.
-                        </p>
+                        <p class="reset-context">Enter your email and we'll send you a link to reset your password.</p>
                         <div class="form-group">
                             <label for="resetEmail">Email</label>
                             <div class="input-wrapper">
                                 <input type="email" id="resetEmail" placeholder="you@example.com" autocomplete="email" required>
-                                <span class="input-icon">✉️</span>
+                                <span class="input-icon"><svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" aria-hidden="true"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg></span>
                             </div>
                         </div>
                         <button type="submit" class="btn" id="resetBtn">

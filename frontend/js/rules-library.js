@@ -8,6 +8,7 @@
         let activeCategory = 'all';
         let userInverterCapacityW = 10000;
         let userDefaultRulePowerW = null;
+        let initialRecommendationApplied = false;
         const TEMPLATE_POWER_PERCENT_FALLBACK = Object.freeze({
             price_high_feedin_export: 50,
             price_spike_response: 80,
@@ -27,6 +28,7 @@
                     await loadUserPowerProfile();
                     await loadExistingRules();
                     renderCards();
+                    applyInitialRecommendationSelection();
                     try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch(e) {}
                 } finally {
                     setRulesLoading(false);
@@ -43,10 +45,73 @@
                 await loadUserPowerProfile();
                 await loadExistingRules();
                 renderCards();
+                applyInitialRecommendationSelection();
             } finally {
                 setRulesLoading(false);
             }
         });
+
+        function getInitialRecommendationState() {
+            try {
+                const params = new URLSearchParams(window.location.search || '');
+                const validIds = new Set((window.RULE_LIBRARY || []).map((rule) => rule.id));
+                const ids = (params.get('recommend') || '')
+                    .split(',')
+                    .map((id) => id.trim())
+                    .filter((id) => validIds.has(id));
+                return {
+                    ids,
+                    bundle: (params.get('bundle') || '').trim(),
+                    variant: (params.get('variant') || '').trim()
+                };
+            } catch (_) {
+                return { ids: [], bundle: '', variant: '' };
+            }
+        }
+
+        function applyInitialRecommendationSelection() {
+            if (initialRecommendationApplied) return;
+
+            const recommendation = getInitialRecommendationState();
+            if (!recommendation.ids.length) return;
+
+            let addedCount = 0;
+            recommendation.ids.forEach((id) => {
+                const tmpl = window.RULE_LIBRARY.find((rule) => rule.id === id);
+                if (!tmpl) return;
+                if (existingRules[slugify(tmpl.name)] || selectedImportIds.has(id)) return;
+                selectedImportIds.add(id);
+                addedCount += 1;
+            });
+
+            initialRecommendationApplied = true;
+
+            if (addedCount > 0) {
+                renderCards();
+                updateActionBar();
+            }
+
+            renderRecommendationBanner(recommendation, addedCount);
+        }
+
+        function renderRecommendationBanner(recommendation, addedCount) {
+            const banner = document.getElementById('recommendedBundleBanner');
+            const text = document.getElementById('recommendedBundleBannerText');
+            if (!banner || !text || !recommendation.ids.length) return;
+
+            const bundleName = recommendation.bundle || 'Recommended starter pack';
+            const variantLabel = recommendation.variant
+                ? ` (${recommendation.variant.replace(/-/g, ' ')})`
+                : '';
+
+            if (addedCount > 0) {
+                text.innerHTML = `<strong>${escHtml(bundleName)}${escHtml(variantLabel)}</strong> was loaded from the Rule Template Recommender. Review the preselected templates below, then import them into your automation as inactive starter rules.`;
+            } else {
+                text.innerHTML = `<strong>${escHtml(bundleName)}${escHtml(variantLabel)}</strong> matched templates you already imported or selected. You can still browse the full library and adjust priorities before enabling anything.`;
+            }
+
+            banner.style.display = '';
+        }
 
         function setRulesLoading(isLoading) {
             const loading = document.getElementById('rulesLoading');

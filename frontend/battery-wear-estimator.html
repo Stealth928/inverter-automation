@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Battery Wear Estimator | SoCrates</title>
+  <meta name="description" content="Estimate whether battery arbitrage or storing solar for later is worth the wear cost. Compare wear per cycle, wear per kWh moved, and the break-even value needed before a battery strategy makes economic sense.">
+  <meta name="robots" content="index, follow">
+  <meta name="googlebot" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <link rel="canonical" href="https://socratesautomation.com/battery-wear-estimator.html">
+  <link rel="icon" href="/icons/favicon.ico" sizes="any">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+  <meta property="og:site_name" content="SoCrates">
+  <meta property="og:locale" content="en_AU">
+  <meta property="og:title" content="Battery Wear Estimator | SoCrates">
+  <meta property="og:description" content="Estimate whether battery arbitrage or storing solar for later is worth the wear cost, with break-even spreads and plain-English verdicts.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://socratesautomation.com/battery-wear-estimator.html">
+  <meta property="og:image" content="https://socratesautomation.com/images/screenshots/screen-4.png">
+  <meta property="og:image:width" content="2088">
+  <meta property="og:image:height" content="1201">
+  <meta property="og:image:alt" content="SoCrates public battery wear estimator workbench">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Battery Wear Estimator | SoCrates">
+  <meta name="twitter:description" content="Estimate whether battery arbitrage or storing solar for later is worth the wear cost, with break-even spreads and plain-English verdicts.">
+  <meta name="twitter:url" content="https://socratesautomation.com/battery-wear-estimator.html">
+  <meta name="twitter:image" content="https://socratesautomation.com/images/screenshots/screen-4.png">
+  <meta name="twitter:image:alt" content="SoCrates battery wear estimator workbench">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://socratesautomation.com/#website",
+        "url": "https://socratesautomation.com/",
+        "name": "SoCrates",
+        "inLanguage": "en-AU"
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://socratesautomation.com/#organization",
+        "name": "SoCrates",
+        "url": "https://socratesautomation.com/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://socratesautomation.com/icons/icon-512.png"
+        }
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://socratesautomation.com/battery-wear-estimator.html#webpage",
+        "url": "https://socratesautomation.com/battery-wear-estimator.html",
+        "name": "Battery Wear Estimator | SoCrates",
+        "description": "A public calculator for estimating battery wear cost per cycle, wear cost per throughput kWh, and the break-even value needed before battery behavior makes financial sense.",
+        "isPartOf": {
+          "@id": "https://socratesautomation.com/#website"
+        },
+        "about": {
+          "@id": "https://socratesautomation.com/#organization"
+        },
+        "inLanguage": "en-AU"
+      },
+      {
+        "@type": "WebApplication",
+        "@id": "https://socratesautomation.com/battery-wear-estimator.html#app",
+        "name": "Battery Wear Estimator",
+        "url": "https://socratesautomation.com/battery-wear-estimator.html",
+        "applicationCategory": "FinanceApplication",
+        "applicationSubCategory": "Battery degradation economics estimator",
+        "operatingSystem": "Web",
+        "description": "A public estimator that compares battery wear cost against arbitrage or self-use economics using clear manual assumptions.",
+        "featureList": [
+          "Throughput and cycle-life input modes",
+          "Grid arbitrage break-even spread",
+          "Self-use versus export break-even value",
+          "Annual wear estimate",
+          "Plain-English verdict"
+        ],
+        "isAccessibleForFree": true,
+        "inLanguage": "en-AU",
+        "mainEntityOfPage": {
+          "@id": "https://socratesautomation.com/battery-wear-estimator.html#webpage"
+        },
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "AUD",
+          "availability": "https://schema.org/InStock"
+        },
+        "publisher": {
+          "@id": "https://socratesautomation.com/#organization"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": "https://socratesautomation.com/battery-wear-estimator.html#breadcrumbs",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "SoCrates",
+            "item": "https://socratesautomation.com/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Battery Wear Estimator",
+            "item": "https://socratesautomation.com/battery-wear-estimator.html"
+          }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://socratesautomation.com/battery-wear-estimator.html#faq",
+        "url": "https://socratesautomation.com/battery-wear-estimator.html#estimator-faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does this estimate my battery's real health?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. This page is an economics estimator only. It does not measure state of health, real degradation, or battery ageing from live telemetry."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What changes the wear result most?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "The biggest levers are replacement value, lifetime throughput or cycle-life assumptions, usable battery capacity, average depth of discharge, and any temperature or usage adjustment you apply."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Why does efficiency affect the break-even threshold?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Because the battery returns less energy than it takes in. A strategy has to cover both those losses and the wear cost before it is genuinely economic."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Should I treat the verdict as exact?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Treat it as a quick decision aid based on your entered assumptions. If the result is close to break-even, the real answer depends heavily on tariff shape, cycle frequency, and battery-specific warranty details."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="/css/landing.css">
+  <link rel="stylesheet" href="/css/tools.css">
+</head>
+<body>
+  <nav class="land-nav" role="navigation" aria-label="Main navigation">
+    <div class="container land-nav__inner">
+      <a href="/" class="land-nav__logo" aria-label="SoCrates home">
+        <img src="/icons/logo-login.svg" width="32" height="32" alt="" class="land-nav__logo-img" aria-hidden="true">
+        SoCrates
+      </a>
+
+      <ul class="land-nav__links" id="navLinks" role="list">
+        <li><a href="/#tools">Tools</a></li>
+        <li><a href="/#features">Features</a></li>
+        <li><a href="/#community">Community</a></li>
+        <li><a href="/login.html" class="btn btn-ghost tool-nav__btn" data-analytics-event="sign_in_click" data-analytics-location="wear_tool_nav">Sign In</a></li>
+        <li><a href="/login.html?tab=signup" class="btn btn-primary tool-nav__btn" data-analytics-event="claim_spot_click" data-analytics-location="wear_tool_nav">Claim your spot</a></li>
+      </ul>
+
+      <button class="land-nav__burger" id="navBurger" aria-expanded="false" aria-controls="navLinks" aria-label="Open menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <main class="tool-page">
+    <section class="tool-hero" aria-labelledby="toolHeroTitle">
+      <div class="container">
+        <div class="tool-hero__surface">
+          <div class="tool-hero__grid">
+            <div class="tool-hero__copy">
+              <span class="tool-hero__eyebrow">Free estimator</span>
+              <h1 class="tool-hero__title" id="toolHeroTitle">Battery Wear Estimator</h1>
+              <p class="tool-hero__sub">Estimate whether a battery strategy is making enough value to justify the wear it creates. Use it for arbitrage or storing solar for later, without pretending anyone knows your battery's exact ageing.</p>
+
+              <div class="tool-hero__actions">
+                <a href="#workbenchTitle" class="btn btn-primary btn-lg">Start estimating</a>
+              </div>
+
+              <div class="tool-hero__points" role="list" aria-label="Estimator benefits">
+                <span class="tool-chip" role="listitem">No login required</span>
+                <span class="tool-chip" role="listitem">Two scenario modes</span>
+                <span class="tool-chip" role="listitem">Break-even thresholds</span>
+                <span class="tool-chip" role="listitem">Plain-English verdict</span>
+              </div>
+            </div>
+
+            <aside class="tool-hero__snapshot" aria-label="How to use this estimator">
+              <div class="tool-snapshot-card">
+                <span class="tool-snapshot-card__label">Before you start</span>
+                <strong class="tool-snapshot-card__value">Use realistic warranty or cycle assumptions.</strong>
+                <ul class="tool-snapshot-list">
+                  <li>Battery capacity and replacement value</li>
+                  <li>Throughput or cycle-life basis</li>
+                  <li>Charge, export, or avoided-import values</li>
+                </ul>
+                <p class="tool-snapshot-note">This is an estimator, not a battery health monitor. Results depend on the assumptions you enter.</p>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tool-workbench" aria-labelledby="workbenchTitle">
+      <div class="container">
+        <div class="tool-workbench__frame">
+          <div class="tool-workbench__top">
+            <div class="tool-presets-wrap">
+              <span class="tool-presets__label">Scenario</span>
+              <h2 class="tool-workbench__title" id="workbenchTitle">Pressure-test a battery strategy</h2>
+              <p class="tool-presets__hint">Then tune the assumptions below. Results update instantly.</p>
+              <div class="tool-presets" role="group" aria-label="Scenario type">
+                <button type="button" class="tool-preset is-active" data-scenario="arbitrage" aria-pressed="true" data-analytics-event="tool_scenario_click" data-analytics-location="battery_wear_estimator" data-analytics-label="Grid arbitrage">
+                  <span class="tool-preset__title">Grid arbitrage</span>
+                  <span class="tool-preset__meta">Charge cheap, discharge or export later</span>
+                  <span class="tool-preset__desc">Best when you want the break-even spread needed before battery cycling is worth the wear.</span>
+                </button>
+                <button type="button" class="tool-preset" data-scenario="selfUse" aria-pressed="false" data-analytics-event="tool_scenario_click" data-analytics-location="battery_wear_estimator" data-analytics-label="Self-use versus export">
+                  <span class="tool-preset__title">Self-use vs export</span>
+                  <span class="tool-preset__meta">Store solar instead of exporting now</span>
+                  <span class="tool-preset__desc">Best when you want to know how much later value you need before holding energy beats exporting it.</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tool-shell">
+            <section class="tool-form-card" aria-label="Estimator inputs">
+              <div class="tool-card-head">
+                <span class="tool-card-head__eyebrow">Inputs</span>
+                <h3>Tune your assumptions</h3>
+                <p>Adjust any value — results update instantly.</p>
+              </div>
+
+              <form id="batteryWearForm" class="tool-form" novalidate>
+                <div class="tool-form-groups">
+                  <section class="tool-form-group" aria-labelledby="batteryWearBasicsTitle">
+                    <div class="tool-form-group__head">
+                      <div class="tool-form-group__title">
+                        <div class="feature-card__icon feature-card__icon--secure tool-form-group__icon" aria-hidden="true">
+                          <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+                            <rect x="4.5" y="7.2" width="14.5" height="9.6" rx="2" />
+                            <path d="M19 10H20.8V14H19" />
+                            <path d="M7.2 12H16.3" />
+                            <path d="M9.4 9.9L7.4 12L9.4 14.1" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h4 id="batteryWearBasicsTitle">Battery basis</h4>
+                          <p>What the battery is worth and how much usable energy you are cycling.</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="tool-form-group__grid">
+                      <label class="tool-field">
+                        <span class="tool-field__label">Usable battery capacity</span>
+                        <span class="tool-field__meta">Usable kWh, not nameplate</span>
+                        <div class="tool-field__input-wrap">
+                          <input id="usableCapacityKwh" name="usableCapacityKwh" type="number" min="1" max="200" step="0.1" value="12.2">
+                          <span class="tool-field__suffix">kWh</span>
+                        </div>
+                      </label>
+
+                      <label class="tool-field">
+                        <span class="tool-field__label">Replacement value</span>
+                        <span class="tool-field__meta">Estimated future replacement cost</span>
+                        <div class="tool-field__input-wrap">
+                          <span class="tool-field__prefix">$</span>
+                          <input id="replacementValue" name="replacementValue" type="number" min="500" max="100000" step="100" value="9000">
+                        </div>
+                      </label>
+
+                      <label class="tool-field">
+                        <span class="tool-field__label">Round-trip efficiency</span>
+                        <span class="tool-field__meta">Energy returned per unit stored</span>
+                        <div class="tool-field__input-wrap">
+                          <input id="roundTripEfficiency" name="roundTripEfficiency" type="number" min="50" max="100" step="1" value="90">
+                          <span class="tool-field__suffix">%</span>
+                        </div>
+                      </label>
+
+                      <label class="tool-field">
+                        <span class="tool-field__label">Average depth of discharge</span>
+                        <span class="tool-field__meta">Typical share of usable capacity moved in a cycle</span>
+                        <div class="tool-field__input-wrap">
+                          <input id="averageDodPct" name="averageDodPct" type="number" min="10" max="100" step="1" value="80">
+                          <span class="tool-field__suffix">%</span>
+                        </div>
+                      </label>
+                    </div>
+                  </section>
+
+                  <section class="tool-form-group" aria-labelledby="lifetimeBasisTitle">
+                    <div class="tool-form-group__head">
+                      <div class="tool-form-group__title">
+                        <div class="feature-card__icon feature-card__icon--weather tool-form-group__icon" aria-hidden="true">
+                          <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+                            <path d="M3 20H21" />
+                            <path d="M6 16.6L10 12.6L13 14.8L18 8.8" />
+                            <path d="M18 8.8H14.8" />
+                            <path d="M18 8.8V12" />
+                            <path d="M6 6H10" />
+                            <path d="M6 9H12" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h4 id="lifetimeBasisTitle">Lifetime basis</h4>
+                          <p>Choose warranty throughput or expected cycle life.</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="tool-form-group__grid">
+                      <label class="tool-field">
+                        <span class="tool-field__label">Lifetime input mode</span>
+                        <span class="tool-field__meta">Pick your lifetime basis</span>
+                        <select id="lifetimeMode" name="lifetimeMode">
+                          <option value="throughput">Warranty throughput</option>
+                          <option value="cycleLife">Expected cycle life</option>
+                        </select>
+                      </label>
+
+                      <label class="tool-field" id="throughputModeField">
+                        <span class="tool-field__label">Lifetime throughput</span>
+                        <span class="tool-field__meta">Warranty or expected usable throughput</span>
+                        <div class="tool-field__input-wrap">
+                          <input id="lifetimeThroughputKwh" name="lifetimeThroughputKwh" type="number" min="1000" max="500000" step="100" value="35000">
+                          <span class="tool-field__suffix">kWh</span>
+                        </div>
+                      </label>
+
+                      <label class="tool-field" id="cycleLifeField" hidden>
+                        <span class="tool-field__label">Expected cycle life</span>
+                        <span class="tool-field__meta">Average full cycles before replacement economics matter</span>
+                        <div class="tool-field__input-wrap">
+                          <input id="expectedCycleLife" name="expectedCycleLife" type="number" min="100" max="20000" step="100" value="5000">
+                          <span class="tool-field__suffix">cycles</span>
+                        </div>
+                      </label>
+
+                      <label class="tool-field">
+                        <span class="tool-field__label">Cycles input</span>
+                        <span class="tool-field__meta">Used for annual wear cost estimate</span>
+                        <select id="cycleFrequencyBasis" name="cycleFrequencyBasis">
+                          <option value="year">Cycles per year</option>
+                          <option value="week">Cycles per week</option>
+                        </select>
+                      </label>
+
+                      <label class="tool-field">
+                        <span class="tool-field__label">Estimated cycle frequency</span>
+                        <span class="tool-field__meta">Used for annual wear cost only</span>
+                        <input id="cycleFrequencyValue" name="cycleFrequencyValue" type="number" min="0" max="365" step="0.1" value="180">
+                      </label>
+                    </div>
+                  </section>
+
+                  <section class="tool-form-group" aria-labelledby="wearAdjustmentTitle">
+                    <div class="tool-form-group__head">
+                      <div class="tool-form-group__title">
+                        <div class="feature-card__icon feature-card__icon--quick tool-form-group__icon" aria-hidden="true">
+                          <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+                            <circle cx="12" cy="12" r="6.5" />
+                            <path d="M12 5.5V8.4" />
+                            <path d="M18.5 12H15.6" />
+                            <path d="M12 18.5V15.6" />
+                            <path d="M5.5 12H8.4" />
+                            <circle cx="12" cy="12" r="1.4" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h4 id="wearAdjustmentTitle">Wear adjustments</h4>
+                          <p>Optional coarse lifetime multipliers.</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="tool-form-group__grid">
+                      <label class="tool-field">
+                        <span class="tool-field__label">Temperature band</span>
+                        <span class="tool-field__meta">Simple lifetime adjustment, not a thermal model</span>
+                        <select id="temperatureBand" name="temperatureBand">
+                          <option value="mild">Mild</option>
+                          <option value="cool">Cool</option>
+                          <option value="warm">Warm</option>
+                          <option value="hot">Hot</option>
+                        </select>
+                      </label>
+
+                      <label class="tool-field">
+                        <span class="tool-field__label">Usage profile</span>
+                        <span class="tool-field__meta">Coarse stress adjustment</span>
+                        <select id="usageProfile" name="usageProfile">
+                          <option value="balanced">Balanced</option>
+                          <option value="light">Light</option>
+                          <option value="aggressive">Aggressive</option>
+                        </select>
+                      </label>
+                    </div>
+                  </section>
+
+                  <section class="tool-form-group" aria-labelledby="scenarioInputsTitle">
+                    <div class="tool-form-group__head">
+                      <div class="tool-form-group__title">
+                        <div class="feature-card__icon feature-card__icon--history tool-form-group__icon" aria-hidden="true">
+                          <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+                            <circle cx="9" cy="11" r="3.5" />
+                            <path d="M9 9.6V12.4" />
+                            <path d="M15.5 9.5H20" />
+                            <path d="M15.5 13H19" />
+                            <path d="M4.6 18H19.4" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h4 id="scenarioInputsTitle">Scenario values</h4>
+                          <p>Pricing inputs for your chosen scenario.</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="tool-form-group__grid">
+                      <label class="tool-field" data-scenario-field="arbitrage">
+                        <span class="tool-field__label">Charge cost</span>
+                        <span class="tool-field__meta">Import price or charging cost now</span>
+                        <div class="tool-field__input-wrap">
+                          <input id="arbitrageChargePriceCents" name="arbitrageChargePriceCents" type="number" min="-50" max="200" step="0.5" value="9">
+                          <span class="tool-field__suffix">c/kWh</span>
+                        </div>
+                      </label>
+
+                      <label class="tool-field" data-scenario-field="arbitrage">
+                        <span class="tool-field__label">Later discharge or export value</span>
+                        <span class="tool-field__meta">What later energy is worth at the meter</span>
+                        <div class="tool-field__input-wrap">
+                          <input id="arbitrageLaterValueCents" name="arbitrageLaterValueCents" type="number" min="-50" max="300" step="0.5" value="28">
+                          <span class="tool-field__suffix">c/kWh</span>
+                        </div>
+                      </label>
+
+                      <label class="tool-field" data-scenario-field="selfUse" hidden>
+                        <span class="tool-field__label">Export value now</span>
+                        <span class="tool-field__meta">What you give up by storing solar instead</span>
+                        <div class="tool-field__input-wrap">
+                          <input id="selfUseExportNowCents" name="selfUseExportNowCents" type="number" min="-50" max="200" step="0.5" value="7">
+                          <span class="tool-field__suffix">c/kWh</span>
+                        </div>
+                      </label>
+
+                      <label class="tool-field" data-scenario-field="selfUse" hidden>
+                        <span class="tool-field__label">Later avoided import value</span>
+                        <span class="tool-field__meta">What that stored energy saves later</span>
+                        <div class="tool-field__input-wrap">
+                          <input id="selfUseAvoidedImportCents" name="selfUseAvoidedImportCents" type="number" min="-50" max="300" step="0.5" value="32">
+                          <span class="tool-field__suffix">c/kWh</span>
+                        </div>
+                      </label>
+                    </div>
+                  </section>
+                </div>
+              </form>
+
+              <div class="tool-form__note">
+                <strong>Guardrail:</strong> This estimator does not infer battery health, SOH, or provider-specific degradation from telemetry. It only turns your assumptions into a transparent economic estimate. Currency is shown in AUD.
+              </div>
+            </section>
+
+            <aside class="tool-results-card" aria-label="Estimator results">
+              <div class="tool-results-card__head">
+                <div class="tool-results-card__summary">
+                  <div class="feature-card__icon feature-card__icon--history tool-results-card__icon" aria-hidden="true">
+                    <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+                      <path d="M3 20H21" />
+                      <path d="M6 17V12" />
+                      <path d="M11 17V9" />
+                      <path d="M16 17V6" />
+                      <path d="M5 11L10 8L14 11L19 5" />
+                    </svg>
+                  </div>
+                  <div class="tool-results-card__copy">
+                    <span class="tool-results-card__eyebrow">Estimated result</span>
+                    <h3>Wear economics summary</h3>
+                    <p>Live result from your assumptions.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="tool-kpis">
+                <div class="tool-kpi">
+                  <span class="tool-kpi__label">Wear per full-equivalent cycle</span>
+                  <strong class="tool-kpi__value" id="wearCostPerCycle">$0</strong>
+                  <small class="tool-kpi__sub" id="wearCostPerCycleSub">One full usable cycle</small>
+                </div>
+                <div class="tool-kpi tool-kpi--accent">
+                  <span class="tool-kpi__label">Wear per throughput kWh</span>
+                  <strong class="tool-kpi__value" id="wearCostPerKwh">$0</strong>
+                  <small class="tool-kpi__sub" id="wearCostPerKwhSub">Each usable kWh moved through the battery</small>
+                </div>
+                <div class="tool-kpi">
+                  <span class="tool-kpi__label">Break-even threshold</span>
+                  <strong class="tool-kpi__value" id="breakEvenThreshold">0 c/kWh</strong>
+                  <small class="tool-kpi__sub" id="breakEvenThresholdSub">Minimum threshold for this scenario</small>
+                </div>
+                <div class="tool-kpi">
+                  <span class="tool-kpi__label">Estimated annual wear cost</span>
+                  <strong class="tool-kpi__value" id="annualWearCost">$0</strong>
+                  <small class="tool-kpi__sub" id="annualWearCostSub">Based on your cycle frequency input</small>
+                </div>
+              </div>
+
+              <dl class="tool-facts">
+                <div class="tool-fact">
+                  <dt>Net value per average cycle</dt>
+                  <dd id="netValuePerCycle">$0</dd>
+                </div>
+                <div class="tool-fact">
+                  <dt>Delivered energy per cycle</dt>
+                  <dd id="deliveredEnergyPerCycle">0 kWh</dd>
+                </div>
+                <div class="tool-fact">
+                  <dt>Adjusted lifetime throughput</dt>
+                  <dd id="adjustedLifetimeThroughput">0 kWh</dd>
+                </div>
+              </dl>
+
+              <div class="tool-insight">
+                <strong class="tool-insight__title" id="verdictHeadline">Worth considering</strong>
+                <span class="tool-insight__body" id="verdictBody">One full-equivalent cycle costs about $0 in battery wear.</span>
+              </div>
+
+              <div class="tool-results-card__actions">
+                <a href="/battery-roi-calculator.html" class="btn btn-primary" data-analytics-event="tool_open_click" data-analytics-location="battery_wear_results" data-analytics-label="Battery ROI Calculator">Compare with ROI calculator</a>
+                <a href="/login.html?tab=signup" class="btn btn-ghost" data-analytics-event="claim_spot_click" data-analytics-location="battery_wear_results">Claim free access</a>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tool-explainer" aria-labelledby="assumptionsTitle">
+      <div class="container">
+        <div class="tool-section-head tool-section-head--tight">
+          <span class="section-label">Assumptions</span>
+          <h2 class="section-title" id="assumptionsTitle">What this estimator is and is not doing</h2>
+        </div>
+
+        <div class="tool-explainer__grid">
+          <article class="tool-info-card">
+            <div class="feature-card__icon feature-card__icon--engine tool-info-card__icon" aria-hidden="true">
+              <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+                <rect x="4.5" y="5" width="14.5" height="14.5" rx="2" />
+                <path d="M8 9H15" />
+                <path d="M8 12.2H15" />
+                <path d="M8 15.4H12" />
+              </svg>
+            </div>
+            <h3>Included in the estimate</h3>
+            <p>Wear cost = replacement value divided by lifetime usable throughput. Scenario economics then compare that wear cost against charging losses and the later value you entered.</p>
+            <ul id="assumptionList">
+              <li>Usable battery capacity</li>
+              <li>Replacement value</li>
+              <li>Throughput or cycle-life basis</li>
+              <li>Average depth of discharge</li>
+              <li>Round-trip efficiency</li>
+              <li>Optional temperature and usage adjustment</li>
+            </ul>
+          </article>
+
+          <article class="tool-info-card">
+            <div class="feature-card__icon feature-card__icon--secure tool-info-card__icon" aria-hidden="true">
+              <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+                <path d="M6 7.5H18" />
+                <path d="M6 12H18" />
+                <path d="M6 16.5H14" />
+                <path d="M16 5.2L18.8 8" />
+              </svg>
+            </div>
+            <h3>Not included</h3>
+            <ul>
+              <li>Live battery health measurement</li>
+              <li>Exact SOH or real degradation tracking</li>
+              <li>Provider-specific telemetry depth assumptions</li>
+              <li>Temperature modelling beyond a simple multiplier</li>
+              <li>Finance, incentives, or outage backup value</li>
+              <li>Retailer-specific fees beyond your inputs</li>
+            </ul>
+          </article>
+
+          <article class="tool-info-card">
+            <div class="feature-card__icon feature-card__icon--history tool-info-card__icon" aria-hidden="true">
+              <svg class="feature-card__glyph" viewBox="0 0 24 24" focusable="false">
+                <path d="M3 20H21" />
+                <path d="M6 16L9.5 12.5L12.5 14.8L18 8.8" />
+                <path d="M18 8.8H14.8" />
+                <path d="M18 8.8V12" />
+              </svg>
+            </div>
+            <h3>How to use the result</h3>
+            <p id="resultUseCopy">If the verdict is borderline, the real answer is probably tariff-specific rather than obvious. Use this to find whether the wear-adjusted margin is clearly positive, clearly weak, or sitting too close to break-even to be confident.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="land-faq" id="estimator-faq" aria-labelledby="estimatorFaqTitle">
+      <div class="container">
+        <div class="tool-section-head tool-section-head--tight">
+          <span class="section-label">Estimator FAQ</span>
+          <h2 class="section-title" id="estimatorFaqTitle">Common questions about the wear model</h2>
+          <p class="section-sub">The point is to make the economics easier to reason about, not to overclaim certainty.</p>
+        </div>
+
+        <dl class="faq-list">
+          <div class="faq-item">
+            <details>
+              <summary>Does this estimate my battery's real health?</summary>
+              <div class="faq-item__body">No. This page is an <strong>economics estimator</strong> only. It does not measure state of health, infer true degradation from telemetry, or claim exact ageing for your battery.</div>
+            </details>
+          </div>
+
+          <div class="faq-item">
+            <details>
+              <summary>What changes the result most?</summary>
+              <div class="faq-item__body">The biggest levers are replacement value, lifetime throughput or cycle-life assumptions, usable battery capacity, average depth of discharge, and the price difference between now and later.</div>
+            </details>
+          </div>
+
+          <div class="faq-item">
+            <details>
+              <summary>Why does efficiency affect the break-even threshold?</summary>
+              <div class="faq-item__body">Because storing energy and getting it back later is lossy. A battery strategy has to cover both the energy lost through efficiency and the wear cost before it is genuinely worth doing.</div>
+            </details>
+          </div>
+
+          <div class="faq-item">
+            <details>
+              <summary>Should I treat the verdict as exact?</summary>
+              <div class="faq-item__body">No. Treat it as a quick decision aid. If the result is close to break-even, the practical answer depends heavily on your tariff shape, cycle frequency, and the battery warranty details behind your assumptions.</div>
+            </details>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="tool-cta-band" aria-labelledby="ctaBandTitle">
+      <div class="container tool-cta-band__inner">
+        <div>
+          <span class="section-label section-label--light">Next step</span>
+          <h2 class="section-title" id="ctaBandTitle">Want to move from rough economics to live operating value?</h2>
+          <p class="section-sub">Use the wear estimator to check whether the margin is real, then use SoCrates to model or automate the battery behavior with live tariffs, forecasts, and real rules.</p>
+        </div>
+        <div class="tool-cta-band__actions">
+          <a href="/battery-roi-calculator.html" class="btn btn-primary btn-lg" data-analytics-event="tool_open_click" data-analytics-location="battery_wear_cta" data-analytics-label="Battery ROI Calculator">Open ROI calculator</a>
+          <a href="/login.html?tab=signup" class="btn btn-ghost btn-lg" data-analytics-event="claim_spot_click" data-analytics-location="battery_wear_cta">Claim your free spot</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="land-footer" role="contentinfo">
+    <div class="container land-footer__inner">
+      <span class="land-footer__brand">
+        <img src="/icons/logo-login.svg" width="26" height="26" alt="" aria-hidden="true">
+        SoCrates
+      </span>
+      <ul class="land-footer__links" role="list">
+        <li><a href="/#how-it-works">How it works</a></li>
+        <li><a href="/#tools">Tools</a></li>
+        <li><a href="/#features">Features</a></li>
+        <li><a href="/blog/">Blog</a></li>
+        <li><a href="/#faq">FAQ</a></li>
+        <li><a href="/login.html" data-analytics-event="sign_in_click" data-analytics-location="wear_tool_footer">Sign In</a></li>
+        <li><a href="mailto:socrates.team.comms@gmail.com" data-analytics-event="contact_click" data-analytics-location="wear_tool_footer">Contact</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <script src="/js/marketing-analytics.js" defer></script>
+  <script src="/js/battery-wear-estimator.js" defer></script>
+</body>
+</html>

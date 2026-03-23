@@ -298,6 +298,33 @@
         let _userProvider       = '';    // 'foxess' | 'alphaess' | 'sungrow' | etc; overridden on load
         let _providerCapabilities = resolveProviderCapabilities('foxess');
 
+        function getEffectiveInverterCapacityW(capacityW = _inverterCapacityW) {
+            const parsed = Number(capacityW);
+            if (!Number.isFinite(parsed) || parsed < 1000) {
+                return 10000;
+            }
+            return Math.min(30000, Math.round(parsed));
+        }
+
+        function getRulePowerValidationMessage(capacityW = _inverterCapacityW) {
+            return `⚡ Power must be 0-${getEffectiveInverterCapacityW(capacityW)}W (your inverter capacity)`;
+        }
+
+        function applyRulePowerCapacityToUI(capacityW = _inverterCapacityW) {
+            const effectiveCapacityW = getEffectiveInverterCapacityW(capacityW);
+            const title = `Max: ${(effectiveCapacityW / 1000).toFixed(1)} kW (your inverter capacity)`;
+            const inputs = new Set([
+                ...document.querySelectorAll('input[name="fdPwr"]'),
+                document.getElementById('newRuleFdPwr'),
+                document.getElementById('actionFdPwr')
+            ].filter(Boolean));
+
+            inputs.forEach((input) => {
+                input.max = String(effectiveCapacityW);
+                input.title = title;
+            });
+        }
+
         function normalizeDashboardProvider(provider) {
             if (window.sharedUtils && typeof window.sharedUtils.normalizeDeviceProvider === 'function') {
                 return window.sharedUtils.normalizeDeviceProvider(provider);
@@ -2776,16 +2803,59 @@
                 return neg ? `-${s}` : s;
             }
 
+            function formatForecastRelativeLabel(value) {
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return 'at --:--';
+
+                const timeZone = USER_TZ || 'Australia/Sydney';
+                const timeLabel = date.toLocaleTimeString('en-AU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                    timeZone
+                });
+
+                const getDateParts = (input) => {
+                    const parts = new Intl.DateTimeFormat('en-CA', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        timeZone
+                    }).formatToParts(input);
+                    return {
+                        year: Number(parts.find((part) => part.type === 'year')?.value || 0),
+                        month: Number(parts.find((part) => part.type === 'month')?.value || 0),
+                        day: Number(parts.find((part) => part.type === 'day')?.value || 0)
+                    };
+                };
+
+                const todayParts = getDateParts(new Date());
+                const targetParts = getDateParts(date);
+                const todayUtc = Date.UTC(todayParts.year, todayParts.month - 1, todayParts.day);
+                const targetUtc = Date.UTC(targetParts.year, targetParts.month - 1, targetParts.day);
+                const dayDiff = Math.round((targetUtc - todayUtc) / 86400000);
+
+                if (dayDiff === 0) return `today at ${timeLabel}`;
+                if (dayDiff === 1) return `tomorrow at ${timeLabel}`;
+
+                const dateLabel = date.toLocaleDateString('en-AU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    timeZone
+                });
+                return `on ${dateLabel} at ${timeLabel}`;
+            }
+
             // Spike Alert Banner (if any forecasted spikes)
             if (hasSpikes) {
                 const nextSpike = spikeForecasts[0];
-                const spikeTime = new Date(nextSpike.startTime).toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false, timeZone: USER_TZ || 'Australia/Sydney'});
+                const spikeTimeLabel = formatForecastRelativeLabel(nextSpike.startTime);
                 const spikePrice = formatPrice(nextSpike.perKwh);
                 html += `<div style="background:color-mix(in srgb, var(--color-danger) 15%, transparent);border:1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);border-radius:8px;padding:10px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
                     <span style="font-size:24px">⚠️</span>
                     <div>
                         <div style="font-weight:600;color:var(--color-danger)">Price Spike Forecast</div>
-                        <div style="font-size:12px;color:var(--text-primary)">${spikeForecasts.length} spike${spikeForecasts.length > 1 ? 's' : ''} expected — next at <strong>${spikeTime}</strong> (${spikePrice})</div>
+                        <div style="font-size:12px;color:var(--text-primary)">${spikeForecasts.length} spike${spikeForecasts.length > 1 ? 's' : ''} expected — next <strong>${spikeTimeLabel}</strong> (${spikePrice})</div>
                     </div>
                 </div>`;
             }
@@ -4552,21 +4622,23 @@
         // Applies the user's inverter capacity to the quick-control slider and preset button.
         // Called after user config loads from /api/config.
         function applyInverterCapacityToUI(capacityW) {
+            const effectiveCapacityW = getEffectiveInverterCapacityW(capacityW);
             const slider = document.getElementById('quickControlPower');
             if (slider) {
-                slider.max = capacityW;
-                if (parseInt(slider.value) > capacityW) {
-                    slider.value = capacityW;
-                    updateQuickControlPowerDisplay(capacityW);
+                slider.max = effectiveCapacityW;
+                if (parseInt(slider.value) > effectiveCapacityW) {
+                    slider.value = effectiveCapacityW;
+                    updateQuickControlPowerDisplay(effectiveCapacityW);
                 }
             }
             const maxLabel = document.getElementById('quickControlMaxLabel');
-            if (maxLabel) maxLabel.textContent = `${(capacityW / 1000).toFixed(1)} kW`;
+            if (maxLabel) maxLabel.textContent = `${(effectiveCapacityW / 1000).toFixed(1)} kW`;
             const maxBtn = document.getElementById('quickControlMaxBtn');
             if (maxBtn) {
-                maxBtn.onclick = () => setQuickControlPower(capacityW);
-                maxBtn.textContent = `${(capacityW / 1000).toFixed(1)} kW`;
+                maxBtn.onclick = () => setQuickControlPower(effectiveCapacityW);
+                maxBtn.textContent = `${(effectiveCapacityW / 1000).toFixed(1)} kW`;
             }
+            applyRulePowerCapacityToUI(effectiveCapacityW);
         }
         
         function updateQuickControlDurationDisplay(value) {
@@ -8126,7 +8198,7 @@
                                         <label style="display:block;font-size:11px;color:var(--text-secondary)">Power (W)</label>
                                         <span class="tooltip-icon" data-tooltip="Requested charge/discharge power in watts (fdPwr).">?</span>
                                     </div>
-                                    <input type="number" id="newRuleFdPwr" value="5000" min="0" max="10500" step="100" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:6px;color:var(--text-primary);font-size:13px;margin-top:4px">
+                                    <input type="number" id="newRuleFdPwr" value="5000" min="0" max="10000" step="100" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:6px;color:var(--text-primary);font-size:13px;margin-top:4px">
                                 </div>
                                 <div>
                                     <div class="field-label-with-tooltip">
@@ -8190,6 +8262,7 @@
                     });
                 }
             }
+            applyRulePowerCapacityToUI(_inverterCapacityW);
             applyProviderConstraintsToDashboard();
             syncAutomationToggleVisibility();
 
@@ -8787,9 +8860,10 @@
                 setFieldError('newRuleCooldown', '🔄 Cooldown must be 1-1440 minutes');
             }
             
+            const maxRulePowerW = getEffectiveInverterCapacityW();
             const fdPwr = parseInt(document.getElementById('newRuleFdPwr')?.value);
-            if (isNaN(fdPwr) || fdPwr < 0 || fdPwr > 10500) {
-                setFieldError('newRuleFdPwr', '⚡ Power must be 0-10500W (inverter max output)');
+            if (isNaN(fdPwr) || fdPwr < 0 || fdPwr > maxRulePowerW) {
+                setFieldError('newRuleFdPwr', getRulePowerValidationMessage(maxRulePowerW));
             }
             
             const fdSoc = parseInt(document.getElementById('newRuleFdSoc')?.value);
@@ -9776,9 +9850,10 @@
             }
             
             if (actionFdPwr) {
+                const maxRulePowerW = getEffectiveInverterCapacityW();
                 const fdPwr = parseInt(actionFdPwr);
-                if (isNaN(fdPwr) || fdPwr < 0 || fdPwr > 10500) {
-                    alert('❌ Power must be between 0W and 10500W');
+                if (isNaN(fdPwr) || fdPwr < 0 || fdPwr > maxRulePowerW) {
+                    alert(`❌ Power must be between 0W and ${maxRulePowerW}W`);
                     document.getElementById('actionFdPwr').focus();
                     return;
                 }

@@ -978,6 +978,124 @@ test.describe('Dashboard Page', () => {
     expect(refErrors).toHaveLength(0);
   });
 
+  test('should label next Amber spike as tomorrow when the forecast crosses into the next day', async ({ page }) => {
+    await page.addInitScript(({ nowIso }) => {
+      const RealDate = Date;
+      const fixedNow = RealDate.parse(nowIso);
+
+      class MockDate extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super(fixedNow);
+            return;
+          }
+          super(...args);
+        }
+
+        static now() {
+          return fixedNow;
+        }
+      }
+
+      MockDate.parse = RealDate.parse;
+      MockDate.UTC = RealDate.UTC;
+      window.Date = MockDate;
+
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    }, { nowIso: '2026-03-23T08:00:00.000Z' });
+
+    await mockDashboardConfig(page);
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          { id: 'site-nsw-1', nmi: 'NMI-1234567890', network: 'Ausgrid' }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: '2026-03-23T08:00:00.000Z',
+            perKwh: 9,
+            spotPerKwh: 9,
+            renewables: 89,
+            descriptor: 'great',
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: '2026-03-23T08:00:00.000Z',
+            perKwh: -1.43,
+            spotPerKwh: -1.43,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-24T10:00:00.000Z',
+            perKwh: 2436,
+            spotPerKwh: 2436,
+            renewables: 22,
+            descriptor: 'notGreat',
+            spikeStatus: 'forecast',
+            advancedPrice: { low: 2200, predicted: 2436, high: 2600 }
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-24T10:00:00.000Z',
+            perKwh: -1.44,
+            spotPerKwh: -1.44,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-24T10:30:00.000Z',
+            perKwh: 144,
+            spotPerKwh: 144,
+            renewables: 30,
+            descriptor: 'ok',
+            spikeStatus: 'none',
+            advancedPrice: { low: 120, predicted: 144, high: 170 }
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-24T10:30:00.000Z',
+            perKwh: -1.44,
+            spotPerKwh: -1.44,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.reload();
+
+    const amberCard = page.locator('#amberCard');
+    await expect(amberCard).toContainText('Price Spike Forecast');
+    await expect(amberCard).toContainText('1 spike expected');
+    await expect(amberCard).toContainText('next tomorrow at 21:00');
+    await expect(amberCard).not.toContainText('next at 21:00');
+  });
+
   test('should adapt scheduler, quick control, and rule builder UI for AlphaESS capabilities', async ({ page }) => {
     await mockDashboardConfig(page, { deviceProvider: 'alphaess' });
     await page.goto('about:blank');
@@ -1047,6 +1165,44 @@ test.describe('Dashboard Page', () => {
     });
 
     expect(ruleModalState.backupUnavailable).toBe(true);
+  });
+
+  test('should validate rule power against the configured inverter capacity', async ({ page }) => {
+    await mockDashboardConfig(page, { inverterCapacityW: 15000 });
+    await page.goto('about:blank');
+    await page.goto('/app.html?rulePowerCapacity=1', { waitUntil: 'domcontentloaded' });
+
+    await page.waitForFunction(() => typeof window.showAddRuleModal === 'function');
+    await page.evaluate(() => {
+      const existing = document.getElementById('addRuleModal');
+      if (existing) existing.remove();
+      window.showAddRuleModal();
+    });
+
+    await expect(page.locator('#addRuleModal')).toBeVisible();
+
+    const modalState = await page.evaluate(() => {
+      document.getElementById('newRuleName').value = 'Happy Hour Export';
+      document.getElementById('newRulePriority').value = '2';
+      document.getElementById('newRuleWorkMode').value = 'ForceDischarge';
+      document.getElementById('newRuleDuration').value = '120';
+      document.getElementById('newRuleCooldown').value = '150';
+      document.getElementById('newRuleFdPwr').value = '15000';
+      document.getElementById('newRuleFdSoc').value = '15';
+      document.getElementById('newRuleMinSoc').value = '15';
+      document.getElementById('newRuleMaxSoc').value = '100';
+      document.getElementById('condFeedInEnabled').checked = true;
+      document.getElementById('condFeedInVal').value = '1';
+
+      return {
+        powerMax: document.getElementById('newRuleFdPwr').max,
+        validation: window.validateRuleForm()
+      };
+    });
+
+    expect(modalState.powerMax).toBe('15000');
+    expect(modalState.validation.valid).toBe(true);
+    expect(modalState.validation.errors).toEqual([]);
   });
 
   test('should not treat AlphaESS export flow as solar production when pvPower is zero', async ({ page }) => {
