@@ -5,6 +5,9 @@
             onReady: () => {
                 try { TourEngine.init(window.apiClient); TourEngine.resume(); } catch(e) {}
                 try {
+                    refreshTestLabRulePowerCapacity().catch((error) => {
+                        console.warn('[Automation Lab] Failed to refresh inverter capacity', error);
+                    });
                     // Load cached data into UI on page load
                     loadCachedDataIntoUI();
                     loadRules();
@@ -38,6 +41,56 @@
 
         // Get dynamic configuration values from the backend
         let cachedAutomationConfig = null;
+        let cachedTestLabInverterCapacityW = 10000;
+        let cachedTestLabHardwarePromise = null;
+
+        function getEffectiveTestLabInverterCapacityW(capacityW = cachedTestLabInverterCapacityW) {
+            const parsed = Number(capacityW);
+            if (!Number.isFinite(parsed) || parsed < 1000) {
+                return 10000;
+            }
+            return Math.min(30000, Math.round(parsed));
+        }
+
+        async function getTestLabInverterCapacityW() {
+            if (!cachedTestLabHardwarePromise) {
+                cachedTestLabHardwarePromise = (async () => {
+                    try {
+                        const resp = await authenticatedFetch('/api/config');
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            const configuredCapacity = Number(data?.result?.inverterCapacityW);
+                            if (Number.isFinite(configuredCapacity) && configuredCapacity > 0) {
+                                cachedTestLabInverterCapacityW = configuredCapacity;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[Automation Lab] Failed to load inverter capacity', e);
+                    }
+
+                    cachedTestLabInverterCapacityW = getEffectiveTestLabInverterCapacityW(cachedTestLabInverterCapacityW);
+                    return cachedTestLabInverterCapacityW;
+                })();
+            }
+
+            return cachedTestLabHardwarePromise;
+        }
+
+        function applyTestLabRulePowerCapacityToUI(capacityW = cachedTestLabInverterCapacityW) {
+            const effectiveCapacityW = getEffectiveTestLabInverterCapacityW(capacityW);
+            const input = document.getElementById('actionFdPwr');
+            if (!input) return;
+
+            input.max = String(effectiveCapacityW);
+            input.title = `Max: ${(effectiveCapacityW / 1000).toFixed(1)} kW (your inverter capacity)`;
+        }
+
+        async function refreshTestLabRulePowerCapacity() {
+            const capacityW = await getTestLabInverterCapacityW();
+            applyTestLabRulePowerCapacityToUI(capacityW);
+            return capacityW;
+        }
+
         async function getAutomationConfig() {
             if (cachedAutomationConfig) return cachedAutomationConfig;
             try {
@@ -1529,7 +1582,7 @@
                             <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
                                 <div>
                                     <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Power (W)</label>
-                                    <input type="number" id="actionFdPwr" value="${editData?.action?.fdPwr || 7000}" min="0" max="10000" step="100" style="width:100%">
+                                    <input type="number" id="actionFdPwr" value="${editData?.action?.fdPwr || 7000}" min="0" max="${getEffectiveTestLabInverterCapacityW()}" step="100" style="width:100%">
                                 </div>
                                 <div>
                                     <label style="display:block;font-size:0.75rem;color:var(--text-secondary);margin-bottom:4px">Stop SoC (%)</label>
@@ -1577,6 +1630,11 @@
                 box-sizing: border-box !important;
                 margin: 0 !important;
             `;
+
+            applyTestLabRulePowerCapacityToUI(cachedTestLabInverterCapacityW);
+            refreshTestLabRulePowerCapacity().catch((error) => {
+                console.warn('[Automation Lab] Failed to refresh modal inverter capacity', error);
+            });
             
             // Lock background scroll
             document.body.classList.add('modal-open');
@@ -1690,6 +1748,15 @@
                 alert('Please enable at least one condition');
                 return;
             }
+
+            const maxRulePowerW = await getTestLabInverterCapacityW();
+            const fdPwrInput = document.getElementById('actionFdPwr');
+            const fdPwr = parseInt(fdPwrInput?.value, 10);
+            if (!Number.isFinite(fdPwr) || fdPwr < 0 || fdPwr > maxRulePowerW) {
+                alert(`Power must be between 0W and ${maxRulePowerW}W (your inverter capacity)`);
+                fdPwrInput?.focus();
+                return;
+            }
             
             const payload = {
                 ruleName,
@@ -1701,7 +1768,7 @@
                 action: {
                     workMode: document.getElementById('actionMode').value,
                     durationMinutes: parseInt(document.getElementById('actionDuration').value) || 30,
-                    fdPwr: parseInt(document.getElementById('actionFdPwr').value) || 7000,
+                    fdPwr,
                     fdSoc: parseInt(document.getElementById('actionFdSoc').value) || 35,
                     minSocOnGrid: parseInt(document.getElementById('actionMinSoc').value) || 20,
                     maxSoc: parseInt(document.getElementById('actionMaxSoc').value) || 90

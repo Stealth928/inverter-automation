@@ -27,6 +27,65 @@ test.describe('Test Lab Page', () => {
     await expect(page).toHaveTitle(/Test|Lab|Debug|Automation/i);
   });
 
+  test('should apply configured inverter capacity to Automation Lab rule power validation', async ({ page }) => {
+    let createRequestCount = 0;
+    let lastCreatePayload = null;
+
+    await page.goto('about:blank');
+
+    await page.route('**/api/config', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          errno: 0,
+          result: {
+            inverterCapacityW: 15000
+          }
+        })
+      });
+    });
+
+    await page.route('**/api/automation/rule/create', async (route) => {
+      createRequestCount += 1;
+      lastCreatePayload = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ errno: 0, result: { ok: true } })
+      });
+    });
+
+    await page.goto('/test.html');
+    await page.waitForFunction(() => typeof window.showAddRuleModal === 'function');
+    await page.evaluate(() => {
+      window.__testLabAlerts = [];
+      window.alert = (message) => window.__testLabAlerts.push(String(message));
+      window.showAddRuleModal();
+    });
+
+    await expect.poll(async () => {
+      return page.locator('#actionFdPwr').evaluate((input) => input.max);
+    }, { timeout: 10000 }).toBe('15000');
+
+    await page.fill('#ruleName', 'Happy Hour Export');
+    await page.check('#condFeedIn');
+    await page.fill('#condFeedInVal', '1');
+    await page.fill('#actionFdPwr', '16000');
+    await page.getByRole('button', { name: 'Create Rule' }).click();
+
+    await expect.poll(async () => {
+      return page.evaluate(() => window.__testLabAlerts[0] || '');
+    }, { timeout: 5000 }).toContain('15000W');
+    expect(createRequestCount).toBe(0);
+
+    await page.fill('#actionFdPwr', '15000');
+    await page.getByRole('button', { name: 'Create Rule' }).click();
+
+    await expect.poll(() => createRequestCount, { timeout: 5000 }).toBe(1);
+    expect(lastCreatePayload.action.fdPwr).toBe(15000);
+  });
+
   test('should display rule testing section', async ({ page }) => {
     const hasTestSection = await page.getByText(/test|rule|evaluate|condition/i).count() > 0;
     expect(hasTestSection).toBeTruthy();
