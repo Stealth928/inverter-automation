@@ -1048,19 +1048,35 @@ function registerAdminRoutes(app, deps = {}) {
     return toCounter(cursor);
   };
 
+  const readFlatCounter = (root, key) => {
+    if (!root || typeof root !== 'object' || !key) return 0;
+    return toCounter(root[key]);
+  };
+
   const buildEvBreakdown = (metricsDoc = {}) => {
     const teslaFleetRoot = getTeslaFleetRoot(metricsDoc);
     const byCategory = teslaFleetRoot && teslaFleetRoot.calls && typeof teslaFleetRoot.calls.byCategory === 'object'
       ? teslaFleetRoot.calls.byCategory
       : null;
-    if (!byCategory) return {};
 
-    return Object.entries(byCategory).reduce((acc, [key, value]) => {
-      const normalized = String(key || '').trim();
-      if (!normalized) return acc;
-      acc[normalized] = toCounter(value);
-      return acc;
-    }, {});
+    const breakdown = {};
+    if (byCategory) {
+      Object.entries(byCategory).forEach(([key, value]) => {
+        const normalized = String(key || '').trim();
+        if (!normalized) return;
+        breakdown[normalized] = toCounter(value);
+      });
+    }
+
+    Object.entries(metricsDoc).forEach(([key, value]) => {
+      const match = /^teslaFleet\.calls\.byCategory\.(.+)$/.exec(String(key || ''));
+      if (!match) return;
+      const normalized = String(match[1] || '').trim();
+      if (!normalized) return;
+      breakdown[normalized] = toCounter(value);
+    });
+
+    return breakdown;
   };
 
   const resolveEvCounter = (metricsDoc = {}) => {
@@ -1074,14 +1090,27 @@ function registerAdminRoutes(app, deps = {}) {
     const billable = readNestedCounter(teslaFleetRoot, ['calls', 'billable']);
     if (billable) return billable;
 
+    const flatBillable = readFlatCounter(metricsDoc, 'teslaFleet.calls.billable');
+    if (flatBillable) return flatBillable;
+
     const total = readNestedCounter(teslaFleetRoot, ['calls', 'total']);
     if (total) return total;
+
+    const flatTotal = readFlatCounter(metricsDoc, 'teslaFleet.calls.total');
+    if (flatTotal) return flatTotal;
 
     const byCategory = teslaFleetRoot && teslaFleetRoot.calls && typeof teslaFleetRoot.calls.byCategory === 'object'
       ? teslaFleetRoot.calls.byCategory
       : null;
-    if (!byCategory) return 0;
-    return Object.values(byCategory).reduce((sum, value) => sum + toCounter(value), 0);
+    const nestedTotal = byCategory
+      ? Object.values(byCategory).reduce((sum, value) => sum + toCounter(value), 0)
+      : 0;
+    if (nestedTotal) return nestedTotal;
+
+    return Object.entries(metricsDoc).reduce((sum, [key, value]) => {
+      if (!/^teslaFleet\.calls\.byCategory\./.test(String(key || ''))) return sum;
+      return sum + toCounter(value);
+    }, 0);
   };
 
   const buildApiHealthMetricsEnvelope = (rawDoc = {}) => {

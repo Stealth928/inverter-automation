@@ -1339,6 +1339,66 @@ describe('admin route module', () => {
     expect(response.body.result.alerts.some((alert) => alert.code === 'error_rate_watch')).toBe(true);
   });
 
+  test('api-health reads Tesla breakdown from flat dotted metrics fields', async () => {
+    const formatDayKey = (offset) => {
+      const date = new Date(Date.now() - (offset * 24 * 60 * 60 * 1000));
+      return date.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
+    };
+    const dayToday = formatDayKey(0);
+    const metricDocs = new Map(Object.entries({
+      [dayToday]: {
+        foxess: 12,
+        amber: 8,
+        weather: 3,
+        'teslaFleet.calls.total': 5,
+        'teslaFleet.calls.billable': 5,
+        'teslaFleet.calls.byCategory.wake': 1,
+        'teslaFleet.calls.byCategory.command': 2,
+        'teslaFleet.calls.byCategory.data_request': 2
+      }
+    }));
+
+    const deps = createDeps({
+      googleApis: null,
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'metrics') {
+            return {
+              doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
+              where: jest.fn(() => ({})),
+              add: jest.fn(async () => undefined)
+            };
+          }
+
+          return {
+            doc: jest.fn((docId) => ({
+              get: jest.fn(async () => ({
+                exists: metricDocs.has(docId),
+                data: () => metricDocs.get(docId) || {}
+              }))
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/api-health?days=7')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.daily.find((row) => row.date === dayToday)).toEqual(expect.objectContaining({
+      categories: expect.objectContaining({ ev: 5 }),
+      evBreakdown: expect.objectContaining({
+        wake: 1,
+        command: 2,
+        data_request: 2
+      })
+    }));
+  });
+
   test('scheduler-metrics returns aggregate daily view with optional recent runs', async () => {
     const buildSnapshot = (docs) => ({
       size: docs.length,
