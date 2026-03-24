@@ -311,7 +311,24 @@ describe('config mutation route module', () => {
   });
 
   test('clear credentials route clears credential fields and setup status', async () => {
+    const setUserProfile = jest.fn(async () => undefined);
+    const setAutomationState = jest.fn(async () => undefined);
     const deps = buildDeps({
+      db: {
+        collection: jest.fn(() => ({
+          doc: jest.fn(() => ({
+            set: setUserProfile,
+            collection: jest.fn((collectionName) => ({
+              doc: jest.fn(() => {
+                if (collectionName === 'automation') {
+                  return { set: setAutomationState };
+                }
+                return { delete: jest.fn(async () => undefined) };
+              })
+            }))
+          }))
+        }))
+      },
       authenticateUser: (req, _res, next) => {
         req.user = { uid: 'u-config' };
         next();
@@ -327,7 +344,22 @@ describe('config mutation route module', () => {
       .send({});
 
     expect(response.statusCode).toBe(200);
-    expect(response.body).toEqual({ errno: 0, msg: 'Credentials cleared successfully' });
+    expect(response.body).toEqual({ errno: 0, msg: 'Credentials cleared successfully. Automation disabled.' });
+    expect(setUserProfile).toHaveBeenCalledWith(
+      {
+        automationEnabled: false,
+        lastUpdated: '__TS__'
+      },
+      { merge: true }
+    );
+    expect(setAutomationState).toHaveBeenCalledWith(
+      {
+        enabled: false,
+        segmentsCleared: false,
+        updatedAt: '__TS__'
+      },
+      { merge: true }
+    );
     expect(deps.updateUserConfig).toHaveBeenCalledWith('u-config', {
       amberApiKey: '__DELETE__',
       alphaessAppId: '__DELETE__',
@@ -355,12 +387,20 @@ describe('config mutation route module', () => {
   });
 
   test('clear credentials route deletes user secrets credentials doc when db is provided', async () => {
+    const setUserProfile = jest.fn(async () => undefined);
+    const setAutomationState = jest.fn(async () => undefined);
     const deleteCredentialsDoc = jest.fn(async () => undefined);
     const db = {
       collection: jest.fn(() => ({
         doc: jest.fn(() => ({
+          set: setUserProfile,
           collection: jest.fn(() => ({
-            doc: jest.fn(() => ({ delete: deleteCredentialsDoc }))
+            doc: jest.fn((docId) => {
+              if (docId === 'state') {
+                return { set: setAutomationState };
+              }
+              return { delete: deleteCredentialsDoc };
+            })
           }))
         }))
       }))
@@ -383,6 +423,8 @@ describe('config mutation route module', () => {
 
     expect(response.statusCode).toBe(200);
     expect(deleteCredentialsDoc).toHaveBeenCalledTimes(1);
+    expect(setUserProfile).toHaveBeenCalledTimes(1);
+    expect(setAutomationState).toHaveBeenCalledTimes(1);
   });
 
   test('tour status route rejects empty update payload', async () => {
