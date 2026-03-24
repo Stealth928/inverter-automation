@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Logo Animation Variations — SoCrates</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0e1a;
+      color: #e2e8f0;
+      font-family: system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      padding: 48px 24px 80px;
+    }
+
+    .page-header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+    .page-header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #f1f5f9;
+      letter-spacing: -0.3px;
+      margin-bottom: 8px;
+    }
+    .page-header p {
+      font-size: 14px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+    .page-header code {
+      font-size: 12px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 4px;
+      padding: 1px 6px;
+      color: #94a3b8;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 24px;
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    /* Card */
+    .card {
+      background: linear-gradient(160deg, #111827 0%, #0f172a 100%);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 18px;
+      padding: 36px 24px 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(52,211,153,0.04) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .card-num {
+      position: absolute;
+      top: 14px;
+      left: 17px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #334155;
+      letter-spacing: 0.5px;
+    }
+
+    .logo-stage {
+      width: 72px;
+      height: 72px;
+      margin-bottom: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .logo-stage img,
+    .logo-stage svg {
+      width: 72px;
+      height: 72px;
+      display: block;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .card-desc {
+      font-size: 12.5px;
+      color: #64748b;
+      line-height: 1.55;
+      text-align: center;
+    }
+
+    .replay-btn {
+      margin-top: 16px;
+      font-size: 11.5px;
+      padding: 5px 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #94a3b8;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .replay-btn:hover {
+      background: rgba(255,255,255,0.09);
+      color: #e2e8f0;
+    }
+
+    /* ─────────────────────────────────────────────
+       VARIATION 1 — Float
+       Gentle vertical bob with a deepening shadow
+    ───────────────────────────────────────────── */
+    @keyframes logoFloat {
+      0%, 100% {
+        transform: translateY(0px);
+        filter: drop-shadow(0 6px 18px rgba(0,0,0,0.55));
+      }
+      50% {
+        transform: translateY(-9px);
+        filter: drop-shadow(0 18px 32px rgba(0,0,0,0.28));
+      }
+    }
+    .anim-float img {
+      animation: logoFloat 3.2s ease-in-out infinite;
+    }
+
+    /* ─────────────────────────────────────────────
+       VARIATION 2 — Glow Pulse
+       Green→blue aura breathes in and out
+    ───────────────────────────────────────────── */
+    @keyframes logoPulse {
+      0%, 100% {
+        filter: drop-shadow(0 0 6px rgba(52,211,153,0.35))
+                drop-shadow(0 0 14px rgba(56,189,248,0.15));
+      }
+      50% {
+        filter: drop-shadow(0 0 18px rgba(52,211,153,0.85))
+                drop-shadow(0 0 36px rgba(56,189,248,0.5));
+      }
+    }
+    .anim-glow img {
+      animation: logoPulse 2.6s ease-in-out infinite;
+    }
+
+    /* ─────────────────────────────────────────────
+       VARIATION 3 — Arc Spin
+       Gradient arc orbits using SMIL (inline SVG)
+    ───────────────────────────────────────────── */
+    /* No extra CSS needed — SMIL handles it */
+
+    /* ─────────────────────────────────────────────
+       VARIATION 4 — Lightning Flash
+       Bolt flickers like an arc discharge (inline SVG)
+    ───────────────────────────────────────────── */
+    @keyframes boltFlash {
+      0%,  60%, 100% { opacity: 1; }
+      63%             { opacity: 0.03; }
+      66%             { opacity: 1; }
+      70%             { opacity: 0.25; }
+      74%             { opacity: 1; }
+    }
+    .anim-bolt .bolt-group {
+      animation: boltFlash 3.8s ease-in-out infinite;
+    }
+
+    /* ─────────────────────────────────────────────
+       VARIATION 5 — Entrance Bounce
+       Spring-loads into place (one-shot on load)
+    ───────────────────────────────────────────── */
+    @keyframes logoEntrance {
+      0%   { transform: scale(0.35) rotate(-12deg); opacity: 0; filter: blur(6px); }
+      55%  { transform: scale(1.1)  rotate(3deg);   opacity: 1; filter: blur(0); }
+      75%  { transform: scale(0.95) rotate(-1deg); }
+      90%  { transform: scale(1.02) rotate(0.5deg); }
+      100% { transform: scale(1)    rotate(0deg); opacity: 1; }
+    }
+    .anim-entrance img {
+      animation: logoEntrance 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      transform-origin: center;
+    }
+
+    /* ─────────────────────────────────────────────
+       VARIATION 6 — Shimmer Orbit
+       The outer ring shimmers with a colour sweep
+       (inline SVG + SMIL gradient stop animation)
+    ───────────────────────────────────────────── */
+    /* SMIL handles the gradient sweep inside the SVG */
+
+    /* ─────────────────────────────────────────────
+       FOOTER
+    ───────────────────────────────────────────── */
+    .page-footer {
+      text-align: center;
+      margin-top: 56px;
+      font-size: 12px;
+      color: #334155;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="page-header">
+    <h1>Logo Animation Variations</h1>
+    <p>Pick a favourite — tell Copilot which number and it'll be wired into <code>login.html</code>.</p>
+  </div>
+
+  <div class="grid">
+
+    <!-- ── 1. FLOAT ────────────────────────────────────────────── -->
+    <div class="card">
+      <span class="card-num">01</span>
+      <div class="logo-stage anim-float">
+        <img src="/icons/logo-login.svg" alt="SoCrates logo">
+      </div>
+      <div class="card-title">Float</div>
+      <div class="card-desc">
+        Gentle vertical bob — rises and falls with a soft deepening shadow beneath it.
+        Calm and polished, never distracting.
+      </div>
+    </div>
+
+    <!-- ── 2. GLOW PULSE ───────────────────────────────────────── -->
+    <div class="card">
+      <span class="card-num">02</span>
+      <div class="logo-stage anim-glow">
+        <img src="/icons/logo-login.svg" alt="SoCrates logo">
+      </div>
+      <div class="card-title">Glow Pulse</div>
+      <div class="card-desc">
+        On-brand green &amp; blue aura breathes in and out around the logo.
+        Feels "live" — like a heartbeat.
+      </div>
+    </div>
+
+    <!-- ── 3. ARC SPIN ─────────────────────────────────────────── -->
+    <div class="card">
+      <span class="card-num">03</span>
+      <div class="logo-stage">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true">
+          <defs>
+            <linearGradient id="arc3" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#34d399"/>
+              <stop offset="100%" style="stop-color:#38bdf8"/>
+            </linearGradient>
+            <filter id="g3">
+              <feGaussianBlur stdDeviation="8" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <clipPath id="c3"><circle cx="256" cy="256" r="245"/></clipPath>
+          </defs>
+
+          <circle cx="256" cy="256" r="256" fill="#0a0e1a"/>
+
+          <g transform="translate(256,256) scale(0.95) translate(-256,-256)">
+            <!-- Static dim base ring -->
+            <circle cx="256" cy="256" r="248" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="22"/>
+
+            <!-- Orbiting gradient arc — SMIL animates stroke-dashoffset for a full revolution -->
+            <circle cx="256" cy="256" r="248" fill="none" stroke="url(#arc3)"
+                    stroke-width="22" stroke-linecap="round"
+                    stroke-dasharray="1373 187"
+                    stroke-dashoffset="390"
+                    filter="url(#g3)">
+              <animate attributeName="stroke-dashoffset"
+                       from="390" to="-1170"
+                       dur="5s" repeatCount="indefinite"/>
+            </circle>
+
+            <!-- Figure body -->
+            <g clip-path="url(#c3)">
+              <path d="M 308 44 C 342 49,370 80,374 119 C 378 154,360 189,347 218
+                       C 333 244,333 266,335 288 C 337 311,346 325,342 349
+                       C 335 375,311 388,285 395 C 268 399,249 399,249 414
+                       L 249 518 L 153 518 L 153 414 C 153 399,173 395,195 390
+                       C 219 384,238 369,242 345 C 246 321,233 302,231 279
+                       C 229 258,236 237,231 213 C 225 182,205 156,205 121
+                       C 205 80,238 48,275 47 C 290 46,300 42,308 44 Z"
+                    fill="#e8e4dc"/>
+              <ellipse cx="348" cy="216" rx="21" ry="32" fill="#ddd8cc"/>
+              <ellipse cx="350" cy="216" rx="11" ry="19" fill="#ccc4b4"/>
+              <circle cx="233" cy="180" r="12" fill="#1a1f2e"/>
+              <circle cx="237" cy="177" r="3.8" fill="#ffffff" opacity="0.45"/>
+            </g>
+
+            <!-- Lightning bolt (static) -->
+            <g filter="url(#g3)">
+              <path d="M 346 58 L 308 154 L 332 154 L 295 262 L 385 144 L 357 144 Z" fill="#fbbf24"/>
+            </g>
+            <path d="M 346 58 L 308 154 L 332 154 L 295 262 L 385 144 L 357 144 Z" fill="#f59e0b"/>
+          </g>
+        </svg>
+      </div>
+      <div class="card-title">Arc Spin</div>
+      <div class="card-desc">
+        The glowing gradient arc orbits continuously around the logo.
+        Energetic — suggests "always on" automation.
+      </div>
+    </div>
+
+    <!-- ── 4. LIGHTNING FLASH ──────────────────────────────────── -->
+    <div class="card">
+      <span class="card-num">04</span>
+      <div class="logo-stage anim-bolt">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true">
+          <defs>
+            <linearGradient id="arc4" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#34d399"/>
+              <stop offset="100%" style="stop-color:#38bdf8"/>
+            </linearGradient>
+            <filter id="g4">
+              <feGaussianBlur stdDeviation="8" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="g4bright">
+              <feGaussianBlur stdDeviation="14" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <clipPath id="c4"><circle cx="256" cy="256" r="245"/></clipPath>
+          </defs>
+
+          <circle cx="256" cy="256" r="256" fill="#0a0e1a"/>
+
+          <g transform="translate(256,256) scale(0.95) translate(-256,-256)">
+            <circle cx="256" cy="256" r="248" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="22"/>
+            <circle cx="256" cy="256" r="248" fill="none" stroke="url(#arc4)"
+                    stroke-width="22" stroke-linecap="round"
+                    stroke-dasharray="1373 187"
+                    stroke-dashoffset="390" filter="url(#g4)"/>
+
+            <g clip-path="url(#c4)">
+              <path d="M 308 44 C 342 49,370 80,374 119 C 378 154,360 189,347 218
+                       C 333 244,333 266,335 288 C 337 311,346 325,342 349
+                       C 335 375,311 388,285 395 C 268 399,249 399,249 414
+                       L 249 518 L 153 518 L 153 414 C 153 399,173 395,195 390
+                       C 219 384,238 369,242 345 C 246 321,233 302,231 279
+                       C 229 258,236 237,231 213 C 225 182,205 156,205 121
+                       C 205 80,238 48,275 47 C 290 46,300 42,308 44 Z"
+                    fill="#e8e4dc"/>
+              <ellipse cx="348" cy="216" rx="21" ry="32" fill="#ddd8cc"/>
+              <ellipse cx="350" cy="216" rx="11" ry="19" fill="#ccc4b4"/>
+              <circle cx="233" cy="180" r="12" fill="#1a1f2e"/>
+              <circle cx="237" cy="177" r="3.8" fill="#ffffff" opacity="0.45"/>
+            </g>
+
+            <!-- Bolt — both layers wrapped so CSS opacity animation targets both -->
+            <g class="bolt-group">
+              <g filter="url(#g4)">
+                <path d="M 346 58 L 308 154 L 332 154 L 295 262 L 385 144 L 357 144 Z" fill="#fbbf24"/>
+              </g>
+              <path d="M 346 58 L 308 154 L 332 154 L 295 262 L 385 144 L 357 144 Z" fill="#f59e0b"/>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <div class="card-title">Lightning Flash</div>
+      <div class="card-desc">
+        The bolt flickers like an arc discharge every few seconds.
+        Subtle — you notice it but it doesn't demand attention.
+      </div>
+    </div>
+
+    <!-- ── 5. ENTRANCE BOUNCE ──────────────────────────────────── -->
+    <div class="card">
+      <span class="card-num">05</span>
+      <div class="logo-stage anim-entrance" id="entranceStage">
+        <img id="entranceImg" src="/icons/logo-login.svg" alt="SoCrates logo">
+      </div>
+      <div class="card-title">Entrance Bounce</div>
+      <div class="card-desc">
+        Springs into place on page load — scales up with a slight twist, then settles.
+        One-shot; no ongoing motion.
+      </div>
+      <button class="replay-btn" onclick="replayEntrance()">↺ Replay</button>
+    </div>
+
+    <!-- ── 6. SHIMMER ORBIT ────────────────────────────────────── -->
+    <div class="card">
+      <span class="card-num">06</span>
+      <div class="logo-stage">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true">
+          <defs>
+            <!-- Gradient whose stops shift to create a shimmer sweep around the ring -->
+            <linearGradient id="arc6" gradientUnits="userSpaceOnUse"
+                            x1="256" y1="8" x2="256" y2="504">
+              <stop offset="0%">
+                <animate attributeName="stop-color"
+                         values="#34d399;#38bdf8;#a78bfa;#34d399"
+                         dur="4s" repeatCount="indefinite"/>
+              </stop>
+              <stop offset="50%">
+                <animate attributeName="stop-color"
+                         values="#38bdf8;#a78bfa;#34d399;#38bdf8"
+                         dur="4s" repeatCount="indefinite"/>
+              </stop>
+              <stop offset="100%">
+                <animate attributeName="stop-color"
+                         values="#a78bfa;#34d399;#38bdf8;#a78bfa"
+                         dur="4s" repeatCount="indefinite"/>
+              </stop>
+            </linearGradient>
+            <filter id="g6">
+              <feGaussianBlur stdDeviation="8" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <clipPath id="c6"><circle cx="256" cy="256" r="245"/></clipPath>
+          </defs>
+
+          <circle cx="256" cy="256" r="256" fill="#0a0e1a"/>
+
+          <g transform="translate(256,256) scale(0.95) translate(-256,-256)">
+            <circle cx="256" cy="256" r="248" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="22"/>
+            <circle cx="256" cy="256" r="248" fill="none" stroke="url(#arc6)"
+                    stroke-width="22" stroke-linecap="round"
+                    stroke-dasharray="1373 187"
+                    stroke-dashoffset="390" filter="url(#g6)"/>
+
+            <g clip-path="url(#c6)">
+              <path d="M 308 44 C 342 49,370 80,374 119 C 378 154,360 189,347 218
+                       C 333 244,333 266,335 288 C 337 311,346 325,342 349
+                       C 335 375,311 388,285 395 C 268 399,249 399,249 414
+                       L 249 518 L 153 518 L 153 414 C 153 399,173 395,195 390
+                       C 219 384,238 369,242 345 C 246 321,233 302,231 279
+                       C 229 258,236 237,231 213 C 225 182,205 156,205 121
+                       C 205 80,238 48,275 47 C 290 46,300 42,308 44 Z"
+                    fill="#e8e4dc"/>
+              <ellipse cx="348" cy="216" rx="21" ry="32" fill="#ddd8cc"/>
+              <ellipse cx="350" cy="216" rx="11" ry="19" fill="#ccc4b4"/>
+              <circle cx="233" cy="180" r="12" fill="#1a1f2e"/>
+              <circle cx="237" cy="177" r="3.8" fill="#ffffff" opacity="0.45"/>
+            </g>
+
+            <g filter="url(#g6)">
+              <path d="M 346 58 L 308 154 L 332 154 L 295 262 L 385 144 L 357 144 Z" fill="#fbbf24"/>
+            </g>
+            <path d="M 346 58 L 308 154 L 332 154 L 295 262 L 385 144 L 357 144 Z" fill="#f59e0b"/>
+          </g>
+        </svg>
+      </div>
+      <div class="card-title">Shimmer Orbit</div>
+      <div class="card-desc">
+        The arc ring slowly cycles through green → blue → purple → repeat.
+        Dreamy, premium feel without any movement.
+      </div>
+    </div>
+
+  </div><!-- .grid -->
+
+  <p class="page-footer">
+    dev preview only — not linked from navigation
+  </p>
+
+  <script>
+    function replayEntrance() {
+      const el = document.getElementById('entranceImg');
+      // Force reflow to restart CSS animation
+      el.style.animation = 'none';
+      void el.offsetHeight;
+      el.style.animation = '';
+    }
+  </script>
+
+</body>
+</html>
