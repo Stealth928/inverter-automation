@@ -1257,9 +1257,9 @@ describe('admin route module', () => {
     const dayOneAgo = formatDayKey(1);
     const dayToday = formatDayKey(0);
     const metricDocs = new Map(Object.entries({
-      [dayTwoAgo]: { foxess: 20, amber: 9, weather: 4, ev: 3 },
-      [dayOneAgo]: { foxess: 24, amber: 11, weather: 5, ev: 4 },
-      [dayToday]: { foxess: 36, amber: 12, weather: 6, ev: 5 }
+      [dayTwoAgo]: { foxess: 20, amber: 9, weather: 4, teslaFleet: { calls: { byCategory: { wake: 1, vehicleData: 2 } } } },
+      [dayOneAgo]: { foxess: 24, amber: 11, weather: 5, teslaFleet: { calls: { byCategory: { wake: 1, command: 1, vehicleData: 2 } } } },
+      [dayToday]: { foxess: 36, amber: 12, weather: 6, teslaFleet: { calls: { byCategory: { wake: 1, command: 2, vehicleData: 2 } } } }
     }));
 
     const deps = createDeps({
@@ -1328,6 +1328,13 @@ describe('admin route module', () => {
     expect(response.body.result.providers[0]).toEqual(expect.objectContaining({
       key: 'foxess',
       totalCalls: 80
+    }));
+    expect(response.body.result.daily.find((row) => row.date === dayToday)).toEqual(expect.objectContaining({
+      evBreakdown: expect.objectContaining({
+        wake: 1,
+        command: 2,
+        vehicleData: 2
+      })
     }));
     expect(response.body.result.alerts.some((alert) => alert.code === 'error_rate_watch')).toBe(true);
   });

@@ -94,7 +94,7 @@ test.describe('Reset Password Page', () => {
     await page.locator('#password').fill('new-password-123');
     await page.locator('#submitBtn').click();
 
-    await expect(page.locator('#msg')).toContainText(/Password updated successfully/i);
+    await expect(page.locator('#msg')).toContainText(/Password updated! Redirecting to sign in/i);
     await expect.poll(() => page.evaluate(() => window.__resetTestState.confirmCalls.length)).toBe(1);
 
     const confirmCall = await page.evaluate(() => window.__resetTestState.confirmCalls[0]);

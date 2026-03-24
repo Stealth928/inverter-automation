@@ -211,7 +211,13 @@ async function waitForSettingsReady(page) {
 async function refreshTeslaVehicles(page) {
   const refreshBtn = page.locator('#teslaRefreshVehiclesBtn');
   if (await refreshBtn.count() === 0) return false;
-  await refreshBtn.first().click();
+  const button = refreshBtn.first();
+  await button.scrollIntoViewIfNeeded();
+  try {
+    await button.click();
+  } catch (_error) {
+    await button.evaluate((element) => element.click());
+  }
   await page.waitForTimeout(800);
   return true;
 }

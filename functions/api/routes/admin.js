@@ -1048,6 +1048,21 @@ function registerAdminRoutes(app, deps = {}) {
     return toCounter(cursor);
   };
 
+  const buildEvBreakdown = (metricsDoc = {}) => {
+    const teslaFleetRoot = getTeslaFleetRoot(metricsDoc);
+    const byCategory = teslaFleetRoot && teslaFleetRoot.calls && typeof teslaFleetRoot.calls.byCategory === 'object'
+      ? teslaFleetRoot.calls.byCategory
+      : null;
+    if (!byCategory) return {};
+
+    return Object.entries(byCategory).reduce((acc, [key, value]) => {
+      const normalized = String(key || '').trim();
+      if (!normalized) return acc;
+      acc[normalized] = toCounter(value);
+      return acc;
+    }, {});
+  };
+
   const resolveEvCounter = (metricsDoc = {}) => {
     const explicitEv = toCounter(metricsDoc.ev);
     if (explicitEv) return explicitEv;
@@ -1071,6 +1086,7 @@ function registerAdminRoutes(app, deps = {}) {
 
   const buildApiHealthMetricsEnvelope = (rawDoc = {}) => {
     const metricsDoc = rawDoc && typeof rawDoc === 'object' ? rawDoc : {};
+    const evBreakdown = buildEvBreakdown(metricsDoc);
     const providers = {
       foxess: toCounter(metricsDoc.foxess),
       sungrow: toCounter(metricsDoc.sungrow),
@@ -1091,7 +1107,8 @@ function registerAdminRoutes(app, deps = {}) {
         amber: providers.amber,
         weather: providers.weather,
         ev: providers.ev
-      }
+      },
+      evBreakdown
     };
   };
 
@@ -2104,6 +2121,7 @@ app.get('/api/admin/api-health', authenticateUser, requireAdmin, async (req, res
             totalCalls: envelope.totalCalls,
             providers: envelope.providers,
             categories: envelope.categories,
+            evBreakdown: envelope.evBreakdown,
             requestExecutions: null,
             errorExecutions: null,
             errorRatePct: null
@@ -2115,6 +2133,7 @@ app.get('/api/admin/api-health', authenticateUser, requireAdmin, async (req, res
             totalCalls: 0,
             providers: Object.fromEntries(ADMIN_API_HEALTH_PROVIDER_KEYS.map((providerKey) => [providerKey, 0])),
             categories: { inverter: 0, amber: 0, weather: 0, ev: 0 },
+            evBreakdown: {},
             requestExecutions: null,
             errorExecutions: null,
             errorRatePct: null

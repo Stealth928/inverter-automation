@@ -3308,6 +3308,56 @@
         alertsEl.innerHTML = alertRows.concat(warningRows).join('');
     }
 
+    function humanizeApiHealthKey(value) {
+        const normalized = String(value || '').trim();
+        if (!normalized) return 'Other';
+        return normalized
+            .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+            .replace(/[\s_-]+/g, ' ')
+            .split(' ')
+            .filter(Boolean)
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+            .join(' ');
+    }
+
+    function normalizeApiHealthEvBreakdownLabel(key) {
+        const normalized = String(key || '').trim().toLowerCase();
+        if (!normalized) return 'Other';
+        if (/wake/.test(normalized)) return 'Wake';
+        if (/command|signed/.test(normalized)) return 'Command';
+        if (/data|status|vehicle|telemetry/.test(normalized)) return 'Data';
+        return humanizeApiHealthKey(key);
+    }
+
+    function formatApiHealthTeslaBreakdown(row) {
+        const total = formatCompactNumber(row.categories?.ev || 0);
+        const rawBreakdown = row && row.evBreakdown && typeof row.evBreakdown === 'object'
+            ? row.evBreakdown
+            : {};
+        const grouped = new Map();
+
+        Object.entries(rawBreakdown).forEach(([key, value]) => {
+            const count = Number(value || 0);
+            if (!Number.isFinite(count) || count <= 0) return;
+            const label = normalizeApiHealthEvBreakdownLabel(key);
+            grouped.set(label, (grouped.get(label) || 0) + count);
+        });
+
+        if (!grouped.size) {
+            return `<span class="api-health-cell-primary">${escapeHtml(total)}</span>`;
+        }
+
+        const chips = Array.from(grouped.entries())
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+            .map(([label, count]) => `<span class="api-health-breakdown-chip"><strong>${escapeHtml(label)}</strong>${escapeHtml(formatCompactNumber(count))}</span>`)
+            .join('');
+
+        return `
+            <span class="api-health-cell-primary">${escapeHtml(total)}</span>
+            <span class="api-health-cell-secondary">Wake, command, data mix</span>
+            <div class="api-health-breakdown-list">${chips}</div>`;
+    }
+
     function renderApiHealthProviderTable(providers) {
         const body = document.getElementById('apiHealthProvidersBody');
         const empty = document.getElementById('apiHealthProvidersEmpty');
@@ -3321,12 +3371,12 @@
 
         body.innerHTML = providers.map((provider) => `
             <tr>
-                <td><span class="api-health-provider-dot" style="background:${getApiHealthProviderColor(provider.key)}"></span>${escapeHtml(provider.label || provider.key || 'Unknown')}</td>
-                <td>${escapeHtml(formatCompactNumber(provider.totalCalls || 0))}</td>
-                <td>${escapeHtml(formatPercentage(provider.sharePct || 0, 1))}</td>
-                <td>${escapeHtml(formatCompactNumber(provider.lastDayCalls || 0))}</td>
-                <td>${escapeHtml(formatCompactNumber(Math.round(provider.avgDailyCalls7d || 0)))}</td>
-                <td>${escapeHtml(formatSignedPercentage(provider.trendPct, 1))}</td>
+                <td data-label="Provider"><span class="api-health-provider-dot" style="background:${getApiHealthProviderColor(provider.key)}"></span>${escapeHtml(provider.label || provider.key || 'Unknown')}</td>
+                <td data-label="Window Calls">${escapeHtml(formatCompactNumber(provider.totalCalls || 0))}</td>
+                <td data-label="Share">${escapeHtml(formatPercentage(provider.sharePct || 0, 1))}</td>
+                <td data-label="Last Day">${escapeHtml(formatCompactNumber(provider.lastDayCalls || 0))}</td>
+                <td data-label="7d Avg">${escapeHtml(formatCompactNumber(Math.round(provider.avgDailyCalls7d || 0)))}</td>
+                <td data-label="Trend">${escapeHtml(formatSignedPercentage(provider.trendPct, 1))}</td>
             </tr>`).join('');
         empty.style.display = 'none';
     }
@@ -3345,14 +3395,14 @@
 
         body.innerHTML = safeDaily.map((row) => `
             <tr>
-                <td>${escapeHtml(row.date || '-')}</td>
-                <td>${escapeHtml(formatCompactNumber(row.totalCalls || 0))}</td>
-                <td>${escapeHtml(formatCompactNumber(row.categories?.inverter || 0))}</td>
-                <td>${escapeHtml(formatCompactNumber(row.categories?.amber || 0))}</td>
-                <td>${escapeHtml(formatCompactNumber(row.categories?.weather || 0))}</td>
-                <td>${escapeHtml(formatCompactNumber(row.categories?.ev || 0))}</td>
-                <td>${row.requestExecutions == null ? '-' : escapeHtml(formatCompactNumber(row.requestExecutions || 0))}</td>
-                <td>${row.errorExecutions == null ? '-' : escapeHtml(formatCompactNumber(row.errorExecutions || 0))}</td>
+                <td data-label="Date"><span class="api-health-cell-primary">${escapeHtml(row.date || '-')}</span></td>
+                <td data-label="Provider Calls"><span class="api-health-cell-primary">${escapeHtml(formatCompactNumber(row.totalCalls || 0))}</span></td>
+                <td data-label="Inverter">${escapeHtml(formatCompactNumber(row.categories?.inverter || 0))}</td>
+                <td data-label="Amber">${escapeHtml(formatCompactNumber(row.categories?.amber || 0))}</td>
+                <td data-label="Weather">${escapeHtml(formatCompactNumber(row.categories?.weather || 0))}</td>
+                <td data-label="Tesla EV">${formatApiHealthTeslaBreakdown(row)}</td>
+                <td data-label="Executions">${row.requestExecutions == null ? '-' : escapeHtml(formatCompactNumber(row.requestExecutions || 0))}</td>
+                <td data-label="Errors">${row.errorExecutions == null ? '-' : escapeHtml(formatCompactNumber(row.errorExecutions || 0))}</td>
             </tr>`).join('');
         empty.style.display = 'none';
     }

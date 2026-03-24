@@ -47,9 +47,9 @@ async function mockAdminEnvironment(page, options = {}) {
       { key: 'ev', label: 'Tesla EV', totalCalls: 90, sharePct: 7.3, lastDayCalls: 11, avgDailyCalls7d: 10.6, trendPct: 87.4 }
     ],
     daily: [
-      { date: '2026-03-20', totalCalls: 61, categories: { inverter: 35, amber: 14, weather: 7, ev: 5 }, requestExecutions: 34, errorExecutions: 0 },
-      { date: '2026-03-21', totalCalls: 75, categories: { inverter: 42, amber: 18, weather: 9, ev: 6 }, requestExecutions: 39, errorExecutions: 1 },
-      { date: '2026-03-22', totalCalls: 88, categories: { inverter: 48, amber: 21, weather: 8, ev: 11 }, requestExecutions: 44, errorExecutions: 2 }
+      { date: '2026-03-20', totalCalls: 61, categories: { inverter: 35, amber: 14, weather: 7, ev: 5 }, evBreakdown: { wake: 2, vehicleData: 3 }, requestExecutions: 34, errorExecutions: 0 },
+      { date: '2026-03-21', totalCalls: 75, categories: { inverter: 42, amber: 18, weather: 9, ev: 6 }, evBreakdown: { wake: 1, command: 2, vehicleData: 3 }, requestExecutions: 39, errorExecutions: 1 },
+      { date: '2026-03-22', totalCalls: 88, categories: { inverter: 48, amber: 21, weather: 8, ev: 11 }, evBreakdown: { wake: 2, command: 4, vehicleData: 5 }, requestExecutions: 44, errorExecutions: 2 }
     ],
     alerts: [
       {
@@ -214,5 +214,31 @@ test.describe('Admin Behaviour Tab', () => {
     await expect(page.locator('#apiHealthErrorRate')).toHaveText('2.01%');
     await expect(page.locator('#apiHealthProvidersBody')).toContainText('Amber');
     await expect(page.locator('#apiHealthAlerts')).toContainText(/potential overage or rate-limit risk/i);
+    await expect(page.locator('#apiHealthDailyBody')).toContainText('Wake');
+    await expect(page.locator('#apiHealthDailyBody')).toContainText('Command');
+    await expect(page.locator('#apiHealthDailyBody')).toContainText('Data');
+  });
+
+  test('keeps API health layout contained on phone screens', async ({ page }) => {
+    await mockAdminEnvironment(page);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/admin.html');
+    await page.waitForLoadState('networkidle');
+
+    await page.getByRole('button', { name: /API Health/i }).click();
+    await expect(page.locator('#apiHealthDailyBody')).toContainText('Wake');
+
+    const cardBounds = await page.locator('#tab-apiHealth .card').evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        left: rect.left,
+        right: rect.right,
+        viewportWidth: window.innerWidth
+      };
+    });
+
+    expect(cardBounds.left).toBeGreaterThanOrEqual(-1);
+    expect(cardBounds.right).toBeLessThanOrEqual(cardBounds.viewportWidth + 1);
   });
 });
