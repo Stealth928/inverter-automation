@@ -1738,6 +1738,19 @@
             text-transform: uppercase;
             letter-spacing: 0.04em;
         }
+        #apiHealthKpis .kpi-item {
+            min-width: 0;
+        }
+        #apiHealthKpis .label,
+        #apiHealthKpis .sub {
+            overflow-wrap: anywhere;
+        }
+        #apiHealthKpis .value.small {
+            font-size: 18px;
+            line-height: 1.15;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
         .api-health-table td[data-label]::before {
             content: attr(data-label);
             display: none;
@@ -1807,11 +1820,31 @@
         }
 
         @media (max-width: 640px) {
+            #apiHealthKpis {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
             .api-health-panel {
                 padding: 14px;
             }
             .api-health-lead {
                 padding: 12px 14px;
+            }
+            #apiHealthKpis .kpi-item {
+                padding: 10px 11px;
+                gap: 3px;
+            }
+            #apiHealthKpis .label {
+                font-size: 10px;
+                line-height: 1.25;
+            }
+            #apiHealthKpis .value,
+            #apiHealthKpis .value.small {
+                font-size: 18px;
+                line-height: 1.12;
+            }
+            #apiHealthKpis .sub {
+                font-size: 10px;
+                line-height: 1.35;
             }
             .api-health-table-wrap {
                 overflow: visible;
@@ -2289,6 +2322,9 @@
         }
 
         @media (max-width: 720px) {
+            #apiHealthKpis {
+                grid-template-columns: 1fr;
+            }
             .announcement-form-grid {
                 grid-template-columns: 1fr;
             }
