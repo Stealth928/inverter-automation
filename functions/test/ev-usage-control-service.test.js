@@ -106,10 +106,19 @@ describe('ev-usage-control-service', () => {
 
   test('persists Tesla usage under Australia-local metrics date key', async () => {
     const increment = jest.fn((value) => ({ op: 'increment', value }));
+    const globalMetricSet = jest.fn(async () => undefined);
     const userMetricSet = jest.fn(async () => undefined);
     const vehicleMetricSet = jest.fn(async () => undefined);
+    let globalDayKey = '';
     let userDayKey = '';
     let vehicleDayKey = '';
+
+    const globalMetricsCollectionRef = {
+      doc: jest.fn((dayKey) => {
+        globalDayKey = dayKey;
+        return { set: globalMetricSet };
+      })
+    };
 
     const userMetricsCollectionRef = {
       doc: jest.fn((dayKey) => {
@@ -144,6 +153,7 @@ describe('ev-usage-control-service', () => {
     };
     const db = {
       collection: jest.fn((name) => {
+        if (name === 'metrics') return globalMetricsCollectionRef;
         if (name !== 'users') throw new Error(`Unexpected root collection: ${name}`);
         return usersCollectionRef;
       })
@@ -172,9 +182,18 @@ describe('ev-usage-control-service', () => {
     });
 
     expect(usersCollectionRef.doc).toHaveBeenCalledWith('u-metrics');
+    expect(globalDayKey).toBe('2026-03-14');
     expect(userDayKey).toBe('2026-03-14');
     expect(vehicleDayKey).toBe('2026-03-14');
+    expect(globalMetricSet).toHaveBeenCalled();
     expect(userMetricSet).toHaveBeenCalled();
     expect(vehicleMetricSet).toHaveBeenCalled();
+
+    const [globalPayload, globalOptions] = globalMetricSet.mock.calls[0];
+    expect(globalPayload['teslaFleet.calls.total']).toEqual({ op: 'increment', value: 1 });
+    expect(globalPayload['teslaFleet.calls.billable']).toEqual({ op: 'increment', value: 1 });
+    expect(globalPayload['teslaFleet.calls.byCategory.command']).toEqual({ op: 'increment', value: 1 });
+    expect(globalPayload['teslaFleet.calls.byStatus.s200']).toEqual({ op: 'increment', value: 1 });
+    expect(globalOptions).toEqual({ merge: true });
   });
 });

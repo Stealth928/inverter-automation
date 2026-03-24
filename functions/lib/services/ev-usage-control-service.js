@@ -305,6 +305,7 @@ function createEvUsageControlService(deps = {}) {
     const billableIncrement = billable ? 1 : 0;
 
     const userMetricsRef = db.collection('users').doc(uid).collection('metrics').doc(dateKey);
+    const globalMetricsRef = db.collection('metrics').doc(dateKey);
     const vehicleMetricsRef = db
       .collection('users')
       .doc(uid)
@@ -326,6 +327,7 @@ function createEvUsageControlService(deps = {}) {
     }
 
     await Promise.all([
+      globalMetricsRef.set(updatePayload, { merge: true }),
       userMetricsRef.set(updatePayload, { merge: true }),
       vehicleMetricsRef.set(updatePayload, { merge: true })
     ]);
