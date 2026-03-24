@@ -412,6 +412,7 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
   const serverTimestamp = typeof deps.serverTimestamp === 'function' ? deps.serverTimestamp : () => new Date();
   const sloThresholds = resolveSloThresholds(deps.sloThresholds);
   const timezone = deps.timezone || 'UTC';
+  let currentAlertStatusCache = null;
 
   if (!db || typeof db.collection !== 'function') {
     throw new Error('createAutomationSchedulerMetricsSink requires Firestore db');
@@ -734,8 +735,9 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       updatedAt: serverTimestamp()
     };
 
-    await currentAlertRef.set(currentAlert, { merge: true });
     if (status !== 'healthy') {
+      await currentAlertRef.set(currentAlert, { merge: true });
+      currentAlertStatusCache = status;
       await dayAlertRef.set({
         ...currentAlert,
         alertStatus: status,
@@ -762,6 +764,21 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
           }
         }
       }
+    } else {
+      let shouldClearCurrentAlert = currentAlertStatusCache != null && currentAlertStatusCache !== 'healthy';
+      if (!shouldClearCurrentAlert) {
+        const currentAlertSnapshot = await currentAlertRef.get();
+        if (currentAlertSnapshot.exists) {
+          const existingAlert = currentAlertSnapshot.data() || {};
+          const existingStatus = String(existingAlert.status || '').trim().toLowerCase();
+          shouldClearCurrentAlert = existingStatus === 'watch' || existingStatus === 'breach';
+        }
+      }
+
+      if (shouldClearCurrentAlert && typeof currentAlertRef.delete === 'function') {
+        await currentAlertRef.delete();
+      }
+      currentAlertStatusCache = 'healthy';
     }
   }
 

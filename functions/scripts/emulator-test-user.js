@@ -16,6 +16,7 @@ const TEST_USERS = Object.freeze([
       foxessToken: 'FOX_SEED_TOKEN_1001',
       amberApiKey: 'AMBER_SEED_FOXESS',
       amberSiteId: 'seed-site-foxess',
+      cache: { amber: 3600000 }, // 1 hour TTL for seeded data
       weatherPlace: 'Adelaide',
       location: 'Adelaide, Australia',
       timezone: 'Australia/Adelaide',
@@ -61,6 +62,7 @@ const TEST_USERS = Object.freeze([
       sungrowUsername: 'seed.sungrow.user@example.com',
       amberApiKey: 'AMBER_SEED_SUNGROW',
       amberSiteId: 'seed-site-sungrow',
+      cache: { amber: 3600000 }, // 1 hour TTL for seeded data
       weatherPlace: 'Melbourne',
       location: 'Melbourne, Australia',
       timezone: 'Australia/Melbourne',
@@ -108,6 +110,7 @@ const TEST_USERS = Object.freeze([
       sigenRegion: 'apac',
       amberApiKey: 'AMBER_SEED_SIGENERGY',
       amberSiteId: 'seed-site-sigenergy',
+      cache: { amber: 3600000 }, // 1 hour TTL for seeded data
       weatherPlace: 'Brisbane',
       location: 'Brisbane, Australia',
       timezone: 'Australia/Brisbane',
@@ -152,6 +155,7 @@ const TEST_USERS = Object.freeze([
       alphaessAppSecret: 'ALPHA_SEED_APP_SECRET',
       amberApiKey: 'AMBER_SEED_ALPHAESS',
       amberSiteId: 'seed-site-alphaess',
+      cache: { amber: 3600000 }, // 1 hour TTL for seeded data
       weatherPlace: 'Perth',
       location: 'Perth, Australia',
       timezone: 'Australia/Perth',

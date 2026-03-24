@@ -55,7 +55,11 @@ function buildSchedulerDeps(overrides = {}) {
     getUserConfig:
       overrides.getUserConfig ||
       jest.fn(async (userId) => ({ deviceSn: `SN-${userId}`, timezone: 'UTC', automation: { intervalMs: 1000 } })),
-    getUserRules: overrides.getUserRules || jest.fn(async () => ({})),
+    getUserRules:
+      overrides.getUserRules ||
+      jest.fn(async () => ({
+        ruleA: { enabled: true, name: 'Rule A', priority: 1 }
+      })),
     isTimeInRange: overrides.isTimeInRange || jest.fn(() => false),
     logger,
     markCycleOutcome: overrides.markCycleOutcome || jest.fn(async () => undefined),
@@ -100,6 +104,14 @@ describe('automation scheduler service', () => {
     expect(automationCycleHandler).toHaveBeenCalledTimes(1);
     expect(automationCycleHandler.mock.calls[0][0]).toEqual(
       expect.objectContaining({
+        schedulerContext: expect.objectContaining({
+          rules: {
+            ruleA: { enabled: true, name: 'Rule A', priority: 1 }
+          },
+          state: { enabled: true, lastCheck: 0 },
+          userConfig: { deviceSn: 'SN-u-1', timezone: 'UTC', automation: { intervalMs: 1000 } },
+          userId: 'u-1'
+        }),
         user: { uid: 'u-1' }
       })
     );
@@ -268,6 +280,57 @@ describe('automation scheduler service', () => {
     expect(getUserRules).toHaveBeenCalledTimes(6);
     expect(maxInFlightRuleLoads).toBeGreaterThan(1);
     expect(maxInFlightRuleLoads).toBeLessThanOrEqual(3);
+  });
+
+  test('skips cycle execution when user has no enabled rules', async () => {
+    const automationCycleHandler = jest.fn(async (_req, res) => {
+      res.json({ errno: 0, result: { skipped: true, reason: 'No rules configured' } });
+    });
+    const getUserRules = jest.fn(async () => ({
+      ruleA: { enabled: false, name: 'Rule A' },
+      ruleB: { enabled: false, name: 'Rule B' }
+    }));
+    const { deps } = buildSchedulerDeps({
+      automationCycleHandler,
+      getUserRules,
+      userIds: ['u-1']
+    });
+
+    await runAutomationSchedulerCycle({}, deps);
+
+    expect(getUserRules).toHaveBeenCalledTimes(1);
+    expect(automationCycleHandler).not.toHaveBeenCalled();
+  });
+
+  test('uses config blackout windows to skip cycle before rule loading', async () => {
+    const automationCycleHandler = jest.fn(async (_req, res) => {
+      res.json({ errno: 0, result: { skipped: false } });
+    });
+    const getUserConfig = jest.fn(async () => ({
+      deviceSn: 'SN-u-1',
+      timezone: 'UTC',
+      automation: {
+        blackoutWindows: [{ start: '11:00', end: '13:00', enabled: true }],
+        intervalMs: 1000
+      }
+    }));
+    const getUserRules = jest.fn(async () => ({
+      ruleA: { enabled: true, name: 'Rule A' }
+    }));
+    const getTimeInTimezone = jest.fn(() => new Date('2026-03-06T12:00:00Z'));
+    const { deps } = buildSchedulerDeps({
+      automationCycleHandler,
+      getTimeInTimezone,
+      getUserConfig,
+      getUserRules,
+      isTimeInRange: jest.fn(() => true),
+      userIds: ['u-1']
+    });
+
+    await runAutomationSchedulerCycle({}, deps);
+
+    expect(automationCycleHandler).not.toHaveBeenCalled();
+    expect(getUserRules).not.toHaveBeenCalled();
   });
 
   test('retries transient failures and succeeds before dead-letter', async () => {

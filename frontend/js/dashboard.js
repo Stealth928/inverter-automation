@@ -1173,16 +1173,20 @@
                     if (v === null || v === undefined || v === '-') return '-';
                     let n = Number(v);
                     if (isNaN(n)) return '-';
-                    // if value looks like watts (>2000), convert to kW
-                    if (Math.abs(n) > 2000) n = n / 1000;
+                    // if value looks like watts (>100), convert to kW
+                    if (Math.abs(n) > 100) n = n / 1000;
                     return n.toFixed(2) + ' kW';
                 }
 
                 // Interpret grid using feedIn and gridConsumption when available
                 function gridLabel(feedInVal, gridVal) {
                     try {
-                        const f = feedInVal !== null && feedInVal !== undefined ? Number(feedInVal) : null;
-                        const g = gridVal !== null && gridVal !== undefined ? Number(gridVal) : null;
+                        let f = feedInVal !== null && feedInVal !== undefined ? Number(feedInVal) : null;
+                        let g = gridVal !== null && gridVal !== undefined ? Number(gridVal) : null;
+                        
+                        // Convert watts to kW if needed (>100 likely means watts)
+                        if (f !== null && !isNaN(f) && Math.abs(f) > 100) f = f / 1000;
+                        if (g !== null && !isNaN(g) && Math.abs(g) > 100) g = g / 1000;
 
                         // if both provided and non-zero, show both
                         if (f !== null && !isNaN(f) && Math.abs(f) > 0 && g !== null && !isNaN(g) && Math.abs(g) > 0) {
@@ -1201,13 +1205,23 @@
                         if (typeof objOrVal === 'object') {
                             const ch = objOrVal.charge !== null && objOrVal.charge !== undefined ? Number(objOrVal.charge) : 0;
                             const dis = objOrVal.discharge !== null && objOrVal.discharge !== undefined ? Number(objOrVal.discharge) : 0;
-                            if (!isNaN(dis) && dis > 0) return `${Math.abs(dis).toFixed(2)} kW <span class="substatus">(discharging)</span>`;
-                            if (!isNaN(ch) && ch > 0) return `${Math.abs(ch).toFixed(2)} kW <span class="substatus">(charging)</span>`;
+                            if (!isNaN(dis) && dis > 0) {
+                                // Convert from watts to kW if value > 100
+                                const disKW = Math.abs(dis) > 100 ? dis / 1000 : dis;
+                                return `${disKW.toFixed(2)} kW <span class="substatus">(discharging)</span>`;
+                            }
+                            if (!isNaN(ch) && ch > 0) {
+                                // Convert from watts to kW if value > 100
+                                const chKW = Math.abs(ch) > 100 ? ch / 1000 : ch;
+                                return `${chKW.toFixed(2)} kW <span class="substatus">(charging)</span>`;
+                            }
                             return '—';
                         }
                         const n = Number(objOrVal);
                         if (isNaN(n)) return '—';
-                        return n > 0 ? `${Math.abs(n).toFixed(2)} kW <span class="substatus">(charging)</span>` : `${Math.abs(n).toFixed(2)} kW <span class="substatus">(discharging)</span>`;
+                        // Convert from watts to kW if value > 100
+                        const normalizedN = Math.abs(n) > 100 ? n / 1000 : n;
+                        return n > 0 ? `${Math.abs(normalizedN).toFixed(2)} kW <span class="substatus">(charging)</span>` : `${Math.abs(normalizedN).toFixed(2)} kW <span class="substatus">(discharging)</span>`;
                     } catch (e) { return '—'; }
                 }
 

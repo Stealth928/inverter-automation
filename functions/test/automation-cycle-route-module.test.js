@@ -383,6 +383,54 @@ describe('automation cycle route module', () => {
     );
   });
 
+  test('scheduler-preloaded context avoids redundant state, config, and rule reads', async () => {
+    const deps = buildDeps({
+      evaluateRule: jest.fn(async () => ({
+        triggered: false,
+        conditions: [{ passed: false }]
+      })),
+      getQuickControlState: jest.fn(async () => null),
+      getUserAutomationState: jest.fn(async () => ({ enabled: true })),
+      getUserConfig: jest.fn(async () => ({ automation: { blackoutWindows: [] }, deviceSn: 'SN-PRELOAD-1' })),
+      getUserRules: jest.fn(async () => ({
+        ruleA: {
+          enabled: true,
+          name: 'Rule A',
+          priority: 1,
+          action: { workMode: 'ForceCharge', durationMinutes: 30, minSocOnGrid: 0 }
+        }
+      }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-cycle-preload' };
+        req.schedulerContext = {
+          userConfig: { automation: { blackoutWindows: [] }, deviceSn: 'SN-PRELOAD-1' },
+          rules: {
+            ruleA: {
+              enabled: true,
+              name: 'Rule A',
+              priority: 1,
+              action: { workMode: 'ForceCharge', durationMinutes: 30, minSocOnGrid: 0 }
+            }
+          },
+          state: { enabled: true },
+          userId: 'u-cycle-preload'
+        };
+        next();
+      });
+      registerAutomationCycleRoute(instance, deps);
+    });
+
+    const response = await request(app).post('/api/automation/cycle').send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(deps.getUserAutomationState).not.toHaveBeenCalled();
+    expect(deps.getUserConfig).not.toHaveBeenCalled();
+    expect(deps.getUserRules).not.toHaveBeenCalled();
+  });
+
   test('skips cycle when telemetry timestamp is older than 30 minutes', async () => {
     const staleIso = new Date(Date.now() - (31 * 60 * 1000)).toISOString();
     const deps = buildDeps({

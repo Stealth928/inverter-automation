@@ -206,6 +206,36 @@ function registerAutomationCycleRoute(app, deps = {}) {
   let telemetryStatePatch = null;
   try {
     const userId = req.user.uid;
+    const schedulerContext = req.schedulerContext && req.schedulerContext.userId === userId
+      ? req.schedulerContext
+      : null;
+    let resolvedState = schedulerContext && schedulerContext.state !== undefined
+      ? schedulerContext.state
+      : undefined;
+    let resolvedUserConfig = schedulerContext && schedulerContext.userConfig !== undefined
+      ? schedulerContext.userConfig
+      : undefined;
+    let resolvedRules = schedulerContext && schedulerContext.rules !== undefined
+      ? schedulerContext.rules
+      : undefined;
+    const loadAutomationState = async () => {
+      if (resolvedState === undefined) {
+        resolvedState = await getUserAutomationState(userId);
+      }
+      return resolvedState;
+    };
+    const loadUserConfig = async () => {
+      if (resolvedUserConfig === undefined) {
+        resolvedUserConfig = await getUserConfig(userId);
+      }
+      return resolvedUserConfig;
+    };
+    const loadUserRules = async () => {
+      if (resolvedRules === undefined) {
+        resolvedRules = await getUserRules(userId);
+      }
+      return resolvedRules;
+    };
     const cycleStartTime = Date.now();
     const phaseTimingsMs = {
       dataFetchMs: 0,
@@ -297,7 +327,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
     };
     
     // Get user's automation state
-    const state = await getUserAutomationState(userId);
+    const state = await loadAutomationState();
     // Check explicitly for enabled === false (not undefined which means not set yet)
     if (state && state.enabled === false) {
       const disabledNowMs = Date.now();
@@ -317,7 +347,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
       // Track with a flag in the state to avoid redundant API calls on every cycle
       if (state.segmentsCleared !== true) {
         try {
-          const userConfig = await getUserConfig(userId);
+          const userConfig = await loadUserConfig();
           const { deviceId } = resolveProviderDeviceId(userConfig);
           if (deviceId) {
             const clearOutcome = await withActionTiming(
@@ -422,7 +452,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
     }
     
     // Check for blackout windows
-    const userConfig = await getUserConfig(userId);
+    const userConfig = await loadUserConfig();
     const blackoutWindows = userConfig?.automation?.blackoutWindows || [];
     
     // Get user's timezone (from config which is kept up-to-date)
@@ -448,7 +478,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
     }
     
     // Get user's rules
-    const rules = await getUserRules(userId);
+    const rules = await loadUserRules();
     const totalRules = Object.keys(rules).length;
     
     if (totalRules === 0) {
