@@ -831,6 +831,26 @@
             color: var(--color-warning);
             margin-top: 6px;
         }
+        .scheduler-slo-section {
+            margin-bottom: 8px;
+        }
+        .scheduler-slo-section-title {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            margin: 12px 0 8px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.45px;
+        }
+        .scheduler-slo-section-note {
+            font-size: 10px;
+            color: color-mix(in srgb, var(--text-secondary) 85%, var(--text-primary));
+            text-transform: none;
+            letter-spacing: 0;
+        }
         .scheduler-slo-grid {
             display: grid;
             grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -920,9 +940,15 @@
             color: color-mix(in srgb, var(--color-danger) 92%, var(--text-primary));
         }
         .scheduler-slo-item .slo-value {
-            margin-top: 2px;
+            margin-top: 5px;
             font-size: 10px;
             color: var(--text-secondary);
+        }
+        .scheduler-slo-item .slo-meta {
+            margin-top: 4px;
+            font-size: 10px;
+            line-height: 1.4;
+            color: color-mix(in srgb, var(--text-secondary) 86%, var(--text-primary));
         }
         .scheduler-recent-wrap {
             margin-top: 10px;
@@ -2596,66 +2622,146 @@
         <div id="tab-scheduler" class="tab-panel">
         <div class="card scheduler-metrics-card">
             <div class="card-header">
-                <div class="card-title"><span class="icon">Scheduler</span> Orchestration Metrics (14d)</div>
+                <div class="card-title"><span class="icon">Scheduler</span> Orchestration Metrics</div>
                 <button class="action-btn" onclick="loadSchedulerMetrics()" id="refreshSchedulerBtn">Refresh</button>
             </div>
             <div class="card-body">
                 <div class="scheduler-updated" id="schedulerMetricsUpdated">Loading scheduler metrics...</div>
-                <div class="scheduler-slo-grid">
-                    <div class="scheduler-slo-item" id="schedulerSloErrorRate">
+                <div class="scheduler-slo-section">
+                    <div class="scheduler-slo-section-title">
+                        <span>Recent 24h</span>
+                        <span class="scheduler-slo-section-note">Fast-moving operational view from recent runs</span>
+                    </div>
+                    <div class="scheduler-slo-grid">
+                    <div class="scheduler-slo-item" id="scheduler24hSloErrorRate">
                         <div class="slo-title">
                             <span class="label-row">SLO: Error Rate
                                 <span class="info-tip" tabindex="0" data-tip="Share of executed user cycles that ended in an error for the selected day window. Healthy when <= 1.00%.">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target <= 1.00%</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target <= 1.00%</div>
                     </div>
-                    <div class="scheduler-slo-item" id="schedulerSloDeadLetterRate">
+                    <div class="scheduler-slo-item" id="scheduler24hSloDeadLetterRate">
                         <div class="slo-title">
                             <span class="label-row">SLO: Dead Letter Rate
                                 <span class="info-tip" tabindex="0" data-tip="Share of executed user cycles that exhausted retries and were written to dead letters in the selected day window. Healthy when <= 0.20%.">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target <= 0.20%</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target <= 0.20%</div>
                     </div>
-                    <div class="scheduler-slo-item" id="schedulerSloQueueLag">
+                    <div class="scheduler-slo-item" id="scheduler24hSloQueueLag">
                         <div class="slo-title">
                             <span class="label-row">SLO: Queue Lag
                                 <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 2m 0s).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target avg <= 2m 0s, max <= 2m 0s</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target avg <= 2m 0s, max <= 2m 0s</div>
                     </div>
-                    <div class="scheduler-slo-item" id="schedulerSloCycleDuration">
+                    <div class="scheduler-slo-item" id="scheduler24hSloCycleDuration">
                         <div class="slo-title">
                             <span class="label-row">SLO: Cycle Duration
                                 <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 20s).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target avg <= 20s, max <= 20s</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target avg <= 20s, max <= 20s</div>
                     </div>
-                    <div class="scheduler-slo-item" id="schedulerSloTelemetryAge">
+                    <div class="scheduler-slo-item" id="scheduler24hSloTelemetryAge">
                         <div class="slo-title">
                             <span class="label-row">SLO: Telemetry Age
                                 <span class="info-tip" tabindex="0" data-tip="Maximum telemetry staleness observed across executed cycles in the selected day window. Healthy when <= 30m.">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target max <= 30m 0s</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target max <= 30m 0s</div>
                     </div>
-                    <div class="scheduler-slo-item" id="schedulerSloCycleTailP99">
+                    <div class="scheduler-slo-item" id="scheduler24hSloCycleTailP99">
                         <div class="slo-title">
                             <span class="label-row">SLO: Cycle Tail (P99)
                                 <span class="info-tip" tabindex="0" data-tip="Uses p99 cycle duration; sustained alerting defaults to p99 > 10s for 15 minutes.">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target p99 <= 10s</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target p99 <= 10s</div>
                     </div>
+                </div>
+                </div>
+                <div class="scheduler-slo-section">
+                    <div class="scheduler-slo-section-title">
+                        <span>14 Day Window</span>
+                        <span class="scheduler-slo-section-note">Historical view that keeps regressions visible after recovery</span>
+                    </div>
+                    <div class="scheduler-slo-grid">
+                    <div class="scheduler-slo-item" id="scheduler14dSloErrorRate">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Error Rate
+                                <span class="info-tip" tabindex="0" data-tip="Share of executed user cycles that ended in an error for the selected day window. Healthy when <= 1.00%.">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target <= 1.00%</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="scheduler14dSloDeadLetterRate">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Dead Letter Rate
+                                <span class="info-tip" tabindex="0" data-tip="Share of executed user cycles that exhausted retries and were written to dead letters in the selected day window. Healthy when <= 0.20%.">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target <= 0.20%</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="scheduler14dSloQueueLag">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Queue Lag
+                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 2m 0s).">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target avg <= 2m 0s, max <= 2m 0s</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="scheduler14dSloCycleDuration">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Cycle Duration
+                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 20s).">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target avg <= 20s, max <= 20s</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="scheduler14dSloTelemetryAge">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Telemetry Age
+                                <span class="info-tip" tabindex="0" data-tip="Maximum telemetry staleness observed across executed cycles in the selected day window. Healthy when <= 30m.">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target max <= 30m 0s</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="scheduler14dSloCycleTailP99">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Cycle Tail (P99)
+                                <span class="info-tip" tabindex="0" data-tip="Uses p99 cycle duration; sustained alerting defaults to p99 > 10s for 15 minutes.">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target p99 <= 10s</div>
+                    </div>
+                </div>
                 </div>
                 <div class="scheduler-kpis">
                     <div class="scheduler-kpi">

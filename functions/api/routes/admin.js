@@ -3065,7 +3065,7 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
  * Query:
  *   - ?days=14 (default 14, min 1, max 90)
  *   - ?includeRuns=1 (optional)
- *   - ?runLimit=20 (default 20, min 1, max 100; only used when includeRuns=true)
+ *   - ?runLimit=20 (default 20, min 1, max 2000; only used when includeRuns=true)
  */
 app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (req, res) => {
   try {
@@ -3369,10 +3369,170 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       };
     };
 
+    const buildRunWindowSummary = (runs = [], windowStartMs = NaN) => {
+      const safeRuns = Array.isArray(runs)
+        ? runs.filter((run) => !Number.isFinite(windowStartMs) || toFiniteNumber(run.startedAtMs, 0) >= windowStartMs)
+        : [];
+
+      const summary = {
+        runs: 0,
+        totalEnabledUsers: 0,
+        cycleCandidates: 0,
+        cyclesRun: 0,
+        deadLetters: 0,
+        errors: 0,
+        retries: 0,
+        maxQueueLagMs: 0,
+        maxCycleDurationMs: 0,
+        maxTelemetryAgeMs: 0,
+        p95CycleDurationMs: 0,
+        p99CycleDurationMs: 0,
+        avgQueueLagMs: 0,
+        avgCycleDurationMs: 0,
+        phaseTimingsMaxMs: sanitizePhaseTimingMaxMs(null),
+        skipped: {
+          disabledOrBlackout: 0,
+          idempotent: 0,
+          locked: 0,
+          tooSoon: 0
+        },
+        failureByType: {},
+        telemetryPauseReasons: {},
+        latestRunStartedAtMs: 0,
+        latestRunId: null
+      };
+
+      let avgQueueLagWeightedTotalMs = 0;
+      let avgQueueLagSamples = 0;
+      let avgCycleDurationWeightedTotalMs = 0;
+      let avgCycleDurationSamples = 0;
+
+      safeRuns.forEach((run) => {
+        summary.runs += 1;
+        summary.totalEnabledUsers += toFiniteNumber(run.totalEnabledUsers, 0);
+        summary.cycleCandidates += toFiniteNumber(run.cycleCandidates, 0);
+        summary.cyclesRun += toFiniteNumber(run.cyclesRun, 0);
+        summary.deadLetters += toFiniteNumber(run.deadLetters, 0);
+        summary.errors += toFiniteNumber(run.errors, 0);
+        summary.retries += toFiniteNumber(run.retries, 0);
+        summary.maxQueueLagMs = Math.max(summary.maxQueueLagMs, toFiniteNumber(run.queueLagMs?.maxMs, 0));
+        summary.maxCycleDurationMs = Math.max(summary.maxCycleDurationMs, toFiniteNumber(run.cycleDurationMs?.maxMs, 0));
+        summary.maxTelemetryAgeMs = Math.max(summary.maxTelemetryAgeMs, toFiniteNumber(run.telemetryAgeMs?.maxMs, 0));
+        summary.p95CycleDurationMs = Math.max(summary.p95CycleDurationMs, toFiniteNumber(run.cycleDurationMs?.p95Ms, 0));
+        summary.p99CycleDurationMs = Math.max(summary.p99CycleDurationMs, toFiniteNumber(run.cycleDurationMs?.p99Ms, 0));
+
+        const queueLagAvgMs = toFiniteNumber(run.queueLagMs?.avgMs, 0);
+        const queueLagCount = toFiniteNumber(run.queueLagMs?.count, 0);
+        avgQueueLagWeightedTotalMs += queueLagAvgMs * queueLagCount;
+        avgQueueLagSamples += queueLagCount;
+
+        const cycleDurationAvgMs = toFiniteNumber(run.cycleDurationMs?.avgMs, 0);
+        const cycleDurationCount = toFiniteNumber(run.cycleDurationMs?.count, 0);
+        avgCycleDurationWeightedTotalMs += cycleDurationAvgMs * cycleDurationCount;
+        avgCycleDurationSamples += cycleDurationCount;
+
+        for (const phaseKey of phaseTimingKeys) {
+          summary.phaseTimingsMaxMs[phaseKey] = Math.max(
+            toFiniteNumber(summary.phaseTimingsMaxMs[phaseKey], 0),
+            toFiniteNumber(run.phaseTimingsMs?.[phaseKey]?.maxMs, 0)
+          );
+        }
+
+        summary.skipped.disabledOrBlackout += toFiniteNumber(run.skipped?.disabledOrBlackout, 0);
+        summary.skipped.idempotent += toFiniteNumber(run.skipped?.idempotent, 0);
+        summary.skipped.locked += toFiniteNumber(run.skipped?.locked, 0);
+        summary.skipped.tooSoon += toFiniteNumber(run.skipped?.tooSoon, 0);
+        summary.failureByType = mergeFailureByType(summary.failureByType, sanitizeFailureByType(run.failureByType));
+        summary.telemetryPauseReasons = mergeFailureByType(
+          summary.telemetryPauseReasons,
+          sanitizeFailureByType(run.telemetryPauseReasons)
+        );
+
+        const runStartedAtMs = toFiniteNumber(run.startedAtMs, 0);
+        if (runStartedAtMs > summary.latestRunStartedAtMs) {
+          summary.latestRunStartedAtMs = runStartedAtMs;
+          summary.latestRunId = run.runId || null;
+        }
+      });
+
+      summary.avgQueueLagMs = avgQueueLagSamples > 0
+        ? Math.round(avgQueueLagWeightedTotalMs / avgQueueLagSamples)
+        : 0;
+      summary.avgCycleDurationMs = avgCycleDurationSamples > 0
+        ? Math.round(avgCycleDurationWeightedTotalMs / avgCycleDurationSamples)
+        : 0;
+      summary.errorRatePct = summary.cyclesRun > 0
+        ? Number(((summary.errors / summary.cyclesRun) * 100).toFixed(2))
+        : 0;
+      summary.deadLetterRatePct = summary.cyclesRun > 0
+        ? Number(((summary.deadLetters / summary.cyclesRun) * 100).toFixed(2))
+        : 0;
+
+      return summary;
+    };
+
+    const buildCurrentSnapshot = (run, currentAlertValue) => {
+      if (!run || typeof run !== 'object') {
+        return null;
+      }
+
+      const cyclesRun = toFiniteNumber(run.cyclesRun, 0);
+      const errors = toFiniteNumber(run.errors, 0);
+      const deadLetters = toFiniteNumber(run.deadLetters, 0);
+      const errorRatePct = cyclesRun > 0 ? Number(((errors / cyclesRun) * 100).toFixed(2)) : 0;
+      const deadLetterRatePct = cyclesRun > 0 ? Number(((deadLetters / cyclesRun) * 100).toFixed(2)) : 0;
+      const alertMatchesRun = currentAlertValue && currentAlertValue.runId === run.runId;
+
+      return {
+        runId: run.runId || null,
+        dayKey: run.dayKey || null,
+        schedulerId: run.schedulerId || null,
+        workerId: run.workerId || null,
+        startedAtMs: toFiniteNumber(run.startedAtMs, 0),
+        completedAtMs: toFiniteNumber(run.completedAtMs, 0),
+        durationMs: toFiniteNumber(run.durationMs, 0),
+        cycleCandidates: toFiniteNumber(run.cycleCandidates, 0),
+        cyclesRun,
+        errors,
+        deadLetters,
+        retries: toFiniteNumber(run.retries, 0),
+        errorRatePct,
+        deadLetterRatePct,
+        avgQueueLagMs: toFiniteNumber(run.queueLagMs?.avgMs, 0),
+        maxQueueLagMs: toFiniteNumber(run.queueLagMs?.maxMs, 0),
+        avgCycleDurationMs: toFiniteNumber(run.cycleDurationMs?.avgMs, 0),
+        maxCycleDurationMs: toFiniteNumber(run.cycleDurationMs?.maxMs, 0),
+        maxTelemetryAgeMs: toFiniteNumber(run.telemetryAgeMs?.maxMs, 0),
+        p95CycleDurationMs: toFiniteNumber(run.cycleDurationMs?.p95Ms, 0),
+        p99CycleDurationMs: toFiniteNumber(run.cycleDurationMs?.p99Ms, 0),
+        phaseTimingsMaxMs: sanitizePhaseTimingMaxMs(extractPhaseTimingRunMaxMs(run.phaseTimingsMs)),
+        skipped: {
+          disabledOrBlackout: toFiniteNumber(run.skipped?.disabledOrBlackout, 0),
+          idempotent: toFiniteNumber(run.skipped?.idempotent, 0),
+          locked: toFiniteNumber(run.skipped?.locked, 0),
+          tooSoon: toFiniteNumber(run.skipped?.tooSoon, 0)
+        },
+        failureByType: sanitizeFailureByType(run.failureByType),
+        telemetryPauseReasons: sanitizeFailureByType(run.telemetryPauseReasons),
+        likelyCauses: buildLikelyCauseTags(run),
+        slo: {
+          status: alertMatchesRun
+            ? sanitizeSloSnapshot({ status: currentAlertValue.status }).status
+            : sanitizeSloSnapshot(run.slo).status,
+          breachedMetrics: alertMatchesRun
+            ? (Array.isArray(currentAlertValue.breachedMetrics) ? currentAlertValue.breachedMetrics : [])
+            : sanitizeSloSnapshot(run.slo).breachedMetrics,
+          watchMetrics: alertMatchesRun
+            ? (Array.isArray(currentAlertValue.watchMetrics) ? currentAlertValue.watchMetrics : [])
+            : sanitizeSloSnapshot(run.slo).watchMetrics
+        }
+      };
+    };
+
     const days = parseBoundedInt(req.query?.days, 14, 1, 90);
     const includeRunsRaw = String(req.query?.includeRuns || '').toLowerCase();
     const includeRuns = ['1', 'true', 'yes', 'y'].includes(includeRunsRaw);
-    const runLimit = parseBoundedInt(req.query?.runLimit, 20, 1, 100);
+    const runLimit = parseBoundedInt(req.query?.runLimit, 20, 1, 2000);
 
     const metricsRootRef = db.collection('metrics').doc('automationScheduler');
     const dailySnapshot = await metricsRootRef
@@ -3682,6 +3842,11 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
     const tailLatency = currentAlert && currentAlert.tailLatency
       ? currentAlert.tailLatency
       : buildTailLatencyFromRuns(recentRuns, tailThresholdMs, tailWindowMinutes, tailMinRuns);
+    const last24hWindowStartMs = Date.now() - (24 * 60 * 60 * 1000);
+    const last24hRuns = recentRuns.filter((run) => toFiniteNumber(run.startedAtMs, 0) >= last24hWindowStartMs);
+    const last24hSummary = buildRunWindowSummary(recentRuns, last24hWindowStartMs);
+    const last24hTailLatency = buildTailLatencyFromRuns(last24hRuns, tailThresholdMs, tailWindowMinutes, tailMinRuns);
+    const currentSnapshot = buildCurrentSnapshot(latestRun, currentAlert);
 
     res.json({
       errno: 0,
@@ -3693,12 +3858,15 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
           ...summary,
           errorRatePct
         },
+        last24hSummary,
+        currentSnapshot,
         soak,
         daily: dailyDesc.slice().reverse(),
         recentRuns,
         currentAlert,
         diagnostics: {
           tailLatency,
+          last24hTailLatency,
           outlierRun,
           telemetryPauseReasons: summary.telemetryPauseReasons,
           phaseTimings: {

@@ -2484,8 +2484,8 @@
     }
 
     function classifySchedulerSloLevel(value, target) {
-        const measured = Number(value || 0);
-        const threshold = Number(target || 0);
+        const measured = Number(value);
+        const threshold = Number(target);
         if (!Number.isFinite(measured) || !Number.isFinite(threshold) || threshold <= 0) {
             return { level: 'warn', label: 'No data' };
         }
@@ -2498,11 +2498,92 @@
         return { level: 'bad', label: 'Breach' };
     }
 
-    function renderSchedulerSloCards(summary, options = {}) {
+    function computeSchedulerRatePct(numerator, denominator) {
+        const safeNumerator = Number(numerator || 0);
+        const safeDenominator = Number(denominator || 0);
+        if (!Number.isFinite(safeNumerator) || !Number.isFinite(safeDenominator) || safeDenominator <= 0) {
+            return 0;
+        }
+        return Number(((safeNumerator / safeDenominator) * 100).toFixed(2));
+    }
+
+    function buildSchedulerCurrentSnapshotFallback(recentRuns, currentAlert) {
+        const latestRun = Array.isArray(recentRuns) && recentRuns.length ? recentRuns[0] : null;
+        if (!latestRun || typeof latestRun !== 'object') return null;
+        const alertMatchesRun = currentAlert && currentAlert.runId && currentAlert.runId === latestRun.runId;
+        return {
+            runId: latestRun.runId || null,
+            dayKey: latestRun.dayKey || null,
+            schedulerId: latestRun.schedulerId || null,
+            workerId: latestRun.workerId || null,
+            startedAtMs: Number(latestRun.startedAtMs || 0),
+            completedAtMs: Number(latestRun.completedAtMs || 0),
+            durationMs: Number(latestRun.durationMs || 0),
+            cycleCandidates: Number(latestRun.cycleCandidates || 0),
+            cyclesRun: Number(latestRun.cyclesRun || 0),
+            errors: Number(latestRun.errors || 0),
+            deadLetters: Number(latestRun.deadLetters || 0),
+            retries: Number(latestRun.retries || 0),
+            errorRatePct: computeSchedulerRatePct(latestRun.errors, latestRun.cyclesRun),
+            deadLetterRatePct: computeSchedulerRatePct(latestRun.deadLetters, latestRun.cyclesRun),
+            avgQueueLagMs: Number(latestRun.queueLagMs?.avgMs || 0),
+            maxQueueLagMs: Number(latestRun.queueLagMs?.maxMs || 0),
+            avgCycleDurationMs: Number(latestRun.cycleDurationMs?.avgMs || 0),
+            maxCycleDurationMs: Number(latestRun.cycleDurationMs?.maxMs || 0),
+            maxTelemetryAgeMs: Number(latestRun.telemetryAgeMs?.maxMs || 0),
+            p95CycleDurationMs: Number(latestRun.cycleDurationMs?.p95Ms || 0),
+            p99CycleDurationMs: Number(latestRun.cycleDurationMs?.p99Ms || 0),
+            phaseTimingsMaxMs: {
+                dataFetchMs: Number(latestRun.phaseTimingsMs?.dataFetchMs?.maxMs || 0),
+                ruleEvalMs: Number(latestRun.phaseTimingsMs?.ruleEvalMs?.maxMs || 0),
+                actionApplyMs: Number(latestRun.phaseTimingsMs?.actionApplyMs?.maxMs || 0),
+                curtailmentMs: Number(latestRun.phaseTimingsMs?.curtailmentMs?.maxMs || 0)
+            },
+            skipped: {
+                disabledOrBlackout: Number(latestRun.skipped?.disabledOrBlackout || 0),
+                idempotent: Number(latestRun.skipped?.idempotent || 0),
+                locked: Number(latestRun.skipped?.locked || 0),
+                tooSoon: Number(latestRun.skipped?.tooSoon || 0)
+            },
+            failureByType: latestRun.failureByType && typeof latestRun.failureByType === 'object'
+                ? latestRun.failureByType
+                : {},
+            telemetryPauseReasons: latestRun.telemetryPauseReasons && typeof latestRun.telemetryPauseReasons === 'object'
+                ? latestRun.telemetryPauseReasons
+                : {},
+            likelyCauses: [],
+            slo: {
+                status: alertMatchesRun ? String(currentAlert.status || 'healthy').toLowerCase() : String(latestRun.slo?.status || 'healthy').toLowerCase(),
+                breachedMetrics: alertMatchesRun && Array.isArray(currentAlert.breachedMetrics) ? currentAlert.breachedMetrics : (Array.isArray(latestRun.slo?.breachedMetrics) ? latestRun.slo.breachedMetrics : []),
+                watchMetrics: alertMatchesRun && Array.isArray(currentAlert.watchMetrics) ? currentAlert.watchMetrics : (Array.isArray(latestRun.slo?.watchMetrics) ? latestRun.slo.watchMetrics : [])
+            }
+        };
+    }
+
+    function renderSchedulerSloCards(prefix, summary, options = {}) {
+        const safePrefix = String(prefix || '').trim();
+        const hasWindowSummary = summary && typeof summary === 'object';
+        if (!safePrefix) return;
+        if (!hasWindowSummary) {
+            ['SloErrorRate', 'SloDeadLetterRate', 'SloQueueLag', 'SloCycleDuration', 'SloTelemetryAge', 'SloCycleTailP99'].forEach((suffix) => {
+                const id = `${safePrefix}${suffix}`;
+                const cardEl = document.getElementById(id);
+                if (!cardEl) return;
+                const statusEl = cardEl.querySelector('.slo-status');
+                const valueEl = cardEl.querySelector('.slo-value');
+                const metaEl = cardEl.querySelector('.slo-meta');
+                cardEl.classList.remove('good', 'warn', 'bad');
+                cardEl.classList.add('warn');
+                if (statusEl) statusEl.textContent = 'No data';
+                if (valueEl) valueEl.textContent = 'Window unavailable';
+                if (metaEl) metaEl.textContent = 'Refresh to load scheduler metrics.';
+            });
+            return;
+        }
         const cyclesRun = Number(summary?.cyclesRun || 0);
         const deadLetters = Number(summary?.deadLetters || 0);
         const errorRatePct = Number(summary?.errorRatePct || 0);
-        const deadLetterRatePct = cyclesRun > 0 ? (deadLetters / cyclesRun) * 100 : 0;
+        const deadLetterRatePct = Number(summary?.deadLetterRatePct || computeSchedulerRatePct(deadLetters, cyclesRun));
         const maxQueueLagMs = Number(summary?.maxQueueLagMs || 0);
         const maxCycleDurationMs = Number(summary?.maxCycleDurationMs || 0);
         const maxTelemetryAgeMs = Number(summary?.maxTelemetryAgeMs || 0);
@@ -2528,42 +2609,42 @@
 
         const cards = [
             {
-                id: 'schedulerSloErrorRate',
+                id: `${safePrefix}SloErrorRate`,
                 value: errorRatePct,
                 target: Number(thresholds.errorRatePct || 1.0),
                 display: `${errorRatePct.toFixed(2)}%`,
                 targetDisplay: `Target <= ${Number(thresholds.errorRatePct || 1.0).toFixed(2)}%`
             },
             {
-                id: 'schedulerSloDeadLetterRate',
+                id: `${safePrefix}SloDeadLetterRate`,
                 value: deadLetterRatePct,
                 target: Number(thresholds.deadLetterRatePct || 0.2),
                 display: `${deadLetterRatePct.toFixed(2)}%`,
                 targetDisplay: `Target <= ${Number(thresholds.deadLetterRatePct || 0.2).toFixed(2)}%`
             },
             {
-                id: 'schedulerSloQueueLag',
+                id: `${safePrefix}SloQueueLag`,
                 value: maxQueueLagMs,
                 target: queueLagTargetMs,
                 display: `${formatDurationMs(avgQueueLagMs)} avg / ${formatDurationMs(maxQueueLagMs)} max`,
                 targetDisplay: `Target avg <= ${formatDurationMs(queueLagTargetMs)}, max <= ${formatDurationMs(queueLagTargetMs)}`
             },
             {
-                id: 'schedulerSloCycleDuration',
+                id: `${safePrefix}SloCycleDuration`,
                 value: maxCycleDurationMs,
                 target: cycleDurationTargetMs,
                 display: `${formatDurationMs(avgCycleDurationMs)} avg / ${formatDurationMs(maxCycleDurationMs)} max`,
                 targetDisplay: `Target avg <= ${formatDurationMs(cycleDurationTargetMs)}, max <= ${formatDurationMs(cycleDurationTargetMs)}`
             },
             {
-                id: 'schedulerSloTelemetryAge',
+                id: `${safePrefix}SloTelemetryAge`,
                 value: maxTelemetryAgeMs,
                 target: telemetryAgeTargetMs,
                 display: `${formatDurationMs(maxTelemetryAgeMs)} max`,
                 targetDisplay: `Target max <= ${formatDurationMs(telemetryAgeTargetMs)}`
             },
             {
-                id: 'schedulerSloCycleTailP99',
+                id: `${safePrefix}SloCycleTailP99`,
                 value: p99CycleDurationMs,
                 target: p99TargetMs,
                 display: `${formatDurationMs(p99CycleDurationMs)} p99`,
@@ -2577,6 +2658,7 @@
 
             const statusEl = cardEl.querySelector('.slo-status');
             const targetEl = cardEl.querySelector('.slo-value');
+            const metaEl = cardEl.querySelector('.slo-meta');
             const { level, label } = classifySchedulerSloLevel(card.value, card.target);
             cardEl.classList.remove('good', 'warn', 'bad');
             cardEl.classList.add(level);
@@ -2585,6 +2667,9 @@
             }
             if (targetEl && card.targetDisplay) {
                 targetEl.textContent = card.targetDisplay;
+            }
+            if (metaEl && card.targetDisplay) {
+                metaEl.textContent = `Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)} · Errors ${formatCompactNumber(summary?.errors || 0)} · Dead letters ${formatCompactNumber(summary?.deadLetters || 0)}`;
             }
         });
     }
@@ -2889,7 +2974,7 @@
         try {
             const days = 14;
             const includeRuns = true;
-            const runLimit = 30;
+            const runLimit = 1500;
             let data;
             if (typeof adminApiClient.getAdminSchedulerMetrics === 'function') {
                 data = await adminApiClient.getAdminSchedulerMetrics(days, includeRuns, runLimit);
@@ -2917,6 +3002,7 @@
 
             const result = data.result || {};
             const summary = result.summary || {};
+            const last24hSummary = result.last24hSummary || {};
             const daily = Array.isArray(result.daily) ? result.daily : [];
             const recentRuns = Array.isArray(result.recentRuns) ? result.recentRuns : [];
             const queueLagAverage = computeWeightedRunAverageMs(recentRuns, 'queueLagMs');
@@ -2927,11 +3013,17 @@
             const diagnostics = result.diagnostics && typeof result.diagnostics === 'object'
                 ? result.diagnostics
                 : {};
+            const currentSnapshot = result.currentSnapshot && typeof result.currentSnapshot === 'object'
+                ? result.currentSnapshot
+                : buildSchedulerCurrentSnapshotFallback(recentRuns, currentAlert);
             const tailLatency = diagnostics.tailLatency && typeof diagnostics.tailLatency === 'object'
                 ? diagnostics.tailLatency
                 : (currentAlert?.tailLatency && typeof currentAlert.tailLatency === 'object'
                     ? currentAlert.tailLatency
                     : null);
+            const last24hTailLatency = diagnostics.last24hTailLatency && typeof diagnostics.last24hTailLatency === 'object'
+                ? diagnostics.last24hTailLatency
+                : tailLatency;
             const sloThresholds = currentAlert?.thresholds && typeof currentAlert.thresholds === 'object'
                 ? currentAlert.thresholds
                 : {};
@@ -2948,7 +3040,13 @@
             const p99El = document.getElementById('schedulerTailP99');
             if (p95El) p95El.textContent = formatDurationMs(summary.p95CycleDurationMs || 0);
             if (p99El) p99El.textContent = formatDurationMs(summary.p99CycleDurationMs || 0);
-            renderSchedulerSloCards(summary, {
+            renderSchedulerSloCards('scheduler24h', last24hSummary, {
+                avgQueueLagMs: Number(last24hSummary.avgQueueLagMs || 0),
+                avgCycleDurationMs: Number(last24hSummary.avgCycleDurationMs || 0),
+                thresholds: sloThresholds,
+                tailLatency: last24hTailLatency
+            });
+            renderSchedulerSloCards('scheduler14d', summary, {
                 avgQueueLagMs: Number(summary.avgQueueLagMs || queueLagAverage.avgMs || 0),
                 avgCycleDurationMs: Number(summary.avgCycleDurationMs || cycleDurationAverage.avgMs || 0),
                 thresholds: sloThresholds,
@@ -2965,7 +3063,10 @@
             });
 
             const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
-            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} · window has ${daily.length} day(s) with data`;
+            const latestRunText = currentSnapshot?.startedAtMs
+                ? `latest run ${new Date(Number(currentSnapshot.startedAtMs)).toLocaleString('en-AU')}`
+                : 'latest run unavailable';
+            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} · ${latestRunText} · recent 24h has ${formatCompactNumber(last24hSummary.runs || 0)} run(s) · 14d window has ${daily.length} day(s) with data`;
 
             if (currentAlert && String(currentAlert.status || '').toLowerCase() === 'breach') {
                 warningEl.style.display = '';
@@ -2975,7 +3076,8 @@
             updatedEl.textContent = 'Unable to load scheduler metrics';
             warningEl.style.display = '';
             warningEl.textContent = e.message || String(e);
-            renderSchedulerSloCards(null);
+            renderSchedulerSloCards('scheduler24h', null);
+            renderSchedulerSloCards('scheduler14d', null);
             renderSchedulerRecentRuns([]);
             renderSchedulerDiagnostics(null);
             const p95El = document.getElementById('schedulerTailP95');

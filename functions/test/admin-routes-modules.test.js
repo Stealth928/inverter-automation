@@ -1706,9 +1706,60 @@ describe('admin route module', () => {
         status: 'watch'
       })
     }));
+    expect(response.body.result.currentSnapshot).toEqual(expect.objectContaining({
+      runId: 'run-1',
+      dayKey: '2026-03-06',
+      schedulerId: 'sched-1',
+      workerId: 'worker-1',
+      cyclesRun: 2,
+      errors: 0,
+      deadLetters: 0,
+      retries: 1,
+      errorRatePct: 0,
+      deadLetterRatePct: 0,
+      avgQueueLagMs: 10,
+      maxQueueLagMs: 20,
+      avgCycleDurationMs: 40,
+      maxCycleDurationMs: 80,
+      maxTelemetryAgeMs: 1900000,
+      p95CycleDurationMs: 70,
+      p99CycleDurationMs: 79,
+      phaseTimingsMaxMs: expect.objectContaining({
+        dataFetchMs: 30,
+        actionApplyMs: 12
+      }),
+      likelyCauses: expect.arrayContaining(['external_api_slowness_or_retries']),
+      telemetryPauseReasons: expect.objectContaining({
+        stale_telemetry: 1
+      }),
+      slo: expect.objectContaining({
+        status: 'breach',
+        breachedMetrics: ['errorRatePct']
+      })
+    }));
+    expect(response.body.result.last24hSummary).toEqual(expect.objectContaining({
+      runs: 0,
+      cyclesRun: 0,
+      errors: 0,
+      deadLetters: 0,
+      retries: 0,
+      errorRatePct: 0,
+      deadLetterRatePct: 0,
+      avgQueueLagMs: 0,
+      avgCycleDurationMs: 0,
+      maxQueueLagMs: 0,
+      maxCycleDurationMs: 0,
+      maxTelemetryAgeMs: 0,
+      latestRunId: null
+    }));
     expect(response.body.result.diagnostics).toEqual(expect.objectContaining({
       tailLatency: expect.objectContaining({
         status: 'watch'
+      }),
+      last24hTailLatency: expect.objectContaining({
+        status: 'healthy',
+        observedRuns: 0,
+        latestP99Ms: 0
       }),
       outlierRun: expect.objectContaining({
         runId: 'run-daily-outlier',
