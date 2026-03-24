@@ -107,6 +107,29 @@ function registerConfigMutationRoutes(app, deps = {}) {
     throw new Error('registerConfigMutationRoutes requires DEFAULT_TOPOLOGY_REFRESH_MS');
   }
 
+  async function disableAutomationAfterCredentialClear(userId) {
+    if (!db || typeof db.collection !== 'function') return;
+
+    const userRef = db.collection('users').doc(userId);
+    await Promise.all([
+      userRef.set(
+        {
+          automationEnabled: false,
+          lastUpdated: serverTimestamp()
+        },
+        { merge: true }
+      ),
+      userRef.collection('automation').doc('state').set(
+        {
+          enabled: false,
+          segmentsCleared: false,
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      )
+    ]);
+  }
+
   // Persist system topology/coupling hint (manual or auto)
   app.post('/api/config/system-topology', async (req, res) => {
     try {
@@ -260,6 +283,10 @@ function registerConfigMutationRoutes(app, deps = {}) {
   // Clear credentials and provider-specific identity fields from user config.
   app.post('/api/config/clear-credentials', authenticateUser, async (req, res) => {
     try {
+      const userId = req.user.uid;
+
+      await disableAutomationAfterCredentialClear(userId);
+
       const updates = {
         deviceSn: deleteField(),
         foxessToken: deleteField(),
@@ -286,7 +313,6 @@ function registerConfigMutationRoutes(app, deps = {}) {
       };
 
       // Update the user's config/main document to clear these fields
-      const userId = req.user.uid;
       await updateUserConfig(userId, updates);
 
       // Clear write-only credentials doc used by setup flows.
@@ -294,7 +320,7 @@ function registerConfigMutationRoutes(app, deps = {}) {
         await db.collection('users').doc(userId).collection('secrets').doc('credentials').delete().catch(() => {});
       }
 
-      res.json({ errno: 0, msg: 'Credentials cleared successfully' });
+      res.json({ errno: 0, msg: 'Credentials cleared successfully. Automation disabled.' });
     } catch (error) {
       console.error('[API] /api/config/clear-credentials error:', error && error.stack ? error.stack : String(error));
       res.status(500).json({ errno: 500, error: error.message || String(error) });

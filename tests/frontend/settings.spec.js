@@ -46,6 +46,7 @@ async function mockSettingsApi(page, config = BASE_CONFIG) {
   const readinessByVehicleId = {};
   const oauthStartRequests = [];
   const oauthCallbackRequests = [];
+  const clearCredentialsRequests = [];
   let adminState = false;
   let teslaAppConfig = { configured: false, clientId: '', clientSecretStored: false };
 
@@ -72,6 +73,13 @@ async function mockSettingsApi(page, config = BASE_CONFIG) {
       body = { errno: 0, result: { isAdmin: adminState } };
     } else if (path === '/api/config/validate-keys') {
       body = { errno: 0, result: { valid: true } };
+    } else if (path === '/api/config/clear-credentials' && method === 'POST') {
+      clearCredentialsRequests.push({});
+      delete state.deviceSn;
+      delete state.foxessToken;
+      delete state.amberApiKey;
+      state.setupComplete = false;
+      body = { errno: 0, msg: 'Credentials cleared successfully. Automation disabled.' };
     } else if (path === '/api/ev/tesla-app-config' && method === 'GET') {
       body = { errno: 0, result: { ...teslaAppConfig } };
     } else if (path === '/api/ev/tesla-app-config' && method === 'POST') {
@@ -162,6 +170,7 @@ async function mockSettingsApi(page, config = BASE_CONFIG) {
       const next = Array.isArray(vehicles) ? vehicles : [];
       evVehicles.splice(0, evVehicles.length, ...next.map((vehicle) => ({ ...vehicle })));
     },
+    getClearCredentialsRequests: () => clearCredentialsRequests.slice(),
     getOAuthStartRequests: () => oauthStartRequests.map((req) => ({ ...req })),
     getOAuthCallbackRequests: () => oauthCallbackRequests.map((req) => ({ ...req }))
   };
@@ -325,6 +334,27 @@ test.describe('Settings Page', () => {
     } else {
       expect(true).toBeTruthy();
     }
+  });
+
+  test('should warn that clearing credentials disables automation and redirects to setup', async ({ page }) => {
+    let dialogMessage = '';
+    await page.evaluate(() => {
+      window.__redirectTargets = [];
+      window.safeRedirect = function (target) {
+        window.__redirectTargets.push(target);
+      };
+    });
+    page.once('dialog', (dialog) => {
+      dialogMessage = dialog.message();
+      dialog.accept();
+    });
+
+    await page.locator('button:has-text("Clear Credentials")').click();
+
+    await expect.poll(() => apiMock.getClearCredentialsRequests().length).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.__redirectTargets || [])).toContain('/setup.html');
+    expect(dialogMessage.toLowerCase()).toContain('disable automation');
+    expect(dialogMessage.toLowerCase()).toContain('back to setup');
   });
 
   test('should validate required fields', async ({ page }) => {

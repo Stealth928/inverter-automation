@@ -3330,7 +3330,7 @@
         }
 
         async function clearCredentials() {
-            if (!confirm('Clear inverter provider credentials and Amber API key from the server?')) return;
+            if (!confirm('Clear inverter provider credentials and Amber API key from the server? This will also disable automation and send you back to setup. Existing rules will be kept.')) return;
             try {
                 const resp = await authenticatedFetch('/api/config/clear-credentials', { method: 'POST' });
                 const data = await resp.json();
@@ -3344,8 +3344,8 @@
                     if (alphaSystemSn) alphaSystemSn.value = '';
                     if (alphaAppId) alphaAppId.value = '';
                     if (alphaAppSecret) alphaAppSecret.value = '';
-                    showMessage('success', 'Credentials cleared from server memory');
-                    loadSettings();
+                    showMessage('success', 'Credentials cleared and automation disabled. Redirecting to setup...');
+                    setTimeout(() => safeRedirect('/setup.html'), 900);
                 } else {
                     showMessage('warning', 'Failed to clear credentials: ' + (data.msg || 'unknown'));
                 }
