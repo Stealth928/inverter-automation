@@ -134,7 +134,18 @@ function buildEmulatorEnv() {
   const env = { ...process.env };
 
   if (process.platform === 'win32') {
+    // Ensure common runtime paths are available first
     prependPathEntries(env, getWindowsRuntimePaths());
+    // If JAVA_HOME is set in the environment, ensure its bin directory is on PATH
+    try {
+      const javaHome = env.JAVA_HOME || process.env.JAVA_HOME;
+      if (javaHome) {
+        const javaBin = path.join(javaHome.replace(/[\\/]+$/,''), 'bin');
+        prependPathEntries(env, [javaBin]);
+      }
+    } catch (err) {
+      // best-effort; continue without failing
+    }
     return env;
   }
 
