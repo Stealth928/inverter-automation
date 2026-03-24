@@ -551,6 +551,10 @@ class APIClient {
     return this.get('/api/admin/scheduler-metrics', { days, includeRuns, runLimit });
   }
 
+  async getAdminApiHealth(days = 30, refresh = false) {
+    return this.get('/api/admin/api-health', refresh ? { days, refresh: 1 } : { days });
+  }
+
   async getAdminDataworksOps(force = false) {
     return this.get('/api/admin/dataworks/ops', force ? { force: 1 } : {});
   }

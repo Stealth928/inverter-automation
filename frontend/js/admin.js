@@ -100,13 +100,16 @@
     let behaviorSelectedPageKey = 'all';
     let firestoreMetricsChart = null;
     let schedulerMetricsChart = null;
+    let apiHealthTrendChart = null;
+    let apiHealthProviderChart = null;
+    let apiHealthData = null;
     let usersProviderChart = null;
     let usersInverterSizeChart = null;
     let usersBatterySizeChart = null;
     let usersCouplingChart = null;
     let usersTourChart = null;
     let activeTab = 'overview';
-    let tabsLoaded = { overview: false, behavior: false, announcement: false, scheduler: false, dataworks: false, users: false };
+    let tabsLoaded = { overview: false, behavior: false, announcement: false, scheduler: false, dataworks: false, users: false, apiHealth: false };
     let usersTableRequestSequence = 0;
     let usersSummaryRequestSequence = 0;
     let currentAdminAnnouncement = null;
@@ -840,6 +843,8 @@
                     setUsersSummaryLoading();
                 }
                 loadUsers({ includeSummary: false, requestSummary: true });
+            } else if (name === 'apiHealth') {
+                loadApiHealth();
             }
         }
     }
@@ -2978,6 +2983,352 @@
             if (p95El) p95El.textContent = '-';
             if (p99El) p99El.textContent = '-';
             showMessage('warning', `Failed to load scheduler metrics: ${e.message || e}`);
+        } finally {
+            if (refreshBtn) refreshBtn.disabled = false;
+        }
+    }
+
+    const API_HEALTH_PROVIDER_COLORS = {
+        foxess: '#3b9eff',
+        sungrow: '#22d3a0',
+        sigenergy: '#fb923c',
+        alphaess: '#f472b6',
+        amber: '#facc15',
+        weather: '#38bdf8',
+        ev: '#a78bfa'
+    };
+
+    function formatSignedPercentage(value, digits = 1) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return 'N/A';
+        const sign = numeric > 0 ? '+' : '';
+        return `${sign}${numeric.toFixed(digits)}%`;
+    }
+
+    function getApiHealthStatusClass(level) {
+        const normalized = String(level || '').toLowerCase();
+        if (normalized === 'bad' || normalized === 'error') return 'bad';
+        if (normalized === 'warn' || normalized === 'warning') return 'warn';
+        return 'good';
+    }
+
+    function getApiHealthProviderColor(key) {
+        return API_HEALTH_PROVIDER_COLORS[key] || '#64748b';
+    }
+
+    function destroyApiHealthCharts() {
+        if (apiHealthTrendChart) {
+            apiHealthTrendChart.destroy();
+            apiHealthTrendChart = null;
+        }
+        if (apiHealthProviderChart) {
+            apiHealthProviderChart.destroy();
+            apiHealthProviderChart = null;
+        }
+    }
+
+    function renderApiHealthLead(summary, monitoring, alerts) {
+        const leadEl = document.getElementById('apiHealthLead');
+        if (!leadEl) return;
+        const level = getApiHealthStatusClass(summary?.healthStatus);
+        const dominantLabel = summary?.dominantProvider?.label || 'No dominant provider yet';
+        const dominantShare = Number.isFinite(Number(summary?.dominantProvider?.sharePct))
+            ? `${Number(summary.dominantProvider.sharePct).toFixed(1)}% share`
+            : 'share unavailable';
+        const failureNote = monitoring?.available
+            ? (Number.isFinite(Number(monitoring.errorRatePct))
+                ? `Execution failures are at ${Number(monitoring.errorRatePct).toFixed(2)}% over the window.`
+                : 'Execution totals are available, but failure breakdown is incomplete.')
+            : 'Cloud Monitoring execution overlay is unavailable, so this view is using the existing provider rollups only.';
+        const alertNote = Array.isArray(alerts) && alerts.length
+            ? alerts[0].detail
+            : 'No immediate spike, concentration, or traffic-drop alerts were detected in the current window.';
+
+        leadEl.dataset.level = level;
+        leadEl.innerHTML = `<strong>Scope:</strong> Provider/API traffic, request failures, and inferred overage risk. Scheduler queue, cycle, and dead-letter health stays in the Scheduler tab.<br><strong>Current mix:</strong> ${escapeHtml(dominantLabel)} leads with ${escapeHtml(dominantShare)}.<br><strong>Health:</strong> ${escapeHtml(failureNote)}<br><strong>Watch:</strong> ${escapeHtml(alertNote)}`;
+    }
+
+    function renderApiHealthTrendChart(daily) {
+        const canvas = document.getElementById('apiHealthTrendChart');
+        if (!canvas || typeof Chart !== 'function') return;
+
+        if (apiHealthTrendChart) {
+            apiHealthTrendChart.destroy();
+            apiHealthTrendChart = null;
+        }
+
+        const palette = getChartPalette();
+        const labels = daily.map((row) => String(row.date || '').slice(5));
+        const providerCalls = daily.map((row) => Number(row.totalCalls || 0));
+        const requestExecutions = daily.map((row) => Number(row.requestExecutions || 0));
+        const hasRequestExecutions = daily.some((row) => Number(row.requestExecutions || 0) > 0);
+        const errorExecutions = daily.map((row) => (row.errorExecutions == null ? null : Number(row.errorExecutions || 0)));
+        const hasErrorExecutions = daily.some((row) => row.errorExecutions != null);
+
+        const datasets = [{
+            type: 'line',
+            label: 'Provider calls',
+            data: providerCalls,
+            borderColor: palette.accentBlue,
+            backgroundColor: withAlpha(palette.accentBlue, 0.14),
+            fill: true,
+            borderWidth: 2,
+            pointRadius: 2,
+            tension: 0.28,
+            yAxisID: 'y'
+        }];
+
+        if (hasRequestExecutions) {
+            datasets.push({
+                type: 'line',
+                label: 'Function executions',
+                data: requestExecutions,
+                borderColor: palette.accentGreen,
+                backgroundColor: withAlpha(palette.accentGreen, 0.08),
+                borderWidth: 1.8,
+                pointRadius: 0,
+                tension: 0.24,
+                yAxisID: 'y'
+            });
+        }
+
+        if (hasErrorExecutions) {
+            datasets.push({
+                type: 'bar',
+                label: 'Failed executions',
+                data: errorExecutions,
+                backgroundColor: withAlpha('#f87171', 0.72),
+                borderColor: '#f87171',
+                borderWidth: 1,
+                borderRadius: 8,
+                maxBarThickness: 28,
+                yAxisID: 'y1'
+            });
+        }
+
+        apiHealthTrendChart = new Chart(canvas, {
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: palette.textSecondary,
+                            boxWidth: 12,
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: palette.textSecondary, maxTicksLimit: 10 },
+                        grid: { color: withAlpha(palette.textSecondary, 0.08) }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: palette.textSecondary, precision: 0 },
+                        grid: { color: withAlpha(palette.textSecondary, 0.08) }
+                    },
+                    y1: {
+                        beginAtZero: true,
+                        display: hasErrorExecutions,
+                        position: 'right',
+                        ticks: { color: '#fca5a5', precision: 0 },
+                        grid: { drawOnChartArea: false }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderApiHealthProviderChart(providers, summary) {
+        const canvas = document.getElementById('apiHealthProviderChart');
+        if (!canvas || typeof Chart !== 'function') return;
+
+        if (apiHealthProviderChart) {
+            apiHealthProviderChart.destroy();
+            apiHealthProviderChart = null;
+        }
+
+        const palette = getChartPalette();
+        const safeProviders = Array.isArray(providers) && providers.length
+            ? providers
+            : [{ key: 'none', label: 'No usage yet', totalCalls: 1, sharePct: 100 }];
+        const labels = safeProviders.map((provider) => provider.label || provider.key || 'Unknown');
+        const values = safeProviders.map((provider) => Number(provider.totalCalls || 0));
+        const colors = safeProviders.map((provider) => getApiHealthProviderColor(provider.key));
+
+        apiHealthProviderChart = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: colors,
+                    borderColor: withAlpha(palette.surface, 1),
+                    borderWidth: 2,
+                    hoverOffset: 6
+                }]
+            },
+            options: {
+                ...createDoughnutOptions(safeProviders),
+                plugins: {
+                    ...createDoughnutOptions(safeProviders).plugins,
+                    centerLabel: {
+                        value: formatCompactNumber(summary?.totalCalls || 0),
+                        sub: 'provider calls'
+                    }
+                }
+            },
+            plugins: [doughnutCenterPlugin]
+        });
+    }
+
+    function renderApiHealthAlerts(alerts, warnings) {
+        const alertsEl = document.getElementById('apiHealthAlerts');
+        if (!alertsEl) return;
+        const safeAlerts = Array.isArray(alerts) ? alerts : [];
+        const safeWarnings = Array.isArray(warnings) ? warnings.filter(Boolean) : [];
+
+        if (!safeAlerts.length && !safeWarnings.length) {
+            alertsEl.innerHTML = '<div class="api-health-empty">No active API health alerts. Provider traffic, concentration, and request-failure checks are currently within expected bounds.</div>';
+            return;
+        }
+
+        const alertRows = safeAlerts.map((alert) => {
+            const levelClass = getApiHealthStatusClass(alert.level);
+            return `<div class="api-health-alert ${levelClass}"><div class="api-health-alert-head"><span class="api-health-badge ${levelClass}">${escapeHtml(String(alert.level || 'info').toUpperCase())}</span><strong>${escapeHtml(alert.title || 'Alert')}</strong></div><div class="api-health-alert-body">${escapeHtml(alert.detail || '')}</div></div>`;
+        });
+        const warningRows = safeWarnings.map((warning) => `<div class="api-health-alert warn"><div class="api-health-alert-head"><span class="api-health-badge warn">NOTE</span><strong>Visibility gap</strong></div><div class="api-health-alert-body">${escapeHtml(warning)}</div></div>`);
+        alertsEl.innerHTML = alertRows.concat(warningRows).join('');
+    }
+
+    function renderApiHealthProviderTable(providers) {
+        const body = document.getElementById('apiHealthProvidersBody');
+        const empty = document.getElementById('apiHealthProvidersEmpty');
+        if (!body || !empty) return;
+
+        if (!Array.isArray(providers) || !providers.length) {
+            body.innerHTML = '';
+            empty.style.display = '';
+            return;
+        }
+
+        body.innerHTML = providers.map((provider) => `
+            <tr>
+                <td><span class="api-health-provider-dot" style="background:${getApiHealthProviderColor(provider.key)}"></span>${escapeHtml(provider.label || provider.key || 'Unknown')}</td>
+                <td>${escapeHtml(formatCompactNumber(provider.totalCalls || 0))}</td>
+                <td>${escapeHtml(formatPercentage(provider.sharePct || 0, 1))}</td>
+                <td>${escapeHtml(formatCompactNumber(provider.lastDayCalls || 0))}</td>
+                <td>${escapeHtml(formatCompactNumber(Math.round(provider.avgDailyCalls7d || 0)))}</td>
+                <td>${escapeHtml(formatSignedPercentage(provider.trendPct, 1))}</td>
+            </tr>`).join('');
+        empty.style.display = 'none';
+    }
+
+    function renderApiHealthDailyTable(daily) {
+        const body = document.getElementById('apiHealthDailyBody');
+        const empty = document.getElementById('apiHealthDailyEmpty');
+        if (!body || !empty) return;
+
+        const safeDaily = Array.isArray(daily) ? daily.slice(-14).reverse() : [];
+        if (!safeDaily.length) {
+            body.innerHTML = '';
+            empty.style.display = '';
+            return;
+        }
+
+        body.innerHTML = safeDaily.map((row) => `
+            <tr>
+                <td>${escapeHtml(row.date || '-')}</td>
+                <td>${escapeHtml(formatCompactNumber(row.totalCalls || 0))}</td>
+                <td>${escapeHtml(formatCompactNumber(row.categories?.inverter || 0))}</td>
+                <td>${escapeHtml(formatCompactNumber(row.categories?.amber || 0))}</td>
+                <td>${escapeHtml(formatCompactNumber(row.categories?.weather || 0))}</td>
+                <td>${escapeHtml(formatCompactNumber(row.categories?.ev || 0))}</td>
+                <td>${row.requestExecutions == null ? '-' : escapeHtml(formatCompactNumber(row.requestExecutions || 0))}</td>
+                <td>${row.errorExecutions == null ? '-' : escapeHtml(formatCompactNumber(row.errorExecutions || 0))}</td>
+            </tr>`).join('');
+        empty.style.display = 'none';
+    }
+
+    async function loadApiHealth(options = {}) {
+        const updatedEl = document.getElementById('apiHealthUpdated');
+        const warningEl = document.getElementById('apiHealthWarning');
+        const refreshBtn = document.getElementById('refreshApiHealthBtn');
+        if (!adminApiClient || !updatedEl || !warningEl) return;
+
+        if (refreshBtn) refreshBtn.disabled = true;
+        updatedEl.textContent = 'Loading API health...';
+        warningEl.style.display = 'none';
+        warningEl.textContent = '';
+
+        try {
+            const days = 30;
+            let data;
+            if (typeof adminApiClient.getAdminApiHealth === 'function') {
+                data = await adminApiClient.getAdminApiHealth(days, options.force === true);
+            } else {
+                const query = new URLSearchParams({ days: String(days) });
+                if (options.force) query.set('refresh', '1');
+                const resp = await adminApiClient.fetch(`/api/admin/api-health?${query.toString()}`);
+                data = await resp.json();
+            }
+            if (!data || data.errno !== 0) throw new Error(data?.error || 'Failed to load API health');
+
+            const result = data.result || {};
+            apiHealthData = result;
+            const summary = result.summary || {};
+            const monitoring = result.monitoring || {};
+            const providers = Array.isArray(result.providers) ? result.providers : [];
+            const daily = Array.isArray(result.daily) ? result.daily : [];
+            const alerts = Array.isArray(result.alerts) ? result.alerts : [];
+            const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+
+            document.getElementById('apiHealthTotalCalls').textContent = formatCompactNumber(summary.totalCalls || 0);
+            document.getElementById('apiHealthLastDayCalls').textContent = formatCompactNumber(summary.lastDayCalls || 0);
+            document.getElementById('apiHealthDailyAvg').textContent = `${formatCompactNumber(Math.round(summary.callsAvg7d || 0))}/d`;
+            document.getElementById('apiHealthDominantProvider').textContent = summary.dominantProvider?.label || 'None';
+            document.getElementById('apiHealthDominantProviderMeta').textContent = summary.dominantProvider
+                ? `${formatPercentage(summary.dominantProvider.sharePct || 0, 1)} of tracked calls`
+                : 'No tracked provider calls yet';
+            document.getElementById('apiHealthExecutions').textContent = monitoring.available
+                ? formatCompactNumber(monitoring.requestExecutionsTotal || 0)
+                : 'Unavailable';
+            document.getElementById('apiHealthErrorRate').textContent = monitoring.available && monitoring.errorRatePct != null
+                ? formatPercentage(monitoring.errorRatePct || 0, 2)
+                : 'Unavailable';
+            document.getElementById('apiHealthErrorRateMeta').textContent = summary.callsPerExecution != null
+                ? `${Number(summary.callsPerExecution).toFixed(2)} calls per execution`
+                : 'Execution overlay unavailable';
+
+            renderApiHealthLead(summary, monitoring, alerts);
+            renderApiHealthTrendChart(daily);
+            renderApiHealthProviderChart(providers, summary);
+            renderApiHealthAlerts(alerts, warnings);
+            renderApiHealthProviderTable(providers);
+            renderApiHealthDailyTable(daily);
+
+            const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
+            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} · window ${Number(result.window?.days || 30)} days · scheduler-specific orchestration issues stay in Scheduler`;
+
+            if (warnings.length) {
+                warningEl.style.display = '';
+                warningEl.textContent = warnings.join(' · ');
+            }
+        } catch (e) {
+            console.error('[Admin] Failed to load API health:', e);
+            destroyApiHealthCharts();
+            renderApiHealthAlerts([], [e.message || String(e)]);
+            renderApiHealthProviderTable([]);
+            renderApiHealthDailyTable([]);
+            updatedEl.textContent = 'Unable to load API health';
+            warningEl.style.display = '';
+            warningEl.textContent = e.message || String(e);
+            showMessage('warning', `Failed to load API health: ${e.message || e}`);
         } finally {
             if (refreshBtn) refreshBtn.disabled = false;
         }

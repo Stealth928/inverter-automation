@@ -56,6 +56,8 @@ function registerPricingRoutes(app, deps = {}) {
     throw new Error('registerPricingRoutes requires tryAttachUser()');
   }
 
+  const emulatorRuntime = Boolean(process.env.FUNCTIONS_EMULATOR || process.env.FIRESTORE_EMULATOR_HOST);
+
   // Sites endpoint (allow unauthenticated calls - return empty list when no user)
   const sitesHandler = async (req, res) => {
     if (rejectUnsupportedProvider(req, res)) return;
@@ -156,7 +158,7 @@ function registerPricingRoutes(app, deps = {}) {
 
       // Try cache first for current prices (unless force refresh requested)
       let result = null;
-      if (!forceRefresh) {
+      if (!forceRefresh || emulatorRuntime) {
         result = await amberAPI.getCachedAmberPricesCurrent(siteId, userId, userConfig);
       }
 

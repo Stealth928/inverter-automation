@@ -1248,6 +1248,90 @@ describe('admin route module', () => {
     );
   });
 
+  test('api-health returns cached provider rollups with monitoring-based failure overlay', async () => {
+    const formatDayKey = (offset) => {
+      const date = new Date(Date.now() - (offset * 24 * 60 * 60 * 1000));
+      return date.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
+    };
+    const dayTwoAgo = formatDayKey(2);
+    const dayOneAgo = formatDayKey(1);
+    const dayToday = formatDayKey(0);
+    const metricDocs = new Map(Object.entries({
+      [dayTwoAgo]: { foxess: 20, amber: 9, weather: 4, ev: 3 },
+      [dayOneAgo]: { foxess: 24, amber: 11, weather: 5, ev: 4 },
+      [dayToday]: { foxess: 36, amber: 12, weather: 6, ev: 5 }
+    }));
+
+    const deps = createDeps({
+      googleApis: {
+        auth: {
+          GoogleAuth: jest.fn(() => ({}))
+        },
+        monitoring: jest.fn(() => ({}))
+      },
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'metrics') {
+            return {
+              doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
+              where: jest.fn(() => ({})),
+              add: jest.fn(async () => undefined)
+            };
+          }
+
+          return {
+            doc: jest.fn((docId) => ({
+              get: jest.fn(async () => ({
+                exists: metricDocs.has(docId),
+                data: () => metricDocs.get(docId) || {}
+              }))
+            }))
+          };
+        })
+      },
+      listMonitoringTimeSeries: jest.fn(async ({ filter }) => {
+        if (String(filter).includes('status!="ok"')) {
+          return [
+            { timestamp: `${dayOneAgo}T00:00:00.000Z`, value: 1 },
+            { timestamp: `${dayToday}T00:00:00.000Z`, value: 2 }
+          ];
+        }
+        if (String(filter).includes('execution_count')) {
+          return [
+            { timestamp: `${dayTwoAgo}T00:00:00.000Z`, value: 18 },
+            { timestamp: `${dayOneAgo}T00:00:00.000Z`, value: 21 },
+            { timestamp: `${dayToday}T00:00:00.000Z`, value: 25 }
+          ];
+        }
+        return [];
+      }),
+      sumSeriesValues: jest.fn((series = []) => series.reduce((sum, point) => sum + Number(point.value || 0), 0))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/api-health?days=30')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.summary.totalCalls).toBe(139);
+    expect(response.body.result.summary.dominantProvider).toEqual(expect.objectContaining({
+      key: 'foxess',
+      label: 'FoxESS'
+    }));
+    expect(response.body.result.monitoring).toEqual(expect.objectContaining({
+      available: true,
+      requestExecutionsTotal: 64,
+      errorExecutionsTotal: 3
+    }));
+    expect(response.body.result.providers[0]).toEqual(expect.objectContaining({
+      key: 'foxess',
+      totalCalls: 80
+    }));
+    expect(response.body.result.alerts.some((alert) => alert.code === 'error_rate_watch')).toBe(true);
+  });
+
   test('scheduler-metrics returns aggregate daily view with optional recent runs', async () => {
     const buildSnapshot = (docs) => ({
       size: docs.length,

@@ -630,20 +630,25 @@ function isMatchingProviderCacheEntry(cacheRecord, provider, deviceSN) {
   return providerMatch && deviceMatch;
 }
 
+function isEmulatorRuntime() {
+  return Boolean(process.env.FUNCTIONS_EMULATOR || process.env.FIRESTORE_EMULATOR_HOST);
+}
+
 async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh = false) {
   const config = getConfig();
   const ttlMs = resolveInverterCacheTtlMs(userConfig, config?.automation?.cacheTtl?.inverter, { preferRealtime: false });
   const resolved = resolveProviderDeviceId(userConfig, deviceSN);
   const provider = String(resolved.provider || 'foxess').toLowerCase().trim();
   const resolvedDeviceSN = resolved.deviceId;
+  const emulatorRuntime = isEmulatorRuntime();
   
   try {
     if (!resolvedDeviceSN) {
       return { errno: 400, error: 'Device SN not configured' };
     }
 
-    // Check cache if not forcing refresh
-    if (!forceRefresh) {
+    // In emulator mode, keep seeded cache authoritative even after TTL expiry or manual refresh.
+    if (!forceRefresh || emulatorRuntime) {
       const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('inverter').get();
       if (cacheDoc.exists) {
         const cachePayload = cacheDoc.data() || {};
@@ -651,6 +656,16 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
         const ageMs = Date.now() - timestamp;
         if (ageMs < ttlMs && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
           return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
+        }
+        if (emulatorRuntime && data && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
+          return {
+            ...data,
+            __cacheHit: true,
+            __cacheAgeMs: ageMs,
+            __cacheTtlMs: ttlMs,
+            __cacheStale: ageMs >= ttlMs,
+            __emulatorSeedFallback: true
+          };
         }
       }
     }
@@ -709,14 +724,15 @@ async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, force
   const resolved = resolveProviderDeviceId(userConfig, deviceSN);
   const provider = String(resolved.provider || 'foxess').toLowerCase().trim();
   const resolvedDeviceSN = resolved.deviceId;
+  const emulatorRuntime = isEmulatorRuntime();
   
   try {
     if (!resolvedDeviceSN) {
       return { errno: 400, error: 'Device SN not configured' };
     }
 
-    // Check cache if not forcing refresh
-    if (!forceRefresh) {
+    // In emulator mode, keep seeded cache authoritative even after TTL expiry or manual refresh.
+    if (!forceRefresh || emulatorRuntime) {
       const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('inverter-realtime').get();
       if (cacheDoc.exists) {
         const cachePayload = cacheDoc.data() || {};
@@ -724,6 +740,16 @@ async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, force
         const ageMs = Date.now() - timestamp;
         if (ageMs < ttlMs && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
           return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
+        }
+        if (emulatorRuntime && data && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
+          return {
+            ...data,
+            __cacheHit: true,
+            __cacheAgeMs: ageMs,
+            __cacheTtlMs: ttlMs,
+            __cacheStale: ageMs >= ttlMs,
+            __emulatorSeedFallback: true
+          };
         }
       }
     }

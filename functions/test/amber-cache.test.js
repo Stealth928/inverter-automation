@@ -532,5 +532,56 @@ describe('Amber Price Cache Tests', () => {
       expect(result3).toBeTruthy();
       expect(result3).toHaveLength(1);
     });
+
+    test('getCachedAmberPricesCurrent returns stale cache in emulator mode', async () => {
+      const { init } = require('../api/amber');
+      const previousFunctionsEmulator = process.env.FUNCTIONS_EMULATOR;
+      const previousFirestoreEmulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
+      process.env.FUNCTIONS_EMULATOR = 'true';
+
+      try {
+        const timestampMock = { toMillis: () => Date.now() - 120000 };
+        const mockCurrentPrices = [{ test: 'stale-data', perKwh: 18.5 }];
+        const mockCurrentDoc = {
+          get: jest.fn(async () => ({
+            exists: true,
+            data: () => ({
+              siteId: 'test-site',
+              prices: mockCurrentPrices,
+              cachedAt: timestampMock
+            })
+          }))
+        };
+
+        const amberApi = init({
+          db: {
+            collection: jest.fn(() => ({
+              doc: jest.fn(() => ({
+                collection: jest.fn(() => ({
+                  doc: jest.fn(() => mockCurrentDoc)
+                }))
+              }))
+            }))
+          },
+          logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn() },
+          getConfig: () => ({ automation: { cacheTtl: { amber: 30000 } } }),
+          incrementApiCount: jest.fn()
+        });
+
+        const result = await amberApi.getCachedAmberPricesCurrent('test-site', 'test-user', {});
+        expect(result).toEqual(mockCurrentPrices);
+      } finally {
+        if (previousFunctionsEmulator === undefined) {
+          delete process.env.FUNCTIONS_EMULATOR;
+        } else {
+          process.env.FUNCTIONS_EMULATOR = previousFunctionsEmulator;
+        }
+        if (previousFirestoreEmulatorHost === undefined) {
+          delete process.env.FIRESTORE_EMULATOR_HOST;
+        } else {
+          process.env.FIRESTORE_EMULATOR_HOST = previousFirestoreEmulatorHost;
+        }
+      }
+    });
   });
 });

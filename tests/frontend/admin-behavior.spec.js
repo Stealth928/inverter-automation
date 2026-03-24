@@ -22,6 +22,45 @@ async function mockAdminEnvironment(page, options = {}) {
       message: 'Set GA4_PROPERTY_ID to the numeric Google Analytics 4 property id for your web property to enable the Behaviour tab.'
     }
   };
+  const apiHealthResult = options.apiHealthResult || {
+    source: 'metrics-rollups+cloud-functions-monitoring',
+    updatedAt: new Date().toISOString(),
+    window: { days: 30 },
+    summary: {
+      totalCalls: 1240,
+      lastDayCalls: 88,
+      callsAvg7d: 73.4,
+      dominantProvider: { key: 'foxess', label: 'FoxESS', sharePct: 52.4 },
+      callsPerExecution: 1.78,
+      healthStatus: 'warn'
+    },
+    monitoring: {
+      available: true,
+      requestExecutionsTotal: 696,
+      errorExecutionsTotal: 14,
+      errorRatePct: 2.01
+    },
+    providers: [
+      { key: 'foxess', label: 'FoxESS', totalCalls: 650, sharePct: 52.4, lastDayCalls: 41, avgDailyCalls7d: 34.2, trendPct: 42.1 },
+      { key: 'amber', label: 'Amber', totalCalls: 310, sharePct: 25.0, lastDayCalls: 21, avgDailyCalls7d: 17.2, trendPct: 18.3 },
+      { key: 'weather', label: 'Weather', totalCalls: 190, sharePct: 15.3, lastDayCalls: 15, avgDailyCalls7d: 11.4, trendPct: 4.5 },
+      { key: 'ev', label: 'Tesla EV', totalCalls: 90, sharePct: 7.3, lastDayCalls: 11, avgDailyCalls7d: 10.6, trendPct: 87.4 }
+    ],
+    daily: [
+      { date: '2026-03-20', totalCalls: 61, categories: { inverter: 35, amber: 14, weather: 7, ev: 5 }, requestExecutions: 34, errorExecutions: 0 },
+      { date: '2026-03-21', totalCalls: 75, categories: { inverter: 42, amber: 18, weather: 9, ev: 6 }, requestExecutions: 39, errorExecutions: 1 },
+      { date: '2026-03-22', totalCalls: 88, categories: { inverter: 48, amber: 21, weather: 8, ev: 11 }, requestExecutions: 44, errorExecutions: 2 }
+    ],
+    alerts: [
+      {
+        level: 'warn',
+        code: 'potential_overage_foxess',
+        title: 'FoxESS usage acceleration',
+        detail: 'Latest 7-day average is 34/day, up 42.1% versus the prior week. Treat this as a potential overage or rate-limit risk if that provider has tight quotas.'
+      }
+    ],
+    warnings: []
+  };
 
   await page.route('**/js/firebase-config.js', async (route) => {
     await route.fulfill({
@@ -73,6 +112,8 @@ async function mockAdminEnvironment(page, options = {}) {
       };
     } else if (path === '/api/admin/behavior-metrics') {
       payload = { errno: 0, result: behaviorResult };
+    } else if (path === '/api/admin/api-health') {
+      payload = { errno: 0, result: apiHealthResult };
     } else if (path === '/api/user/init-profile') {
       payload = { errno: 0, result: { initialized: true } };
     }
@@ -159,5 +200,19 @@ test.describe('Admin Behaviour Tab', () => {
     await expect(page.locator('#behaviorTopPagesBody')).toContainText('/app.html');
     await expect(page.locator('#behaviorTopEventsBody')).toContainText('Settings Save All');
     await expect(page.locator('#behaviorMetricsUpdated')).toContainText(/GA4 property 123456789/i);
+  });
+
+  test('renders API health metrics and alerts from the admin endpoint', async ({ page }) => {
+    await mockAdminEnvironment(page);
+
+    await page.goto('/admin.html');
+    await page.waitForLoadState('networkidle');
+
+    await page.getByRole('button', { name: /API Health/i }).click();
+    await expect(page.locator('#apiHealthTotalCalls')).toHaveText('1.2K');
+    await expect(page.locator('#apiHealthDominantProvider')).toHaveText('FoxESS');
+    await expect(page.locator('#apiHealthErrorRate')).toHaveText('2.01%');
+    await expect(page.locator('#apiHealthProvidersBody')).toContainText('Amber');
+    await expect(page.locator('#apiHealthAlerts')).toContainText(/potential overage or rate-limit risk/i);
   });
 });

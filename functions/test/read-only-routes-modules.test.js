@@ -307,6 +307,68 @@ describe('read-only route modules', () => {
     expect(getUserConfig).toHaveBeenCalledWith('u-price');
   });
 
+  test('pricing current endpoint ignores forceRefresh and serves cache in emulator mode', async () => {
+    const previousFunctionsEmulator = process.env.FUNCTIONS_EMULATOR;
+    const previousFirestoreEmulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
+    process.env.FUNCTIONS_EMULATOR = 'true';
+
+    try {
+      const amberPricesInFlight = new Map();
+      const amberAPI = {
+        callAmberAPI: jest.fn(),
+        cacheAmberPricesCurrent: jest.fn(),
+        cacheAmberSites: jest.fn(),
+        getCachedAmberPricesCurrent: jest.fn(async () => [{ perKwh: 0.31, channelType: 'general' }]),
+        getCachedAmberSites: jest.fn()
+      };
+      const getUserConfig = jest.fn(async () => ({
+        amberApiKey: 'amber-key',
+        amberSiteId: 'site-1'
+      }));
+
+      const app = buildApp((instance) => {
+        registerPricingRoutes(instance, {
+          amberAPI,
+          amberPricesInFlight,
+          authenticateUser: (_req, res, _next) => res.status(401).json({ errno: 401, error: 'Unauthorized' }),
+          getUserConfig,
+          incrementApiCount: jest.fn(),
+          logger: { debug: jest.fn(), warn: jest.fn() },
+          tryAttachUser: jest.fn(async (req) => {
+            req.user = { uid: 'u-price' };
+            return req.user;
+          })
+        });
+      });
+
+      const response = await request(app)
+        .get('/api/pricing/current')
+        .query({ forceRefresh: 'true' });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toEqual({
+        errno: 0,
+        result: [{ perKwh: 0.31, channelType: 'general' }]
+      });
+      expect(amberAPI.getCachedAmberPricesCurrent).toHaveBeenCalledWith('site-1', 'u-price', {
+        amberApiKey: 'amber-key',
+        amberSiteId: 'site-1'
+      });
+      expect(amberAPI.callAmberAPI).not.toHaveBeenCalled();
+    } finally {
+      if (previousFunctionsEmulator === undefined) {
+        delete process.env.FUNCTIONS_EMULATOR;
+      } else {
+        process.env.FUNCTIONS_EMULATOR = previousFunctionsEmulator;
+      }
+      if (previousFirestoreEmulatorHost === undefined) {
+        delete process.env.FIRESTORE_EMULATOR_HOST;
+      } else {
+        process.env.FIRESTORE_EMULATOR_HOST = previousFirestoreEmulatorHost;
+      }
+    }
+  });
+
   test('pricing actual endpoint honors authentication middleware and returns matching interval', async () => {
     const amberPricesInFlight = new Map();
     const targetTimestamp = new Date(Date.now() - 60 * 60 * 1000);

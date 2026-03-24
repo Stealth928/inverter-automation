@@ -1006,6 +1006,186 @@ function registerAdminRoutes(app, deps = {}) {
     expiresAtMs: 0,
     pending: null
   };
+  const ADMIN_API_HEALTH_CACHE_TTL_MS = 5 * 60 * 1000;
+  const ADMIN_API_HEALTH_PROVIDER_LABELS = Object.freeze({
+    foxess: 'FoxESS',
+    sungrow: 'Sungrow',
+    sigenergy: 'SigenEnergy',
+    alphaess: 'AlphaESS',
+    amber: 'Amber',
+    weather: 'Weather',
+    ev: 'Tesla EV'
+  });
+  const ADMIN_API_HEALTH_PROVIDER_KEYS = Object.keys(ADMIN_API_HEALTH_PROVIDER_LABELS);
+  let adminApiHealthCache = {
+    key: '',
+    data: null,
+    expiresAtMs: 0,
+    pending: null
+  };
+
+  const getAdminMetricsDateKey = (date = new Date(), timeZone = 'Australia/Sydney') =>
+    date.toLocaleDateString('en-CA', { timeZone });
+
+  const toCounter = (value) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return Math.round(parsed);
+  };
+
+  const getTeslaFleetRoot = (metricsDoc = {}) => {
+    if (!metricsDoc || typeof metricsDoc !== 'object') return null;
+    return metricsDoc.teslaFleet || metricsDoc.teslafleet || null;
+  };
+
+  const readNestedCounter = (root, path = []) => {
+    if (!root || typeof root !== 'object' || !Array.isArray(path) || !path.length) return 0;
+    let cursor = root;
+    for (const segment of path) {
+      if (!cursor || typeof cursor !== 'object') return 0;
+      cursor = cursor[segment];
+    }
+    return toCounter(cursor);
+  };
+
+  const resolveEvCounter = (metricsDoc = {}) => {
+    const explicitEv = toCounter(metricsDoc.ev);
+    if (explicitEv) return explicitEv;
+
+    const explicitTesla = toCounter(metricsDoc.tesla);
+    if (explicitTesla) return explicitTesla;
+
+    const teslaFleetRoot = getTeslaFleetRoot(metricsDoc);
+    const billable = readNestedCounter(teslaFleetRoot, ['calls', 'billable']);
+    if (billable) return billable;
+
+    const total = readNestedCounter(teslaFleetRoot, ['calls', 'total']);
+    if (total) return total;
+
+    const byCategory = teslaFleetRoot && teslaFleetRoot.calls && typeof teslaFleetRoot.calls.byCategory === 'object'
+      ? teslaFleetRoot.calls.byCategory
+      : null;
+    if (!byCategory) return 0;
+    return Object.values(byCategory).reduce((sum, value) => sum + toCounter(value), 0);
+  };
+
+  const buildApiHealthMetricsEnvelope = (rawDoc = {}) => {
+    const metricsDoc = rawDoc && typeof rawDoc === 'object' ? rawDoc : {};
+    const providers = {
+      foxess: toCounter(metricsDoc.foxess),
+      sungrow: toCounter(metricsDoc.sungrow),
+      sigenergy: toCounter(metricsDoc.sigenergy),
+      alphaess: toCounter(metricsDoc.alphaess),
+      amber: toCounter(metricsDoc.amber),
+      weather: toCounter(metricsDoc.weather),
+      ev: resolveEvCounter(metricsDoc)
+    };
+    const inverterCalls = providers.foxess + providers.sungrow + providers.sigenergy + providers.alphaess;
+    const totalCalls = inverterCalls + providers.amber + providers.weather + providers.ev;
+
+    return {
+      totalCalls,
+      providers,
+      categories: {
+        inverter: inverterCalls,
+        amber: providers.amber,
+        weather: providers.weather,
+        ev: providers.ev
+      }
+    };
+  };
+
+  const sumArray = (values = []) => values.reduce((sum, value) => sum + (Number(value) || 0), 0);
+
+  const averageArray = (values = []) => {
+    if (!Array.isArray(values) || !values.length) return 0;
+    return sumArray(values) / values.length;
+  };
+
+  const pctChange = (currentValue, previousValue) => {
+    const current = Number(currentValue || 0);
+    const previous = Number(previousValue || 0);
+    if (!Number.isFinite(current) || !Number.isFinite(previous)) return null;
+    if (previous <= 0) return current > 0 ? 100 : 0;
+    return ((current - previous) / previous) * 100;
+  };
+
+  const getWindowRows = (rows, count, offset = 0) => {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    const safeCount = Math.max(0, Math.floor(count || 0));
+    const safeOffset = Math.max(0, Math.floor(offset || 0));
+    if (!safeCount) return [];
+    const endIndex = safeRows.length - safeOffset;
+    const startIndex = Math.max(0, endIndex - safeCount);
+    return safeRows.slice(startIndex, endIndex);
+  };
+
+  const sumRows = (rows, accessor) => {
+    if (!Array.isArray(rows) || typeof accessor !== 'function') return 0;
+    return rows.reduce((sum, row) => sum + (Number(accessor(row)) || 0), 0);
+  };
+
+  const averageRows = (rows, accessor) => {
+    if (!Array.isArray(rows) || !rows.length || typeof accessor !== 'function') return 0;
+    return sumRows(rows, accessor) / rows.length;
+  };
+
+  const computeStdDev = (values = []) => {
+    if (!Array.isArray(values) || !values.length) return 0;
+    const mean = averageArray(values);
+    const variance = values.reduce((sum, value) => {
+      const numeric = Number(value || 0);
+      return sum + ((numeric - mean) ** 2);
+    }, 0) / values.length;
+    return Math.sqrt(Math.max(variance, 0));
+  };
+
+  const formatAlertDetailNumber = (value) => {
+    const numeric = Number(value || 0);
+    if (!Number.isFinite(numeric)) return '0';
+    return numeric.toLocaleString('en-AU');
+  };
+
+  async function getCachedAdminApiHealth(cacheKey, loadHealth, { forceRefresh = false } = {}) {
+    const now = Date.now();
+    const hasFreshValue = !forceRefresh
+      && adminApiHealthCache.key === cacheKey
+      && adminApiHealthCache.data
+      && adminApiHealthCache.expiresAtMs > now;
+
+    if (hasFreshValue) {
+      return { ...adminApiHealthCache.data, cache: { hit: true, ttlMs: ADMIN_API_HEALTH_CACHE_TTL_MS } };
+    }
+
+    if (!forceRefresh && adminApiHealthCache.key === cacheKey && adminApiHealthCache.pending) {
+      return adminApiHealthCache.pending;
+    }
+
+    const pending = Promise.resolve()
+      .then(loadHealth)
+      .then((data) => {
+        adminApiHealthCache = {
+          key: cacheKey,
+          data,
+          expiresAtMs: Date.now() + ADMIN_API_HEALTH_CACHE_TTL_MS,
+          pending: null
+        };
+        return { ...data, cache: { hit: false, ttlMs: ADMIN_API_HEALTH_CACHE_TTL_MS } };
+      })
+      .catch((error) => {
+        adminApiHealthCache.pending = null;
+        throw error;
+      });
+
+    adminApiHealthCache = {
+      key: cacheKey,
+      data: adminApiHealthCache.key === cacheKey ? adminApiHealthCache.data : null,
+      expiresAtMs: adminApiHealthCache.key === cacheKey ? adminApiHealthCache.expiresAtMs : 0,
+      pending
+    };
+
+    return pending;
+  }
 
   const normalizeGa4PropertyId = (value) => {
     const raw = trimString(value);
@@ -1893,6 +2073,351 @@ app.get('/api/admin/behavior-metrics', authenticateUser, requireAdmin, async (re
     const message = buildGa4ApiErrorMessage(error);
     console.error('[Admin] Error fetching behavior metrics:', error);
     res.status(502).json({ errno: 502, error: message });
+  }
+});
+
+/**
+ * GET /api/admin/api-health - Lightweight API/provider usage and request health rollup
+ * Query: ?days=30&refresh=1
+ */
+app.get('/api/admin/api-health', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const daysRaw = Number(req.query?.days);
+    const days = Number.isFinite(daysRaw) ? Math.max(7, Math.min(60, Math.floor(daysRaw))) : 30;
+    const forceRefresh = String(req.query?.refresh || req.query?.force || '').trim() === '1';
+    const cacheKey = String(days);
+
+    const loadHealth = async () => {
+      const warnings = [];
+      const now = new Date();
+      const dateKeys = Array.from({ length: days }, (_value, index) => {
+        const date = new Date(now.getTime() - ((days - 1 - index) * 24 * 60 * 60 * 1000));
+        return getAdminMetricsDateKey(date);
+      });
+
+      const daily = await Promise.all(dateKeys.map(async (dateKey) => {
+        try {
+          const snapshot = await db.collection('metrics').doc(dateKey).get();
+          const envelope = buildApiHealthMetricsEnvelope(snapshot.exists ? (snapshot.data() || {}) : {});
+          return {
+            date: dateKey,
+            totalCalls: envelope.totalCalls,
+            providers: envelope.providers,
+            categories: envelope.categories,
+            requestExecutions: null,
+            errorExecutions: null,
+            errorRatePct: null
+          };
+        } catch (error) {
+          warnings.push(`Metrics doc ${dateKey} unavailable: ${error?.message || error}`);
+          return {
+            date: dateKey,
+            totalCalls: 0,
+            providers: Object.fromEntries(ADMIN_API_HEALTH_PROVIDER_KEYS.map((providerKey) => [providerKey, 0])),
+            categories: { inverter: 0, amber: 0, weather: 0, ev: 0 },
+            requestExecutions: null,
+            errorExecutions: null,
+            errorRatePct: null
+          };
+        }
+      }));
+
+      const providerTotals = Object.fromEntries(ADMIN_API_HEALTH_PROVIDER_KEYS.map((providerKey) => [providerKey, 0]));
+      daily.forEach((row) => {
+        ADMIN_API_HEALTH_PROVIDER_KEYS.forEach((providerKey) => {
+          providerTotals[providerKey] += Number(row.providers?.[providerKey] || 0);
+        });
+      });
+
+      const totalCalls = Object.values(providerTotals).reduce((sum, value) => sum + value, 0);
+      const activeProviders = ADMIN_API_HEALTH_PROVIDER_KEYS.filter((providerKey) => providerTotals[providerKey] > 0);
+      const providerRows = ADMIN_API_HEALTH_PROVIDER_KEYS
+        .map((providerKey) => {
+          const last7Rows = getWindowRows(daily, Math.min(7, daily.length), 0);
+          const previous7Rows = getWindowRows(daily, Math.min(7, Math.max(daily.length - Math.min(7, daily.length), 0)), Math.min(7, daily.length));
+          const last7Avg = averageRows(last7Rows, (row) => row.providers?.[providerKey] || 0);
+          const previous7Avg = averageRows(previous7Rows, (row) => row.providers?.[providerKey] || 0);
+          const trendPct = pctChange(last7Avg, previous7Avg);
+          const providerTotal = providerTotals[providerKey] || 0;
+          return {
+            key: providerKey,
+            label: ADMIN_API_HEALTH_PROVIDER_LABELS[providerKey] || providerKey,
+            totalCalls: providerTotal,
+            sharePct: totalCalls > 0 ? (providerTotal / totalCalls) * 100 : 0,
+            lastDayCalls: Number(daily[daily.length - 1]?.providers?.[providerKey] || 0),
+            avgDailyCalls7d: last7Avg,
+            avgDailyCallsPrev7d: previous7Avg,
+            trendPct
+          };
+        })
+        .filter((row) => row.totalCalls > 0)
+        .sort((a, b) => b.totalCalls - a.totalCalls || a.label.localeCompare(b.label));
+
+      const dominantProvider = providerRows[0]
+        ? {
+          key: providerRows[0].key,
+          label: providerRows[0].label,
+          totalCalls: providerRows[0].totalCalls,
+          sharePct: providerRows[0].sharePct
+        }
+        : null;
+
+      const monitoringSummary = {
+        available: false,
+        source: null,
+        requestExecutionsTotal: null,
+        errorExecutionsTotal: null,
+        errorRatePct: null
+      };
+
+      if (googleApis) {
+        const projectId = getRuntimeProjectId();
+        if (!projectId) {
+          warnings.push('Unable to resolve GCP project id for API execution health overlay.');
+        } else {
+          const auth = new googleApis.auth.GoogleAuth({
+            scopes: ['https://www.googleapis.com/auth/monitoring.read']
+          });
+          const monitoring = googleApis.monitoring({ version: 'v3', auth });
+          const start = new Date(now.getTime() - (days * 24 * 60 * 60 * 1000));
+
+          const loadMonitoringSeriesSafe = async ({ label, filters }) => {
+            const filterList = Array.isArray(filters) ? filters : [filters];
+            for (const filter of filterList) {
+              try {
+                const series = await listMonitoringTimeSeries({
+                  monitoring,
+                  projectId,
+                  filter,
+                  startTime: start,
+                  endTime: now,
+                  aligner: 'ALIGN_DELTA',
+                  alignmentPeriod: '86400s'
+                });
+                return { series, filter };
+              } catch (error) {
+                const msg = String(error?.message || error || 'unknown error');
+                const unavailable = msg.includes('Cannot find metric(s) that match type') || msg.includes('not found');
+                if (!unavailable) {
+                  warnings.push(`${label} metric query failed: ${normalizeMetricErrorMessage(error)}`);
+                  return { series: [], filter: null };
+                }
+              }
+            }
+            return { series: [], filter: null };
+          };
+
+          const totalMetricResult = await loadMonitoringSeriesSafe({
+            label: 'API execution total',
+            filters: [
+              'metric.type="cloudfunctions.googleapis.com/function/execution_count" AND resource.labels.function_name="api"',
+              'metric.type="run.googleapis.com/request_count" AND resource.labels.service_name="api"'
+            ]
+          });
+          const errorMetricResult = await loadMonitoringSeriesSafe({
+            label: 'API execution errors',
+            filters: [
+              'metric.type="cloudfunctions.googleapis.com/function/execution_count" AND resource.labels.function_name="api" AND metric.labels.status!="ok"',
+              'metric.type="cloudfunctions.googleapis.com/function/execution_count" AND resource.labels.function_name="api" AND metric.labels.status="error"',
+              'metric.type="run.googleapis.com/request_count" AND resource.labels.service_name="api" AND metric.labels.response_code_class="5xx"'
+            ]
+          });
+
+          const requestExecutionsTotal = Math.round(sumSeriesValues(totalMetricResult.series || []));
+          const errorExecutionsTotal = errorMetricResult.filter
+            ? Math.round(sumSeriesValues(errorMetricResult.series || []))
+            : null;
+
+          if (requestExecutionsTotal > 0) {
+            monitoringSummary.available = true;
+            monitoringSummary.source = String(totalMetricResult.filter || '').includes('run.googleapis.com')
+              ? 'cloud-run-monitoring'
+              : 'cloud-functions-monitoring';
+            monitoringSummary.requestExecutionsTotal = requestExecutionsTotal;
+            monitoringSummary.errorExecutionsTotal = errorExecutionsTotal;
+            monitoringSummary.errorRatePct = Number.isFinite(errorExecutionsTotal)
+              ? ((errorExecutionsTotal / requestExecutionsTotal) * 100)
+              : null;
+
+            const requestByDate = new Map();
+            const errorByDate = new Map();
+            (totalMetricResult.series || []).forEach((point) => {
+              const key = getAdminMetricsDateKey(new Date(point.timestamp));
+              requestByDate.set(key, (requestByDate.get(key) || 0) + Number(point.value || 0));
+            });
+            (errorMetricResult.series || []).forEach((point) => {
+              const key = getAdminMetricsDateKey(new Date(point.timestamp));
+              errorByDate.set(key, (errorByDate.get(key) || 0) + Number(point.value || 0));
+            });
+
+            daily.forEach((row) => {
+              const requestExecutions = requestByDate.has(row.date)
+                ? Math.round(requestByDate.get(row.date) || 0)
+                : 0;
+              const errorExecutions = errorMetricResult.filter
+                ? Math.round(errorByDate.get(row.date) || 0)
+                : null;
+              row.requestExecutions = requestExecutions;
+              row.errorExecutions = errorExecutions;
+              row.errorRatePct = Number.isFinite(errorExecutions) && requestExecutions > 0
+                ? ((errorExecutions / requestExecutions) * 100)
+                : null;
+            });
+          } else {
+            warnings.push('API execution metrics unavailable from Cloud Monitoring; showing provider rollups only.');
+          }
+        }
+      } else {
+        warnings.push('googleapis dependency unavailable; Cloud Monitoring API health overlay disabled.');
+      }
+
+      const lastDay = daily[daily.length - 1] || { totalCalls: 0 };
+      const previousDay = daily[daily.length - 2] || { totalCalls: 0 };
+      const last7Rows = getWindowRows(daily, Math.min(7, daily.length), 0);
+      const previous7Rows = getWindowRows(daily, Math.min(7, Math.max(daily.length - Math.min(7, daily.length), 0)), Math.min(7, daily.length));
+      const last7Avg = averageRows(last7Rows, (row) => row.totalCalls || 0);
+      const previous7Avg = averageRows(previous7Rows, (row) => row.totalCalls || 0);
+      const volatilityPct = totalCalls > 0
+        ? (computeStdDev(daily.map((row) => Number(row.totalCalls || 0))) / Math.max(averageRows(daily, (row) => row.totalCalls || 0), 1)) * 100
+        : 0;
+      const busiestDay = daily.reduce((best, row) => {
+        if (!best || Number(row.totalCalls || 0) > Number(best.totalCalls || 0)) return row;
+        return best;
+      }, null);
+
+      const weekdayTotals = new Map();
+      let weekendCalls = 0;
+      daily.forEach((row) => {
+        const date = new Date(`${row.date}T00:00:00.000Z`);
+        const weekday = date.toLocaleDateString('en-AU', { weekday: 'short', timeZone: 'UTC' });
+        weekdayTotals.set(weekday, (weekdayTotals.get(weekday) || 0) + Number(row.totalCalls || 0));
+        if (weekday === 'Sat' || weekday === 'Sun') {
+          weekendCalls += Number(row.totalCalls || 0);
+        }
+      });
+      const busiestWeekdayEntry = Array.from(weekdayTotals.entries())
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0] || null;
+
+      const alerts = [];
+      const pushAlert = (level, code, title, detail) => {
+        alerts.push({ level, code, title, detail });
+      };
+
+      if (monitoringSummary.available && Number.isFinite(monitoringSummary.errorRatePct)) {
+        if (monitoringSummary.errorRatePct >= 5) {
+          pushAlert(
+            'bad',
+            'error_rate_breach',
+            'Execution failures elevated',
+            `Cloud Monitoring shows ${monitoringSummary.errorRatePct.toFixed(2)}% failed executions over the last ${days} days.`
+          );
+        } else if (monitoringSummary.errorRatePct >= 2) {
+          pushAlert(
+            'warn',
+            'error_rate_watch',
+            'Execution failures need attention',
+            `Cloud Monitoring shows ${monitoringSummary.errorRatePct.toFixed(2)}% failed executions over the last ${days} days.`
+          );
+        }
+      }
+
+      if (lastDay.totalCalls >= Math.max(200, last7Avg * 1.75)) {
+        pushAlert(
+          'warn',
+          'traffic_spike',
+          'Recent provider traffic spike',
+          `${formatAlertDetailNumber(lastDay.totalCalls)} provider calls landed on ${lastDay.date}, versus a 7-day average of ${formatAlertDetailNumber(Math.round(last7Avg))}.`
+        );
+      }
+
+      if (previous7Avg >= 50 && last7Avg >= previous7Avg * 1.4) {
+        pushAlert(
+          'info',
+          'sustained_growth',
+          'Sustained API usage growth',
+          `The latest 7-day average is ${formatAlertDetailNumber(Math.round(last7Avg))} calls/day, up ${(pctChange(last7Avg, previous7Avg) || 0).toFixed(1)}% versus the prior 7-day window.`
+        );
+      }
+
+      if (dominantProvider && dominantProvider.sharePct >= 70 && dominantProvider.totalCalls >= 200) {
+        pushAlert(
+          'warn',
+          'provider_concentration',
+          'Provider concentration risk',
+          `${dominantProvider.label} accounts for ${dominantProvider.sharePct.toFixed(1)}% of tracked provider calls in this window.`
+        );
+      }
+
+      providerRows
+        .filter((row) => row.avgDailyCallsPrev7d >= 20 && row.avgDailyCalls7d >= row.avgDailyCallsPrev7d * 1.8)
+        .slice(0, 2)
+        .forEach((row) => {
+          pushAlert(
+            'warn',
+            `potential_overage_${row.key}`,
+            `${row.label} usage acceleration`,
+            `Latest 7-day average is ${formatAlertDetailNumber(Math.round(row.avgDailyCalls7d))}/day, up ${(row.trendPct || 0).toFixed(1)}% versus the prior week. Treat this as a potential overage or rate-limit risk if that provider has tight quotas.`
+          );
+        });
+
+      const recentTwoDayTotal = sumRows(getWindowRows(daily, Math.min(2, daily.length), 0), (row) => row.totalCalls || 0);
+      const priorWeekTotal = sumRows(getWindowRows(daily, Math.min(7, Math.max(daily.length - Math.min(2, daily.length), 0)), Math.min(2, daily.length)), (row) => row.totalCalls || 0);
+      if (recentTwoDayTotal === 0 && priorWeekTotal >= 100) {
+        pushAlert(
+          'bad',
+          'traffic_drop',
+          'Tracked provider traffic dropped to zero',
+          'The last 2 days show no provider calls despite meaningful activity in the preceding week.'
+        );
+      }
+
+      const healthStatus = (() => {
+        if (alerts.some((alert) => alert.level === 'bad')) return 'bad';
+        if (alerts.some((alert) => alert.level === 'warn')) return 'warn';
+        return 'good';
+      })();
+
+      return {
+        source: monitoringSummary.available
+          ? `metrics-rollups+${monitoringSummary.source}`
+          : 'metrics-rollups',
+        updatedAt: now.toISOString(),
+        window: { days },
+        summary: {
+          totalCalls,
+          avgDailyCalls: averageRows(daily, (row) => row.totalCalls || 0),
+          lastDayCalls: Number(lastDay.totalCalls || 0),
+          dayOverDayPct: pctChange(lastDay.totalCalls || 0, previousDay.totalCalls || 0),
+          callsAvg7d: last7Avg,
+          callsAvgPrev7d: previous7Avg,
+          callsPerExecution: monitoringSummary.requestExecutionsTotal > 0
+            ? (totalCalls / monitoringSummary.requestExecutionsTotal)
+            : null,
+          activeProviders: activeProviders.length,
+          dominantProvider,
+          volatilityPct,
+          busiestDay: busiestDay
+            ? { date: busiestDay.date, totalCalls: Number(busiestDay.totalCalls || 0) }
+            : null,
+          busiestWeekday: busiestWeekdayEntry
+            ? { label: busiestWeekdayEntry[0], totalCalls: busiestWeekdayEntry[1] }
+            : null,
+          weekendSharePct: totalCalls > 0 ? ((weekendCalls / totalCalls) * 100) : 0,
+          healthStatus
+        },
+        monitoring: monitoringSummary,
+        providers: providerRows,
+        daily,
+        alerts,
+        warnings
+      };
+    };
+
+    const result = await getCachedAdminApiHealth(cacheKey, loadHealth, { forceRefresh });
+    res.json({ errno: 0, result });
+  } catch (error) {
+    console.error('[Admin] Error loading API health:', error);
+    res.status(500).json({ errno: 500, error: error?.message || 'Failed to load API health' });
   }
 });
 

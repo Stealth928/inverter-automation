@@ -1577,6 +1577,160 @@
             }
         }
 
+        .api-health-lead {
+            margin-top: 16px;
+            padding: 14px 16px;
+            border-radius: var(--radius-lg);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 65%, transparent);
+            background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .api-health-lead strong {
+            color: var(--text-primary);
+        }
+        .api-health-lead[data-level="good"] {
+            border-color: color-mix(in srgb, var(--color-success) 28%, transparent);
+            background: color-mix(in srgb, var(--color-success) 8%, var(--bg-secondary));
+        }
+        .api-health-lead[data-level="warn"] {
+            border-color: color-mix(in srgb, var(--color-warning) 28%, transparent);
+            background: color-mix(in srgb, var(--color-warning) 8%, var(--bg-secondary));
+        }
+        .api-health-lead[data-level="bad"] {
+            border-color: color-mix(in srgb, var(--color-danger) 28%, transparent);
+            background: color-mix(in srgb, var(--color-danger) 8%, var(--bg-secondary));
+        }
+        .api-health-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+            margin-top: 18px;
+        }
+        .api-health-panel {
+            background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+        }
+        .api-health-panel h3 {
+            margin: 0 0 6px;
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+        .api-health-panel p {
+            margin: 0 0 12px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .api-health-chart-wrap {
+            position: relative;
+            min-height: 300px;
+        }
+        .api-health-chart-wrap-compact {
+            min-height: 260px;
+        }
+        .api-health-alert-list {
+            display: grid;
+            gap: 10px;
+        }
+        .api-health-alert {
+            border-radius: var(--radius-lg);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 65%, transparent);
+            background: color-mix(in srgb, var(--bg-tertiary) 92%, transparent);
+            padding: 12px 14px;
+        }
+        .api-health-alert.good {
+            border-color: color-mix(in srgb, var(--color-success) 26%, transparent);
+        }
+        .api-health-alert.warn {
+            border-color: color-mix(in srgb, var(--color-warning) 30%, transparent);
+        }
+        .api-health-alert.bad {
+            border-color: color-mix(in srgb, var(--color-danger) 30%, transparent);
+        }
+        .api-health-alert-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        .api-health-alert-head strong {
+            color: var(--text-primary);
+            font-size: 13px;
+        }
+        .api-health-alert-body {
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.55;
+        }
+        .api-health-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            background: color-mix(in srgb, var(--bg-overlay) 85%, transparent);
+            color: var(--text-secondary);
+        }
+        .api-health-badge.good {
+            color: var(--color-success);
+            background: color-mix(in srgb, var(--color-success) 12%, transparent);
+        }
+        .api-health-badge.warn {
+            color: var(--color-warning);
+            background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+        }
+        .api-health-badge.bad {
+            color: var(--color-danger);
+            background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+        }
+        .api-health-table-wrap {
+            overflow-x: auto;
+        }
+        .api-health-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .api-health-table th,
+        .api-health-table td {
+            padding: 9px 8px;
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
+            text-align: left;
+            vertical-align: top;
+        }
+        .api-health-table th {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .api-health-provider-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        .api-health-empty {
+            color: var(--text-secondary);
+            font-size: 13px;
+            padding: 12px 0 4px;
+        }
+        @media (max-width: 900px) {
+            .api-health-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         /* Admin Tabs */
         .admin-tab-nav {
             display: flex;
@@ -2069,6 +2223,7 @@
             <button class="tab-btn" data-tab="dataworks" onclick="switchTab('dataworks')">🛰️ DataWorks</button>
             <button class="tab-btn" data-tab="behavior" onclick="switchTab('behavior')">🧭 Behaviour</button>
             <button class="tab-btn" data-tab="announcement" onclick="switchTab('announcement')">📣 Announcement</button>
+            <button class="tab-btn" data-tab="apiHealth" onclick="switchTab('apiHealth')">🩺 API Health</button>
         </nav>
 
         <div id="tab-overview" class="tab-panel active">
@@ -2693,6 +2848,115 @@
             </div>
         </div>
         </div><!-- /tab-users -->
+
+        <div id="tab-api-health" class="tab-panel">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">🩺</span> API Health</div>
+                <button class="action-btn" onclick="loadApiHealth({ force: true })" id="refreshApiHealthBtn">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div class="firestore-updated" id="apiHealthUpdated">Loading API health...</div>
+                <div class="platform-kpis-wrap">
+                    <div class="platform-kpis" id="apiHealthKpis">
+                        <div class="kpi-item">
+                            <div class="label">Provider Calls</div>
+                            <div class="value" id="apiHealthTotalCalls">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Last Day</div>
+                            <div class="value" id="apiHealthLastDayCalls">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">7d Avg / Day</div>
+                            <div class="value" id="apiHealthDailyAvg">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Dominant Provider</div>
+                            <div class="value small" id="apiHealthDominantProvider">-</div>
+                            <div class="sub" id="apiHealthDominantProviderMeta"></div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Function Executions</div>
+                            <div class="value small" id="apiHealthExecutions">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Execution Error Rate</div>
+                            <div class="value small" id="apiHealthErrorRate">-</div>
+                            <div class="sub" id="apiHealthErrorRateMeta"></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="apiHealthLead" class="api-health-lead">Scheduler queue, cycle, and dead-letter diagnostics stay in the Scheduler tab. This view focuses on provider/API traffic, request failures, and usage acceleration patterns.</div>
+                <div class="api-health-grid">
+                    <section class="api-health-panel">
+                        <h3>Traffic and failures</h3>
+                        <p>Provider calls come from the existing daily metrics rollups. Function execution and failure overlay is pulled from Cloud Monitoring only when available.</p>
+                        <div class="api-health-chart-wrap">
+                            <canvas id="apiHealthTrendChart"></canvas>
+                        </div>
+                    </section>
+                    <section class="api-health-panel">
+                        <h3>Provider mix</h3>
+                        <p>Share of tracked provider categories across the selected window.</p>
+                        <div class="api-health-chart-wrap api-health-chart-wrap-compact">
+                            <canvas id="apiHealthProviderChart"></canvas>
+                        </div>
+                    </section>
+                </div>
+                <div class="api-health-grid">
+                    <section class="api-health-panel">
+                        <h3>Emerging patterns</h3>
+                        <p>Potential spikes, concentration, execution failures, and inferred overage risks. Scheduler-specific orchestration alerts stay separate.</p>
+                        <div id="apiHealthAlerts" class="api-health-alert-list"></div>
+                    </section>
+                    <section class="api-health-panel">
+                        <h3>Provider breakdown</h3>
+                        <p>Window totals, mix share, last-day volume, and week-over-week change.</p>
+                        <div class="api-health-table-wrap">
+                            <table class="api-health-table">
+                                <thead>
+                                    <tr>
+                                        <th>Provider</th>
+                                        <th>Window Calls</th>
+                                        <th>Share</th>
+                                        <th>Last Day</th>
+                                        <th>7d Avg</th>
+                                        <th>Trend</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="apiHealthProvidersBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="api-health-empty" id="apiHealthProvidersEmpty">No provider traffic recorded in this window.</div>
+                    </section>
+                </div>
+                <section class="api-health-panel" style="margin-top: 18px;">
+                    <h3>Recent daily breakdown</h3>
+                    <p>Latest 14 days. Error columns stay blank when the Cloud Monitoring failure overlay is unavailable.</p>
+                    <div class="api-health-table-wrap">
+                        <table class="api-health-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Provider Calls</th>
+                                    <th>Inverter</th>
+                                    <th>Amber</th>
+                                    <th>Weather</th>
+                                    <th>Tesla EV</th>
+                                    <th>Executions</th>
+                                    <th>Errors</th>
+                                </tr>
+                            </thead>
+                            <tbody id="apiHealthDailyBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="api-health-empty" id="apiHealthDailyEmpty">No daily API health data yet.</div>
+                </section>
+                <div class="firestore-warning" id="apiHealthWarning" style="display: none;"></div>
+            </div>
+        </div>
+        </div><!-- /tab-api-health -->
     </div>
 
     <!-- Stats Drawer -->
@@ -2707,6 +2971,6 @@
         </div>
     </div>
 
-    <script defer src="js/admin.js?v=13"></script>
+    <script defer src="js/admin.js?v=14"></script>
 </body>
 </html>

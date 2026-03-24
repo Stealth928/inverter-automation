@@ -26,6 +26,10 @@ const amberRateLimitState = {
 // In-flight request tracker to prevent duplicate API calls
 const amberPricesInFlight = new Map(); // key: "userId:siteId", value: Promise
 
+function isEmulatorRuntime() {
+  return Boolean(process.env.FUNCTIONS_EMULATOR || process.env.FIRESTORE_EMULATOR_HOST);
+}
+
 /**
  * Initialize the module with dependencies from index.js.
  * Returns wrapper functions that have access to db, logger, config, incrementApiCount.
@@ -161,6 +165,9 @@ function init(dependencies) {
       const cacheTTL = 7 * 24 * 60 * 60 * 1000; // 7 days
       
       if (cacheAge > cacheTTL) {
+        if (isEmulatorRuntime()) {
+          return cached.sites || [];
+        }
         return null;
       }
       
@@ -217,6 +224,9 @@ function init(dependencies) {
       const cacheTTL = getAmberCacheTTL(userConfig);
       
       if (cacheAge > cacheTTL) {
+        if (isEmulatorRuntime()) {
+          return cached.prices || null;
+        }
         return null;
       }
       
