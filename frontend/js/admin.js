@@ -3330,7 +3330,7 @@
     }
 
     function formatApiHealthTeslaBreakdown(row) {
-        const total = formatCompactNumber(row.categories?.ev || 0);
+        // Always render Wake/Command/Data counts as plain integers in the format x/y/z.
         const rawBreakdown = row && row.evBreakdown && typeof row.evBreakdown === 'object'
             ? row.evBreakdown
             : {};
@@ -3343,19 +3343,15 @@
             grouped.set(label, (grouped.get(label) || 0) + count);
         });
 
-        if (!grouped.size) {
-            return `<span class="api-health-cell-primary">${escapeHtml(total)}</span>`;
-        }
+        const totalNumeric = Number(row?.categories?.ev || 0);
+        const wake = grouped.get('Wake') || 0;
+        const command = grouped.get('Command') || 0;
+        const data = grouped.get('Data') || 0;
 
-        const chips = Array.from(grouped.entries())
-            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-            .map(([label, count]) => `<span class="api-health-breakdown-chip"><strong>${escapeHtml(label)}</strong>${escapeHtml(formatCompactNumber(count))}</span>`)
-            .join('');
+        // If breakdown was empty but a total exists, place the total in the first position (Wake) for visibility.
+        const outWake = (wake || command || data) ? wake : (totalNumeric || 0);
 
-        return `
-            <span class="api-health-cell-primary">${escapeHtml(total)}</span>
-            <span class="api-health-cell-secondary">Wake, command, data mix</span>
-            <div class="api-health-breakdown-list">${chips}</div>`;
+        return `<span class="api-health-cell-primary">${escapeHtml(String(outWake))}/${escapeHtml(String(command))}/${escapeHtml(String(data))}</span>`;
     }
 
     function renderApiHealthProviderTable(providers) {
