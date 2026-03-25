@@ -812,6 +812,44 @@
         .info-tip:focus-visible::before {
             opacity: 1;
         }
+        .js-info-tooltips .info-tip::after,
+        .js-info-tooltips .info-tip::before {
+            display: none;
+        }
+        .admin-info-tooltip {
+            position: fixed;
+            top: 0;
+            left: 0;
+            max-width: min(320px, calc(100vw - 20px));
+            padding: 9px 10px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-primary);
+            background: color-mix(in srgb, var(--bg-primary) 96%, black 4%);
+            color: var(--text-primary);
+            font-size: 11px;
+            font-weight: 400;
+            line-height: 1.45;
+            box-shadow: var(--shadow-lg);
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(4px);
+            transition: opacity 0.12s ease, transform 0.12s ease;
+            z-index: 2000;
+        }
+        .admin-info-tooltip.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .admin-info-tooltip[data-placement="top"] {
+            transform: translateY(4px);
+        }
+        .admin-info-tooltip[data-placement="bottom"] {
+            transform: translateY(-4px);
+        }
+        .admin-info-tooltip.is-visible[data-placement="top"],
+        .admin-info-tooltip.is-visible[data-placement="bottom"] {
+            transform: translateY(0);
+        }
         .scheduler-kpi .value {
             font-size: 20px;
             font-weight: 700;
@@ -868,7 +906,7 @@
             border-radius: var(--radius-md);
             padding: 8px 10px;
             position: relative;
-            overflow: hidden;
+            overflow: visible;
             transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
         }
         .scheduler-slo-item::before {
@@ -1815,12 +1853,105 @@
             font-size: 13px;
             padding: 12px 0 4px;
         }
+        .api-health-observability-panel {
+            margin-top: 18px;
+            background:
+                radial-gradient(circle at top right, color-mix(in srgb, #f472b6 18%, transparent), transparent 42%),
+                color-mix(in srgb, var(--bg-secondary) 94%, transparent);
+        }
+        .api-health-observability-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .api-health-observability-head h3 {
+            margin-bottom: 4px;
+        }
+        .api-health-observability-summary {
+            margin: 0;
+            max-width: 760px;
+        }
+        .api-health-observability-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        .api-health-observability-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 55%, transparent);
+            background: color-mix(in srgb, var(--bg-overlay) 82%, transparent);
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+        .api-health-observability-pill strong {
+            color: var(--text-primary);
+            font-size: 11px;
+        }
+        .api-health-observability-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            margin-top: 16px;
+        }
+        .api-health-observability-card {
+            border-radius: var(--radius-lg);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 50%, transparent);
+            background: color-mix(in srgb, var(--bg-tertiary) 90%, transparent);
+            padding: 14px;
+        }
+        .api-health-observability-card h4 {
+            margin: 0 0 8px;
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--text-primary);
+        }
+        .api-health-observability-list {
+            margin: 0;
+            padding-left: 18px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .api-health-observability-list li + li {
+            margin-top: 6px;
+        }
+        .api-health-observability-code {
+            display: inline-block;
+            margin-right: 6px;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--bg-overlay) 85%, transparent);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
+            color: var(--text-primary);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+        }
+        .api-health-observability-footnote {
+            margin-top: 12px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            line-height: 1.55;
+        }
         @media (max-width: 900px) {
             .api-health-grid {
                 grid-template-columns: 1fr;
             }
             .api-health-chart-wrap {
                 min-height: 260px;
+            }
+            .api-health-observability-grid {
+                grid-template-columns: 1fr;
             }
         }
 
@@ -2803,7 +2934,7 @@
                     <div class="scheduler-slo-item" id="scheduler24hSloQueueLag">
                         <div class="slo-title">
                             <span class="label-row">SLO: Queue Lag
-                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 2m 0s).">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Shows the weighted average queue lag across executed cycles in the selected window and the worst single-cycle max observed in that window. Card status is based on the max (target <= 2m 0s).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
@@ -2813,7 +2944,7 @@
                     <div class="scheduler-slo-item" id="scheduler24hSloCycleDuration">
                         <div class="slo-title">
                             <span class="label-row">SLO: Cycle Duration
-                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 20s).">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Shows the weighted average cycle duration across executed cycles in the selected window and the worst single-cycle max observed in that window. Card status is based on the max (target <= 20s).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
@@ -2823,7 +2954,7 @@
                     <div class="scheduler-slo-item" id="scheduler24hSloTelemetryAge">
                         <div class="slo-title">
                             <span class="label-row">SLO: Telemetry Age
-                                <span class="info-tip" tabindex="0" data-tip="Maximum telemetry staleness observed across executed cycles in the selected day window. Healthy when <= 30m.">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Derived from the source timestamp embedded in inverter telemetry. Shows the highest telemetry age among executed cycles where a parseable timestamp was present; cycles with missing timestamps are excluded from this age max and counted separately in diagnostics. Healthy when <= 30m.">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
@@ -2833,7 +2964,7 @@
                     <div class="scheduler-slo-item" id="scheduler24hSloCycleTailP99">
                         <div class="slo-title">
                             <span class="label-row">SLO: Cycle Tail (P99)
-                                <span class="info-tip" tabindex="0" data-tip="Uses p99 cycle duration; sustained alerting defaults to p99 > 10s for 15 minutes.">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Shows the highest p99 cycle duration observed in the selected window. The card colour reflects that window-max p99; the supporting text also shows the current sustained 15-minute tail signal used for alerting (default threshold 10s, minimum 10 runs).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
@@ -2871,7 +3002,7 @@
                     <div class="scheduler-slo-item" id="scheduler14dSloQueueLag">
                         <div class="slo-title">
                             <span class="label-row">SLO: Queue Lag
-                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 2m 0s).">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Shows the weighted average queue lag across executed cycles in the selected window and the worst single-cycle max observed in that window. Card status is based on the max (target <= 2m 0s).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
@@ -2881,7 +3012,7 @@
                     <div class="scheduler-slo-item" id="scheduler14dSloCycleDuration">
                         <div class="slo-title">
                             <span class="label-row">SLO: Cycle Duration
-                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 20s).">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Shows the weighted average cycle duration across executed cycles in the selected window and the worst single-cycle max observed in that window. Card status is based on the max (target <= 20s).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
@@ -2891,7 +3022,7 @@
                     <div class="scheduler-slo-item" id="scheduler14dSloTelemetryAge">
                         <div class="slo-title">
                             <span class="label-row">SLO: Telemetry Age
-                                <span class="info-tip" tabindex="0" data-tip="Maximum telemetry staleness observed across executed cycles in the selected day window. Healthy when <= 30m.">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Derived from the source timestamp embedded in inverter telemetry. Shows the highest telemetry age among executed cycles where a parseable timestamp was present; cycles with missing timestamps are excluded from this age max and counted separately in diagnostics. Healthy when <= 30m.">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
@@ -2901,7 +3032,7 @@
                     <div class="scheduler-slo-item" id="scheduler14dSloCycleTailP99">
                         <div class="slo-title">
                             <span class="label-row">SLO: Cycle Tail (P99)
-                                <span class="info-tip" tabindex="0" data-tip="Uses p99 cycle duration; sustained alerting defaults to p99 > 10s for 15 minutes.">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Shows the highest p99 cycle duration observed in the selected window. The card colour reflects that window-max p99; the supporting text also shows the current sustained 15-minute tail signal used for alerting (default threshold 10s, minimum 10 runs).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
@@ -3141,6 +3272,34 @@
                     </div>
                 </div>
                 <div id="apiHealthLead" class="api-health-lead">Scheduler queue, cycle, and dead-letter diagnostics stay in the Scheduler tab. This view focuses on provider/API traffic, request failures, and usage acceleration patterns.</div>
+                <section class="api-health-panel api-health-observability-panel" id="apiHealthAlphaEssPanel">
+                    <div class="api-health-observability-head">
+                        <div>
+                            <h3>AlphaESS observability</h3>
+                            <p class="api-health-observability-summary" id="apiHealthAlphaEssSummary">Loading AlphaESS diagnostics guidance...</p>
+                        </div>
+                        <div class="api-health-observability-badges" id="apiHealthAlphaEssBadges"></div>
+                    </div>
+                    <div class="api-health-observability-grid">
+                        <article class="api-health-observability-card">
+                            <h4>Check When</h4>
+                            <ul class="api-health-observability-list" id="apiHealthAlphaEssCheckWhen"></ul>
+                        </article>
+                        <article class="api-health-observability-card">
+                            <h4>Look For</h4>
+                            <ul class="api-health-observability-list" id="apiHealthAlphaEssLookFor"></ul>
+                        </article>
+                        <article class="api-health-observability-card">
+                            <h4>Cost And Safety</h4>
+                            <ul class="api-health-observability-list" id="apiHealthAlphaEssCost"></ul>
+                        </article>
+                        <article class="api-health-observability-card">
+                            <h4>Rollback</h4>
+                            <ul class="api-health-observability-list" id="apiHealthAlphaEssRollback"></ul>
+                        </article>
+                    </div>
+                    <div class="api-health-observability-footnote" id="apiHealthAlphaEssFootnote">This panel is documentation-backed operational guidance. It does not trigger extra provider calls by itself.</div>
+                </section>
                 <div class="api-health-grid">
                     <section class="api-health-panel">
                         <h3>Traffic and failures</h3>

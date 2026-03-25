@@ -154,6 +154,130 @@
             .replace(/'/g, '&#39;');
     }
 
+    let adminInfoTooltipEl = null;
+    let adminInfoTooltipTarget = null;
+
+    function ensureAdminInfoTooltip() {
+        if (adminInfoTooltipEl || !document.body) return adminInfoTooltipEl;
+        adminInfoTooltipEl = document.createElement('div');
+        adminInfoTooltipEl.id = 'adminInfoTooltip';
+        adminInfoTooltipEl.className = 'admin-info-tooltip';
+        adminInfoTooltipEl.setAttribute('role', 'tooltip');
+        adminInfoTooltipEl.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(adminInfoTooltipEl);
+        return adminInfoTooltipEl;
+    }
+
+    function positionAdminInfoTooltip(target) {
+        const tooltipEl = ensureAdminInfoTooltip();
+        if (!tooltipEl || !target) return;
+
+        const rect = target.getBoundingClientRect();
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        const margin = 10;
+
+        tooltipEl.style.top = '0px';
+        tooltipEl.style.left = '0px';
+        const tooltipRect = tooltipEl.getBoundingClientRect();
+        const tooltipWidth = tooltipRect.width || Math.min(320, Math.max(180, viewportWidth - (margin * 2)));
+        const tooltipHeight = tooltipRect.height || 0;
+
+        const preferredTop = rect.top - tooltipHeight - 10;
+        const placeBelow = preferredTop < margin && rect.bottom + tooltipHeight + 10 <= viewportHeight - margin;
+        const top = placeBelow
+            ? Math.min(viewportHeight - tooltipHeight - margin, rect.bottom + 10)
+            : Math.max(margin, preferredTop);
+        const centeredLeft = rect.left + (rect.width / 2) - (tooltipWidth / 2);
+        const left = Math.max(margin, Math.min(centeredLeft, viewportWidth - tooltipWidth - margin));
+
+        tooltipEl.dataset.placement = placeBelow ? 'bottom' : 'top';
+        tooltipEl.style.top = `${Math.round(top)}px`;
+        tooltipEl.style.left = `${Math.round(left)}px`;
+    }
+
+    function hideAdminInfoTooltip(target = null) {
+        const tooltipEl = ensureAdminInfoTooltip();
+        if (!tooltipEl) return;
+        if (target && adminInfoTooltipTarget && target !== adminInfoTooltipTarget) return;
+        if (adminInfoTooltipTarget) {
+            adminInfoTooltipTarget.removeAttribute('aria-describedby');
+        }
+        adminInfoTooltipTarget = null;
+        tooltipEl.classList.remove('is-visible');
+        tooltipEl.setAttribute('aria-hidden', 'true');
+        tooltipEl.textContent = '';
+        delete tooltipEl.dataset.placement;
+    }
+
+    function showAdminInfoTooltip(target) {
+        const tooltipEl = ensureAdminInfoTooltip();
+        if (!tooltipEl || !target) return;
+        const tipText = String(target.getAttribute('data-tip') || '').trim();
+        if (!tipText) {
+            hideAdminInfoTooltip();
+            return;
+        }
+        adminInfoTooltipTarget = target;
+        tooltipEl.textContent = tipText;
+        tooltipEl.setAttribute('aria-hidden', 'false');
+        target.setAttribute('aria-describedby', tooltipEl.id);
+        positionAdminInfoTooltip(target);
+        tooltipEl.classList.add('is-visible');
+    }
+
+    function initializeInfoTips() {
+        if (!document.body) return;
+        document.body.classList.add('js-info-tooltips');
+        ensureAdminInfoTooltip();
+
+        document.querySelectorAll('.info-tip').forEach((tipEl) => {
+            if (!(tipEl instanceof HTMLElement) || tipEl.dataset.tooltipBound === '1') return;
+            tipEl.dataset.tooltipBound = '1';
+            if (!tipEl.getAttribute('aria-label')) {
+                const tipText = String(tipEl.getAttribute('data-tip') || '').trim();
+                if (tipText) {
+                    tipEl.setAttribute('aria-label', tipText);
+                }
+            }
+            tipEl.addEventListener('mouseenter', () => showAdminInfoTooltip(tipEl));
+            tipEl.addEventListener('mouseleave', () => hideAdminInfoTooltip(tipEl));
+            tipEl.addEventListener('focus', () => showAdminInfoTooltip(tipEl));
+            tipEl.addEventListener('blur', () => hideAdminInfoTooltip(tipEl));
+            tipEl.addEventListener('click', (event) => {
+                event.preventDefault();
+                if (adminInfoTooltipTarget === tipEl) {
+                    hideAdminInfoTooltip(tipEl);
+                    return;
+                }
+                showAdminInfoTooltip(tipEl);
+            });
+        });
+
+        if (document.body.dataset.infoTooltipListenersBound === '1') return;
+        document.body.dataset.infoTooltipListenersBound = '1';
+        document.addEventListener('scroll', () => {
+            if (adminInfoTooltipTarget) {
+                positionAdminInfoTooltip(adminInfoTooltipTarget);
+            }
+        }, true);
+        window.addEventListener('resize', () => {
+            if (adminInfoTooltipTarget) {
+                positionAdminInfoTooltip(adminInfoTooltipTarget);
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                hideAdminInfoTooltip();
+            }
+        });
+        document.addEventListener('pointerdown', (event) => {
+            const target = event.target;
+            if (target instanceof Element && target.closest('.info-tip')) return;
+            hideAdminInfoTooltip();
+        });
+    }
+
     function formatSummaryRatio(metric, totalUsers) {
         if (!metric || !Number.isFinite(Number(metric.count))) {
             return { value: 'N/A', meta: 'Not available' };
@@ -2613,6 +2737,10 @@
         const p99CycleDurationMs = Number(summary?.p99CycleDurationMs || 0);
         const avgQueueLagMs = Number(summary?.avgQueueLagMs || options?.avgQueueLagMs || 0);
         const avgCycleDurationMs = Number(summary?.avgCycleDurationMs || options?.avgCycleDurationMs || 0);
+        const telemetryPauseReasons = summary?.telemetryPauseReasons && typeof summary.telemetryPauseReasons === 'object'
+            ? summary.telemetryPauseReasons
+            : {};
+        const telemetryMissingTimestampCount = Number(telemetryPauseReasons.stale_telemetry_missing_timestamp || 0);
         const thresholds = options?.thresholds && typeof options.thresholds === 'object'
             ? options.thresholds
             : {};
@@ -2636,42 +2764,52 @@
                 value: errorRatePct,
                 target: Number(thresholds.errorRatePct || 1.0),
                 display: `${errorRatePct.toFixed(2)}%`,
-                targetDisplay: `Target <= ${Number(thresholds.errorRatePct || 1.0).toFixed(2)}%`
+                targetDisplay: `Target <= ${Number(thresholds.errorRatePct || 1.0).toFixed(2)}%`,
+                meta: `Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)} · Errors ${formatCompactNumber(summary?.errors || 0)} · Dead letters ${formatCompactNumber(summary?.deadLetters || 0)}`
             },
             {
                 id: `${safePrefix}SloDeadLetterRate`,
                 value: deadLetterRatePct,
                 target: Number(thresholds.deadLetterRatePct || 0.2),
                 display: `${deadLetterRatePct.toFixed(2)}%`,
-                targetDisplay: `Target <= ${Number(thresholds.deadLetterRatePct || 0.2).toFixed(2)}%`
+                targetDisplay: `Target <= ${Number(thresholds.deadLetterRatePct || 0.2).toFixed(2)}%`,
+                meta: `Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)} · Errors ${formatCompactNumber(summary?.errors || 0)} · Dead letters ${formatCompactNumber(summary?.deadLetters || 0)}`
             },
             {
                 id: `${safePrefix}SloQueueLag`,
                 value: maxQueueLagMs,
                 target: queueLagTargetMs,
                 display: `${formatDurationMs(avgQueueLagMs)} avg / ${formatDurationMs(maxQueueLagMs)} max`,
-                targetDisplay: `Target avg <= ${formatDurationMs(queueLagTargetMs)}, max <= ${formatDurationMs(queueLagTargetMs)}`
+                targetDisplay: `Target avg <= ${formatDurationMs(queueLagTargetMs)}, max <= ${formatDurationMs(queueLagTargetMs)}`,
+                meta: `Weighted average across executed cycles in this window. Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
             },
             {
                 id: `${safePrefix}SloCycleDuration`,
                 value: maxCycleDurationMs,
                 target: cycleDurationTargetMs,
                 display: `${formatDurationMs(avgCycleDurationMs)} avg / ${formatDurationMs(maxCycleDurationMs)} max`,
-                targetDisplay: `Target avg <= ${formatDurationMs(cycleDurationTargetMs)}, max <= ${formatDurationMs(cycleDurationTargetMs)}`
+                targetDisplay: `Target avg <= ${formatDurationMs(cycleDurationTargetMs)}, max <= ${formatDurationMs(cycleDurationTargetMs)}`,
+                meta: `Weighted average across executed cycles in this window. Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
             },
             {
                 id: `${safePrefix}SloTelemetryAge`,
                 value: maxTelemetryAgeMs,
                 target: telemetryAgeTargetMs,
-                display: `${formatDurationMs(maxTelemetryAgeMs)} max`,
-                targetDisplay: `Target max <= ${formatDurationMs(telemetryAgeTargetMs)}`
+                display: telemetryMissingTimestampCount > 0
+                    ? `${formatDurationMs(maxTelemetryAgeMs)} max · ${formatCompactNumber(telemetryMissingTimestampCount)} missing timestamp`
+                    : `${formatDurationMs(maxTelemetryAgeMs)} max`,
+                targetDisplay: `Target max <= ${formatDurationMs(telemetryAgeTargetMs)}`,
+                meta: telemetryMissingTimestampCount > 0
+                    ? `Derived from runs with parseable source timestamps. Missing timestamp cycles: ${formatCompactNumber(telemetryMissingTimestampCount)} · Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
+                    : `Derived from runs with parseable source timestamps. Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
             },
             {
                 id: `${safePrefix}SloCycleTailP99`,
                 value: p99CycleDurationMs,
                 target: p99TargetMs,
-                display: `${formatDurationMs(p99CycleDurationMs)} p99`,
-                targetDisplay: `Target p99 <= ${formatDurationMs(p99TargetMs)} · sustained ${tailStatus} (${tailRunsAbove}/${tailObservedRuns} above ${formatDurationMs(tailThresholdMs)} in ${tailWindowMinutes}m, min ${tailMinRuns})`
+                display: `${formatDurationMs(p99CycleDurationMs)} window max p99`,
+                targetDisplay: `Target window max p99 <= ${formatDurationMs(p99TargetMs)}`,
+                meta: `Current sustained signal ${tailStatus} (${tailRunsAbove}/${tailObservedRuns} above ${formatDurationMs(tailThresholdMs)} in ${tailWindowMinutes}m, min ${tailMinRuns})`
             }
         ];
 
@@ -2691,8 +2829,8 @@
             if (targetEl && card.targetDisplay) {
                 targetEl.textContent = card.targetDisplay;
             }
-            if (metaEl && card.targetDisplay) {
-                metaEl.textContent = `Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)} · Errors ${formatCompactNumber(summary?.errors || 0)} · Dead letters ${formatCompactNumber(summary?.deadLetters || 0)}`;
+            if (metaEl) {
+                metaEl.textContent = card.meta || '';
             }
         });
     }
@@ -3173,6 +3311,71 @@
         leadEl.innerHTML = `<strong>Scope:</strong> Provider/API traffic, request failures, and inferred overage risk. Scheduler queue, cycle, and dead-letter health stays in the Scheduler tab.<br><strong>Current mix:</strong> ${escapeHtml(dominantLabel)} leads with ${escapeHtml(dominantShare)}.<br><strong>Health:</strong> ${escapeHtml(failureNote)}<br><strong>Watch:</strong> ${escapeHtml(alertNote)}`;
     }
 
+    function renderAlphaEssObservability(observability, providers) {
+        const summaryEl = document.getElementById('apiHealthAlphaEssSummary');
+        const badgesEl = document.getElementById('apiHealthAlphaEssBadges');
+        const checkWhenEl = document.getElementById('apiHealthAlphaEssCheckWhen');
+        const lookForEl = document.getElementById('apiHealthAlphaEssLookFor');
+        const costEl = document.getElementById('apiHealthAlphaEssCost');
+        const rollbackEl = document.getElementById('apiHealthAlphaEssRollback');
+        const footnoteEl = document.getElementById('apiHealthAlphaEssFootnote');
+        if (!summaryEl || !badgesEl || !checkWhenEl || !lookForEl || !costEl || !rollbackEl || !footnoteEl) return;
+
+        const alpha = observability && typeof observability === 'object' && observability.alphaess && typeof observability.alphaess === 'object'
+            ? observability.alphaess
+            : null;
+        const alphaProvider = Array.isArray(providers)
+            ? providers.find((provider) => String(provider?.key || '').toLowerCase() === 'alphaess')
+            : null;
+
+        if (!alpha || alpha.enabled !== true) {
+            summaryEl.textContent = 'AlphaESS observability guidance is currently unavailable.';
+            badgesEl.innerHTML = '';
+            checkWhenEl.innerHTML = '<li>No AlphaESS guidance published yet.</li>';
+            lookForEl.innerHTML = '<li>No AlphaESS anomaly catalogue is published yet.</li>';
+            costEl.innerHTML = '<li>No AlphaESS cost guidance is published yet.</li>';
+            rollbackEl.innerHTML = '<li>No rollback guidance is published yet.</li>';
+            footnoteEl.textContent = 'This panel remains passive and does not create extra provider traffic.';
+            return;
+        }
+
+        const alphaCalls = alphaProvider ? Number(alphaProvider.totalCalls || 0) : 0;
+        const alphaLastDayCalls = alphaProvider ? Number(alphaProvider.lastDayCalls || 0) : 0;
+        summaryEl.innerHTML = `Low-cost AlphaESS observability is active. <strong>Live realtime reads</strong> only log when an anomaly is detected, while <strong>manual deep diagnostics</strong> always log because they are operator-triggered. In the selected API-health window AlphaESS accounts for <strong>${escapeHtml(formatCompactNumber(alphaCalls))}</strong> provider calls, with <strong>${escapeHtml(formatCompactNumber(alphaLastDayCalls))}</strong> in the last day.`;
+
+        badgesEl.innerHTML = [
+            `<span class="api-health-observability-pill"><strong>Live</strong> ${escapeHtml(String(alpha.liveRealtimeLogging || 'unknown'))}</span>`,
+            `<span class="api-health-observability-pill"><strong>Manual</strong> ${escapeHtml(String(alpha.manualDiagnosticsLogging || 'unknown'))}</span>`,
+            `<span class="api-health-observability-pill"><strong>Extra provider calls</strong> ${escapeHtml(String(alpha.extraProviderCallsPerRequest || 0))}</span>`,
+            `<span class="api-health-observability-pill"><strong>Firestore writes</strong> ${escapeHtml(String(alpha.extraFirestoreWritesPerRequest || 0))}</span>`
+        ].join('');
+
+        const watchWhen = Array.isArray(alpha.watchWhen) ? alpha.watchWhen : [];
+        checkWhenEl.innerHTML = watchWhen.length
+            ? watchWhen.map((item) => `<li>${escapeHtml(item)}</li>`).join('')
+            : '<li>No AlphaESS timing guidance published.</li>';
+
+        const anomalyCodes = Array.isArray(alpha.anomalyCodes) ? alpha.anomalyCodes : [];
+        lookForEl.innerHTML = anomalyCodes.length
+            ? anomalyCodes.map((item) => `<li><span class="api-health-observability-code">${escapeHtml(item.code || 'code')}</span>${escapeHtml(item.lookFor || item.title || '')}</li>`).join('')
+            : '<li>No AlphaESS anomaly catalogue published.</li>';
+
+        const costItems = [];
+        if (Array.isArray(alpha.notes)) costItems.push(...alpha.notes);
+        costItems.push(`Extra provider calls per request: ${Number(alpha.extraProviderCallsPerRequest || 0)}.`);
+        costItems.push(`Extra Firestore writes per request: ${Number(alpha.extraFirestoreWritesPerRequest || 0)}.`);
+        costEl.innerHTML = costItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+
+        const rollbackItems = [];
+        if (alpha.rollback?.summary) rollbackItems.push(alpha.rollback.summary);
+        if (alpha.rollback?.docsPath) rollbackItems.push(`Runbook: ${alpha.rollback.docsPath}`);
+        rollbackEl.innerHTML = rollbackItems.length
+            ? rollbackItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')
+            : '<li>No rollback guidance published.</li>';
+
+        footnoteEl.textContent = 'Operator workflow: check this panel first, then inspect AlphaESSDiagnostics logs only when one of the listed watch conditions is true or the user reports an impossible power-flow reading.';
+    }
+
     function renderApiHealthTrendChart(daily) {
         const canvas = document.getElementById('apiHealthTrendChart');
         if (!canvas || typeof Chart !== 'function') return;
@@ -3458,6 +3661,7 @@
             const daily = Array.isArray(result.daily) ? result.daily : [];
             const alerts = Array.isArray(result.alerts) ? result.alerts : [];
             const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+            const observability = result.observability && typeof result.observability === 'object' ? result.observability : {};
 
             document.getElementById('apiHealthTotalCalls').textContent = formatCompactNumber(summary.totalCalls || 0);
             document.getElementById('apiHealthLastDayCalls').textContent = formatCompactNumber(summary.lastDayCalls || 0);
@@ -3477,6 +3681,7 @@
                 : 'Execution overlay unavailable';
 
             renderApiHealthLead(summary, monitoring, alerts);
+            renderAlphaEssObservability(observability, providers);
             renderApiHealthTrendChart(daily);
             renderApiHealthProviderChart(providers, summary);
             renderApiHealthAlerts(alerts, warnings);
@@ -3493,6 +3698,7 @@
         } catch (e) {
             console.error('[Admin] Failed to load API health:', e);
             destroyApiHealthCharts();
+            renderAlphaEssObservability({}, []);
             renderApiHealthAlerts([], [e.message || String(e)]);
             renderApiHealthProviderTable([]);
             renderApiHealthDailyTable([]);
@@ -4198,6 +4404,7 @@
     AppShell.init({ pageName: 'admin', requireAuth: true, checkSetup: false });
     AppShell.onReady(async (ctx) => {
         adminApiClient = ctx.apiClient;
+        initializeInfoTips();
         bindAnnouncementEditorHandlers();
         if (!adminApiClient) {
             document.getElementById('accessDenied').style.display = '';

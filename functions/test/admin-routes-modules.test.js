@@ -1325,6 +1325,13 @@ describe('admin route module', () => {
       requestExecutionsTotal: 64,
       errorExecutionsTotal: 3
     }));
+    expect(response.body.result.observability.alphaess).toEqual(expect.objectContaining({
+      enabled: true,
+      liveRealtimeLogging: 'suspicious-only',
+      manualDiagnosticsLogging: 'always',
+      extraProviderCallsPerRequest: 0,
+      extraFirestoreWritesPerRequest: 0
+    }));
     expect(response.body.result.providers[0]).toEqual(expect.objectContaining({
       key: 'foxess',
       totalCalls: 80

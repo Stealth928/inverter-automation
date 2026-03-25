@@ -59,7 +59,196 @@ async function mockAdminEnvironment(page, options = {}) {
         detail: 'Latest 7-day average is 34/day, up 42.1% versus the prior week. Treat this as a potential overage or rate-limit risk if that provider has tight quotas.'
       }
     ],
-    warnings: []
+    warnings: [],
+    observability: {
+      alphaess: {
+        enabled: true,
+        liveRealtimeLogging: 'suspicious-only',
+        manualDiagnosticsLogging: 'always',
+        extraProviderCallsPerRequest: 0,
+        extraFirestoreWritesPerRequest: 0,
+        notes: [
+          'Diagnostics are computed in-memory from existing AlphaESS responses.',
+          'GET /api/inverter/real-time only emits logs when an anomaly is detected.'
+        ],
+        watchWhen: [
+          'Immediately after deploying AlphaESS normalization, battery-sign, or topology changes.',
+          'When support reports negative house load, impossible export, or missing temperature sensors.'
+        ],
+        anomalyCodes: [
+          {
+            code: 'negative-load-power',
+            title: 'Negative house load',
+            lookFor: 'loadPower is below zero; treat the load channel as semantically suspect for that reading.'
+          },
+          {
+            code: 'power-unit-normalization-ambiguity',
+            title: 'Unit ambiguity',
+            lookFor: 'strict watt conversion and heuristic conversion disagree materially; compare selectedKw vs heuristic values.'
+          }
+        ],
+        rollback: {
+          summary: 'Reversal is code-only. Remove the helper wiring from the runtime routes and admin panel, then redeploy.',
+          docsPath: 'docs/ALPHAESS_OBSERVABILITY_RUNBOOK_MAR26.md'
+        }
+      }
+    }
+  };
+  const schedulerResult = options.schedulerResult || {
+    updatedAt: '2026-03-25T04:47:38.000Z',
+    summary: {
+      runs: 18800,
+      cyclesRun: 172000,
+      errors: 403,
+      deadLetters: 402,
+      retries: 406,
+      errorRatePct: 0.23,
+      deadLetterRatePct: 0.23,
+      maxQueueLagMs: 29800,
+      maxCycleDurationMs: 94000,
+      maxTelemetryAgeMs: 5617000,
+      p95CycleDurationMs: 50600,
+      p99CycleDurationMs: 78000,
+      avgQueueLagMs: 1200,
+      avgCycleDurationMs: 1500,
+      skipped: { locked: 600, idempotent: 0, disabledOrBlackout: 0, tooSoon: 0 },
+      telemetryPauseReasons: { stale_telemetry: 5, stale_telemetry_missing_timestamp: 2 }
+    },
+    last24hSummary: {
+      runs: 1400,
+      cyclesRun: 14000,
+      errors: 5,
+      deadLetters: 5,
+      retries: 5,
+      errorRatePct: 0.04,
+      deadLetterRatePct: 0.04,
+      maxQueueLagMs: 5200,
+      maxCycleDurationMs: 94000,
+      maxTelemetryAgeMs: 4350000,
+      p95CycleDurationMs: 11000,
+      p99CycleDurationMs: 78000,
+      avgQueueLagMs: 1200,
+      avgCycleDurationMs: 1700,
+      telemetryPauseReasons: { stale_telemetry: 2, stale_telemetry_missing_timestamp: 1 }
+    },
+    daily: [
+      {
+        dayKey: '2026-03-25',
+        runs: 1400,
+        cyclesRun: 14000,
+        errors: 5,
+        deadLetters: 5,
+        retries: 5,
+        maxQueueLagMs: 5200,
+        maxCycleDurationMs: 94000,
+        maxTelemetryAgeMs: 4350000,
+        p95CycleDurationMs: 11000,
+        p99CycleDurationMs: 78000,
+        avgQueueLagMs: 1200,
+        avgCycleDurationMs: 1700,
+        skipped: { locked: 0, idempotent: 0, disabledOrBlackout: 0, tooSoon: 0 },
+        telemetryPauseReasons: { stale_telemetry: 2, stale_telemetry_missing_timestamp: 1 },
+        phaseTimingsMaxMs: { dataFetchMs: 800, ruleEvalMs: 30, actionApplyMs: 1200, curtailmentMs: 400 }
+      }
+    ],
+    recentRuns: [
+      {
+        runId: 'run-1',
+        dayKey: '2026-03-25',
+        schedulerId: 'sched-a',
+        workerId: 'worker-a',
+        startedAtMs: Date.parse('2026-03-25T04:47:01.000Z'),
+        completedAtMs: Date.parse('2026-03-25T04:47:03.000Z'),
+        durationMs: 2000,
+        cycleCandidates: 10,
+        cyclesRun: 10,
+        errors: 0,
+        deadLetters: 0,
+        retries: 0,
+        skipped: { locked: 0, idempotent: 0, disabledOrBlackout: 0, tooSoon: 0 },
+        queueLagMs: { avgMs: 1200, count: 10, maxMs: 5200, minMs: 100, p95Ms: 5000, p99Ms: 5200 },
+        cycleDurationMs: { avgMs: 1700, count: 10, maxMs: 94000, minMs: 1000, p95Ms: 11000, p99Ms: 78000 },
+        telemetryAgeMs: { avgMs: 180000, count: 9, maxMs: 4350000, minMs: 12000, p95Ms: 3600000, p99Ms: 4350000 },
+        telemetryPauseReasons: { stale_telemetry: 2, stale_telemetry_missing_timestamp: 1 },
+        phaseTimingsMs: {
+          dataFetchMs: { avgMs: 20, count: 10, maxMs: 800, minMs: 5, p95Ms: 80, p99Ms: 800 },
+          ruleEvalMs: { avgMs: 8, count: 10, maxMs: 30, minMs: 1, p95Ms: 20, p99Ms: 30 },
+          actionApplyMs: { avgMs: 12, count: 10, maxMs: 1200, minMs: 2, p95Ms: 90, p99Ms: 1200 },
+          curtailmentMs: { avgMs: 6, count: 10, maxMs: 400, minMs: 1, p95Ms: 60, p99Ms: 400 }
+        }
+      }
+    ],
+    currentAlert: {
+      runId: 'run-1',
+      schedulerId: 'sched-a',
+      status: 'breach',
+      thresholds: {
+        errorRatePct: 1,
+        deadLetterRatePct: 0.2,
+        maxQueueLagMs: 120000,
+        maxCycleDurationMs: 20000,
+        maxTelemetryAgeMs: 1800000,
+        p99CycleDurationMs: 10000,
+        tailP99CycleDurationMs: 10000,
+        tailWindowMinutes: 15,
+        tailMinRuns: 10
+      },
+      tailLatency: {
+        metric: 'sustainedP99CycleDurationMs',
+        status: 'healthy',
+        thresholdMs: 10000,
+        windowMinutes: 15,
+        minRuns: 10,
+        observedRuns: 15,
+        runsAboveThreshold: 0,
+        ratioAboveThreshold: 0,
+        latestP99Ms: 78000,
+        minObservedP99Ms: 2000,
+        maxObservedP99Ms: 9000
+      }
+    },
+    currentSnapshot: {
+      runId: 'run-1',
+      schedulerId: 'sched-a',
+      workerId: 'worker-a',
+      startedAtMs: Date.parse('2026-03-25T04:47:01.000Z')
+    },
+    diagnostics: {
+      tailLatency: {
+        metric: 'sustainedP99CycleDurationMs',
+        status: 'healthy',
+        thresholdMs: 10000,
+        windowMinutes: 15,
+        minRuns: 10,
+        observedRuns: 15,
+        runsAboveThreshold: 0,
+        ratioAboveThreshold: 0,
+        latestP99Ms: 78000,
+        minObservedP99Ms: 2000,
+        maxObservedP99Ms: 9000
+      },
+      last24hTailLatency: {
+        metric: 'sustainedP99CycleDurationMs',
+        status: 'healthy',
+        thresholdMs: 10000,
+        windowMinutes: 15,
+        minRuns: 10,
+        observedRuns: 15,
+        runsAboveThreshold: 0,
+        ratioAboveThreshold: 0,
+        latestP99Ms: 78000,
+        minObservedP99Ms: 2000,
+        maxObservedP99Ms: 9000
+      },
+      telemetryPauseReasons: { stale_telemetry: 5, stale_telemetry_missing_timestamp: 2 },
+      phaseTimings: {
+        latestRunStartedAtMs: Date.parse('2026-03-25T04:47:01.000Z'),
+        latestRunMaxMs: { dataFetchMs: 800, ruleEvalMs: 30, actionApplyMs: 1200, curtailmentMs: 400 },
+        outlierRunStartedAtMs: Date.parse('2026-03-25T04:47:01.000Z'),
+        outlierRunMaxMs: { dataFetchMs: 800, ruleEvalMs: 30, actionApplyMs: 1200, curtailmentMs: 400 },
+        windowMaxMs: { dataFetchMs: 800, ruleEvalMs: 30, actionApplyMs: 1200, curtailmentMs: 400 }
+      }
+    }
   };
 
   await page.route('**/js/firebase-config.js', async (route) => {
@@ -114,6 +303,8 @@ async function mockAdminEnvironment(page, options = {}) {
       payload = { errno: 0, result: behaviorResult };
     } else if (path === '/api/admin/api-health') {
       payload = { errno: 0, result: apiHealthResult };
+    } else if (path === '/api/admin/scheduler-metrics') {
+      payload = { errno: 0, result: schedulerResult };
     } else if (path === '/api/user/init-profile') {
       payload = { errno: 0, result: { initialized: true } };
     }
@@ -214,9 +405,11 @@ test.describe('Admin Behaviour Tab', () => {
     await expect(page.locator('#apiHealthErrorRate')).toHaveText('2.01%');
     await expect(page.locator('#apiHealthProvidersBody')).toContainText('Amber');
     await expect(page.locator('#apiHealthAlerts')).toContainText(/potential overage or rate-limit risk/i);
-    await expect(page.locator('#apiHealthDailyBody')).toContainText('Wake');
-    await expect(page.locator('#apiHealthDailyBody')).toContainText('Command');
-    await expect(page.locator('#apiHealthDailyBody')).toContainText('Data');
+    await expect(page.locator('#apiHealthDailyBody')).toContainText('2/4/5');
+    await expect(page.locator('#apiHealthAlphaEssSummary')).toContainText(/Low-cost AlphaESS observability is active/i);
+    await expect(page.locator('#apiHealthAlphaEssLookFor')).toContainText(/negative-load-power/i);
+    await expect(page.locator('#apiHealthAlphaEssCost')).toContainText(/GET \/api\/inverter\/real-time only emits logs when an anomaly is detected/i);
+    await expect(page.locator('#apiHealthAlphaEssRollback')).toContainText(/ALPHAESS_OBSERVABILITY_RUNBOOK_MAR26\.md/i);
   });
 
   test('keeps API health layout contained on phone screens', async ({ page }) => {
@@ -227,7 +420,7 @@ test.describe('Admin Behaviour Tab', () => {
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('button', { name: /API Health/i }).click();
-    await expect(page.locator('#apiHealthDailyBody')).toContainText('Wake');
+    await expect(page.locator('#apiHealthDailyBody')).toContainText('2/4/5');
 
     const cardBounds = await page.locator('#tab-apiHealth .card').evaluate((node) => {
       const rect = node.getBoundingClientRect();
@@ -240,5 +433,24 @@ test.describe('Admin Behaviour Tab', () => {
 
     expect(cardBounds.left).toBeGreaterThanOrEqual(-1);
     expect(cardBounds.right).toBeLessThanOrEqual(cardBounds.viewportWidth + 1);
+  });
+
+  test('renders scheduler tooltips and clarifies telemetry-age and tail semantics', async ({ page }) => {
+    await mockAdminEnvironment(page);
+
+    await page.goto('/admin.html');
+    await page.waitForLoadState('networkidle');
+
+    await page.getByRole('button', { name: /Scheduler/i }).click();
+    await expect(page.locator('#scheduler14dSloCycleTailP99 .slo-status')).toContainText('window max p99');
+    await expect(page.locator('#scheduler14dSloTelemetryAge .slo-meta')).toContainText('Missing timestamp cycles: 2');
+
+    await page.locator('#scheduler14dSloTelemetryAge .info-tip').hover();
+    await expect(page.locator('#adminInfoTooltip')).toBeVisible();
+    await expect(page.locator('#adminInfoTooltip')).toContainText(/source timestamp embedded in inverter telemetry/i);
+
+    await page.locator('#scheduler14dSloCycleTailP99 .info-tip').hover();
+    await expect(page.locator('#adminInfoTooltip')).toContainText(/window-max p99/i);
+    await expect(page.locator('#scheduler14dSloCycleTailP99 .slo-meta')).toContainText(/Current sustained signal HEALTHY/i);
   });
 });

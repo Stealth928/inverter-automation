@@ -67,6 +67,7 @@ const { getCurrentAmberPrices } = require('./lib/pricing-normalization');
 const { createAutomationStateRepository } = require('./lib/repositories/automation-state-repository');
 const { createUserAutomationRepository } = require('./lib/repositories/user-automation-repository');
 const { createVehiclesRepository } = require('./lib/repositories/vehicles-repository');
+const { buildAlphaEssDiagnostics, logAlphaEssDiagnostics } = require('./lib/alphaess-diagnostics');
 const {
   addMinutes,
   getAutomationTimezone: getAutomationTimezoneWithFallback,
@@ -718,13 +719,15 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
  * Includes all variables needed for the dashboard display.
  * Respects TTL (default 5 minutes for real-time, configurable via user config).
  */
-async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, forceRefresh = false) {
+async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, forceRefresh = false, options = {}) {
   const config = getConfig();
   const ttlMs = resolveInverterCacheTtlMs(userConfig, config?.automation?.cacheTtl?.inverter || 300000, { preferRealtime: true });
   const resolved = resolveProviderDeviceId(userConfig, deviceSN);
   const provider = String(resolved.provider || 'foxess').toLowerCase().trim();
   const resolvedDeviceSN = resolved.deviceId;
   const emulatorRuntime = isEmulatorRuntime();
+  const diagnosticsOptions = options && typeof options === 'object' ? options : {};
+  const diagnosticsLogger = diagnosticsOptions.logger || console;
   
   try {
     if (!resolvedDeviceSN) {
@@ -773,6 +776,20 @@ async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, force
         normalizeToKw: provider === 'alphaess',
         invertBatteryPowerSign: invertAlphaEssBatteryPowerSign
       });
+      if (provider === 'alphaess') {
+        data.alphaessDiagnostics = buildAlphaEssDiagnostics({
+          route: diagnosticsOptions.route || 'inverter-real-time',
+          status,
+          userConfig,
+          userId,
+          userEmail: diagnosticsOptions.userEmail || null,
+          deviceSN: resolvedDeviceSN,
+          invertBatteryPowerSign: invertAlphaEssBatteryPowerSign
+        });
+        logAlphaEssDiagnostics(diagnosticsLogger, data.alphaessDiagnostics, {
+          mode: diagnosticsOptions.alphaessLogMode || 'suspicious-only'
+        });
+      }
     } else {
       // Fetch fresh data from FoxESS with all required variables
       data = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', {

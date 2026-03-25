@@ -61,8 +61,48 @@ describe('automation cycle data service', () => {
     }
   });
 
-  test('fetchAutomationInverterData builds full telemetry frame for non-fox providers', async () => {
+  test('fetchAutomationInverterData uses shared realtime cache for non-fox providers', async () => {
+    const realtimePayload = { errno: 0, result: [{ datas: [{ variable: 'SoC', value: 66 }] }] };
     const getCachedInverterData = jest.fn(async () => null);
+    const getCachedInverterRealtimeData = jest.fn(async () => realtimePayload);
+    const deviceAdapter = {
+      getStatus: jest.fn(async () => ({
+        observedAtIso: '2026-03-12T01:02:03.000Z',
+        socPct: 66,
+        batteryTempC: 24.2,
+        ambientTempC: 20.1,
+        pvPowerW: 4200,
+        loadPowerW: 1700,
+        gridPowerW: 300,
+        feedInPowerW: 0
+      }))
+    };
+    const logger = { log: jest.fn(), warn: jest.fn() };
+
+    const result = await fetchAutomationInverterData({
+      deviceAdapter,
+      deviceSN: 'SN-SG-1',
+      getCachedInverterData,
+      getCachedInverterRealtimeData,
+      logger,
+      provider: 'sungrow',
+      userConfig: { provider: 'sungrow', deviceSn: 'SN-SG-1' },
+      userId: 'u1'
+    });
+
+    expect(result).toBe(realtimePayload);
+    expect(getCachedInverterRealtimeData).toHaveBeenCalledWith('u1', 'SN-SG-1', { provider: 'sungrow', deviceSn: 'SN-SG-1' }, false, {
+      route: 'automation-cycle',
+      logger,
+      alphaessLogMode: 'never'
+    });
+    expect(deviceAdapter.getStatus).not.toHaveBeenCalled();
+    expect(logger.log).toHaveBeenCalledWith('[Automation] Shared realtime cache fetch succeeded for non-FoxESS provider');
+  });
+
+  test('fetchAutomationInverterData builds full telemetry frame for non-fox providers when realtime cache is unavailable', async () => {
+    const getCachedInverterData = jest.fn(async () => null);
+    const getCachedInverterRealtimeData = jest.fn(async () => null);
     const deviceAdapter = {
       getStatus: jest.fn(async () => ({
         observedAtIso: '2026-03-12T01:02:03.000Z',
@@ -80,6 +120,7 @@ describe('automation cycle data service', () => {
       deviceAdapter,
       deviceSN: 'SN-SG-1',
       getCachedInverterData,
+      getCachedInverterRealtimeData,
       provider: 'sungrow',
       userConfig: { provider: 'sungrow', deviceSn: 'SN-SG-1' },
       userId: 'u1'
@@ -90,6 +131,7 @@ describe('automation cycle data service', () => {
       userConfig: { provider: 'sungrow', deviceSn: 'SN-SG-1' },
       userId: 'u1'
     });
+    expect(getCachedInverterRealtimeData).toHaveBeenCalled();
     expect(getCachedInverterData).not.toHaveBeenCalled();
     expect(result).toEqual(expect.objectContaining({
       errno: 0,

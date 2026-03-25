@@ -90,6 +90,62 @@ function registerAdminRoutes(app, deps = {}) {
     return Math.max(1, Math.min(max, Math.floor(parsed)));
   };
   const githubDiagnosticsCacheTtlMs = parseBoundedPositiveInt(githubDataworks.cacheTtlMs, 300000, 3600000);
+  const alphaessObservability = Object.freeze({
+    enabled: true,
+    version: '2026-03-25',
+    liveRealtimeLogging: 'suspicious-only',
+    manualDiagnosticsLogging: 'always',
+    extraProviderCallsPerRequest: 0,
+    extraFirestoreWritesPerRequest: 0,
+    extraStorageWritesPerRequest: 0,
+    notes: [
+      'Diagnostics are computed in-memory from existing AlphaESS responses.',
+      'GET /api/inverter/real-time only emits logs when anomalies are detected.',
+      'POST /api/inverter/all-data always emits a diagnostic log because it is an explicit manual deep-diagnostics action.'
+    ],
+    watchWhen: [
+      'Immediately after deploying AlphaESS normalization, battery-sign, or topology changes.',
+      'After onboarding a new AlphaESS user or changing AlphaESS credentials.',
+      'When support reports negative house load, impossible export, or missing temperature sensors.',
+      'After running a manual live diagnostics scan to confirm whether the issue is transient or reproducible.'
+    ],
+    anomalyCodes: [
+      {
+        code: 'negative-load-power',
+        title: 'Negative house load',
+        lookFor: 'loadPower is below zero; treat the load channel as semantically suspect for that reading.'
+      },
+      {
+        code: 'small-feed-in-value-may-be-watts',
+        title: 'Tiny export value',
+        lookFor: 'feedInPower is a small positive integer and may be watts rather than kilowatts.'
+      },
+      {
+        code: 'small-grid-import-value-may-be-watts',
+        title: 'Tiny import value',
+        lookFor: 'gridPower is a small positive integer and may be watts rather than kilowatts.'
+      },
+      {
+        code: 'power-unit-normalization-ambiguity',
+        title: 'Unit ambiguity',
+        lookFor: 'strict watt-to-kW conversion and heuristic conversion disagree materially; compare selectedKw vs heuristic values.'
+      },
+      {
+        code: 'energy-flow-imbalance',
+        title: 'Energy flow mismatch',
+        lookFor: 'selected flow balance residual stays materially non-zero after the chosen battery sign is applied.'
+      },
+      {
+        code: 'temperature-sensors-not-reporting',
+        title: 'No temperature telemetry',
+        lookFor: 'battery and ambient temperatures are both zero; expected on AlphaESS when sensors are absent or not exposed.'
+      }
+    ],
+    rollback: {
+      summary: 'Reversal is code-only. Remove the AlphaESS diagnostics helper wiring from the realtime and diagnostics routes, remove the admin panel, then redeploy functions and hosting. No data migration or cleanup job is required.',
+      docsPath: 'docs/ALPHAESS_OBSERVABILITY_RUNBOOK_MAR26.md'
+    }
+  });
   const githubDispatchCooldownMs = parseBoundedPositiveInt(githubDataworks.dispatchCooldownMs, 90000, 3600000);
   let dataworksOpsCache = null;
   let dataworksOpsCacheExpiresAtMs = 0;
@@ -2457,7 +2513,10 @@ app.get('/api/admin/api-health', authenticateUser, requireAdmin, async (req, res
         providers: providerRows,
         daily,
         alerts,
-        warnings
+        warnings,
+        observability: {
+          alphaess: alphaessObservability
+        }
       };
     };
 

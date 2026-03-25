@@ -1,5 +1,6 @@
 'use strict';
 
+const { buildAlphaEssDiagnostics, logAlphaEssDiagnostics } = require('../../lib/alphaess-diagnostics');
 const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
 const {
   appendRealtimeTelemetryMappings,
@@ -199,6 +200,7 @@ function registerDiagnosticsReadRoutes(app, deps = {}) {
   const foxessAPI = deps.foxessAPI;
   const getUserConfig = deps.getUserConfig;
   const adapterRegistry = deps.adapterRegistry || null;
+  const logger = deps.logger || console;
 
   if (!app || typeof app.post !== 'function') {
     throw new Error('registerDiagnosticsReadRoutes requires an Express app');
@@ -320,6 +322,18 @@ function registerDiagnosticsReadRoutes(app, deps = {}) {
         });
         appendRealtimeTelemetryMappings(normalized, userConfig);
         const withHints = withTopologyHints(normalized, userConfig);
+        if (provider === 'alphaess') {
+          withHints.alphaessDiagnostics = buildAlphaEssDiagnostics({
+            route: 'diagnostics-all-data',
+            status,
+            userConfig,
+            userId: req.user.uid,
+            userEmail: req.user && req.user.email ? req.user.email : null,
+            deviceSN: sn,
+            invertBatteryPowerSign: invertAlphaEssBatteryPowerSign
+          });
+          logAlphaEssDiagnostics(logger, withHints.alphaessDiagnostics, { mode: 'always' });
+        }
         console.log(`[Diagnostics] Adapter diagnostics response ready for provider=${provider}`);
         return res.json(withHints);
       }

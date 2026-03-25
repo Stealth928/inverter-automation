@@ -143,7 +143,26 @@ async function fetchAutomationInverterData(options = {}) {
     }
   }
 
-  // Non-FoxESS providers with an adapter: go directly to adapter without cache.
+  // Non-FoxESS providers should use the shared realtime cache first so per-user TTLs
+  // apply consistently across dashboard and automation reads.
+  if (!hasNestedDatasFrame(inverterData) && isNonFoxessWithAdapter && typeof getCachedInverterRealtimeData === 'function') {
+    try {
+      const realtimeData = await getCachedInverterRealtimeData(userId, deviceSN, userConfig, false, {
+        route: 'automation-cycle',
+        logger: options.logger,
+        alphaessLogMode: 'never'
+      });
+      if (hasNestedDatasFrame(realtimeData)) {
+        inverterData = realtimeData;
+        logger.info('[Automation] Shared realtime cache fetch succeeded for non-FoxESS provider');
+      }
+    } catch (error) {
+      logger.warn('[Automation] Failed to get non-FoxESS realtime cache:', error.message);
+    }
+  }
+
+  // Non-FoxESS providers with an adapter: fall back to a live adapter call only when
+  // shared realtime cache data is unavailable or invalid.
   if (!hasNestedDatasFrame(inverterData) && isNonFoxessWithAdapter) {
     try {
       const status = await deviceAdapter.getStatus({ deviceSN, userConfig, userId });
