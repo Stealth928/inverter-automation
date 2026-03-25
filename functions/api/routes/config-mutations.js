@@ -317,7 +317,12 @@ function registerConfigMutationRoutes(app, deps = {}) {
 
       // Clear write-only credentials doc used by setup flows.
       if (db && typeof db.collection === 'function') {
-        await db.collection('users').doc(userId).collection('secrets').doc('credentials').delete().catch(() => {});
+        try {
+          await db.collection('users').doc(userId).collection('secrets').doc('credentials').delete();
+        } catch (error) {
+          console.error('[API] Failed to delete stored credentials secret:', error && error.stack ? error.stack : String(error));
+          throw new Error('Failed to clear stored credentials', { cause: error });
+        }
       }
 
       res.json({ errno: 0, msg: 'Credentials cleared successfully. Automation disabled.' });

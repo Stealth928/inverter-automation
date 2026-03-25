@@ -1,7 +1,7 @@
 # Comprehensive Codebase Audit & Remediation Plan
 **Date**: March 25, 2026  
 **Scope**: Full-spectrum audit covering security, resilience, observability, data model, testing, and deployment  
-**Status**: Ready for execution
+**Status**: In progress (execution updated through March 25, 2026)
 
 ---
 
@@ -15,6 +15,27 @@ This audit extends the prior 7-finding scheduler observability analysis into a c
 - Observability distortions in scheduler metrics (max-of-max aggregation, mixed-unit charts)
 - No structured logging or request correlation IDs
 - Untracked Firestore read/write costs (~30M reads/month at 100 users)
+
+### Execution Snapshot (2026-03-25)
+
+**Completed in repo**:
+- Silent error handling fixes in scheduler/config/vehicle cleanup flows
+- Admin-only global metrics, bounded user metrics queries, enabled-only rules lookups
+- CORS allowlist, CSP, and targeted frontend XSS hardening
+- Scheduler p95 queue-lag surfacing and API health chart split
+- Request ID middleware and structured JSON logging foundation with AsyncLocalStorage context propagation
+- Provider counter normalization for FoxESS, Amber, Weather, Sungrow, and EV/Tesla billable upstream calls
+- Shared upstream circuit breakers for FoxESS, Weather, and Sungrow
+- `/api/health` upstream status surface with cached probe state
+- Dead-letter admin read model, UI panel, and manual retry action
+- API-level rate limiting on `/api/**`
+- Scheduler no-op reduction via idempotency preflight before lock acquisition
+- Firestore quota monitoring and cache hit/miss visibility in admin operator metrics
+- `Promise.allSettled()` graceful degradation for automation-cycle upstream fan-out
+
+**Still remaining**:
+- Broader conversion of legacy `console.*` logging call-sites to structured logger usage
+- Larger long-term architecture items in Phase 4
 
 ---
 
@@ -484,6 +505,8 @@ logger.error('Automation cycle failed', {
 
 **Goals**: Enable production tracing, add request correlation, normalize provider counting
 
+**Execution status**: Mostly complete. Request IDs, provider counter normalization, circuit breakers, dead-letter visibility/retry, and health status exposure are implemented. Remaining work in this phase is broader trace-ID adoption across older direct `console.*` call-sites.
+
 **Tasks**:
 
 1. **Add request ID middleware** (functions/index.js)
@@ -528,6 +551,7 @@ logger.error('Automation cycle failed', {
 10. **Add request ID to all critical logs** (functions/lib/services/automation-scheduler-service.js, functions/api/routes/automation-cycle.js, etc.)
     - Update key log statements to include traceId
     - Effort: 3 hours
+   - Status: partially complete via structured logger + AsyncLocalStorage request context; older direct console logging remains to be converted
 
 **Total Effort**: ~31 hours | **Cost Reduction**: ~0 (improvements offset by circuit breaker probe traffic) | **Risk Reduction**: Very High
 
@@ -537,9 +561,11 @@ logger.error('Automation cycle failed', {
 
 **Goals**: Implement structured logging, add rate limiting, optimize scheduler no-ops
 
+**Execution status**: Mostly complete. Structured JSON logging foundation, API rate limiting, scheduler no-op filtering, auth enforcement tests, circuit-breaker tests, upstream health probes, Firestore quota monitoring, and cache hit/miss visibility are implemented. Remaining work in this phase is broader structured-log migration across older direct `console.*` call-sites.
+
 **Tasks**:
 
-1. **Adopt structured logging (Winston/Pino)** (functions/)
+1. **Adopt structured logging** (functions/)
    - Add logger instance to functions/index.js
    - Update 100+ console.log calls to structured logger
    - Export logs to Cloud Logging
@@ -554,10 +580,12 @@ logger.error('Automation cycle failed', {
    - Test that unauthenticated requests to post-middleware routes get 401
    - Test that global metrics endpoint rejects unauthenticated access
    - Effort: 3 hours
+   - Status: completed on 2026-03-25
 
 4. **Implement smart scheduler candidate filtering** (functions/lib/services/automation-scheduler-service.js)
    - Reduce no-op cycles by pre-filtering against lastCheck + intervalMs
    - Effort: 3 hours
+   - Status: completed on 2026-03-25 via idempotency preflight before lock acquisition
 
 5. **Add circuit breaker tests** (functions/test/)
    - Test circuit breaker opens after N failures
@@ -573,11 +601,13 @@ logger.error('Automation cycle failed', {
    - Track Firestore read/write rates
    - Add alerts for approaching quota
    - Effort: 4 hours
+   - Status: completed on 2026-03-25 via admin Firestore metrics quota summary + watch/breach alerts
 
 8. **Add cache hit/miss rate tracking** (functions/api/amber.js, functions/index.js inverter cache, etc.)
    - Track cache effectiveness per source
    - Export metrics
    - Effort: 3 hours
+   - Status: completed on 2026-03-25 via shared cache metrics collector surfaced in admin metrics
 
 **Total Effort**: ~33 hours | **Cost Reduction**: 0 (resilience improvements may slightly increase API calls but prevent outages) | **Risk Reduction**: Critical
 
@@ -613,6 +643,7 @@ logger.error('Automation cycle failed', {
    - Allow cycle to continue if one upstream fails
    - Better degradation
    - Effort: 3 hours
+   - Status: completed on 2026-03-25
 
 ---
 
@@ -624,38 +655,38 @@ logger.error('Automation cycle failed', {
 - [ ] Alert team: "Starting 4-week remediation plan, expect frequent PRs"
 
 ### Phase 1 Commits
-- [ ] `fix: replace max-of-max SLO aggregation with P95`
-- [ ] `fix: split API health chart into provider vs execution metrics`
-- [ ] `fix: add error logging to scheduler mutation verification`
-- [ ] `fix: add error logging to vehicle and config cleanup operations`
-- [ ] `fix: restrict CORS origin to known domains`
-- [ ] `fix: require auth for global metrics endpoint`
-- [ ] `fix: escape error messages in frontend innerHTML`
-- [ ] `feat: add CSP header to firebase.json`
-- [ ] `perf: add .where('enabled', '==', true) filter to getUserRules()`
-- [ ] `perf: optimize user metrics query with .limit()`
+- [x] `fix: replace max-of-max SLO aggregation with P95`
+- [x] `fix: split API health chart into provider vs execution metrics`
+- [x] `fix: add error logging to scheduler mutation verification`
+- [x] `fix: add error logging to vehicle and config cleanup operations`
+- [x] `fix: restrict CORS origin to known domains`
+- [x] `fix: require auth for global metrics endpoint`
+- [x] `fix: escape error messages in frontend innerHTML`
+- [x] `feat: add CSP header to firebase.json`
+- [x] `perf: add .where('enabled', '==', true) filter to getUserRules()`
+- [x] `perf: optimize user metrics query with .limit()`
 
 ### Phase 2 Commits
-- [ ] `feat: add request ID middleware for request tracing`
-- [ ] `refactor: normalize provider call counting across all APIs`
-- [ ] `test: add provider counter consistency tests`
-- [ ] `feat: implement circuit breaker for FoxESS`
-- [ ] `feat: implement circuit breaker for Weather API`
-- [ ] `feat: implement circuit breaker for Sungrow API`
-- [ ] `feat: add circuit breaker state to health endpoint`
-- [ ] `feat: add dead-letter queue admin endpoint`
-- [ ] `feat: add dead-letter UI panel in diagnostics`
+- [x] `feat: add request ID middleware for request tracing`
+- [x] `refactor: normalize provider call counting across all APIs`
+- [x] `test: add provider counter consistency tests`
+- [x] `feat: implement circuit breaker for FoxESS`
+- [x] `feat: implement circuit breaker for Weather API`
+- [x] `feat: implement circuit breaker for Sungrow API`
+- [x] `feat: add circuit breaker state to health endpoint`
+- [x] `feat: add dead-letter queue admin endpoint`
+- [x] `feat: add dead-letter UI panel in diagnostics`
 - [ ] `refactor: add trace ID to critical logs`
 
 ### Phase 3 Commits
-- [ ] `feat: adopt structured logging with Winston`
-- [ ] `feat: add API-level rate limiting`
-- [ ] `test: add auth enforcement tests`
-- [ ] `perf: optimize scheduler candidate filtering to reduce no-ops`
-- [ ] `test: add circuit breaker behavior tests`
-- [ ] `feat: add upstream probes to health endpoint`
-- [ ] `feat: add Firestore quota monitoring`
-- [ ] `feat: track cache hit/miss rates`
+- [x] `feat: adopt structured logging with structured JSON logger + request context`
+- [x] `feat: add API-level rate limiting`
+- [x] `test: add auth enforcement tests`
+- [x] `perf: optimize scheduler candidate filtering to reduce no-ops`
+- [x] `test: add circuit breaker behavior tests`
+- [x] `feat: add upstream probes to health endpoint`
+- [x] `feat: add Firestore quota monitoring`
+- [x] `feat: track cache hit/miss rates`
 
 ---
 
@@ -663,21 +694,21 @@ logger.error('Automation cycle failed', {
 
 ### Phase 1
 - [ ] Zero security vulnerabilities (XSS, CSRF, auth)
-- [ ] SLO cards show realistic trends (not max-poisoned)
-- [ ] API health chart correctly correlates
-- [ ] No silent failures in scheduler mutations
+- [x] SLO cards show realistic trends (not max-poisoned)
+- [x] API health chart correctly correlates
+- [x] No silent failures in scheduler mutations
 - [ ] Cost reduced by $6.26/month
 
 ### Phase 2
 - [ ] Every critical log entry has trace ID
-- [ ] All providers count same way
-- [ ] Circuit breakers preventing cascading failures
-- [ ] Dead-letter queue visible in UI
-- [ ] Health endpoint shows upstream status
+- [x] All providers count same way
+- [x] Circuit breakers preventing cascading failures
+- [x] Dead-letter queue visible in UI
+- [x] Health endpoint shows upstream status
 
 ### Phase 3
 - [ ] All logs structured and queryable
-- [ ] API rate limiting prevents DOS
+- [x] API rate limiting prevents DOS
 - [ ] Scheduler no-ops reduced by 50%+
 - [ ] Coverage of error paths >90%
 - [ ] Production incident MTTR reduced by 30%+

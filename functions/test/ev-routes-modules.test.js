@@ -419,6 +419,37 @@ describe('GET /api/ev/vehicles/:vehicleId/status', () => {
     expect(incrementApiCount).toHaveBeenCalledWith('u-test', 'ev');
   });
 
+  test('increments generic EV counter for each billable Tesla upstream call within one request', async () => {
+    const incrementApiCount = jest.fn(async () => {});
+    const evUsageControl = makeEvUsageControl();
+    const adapter = makeAdapter({
+      getVehicleStatus: jest.fn(async (_vehicleId, context) => {
+        await context.recordTeslaApiCall({ category: 'wake', status: 200, billable: true });
+        await context.recordTeslaApiCall({ category: 'data_request', status: 200, billable: true });
+        return STUB_STATUS;
+      })
+    });
+    const deps = makeDeps({
+      incrementApiCount,
+      evUsageControl,
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla' })),
+        getVehicleState: jest.fn(async () => null),
+        saveVehicleState: jest.fn(async () => {})
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+
+    const res = await request(app).get('/api/ev/vehicles/v1/status?live=1').set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(200);
+    expect(evUsageControl.recordTeslaApiCall).toHaveBeenCalledTimes(2);
+    expect(incrementApiCount).toHaveBeenCalledTimes(2);
+    expect(incrementApiCount).toHaveBeenNthCalledWith(1, 'u-test', 'ev');
+    expect(incrementApiCount).toHaveBeenNthCalledWith(2, 'u-test', 'ev');
+  });
+
   test('returns 400 when vehicle credentials are missing', async () => {
     const adapter = makeAdapter();
     const deps = makeDeps({

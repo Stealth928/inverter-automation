@@ -437,6 +437,7 @@ describe('automation scheduler service', () => {
     await runAutomationSchedulerCycle({}, deps);
 
     expect(automationCycleHandler).toHaveBeenCalledTimes(1);
+    expect(acquireUserCycleLock).toHaveBeenCalledTimes(2);
     expect(
       logger.log.mock.calls.some((call) => String(call[0]).includes('1 locked'))
     ).toBe(true);
@@ -554,7 +555,7 @@ describe('automation scheduler service', () => {
 
     expect(automationCycleHandler).toHaveBeenCalledTimes(1);
     expect(acquireUserCycleLock).toHaveBeenCalledTimes(2);
-    expect(shouldRunCycleKey).toHaveBeenCalledTimes(1);
+    expect(shouldRunCycleKey).toHaveBeenCalledTimes(3);
     expect(emitSchedulerMetrics).toHaveBeenCalledTimes(2);
 
     const totalCyclesRun = schedulerMetrics.reduce(
@@ -582,12 +583,14 @@ describe('automation scheduler service', () => {
       acquired: true,
       lockId: `lock-${userId}-${Math.random().toString(36).slice(2, 7)}`
     }));
-    const shouldRunCycleKey = jest.fn(async ({ userId, cycleKey }) => {
+    const shouldRunCycleKey = jest.fn(async ({ reserve = true, userId, cycleKey }) => {
       const key = `${userId}:${cycleKey}`;
       if (seenCycleKeys.has(key)) {
         return false;
       }
-      seenCycleKeys.add(key);
+      if (reserve) {
+        seenCycleKeys.add(key);
+      }
       return true;
     });
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1710000000000);
@@ -618,7 +621,8 @@ describe('automation scheduler service', () => {
     }
 
     expect(automationCycleHandler).toHaveBeenCalledTimes(1);
-    expect(shouldRunCycleKey).toHaveBeenCalledTimes(2);
+  expect(acquireUserCycleLock).toHaveBeenCalledTimes(2);
+  expect(shouldRunCycleKey).toHaveBeenCalledTimes(4);
     expect(emitSchedulerMetrics).toHaveBeenCalledTimes(2);
 
     const totalCyclesRun = schedulerMetrics.reduce(
@@ -673,12 +677,14 @@ describe('automation scheduler service', () => {
       }
     });
 
-    const shouldRunCycleKey = jest.fn(async ({ cycleKey, userId }) => {
+    const shouldRunCycleKey = jest.fn(async ({ reserve = true, cycleKey, userId }) => {
       const dedupeKey = `${userId}:${cycleKey}`;
       if (seenCycleKeys.has(dedupeKey)) {
         return false;
       }
-      seenCycleKeys.add(dedupeKey);
+      if (reserve) {
+        seenCycleKeys.add(dedupeKey);
+      }
       return true;
     });
 
@@ -786,12 +792,14 @@ describe('automation scheduler service', () => {
       }
     });
 
-    const shouldRunCycleKey = jest.fn(async ({ cycleKey, userId }) => {
+    const shouldRunCycleKey = jest.fn(async ({ reserve = true, cycleKey, userId }) => {
       const dedupeKey = `${userId}:${cycleKey}`;
       if (seenCycleKeys.has(dedupeKey)) {
         return false;
       }
-      seenCycleKeys.add(dedupeKey);
+      if (reserve) {
+        seenCycleKeys.add(dedupeKey);
+      }
       return true;
     });
 

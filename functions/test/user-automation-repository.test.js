@@ -20,6 +20,7 @@ function buildRepositoryFixture(options = {}) {
 
   const historyWrites = [];
   let historyCounter = historyState.length;
+  let lastRulesQuery = null;
 
   function getRuleDocRef(ruleId) {
     return {
@@ -116,6 +117,7 @@ function buildRepositoryFixture(options = {}) {
   const rulesCollection = {
     doc: (ruleId) => getRuleDocRef(ruleId),
     get: async () => {
+      lastRulesQuery = { type: 'all' };
       const docs = buildRuleDocs();
       return {
         docs,
@@ -123,7 +125,19 @@ function buildRepositoryFixture(options = {}) {
         forEach: (callback) => docs.forEach(callback),
         size: docs.length
       };
-    }
+    },
+    where: (field, operator, value) => ({
+      get: async () => {
+        lastRulesQuery = { type: 'where', field, operator, value };
+        const docs = buildRuleDocs().filter((doc) => doc.data()[field] === value);
+        return {
+          docs,
+          empty: docs.length === 0,
+          forEach: (callback) => docs.forEach(callback),
+          size: docs.length
+        };
+      }
+    })
   };
 
   const userDocRef = {
@@ -176,6 +190,7 @@ function buildRepositoryFixture(options = {}) {
     getHistoryState: () => historyState.map((entry) => ({ id: entry.id, data: { ...entry.data } })),
     getRuleData: (ruleId) => (ruleState.has(ruleId) ? { ...ruleState.get(ruleId) } : null),
     historyWrites,
+    getLastRulesQuery: () => lastRulesQuery,
     repository
   };
 }
@@ -241,6 +256,23 @@ describe('user-automation repository', () => {
       r1: { name: 'Rule 1', enabled: true },
       r2: { name: 'Rule 2', enabled: false }
     });
+    expect(fixture.getLastRulesQuery()).toEqual({ type: 'all' });
+  });
+
+  test('getUserRules can query only enabled rules', async () => {
+    const fixture = buildRepositoryFixture({
+      rules: [
+        { id: 'r1', data: { name: 'Rule 1', enabled: true } },
+        { id: 'r2', data: { name: 'Rule 2', enabled: false } }
+      ]
+    });
+
+    const rules = await fixture.repository.getUserRules('u1', { enabledOnly: true });
+
+    expect(rules).toEqual({
+      r1: { name: 'Rule 1', enabled: true }
+    });
+    expect(fixture.getLastRulesQuery()).toEqual({ type: 'where', field: 'enabled', operator: '==', value: true });
   });
 
   test('addHistoryEntry appends server timestamp and returns true', async () => {

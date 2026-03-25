@@ -1,19 +1,32 @@
 'use strict';
 
 const DEFAULT_PRICING_PROVIDER = 'amber';
+const SUPPORTED_PRICING_PROVIDERS = new Set(['amber', 'aemo']);
 
 function normalizeProvider(value) {
   const normalized = String(value || DEFAULT_PRICING_PROVIDER).trim().toLowerCase();
   return normalized || DEFAULT_PRICING_PROVIDER;
 }
 
-function getRequestedProvider(req) {
-  return normalizeProvider(req?.query?.provider);
+function resolveProvider(req, userConfig = null) {
+  return normalizeProvider(req?.query?.provider || userConfig?.pricingProvider);
 }
 
-function rejectUnsupportedProvider(req, res) {
-  const provider = getRequestedProvider(req);
-  if (provider !== DEFAULT_PRICING_PROVIDER) {
+function isAmberConfigured(userConfig) {
+  return !!userConfig?.amberApiKey;
+}
+
+function resolveAemoRegionId(req, userConfig = null) {
+  return req?.query?.regionId
+    || req?.query?.siteId
+    || req?.query?.siteIdOrRegion
+    || userConfig?.aemoRegion
+    || userConfig?.siteIdOrRegion
+    || null;
+}
+
+function rejectUnsupportedProvider(provider, res) {
+  if (!SUPPORTED_PRICING_PROVIDERS.has(provider)) {
     res.status(400).json({
       errno: 400,
       error: `Unsupported pricing provider: ${provider}`,
@@ -31,6 +44,7 @@ function registerGetAliases(app, routes, ...handlers) {
 function registerPricingRoutes(app, deps = {}) {
   const amberAPI = deps.amberAPI;
   const amberPricesInFlight = deps.amberPricesInFlight;
+  const aemoAPI = deps.aemoAPI;
   const authenticateUser = deps.authenticateUser;
   const getUserConfig = deps.getUserConfig;
   const incrementApiCount = deps.incrementApiCount;
@@ -46,6 +60,9 @@ function registerPricingRoutes(app, deps = {}) {
   if (!amberPricesInFlight || typeof amberPricesInFlight.has !== 'function') {
     throw new Error('registerPricingRoutes requires amberPricesInFlight Map');
   }
+  if (!aemoAPI || typeof aemoAPI.getCurrentPriceData !== 'function' || typeof aemoAPI.listSupportedAemoRegions !== 'function') {
+    throw new Error('registerPricingRoutes requires aemoAPI');
+  }
   if (typeof authenticateUser !== 'function') {
     throw new Error('registerPricingRoutes requires authenticateUser middleware');
   }
@@ -60,13 +77,19 @@ function registerPricingRoutes(app, deps = {}) {
 
   // Sites endpoint (allow unauthenticated calls - return empty list when no user)
   const sitesHandler = async (req, res) => {
-    if (rejectUnsupportedProvider(req, res)) return;
-
     try {
       // Attach optional user if provided, but don't require auth
       await tryAttachUser(req);
       const userId = req.user?.uid;
       const debug = req.query.debug === 'true';
+      const userConfig = userId ? await getUserConfig(userId) : null;
+      const provider = resolveProvider(req, userConfig);
+
+      if (rejectUnsupportedProvider(provider, res)) return;
+
+      if (provider === 'aemo') {
+        return res.json({ errno: 0, result: aemoAPI.listSupportedAemoRegions() });
+      }
 
       if (!userId) {
         // No user signed in - safe empty response for UI
@@ -75,8 +98,7 @@ function registerPricingRoutes(app, deps = {}) {
         return res.json(response);
       }
 
-      const userConfig = await getUserConfig(userId);
-      const hasKey = userConfig?.amberApiKey;
+      const hasKey = isAmberConfigured(userConfig);
 
       if (!userConfig || !hasKey) {
         const response = { errno: 0, result: [] };
@@ -130,15 +152,27 @@ function registerPricingRoutes(app, deps = {}) {
 
   // Public-friendly endpoint for current prices. Returns safe JSON when unauthenticated.
   const currentPricesHandler = async (req, res) => {
-    if (rejectUnsupportedProvider(req, res)) return;
-
     try {
       await tryAttachUser(req);
       const userId = req.user?.uid;
       if (!userId) return res.json({ errno: 0, result: [] });
 
       const userConfig = await getUserConfig(userId);
-      if (!userConfig || !userConfig.amberApiKey) {
+      const provider = resolveProvider(req, userConfig);
+
+      if (rejectUnsupportedProvider(provider, res)) return;
+
+      if (provider === 'aemo') {
+        const result = await aemoAPI.getCurrentPriceData({
+          forceRefresh: req.query.forceRefresh === 'true' || req.query.force === 'true',
+          regionId: resolveAemoRegionId(req, userConfig),
+          userConfig,
+          userId
+        });
+        return res.json({ errno: 0, result: Array.isArray(result?.data) ? result.data : [] });
+      }
+
+      if (!userConfig || !isAmberConfigured(userConfig)) {
         return res.json({ errno: 0, result: [] });
       }
 
@@ -210,8 +244,6 @@ function registerPricingRoutes(app, deps = {}) {
 
   // Prices endpoint - allow unauthenticated access (returns empty if no user)
   const pricesHandler = async (req, res) => {
-    if (rejectUnsupportedProvider(req, res)) return;
-
     try {
       await tryAttachUser(req);
       const userId = req.user?.uid;
@@ -222,7 +254,29 @@ function registerPricingRoutes(app, deps = {}) {
       }
 
       const userConfig = await getUserConfig(userId);
-      if (!userConfig || !userConfig.amberApiKey) {
+      const provider = resolveProvider(req, userConfig);
+
+      if (rejectUnsupportedProvider(provider, res)) return;
+
+      if (provider === 'aemo') {
+        const startDate = req.query.startDate;
+        const endDate = req.query.endDate;
+        const regionId = resolveAemoRegionId(req, userConfig);
+
+        if (startDate || endDate) {
+          const history = await aemoAPI.getHistoricalPriceData(
+            { regionId, userConfig, userId },
+            `${startDate}T00:00:00.000Z`,
+            `${endDate}T23:59:59.999Z`
+          );
+          return res.json({ errno: 0, result: Array.isArray(history?.data) ? history.data : [] });
+        }
+
+        const current = await aemoAPI.getCurrentPriceData({ regionId, userConfig, userId });
+        return res.json({ errno: 0, result: Array.isArray(current?.data) ? current.data : [] });
+      }
+
+      if (!userConfig || !isAmberConfigured(userConfig)) {
         return res.status(400).json({ errno: 400, error: 'Amber not configured', result: [] });
       }
       let siteId = req.query.siteId || userConfig.amberSiteId;
@@ -287,13 +341,31 @@ function registerPricingRoutes(app, deps = {}) {
    * Only works for timestamps within last 7 days (Amber API limitation)
    */
   const actualPricesHandler = async (req, res) => {
-    if (rejectUnsupportedProvider(req, res)) return;
-
     try {
       const userId = req.user.uid;
       const userConfig = await getUserConfig(userId);
+      const provider = resolveProvider(req, userConfig);
 
-      if (!userConfig || !userConfig.amberApiKey) {
+      if (rejectUnsupportedProvider(provider, res)) return;
+
+      if (provider === 'aemo') {
+        const timestamp = req.query.timestamp;
+        if (!timestamp) {
+          return res.status(400).json({ errno: 400, error: 'Timestamp is required' });
+        }
+
+        const result = await aemoAPI.getActualPriceAtTimestamp(
+          {
+            regionId: resolveAemoRegionId(req, userConfig),
+            userConfig,
+            userId
+          },
+          timestamp
+        );
+        return res.json({ errno: 0, result: result?.result || null });
+      }
+
+      if (!userConfig || !isAmberConfigured(userConfig)) {
         return res.status(400).json({ errno: 400, error: 'Amber not configured' });
       }
 

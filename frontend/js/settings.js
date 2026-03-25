@@ -31,6 +31,35 @@
             }
         }
 
+        function getSelectedPricingProvider() {
+            const providerInput = document.getElementById('pricing_provider');
+            return String(providerInput?.value || currentConfig?.pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+        }
+
+        function togglePricingProviderFields(provider = getSelectedPricingProvider()) {
+            const normalizedProvider = String(provider || 'amber').trim().toLowerCase() || 'amber';
+            const amberSection = document.getElementById('pricingAmberKeySection');
+            const aemoSection = document.getElementById('pricingAemoRegionSection');
+            if (amberSection) amberSection.style.display = normalizedProvider === 'amber' ? '' : 'none';
+            if (aemoSection) aemoSection.style.display = normalizedProvider === 'aemo' ? '' : 'none';
+        }
+
+        function updatePricingCredentialStatus(hasPricingKey = false) {
+            const provider = getSelectedPricingProvider();
+            const credStatusEl = document.getElementById('credentialsStatus');
+            if (!credStatusEl) return;
+
+            if (provider === 'aemo') {
+                const region = document.getElementById('pricing_aemoRegion')?.value || currentConfig?.aemoRegion || 'NSW1';
+                credStatusEl.textContent = `AEMO public pricing active · region ${region}`;
+                return;
+            }
+
+            if (hasPricingKey) {
+                credStatusEl.textContent = 'Pricing API key is present (hidden)';
+            }
+        }
+
         const TIMING_INPUT_IDS = new Set([
             'automation_intervalMs',
             'cache_amber',
@@ -1600,6 +1629,9 @@
                 setInput('cache_inverter', cacheInverterMs);
                 setInput('cache_weather', cacheWeatherMs);
                 setInput('cache_teslaStatus', cacheTeslaStatusMs);
+                setInput('pricing_provider', currentConfig.pricingProvider || 'amber');
+                setInput('pricing_aemoRegion', currentConfig.aemoRegion || currentConfig.siteIdOrRegion || 'NSW1');
+                togglePricingProviderFields(currentConfig.pricingProvider || 'amber');
                 
                 // Defaults
                 if (currentConfig.defaults) {
@@ -1712,7 +1744,10 @@
                             }
                         }
                         
-                        if (hasFoxess && hasAmber) {
+                        if (getSelectedPricingProvider() === 'aemo') {
+                            if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
+                            updatePricingCredentialStatus(false);
+                        } else if (hasFoxess && hasAmber) {
                             // Both credentials present
                             if (credStatusEl) credStatusEl.textContent = 'Inverter token and pricing API key are present (hidden)';
                             if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
@@ -2153,6 +2188,11 @@
                     },
                     // Also save location at root level for backward compatibility
                     location: document.getElementById('preferences_weatherPlace')?.value || 'Sydney, Australia',
+                    pricingProvider: getSelectedPricingProvider(),
+                    aemoRegion: document.getElementById('pricing_aemoRegion')?.value || currentConfig.aemoRegion || 'NSW1',
+                    siteIdOrRegion: getSelectedPricingProvider() === 'aemo'
+                        ? (document.getElementById('pricing_aemoRegion')?.value || currentConfig.aemoRegion || 'NSW1')
+                        : (currentConfig.siteIdOrRegion || currentConfig.amberSiteId || ''),
                     // Hardware configuration (per-user inverter/battery specs, stored flat at config root)
                     inverterCapacityW: Math.round(parseFloat(document.getElementById('hardware_inverterCapacityKw')?.value || '10') * 1000),
                     batteryCapacityKWh: parseFloat(document.getElementById('hardware_batteryCapacityKwh')?.value || '41.93')
@@ -2523,6 +2563,14 @@
             document.querySelectorAll('select').forEach(select => {
                 select.addEventListener('change', updateStatus);
             });
+
+            const pricingProviderSelect = document.getElementById('pricing_provider');
+            if (pricingProviderSelect) {
+                pricingProviderSelect.addEventListener('change', () => {
+                    togglePricingProviderFields(pricingProviderSelect.value);
+                    updatePricingCredentialStatus(document.getElementById('credentials_amberKey')?.dataset.hasSavedCredential === '1');
+                });
+            }
             
             // Add change listener for text inputs (especially preferences section)
             document.querySelectorAll('input[type="text"]').forEach(input => {
@@ -2916,6 +2964,8 @@
                     if (amberPresent) {
                         credStatusEl.textContent += ' · pricing API key present';
                     }
+                } else if (getSelectedPricingProvider() === 'aemo') {
+                    updatePricingCredentialStatus(false);
                 } else if (foxessPresent && amberPresent) {
                     credStatusEl.textContent = 'Inverter token and pricing API key are present (hidden)';
                 } else if (foxessPresent) {
@@ -2938,6 +2988,7 @@
         // Save credentials by calling validate-keys endpoint which also sets them on server when valid
         async function saveCredentials() {
             const amberInput = document.getElementById('credentials_amberKey');
+            const pricingProvider = getSelectedPricingProvider();
             const amberDisplayed = (amberInput?.value || '').trim();
             const originalAmber = (originalCredentials.amberKey || '').trim();
             const amberHasSavedFlag = amberInput?.dataset.hasSavedCredential === '1';
@@ -2954,6 +3005,41 @@
                 ? amberInput.dataset.actualValue
                 : amberDisplayed;
             const amberToSend = amberUnchanged ? null : (amberKey || null);
+
+            if (pricingProvider === 'aemo') {
+                const saveBtn = document.getElementById('credentialsSaveBtn');
+                const prevText = saveBtn.innerHTML;
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
+
+                try {
+                    const selectedRegion = document.getElementById('pricing_aemoRegion')?.value || currentConfig?.aemoRegion || 'NSW1';
+                    const patchPayload = {
+                        pricingProvider: 'aemo',
+                        aemoRegion: selectedRegion,
+                        siteIdOrRegion: selectedRegion
+                    };
+                    const patchResp = await authenticatedFetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(patchPayload)
+                    });
+                    const patchData = await patchResp.json();
+                    if (!patchResp.ok || patchData.errno !== 0) {
+                        throw new Error(patchData?.msg || patchData?.error || `HTTP ${patchResp.status}`);
+                    }
+                    await loadCredentials();
+                    showMessage('success', 'AEMO pricing source saved. No pricing API key is required.');
+                } catch (e) {
+                    console.error('saveCredentials error', e);
+                    showMessage('warning', 'Failed to save credentials: ' + (e.message || e));
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = prevText;
+                    updateStatus();
+                }
+                return;
+            }
 
             // Detect current provider from visible section
             const isAlphaEss = document.getElementById('alphaessCredentialsSection')?.style.display !== 'none';
@@ -3368,6 +3454,8 @@
             'credentials_deviceSn',
             'credentials_foxessToken',
             'credentials_amberKey',
+            'pricing_provider',
+            'pricing_aemoRegion',
             'credentials_alphaessSystemSn',
             'credentials_alphaessAppId',
             'credentials_alphaessAppSecret',

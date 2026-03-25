@@ -164,6 +164,45 @@ describe('scheduler mutation route module', () => {
     );
   });
 
+  test('set route returns 502 when verify read fails', async () => {
+    const foxessAPI = {
+      callFoxESSAPI: jest.fn(async (path) => {
+        if (path === '/op/v1/device/scheduler/enable') {
+          return { errno: 0, result: { accepted: true } };
+        }
+        if (path === '/op/v1/device/scheduler/set/flag') {
+          return { errno: 0, result: { enable: 0 } };
+        }
+        if (path === '/op/v1/device/scheduler/get') {
+          throw new Error('verify failed');
+        }
+        return { errno: 0, result: {} };
+      })
+    };
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-scheduler-set' };
+        next();
+      });
+
+      registerSchedulerMutationRoutes(instance, {
+        addHistoryEntry: jest.fn(async () => undefined),
+        authenticateUser: (_req, _res, next) => next(),
+        foxessAPI,
+        getUserConfig: jest.fn(async () => ({ deviceSn: 'SN-SET' })),
+        logger: { debug: jest.fn(), warn: jest.fn() }
+      });
+    });
+
+    const response = await request(app)
+      .post('/api/scheduler/v1/set?verify=1')
+      .send({ groups: [{ enable: 0 }] });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.body).toEqual({ errno: 502, error: 'Schedule verification failed after mutation' });
+  });
+
   test('set route tolerates scheduler flag errors and keeps success response', async () => {
     const foxessAPI = {
       callFoxESSAPI: jest.fn(async (path) => {

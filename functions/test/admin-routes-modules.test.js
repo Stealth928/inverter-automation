@@ -27,6 +27,18 @@ function createDeps(overrides = {}) {
       accountId: null,
       raw: null
     })),
+    buildFirestoreQuotaSummary: jest.fn(() => ({
+      alerts: [],
+      dailyFreeTier: { reads: 50000, writes: 20000, deletes: 20000 },
+      generatedAt: '2026-03-25T00:00:00.000Z',
+      metrics: [],
+      overallStatus: 'healthy'
+    })),
+    getCacheMetricsSnapshot: jest.fn(() => ({
+      startedAtMs: 1711324800000,
+      totals: { reads: 0, hits: 0, misses: 0, errors: 0, writes: 0, hitRatePct: null, missRatePct: null },
+      sources: []
+    })),
     sumSeriesValues: jest.fn(() => 0),
     estimateFirestoreCostFromUsage: jest.fn(() => ({
       services: [],
@@ -1185,6 +1197,40 @@ describe('admin route module', () => {
           { service: 'Cloud Firestore writes', costUsd: 1.45 },
           { service: 'Cloud Firestore deletes', costUsd: 0.04 }
         ]
+      })),
+      buildFirestoreQuotaSummary: jest.fn(() => ({
+        alerts: [
+          {
+            code: 'firestore_reads_watch',
+            metric: 'reads',
+            severity: 'watch',
+            message: 'Reads last-24h usage is 72% of the daily free-tier allowance.'
+          }
+        ],
+        dailyFreeTier: { reads: 50000, writes: 20000, deletes: 20000 },
+        generatedAt: '2026-03-25T00:00:00.000Z',
+        metrics: [
+          {
+            key: 'reads',
+            label: 'Reads',
+            dailyFreeTier: 50000,
+            monthToDateAllowance: 1250000,
+            monthToDateUsage: 710000,
+            last24Hours: 36000,
+            last24HoursUtilizationPct: 72,
+            projectedMonthEnd: 880400,
+            projectedMonthEndUtilizationPct: 56.8,
+            status: 'watch'
+          }
+        ],
+        overallStatus: 'watch'
+      })),
+      getCacheMetricsSnapshot: jest.fn(() => ({
+        startedAtMs: 1711324800000,
+        totals: { reads: 20, hits: 15, misses: 5, errors: 1, writes: 4, hitRatePct: 75, missRatePct: 25 },
+        sources: [
+          { source: 'weather', reads: 8, hits: 7, misses: 1, errors: 0, writes: 2, hitRatePct: 87.5, missRatePct: 12.5, lastSeenAtMs: 1711328400000 }
+        ]
       }))
     });
     const app = buildApp(deps);
@@ -1197,9 +1243,18 @@ describe('admin route module', () => {
     expect(response.body.errno).toBe(0);
     expect(response.body.result.firestore.estimatedDocOpsCostUsd).toBeCloseTo(1.98);
     expect(response.body.result.firestore.estimatedDocOpsBreakdown).toHaveLength(3);
+    expect(response.body.result.firestore.quota).toEqual(expect.objectContaining({
+      overallStatus: 'watch',
+      alerts: [expect.objectContaining({ code: 'firestore_reads_watch' })]
+    }));
+    expect(response.body.result.cache).toEqual(expect.objectContaining({
+      totals: expect.objectContaining({ hitRatePct: 75 }),
+      sources: [expect.objectContaining({ source: 'weather' })]
+    }));
     expect(response.body.result.billing.projectMtdCostUsd).toBeCloseTo(4.23);
     expect(response.body.result.billing.projectServices).toHaveLength(3);
     expect(response.body.result.billing.projectBillingAccountId).toBe('123ABC');
+    expect(response.body.result.warnings).toContain('Reads last-24h usage is 72% of the daily free-tier allowance.');
     // Backward-compatible fields retained
     expect(response.body.result.billing.estimatedMtdCostUsd).toBeCloseTo(4.23);
     expect(response.body.result.billing.services).toHaveLength(3);
@@ -1701,6 +1756,7 @@ describe('admin route module', () => {
       errors: 1,
       retries: 3,
       maxQueueLagMs: 120,
+      p95QueueLagMs: 120,
       maxCycleDurationMs: 400,
       maxTelemetryAgeMs: 1900000,
       p95CycleDurationMs: 320,
@@ -1946,6 +2002,146 @@ describe('admin route module', () => {
     expect(response.body.result.soak.readiness.readyForCloseout).toBe(false);
     expect(dailyGet).toHaveBeenCalledTimes(1);
     expect(runsGet).not.toHaveBeenCalled();
+  });
+
+  test('dead-letters returns recent items with top error counts', async () => {
+    const deadLetterGet = jest.fn(async () => ({
+      forEach: (callback) => {
+        callback({
+          id: 'dl-1',
+          ref: { path: 'users/u-1/automation_dead_letters/dl-1' },
+          data: () => ({
+            cycleKey: 'u-1_1',
+            createdAt: 1710000000000,
+            expiresAt: 1710003600000,
+            attempts: 3,
+            error: 'FoxESS timeout'
+          })
+        });
+        callback({
+          id: 'dl-2',
+          ref: { path: 'users/u-2/automation_dead_letters/dl-2' },
+          data: () => ({
+            cycleKey: 'u-2_1',
+            createdAt: 1710000100000,
+            expiresAt: 1710003700000,
+            attempts: 3,
+            error: 'FoxESS timeout'
+          })
+        });
+      }
+    }));
+
+    const deps = createDeps({
+      db: {
+        collection: jest.fn(() => ({
+          doc: jest.fn(() => ({
+            collection: jest.fn(() => ({
+              orderBy: jest.fn(() => ({ limit: jest.fn(() => ({ get: jest.fn(async () => ({ forEach: () => {} })) })) }))
+            }))
+          }))
+        })),
+        collectionGroup: jest.fn((name) => {
+          if (name !== 'automation_dead_letters') {
+            throw new Error(`Unexpected collectionGroup: ${name}`);
+          }
+          return {
+            where: jest.fn(() => ({
+              orderBy: jest.fn(() => ({
+                limit: jest.fn(() => ({
+                  get: deadLetterGet
+                }))
+              }))
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/dead-letters?days=7&limit=10')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.total).toBe(2);
+    expect(response.body.result.topErrors).toEqual([
+      { error: 'foxess timeout', count: 2 }
+    ]);
+    expect(response.body.result.items[0]).toEqual(expect.objectContaining({
+      userId: 'u-1',
+      cycleKey: 'u-1_1',
+      attempts: 3
+    }));
+    expect(deadLetterGet).toHaveBeenCalledTimes(1);
+  });
+
+  test('dead-letter retry invokes automation cycle handler and deletes recovered item', async () => {
+    const deadLetterDelete = jest.fn(async () => undefined);
+    const deadLetterSet = jest.fn(async () => undefined);
+    const deadLetterGet = jest.fn(async () => ({
+      exists: true,
+      data: () => ({ cycleKey: 'cycle-u1-123', attempts: 3, error: 'timeout' })
+    }));
+    const adminAuditAdd = jest.fn(async () => undefined);
+    const deps = createDeps({
+      db: {
+        collection: jest.fn((name) => {
+          if (name === 'users') {
+            return {
+              doc: jest.fn((uid) => ({
+                collection: jest.fn((sub) => {
+                  if (sub !== 'automation_dead_letters') throw new Error(`Unexpected subcollection: ${sub}`);
+                  return {
+                    doc: jest.fn((id) => {
+                      expect(uid).toBe('u-1');
+                      expect(id).toBe('dl-1');
+                      return {
+                        get: deadLetterGet,
+                        delete: deadLetterDelete,
+                        set: deadLetterSet
+                      };
+                    })
+                  };
+                })
+              }))
+            };
+          }
+          if (name === 'admin_audit') {
+            return { add: adminAuditAdd };
+          }
+          return {
+            doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
+            where: jest.fn(() => ({})),
+            add: jest.fn(async () => undefined)
+          };
+        })
+      },
+      getAutomationCycleHandler: () => async (_req, res) => res.json({ errno: 0, result: { triggered: false } })
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/admin/dead-letters/u-1/dl-1/retry')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result).toEqual(expect.objectContaining({
+      userId: 'u-1',
+      deadLetterId: 'dl-1',
+      cycleKey: 'cycle-u1-123',
+      retried: true
+    }));
+    expect(deadLetterDelete).toHaveBeenCalledTimes(1);
+    expect(deadLetterSet).not.toHaveBeenCalled();
+    expect(adminAuditAdd).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'retry_dead_letter',
+      targetUid: 'u-1',
+      cycleKey: 'cycle-u1-123',
+      success: true
+    }));
   });
 
   test('user stats resolves AlphaESS credential presence from secrets doc', async () => {

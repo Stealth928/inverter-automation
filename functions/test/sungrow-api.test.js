@@ -55,6 +55,7 @@ beforeEach(() => {
     getConfig: mockGetConfig,
     incrementApiCount: mockIncrementApiCount
   });
+  sungrowAPI.resetCircuitState();
 });
 
 afterEach(() => {
@@ -183,6 +184,37 @@ describe('callSungrowAPI — response normalization', () => {
     );
 
     expect(result.errno).toBe(408);
+  });
+
+  test('opens the circuit after repeated upstream server failures', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => 'service unavailable'
+    });
+
+    const userConfig = {
+      sungrowToken: 'tok',
+      sungrowUid: 'uid1',
+      sungrowTokenExpiry: Date.now() + 60000
+    };
+
+    const first = await sungrowAPI.callSungrowAPI('queryDeviceListByTokenAndType', {}, userConfig, 'user-circuit');
+    const second = await sungrowAPI.callSungrowAPI('queryDeviceListByTokenAndType', {}, userConfig, 'user-circuit');
+    const third = await sungrowAPI.callSungrowAPI('queryDeviceListByTokenAndType', {}, userConfig, 'user-circuit');
+    const blocked = await sungrowAPI.callSungrowAPI('queryDeviceListByTokenAndType', {}, userConfig, 'user-circuit');
+
+    expect(first.errno).toBe(503);
+    expect(second.errno).toBe(503);
+    expect(third.errno).toBe(503);
+    expect(blocked).toEqual(expect.objectContaining({
+      errno: 503,
+      circuitState: 'open'
+    }));
+    expect(sungrowAPI.getCircuitState()).toEqual(expect.objectContaining({
+      name: 'sungrow',
+      state: 'open'
+    }));
   });
 
   test('auto-triggers loginSungrow when token is expired', async () => {

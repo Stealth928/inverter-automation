@@ -43,11 +43,15 @@ function showMessage(type, message, duration = 5000) {
     }
 
     const alertClass = type === 'error' ? 'alert-danger' : `alert-${type}`;
-    messageArea.innerHTML = `<div class="alert ${alertClass} toast-notification" style="animation:slideUpFadeIn 0.25s ease">${icon} ${message}</div>`;
+    const toast = document.createElement('div');
+    toast.className = `alert ${alertClass} toast-notification`;
+    toast.style.animation = 'slideUpFadeIn 0.25s ease';
+    toast.textContent = `${icon} ${message}`;
+    messageArea.replaceChildren(toast);
 
     if (duration > 0) {
         setTimeout(() => {
-            if (messageArea) messageArea.innerHTML = '';
+            if (messageArea) messageArea.replaceChildren();
         }, duration);
     }
 }
@@ -644,27 +648,52 @@ function getAmberSiteStorageKey() {
     return `amberSiteSelection:${getAmberUserStorageId()}`;
 }
 
-/** Returns the user's stored Amber site ID (scoped per-user, legacy fallback). */
-function getStoredAmberSiteId() {
+function normalizePricingProviderKey(provider) {
+    const normalized = String(provider || 'amber').trim().toLowerCase();
+    return normalized || 'amber';
+}
+
+function getPricingSelectionStorageKey(provider = 'amber') {
+    return `pricingSelection:${normalizePricingProviderKey(provider)}:${getAmberUserStorageId()}`;
+}
+
+function getStoredPricingSelection(provider = 'amber') {
+    const normalizedProvider = normalizePricingProviderKey(provider);
     try {
-        const scoped = localStorage.getItem(getAmberSiteStorageKey());
+        const scoped = localStorage.getItem(getPricingSelectionStorageKey(normalizedProvider));
         if (scoped) return String(scoped).trim();
     } catch (e) { /* continue to legacy fallback */ }
-    try {
-        const legacy = localStorage.getItem('amberSiteId');
-        if (legacy) return String(legacy).trim();
-    } catch (e) { /* ignore */ }
+
+    if (normalizedProvider === 'amber') {
+        try {
+            const legacy = localStorage.getItem('amberSiteId');
+            if (legacy) return String(legacy).trim();
+        } catch (e) { /* ignore */ }
+    }
+
     return '';
+}
+
+function setStoredPricingSelection(provider = 'amber', selectionValue) {
+    const normalizedProvider = normalizePricingProviderKey(provider);
+    const normalizedValue = String(selectionValue || '').trim();
+    if (!normalizedValue) return;
+    try {
+        localStorage.setItem(getPricingSelectionStorageKey(normalizedProvider), normalizedValue);
+        if (normalizedProvider === 'amber') {
+            localStorage.setItem('amberSiteId', normalizedValue);
+        }
+    } catch (e) { /* ignore */ }
+}
+
+/** Returns the user's stored Amber site ID (scoped per-user, legacy fallback). */
+function getStoredAmberSiteId() {
+    return getStoredPricingSelection('amber');
 }
 
 /** Persists the selected Amber site ID to localStorage (scoped + legacy key). */
 function setStoredAmberSiteId(siteId) {
-    const normalized = String(siteId || '').trim();
-    if (!normalized) return;
-    try {
-        localStorage.setItem(getAmberSiteStorageKey(), normalized);
-        localStorage.setItem('amberSiteId', normalized);
-    } catch (e) { /* ignore */ }
+    setStoredPricingSelection('amber', siteId);
 }
 
 /* ============================================
@@ -701,7 +730,11 @@ if (typeof module !== 'undefined' && module.exports) {
         // Amber site selection helpers
         getAmberUserStorageId,
         getAmberSiteStorageKey,
+        getPricingSelectionStorageKey,
+        getStoredPricingSelection,
         getStoredAmberSiteId,
+        normalizePricingProviderKey,
+        setStoredPricingSelection,
         setStoredAmberSiteId,
         normalizeDeviceProvider
     };
@@ -718,7 +751,10 @@ if (typeof window !== 'undefined') {
         formatTimeAgo,
         getInverterApiCount,
         getProviderCapabilities,
+        getStoredPricingSelection,
         getStoredAmberSiteId,
+        normalizePricingProviderKey,
+        setStoredPricingSelection,
         setStoredAmberSiteId,
         normalizeDeviceProvider
     });

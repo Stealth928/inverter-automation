@@ -200,6 +200,7 @@ describe('automation scheduler metrics sink', () => {
       errors: 1,
       retries: 3,
       maxQueueLagMs: 80,
+      p95QueueLagMs: 70,
       maxCycleDurationMs: 140,
       maxTelemetryAgeMs: 120000,
       p95CycleDurationMs: 120,

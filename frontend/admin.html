@@ -2602,6 +2602,16 @@
                         <div class="value small" id="firestoreDocOpsCost">-</div>
                         <div class="sub" id="firestoreDocOpsBreakdown"></div>
                     </div>
+                    <div class="firestore-kpi">
+                        <div class="label">Cache Hit Rate</div>
+                        <div class="value small" id="cacheOverallHitRate">-</div>
+                        <div class="sub" id="cacheTopMissSource"></div>
+                    </div>
+                    <div class="firestore-kpi">
+                        <div class="label">Quota Status</div>
+                        <div class="value small" id="firestoreQuotaStatus">-</div>
+                        <div class="sub" id="firestoreQuotaSummary"></div>
+                    </div>
                 </div>
                 <div class="firestore-chart-wrap">
                     <canvas id="firestoreMetricsChart"></canvas>
@@ -3131,6 +3141,44 @@
                     <div class="scheduler-recent-empty" id="schedulerRecentRunsEmpty">No recent runs in window.</div>
                 </div>
                 <div class="scheduler-diagnostics" id="schedulerDiagnostics">No scheduler outlier diagnostics available yet.</div>
+                <section class="scheduler-dead-letters-panel">
+                    <div class="scheduler-slo-section-title">
+                        <span>Dead Letter Queue</span>
+                        <span class="scheduler-slo-section-note">Retry-exhausted automation cycles captured for operator review</span>
+                    </div>
+                    <div class="scheduler-kpis">
+                        <div class="scheduler-kpi">
+                            <div class="label">Dead letters (7d)</div>
+                            <div class="value" id="schedulerDeadLetterCount">-</div>
+                        </div>
+                        <div class="scheduler-kpi">
+                            <div class="label">Retry ready</div>
+                            <div class="value small" id="schedulerDeadLetterRetryReady">-</div>
+                        </div>
+                        <div class="scheduler-kpi">
+                            <div class="label">Oldest age</div>
+                            <div class="value small" id="schedulerDeadLetterOldest">-</div>
+                        </div>
+                    </div>
+                    <div class="scheduler-diagnostics" id="schedulerDeadLetterTopErrors">Loading dead-letter summary...</div>
+                    <div class="table-wrap" style="margin-top: 12px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Created</th>
+                                    <th>User</th>
+                                    <th>Cycle</th>
+                                    <th>Attempts</th>
+                                    <th>Status</th>
+                                    <th>Error</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="schedulerDeadLettersBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="scheduler-recent-empty" id="schedulerDeadLettersEmpty">No dead-letter items in the selected window.</div>
+                </section>
                 <div class="scheduler-warning" id="schedulerMetricsWarning" style="display: none;"></div>
             </div>
         </div>
@@ -3302,10 +3350,17 @@
                 </section>
                 <div class="api-health-grid">
                     <section class="api-health-panel">
-                        <h3>Traffic and failures</h3>
-                        <p>Provider calls come from the existing daily metrics rollups. Function execution and failure overlay is pulled from Cloud Monitoring only when available.</p>
+                        <h3>Provider traffic</h3>
+                        <p>Provider calls come from the daily metrics rollups only, so this chart stays on one unit system.</p>
                         <div class="api-health-chart-wrap">
                             <canvas id="apiHealthTrendChart"></canvas>
+                        </div>
+                    </section>
+                    <section class="api-health-panel">
+                        <h3>Execution health</h3>
+                        <p>Cloud Monitoring request executions and failed executions are shown separately from provider traffic to avoid mixed-unit comparisons.</p>
+                        <div class="api-health-chart-wrap api-health-chart-wrap-compact">
+                            <canvas id="apiHealthExecutionChart"></canvas>
                         </div>
                     </section>
                     <section class="api-health-panel">

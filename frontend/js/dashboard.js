@@ -4,6 +4,15 @@
             return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         const OVERVIEW_ICON_SVGS = {
             customize: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/><circle cx="9" cy="6" r="1.8"/><circle cx="15" cy="12" r="1.8"/><circle cx="11" cy="18" r="1.8"/></svg>',
             settings: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -1814,7 +1823,7 @@
                 }
                 document.getElementById('status-bar').querySelector('.endpoint').textContent = endpointText;
             } catch (e) {
-                card.innerHTML = `<div style="color:var(--color-danger)">Error: ${e.message}</div>`;
+                card.innerHTML = `<div style="color:var(--color-danger)">Error: ${escapeHtml(e.message)}</div>`;
             }
         }
 
@@ -2368,18 +2377,29 @@
 
         // Amber
         let amberSites = [];
+        let pricingProvider = 'amber';
         let amberConfiguredSiteId = '';
         let amberLastPersistedSiteId = '';
+
+        function getPricingProviderSafe() {
+            try {
+                if (window.sharedUtils && typeof window.sharedUtils.normalizePricingProviderKey === 'function') {
+                    return window.sharedUtils.normalizePricingProviderKey(pricingProvider);
+                }
+            } catch (e) { /* ignore */ }
+            return String(pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+        }
 
         // Prefer shared-utils helpers, but keep a local fallback for stale cached bundles.
         function getStoredAmberSiteIdSafe() {
             try {
-                if (window.sharedUtils && typeof window.sharedUtils.getStoredAmberSiteId === 'function') {
-                    return String(window.sharedUtils.getStoredAmberSiteId() || '').trim();
+                if (window.sharedUtils && typeof window.sharedUtils.getStoredPricingSelection === 'function') {
+                    return String(window.sharedUtils.getStoredPricingSelection(getPricingProviderSafe()) || '').trim();
                 }
             } catch (e) { /* ignore and fallback */ }
             try {
-                return String(localStorage.getItem('amberSiteId') || '').trim();
+                const legacyKey = getPricingProviderSafe() === 'aemo' ? 'aemoRegion' : 'amberSiteId';
+                return String(localStorage.getItem(legacyKey) || '').trim();
             } catch (e) {
                 return '';
             }
@@ -2390,14 +2410,15 @@
             if (!normalized) return;
 
             try {
-                if (window.sharedUtils && typeof window.sharedUtils.setStoredAmberSiteId === 'function') {
-                    window.sharedUtils.setStoredAmberSiteId(normalized);
+                if (window.sharedUtils && typeof window.sharedUtils.setStoredPricingSelection === 'function') {
+                    window.sharedUtils.setStoredPricingSelection(getPricingProviderSafe(), normalized);
                     return;
                 }
             } catch (e) { /* ignore and fallback */ }
 
             try {
-                localStorage.setItem('amberSiteId', normalized);
+                const legacyKey = getPricingProviderSafe() === 'aemo' ? 'aemoRegion' : 'amberSiteId';
+                localStorage.setItem(legacyKey, normalized);
             } catch (e) { /* ignore */ }
         }
 
@@ -2413,7 +2434,9 @@
                 const resp = await authenticatedFetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ amberSiteId: normalized })
+                    body: JSON.stringify(getPricingProviderSafe() === 'aemo'
+                        ? { pricingProvider: 'aemo', aemoRegion: normalized, siteIdOrRegion: normalized }
+                        : { pricingProvider: 'amber', amberSiteId: normalized, siteIdOrRegion: normalized })
                 });
                 if (!resp.ok) {
                     throw new Error(`HTTP ${resp.status}`);
@@ -2434,6 +2457,7 @@
         async function loadAmberSites(forceRefresh = false) {
             const select = document.getElementById('amberSiteId');
             const card = document.getElementById('amberCard');
+            const provider = getPricingProviderSafe();
             select.innerHTML = '<option value="">Loading...</option>';
 
             if (!select.dataset.boundAmberChange) {
@@ -2470,9 +2494,9 @@
             }
             
             try {
-                let url = '/api/pricing/sites';
+                let url = `/api/pricing/sites?provider=${encodeURIComponent(provider)}`;
                 if (forceRefresh) {
-                    url += '?forceRefresh=true';
+                    url += '&forceRefresh=true';
                 }
                 const resp = await authenticatedFetch(url);
                 const json = await resp.json();
@@ -2489,11 +2513,17 @@
                 
                 if (sites.length > 0) {
                     amberSites = sites;
-                    select.innerHTML = sites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
+                    select.innerHTML = sites.map((s) => {
+                        const value = provider === 'aemo' ? (s.region || s.id) : s.id;
+                        const label = provider === 'aemo'
+                            ? (s.displayName || s.name || s.region || s.id)
+                            : `${s.nmi} (${s.network})`;
+                        return `<option value="${value}">${label}</option>`;
+                    }).join('');
                     const storedSiteId = getStoredAmberSiteIdSafe();
                     // localStorage (user's last manual pick) takes priority over backend config
                     const preferredSiteId = storedSiteId || amberConfiguredSiteId;
-                    const preferredExists = preferredSiteId && sites.some(s => String(s.id) === String(preferredSiteId));
+                    const preferredExists = preferredSiteId && sites.some(s => String((provider === 'aemo' ? (s.region || s.id) : s.id)) === String(preferredSiteId));
                     if (preferredExists) {
                         select.value = String(preferredSiteId);
                     } else if (select.options.length > 0) {
@@ -2516,22 +2546,23 @@
                         // If preferredSiteId existed but wasn't found in the list, do NOT overwrite —
                         // keep the server-saved preference intact and just temporarily show the first site
                     }
-                    card.innerHTML = `<div style="color:var(--color-success)">✓ ${sites.length} site(s) found</div>`;
+                    card.innerHTML = `<div style="color:var(--color-success)">✓ ${sites.length} ${provider === 'aemo' ? 'region(s)' : 'site(s)'} found</div>`;
                     // Auto-fetch current prices
                     setTimeout(() => getAmberCurrent(forceRefresh), 500);
                 } else {
-                    select.innerHTML = '<option value="">No sites</option>';
-                    card.innerHTML = `<div style="color:var(--color-warning)">No sites found</div>`;
+                    select.innerHTML = `<option value="">No ${provider === 'aemo' ? 'regions' : 'sites'}</option>`;
+                    card.innerHTML = `<div style="color:var(--color-warning)">No ${provider === 'aemo' ? 'regions' : 'sites'} found</div>`;
                 }
             } catch (e) {
                 console.error('[Amber] Error loading sites:', e);
                 select.innerHTML = '<option value="">Error</option>';
-                card.innerHTML = `<div style="color:var(--color-danger)">Error: ${e.message}</div>`;
+                card.innerHTML = `<div style="color:var(--color-danger)">Error: ${escapeHtml(e.message)}</div>`;
             }
         }
 
         async function getAmberCurrent(force = false) {
             const select = document.getElementById('amberSiteId');
+            const provider = getPricingProviderSafe();
             let siteId = select.value;
             if (!siteId && isDashboardLocalMockEnabled()) {
                 const mockSites = getMockAmberSites();
@@ -2549,6 +2580,7 @@
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
             const age = Date.now() - (cacheState.amberTime || 0);
             const cacheSiteId = String(cacheState.amberSiteId || '');
+            const cacheProvider = String(cacheState.amberProvider || 'amber');
             const cacheOwnerId = String(cacheState.amberUserId || '');
             const currentOwnerId = getAmberUserStorageId();
             
@@ -2556,7 +2588,7 @@
             const mockMode = isDashboardLocalMockEnabled();
             const shouldBypassCache = force || isPageReload || mockMode;
             
-            if (!shouldBypassCache && cacheState.amberTime && age < CONFIG.cache.amber && cacheSiteId === String(siteId) && cacheOwnerId === currentOwnerId) {
+            if (!shouldBypassCache && cacheState.amberTime && age < CONFIG.cache.amber && cacheSiteId === String(siteId) && cacheProvider === provider && cacheOwnerId === currentOwnerId) {
                 // Load cached full prices array and render
                 try {
                     const cachedPricesFull = JSON.parse(localStorage.getItem('cachedPricesFull') || '[]');
@@ -2577,7 +2609,10 @@
                 if (mockMode) {
                     data = { errno: 0, result: getMockAmberPrices(next, siteId), mock: true };
                 } else {
-                    let url = `/api/pricing/current?siteId=${siteId}&next=${next}`;
+                    let url = `/api/pricing/current?provider=${encodeURIComponent(provider)}&next=${next}`;
+                    url += provider === 'aemo'
+                        ? `&regionId=${encodeURIComponent(siteId)}`
+                        : `&siteId=${encodeURIComponent(siteId)}`;
                     // Add forceRefresh if force flag is set
                     if (force) {
                         url += '&forceRefresh=true';
@@ -2617,6 +2652,7 @@
                         const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
                         cacheState.amberTime = Date.now();
                         cacheState.amberSiteId = String(siteId);
+                        cacheState.amberProvider = provider;
                         cacheState.amberUserId = currentOwnerId;
                         localStorage.setItem('cacheState', JSON.stringify(cacheState));
                     } catch (e) { /* ignore cache errors */ }
@@ -2630,7 +2666,7 @@
                 
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
                 document.getElementById('status-bar').style.display = 'flex';
-                document.getElementById('status-bar').querySelector('.endpoint').textContent = `Amber Prices`;
+                document.getElementById('status-bar').querySelector('.endpoint').textContent = `${provider === 'aemo' ? 'AEMO' : 'Amber'} Prices`;
             } catch (e) {
                 card.innerHTML = `<div style="color:var(--color-danger)">Error: ${e.message}</div>`;
             }
@@ -2693,6 +2729,7 @@
 
         async function getAmberRange(startDate, endDate) {
             const siteId = document.getElementById('amberSiteId').value;
+            const provider = getPricingProviderSafe();
             if (!siteId) return;
 
             const card = document.getElementById('amberCard');
@@ -2706,7 +2743,10 @@
                     s = yesterday.toISOString().slice(0,10);
                     e = today.toISOString().slice(0,10);
                 }
-                const resp = await authenticatedFetch(`/api/pricing/prices?siteId=${siteId}&startDate=${s}&endDate=${e}`);
+                const selectorQuery = provider === 'aemo'
+                    ? `regionId=${encodeURIComponent(siteId)}`
+                    : `siteId=${encodeURIComponent(siteId)}`;
+                const resp = await authenticatedFetch(`/api/pricing/prices?provider=${encodeURIComponent(provider)}&${selectorQuery}&startDate=${s}&endDate=${e}`);
                 const data = await resp.json();
                 renderAmberCard(data);
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
@@ -5730,7 +5770,7 @@
                 inverterBadge.style.color = mock ? 'var(--color-warning)' : '';
             }
             if (amberBadge) {
-                amberBadge.textContent = preview ? 'Preview' : (mock ? 'Mock' : 'Amber');
+                amberBadge.textContent = preview ? 'Preview' : (mock ? 'Mock' : (getPricingProviderSafe() === 'aemo' ? 'AEMO' : 'Amber'));
                 amberBadge.style.background = mock ? 'color-mix(in srgb, var(--color-warning) 22%, transparent)' : '';
                 amberBadge.style.color = mock ? 'var(--color-warning)' : '';
             }
@@ -7317,7 +7357,12 @@
                     if (snInput && !snInput.value && cfg.result.deviceSn) {
                         snInput.value = cfg.result.deviceSn;
                     }
-                    const configuredAmberSite = String(cfg.result.amberSiteId || '').trim();
+                    pricingProvider = String(cfg.result.pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+                    const configuredAmberSite = String(
+                        pricingProvider === 'aemo'
+                            ? (cfg.result.aemoRegion || cfg.result.siteIdOrRegion || '')
+                            : (cfg.result.amberSiteId || cfg.result.siteIdOrRegion || '')
+                    ).trim();
                     amberConfiguredSiteId = configuredAmberSite;
                     amberLastPersistedSiteId = configuredAmberSite;
                     // Only seed localStorage from backend when it is empty (e.g. new browser / first login).
@@ -7326,6 +7371,7 @@
                     if (configuredAmberSite && !getStoredAmberSiteIdSafe()) {
                         setStoredAmberSiteIdSafe(configuredAmberSite);
                     }
+                    updateDataSourceBadges();
 
                     // Apply backend-configured refresh intervals so the UI honors settings
                     try {

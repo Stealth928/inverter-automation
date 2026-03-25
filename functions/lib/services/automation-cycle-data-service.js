@@ -209,26 +209,36 @@ async function fetchAutomationAmberData(options = {}) {
   const amberAPI = options.amberAPI;
   const amberPricesInFlight = options.amberPricesInFlight;
   const logger = getLogger(options.logger);
+  const pricingProvider = String(options.pricingProvider || options.userConfig?.pricingProvider || 'amber').toLowerCase().trim();
+  const tariffAdapter = options.tariffAdapter || options.amberTariffAdapter || null;
   const userConfig = options.userConfig;
   const userId = options.userId;
-  const amberTariffAdapter = options.amberTariffAdapter || null;
 
-  if (!userConfig?.amberApiKey) {
+  if (pricingProvider === 'amber' && !userConfig?.amberApiKey) {
     return null;
   }
 
   // Prefer the adapter path when available — it owns its own caching strategy
-  if (amberTariffAdapter && typeof amberTariffAdapter.getCurrentPriceData === 'function') {
+  if (tariffAdapter && typeof tariffAdapter.getCurrentPriceData === 'function') {
     try {
-      const adapterResult = await amberTariffAdapter.getCurrentPriceData({ userConfig, userId });
+      const adapterResult = await tariffAdapter.getCurrentPriceData({ userConfig, userId });
       // Result may be { data: [...] } or a plain array
-      return (adapterResult && adapterResult.data !== undefined) ? adapterResult.data : adapterResult;
+      const rows = (adapterResult && adapterResult.data !== undefined) ? adapterResult.data : adapterResult;
+      logAmberForecastSummary(rows, options.logger);
+      return rows;
     } catch (adapterErr) {
       logger.warn(
-        `[Automation] Amber adapter fetch failed, falling back to legacy path: ${adapterErr.message}`,
+        `[Automation] ${pricingProvider} tariff adapter fetch failed, falling back to legacy path: ${adapterErr.message}`,
         adapterErr.message
       );
+      if (pricingProvider !== 'amber') {
+        return null;
+      }
     }
+  }
+
+  if (pricingProvider !== 'amber') {
+    return null;
   }
 
   if (

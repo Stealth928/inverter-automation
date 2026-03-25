@@ -2,6 +2,7 @@
 
 function registerHealthRoutes(app, deps = {}) {
   const getUserConfig = deps.getUserConfig;
+  const getUpstreamHealthSnapshot = deps.getUpstreamHealthSnapshot;
   const tryAttachUser = deps.tryAttachUser;
 
   if (!app || typeof app.get !== 'function') {
@@ -16,10 +17,11 @@ function registerHealthRoutes(app, deps = {}) {
 
   // Health check (no auth required)
   app.get('/api/health', async (req, res) => {
-    const buildResponse = (foxessTokenPresent, amberApiKeyPresent) => ({
+    const buildResponse = (foxessTokenPresent, amberApiKeyPresent, upstream = null) => ({
       errno: 0,
       result: {
-        status: 'OK'
+        status: upstream?.status || 'OK',
+        upstream: upstream || undefined
       },
       // Legacy fields retained for existing frontend consumers.
       ok: true,
@@ -34,6 +36,7 @@ function registerHealthRoutes(app, deps = {}) {
       // Check if user is authenticated and has tokens saved
       let foxessTokenPresent = false;
       let amberApiKeyPresent = false;
+      let upstream = null;
 
       if (userId) {
         try {
@@ -45,10 +48,23 @@ function registerHealthRoutes(app, deps = {}) {
         }
       }
 
-      res.json(buildResponse(foxessTokenPresent, amberApiKeyPresent));
+      if (typeof getUpstreamHealthSnapshot === 'function') {
+        upstream = await getUpstreamHealthSnapshot({
+          forceRefresh: req.query?.refresh === '1' || req.query?.probe === '1',
+          user: req.user || null
+        });
+      }
+
+      const response = buildResponse(foxessTokenPresent, amberApiKeyPresent, upstream);
+      const statusCode = upstream && upstream.status && upstream.status !== 'OK' ? 503 : 200;
+      res.status(statusCode).json(response);
     } catch (error) {
       console.error('[Health] Error:', error);
-      res.json(buildResponse(false, false));
+      res.status(503).json(buildResponse(false, false, {
+        status: 'DEGRADED',
+        services: {},
+        error: error.message || String(error)
+      }));
     }
   });
 }

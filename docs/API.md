@@ -1,6 +1,6 @@
 # API Reference
 
-Last updated: 2026-03-22
+Last updated: 2026-03-25
 
 ## Overview
 
@@ -21,6 +21,89 @@ This document focuses on commonly used product and operator workflows rather
 than listing every backend route exhaustively.
 
 ## Admin Operator Metrics
+
+### Firestore, Quota, and Cache Monitoring
+```
+GET /api/admin/firestore-metrics?hours=36
+Authorization: Bearer <token>
+```
+Admin-only endpoint used by the Admin overview tab for cost and capacity monitoring.
+
+The response includes:
+- Firestore month-to-date reads, writes, deletes, and storage estimate
+- Project month-to-date billing when Cloud Billing access is available
+- Firestore doc-op-only estimate fallback when project billing is unavailable
+- `firestore.quota` daily free-tier monitoring summary based on the last 24 hours of Monitoring data
+- `cache` process-level cache effectiveness summary with hits, misses, writes, and per-source hit rates
+- Operator warnings when Firestore daily free-tier utilization enters watch or breach ranges
+
+Typical success payload excerpt:
+
+```json
+{
+  "errno": 0,
+  "result": {
+    "source": "gcp-monitoring+cloud-billing",
+    "updatedAt": "2026-03-25T09:15:00.000Z",
+    "firestore": {
+      "readsMtd": 710000,
+      "writesMtd": 148000,
+      "deletesMtd": 2100,
+      "storageGb": 0.42,
+      "quota": {
+        "overallStatus": "watch",
+        "dailyFreeTier": { "reads": 50000, "writes": 20000, "deletes": 20000 },
+        "metrics": [
+          {
+            "key": "reads",
+            "last24Hours": 36000,
+            "last24HoursUtilizationPct": 72,
+            "projectedMonthEnd": 880400,
+            "status": "watch"
+          }
+        ],
+        "alerts": [
+          {
+            "code": "firestore_reads_watch",
+            "severity": "watch",
+            "message": "Reads last-24h usage is 72% of the daily free-tier allowance."
+          }
+        ]
+      },
+      "estimatedDocOpsCostUsd": 1.98
+    },
+    "cache": {
+      "totals": {
+        "reads": 20,
+        "hits": 15,
+        "misses": 5,
+        "writes": 4,
+        "hitRatePct": 75
+      },
+      "sources": [
+        {
+          "source": "weather",
+          "reads": 8,
+          "hits": 7,
+          "misses": 1,
+          "hitRatePct": 87.5
+        }
+      ]
+    }
+  }
+}
+```
+
+### Dead-Letter Operations
+```
+GET /api/admin/dead-letters?days=7&limit=50
+POST /api/admin/dead-letters/:userId/:deadLetterId/retry
+Authorization: Bearer <token>
+```
+Admin-only scheduler dead-letter visibility and manual retry endpoints.
+
+- `GET` returns recent retry-exhausted automation cycles, top error clusters, retry-ready counts, and oldest item age.
+- `POST` invokes the real automation cycle handler for the captured `cycleKey`, deletes recovered dead-letter items on success, and writes an `admin_audit` entry for the retry attempt.
 
 ### Shared Announcement Configuration
 ```

@@ -11,6 +11,7 @@ function registerAdminRoutes(app, deps = {}) {
   const fetchCloudBillingCost = deps.fetchCloudBillingCost;
   const sumSeriesValues = deps.sumSeriesValues;
   const estimateFirestoreCostFromUsage = deps.estimateFirestoreCostFromUsage;
+  const buildFirestoreQuotaSummary = deps.buildFirestoreQuotaSummary;
   const db = deps.db;
   const admin = deps.admin;
   const serverTimestamp = deps.serverTimestamp;
@@ -18,6 +19,12 @@ function registerAdminRoutes(app, deps = {}) {
   const deleteCollectionDocs = deps.deleteCollectionDocs;
   const normalizeCouplingValue = deps.normalizeCouplingValue;
   const isAdmin = deps.isAdmin;
+  const getCacheMetricsSnapshot = typeof deps.getCacheMetricsSnapshot === 'function'
+    ? deps.getCacheMetricsSnapshot
+    : null;
+  const getAutomationCycleHandler = typeof deps.getAutomationCycleHandler === 'function'
+    ? deps.getAutomationCycleHandler
+    : null;
   const SEED_ADMIN_EMAIL = deps.SEED_ADMIN_EMAIL;
   const fetchImpl = deps.fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
   const githubDataworks = deps.githubDataworks && typeof deps.githubDataworks === 'object'
@@ -61,6 +68,9 @@ function registerAdminRoutes(app, deps = {}) {
   }
   if (typeof estimateFirestoreCostFromUsage !== 'function') {
     throw new Error('registerAdminRoutes requires estimateFirestoreCostFromUsage()');
+  }
+  if (typeof buildFirestoreQuotaSummary !== 'function') {
+    throw new Error('registerAdminRoutes requires buildFirestoreQuotaSummary()');
   }
   if (!db || typeof db.collection !== 'function') {
     throw new Error('registerAdminRoutes requires Firestore db');
@@ -1248,6 +1258,66 @@ function registerAdminRoutes(app, deps = {}) {
     return numeric.toLocaleString('en-AU');
   };
 
+  const parseBoundedInt = (value, fallback, min, max) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    const normalized = Math.floor(parsed);
+    return Math.max(min, Math.min(max, normalized));
+  };
+
+  const toFiniteNumber = (value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const normalizeDeadLetterErrorKey = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return 'unknown_error';
+    return text.toLowerCase().replace(/\s+/g, ' ').slice(0, 160);
+  };
+
+  const createMockResponseCollector = () => {
+    let statusCode = 200;
+    let payload = null;
+    return {
+      response: {
+        status(code) {
+          statusCode = Number(code) || 200;
+          return this;
+        },
+        json(body) {
+          payload = body;
+          return this;
+        }
+      },
+      getResult() {
+        return {
+          payload,
+          statusCode
+        };
+      }
+    };
+  };
+
+  const invokeAutomationCycleForAdminRetry = async ({ cycleKey, userId }) => {
+    const automationCycleHandler = getAutomationCycleHandler ? getAutomationCycleHandler() : null;
+    if (typeof automationCycleHandler !== 'function') {
+      throw new Error('Automation cycle handler unavailable');
+    }
+
+    const collector = createMockResponseCollector();
+    const headers = { 'x-automation-cycle-key': cycleKey };
+    const mockReq = {
+      user: { uid: userId },
+      body: { cycleKey },
+      headers,
+      get: (name) => headers[String(name || '').toLowerCase()] || null
+    };
+
+    await automationCycleHandler(mockReq, collector.response);
+    return collector.getResult();
+  };
+
   async function getCachedAdminApiHealth(cacheKey, loadHealth, { forceRefresh = false } = {}) {
     const now = Date.now();
     const hasFreshValue = !forceRefresh
@@ -1744,6 +1814,15 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
     const writesMtd = Math.round(sumSeriesValues(writesMtdSeries));
     const deletesMtd = Math.round(sumSeriesValues(deletesMtdSeries));
     const firestoreUsageEstimate = estimateFirestoreCostFromUsage(readsMtd, writesMtd, deletesMtd, now);
+    const quota = buildFirestoreQuotaSummary({
+      deletesMtd,
+      deletesSeries,
+      nowDate: now,
+      readsMtd,
+      readsSeries,
+      writesMtd,
+      writesSeries
+    });
     const firestoreDocOpsCostUsd = Number.isFinite(Number(firestoreUsageEstimate?.totalUsd))
       ? Number(firestoreUsageEstimate.totalUsd)
       : null;
@@ -1843,6 +1922,11 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
       ? Number(storageSeries[storageSeries.length - 1].value || 0)
       : null;
     const storageGb = Number.isFinite(latestStorageBytes) ? (latestStorageBytes / (1024 * 1024 * 1024)) : null;
+    const cache = getCacheMetricsSnapshot ? getCacheMetricsSnapshot() : null;
+
+    for (const alert of quota.alerts || []) {
+      warnings.push(alert.message);
+    }
 
     res.json({
       errno: 0,
@@ -1861,9 +1945,11 @@ app.get('/api/admin/firestore-metrics', authenticateUser, requireAdmin, async (r
           writesMtd,
           deletesMtd,
           storageGb,
+          quota,
           estimatedDocOpsCostUsd: firestoreDocOpsCostUsd,
           estimatedDocOpsBreakdown: firestoreDocOpsBreakdown
         },
+        cache,
         billing: {
           // Preferred explicit fields
           projectMtdCostUsd: projectBillingData ? projectBillingData.totalUsd : null,
@@ -3176,18 +3262,6 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
  */
 app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (req, res) => {
   try {
-    const parseBoundedInt = (value, fallback, min, max) => {
-      const parsed = Number(value);
-      if (!Number.isFinite(parsed)) return fallback;
-      const normalized = Math.floor(parsed);
-      return Math.max(min, Math.min(max, normalized));
-    };
-
-    const toFiniteNumber = (value, fallback = 0) => {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : fallback;
-    };
-
     const phaseTimingKeys = ['dataFetchMs', 'ruleEvalMs', 'actionApplyMs', 'curtailmentMs'];
 
     const sanitizeDurationStats = (value) => {
@@ -3490,6 +3564,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         errors: 0,
         retries: 0,
         maxQueueLagMs: 0,
+        p95QueueLagMs: 0,
         maxCycleDurationMs: 0,
         maxTelemetryAgeMs: 0,
         p95CycleDurationMs: 0,
@@ -3523,6 +3598,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         summary.errors += toFiniteNumber(run.errors, 0);
         summary.retries += toFiniteNumber(run.retries, 0);
         summary.maxQueueLagMs = Math.max(summary.maxQueueLagMs, toFiniteNumber(run.queueLagMs?.maxMs, 0));
+        summary.p95QueueLagMs = Math.max(summary.p95QueueLagMs, toFiniteNumber(run.queueLagMs?.p95Ms, 0));
         summary.maxCycleDurationMs = Math.max(summary.maxCycleDurationMs, toFiniteNumber(run.cycleDurationMs?.maxMs, 0));
         summary.maxTelemetryAgeMs = Math.max(summary.maxTelemetryAgeMs, toFiniteNumber(run.telemetryAgeMs?.maxMs, 0));
         summary.p95CycleDurationMs = Math.max(summary.p95CycleDurationMs, toFiniteNumber(run.cycleDurationMs?.p95Ms, 0));
@@ -3663,6 +3739,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
         errors: toFiniteNumber(data.errors, 0),
         retries: toFiniteNumber(data.retries, 0),
         maxQueueLagMs: toFiniteNumber(data.maxQueueLagMs, 0),
+        p95QueueLagMs: toFiniteNumber(data.p95QueueLagMs, toFiniteNumber(data.maxQueueLagMs, 0)),
         maxCycleDurationMs: toFiniteNumber(data.maxCycleDurationMs, 0),
         maxTelemetryAgeMs: toFiniteNumber(data.maxTelemetryAgeMs, 0),
         p95CycleDurationMs: toFiniteNumber(data.p95CycleDurationMs, 0),
@@ -3701,6 +3778,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       errors: 0,
       retries: 0,
       maxQueueLagMs: 0,
+      p95QueueLagMs: 0,
       maxCycleDurationMs: 0,
       maxTelemetryAgeMs: 0,
       p95CycleDurationMs: 0,
@@ -3727,6 +3805,7 @@ app.get('/api/admin/scheduler-metrics', authenticateUser, requireAdmin, async (r
       summary.errors += day.errors;
       summary.retries += day.retries;
       summary.maxQueueLagMs = Math.max(summary.maxQueueLagMs, day.maxQueueLagMs);
+      summary.p95QueueLagMs = Math.max(summary.p95QueueLagMs, day.p95QueueLagMs);
       summary.maxCycleDurationMs = Math.max(summary.maxCycleDurationMs, day.maxCycleDurationMs);
       summary.maxTelemetryAgeMs = Math.max(summary.maxTelemetryAgeMs, day.maxTelemetryAgeMs);
       summary.p95CycleDurationMs = Math.max(summary.p95CycleDurationMs, day.p95CycleDurationMs);
@@ -4231,6 +4310,158 @@ app.post('/api/admin/users/:uid/delete', authenticateUser, requireAdmin, async (
  * GET /api/admin/users/:uid/stats - Get utilization stats for a specific user
  * Returns last 30 days of per-user API metrics, automation state, rule count, and config summary
  */
+app.get('/api/admin/dead-letters', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const days = parseBoundedInt(req.query?.days, 7, 1, 30);
+    const limit = parseBoundedInt(req.query?.limit, 50, 1, 200);
+    const retryReadyAfterMinutes = parseBoundedInt(req.query?.retryReadyAfterMinutes, 15, 1, 180);
+    const nowMs = Date.now();
+    const windowStartMs = nowMs - (days * 24 * 60 * 60 * 1000);
+
+    if (typeof db.collectionGroup !== 'function') {
+      return res.json({
+        errno: 0,
+        result: {
+          days,
+          total: 0,
+          retryReadyCount: 0,
+          oldestAgeMs: 0,
+          topErrors: [],
+          items: []
+        }
+      });
+    }
+
+    const snapshot = await db.collectionGroup('automation_dead_letters')
+      .where('createdAt', '>=', windowStartMs)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+
+    const items = [];
+    const errorCounts = new Map();
+    let retryReadyCount = 0;
+    let oldestAgeMs = 0;
+
+    snapshot.forEach((doc) => {
+      const data = doc.data() || {};
+      const pathSegments = String(doc.ref?.path || '').split('/');
+      const userId = pathSegments.length >= 2 ? pathSegments[1] : null;
+      const createdAt = toFiniteNumber(data.createdAt, 0);
+      const ageMs = createdAt > 0 ? Math.max(0, nowMs - createdAt) : 0;
+      const retryReady = ageMs >= retryReadyAfterMinutes * 60 * 1000;
+      const errorKey = normalizeDeadLetterErrorKey(data.error);
+      errorCounts.set(errorKey, (errorCounts.get(errorKey) || 0) + 1);
+      oldestAgeMs = Math.max(oldestAgeMs, ageMs);
+      if (retryReady) {
+        retryReadyCount += 1;
+      }
+
+      items.push({
+        id: doc.id,
+        userId,
+        cycleKey: data.cycleKey ? String(data.cycleKey) : null,
+        attempts: Math.max(1, toFiniteNumber(data.attempts, 1)),
+        createdAt,
+        expiresAt: toFiniteNumber(data.expiresAt, 0),
+        ageMs,
+        retryReady,
+        error: String(data.error || 'Unknown scheduler error').slice(0, 300)
+      });
+    });
+
+    const topErrors = Array.from(errorCounts.entries())
+      .map(([error, count]) => ({ error, count }))
+      .sort((a, b) => b.count - a.count || a.error.localeCompare(b.error))
+      .slice(0, 10);
+
+    return res.json({
+      errno: 0,
+      result: {
+        days,
+        total: items.length,
+        retryReadyCount,
+        oldestAgeMs,
+        topErrors,
+        items
+      }
+    });
+  } catch (error) {
+    console.error('[Admin] Error fetching dead letters:', error);
+    return res.status(500).json({ errno: 500, error: error.message || String(error) });
+  }
+});
+
+app.post('/api/admin/dead-letters/:userId/:deadLetterId/retry', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const userId = String(req.params?.userId || '').trim();
+    const deadLetterId = String(req.params?.deadLetterId || '').trim();
+    if (!userId || !deadLetterId) {
+      return res.status(400).json({ errno: 400, error: 'userId and deadLetterId are required' });
+    }
+
+    const deadLetterRef = db.collection('users').doc(userId).collection('automation_dead_letters').doc(deadLetterId);
+    const deadLetterSnap = await deadLetterRef.get();
+    if (!deadLetterSnap.exists) {
+      return res.status(404).json({ errno: 404, error: 'Dead-letter item not found' });
+    }
+
+    const deadLetter = deadLetterSnap.data() || {};
+    const cycleKey = String(deadLetter.cycleKey || '').trim();
+    if (!cycleKey) {
+      return res.status(400).json({ errno: 400, error: 'Dead-letter item is missing cycleKey' });
+    }
+
+    const retryResult = await invokeAutomationCycleForAdminRetry({ cycleKey, userId });
+    const payload = retryResult && retryResult.payload && typeof retryResult.payload === 'object'
+      ? retryResult.payload
+      : null;
+    const retrySucceeded = retryResult.statusCode === 200 && payload && Number(payload.errno) === 0;
+    const incrementField = admin && admin.firestore && admin.firestore.FieldValue
+      && typeof admin.firestore.FieldValue.increment === 'function'
+      ? admin.firestore.FieldValue.increment(1)
+      : 1;
+
+    if (retrySucceeded) {
+      await deadLetterRef.delete();
+    } else {
+      await deadLetterRef.set({
+        lastManualRetryAt: Date.now(),
+        lastManualRetryBy: req.user.uid,
+        lastManualRetryError: String(payload?.error || payload?.msg || `HTTP ${retryResult.statusCode}`),
+        manualRetryAttempts: incrementField
+      }, { merge: true });
+    }
+
+    await db.collection('admin_audit').add({
+      action: 'retry_dead_letter',
+      adminUid: req.user.uid,
+      adminEmail: req.user.email,
+      targetUid: userId,
+      deadLetterId,
+      cycleKey,
+      success: retrySucceeded,
+      statusCode: retryResult.statusCode,
+      timestamp: serverTimestamp()
+    });
+
+    return res.status(retrySucceeded ? 200 : 502).json({
+      errno: retrySucceeded ? 0 : 502,
+      result: {
+        deadLetterId,
+        userId,
+        cycleKey,
+        retried: retrySucceeded,
+        cycleResponse: payload || null
+      },
+      error: retrySucceeded ? undefined : String(payload?.error || payload?.msg || 'Manual retry failed')
+    });
+  } catch (error) {
+    console.error('[Admin] Error retrying dead letter:', error);
+    return res.status(500).json({ errno: 500, error: error.message || String(error) });
+  }
+});
+
 app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (req, res) => {
   try {
     const { uid } = req.params;

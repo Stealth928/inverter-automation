@@ -1631,6 +1631,31 @@
                 </div>
 
                 <div class="setting-item">
+                    <div class="setting-label">Pricing Source</div>
+                    <div class="setting-hint">Choose which market data provider powers pricing cards, automation price rules, history, and ROI.</div>
+                    <div class="setting-input">
+                        <select id="pricing_provider">
+                            <option value="amber">Amber</option>
+                            <option value="aemo">AEMO</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-item" id="pricingAemoRegionSection" style="display:none">
+                    <div class="setting-label">AEMO Region</div>
+                    <div class="setting-hint">Select the NEM region to use for live and forecast spot pricing.</div>
+                    <div class="setting-input">
+                        <select id="pricing_aemoRegion">
+                            <option value="NSW1">New South Wales (NSW1)</option>
+                            <option value="QLD1">Queensland (QLD1)</option>
+                            <option value="VIC1">Victoria (VIC1)</option>
+                            <option value="SA1">South Australia (SA1)</option>
+                            <option value="TAS1">Tasmania (TAS1)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-item" id="pricingAmberKeySection">
                     <div class="setting-label">Pricing API Key (optional)</div>
                     <div class="setting-hint">Optional API key for electricity pricing data (used for automation)</div>
                     <div class="setting-input">

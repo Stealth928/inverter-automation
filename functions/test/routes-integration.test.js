@@ -182,14 +182,13 @@ describe('Routes Integration Tests', () => {
       expect(res.body.result).toEqual([]);
     });
 
-    test('GET /api/metrics/api-calls should work without auth', async () => {
+    test('GET /api/metrics/api-calls should require auth for global scope', async () => {
       const res = await request(app)
         .get('/api/metrics/api-calls')
         .query({ days: 7, scope: 'global' });
-      
-      expect(res.statusCode).toBe(200);
-      expect(res.body.errno).toBe(0);
-      expect(res.body.result).toBeDefined();
+
+      expect(res.statusCode).toBe(401);
+      expect(res.body).toEqual({ errno: 401, error: 'Unauthorized' });
     });
   });
 

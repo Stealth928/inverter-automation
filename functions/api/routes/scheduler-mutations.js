@@ -36,6 +36,37 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
     return normalized === '1' || normalized === 'true' || normalized === 'yes';
   }
 
+  async function readVerifiedSchedule({ verifyRequested, readSchedule, routeLabel, userId, deviceSN }) {
+    if (!verifyRequested) {
+      return null;
+    }
+
+    try {
+      return await readSchedule();
+    } catch (error) {
+      const wrappedError = new Error('Schedule verification failed after mutation');
+      wrappedError.statusCode = 502;
+      wrappedError.cause = error;
+
+      logger.warn(
+        'Scheduler',
+        `${routeLabel} verification failed for user ${userId} device ${deviceSN}: ${error && error.message ? error.message : error}`
+      );
+      throw wrappedError;
+    }
+  }
+
+  async function writeHistoryEntry(userId, entry, operationLabel) {
+    try {
+      await addHistoryEntry(userId, entry);
+    } catch (error) {
+      logger.warn(
+        'Scheduler',
+        `${operationLabel} history write failed for user ${userId}: ${error && error.message ? error.message : error}`
+      );
+    }
+  }
+
   app.post('/api/scheduler/v1/set', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
@@ -55,10 +86,18 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
         // Adapter-based path for non-FoxESS providers
         const context = { deviceSN, userConfig, userId: req.user.uid };
         const result = await deviceAdapter.setSchedule(context, groups);
-        const verify = shouldVerify(req)
-          ? await deviceAdapter.getSchedule(context).catch(() => null)
-          : null;
-        await addHistoryEntry(req.user.uid, { type: 'scheduler_update', action: 'manual', groups, result: result.errno === 0 ? 'success' : 'failed' });
+        const verify = await readVerifiedSchedule({
+          verifyRequested: shouldVerify(req),
+          readSchedule: () => deviceAdapter.getSchedule(context),
+          routeLabel: 'set',
+          userId: req.user.uid,
+          deviceSN
+        });
+        await writeHistoryEntry(
+          req.user.uid,
+          { type: 'scheduler_update', action: 'manual', groups, result: result.errno === 0 ? 'success' : 'failed' },
+          'set'
+        );
         return res.json({ errno: result.errno, msg: result.errno === 0 ? 'Success' : 'Failed', result: result.result, flagResult: null, verify: verify?.result || null });
       }
 
@@ -71,19 +110,22 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
       } catch (flagErr) {
         logger.warn('Scheduler', `Flag set failed: ${flagErr && flagErr.message ? flagErr.message : flagErr}`);
       }
-      await addHistoryEntry(req.user.uid, { type: 'scheduler_update', action: 'manual', groups, result: result.errno === 0 ? 'success' : 'failed' });
-      let verify = null;
-      if (shouldVerify(req)) {
-        try {
-          verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, req.user.uid);
-        } catch (error) {
-          logger.warn('Scheduler', `Verify read failed: ${error && error.message ? error.message : error}`);
-        }
-      }
+      await writeHistoryEntry(
+        req.user.uid,
+        { type: 'scheduler_update', action: 'manual', groups, result: result.errno === 0 ? 'success' : 'failed' },
+        'set'
+      );
+      const verify = await readVerifiedSchedule({
+        verifyRequested: shouldVerify(req),
+        readSchedule: () => foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, req.user.uid),
+        routeLabel: 'set',
+        userId: req.user.uid,
+        deviceSN
+      });
       return res.json({ errno: result.errno, msg: result.msg || (result.errno === 0 ? 'Success' : 'Failed'), result: result.result, flagResult, verify: verify?.result || null });
     } catch (error) {
       console.error('[Scheduler] SET error:', error);
-      return res.status(500).json({ errno: 500, error: error.message });
+      return res.status(error.statusCode || 500).json({ errno: error.statusCode || 500, error: error.message });
     }
   });
 
@@ -107,10 +149,14 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
 
       if (deviceAdapter && provider !== 'foxess') {
         const result = await deviceAdapter.clearSchedule({ deviceSN, userConfig, userId });
-        const verify = shouldVerify(req)
-          ? await deviceAdapter.getSchedule({ deviceSN, userConfig, userId }).catch(() => null)
-          : null;
-        await addHistoryEntry(userId, { type: 'scheduler_clear', by: userId }).catch(() => {});
+        const verify = await readVerifiedSchedule({
+          verifyRequested: shouldVerify(req),
+          readSchedule: () => deviceAdapter.getSchedule({ deviceSN, userConfig, userId }),
+          routeLabel: 'clear-all',
+          userId,
+          deviceSN
+        });
+        await writeHistoryEntry(userId, { type: 'scheduler_clear', by: userId }, 'clear-all');
         return res.json({ errno: result.errno, msg: result.errno === 0 ? 'Scheduler cleared' : 'Failed', result: result.result, flagResult: null, verify: verify?.result || null });
       }
 
@@ -122,23 +168,18 @@ function registerSchedulerMutationRoutes(app, deps = {}) {
       } catch (flagErr) {
         logger.warn('Scheduler', `Flag disable failed: ${flagErr && flagErr.message ? flagErr.message : flagErr}`);
       }
-      let verify = null;
-      if (shouldVerify(req)) {
-        try {
-          verify = await foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId);
-        } catch (error) {
-          logger.warn('Scheduler', `Verify read failed: ${error && error.message ? error.message : error}`);
-        }
-      }
-      try {
-        await addHistoryEntry(userId, { type: 'scheduler_clear', by: userId });
-      } catch (error) {
-        console.warn('[Scheduler] Failed to write history entry:', error && error.message);
-      }
+      const verify = await readVerifiedSchedule({
+        verifyRequested: shouldVerify(req),
+        readSchedule: () => foxessAPI.callFoxESSAPI('/op/v1/device/scheduler/get', 'POST', { deviceSN }, userConfig, userId),
+        routeLabel: 'clear-all',
+        userId,
+        deviceSN
+      });
+      await writeHistoryEntry(userId, { type: 'scheduler_clear', by: userId }, 'clear-all');
       return res.json({ errno: result.errno, msg: result.msg || (result.errno === 0 ? 'Scheduler cleared' : 'Failed'), result: result.result, flagResult, verify: verify?.result || null });
     } catch (error) {
       console.error('[Scheduler] clear-all error:', error.message || error);
-      return res.status(500).json({ errno: 500, error: error.message || String(error) });
+      return res.status(error.statusCode || 500).json({ errno: error.statusCode || 500, error: error.message || String(error) });
     }
   });
 }

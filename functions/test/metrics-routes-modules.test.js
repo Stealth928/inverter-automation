@@ -19,7 +19,20 @@ function createQuerySnapshot(docs = []) {
 }
 
 function createDbWithUserMetrics(userDocs = []) {
+  const get = jest.fn(async () => createQuerySnapshot(userDocs));
+  const limit = jest.fn(() => ({
+    get
+  }));
+  const orderBy = jest.fn(() => ({
+    limit
+  }));
+
   return {
+    __mocks: {
+      get,
+      limit,
+      orderBy
+    },
     collection: jest.fn((name) => {
       if (name !== 'users') {
         throw new Error(`Unexpected collection ${name}`);
@@ -29,7 +42,8 @@ function createDbWithUserMetrics(userDocs = []) {
           collection: jest.fn((sub) => {
             if (sub !== 'metrics') throw new Error(`Unexpected subcollection ${sub}`);
             return {
-              get: jest.fn(async () => createQuerySnapshot(userDocs))
+              get: jest.fn(async () => createQuerySnapshot(userDocs)),
+              orderBy
             };
           })
         }))
@@ -38,14 +52,19 @@ function createDbWithUserMetrics(userDocs = []) {
   };
 }
 
-function buildApp({ db, userId = 'u-1' } = {}) {
+function buildApp({ db, userId = 'u-1', isAdmin = () => true, attachUser = null } = {}) {
   const app = express();
   app.use(express.json());
 
   registerMetricsRoutes(app, {
     db,
     getAusDateKey: jest.fn(() => '2026-03-14'),
+    isAdmin,
     tryAttachUser: jest.fn(async (req) => {
+      if (typeof attachUser === 'function') {
+        await attachUser(req);
+        return;
+      }
       req.user = { uid: userId };
     })
   });
@@ -98,6 +117,9 @@ describe('metrics route module', () => {
       sigenergy: 0,
       alphaess: 0
     });
+    expect(db.__mocks.orderBy).toHaveBeenCalledWith('__name__', 'desc');
+    expect(db.__mocks.limit).toHaveBeenCalledWith(1);
+    expect(db.__mocks.get).toHaveBeenCalledTimes(1);
   });
 
   test('respects explicit inverter field when present', async () => {
@@ -120,5 +142,33 @@ describe('metrics route module', () => {
     expect(response.body.errno).toBe(0);
     expect(response.body.result['2026-03-14'].inverter).toBe(999);
     expect(response.body.result['2026-03-14'].foxess).toBe(164);
+  });
+
+  test('rejects unauthenticated global metrics access', async () => {
+    const app = buildApp({
+      db: null,
+      attachUser: async (req) => {
+        req.user = null;
+      }
+    });
+
+    const response = await request(app)
+      .get('/api/metrics/api-calls?scope=global&days=1');
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({ errno: 401, error: 'Unauthorized' });
+  });
+
+  test('rejects non-admin global metrics access', async () => {
+    const app = buildApp({
+      db: null,
+      isAdmin: () => false
+    });
+
+    const response = await request(app)
+      .get('/api/metrics/api-calls?scope=global&days=1');
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({ errno: 401, error: 'Unauthorized' });
   });
 });

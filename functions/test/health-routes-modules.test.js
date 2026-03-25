@@ -71,4 +71,51 @@ describe('health route module', () => {
     });
     expect(deps.getUserConfig).toHaveBeenCalledWith('u-health');
   });
+
+  test('returns degraded upstream snapshot with 503 when a critical service is unavailable', async () => {
+    const deps = createDeps({
+      getUpstreamHealthSnapshot: jest.fn(async () => ({
+        status: 'DEGRADED',
+        checkedAtMs: 1710000000000,
+        services: {
+          foxess: {
+            status: 'DEGRADED',
+            ok: false,
+            mode: 'passive',
+            circuit: { name: 'foxess', state: 'open', retryAfterMs: 45000 }
+          },
+          weather: {
+            status: 'OK',
+            ok: true,
+            circuit: { name: 'weather', state: 'closed', retryAfterMs: 0 }
+          }
+        },
+        cache: { hit: false, ttlMs: 300000 }
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app).get('/api/health?probe=1');
+
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual(expect.objectContaining({
+      errno: 0,
+      ok: true,
+      FOXESS_TOKEN: false,
+      AMBER_API_KEY: false,
+      result: expect.objectContaining({
+        status: 'DEGRADED',
+        upstream: expect.objectContaining({
+          status: 'DEGRADED',
+          services: expect.objectContaining({
+            foxess: expect.objectContaining({ ok: false })
+          })
+        })
+      })
+    }));
+    expect(deps.getUpstreamHealthSnapshot).toHaveBeenCalledWith({
+      forceRefresh: true,
+      user: null
+    });
+  });
 });

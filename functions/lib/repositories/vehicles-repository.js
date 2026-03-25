@@ -33,9 +33,18 @@ function createVehiclesRepository(deps = {}) {
     return vehicleRef(userId, vehicleId).collection('state').doc('current');
   }
 
+  function describeDocRef(docRef) {
+    return docRef?._path || docRef?.path || 'unknown';
+  }
+
   async function deleteDocumentTreeFallback(docRef) {
     if (!docRef || typeof docRef.listCollections !== 'function') {
-      await docRef?.delete?.().catch(() => {});
+      try {
+        await docRef?.delete?.();
+      } catch (error) {
+        logger.warn('VehiclesRepo', `deleteDocumentTreeFallback failed for ${describeDocRef(docRef)}: ${error && error.message ? error.message : error}`);
+        throw error;
+      }
       return;
     }
 
@@ -50,7 +59,12 @@ function createVehiclesRepository(deps = {}) {
       }
     }
 
-    await docRef.delete().catch(() => {});
+    try {
+      await docRef.delete();
+    } catch (error) {
+      logger.warn('VehiclesRepo', `deleteDocumentTreeFallback failed for ${describeDocRef(docRef)}: ${error && error.message ? error.message : error}`);
+      throw error;
+    }
   }
 
   // ---------------------------------------------------------------------------

@@ -225,4 +225,32 @@ describe('weather service module', () => {
 
     nowSpy.mockRestore();
   });
+
+  test('callWeatherAPI opens the circuit after repeated upstream failures', async () => {
+    const { db } = createWeatherCacheDb();
+    const fetchImpl = jest.fn(async () => ({ ok: false, status: 503, json: jest.fn(async () => ({})) }));
+
+    const service = createWeatherService({
+      db,
+      fetchImpl,
+      getConfig: () => ({ automation: { cacheTtl: { weather: 1800000 } } }),
+      incrementApiCount: jest.fn(async () => undefined),
+      setUserConfig: jest.fn(async () => undefined),
+      logger: console
+    });
+
+    const first = await service.callWeatherAPI('Sydney', 2, 'user-open-1');
+    const second = await service.callWeatherAPI('Sydney', 2, 'user-open-1');
+    const third = await service.callWeatherAPI('Sydney', 2, 'user-open-1');
+    const blocked = await service.callWeatherAPI('Sydney', 2, 'user-open-1');
+
+    expect(first.errno).toBe(500);
+    expect(second.errno).toBe(500);
+    expect(third.errno).toBe(500);
+    expect(blocked.errno).toBe(503);
+    expect(service.getCircuitState()).toEqual(expect.objectContaining({
+      name: 'weather',
+      state: 'open'
+    }));
+  });
 });

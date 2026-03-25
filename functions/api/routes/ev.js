@@ -499,7 +499,6 @@ function registerEVRoutes(app, deps = {}) {
 
     let totalApiCalls = 0;
     let billableApiCalls = 0;
-    let genericEvCounterIncremented = false;
     const categories = {};
 
     const snapshot = () => ({
@@ -533,10 +532,8 @@ function registerEVRoutes(app, deps = {}) {
         });
       }
 
-      // Keep the generic EV counter aligned to billable upstream Tesla activity,
-      // but increment it at most once per route request.
-      if (incrementApiCount && event?.billable === true && !genericEvCounterIncremented) {
-        genericEvCounterIncremented = true;
+      // Keep the generic EV counter aligned to each billable upstream Tesla call attempt.
+      if (incrementApiCount && event?.billable === true) {
         await incrementApiCount(normalizedUid, 'ev');
       }
     };

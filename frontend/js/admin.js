@@ -101,6 +101,7 @@
     let firestoreMetricsChart = null;
     let schedulerMetricsChart = null;
     let apiHealthTrendChart = null;
+    let apiHealthExecutionChart = null;
     let apiHealthProviderChart = null;
     let apiHealthData = null;
     let usersProviderChart = null;
@@ -124,9 +125,18 @@
             warning: 'var(--color-warning)',
             info: 'var(--accent-blue)'
         };
-        area.innerHTML = `<div style="padding: 10px 16px; border-radius: var(--radius-lg); background: ${colors[type] || colors.info}15; border: 1px solid ${colors[type] || colors.info}40; color: ${colors[type] || colors.info}; font-size: 13px; margin-bottom: 12px;">${msg}</div>`;
+        const messageEl = document.createElement('div');
+        messageEl.style.padding = '10px 16px';
+        messageEl.style.borderRadius = 'var(--radius-lg)';
+        messageEl.style.background = `${colors[type] || colors.info}15`;
+        messageEl.style.border = `1px solid ${colors[type] || colors.info}40`;
+        messageEl.style.color = colors[type] || colors.info;
+        messageEl.style.fontSize = '13px';
+        messageEl.style.marginBottom = '12px';
+        messageEl.textContent = msg;
+        area.replaceChildren(messageEl);
         if (duration > 0) {
-            setTimeout(() => { area.innerHTML = ''; }, duration);
+            setTimeout(() => { area.replaceChildren(); }, duration);
         }
     }
 
@@ -1044,7 +1054,8 @@
             if (!currentUsersSummary) {
                 renderUsersSummary(null);
             }
-            loading.innerHTML = `<span style="color: var(--color-danger);">Failed to load users: ${e.message}</span>`;
+            loading.textContent = `Failed to load users: ${e.message}`;
+            loading.style.color = 'var(--color-danger)';
         }
     }
 
@@ -2155,6 +2166,8 @@
 
             const firestore = data.result?.firestore || {};
             const billing = data.result?.billing || {};
+            const cache = data.result?.cache || {};
+            const quota = firestore.quota || {};
             const trend = Array.isArray(data.result?.trend) ? data.result.trend : [];
             const warnings = Array.isArray(data.result?.warnings) ? data.result.warnings : [];
 
@@ -2263,6 +2276,49 @@
                     docOpsBreakdownEl.textContent = '';
                     docOpsBreakdownEl.style.display = 'none';
                 }
+            }
+
+            const cacheTotals = cache && typeof cache === 'object' ? (cache.totals || {}) : {};
+            const cacheSources = Array.isArray(cache.sources) ? cache.sources : [];
+            const cacheHitRateEl = document.getElementById('cacheOverallHitRate');
+            const cacheTopMissSourceEl = document.getElementById('cacheTopMissSource');
+            const cacheHitRatePct = Number(cacheTotals.hitRatePct);
+            const topMissSource = cacheSources
+                .filter((entry) => Number(entry?.reads || 0) > 0)
+                .sort((a, b) => Number(b?.misses || 0) - Number(a?.misses || 0) || Number(a?.hitRatePct || 0) - Number(b?.hitRatePct || 0))[0] || null;
+
+            if (cacheHitRateEl) {
+                cacheHitRateEl.textContent = Number.isFinite(cacheHitRatePct)
+                    ? formatPercentage(cacheHitRatePct, 1)
+                    : 'No samples';
+                cacheHitRateEl.title = Number(cacheTotals.reads || 0) > 0
+                    ? `${formatCompactNumber(cacheTotals.hits || 0)} hits across ${formatCompactNumber(cacheTotals.reads || 0)} cache-backed reads since process start.`
+                    : 'No cache-backed reads recorded since process start.';
+            }
+            if (cacheTopMissSourceEl) {
+                cacheTopMissSourceEl.textContent = topMissSource
+                    ? `${topMissSource.source}: ${formatCompactNumber(topMissSource.misses || 0)} misses`
+                    : 'No cache misses recorded';
+            }
+
+            const quotaStatusEl = document.getElementById('firestoreQuotaStatus');
+            const quotaSummaryEl = document.getElementById('firestoreQuotaSummary');
+            const quotaMetrics = Array.isArray(quota.metrics) ? quota.metrics : [];
+            const busiestQuotaMetric = quotaMetrics
+                .slice()
+                .sort((a, b) => Number(b?.last24HoursUtilizationPct || 0) - Number(a?.last24HoursUtilizationPct || 0))[0] || null;
+
+            if (quotaStatusEl) {
+                const quotaStatus = String(quota.overallStatus || 'healthy').toUpperCase();
+                quotaStatusEl.textContent = quotaStatus;
+                quotaStatusEl.title = busiestQuotaMetric
+                    ? `${busiestQuotaMetric.label} last-24h utilization: ${formatPercentage(busiestQuotaMetric.last24HoursUtilizationPct, 1)}`
+                    : 'No quota utilization samples available';
+            }
+            if (quotaSummaryEl) {
+                quotaSummaryEl.textContent = busiestQuotaMetric
+                    ? `${busiestQuotaMetric.label}: ${formatCompactNumber(busiestQuotaMetric.last24Hours || 0)} last 24h / ${formatCompactNumber(busiestQuotaMetric.dailyFreeTier || 0)} free tier`
+                    : 'No recent Firestore quota usage samples';
             }
 
             const updatedAt = data.result?.updatedAt ? new Date(data.result.updatedAt) : new Date();
@@ -2731,6 +2787,8 @@
         const deadLetters = Number(summary?.deadLetters || 0);
         const errorRatePct = Number(summary?.errorRatePct || 0);
         const deadLetterRatePct = Number(summary?.deadLetterRatePct || computeSchedulerRatePct(deadLetters, cyclesRun));
+        const p95QueueLagMs = Number(summary?.p95QueueLagMs || summary?.maxQueueLagMs || 0);
+        const p95CycleDurationMs = Number(summary?.p95CycleDurationMs || 0);
         const maxQueueLagMs = Number(summary?.maxQueueLagMs || 0);
         const maxCycleDurationMs = Number(summary?.maxCycleDurationMs || 0);
         const maxTelemetryAgeMs = Number(summary?.maxTelemetryAgeMs || 0);
@@ -2777,19 +2835,19 @@
             },
             {
                 id: `${safePrefix}SloQueueLag`,
-                value: maxQueueLagMs,
+                value: p95QueueLagMs,
                 target: queueLagTargetMs,
-                display: `${formatDurationMs(avgQueueLagMs)} avg / ${formatDurationMs(maxQueueLagMs)} max`,
-                targetDisplay: `Target avg <= ${formatDurationMs(queueLagTargetMs)}, max <= ${formatDurationMs(queueLagTargetMs)}`,
-                meta: `Weighted average across executed cycles in this window. Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
+                display: `${formatDurationMs(avgQueueLagMs)} avg / ${formatDurationMs(p95QueueLagMs)} p95`,
+                targetDisplay: `Target window p95 <= ${formatDurationMs(queueLagTargetMs)}`,
+                meta: `Weighted average across executed cycles in this window. Diagnostic max ${formatDurationMs(maxQueueLagMs)}. Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
             },
             {
                 id: `${safePrefix}SloCycleDuration`,
-                value: maxCycleDurationMs,
+                value: p95CycleDurationMs,
                 target: cycleDurationTargetMs,
-                display: `${formatDurationMs(avgCycleDurationMs)} avg / ${formatDurationMs(maxCycleDurationMs)} max`,
-                targetDisplay: `Target avg <= ${formatDurationMs(cycleDurationTargetMs)}, max <= ${formatDurationMs(cycleDurationTargetMs)}`,
-                meta: `Weighted average across executed cycles in this window. Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
+                display: `${formatDurationMs(avgCycleDurationMs)} avg / ${formatDurationMs(p95CycleDurationMs)} p95`,
+                targetDisplay: `Target window p95 <= ${formatDurationMs(cycleDurationTargetMs)}`,
+                meta: `Weighted average across executed cycles in this window. Diagnostic max ${formatDurationMs(maxCycleDurationMs)}. Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
             },
             {
                 id: `${safePrefix}SloTelemetryAge`,
@@ -3121,6 +3179,90 @@
         return `Scheduler SLO ${severity}${metricHint}. See SLO cards and diagnostics for details.`;
     }
 
+    async function retrySchedulerDeadLetter(userId, deadLetterId, buttonEl) {
+        if (!adminApiClient || !userId || !deadLetterId) return;
+        const button = buttonEl instanceof HTMLButtonElement ? buttonEl : null;
+        const originalLabel = button ? button.textContent : 'Retry now';
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Retrying...';
+        }
+
+        try {
+            const resp = await adminApiClient.fetch(`/api/admin/dead-letters/${encodeURIComponent(userId)}/${encodeURIComponent(deadLetterId)}/retry`, {
+                method: 'POST'
+            });
+            const payload = await resp.json();
+            if (!resp.ok || payload?.errno !== 0) {
+                throw new Error(payload?.error || `Retry failed (${resp.status})`);
+            }
+            showMessage('success', `Retried dead-letter cycle ${payload?.result?.cycleKey || deadLetterId}`);
+            await loadSchedulerMetrics();
+        } catch (error) {
+            showMessage('error', `Failed to retry dead letter: ${error.message || error}`);
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalLabel;
+            }
+        }
+    }
+
+    function renderSchedulerDeadLetters(payload) {
+        const countEl = document.getElementById('schedulerDeadLetterCount');
+        const retryReadyEl = document.getElementById('schedulerDeadLetterRetryReady');
+        const oldestEl = document.getElementById('schedulerDeadLetterOldest');
+        const topErrorsEl = document.getElementById('schedulerDeadLetterTopErrors');
+        const bodyEl = document.getElementById('schedulerDeadLettersBody');
+        const emptyEl = document.getElementById('schedulerDeadLettersEmpty');
+        if (!countEl || !retryReadyEl || !oldestEl || !topErrorsEl || !bodyEl || !emptyEl) return;
+
+        const result = payload && typeof payload === 'object' ? payload : {};
+        const items = Array.isArray(result.items) ? result.items : [];
+        const topErrors = Array.isArray(result.topErrors) ? result.topErrors : [];
+
+        if (!bodyEl.dataset.retryBound) {
+            bodyEl.dataset.retryBound = '1';
+            bodyEl.addEventListener('click', (event) => {
+                const button = event.target instanceof Element
+                    ? event.target.closest('button[data-dead-letter-retry="1"]')
+                    : null;
+                if (!button) return;
+                retrySchedulerDeadLetter(button.dataset.userId, button.dataset.deadLetterId, button);
+            });
+        }
+
+        countEl.textContent = formatCompactNumber(result.total || 0);
+        retryReadyEl.textContent = formatCompactNumber(result.retryReadyCount || 0);
+        oldestEl.textContent = formatDurationMs(result.oldestAgeMs || 0);
+        topErrorsEl.textContent = topErrors.length
+            ? `Top errors: ${topErrors.slice(0, 3).map((entry) => `${entry.error} (${entry.count})`).join(' · ')}`
+            : 'No dead-letter error clusters in this window.';
+
+        if (!items.length) {
+            bodyEl.innerHTML = '';
+            emptyEl.style.display = '';
+            return;
+        }
+
+        emptyEl.style.display = 'none';
+        bodyEl.innerHTML = items.map((item) => {
+            const createdAt = item.createdAt ? new Date(Number(item.createdAt)).toLocaleString('en-AU') : '-';
+            const retryState = item.retryReady ? 'Retry ready' : 'Cooling down';
+            return `
+                <tr>
+                    <td>${escapeHtml(createdAt)}</td>
+                    <td>${escapeHtml(item.userId || '-')}</td>
+                    <td title="${escapeHtml(item.cycleKey || '-')}">${escapeHtml(item.cycleKey || '-')}</td>
+                    <td>${formatCompactNumber(item.attempts || 0)}</td>
+                    <td>${escapeHtml(retryState)}</td>
+                    <td>${escapeHtml(item.error || '-')}</td>
+                    <td><button class="btn btn-sm" data-dead-letter-retry="1" data-user-id="${escapeHtml(item.userId || '')}" data-dead-letter-id="${escapeHtml(item.id || '')}">Retry now</button></td>
+                </tr>
+            `;
+        }).join('');
+    }
+
     async function loadSchedulerMetrics() {
         const updatedEl = document.getElementById('schedulerMetricsUpdated');
         const warningEl = document.getElementById('schedulerMetricsWarning');
@@ -3223,6 +3365,23 @@
                 telemetryPauseReasons: diagnostics.telemetryPauseReasons || summary.telemetryPauseReasons || {}
             });
 
+            try {
+                const deadLettersResp = await adminApiClient.fetch('/api/admin/dead-letters?days=7&limit=20');
+                const deadLettersData = await deadLettersResp.json();
+                if (!deadLettersResp.ok || deadLettersData?.errno !== 0) {
+                    throw new Error(deadLettersData?.error || `Dead-letter request failed (${deadLettersResp.status})`);
+                }
+                renderSchedulerDeadLetters(deadLettersData.result || {});
+            } catch (deadLetterError) {
+                renderSchedulerDeadLetters({
+                    total: 0,
+                    retryReadyCount: 0,
+                    oldestAgeMs: 0,
+                    topErrors: [{ error: deadLetterError.message || String(deadLetterError), count: 1 }],
+                    items: []
+                });
+            }
+
             const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
             const latestRunText = currentSnapshot?.startedAtMs
                 ? `latest run ${new Date(Number(currentSnapshot.startedAtMs)).toLocaleString('en-AU')}`
@@ -3241,6 +3400,7 @@
             renderSchedulerSloCards('scheduler14d', null);
             renderSchedulerRecentRuns([]);
             renderSchedulerDiagnostics(null);
+            renderSchedulerDeadLetters({ total: 0, retryReadyCount: 0, oldestAgeMs: 0, topErrors: [], items: [] });
             const p95El = document.getElementById('schedulerTailP95');
             const p99El = document.getElementById('schedulerTailP99');
             if (p95El) p95El.textContent = '-';
@@ -3283,6 +3443,10 @@
         if (apiHealthTrendChart) {
             apiHealthTrendChart.destroy();
             apiHealthTrendChart = null;
+        }
+        if (apiHealthExecutionChart) {
+            apiHealthExecutionChart.destroy();
+            apiHealthExecutionChart = null;
         }
         if (apiHealthProviderChart) {
             apiHealthProviderChart.destroy();
@@ -3388,10 +3552,6 @@
         const palette = getChartPalette();
         const labels = daily.map((row) => String(row.date || '').slice(5));
         const providerCalls = daily.map((row) => Number(row.totalCalls || 0));
-        const requestExecutions = daily.map((row) => Number(row.requestExecutions || 0));
-        const hasRequestExecutions = daily.some((row) => Number(row.requestExecutions || 0) > 0);
-        const errorExecutions = daily.map((row) => (row.errorExecutions == null ? null : Number(row.errorExecutions || 0)));
-        const hasErrorExecutions = daily.some((row) => row.errorExecutions != null);
 
         const datasets = [{
             type: 'line',
@@ -3405,34 +3565,6 @@
             tension: 0.28,
             yAxisID: 'y'
         }];
-
-        if (hasRequestExecutions) {
-            datasets.push({
-                type: 'line',
-                label: 'Function executions',
-                data: requestExecutions,
-                borderColor: palette.accentGreen,
-                backgroundColor: withAlpha(palette.accentGreen, 0.08),
-                borderWidth: 1.8,
-                pointRadius: 0,
-                tension: 0.24,
-                yAxisID: 'y'
-            });
-        }
-
-        if (hasErrorExecutions) {
-            datasets.push({
-                type: 'bar',
-                label: 'Failed executions',
-                data: errorExecutions,
-                backgroundColor: withAlpha('#f87171', 0.72),
-                borderColor: '#f87171',
-                borderWidth: 1,
-                borderRadius: 8,
-                maxBarThickness: 28,
-                yAxisID: 'y1'
-            });
-        }
 
         apiHealthTrendChart = new Chart(canvas, {
             data: { labels, datasets },
@@ -3459,13 +3591,86 @@
                         beginAtZero: true,
                         ticks: { color: palette.textSecondary, precision: 0 },
                         grid: { color: withAlpha(palette.textSecondary, 0.08) }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderApiHealthExecutionChart(daily) {
+        const canvas = document.getElementById('apiHealthExecutionChart');
+        if (!canvas || typeof Chart !== 'function') return;
+
+        if (apiHealthExecutionChart) {
+            apiHealthExecutionChart.destroy();
+            apiHealthExecutionChart = null;
+        }
+
+        const labels = daily.map((row) => String(row.date || '').slice(5));
+        const requestExecutions = daily.map((row) => Number(row.requestExecutions || 0));
+        const errorExecutions = daily.map((row) => row.errorExecutions == null ? null : Number(row.errorExecutions || 0));
+        const hasRequestExecutions = daily.some((row) => Number(row.requestExecutions || 0) > 0);
+        const hasErrorExecutions = daily.some((row) => row.errorExecutions != null);
+        const palette = getChartPalette();
+
+        if (!hasRequestExecutions && !hasErrorExecutions) {
+          return;
+        }
+
+        const datasets = [];
+        if (hasRequestExecutions) {
+            datasets.push({
+                type: 'line',
+                label: 'Function executions',
+                data: requestExecutions,
+                borderColor: palette.accentGreen,
+                backgroundColor: withAlpha(palette.accentGreen, 0.08),
+                borderWidth: 2,
+                pointRadius: 2,
+                tension: 0.24,
+                yAxisID: 'y'
+            });
+        }
+
+        if (hasErrorExecutions) {
+            datasets.push({
+                type: 'bar',
+                label: 'Failed executions',
+                data: errorExecutions,
+                backgroundColor: withAlpha('#f87171', 0.72),
+                borderColor: '#f87171',
+                borderWidth: 1,
+                borderRadius: 8,
+                maxBarThickness: 28,
+                yAxisID: 'y'
+            });
+        }
+
+        apiHealthExecutionChart = new Chart(canvas, {
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: palette.textSecondary,
+                            boxWidth: 12,
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: palette.textSecondary, maxTicksLimit: 10 },
+                        grid: { color: withAlpha(palette.textSecondary, 0.08) }
                     },
-                    y1: {
+                    y: {
                         beginAtZero: true,
-                        display: hasErrorExecutions,
-                        position: 'right',
-                        ticks: { color: '#fca5a5', precision: 0 },
-                        grid: { drawOnChartArea: false }
+                        ticks: { color: palette.textSecondary, precision: 0 },
+                        grid: { color: withAlpha(palette.textSecondary, 0.08) }
                     }
                 }
             }
@@ -3683,6 +3888,7 @@
             renderApiHealthLead(summary, monitoring, alerts);
             renderAlphaEssObservability(observability, providers);
             renderApiHealthTrendChart(daily);
+            renderApiHealthExecutionChart(daily);
             renderApiHealthProviderChart(providers, summary);
             renderApiHealthAlerts(alerts, warnings);
             renderApiHealthProviderTable(providers);
@@ -4128,7 +4334,12 @@
 
             renderStats(data.result);
         } catch (e) {
-            document.getElementById('statsDrawerBody').innerHTML = `<p style="color: var(--color-danger); padding: 20px;">Failed to load stats: ${e.message}</p>`;
+            const statsDrawerBody = document.getElementById('statsDrawerBody');
+            const errorEl = document.createElement('p');
+            errorEl.style.color = 'var(--color-danger)';
+            errorEl.style.padding = '20px';
+            errorEl.textContent = `Failed to load stats: ${e.message}`;
+            statsDrawerBody.replaceChildren(errorEl);
         }
     }
 

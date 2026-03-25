@@ -64,7 +64,11 @@ describe('read-only route modules', () => {
       registerMetricsRoutes(instance, {
         db: null,
         getAusDateKey: (date) => date.toISOString().slice(0, 10),
-        tryAttachUser: jest.fn(async () => null)
+        isAdmin: jest.fn(() => true),
+        tryAttachUser: jest.fn(async (req) => {
+          req.user = { uid: 'admin-user' };
+          return req.user;
+        })
       });
     });
 
@@ -90,6 +94,7 @@ describe('read-only route modules', () => {
       registerMetricsRoutes(instance, {
         db,
         getAusDateKey: (date) => date.toISOString().slice(0, 10),
+        isAdmin: jest.fn(() => true),
         tryAttachUser: jest.fn(async (req) => {
           req.user = null;
           return null;
@@ -130,6 +135,7 @@ describe('read-only route modules', () => {
       registerMetricsRoutes(instance, {
         db,
         getAusDateKey: (date) => date.toISOString().slice(0, 10),
+        isAdmin: jest.fn(() => true),
         tryAttachUser: jest.fn(async (req) => {
           req.user = { uid: 'u-metrics' };
           return req.user;
@@ -192,6 +198,7 @@ describe('read-only route modules', () => {
       registerMetricsRoutes(instance, {
         db,
         getAusDateKey: (date) => date.toISOString().slice(0, 10),
+        isAdmin: jest.fn(() => true),
         tryAttachUser: jest.fn(async (req) => {
           req.user = { uid: 'u-metrics' };
           return req.user;
@@ -246,6 +253,7 @@ describe('read-only route modules', () => {
       registerMetricsRoutes(instance, {
         db,
         getAusDateKey: (date) => date.toISOString().slice(0, 10),
+        isAdmin: jest.fn(() => true),
         tryAttachUser: jest.fn(async (req) => {
           req.user = { uid: 'u-metrics' };
           return req.user;

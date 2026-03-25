@@ -1,5 +1,7 @@
 ﻿'use strict';
 
+const { createUpstreamCircuitBreaker } = require('./upstream-circuit-breaker');
+
 const defaultFetch = global.fetch;
 
 if (typeof defaultFetch !== 'function') {
@@ -7,12 +9,19 @@ if (typeof defaultFetch !== 'function') {
 }
 
 function createWeatherService(deps = {}) {
+  const cacheMetrics = deps.cacheMetrics;
   const db = deps.db;
   const getConfig = deps.getConfig;
   const incrementApiCount = deps.incrementApiCount;
   const setUserConfig = deps.setUserConfig;
   const fetchImpl = deps.fetchImpl || defaultFetch;
   const logger = deps.logger || console;
+  const weatherCircuitBreaker = createUpstreamCircuitBreaker({
+    name: 'weather',
+    failureThreshold: 3,
+    openWindowMs: 60000,
+    logger
+  });
 
   if (!db || typeof db.collection !== 'function') {
     throw new Error('createWeatherService requires Firestore db');
@@ -43,9 +52,88 @@ function createWeatherService(deps = {}) {
     console.error(...args);
   };
 
+  const recordCacheMetric = (source, outcome, operation = 'read') => {
+    if (!cacheMetrics || typeof cacheMetrics.record !== 'function') return;
+    cacheMetrics.record({ source, outcome, operation });
+  };
+
+  const buildCircuitOpenResponse = () => {
+    const state = weatherCircuitBreaker.getState();
+    return {
+      errno: 503,
+      error: 'Weather service temporarily unavailable. Upstream protection is active; retry shortly.',
+      circuitState: state.state,
+      retryAfterMs: state.retryAfterMs || 0
+    };
+  };
+
+  const assertOk = (response, label) => {
+    if (response && response.ok !== false) {
+      return;
+    }
+    const status = Number(response?.status);
+    const error = new Error(`${label} failed with HTTP ${status || 500}`);
+    error.status = status || 500;
+    throw error;
+  };
+
+  async function probeWeatherService() {
+    const gate = weatherCircuitBreaker.beforeRequest();
+    if (!gate.allowed) {
+      return {
+        status: 'degraded',
+        circuit: weatherCircuitBreaker.getState(),
+        ok: false,
+        checkedAtMs: Date.now(),
+        error: 'Weather circuit breaker is open'
+      };
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await fetchImpl(
+          'https://api.open-meteo.com/v1/forecast?latitude=-33.8688&longitude=151.2093&current_weather=true&forecast_days=1&timezone=Australia%2FSydney',
+          { signal: controller.signal }
+        );
+        assertOk(response, 'Weather probe');
+        const payload = await response.json();
+        if (!payload || typeof payload !== 'object' || !payload.current_weather) {
+          throw new Error('Weather probe returned incomplete payload');
+        }
+        weatherCircuitBreaker.recordSuccess();
+        return {
+          status: 'ok',
+          circuit: weatherCircuitBreaker.getState(),
+          ok: true,
+          checkedAtMs: Date.now()
+        };
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (error) {
+      weatherCircuitBreaker.recordFailure(error);
+      return {
+        status: 'degraded',
+        circuit: weatherCircuitBreaker.getState(),
+        ok: false,
+        checkedAtMs: Date.now(),
+        error: error?.message || String(error)
+      };
+    }
+  }
+
   async function callWeatherAPI(place = 'Sydney', days = 16, userId = null) {
+    const circuitGate = weatherCircuitBreaker.beforeRequest();
+    if (!circuitGate.allowed) {
+      return buildCircuitOpenResponse();
+    }
+
     if (userId) {
-      incrementApiCount(userId, 'weather').catch(() => {});
+      await incrementApiCount(userId, 'weather').catch((error) => {
+        warn(`[Weather] Failed to increment metrics: ${error?.message || error}`);
+      });
     }
 
     const forecastDays = Math.min(Math.max(1, days), 16);
@@ -54,92 +142,100 @@ function createWeatherService(deps = {}) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
 
-      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=5&language=en`;
-      const geoResp = await fetchImpl(geoUrl, { signal: controller.signal });
-      const geoJson = await geoResp.json();
+      try {
+        const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=5&language=en`;
+        const geoResp = await fetchImpl(geoUrl, { signal: controller.signal });
+        assertOk(geoResp, 'Weather geocoding');
+        const geoJson = await geoResp.json();
 
-      let latitude;
-      let longitude;
-      let resolvedName;
-      let country;
-      let fallback = false;
-      let fallbackReason = '';
-      let fallbackResolvedName = '';
+        let latitude;
+        let longitude;
+        let resolvedName;
+        let country;
+        let fallback = false;
+        let fallbackReason = '';
+        let fallbackResolvedName = '';
 
-      if (geoJson && Array.isArray(geoJson.results) && geoJson.results.length > 0) {
-        const auResult = geoJson.results.find((result) => result.country_code === 'AU');
-        const selectedResult = auResult || geoJson.results[0];
+        if (geoJson && Array.isArray(geoJson.results) && geoJson.results.length > 0) {
+          const auResult = geoJson.results.find((result) => result.country_code === 'AU');
+          const selectedResult = auResult || geoJson.results[0];
 
-        latitude = selectedResult.latitude;
-        longitude = selectedResult.longitude;
-        resolvedName = selectedResult.name;
-        country = selectedResult.country;
-      } else {
-        fallback = true;
-        fallbackReason = 'location_not_found';
-        fallbackResolvedName = 'Sydney NSW';
-        latitude = -33.9215;
-        longitude = 151.0390;
-        resolvedName = place;
-        country = 'AU';
-      }
-
-      const hourlyVars = [
-        'temperature_2m',
-        'precipitation',
-        'precipitation_probability',
-        'weathercode',
-        'shortwave_radiation',
-        'direct_radiation',
-        'diffuse_radiation',
-        'cloudcover',
-        'windspeed_10m',
-        'relativehumidity_2m',
-        'uv_index'
-      ].join(',');
-
-      const dailyVars = [
-        'temperature_2m_max',
-        'temperature_2m_min',
-        'precipitation_sum',
-        'weathercode',
-        'shortwave_radiation_sum',
-        'uv_index_max',
-        'sunrise',
-        'sunset',
-        'precipitation_probability_max'
-      ].join(',');
-
-      const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=${hourlyVars}&daily=${dailyVars}&current_weather=true&temperature_unit=celsius&timezone=auto&forecast_days=${forecastDays}`;
-      const forecastResp = await fetchImpl(forecastUrl, { signal: controller.signal });
-      const forecastJson = await forecastResp.json();
-      clearTimeout(timeout);
-
-      const detectedTimezone = forecastJson.timezone || 'Australia/Sydney';
-
-      return {
-        errno: 0,
-        result: {
-          source: 'open-meteo',
-          place: {
-            query: place,
-            resolvedName,
-            country,
-            latitude,
-            longitude,
-            timezone: detectedTimezone,
-            fallback,
-            fallbackReason,
-            fallbackResolvedName
-          },
-          current: forecastJson.current_weather || null,
-          hourly: forecastJson.hourly || null,
-          daily: forecastJson.daily || null,
-          raw: forecastJson,
-          forecastDays
+          latitude = selectedResult.latitude;
+          longitude = selectedResult.longitude;
+          resolvedName = selectedResult.name;
+          country = selectedResult.country;
+        } else {
+          fallback = true;
+          fallbackReason = 'location_not_found';
+          fallbackResolvedName = 'Sydney NSW';
+          latitude = -33.9215;
+          longitude = 151.0390;
+          resolvedName = place;
+          country = 'AU';
         }
-      };
+
+        const hourlyVars = [
+          'temperature_2m',
+          'precipitation',
+          'precipitation_probability',
+          'weathercode',
+          'shortwave_radiation',
+          'direct_radiation',
+          'diffuse_radiation',
+          'cloudcover',
+          'windspeed_10m',
+          'relativehumidity_2m',
+          'uv_index'
+        ].join(',');
+
+        const dailyVars = [
+          'temperature_2m_max',
+          'temperature_2m_min',
+          'precipitation_sum',
+          'weathercode',
+          'shortwave_radiation_sum',
+          'uv_index_max',
+          'sunrise',
+          'sunset',
+          'precipitation_probability_max'
+        ].join(',');
+
+        const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=${hourlyVars}&daily=${dailyVars}&current_weather=true&temperature_unit=celsius&timezone=auto&forecast_days=${forecastDays}`;
+        const forecastResp = await fetchImpl(forecastUrl, { signal: controller.signal });
+        assertOk(forecastResp, 'Weather forecast');
+        const forecastJson = await forecastResp.json();
+
+        weatherCircuitBreaker.recordSuccess();
+
+        const detectedTimezone = forecastJson.timezone || 'Australia/Sydney';
+
+        return {
+          errno: 0,
+          result: {
+            source: 'open-meteo',
+            place: {
+              query: place,
+              resolvedName,
+              country,
+              latitude,
+              longitude,
+              timezone: detectedTimezone,
+              fallback,
+              fallbackReason,
+              fallbackResolvedName
+            },
+            current: forecastJson.current_weather || null,
+            hourly: forecastJson.hourly || null,
+            daily: forecastJson.daily || null,
+            raw: forecastJson,
+            forecastDays
+          }
+        };
+      } finally {
+        clearTimeout(timeout);
+      }
     } catch (error) {
+      weatherCircuitBreaker.recordFailure(error);
       return { errno: 500, error: error.message };
     }
   }
@@ -161,10 +257,13 @@ function createWeatherService(deps = {}) {
           const placesMatch = (cachedPlace || '').toLowerCase().trim() === (place || '').toLowerCase().trim();
 
           if (placesMatch && ageMs < ttlMs && cachedDays >= days && cachedDayCount >= days) {
+            recordCacheMetric('weather', 'hit');
             return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
           }
         }
       }
+
+      recordCacheMetric('weather', 'miss');
 
       const data = await callWeatherAPI(place, days, userId);
 
@@ -198,12 +297,15 @@ function createWeatherService(deps = {}) {
           cachedDays: days,
           ttl: Math.floor(Date.now() / 1000) + Math.floor(ttlMs / 1000)
         }, { merge: true }).catch((cacheErr) => {
+          recordCacheMetric('weather', 'error');
           warn(`[Cache] Failed to store weather cache: ${cacheErr.message}`);
         });
+        recordCacheMetric('weather', 'write', 'write');
       }
 
       return { ...data, __cacheHit: false, __cacheAgeMs: 0, __cacheTtlMs: ttlMs };
     } catch (error) {
+      recordCacheMetric('weather', 'error');
       errorLog(`[Cache] Error in getCachedWeatherData: ${error.message}`);
       return { errno: 500, error: error.message };
     }
@@ -211,7 +313,10 @@ function createWeatherService(deps = {}) {
 
   return {
     callWeatherAPI,
-    getCachedWeatherData
+    getCachedWeatherData,
+    getCircuitState: () => weatherCircuitBreaker.getState(),
+    probeWeatherService,
+    resetCircuitState: () => weatherCircuitBreaker.reset()
   };
 }
 

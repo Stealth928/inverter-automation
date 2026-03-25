@@ -3,6 +3,8 @@
 function registerMetricsRoutes(app, deps = {}) {
   const db = deps.db;
   const getAusDateKey = deps.getAusDateKey;
+  const isAdmin = deps.isAdmin;
+  const logger = deps.logger || console;
   const tryAttachUser = deps.tryAttachUser;
   const KNOWN_INVERTER_PROVIDER_KEYS = ['foxess', 'sungrow', 'sigenergy', 'alphaess'];
 
@@ -109,7 +111,7 @@ function registerMetricsRoutes(app, deps = {}) {
     };
   };
 
-  // Metrics (platform global or per-user). Allow unauthenticated callers to read global metrics by default.
+  // Metrics (platform global or per-user).
   app.get('/api/metrics/api-calls', async (req, res) => {
     // Parse days outside try block so it's available in catch
     const days = Math.max(1, Math.min(30, parseInt(req.query.days || '7', 10)));
@@ -119,6 +121,14 @@ function registerMetricsRoutes(app, deps = {}) {
       await tryAttachUser(req);
 
       const scope = String(req.query.scope || 'global');
+
+      if (scope === 'global') {
+        const userId = req.user?.uid;
+        const isAuthorized = Boolean(userId) && (typeof isAdmin === 'function' ? isAdmin(userId) : true);
+        if (!isAuthorized) {
+          return res.status(401).json({ errno: 401, error: 'Unauthorized' });
+        }
+      }
 
       if (!db) {
         const result = {};
@@ -137,15 +147,21 @@ function registerMetricsRoutes(app, deps = {}) {
       if (scope === 'user') {
         const userId = req.user?.uid;
         if (!userId) {
-          console.warn('[Metrics] User scope requested but no userId - returning 401');
+          logger.warn('[Metrics] User scope requested but no userId - returning 401');
           return res.status(401).json({ errno: 401, error: 'Unauthorized: user scope requested' });
         }
 
-        // Query without orderBy to avoid needing a composite index
-        // Get all metrics docs for the user and filter/sort in code
-        const metricsSnapshot = await db.collection('users').doc(userId)
-          .collection('metrics')
-          .get();
+        const metricsCollection = db.collection('users').doc(userId).collection('metrics');
+        let metricsQuery = metricsCollection;
+
+        if (typeof metricsCollection.orderBy === 'function') {
+          metricsQuery = metricsCollection.orderBy('__name__', 'desc');
+        }
+        if (metricsQuery && typeof metricsQuery.limit === 'function') {
+          metricsQuery = metricsQuery.limit(days);
+        }
+
+        const metricsSnapshot = await metricsQuery.get();
 
         const result = {};
         const allDocs = [];

@@ -304,6 +304,7 @@ async function defaultShouldRunCycleKey(options = {}) {
   const cycleKey = options.cycleKey;
   const schedulerId = options.schedulerId;
   const idempotencyTtlMs = options.idempotencyTtlMs;
+  const reserve = options.reserve !== false;
   const idempotencyRef = createIdempotencyRef(db, userId, cycleKey);
   const nowMs = Date.now();
   let shouldRun = false;
@@ -320,6 +321,11 @@ async function defaultShouldRunCycleKey(options = {}) {
         (status === 'started' || status === 'completed');
       if (hasActiveMarker) {
         shouldRun = false;
+        return;
+      }
+
+       if (!reserve) {
+        shouldRun = true;
         return;
       }
 
@@ -344,6 +350,10 @@ async function defaultShouldRunCycleKey(options = {}) {
     if (expiresAt > nowMs && (status === 'started' || status === 'completed')) {
       return false;
     }
+  }
+
+  if (!reserve) {
+    return true;
   }
 
   await idempotencyRef.set({
@@ -822,6 +832,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
     const cycleCandidates = [];
     let skippedDisabled = 0;
     let skippedTooSoon = 0;
+    let skippedIdempotentPrefilter = 0;
     const now = Date.now();
     const cycleEligibility = await mapWithConcurrency(
       usersSnapshot.docs,
@@ -862,17 +873,30 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
             }
           }
 
-          const userRules = await getUserRules(userId);
+          const userRules = await getUserRules(userId, { enabledOnly: true });
           const requiresCycleForCleanup = Boolean(state?.activeRule || state?.clearSegmentsOnNextCycle);
           if (!hasEnabledAutomationRules(userRules) && !requiresCycleForCleanup) {
             return { reason: 'disabled_or_invalid' };
+          }
+
+          const cycleKey = buildCycleKey(userId, now, userIntervalMs);
+          const shouldRunPreflight = await shouldRunCycleKey({
+            cycleKey,
+            db,
+            idempotencyTtlMs: schedulerOptions.idempotencyTtlMs,
+            reserve: false,
+            schedulerId: schedId,
+            userId
+          });
+          if (!shouldRunPreflight) {
+            return { reason: 'idempotent' };
           }
 
           return {
             reason: 'candidate',
             value: {
               userId,
-              cycleKey: buildCycleKey(userId, now, userIntervalMs),
+              cycleKey,
               schedulerContext: {
                 rules: userRules,
                 state,
@@ -899,6 +923,10 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
         skippedTooSoon++;
         continue;
       }
+      if (entry.reason === 'idempotent') {
+        skippedIdempotentPrefilter++;
+        continue;
+      }
       if (entry.reason === 'candidate' && entry.value) {
         cycleCandidates.push(entry.value);
       }
@@ -907,7 +935,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
     let cyclesRun = 0;
     let errors = 0;
     let skippedLocked = 0;
-    let skippedIdempotent = 0;
+    let skippedIdempotent = skippedIdempotentPrefilter;
     let deadLetters = 0;
     let totalRetries = 0;
     let queueLagStats = buildDurationStats([]);
@@ -1108,7 +1136,10 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
       cyclesRun = executedCycleResults.length;
       errors = cycleResults.filter((entry) => !entry.success).length;
       skippedLocked = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.skippedLocked, 0), 0);
-      skippedIdempotent = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.skippedIdempotent, 0), 0);
+      skippedIdempotent = skippedIdempotentPrefilter + cycleResults.reduce(
+        (sum, entry) => sum + toFiniteNumber(entry.skippedIdempotent, 0),
+        0
+      );
       deadLetters = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.deadLetters, 0), 0);
       totalRetries = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.retriesUsed, 0), 0);
       queueLagStats = buildDurationStats(executedCycleResults.map((entry) => entry.queueLagMs));
