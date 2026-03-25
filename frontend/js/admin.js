@@ -961,6 +961,29 @@
         }
     }
 
+    async function refreshOverviewData() {
+        const refreshBtn = document.getElementById('refreshOverviewBtn');
+        if (refreshBtn?.disabled) return;
+
+        if (refreshBtn) {
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = 'Refreshing...';
+        }
+
+        try {
+            await Promise.allSettled([
+                loadPlatformStats(),
+                loadFirestoreCostMetrics()
+            ]);
+            tabsLoaded.overview = true;
+        } finally {
+            if (refreshBtn) {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '🔄 Refresh';
+            }
+        }
+    }
+
     function refreshAdminData() {
         tabsLoaded[activeTab] = false;
         currentUsersPagination = { page: 1, pageSize: 50, totalUsers: 0, totalPages: 1, showAll: false, sortingScope: 'current-page' };

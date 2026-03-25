@@ -290,6 +290,11 @@
             gap: 12px;
             margin-bottom: 20px;
         }
+            .platform-top-actions {
+                display: flex;
+                justify-content: flex-end;
+                align-items: center;
+            }
         .platform-kpis-wrap {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
@@ -2394,6 +2399,9 @@
         <div id="tab-overview" class="tab-panel active">
         <!-- Platform Overview (compact top row + trends) -->
         <div class="platform-top">
+            <div class="platform-top-actions">
+                <button class="action-btn" onclick="refreshOverviewData()" id="refreshOverviewBtn">🔄 Refresh</button>
+            </div>
             <div class="platform-kpis-wrap">
                 <div class="platform-kpis" id="platformStats">
                     <div class="kpi-item">
