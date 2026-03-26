@@ -30,7 +30,6 @@ const LISTING_CACHE_MS = 30 * 1000;
 const MONTHLY_CACHE_MS = 30 * 60 * 1000;
 const ACTUAL_INTERVAL_MINUTES = 5;
 const FORECAST_BLOCK_MINUTES = 30;
-const FORECAST_SUB_INTERVAL_MINUTES = 5;
 
 const latestArchiveCache = new Map();
 const latestArchiveInFlight = new Map();
@@ -50,6 +49,16 @@ function toFiniteNumber(value, fallback = null) {
   }
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function convertAemoRrpToCentsPerKwh(value) {
+  const rrpPerMwh = toFiniteNumber(value, null);
+  if (rrpPerMwh === null) {
+    return null;
+  }
+
+  // AEMO RRP values are published in $/MWh; divide by 10 to get c/kWh.
+  return rrpPerMwh / 10;
 }
 
 function normalizeAemoRegion(regionId) {
@@ -75,7 +84,9 @@ function parseMarketDateTimeToIso(value) {
   if (!raw) return null;
   const match = raw.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
   if (!match) return null;
-  return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}${MARKET_TIME_OFFSET}`;
+  const isoWithOffset = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}${MARKET_TIME_OFFSET}`;
+  const timestampMs = Date.parse(isoWithOffset);
+  return Number.isFinite(timestampMs) ? new Date(timestampMs).toISOString() : null;
 }
 
 function addMinutesToIso(isoString, minutes) {
@@ -184,15 +195,15 @@ function buildCurrentLegacyRows(regionId, priceRecord, demandRecord) {
     return [];
   }
 
-  const startIso = parseMarketDateTimeToIso(priceRecord.SETTLEMENTDATE);
-  const endIso = addMinutesToIso(startIso, ACTUAL_INTERVAL_MINUTES);
-  const rrp = toFiniteNumber(priceRecord.RRP, null);
+  const endIso = parseMarketDateTimeToIso(priceRecord.SETTLEMENTDATE);
+  const startIso = addMinutesToIso(endIso, -ACTUAL_INTERVAL_MINUTES);
+  const rrp = convertAemoRrpToCentsPerKwh(priceRecord.RRP);
   if (!startIso || !endIso || rrp === null) {
     return [];
   }
 
   const metadata = {
-    asOf: startIso,
+    asOf: endIso,
     demand: toFiniteNumber(demandRecord?.TOTALDEMAND, null),
     demandForecast: toFiniteNumber(demandRecord?.DEMANDFORECAST, null),
     aemoIntervalType: 'dispatch',
@@ -221,7 +232,7 @@ function buildCurrentLegacyRows(regionId, priceRecord, demandRecord) {
   ];
 }
 
-function expandPredispatchRows(regionId, priceRows, demandRows) {
+function buildPredispatchLegacyRows(regionId, priceRows, demandRows) {
   if (!Array.isArray(priceRows) || priceRows.length === 0) {
     return [];
   }
@@ -232,58 +243,58 @@ function expandPredispatchRows(regionId, priceRows, demandRows) {
   const sortedPriceRows = priceRows
     .map((row) => ({
       ...row,
-      __startIso: parseMarketDateTimeToIso(row.DATETIME)
+      __endIso: parseMarketDateTimeToIso(row.DATETIME)
     }))
-    .filter((row) => row.__startIso)
-    .sort((left, right) => Date.parse(left.__startIso) - Date.parse(right.__startIso));
+    .filter((row) => row.__endIso)
+    .sort((left, right) => Date.parse(left.__endIso) - Date.parse(right.__endIso));
 
   const legacyRows = [];
+  let previousEndIso = null;
 
-  for (let index = 0; index < sortedPriceRows.length; index += 1) {
-    const priceRow = sortedPriceRows[index];
+  for (const priceRow of sortedPriceRows) {
     const demandRow = demandByDateTime.get(String(priceRow.DATETIME || '')) || null;
-    const nextRow = sortedPriceRows[index + 1] || null;
-    const startMs = Date.parse(priceRow.__startIso);
-    const nextStartMs = nextRow ? Date.parse(nextRow.__startIso) : NaN;
-    const defaultEndMs = startMs + FORECAST_BLOCK_MINUTES * 60 * 1000;
-    const blockEndMs = Number.isFinite(nextStartMs) && nextStartMs > startMs
-      ? Math.min(nextStartMs, defaultEndMs)
-      : defaultEndMs;
-    const rrp = toFiniteNumber(priceRow.RRP, null);
+    const endIso = priceRow.__endIso;
+    const previousEndMs = Date.parse(previousEndIso);
+    const endMs = Date.parse(endIso);
+    const startIso = Number.isFinite(previousEndMs) && previousEndMs < endMs
+      ? previousEndIso
+      : addMinutesToIso(endIso, -FORECAST_BLOCK_MINUTES);
+    const rrp = convertAemoRrpToCentsPerKwh(priceRow.RRP);
 
-    if (rrp === null) continue;
-
-    for (let currentMs = startMs; currentMs < blockEndMs; currentMs += FORECAST_SUB_INTERVAL_MINUTES * 60 * 1000) {
-      const startIso = new Date(currentMs).toISOString();
-      const endIso = new Date(Math.min(currentMs + FORECAST_SUB_INTERVAL_MINUTES * 60 * 1000, blockEndMs)).toISOString();
-      const metadata = {
-        asOf: priceRow.__startIso,
-        demand: toFiniteNumber(demandRow?.TOTALDEMAND, null),
-        demandForecast: toFiniteNumber(demandRow?.DEMANDFORECAST, null),
-        aemoIntervalType: 'predispatch',
-        aemoLastChanged: trimString(priceRow.LASTCHANGED || demandRow?.LASTCHANGED),
-        periodId: trimString(priceRow.PERIODID || demandRow?.PERIODID)
-      };
-
-      legacyRows.push(buildLegacyPriceRow({
-        type: 'ForecastInterval',
-        channelType: 'general',
-        perKwh: rrp,
-        startIso,
-        endIso,
-        regionId,
-        metadata
-      }));
-      legacyRows.push(buildLegacyPriceRow({
-        type: 'ForecastInterval',
-        channelType: 'feedIn',
-        perKwh: -rrp,
-        startIso,
-        endIso,
-        regionId,
-        metadata
-      }));
+    if (!startIso || rrp === null) {
+      previousEndIso = endIso;
+      continue;
     }
+
+    const metadata = {
+      asOf: endIso,
+      demand: toFiniteNumber(demandRow?.TOTALDEMAND, null),
+      demandForecast: toFiniteNumber(demandRow?.DEMANDFORECAST, null),
+      aemoIntervalType: 'predispatch',
+      aemoLastChanged: trimString(priceRow.LASTCHANGED || demandRow?.LASTCHANGED),
+      periodId: trimString(priceRow.PERIODID || demandRow?.PERIODID)
+    };
+
+    legacyRows.push(buildLegacyPriceRow({
+      type: 'ForecastInterval',
+      channelType: 'general',
+      perKwh: rrp,
+      startIso,
+      endIso,
+      regionId,
+      metadata
+    }));
+    legacyRows.push(buildLegacyPriceRow({
+      type: 'ForecastInterval',
+      channelType: 'feedIn',
+      perKwh: -rrp,
+      startIso,
+      endIso,
+      regionId,
+      metadata
+    }));
+
+    previousEndIso = endIso;
   }
 
   return legacyRows;
@@ -302,19 +313,19 @@ function buildHistoricalLegacyRows(regionId, rows, startIso, endIso) {
     const rowRegion = normalizeAemoRegion(row.REGION);
     if (rowRegion !== regionId) continue;
 
-    const rowStartIso = parseMarketDateTimeToIso(row.SETTLEMENTDATE);
+    const rowEndIso = parseMarketDateTimeToIso(row.SETTLEMENTDATE);
+    const rowStartIso = addMinutesToIso(rowEndIso, -ACTUAL_INTERVAL_MINUTES);
     const rowStartMs = Date.parse(rowStartIso);
-    const rowEndMs = rowStartMs + ACTUAL_INTERVAL_MINUTES * 60 * 1000;
-    const rowEndIso = new Date(rowEndMs).toISOString();
+    const rowEndMs = Date.parse(rowEndIso);
     if (!Number.isFinite(rowStartMs) || rowEndMs < startMs || rowStartMs > endMs) {
       continue;
     }
 
-    const rrp = toFiniteNumber(row.RRP, null);
+    const rrp = convertAemoRrpToCentsPerKwh(row.RRP);
     if (rrp === null) continue;
 
     const metadata = {
-      asOf: rowStartIso,
+      asOf: rowEndIso,
       demand: toFiniteNumber(row.TOTALDEMAND, null),
       aemoIntervalType: trimString(row.PERIODTYPE) || 'trade'
     };
@@ -371,9 +382,9 @@ function buildCurrentPayload(regionId, dispatchPriceRows, dispatchDemandRows, pr
   const forecastDemandRows = Array.isArray(predispatchDemandRows)
     ? predispatchDemandRows.filter((row) => normalizeAemoRegion(row.REGIONID) === regionId)
     : [];
-  const forecastRows = expandPredispatchRows(regionId, forecastPriceRows, forecastDemandRows);
+  const forecastRows = buildPredispatchLegacyRows(regionId, forecastPriceRows, forecastDemandRows);
   const rows = [...currentRows, ...forecastRows];
-  const asOfIso = currentRows[0]?.startTime || forecastRows[0]?.startTime || new Date().toISOString();
+  const asOfIso = currentRows[0]?.asOf || forecastRows[0]?.asOf || currentRows[0]?.endTime || forecastRows[0]?.endTime || new Date().toISOString();
 
   return {
     regionId,
@@ -794,9 +805,10 @@ function init(dependencies = {}) {
 module.exports = {
   AEMO_SUPPORTED_REGIONS,
   DEFAULT_AEMO_REGION,
+  buildPredispatchLegacyRows,
   buildCurrentPayload,
   buildHistoricalLegacyRows,
-  expandPredispatchRows,
+  convertAemoRrpToCentsPerKwh,
   init,
   listSupportedAemoRegions,
   normalizeAemoRegion,

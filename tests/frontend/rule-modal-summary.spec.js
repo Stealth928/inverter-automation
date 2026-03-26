@@ -155,6 +155,24 @@ test.describe('Rule Modal Summaries', () => {
     await expect(page.locator('#addRuleModal #condTempDayOffset')).toHaveValue('0');
   });
 
+  test('groups current price conditions ahead of forecast price', async ({ page }) => {
+    await openAddRuleModal(page);
+
+    await expect(page.locator('#addRuleModal')).toContainText('Feed-in Price (current)');
+    await expect(page.locator('#addRuleModal')).toContainText('Buy Price (current)');
+
+    const conditionOrder = await page.locator('#addRuleModal [data-condition-key]').evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute('data-condition-key'))
+    );
+
+    expect(conditionOrder.slice(0, 4)).toEqual([
+      'feedInPrice',
+      'buyPrice',
+      'forecastPrice',
+      'soc'
+    ]);
+  });
+
   test('uses master summaries only and omits legacy temperature panel', async ({ page }) => {
     await openAddRuleModal(page);
 

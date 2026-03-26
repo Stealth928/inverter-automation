@@ -98,4 +98,208 @@ describe('automation rule evaluation service', () => {
       buyPrice: 15.2
     });
   });
+
+  test('forecastPrice averages mixed interval widths by covered minutes', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-26T00:02:00.000Z'));
+
+    try {
+      const { service } = buildService();
+
+      const result = await service.evaluateRule(
+        'u-eval',
+        'rule-forecast',
+        {
+          name: 'Weighted Forecast',
+          conditions: {
+            forecastPrice: {
+              enabled: true,
+              type: 'buy',
+              lookAhead: 30,
+              lookAheadUnit: 'minutes',
+              checkType: 'average',
+              operator: '<=',
+              value: 30
+            }
+          }
+        },
+        {
+          amber: [
+            {
+              type: 'ForecastInterval',
+              channelType: 'general',
+              perKwh: 100,
+              startTime: '2026-03-26T00:00:00.000Z',
+              endTime: '2026-03-26T00:05:00.000Z'
+            },
+            {
+              type: 'ForecastInterval',
+              channelType: 'general',
+              perKwh: 20,
+              startTime: '2026-03-26T00:05:00.000Z',
+              endTime: '2026-03-26T00:35:00.000Z'
+            }
+          ]
+        },
+        {},
+        {}
+      );
+
+      expect(result.triggered).toBe(true);
+      expect(result.results).toEqual([
+        {
+          condition: 'forecastPrice',
+          met: true,
+          actual: '28.0',
+          operator: '<=',
+          target: 30,
+          type: 'buy',
+          lookAhead: '30m',
+          lookAheadMinutes: 30,
+          checkType: 'average',
+          intervalsChecked: 2,
+          intervalsAvailable: 2,
+          coverageMinutes: 30,
+          incomplete: false
+        }
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('forecastPrice keeps standard Amber same-width averages unchanged', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-26T00:00:00.000Z'));
+
+    try {
+      const { service } = buildService();
+
+      const result = await service.evaluateRule(
+        'u-eval',
+        'rule-amber-equal-width',
+        {
+          name: 'Amber Equal Width',
+          conditions: {
+            forecastPrice: {
+              enabled: true,
+              type: 'buy',
+              lookAhead: 60,
+              lookAheadUnit: 'minutes',
+              checkType: 'average',
+              operator: '==',
+              value: 15
+            }
+          }
+        },
+        {
+          amber: [
+            {
+              type: 'ForecastInterval',
+              channelType: 'general',
+              perKwh: 10,
+              startTime: '2026-03-26T00:00:00.000Z',
+              endTime: '2026-03-26T00:30:00.000Z'
+            },
+            {
+              type: 'ForecastInterval',
+              channelType: 'general',
+              perKwh: 20,
+              startTime: '2026-03-26T00:30:00.000Z',
+              endTime: '2026-03-26T01:00:00.000Z'
+            }
+          ]
+        },
+        {},
+        {}
+      );
+
+      expect(result.triggered).toBe(true);
+      expect(result.results).toEqual([
+        {
+          condition: 'forecastPrice',
+          met: true,
+          actual: '15.0',
+          operator: '==',
+          target: 15,
+          type: 'buy',
+          lookAhead: '60m',
+          lookAheadMinutes: 60,
+          checkType: 'average',
+          intervalsChecked: 2,
+          intervalsAvailable: 2,
+          coverageMinutes: 60,
+          incomplete: false
+        }
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('forecastPrice weights Amber feed-in averages by overlap and preserves feed-in sign handling', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-26T00:02:00.000Z'));
+
+    try {
+      const { service } = buildService();
+
+      const result = await service.evaluateRule(
+        'u-eval',
+        'rule-amber-feed-in',
+        {
+          name: 'Amber Feed-In Weighted',
+          conditions: {
+            forecastPrice: {
+              enabled: true,
+              type: 'feedIn',
+              lookAhead: 30,
+              lookAheadUnit: 'minutes',
+              checkType: 'average',
+              operator: '>=',
+              value: 13
+            }
+          }
+        },
+        {
+          amber: [
+            {
+              type: 'ForecastInterval',
+              channelType: 'feedIn',
+              perKwh: -40,
+              startTime: '2026-03-26T00:00:00.000Z',
+              endTime: '2026-03-26T00:05:00.000Z'
+            },
+            {
+              type: 'ForecastInterval',
+              channelType: 'feedIn',
+              perKwh: -10,
+              startTime: '2026-03-26T00:05:00.000Z',
+              endTime: '2026-03-26T00:35:00.000Z'
+            }
+          ]
+        },
+        {},
+        {}
+      );
+
+      expect(result.triggered).toBe(true);
+      expect(result.results).toEqual([
+        {
+          condition: 'forecastPrice',
+          met: true,
+          actual: '13.0',
+          operator: '>=',
+          target: 13,
+          type: 'feedIn',
+          lookAhead: '30m',
+          lookAheadMinutes: 30,
+          checkType: 'average',
+          intervalsChecked: 2,
+          intervalsAvailable: 2,
+          coverageMinutes: 30,
+          incomplete: false
+        }
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

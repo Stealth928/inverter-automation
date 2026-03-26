@@ -467,7 +467,7 @@ async function stopEmulators() {
   log(`Stopped emulators and cleaned ${killedCount} listener process(es).`);
 }
 
-async function seedEmulators({ requireSetupStatus = true } = {}) {
+async function seedEmulators({ requireSetupStatus = false } = {}) {
   const env = {
     ...buildEmulatorEnv(),
     FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080',
@@ -478,14 +478,15 @@ async function seedEmulators({ requireSetupStatus = true } = {}) {
   runNodeScript(path.join('functions', 'scripts', 'clear-firestore.js'), env, 'clear-firestore');
   runNodeScript(path.join('functions', 'scripts', 'seed-emulator-state.js'), env, 'seed-emulator-state');
 
+  if (!requireSetupStatus) {
+    log('Seed completed.');
+    return;
+  }
+
   const setupOk = await verifySetupStatus();
   if (!setupOk) {
     const message = 'setup-status endpoint did not become healthy after seed';
-    if (requireSetupStatus) {
-      throw new Error(message);
-    }
-    log(`WARNING: ${message}`);
-    return;
+    throw new Error(message);
   }
 
   log('Seed completed and setup-status is healthy.');

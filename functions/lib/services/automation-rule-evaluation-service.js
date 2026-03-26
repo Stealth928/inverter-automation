@@ -35,6 +35,32 @@ function createAutomationRuleEvaluationService(deps = {}) {
     throw new Error('createAutomationRuleEvaluationService requires resolveAutomationTimezone()');
   }
 
+  function parseForecastTimeMs(value) {
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : NaN;
+  }
+
+  function getForecastBounds(forecast, fallbackMinutes = 5) {
+    const startMs = parseForecastTimeMs(forecast?.startTime);
+    const rawEndMs = parseForecastTimeMs(forecast?.endTime);
+    const endMs = Number.isFinite(rawEndMs)
+      ? rawEndMs
+      : (Number.isFinite(startMs) ? startMs + fallbackMinutes * 60 * 1000 : NaN);
+
+    return { startMs, endMs };
+  }
+
+  function getForecastOverlapMs(forecast, windowStartMs, windowEndMs) {
+    const { startMs, endMs } = getForecastBounds(forecast);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+      return 0;
+    }
+
+    const overlapStartMs = Math.max(startMs, windowStartMs);
+    const overlapEndMs = Math.min(endMs, windowEndMs);
+    return Math.max(0, overlapEndMs - overlapStartMs);
+  }
+
   async function evaluateRule(userId, ruleId, rule, cache, inverterData, userConfig, _skipCooldown = false) {
     // _skipCooldown: if true, we skip the cooldown check (used for re-evaluating active rules)
     const conditions = rule.conditions || {};
@@ -533,28 +559,23 @@ function createAutomationRuleEvaluationService(deps = {}) {
           lookAheadMinutes = conditions.forecastPrice.lookAhead || 30;
         }
         
-        const intervalsNeeded = Math.ceil(lookAheadMinutes / 5); // 5-min intervals
-        
-        // Get forecast intervals for the specified channel, sorted by time
-        const forecasts = amberData.filter(p => p.channelType === channelType && p.type === 'ForecastInterval');
-        
-        // CRITICAL FIX: Filter by time window (now to now + lookAheadMinutes) instead of just taking first N
+        const forecasts = amberData
+          .filter((price) => price.channelType === channelType && price.type === 'ForecastInterval')
+          .sort((left, right) => parseForecastTimeMs(left.startTime) - parseForecastTimeMs(right.startTime));
+
         const now = new Date();
-        const cutoffTime = new Date(now.getTime() + lookAheadMinutes * 60 * 1000);
-        
-        // Filter for intervals that fall within [now, cutoffTime]
-        // startTime <= cutoffTime (ends before/at cutoff) and endTime >= now (starts before/at now)
-        const relevantForecasts = forecasts.filter(f => {
-          const startTime = new Date(f.startTime);
-          const endTime = new Date(f.endTime || startTime.getTime() + 5 * 60 * 1000);
-          // Include if interval overlaps with our window
-          return startTime <= cutoffTime && endTime >= now;
-        }).slice(0, intervalsNeeded); // Still limit to intervalsNeeded in case of overlap
+        const windowStartMs = now.getTime();
+        const windowEndMs = windowStartMs + lookAheadMinutes * 60 * 1000;
+        const relevantForecasts = forecasts.filter((forecast) => getForecastOverlapMs(forecast, windowStartMs, windowEndMs) > 0);
+        const coveredMinutes = relevantForecasts.reduce(
+          (sum, forecast) => sum + (getForecastOverlapMs(forecast, windowStartMs, windowEndMs) / 60000),
+          0
+        );
         
         // LOG: Show what forecast data we have
         console.log(`[ForecastPrice] Rule '${rule.name}' - Type: ${priceType}, CheckType: ${conditions.forecastPrice.checkType || 'average'}`);
-        console.log(`[ForecastPrice] Requested: ${lookAheadMinutes} minutes (${intervalsNeeded} intervals)`);
-        console.log(`[ForecastPrice] Found ${forecasts.length} total forecast intervals in Amber data`);
+        console.log(`[ForecastPrice] Requested: ${lookAheadMinutes} minutes`);
+        console.log(`[ForecastPrice] Found ${forecasts.length} total forecast intervals in pricing data`);
         console.log(`[ForecastPrice] Filtered to ${relevantForecasts.length} intervals in time window [now -> +${lookAheadMinutes}min]`);
         if (forecasts.length > 0) {
           const firstTime = new Date(forecasts[0].startTime).toLocaleTimeString('en-AU', {hour12:false, timeZone:'Australia/Sydney'});
@@ -570,12 +591,12 @@ function createAutomationRuleEvaluationService(deps = {}) {
           console.log(`[ForecastPrice] Relevant time range (filtered): ${relevantFirst} to ${relevantLast}`);
         }
         
-        // Check if we got fewer intervals than requested (Amber API limit is ~12 intervals = 1 hour)
-        const intervalsActuallyAvailable = forecasts.length;
-        const hasIncompleteData = relevantForecasts.length < intervalsNeeded;
+        const hasIncompleteData = coveredMinutes + 0.01 < lookAheadMinutes;
         
-        if (hasIncompleteData && intervalsActuallyAvailable < intervalsNeeded) {
-          console.warn(`[Automation] Rule '${rule.name}' - Forecast ${priceType}: Only ${relevantForecasts.length} intervals in time window, requested ${intervalsNeeded}`);
+        if (hasIncompleteData) {
+          console.warn(
+            `[Automation] Rule '${rule.name}' - Forecast ${priceType}: Only ${coveredMinutes.toFixed(1)} of ${lookAheadMinutes} requested minutes covered`
+          );
         }
         
         if (relevantForecasts.length > 0) {
@@ -594,7 +615,19 @@ function createAutomationRuleEvaluationService(deps = {}) {
           } else if (checkType === 'any') {
             actualValue = prices.find(p => compareValue(p, conditions.forecastPrice.operator, conditions.forecastPrice.value));
           } else {
-            actualValue = prices.reduce((a, b) => a + b, 0) / prices.length; // average
+            let weightedSum = 0;
+            let weightedDurationMs = 0;
+
+            relevantForecasts.forEach((forecast, index) => {
+              const overlapMs = getForecastOverlapMs(forecast, windowStartMs, windowEndMs);
+              if (overlapMs <= 0) return;
+              weightedSum += prices[index] * overlapMs;
+              weightedDurationMs += overlapMs;
+            });
+
+            actualValue = weightedDurationMs > 0
+              ? weightedSum / weightedDurationMs
+              : (prices.reduce((a, b) => a + b, 0) / prices.length);
           }
           
           console.log(`[ForecastPrice] Calculated ${checkType}: ${actualValue?.toFixed(1)}¢ (comparing ${conditions.forecastPrice.operator} ${conditions.forecastPrice.value}¢)`);
@@ -611,10 +644,10 @@ function createAutomationRuleEvaluationService(deps = {}) {
           
           // Format lookAhead for display
           const lookAheadDisplay = lookAheadUnit === 'days' 
-            ? `${conditions.forecastPrice.lookAhead}d`
+            ? `${conditions.forecastPrice.lookAhead || 1}d`
             : lookAheadUnit === 'hours'
-            ? `${conditions.forecastPrice.lookAhead}h`
-            : `${conditions.forecastPrice.lookAhead}m`;
+            ? `${conditions.forecastPrice.lookAhead || 1}h`
+            : `${conditions.forecastPrice.lookAhead || 30}m`;
           
           results.push({ 
             condition: 'forecastPrice', 
@@ -628,6 +661,7 @@ function createAutomationRuleEvaluationService(deps = {}) {
             checkType,
             intervalsChecked: relevantForecasts.length,
             intervalsAvailable: forecasts.length,
+            coverageMinutes: Number(coveredMinutes.toFixed(1)),
             incomplete: hasIncompleteData
           });
           if (!met) {

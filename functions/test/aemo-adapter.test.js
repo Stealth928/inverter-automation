@@ -43,14 +43,14 @@ describe('aemo tariff adapter', () => {
             channelType: 'general',
             perKwh: 80.2,
             startTime: '2026-03-26T00:05:00.000Z',
-            endTime: '2026-03-26T00:10:00.000Z'
+            endTime: '2026-03-26T00:35:00.000Z'
           },
           {
             type: 'ForecastInterval',
             channelType: 'feedIn',
             perKwh: -10.1,
             startTime: '2026-03-26T00:05:00.000Z',
-            endTime: '2026-03-26T00:10:00.000Z'
+            endTime: '2026-03-26T00:35:00.000Z'
           }
         ]
       }))
@@ -76,7 +76,7 @@ describe('aemo tariff adapter', () => {
         },
         {
           startIso: '2026-03-26T00:05:00.000Z',
-          endIso: '2026-03-26T00:10:00.000Z',
+          endIso: '2026-03-26T00:35:00.000Z',
           buyCentsPerKwh: 80.2,
           feedInCentsPerKwh: 10.1,
           renewablePct: null,

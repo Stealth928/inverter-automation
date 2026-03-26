@@ -14,6 +14,7 @@ const { resolveProviderDeviceId } = require('../lib/provider-device-id');
 const METRICS_TIMEZONE = 'Australia/Sydney';
 const INVERTER_CACHE_TTL_MS = 5 * 60 * 1000;
 const AEMO_SNAPSHOT_FORECAST_INTERVAL_COUNT = 12;
+const AEMO_SNAPSHOT_FORECAST_BLOCK_MINUTES = 30;
 
 const AEMO_SNAPSHOT_PRESETS = Object.freeze({
   NSW1: Object.freeze({
@@ -317,6 +318,16 @@ function alignToFiveMinuteBoundary(date = new Date()) {
   return aligned;
 }
 
+function alignToThirtyMinuteBoundary(date = new Date()) {
+  const aligned = new Date(date);
+  aligned.setSeconds(0, 0);
+  const remainder = aligned.getMinutes() % 30;
+  if (remainder !== 0) {
+    aligned.setMinutes(aligned.getMinutes() + (30 - remainder));
+  }
+  return aligned;
+}
+
 function buildAemoLegacyRow({ type, channelType, perKwh, startIso, endIso, regionId, demand, demandForecast, intervalType }) {
   return {
     type,
@@ -332,7 +343,7 @@ function buildAemoLegacyRow({ type, channelType, perKwh, startIso, endIso, regio
     sourceProvider: 'aemo',
     regionId,
     siteIdOrRegion: regionId,
-    asOf: startIso,
+    asOf: endIso,
     demand,
     demandForecast,
     aemoIntervalType: intervalType
@@ -342,23 +353,51 @@ function buildAemoLegacyRow({ type, channelType, perKwh, startIso, endIso, regio
 function buildAemoSnapshotRows(regionId, preset, anchorDate = new Date()) {
   const aligned = alignToFiveMinuteBoundary(anchorDate);
   const rows = [];
+  const currentStart = new Date(aligned);
+  const currentEnd = new Date(currentStart.getTime() + 5 * 60 * 1000);
+  const currentGeneralPrice = roundTo(preset.basePrice, 2);
+  const currentFeedInPrice = roundTo(preset.feedInBase, 2);
+  const currentDemand = Math.round(preset.demand);
+  const currentDemandForecast = Math.round(currentDemand + preset.demandStep * 0.8);
 
-  for (let index = 0; index <= AEMO_SNAPSHOT_FORECAST_INTERVAL_COUNT; index += 1) {
-    const intervalStart = new Date(aligned.getTime() + index * 5 * 60 * 1000);
-    const intervalEnd = new Date(intervalStart.getTime() + 5 * 60 * 1000);
-    const startIso = intervalStart.toISOString();
-    const endIso = intervalEnd.toISOString();
+  rows.push(buildAemoLegacyRow({
+    type: 'CurrentInterval',
+    channelType: 'general',
+    perKwh: currentGeneralPrice,
+    startIso: currentStart.toISOString(),
+    endIso: currentEnd.toISOString(),
+    regionId,
+    demand: currentDemand,
+    demandForecast: currentDemandForecast,
+    intervalType: 'dispatch'
+  }));
+  rows.push(buildAemoLegacyRow({
+    type: 'CurrentInterval',
+    channelType: 'feedIn',
+    perKwh: currentFeedInPrice,
+    startIso: currentStart.toISOString(),
+    endIso: currentEnd.toISOString(),
+    regionId,
+    demand: currentDemand,
+    demandForecast: currentDemandForecast,
+    intervalType: 'dispatch'
+  }));
+
+  let forecastEnd = alignToThirtyMinuteBoundary(currentEnd);
+  let forecastStart = new Date(forecastEnd.getTime() - AEMO_SNAPSHOT_FORECAST_BLOCK_MINUTES * 60 * 1000);
+
+  for (let index = 1; index <= AEMO_SNAPSHOT_FORECAST_INTERVAL_COUNT; index += 1) {
+    const startIso = forecastStart.toISOString();
+    const endIso = forecastEnd.toISOString();
     const priceDrift = (index % 4) * 3.2;
     const wave = Math.sin(index / 2.2) * 4.5;
     const generalPrice = roundTo(preset.basePrice + priceDrift + wave, 2);
     const feedInPrice = roundTo(preset.feedInBase - (index % 3) * 1.4 - (wave / 3), 2);
     const demand = Math.round(preset.demand + index * preset.demandStep);
     const demandForecast = Math.round(demand + preset.demandStep * 0.8);
-    const intervalType = index === 0 ? 'dispatch' : 'predispatch';
-    const type = index === 0 ? 'CurrentInterval' : 'ForecastInterval';
 
     rows.push(buildAemoLegacyRow({
-      type,
+      type: 'ForecastInterval',
       channelType: 'general',
       perKwh: generalPrice,
       startIso,
@@ -366,10 +405,10 @@ function buildAemoSnapshotRows(regionId, preset, anchorDate = new Date()) {
       regionId,
       demand,
       demandForecast,
-      intervalType
+      intervalType: 'predispatch'
     }));
     rows.push(buildAemoLegacyRow({
-      type,
+      type: 'ForecastInterval',
       channelType: 'feedIn',
       perKwh: feedInPrice,
       startIso,
@@ -377,8 +416,11 @@ function buildAemoSnapshotRows(regionId, preset, anchorDate = new Date()) {
       regionId,
       demand,
       demandForecast,
-      intervalType
+      intervalType: 'predispatch'
     }));
+
+    forecastStart = forecastEnd;
+    forecastEnd = new Date(forecastEnd.getTime() + AEMO_SNAPSHOT_FORECAST_BLOCK_MINUTES * 60 * 1000);
   }
 
   return rows;
@@ -391,14 +433,18 @@ function buildAemoSnapshot(regionId, anchorDate = new Date()) {
   }
 
   const rows = buildAemoSnapshotRows(regionId, preset, anchorDate);
-  const asOfIso = rows[0]?.startTime || alignToFiveMinuteBoundary(anchorDate).toISOString();
+  const asOfIso = rows[0]?.asOf || rows[0]?.endTime || alignToFiveMinuteBoundary(anchorDate).toISOString();
+  const latestEndMs = Math.max(...rows.map((row) => Date.parse(row.endTime)).filter((value) => Number.isFinite(value)));
+  const asOfMs = Date.parse(asOfIso);
 
   return {
     regionId,
     data: rows,
     metadata: {
       asOf: asOfIso,
-      forecastHorizonMinutes: AEMO_SNAPSHOT_FORECAST_INTERVAL_COUNT * 5,
+      forecastHorizonMinutes: Number.isFinite(latestEndMs) && Number.isFinite(asOfMs)
+        ? Math.max(0, Math.round((latestEndMs - asOfMs) / 60000))
+        : 0,
       isForecastComplete: true,
       source: 'aemo'
     }

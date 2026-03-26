@@ -6,7 +6,7 @@
 # - Start emulators
 # - Clear Firestore & Auth (shared/serverConfig + user docs + auth user)
 # - Seed test data (auth user, profile, sample rule, history)
-# - Verify setup status
+# - Confirm the emulator UI is reachable
 
 Set-StrictMode -Version Latest
 
@@ -68,24 +68,5 @@ if ($code -ne 0) { throw "clear-firestore.js failed with exit code $code." }
 # Seed the emulator with baseline data
 Write-Output "Seeding emulator state (test auth user + baseline docs)"
 .\scripts\seed-test-user.ps1
-
-# Verify setup status (retry a few times until functions are responsive)
-Write-Output "Verifying setup status via /api/config/setup-status"
-$max = 12
-$attempt = 0
-$ok = $false
-while ($attempt -lt $max) {
-    try {
-        $status = Invoke-RestMethod -Uri 'http://127.0.0.1:5000/api/config/setup-status' -Method Get -TimeoutSec 5 -ErrorAction Stop
-        Write-Output "Setup status: setupComplete=$($status.result.setupComplete), source=$($status.result.source)"
-        $ok = $true; break
-    } catch {
-        $errMsg = $_.Exception.Message -replace "\r|\n", ' '
-        Write-Output ("Attempt {0}/{1}: service not ready yet - {2}" -f ($attempt+1), $max, $errMsg)
-        Start-Sleep -Seconds 2
-        $attempt++
-    }
-}
-if (-not $ok) { Write-Output "Warning: Could not verify setup status after $max attempts. Check emulator logs at logs/emulator.out.log" }
 
 Write-Output "Reset complete. You can now open http://127.0.0.1:4000 (Emulator UI) and http://127.0.0.1:5000 (Hosting)."

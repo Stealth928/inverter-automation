@@ -1039,7 +1039,7 @@
                 if (!condArr || condArr.length === 0) return '<div style="color:var(--text-secondary);font-size:0.85rem">No conditions</div>';
                 
                 // Define the order of conditions to match renderRules
-                const conditionOrder = ['feedInPrice', 'buyPrice', 'soc', 'temperature', 'solarRadiation', 'cloudCover', 'forecastPrice', 'timeWindow', 'time'];
+                const conditionOrder = ['feedInPrice', 'buyPrice', 'forecastPrice', 'soc', 'temperature', 'solarRadiation', 'cloudCover', 'timeWindow', 'time'];
                 
                 // Sort conditions array by their type/name according to the defined order
                 const sortedConds = condArr.slice().sort((a, b) => {

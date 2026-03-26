@@ -7764,6 +7764,11 @@
                         const bpStr = bpOp === 'between' ? `${conditions.buyPrice.value}¢ – ${conditions.buyPrice.value2}¢` : `${bpOp} ${conditions.buyPrice.value}¢`;
                         condBadges += `<span style="background:#1f6feb;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">Buy ${bpStr}</span>`;
                     }
+                    if (conditions.forecastPrice?.enabled) {
+                        const unit = conditions.forecastPrice.lookAheadUnit || 'minutes';
+                        const unitLabel = unit === 'minutes' ? 'm' : unit === 'hours' ? 'h' : 'd';
+                        condBadges += `<span style="background:#f778ba;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">📈 ${conditions.forecastPrice.type === 'feedIn' ? 'FI' : 'Buy'} ${conditions.forecastPrice.checkType || 'avg'} ${conditions.forecastPrice.operator} ${conditions.forecastPrice.value}¢ (${conditions.forecastPrice.lookAhead || 30}${unitLabel})</span>`;
+                    }
                     if (conditions.soc?.enabled) {
                         const socOp = conditions.soc.op || conditions.soc.operator || '<';
                         const socStr = socOp === 'between' ? `${conditions.soc.value}% – ${conditions.soc.value2}%` : `${socOp} ${conditions.soc.value}%`;
@@ -7794,11 +7799,6 @@
                     if (conditions.weather?.enabled) {
                         const wType = conditions.weather.type || conditions.weather.condition || 'sunny';
                         condBadges += `<span style="background:#79c0ff;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">🌤️ ${wType}</span>`;
-                    }
-                    if (conditions.forecastPrice?.enabled) {
-                        const unit = conditions.forecastPrice.lookAheadUnit || 'minutes';
-                        const unitLabel = unit === 'minutes' ? 'm' : unit === 'hours' ? 'h' : 'd';
-                        condBadges += `<span style="background:#f778ba;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">📈 ${conditions.forecastPrice.type === 'feedIn' ? 'FI' : 'Buy'} ${conditions.forecastPrice.checkType || 'avg'} ${conditions.forecastPrice.operator} ${conditions.forecastPrice.value}¢ (${conditions.forecastPrice.lookAhead || 30}${unitLabel})</span>`;
                     }
                     if (conditions.time?.enabled || conditions.timeWindow?.enabled) {
                         const tw = conditions.time || conditions.timeWindow;
@@ -8190,10 +8190,10 @@
                             <h4 style="margin:0 0 12px 0;font-size:14px;color:var(--accent-blue)">📋 Conditions (ALL must be true)</h4>
                             
                             <!-- Feed-in Price -->
-                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px">
+                            <div data-condition-key="feedInPrice" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condFeedInEnabled" style="width:16px;height:16px">
-                                    <span style="color:var(--text-primary);font-size:13px">💰 Feed-in Price</span>
+                                    <span style="color:var(--text-primary);font-size:13px">💰 Feed-in Price (current)</span>
                                 </label>
                                 <select id="condFeedInOp" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
                                     <option value=">">&gt;</option>
@@ -8208,10 +8208,10 @@
                             </div>
                             
                             <!-- Buy Price -->
-                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px">
+                            <div data-condition-key="buyPrice" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condBuyEnabled" style="width:16px;height:16px">
-                                    <span style="color:var(--text-primary);font-size:13px">🛒 Buy Price</span>
+                                    <span style="color:var(--text-primary);font-size:13px">🛒 Buy Price (current)</span>
                                 </label>
                                 <select id="condBuyOp" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
                                     <option value="<">&lt;</option>
@@ -8225,8 +8225,39 @@
                                 <span style="color:var(--text-secondary);font-size:11px">¢/kWh</span>
                             </div>
                             
+                            <!-- Forecast Price -->
+                            <div data-condition-key="forecastPrice" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
+                                <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
+                                    <input type="checkbox" id="condForecastEnabled" style="width:16px;height:16px">
+                                    <span style="color:var(--text-primary);font-size:13px">📈 Forecast Price</span>
+                                </label>
+                                <select id="condForecastType" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
+                                    <option value="feedIn">Feed-in</option>
+                                    <option value="general">Buy</option>
+                                </select>
+                                <select id="condForecastCheck" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
+                                    <option value="average">Avg</option>
+                                    <option value="min">Min</option>
+                                    <option value="max">Max</option>
+                                    <option value="any">Any</option>
+                                </select>
+                                <select id="condForecastOp" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
+                                    <option value=">">&gt;</option>
+                                    <option value=">=">&gt;=</option>
+                                    <option value="<">&lt;</option>
+                                    <option value="<=">&lt;=</option>
+                                </select>
+                                <input type="number" id="condForecastVal" placeholder="¢" value="30" min="-100" max="500" step="0.1" style="width:60px;padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
+                                <span style="color:var(--text-secondary);font-size:11px">¢ in next</span>
+                                <input type="number" id="condForecastLookAhead" value="1" min="1" max="24" style="width:50px;padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
+                                <select id="condForecastLookAheadUnit" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px" onchange="updateForecastLookAheadRange()">
+                                    <option value="hours" selected>hrs</option>
+                                    <option value="days">days</option>
+                                </select>
+                            </div>
+                            
                             <!-- Battery SoC -->
-                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px">
+                            <div data-condition-key="soc" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condSocEnabled" style="width:16px;height:16px">
                                     <span style="color:var(--text-primary);font-size:13px">🔋 Battery SoC</span>
@@ -8244,7 +8275,7 @@
                             </div>
                             
                             <!-- Temperature -->
-                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
+                            <div data-condition-key="temperature" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condTempEnabled" style="width:16px;height:16px">
                                     <span style="color:var(--text-primary);font-size:13px">🌡️ Temperature</span>
@@ -8284,7 +8315,7 @@
                             </div>
                             
                             <!-- Solar Radiation Forecast -->
-                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
+                            <div data-condition-key="solarRadiation" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condSolarEnabled" style="width:16px;height:16px">
                                     <span style="color:var(--text-primary);font-size:13px">☀️ Solar Radiation</span>
@@ -8310,7 +8341,7 @@
                             </div>
                             
                             <!-- Cloud Cover Forecast -->
-                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
+                            <div data-condition-key="cloudCover" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condCloudEnabled" style="width:16px;height:16px">
                                     <span style="color:var(--text-primary);font-size:13px">☁️ Cloud Cover</span>
@@ -8335,39 +8366,8 @@
                                 </select>
                             </div>
                             
-                            <!-- Forecast Price -->
-                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
-                                <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
-                                    <input type="checkbox" id="condForecastEnabled" style="width:16px;height:16px">
-                                    <span style="color:var(--text-primary);font-size:13px">📈 Forecast Price</span>
-                                </label>
-                                <select id="condForecastType" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
-                                    <option value="feedIn">Feed-in</option>
-                                    <option value="general">Buy</option>
-                                </select>
-                                <select id="condForecastCheck" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
-                                    <option value="average">Avg</option>
-                                    <option value="min">Min</option>
-                                    <option value="max">Max</option>
-                                    <option value="any">Any</option>
-                                </select>
-                                <select id="condForecastOp" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
-                                    <option value=">">&gt;</option>
-                                    <option value=">=">&gt;=</option>
-                                    <option value="<">&lt;</option>
-                                    <option value="<=">&lt;=</option>
-                                </select>
-                                <input type="number" id="condForecastVal" placeholder="¢" value="30" min="-100" max="500" step="0.1" style="width:60px;padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
-                                <span style="color:var(--text-secondary);font-size:11px">¢ in next</span>
-                                <input type="number" id="condForecastLookAhead" value="1" min="1" max="24" style="width:50px;padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
-                                <select id="condForecastLookAheadUnit" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px" onchange="updateForecastLookAheadRange()">
-                                    <option value="hours" selected>hrs</option>
-                                    <option value="days">days</option>
-                                </select>
-                            </div>
-                            
                             <!-- Time Window -->
-                            <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap">
+                            <div data-condition-key="time" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condTimeEnabled" style="width:16px;height:16px">
                                     <span style="color:var(--text-primary);font-size:13px">🕐 Time Window</span>
@@ -8674,6 +8674,25 @@
                 }
             }
 
+            if (modal.querySelector('#condForecastEnabled')?.checked) {
+                const priceType = readModalField(modal, '#condForecastType', 'feedIn');
+                const priceLabel = priceType === 'feedIn' ? 'feed-in' : 'buy';
+                const checkType = readModalField(modal, '#condForecastCheck', 'average');
+                const op = readModalField(modal, '#condForecastOp', '>');
+                const value = readModalField(modal, '#condForecastVal', '0');
+                const lookAhead = formatCountWithUnit(
+                    readModalField(modal, '#condForecastLookAhead', '1'),
+                    readModalField(modal, '#condForecastLookAheadUnit', 'hours')
+                );
+
+                if (checkType === 'any') {
+                    phrases.push(`any ${priceLabel} forecast price in the next ${lookAhead} ${getConditionOperatorText(op)} ${value} c/kWh`);
+                } else {
+                    const checkLabel = checkType === 'min' ? 'minimum' : (checkType === 'max' ? 'maximum' : 'average');
+                    phrases.push(`${checkLabel} ${priceLabel} forecast price over the next ${lookAhead} ${getConditionOperatorText(op)} ${value} c/kWh`);
+                }
+            }
+
             if (modal.querySelector('#condSocEnabled')?.checked) {
                 const op = readModalField(modal, '#condSocOp', '>');
                 const val1 = readModalField(modal, '#condSocVal', '0');
@@ -8719,25 +8738,6 @@
                     readModalField(modal, '#condCloudLookAheadUnit', 'hours')
                 );
                 phrases.push(`${checkLabel} cloud cover over the next ${lookAhead} ${getConditionOperatorText(op)} ${value}%`);
-            }
-
-            if (modal.querySelector('#condForecastEnabled')?.checked) {
-                const priceType = readModalField(modal, '#condForecastType', 'feedIn');
-                const priceLabel = priceType === 'feedIn' ? 'feed-in' : 'buy';
-                const checkType = readModalField(modal, '#condForecastCheck', 'average');
-                const op = readModalField(modal, '#condForecastOp', '>');
-                const value = readModalField(modal, '#condForecastVal', '0');
-                const lookAhead = formatCountWithUnit(
-                    readModalField(modal, '#condForecastLookAhead', '1'),
-                    readModalField(modal, '#condForecastLookAheadUnit', 'hours')
-                );
-
-                if (checkType === 'any') {
-                    phrases.push(`any ${priceLabel} forecast price in the next ${lookAhead} ${getConditionOperatorText(op)} ${value} c/kWh`);
-                } else {
-                    const checkLabel = checkType === 'min' ? 'minimum' : (checkType === 'max' ? 'maximum' : 'average');
-                    phrases.push(`${checkLabel} ${priceLabel} forecast price over the next ${lookAhead} ${getConditionOperatorText(op)} ${value} c/kWh`);
-                }
             }
 
             if (modal.querySelector('#condTimeEnabled')?.checked) {
