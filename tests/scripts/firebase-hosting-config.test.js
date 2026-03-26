@@ -67,3 +67,18 @@ test('blog alias redirects still point to the canonical root-level post URLs', (
     ['/blog/what-smarter-battery-automation-looks-like-as-you-level-up/', '/battery-automation-roi-examples/']
   ]);
 });
+
+test('global hosting headers include a content security policy', () => {
+  const headers = Array.isArray(firebaseConfig.hosting.headers) ? firebaseConfig.hosting.headers : [];
+  const wildcardHeaders = headers.find((entry) => entry && entry.source === '**');
+
+  assert.ok(wildcardHeaders, 'Expected wildcard hosting headers entry');
+
+  const cspHeader = (wildcardHeaders.headers || []).find((entry) => entry && entry.key === 'Content-Security-Policy');
+  assert.ok(cspHeader, 'Expected Content-Security-Policy header');
+  assert.match(String(cspHeader.value || ''), /frame-ancestors 'none'/);
+  assert.match(String(cspHeader.value || ''), /connect-src 'self'/);
+  assert.match(String(cspHeader.value || ''), /frame-src 'self'/);
+  assert.match(String(cspHeader.value || ''), /https:\/\/apis\.google\.com/);
+  assert.match(String(cspHeader.value || ''), /http:\/\/127\.0\.0\.1:\*/);
+});

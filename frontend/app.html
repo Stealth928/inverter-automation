@@ -2597,7 +2597,7 @@
                     <div class="card-header">
                         <div class="card-title"><span class="icon">💰</span> Electricity Prices</div>
                         <div style="display:flex;align-items:center;gap:8px">
-                            <span class="card-badge" id="amberSourceBadge">Amber</span>
+                            <span class="card-badge" id="amberSourceBadge">Pricing</span>
                             <div id="amberLastUpdate" style="font-size:11px;color:var(--text-secondary);">—</div>
                             <button class="btn btn-icon" onclick="getAmberCurrent(true)" title="Force refresh from API (bypasses cache)">🔄</button>
                         </div>
@@ -2605,14 +2605,14 @@
                     <div class="card-body">
                         <div class="input-row">
                             <select id="amberSiteId" class="input">
-                                <option value="">Loading sites...</option>
+                                <option value="">Loading pricing locations...</option>
                             </select>
                             <button class="btn btn-sm" id="amberShowMore" onclick="toggleAmberMore()" style="width:auto;margin:0;padding:6px 12px;font-size:12px">Show all</button>
                         </div>
                         <!-- Hidden input for compatibility with existing code -->
                         <input type="hidden" id="amberNext" value="288">
                         <div class="data-card" id="amberCard">
-                            <div style="color:var(--text-secondary);font-size:12px">Loading Amber sites...</div>
+                            <div style="color:var(--text-secondary);font-size:12px">Loading pricing locations...</div>
                         </div>
                     </div>
                 </div>

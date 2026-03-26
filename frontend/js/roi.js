@@ -6,6 +6,19 @@
         let deviceProvider = 'foxess';
         let providerCapabilities = resolveRoiProviderCapabilities(deviceProvider);
 
+        async function getRoiPricingContext() {
+            const configResp = await apiClient.getConfig();
+            const config = configResp?.result || {};
+            const provider = String(config.pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+            const storedSelection = window.sharedUtils && typeof window.sharedUtils.getStoredPricingSelection === 'function'
+                ? window.sharedUtils.getStoredPricingSelection(provider)
+                : '';
+            const selection = storedSelection || (provider === 'aemo'
+                ? (config.aemoRegion || config.siteIdOrRegion || 'NSW1')
+                : (config.amberSiteId || config.siteIdOrRegion || ''));
+            return { provider, selection };
+        }
+
         function normalizeRoiProvider(provider) {
             if (window.sharedUtils && typeof window.sharedUtils.normalizeDeviceProvider === 'function') {
                 return window.sharedUtils.normalizeDeviceProvider(provider);
@@ -307,12 +320,13 @@
             const actualPriceMap = new Map(); // key: ISO timestamp, value: {buyPrice, feedInPrice}
             
             try {
-                const sitesResp = await apiClient.getAmberSites();
+                const pricingContext = await getRoiPricingContext();
+                const sitesResp = await apiClient.getPricingSites(pricingContext.provider);
                 if (sitesResp && sitesResp.errno === 0 && sitesResp.result && sitesResp.result.length > 0) {
-                    const storedSiteId = (window.sharedUtils && window.sharedUtils.getStoredAmberSiteId) ? window.sharedUtils.getStoredAmberSiteId() : '';
-                    const siteId = (storedSiteId && sitesResp.result.some(s => String(s.id) === storedSiteId))
-                        ? storedSiteId
-                        : sitesResp.result[0].id;
+                    const selectionKey = pricingContext.provider === 'aemo' ? 'region' : 'id';
+                    const siteId = (pricingContext.selection && sitesResp.result.some(s => String(s[selectionKey] || s.id) === pricingContext.selection))
+                        ? pricingContext.selection
+                        : String(sitesResp.result[0][selectionKey] || sitesResp.result[0].id || '');
                     
                     // Find the actual date range covered by events (may be wider than user selection)
                     let minEventTime = Infinity;
@@ -345,7 +359,7 @@
                     }
                     
                     // Fetch all prices for the date range with 5-minute resolution (not actualOnly to get recent data)
-                    const pricesResp = await apiClient.getAmberHistoricalPrices(siteId, fetchStartDate, fetchEndDate, 5, false);                    
+                    const pricesResp = await apiClient.getPricingHistoricalPrices(pricingContext.provider, siteId, fetchStartDate, fetchEndDate, 5, false);
                     if (pricesResp && pricesResp.errno === 0 && pricesResp.result) {                        
                         const nowMs = Date.now();
                         // Build map of prices indexed by EPOCH MILLISECONDS (avoids timezone issues)

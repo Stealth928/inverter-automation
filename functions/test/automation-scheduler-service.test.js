@@ -55,7 +55,11 @@ function buildSchedulerDeps(overrides = {}) {
     getUserConfig:
       overrides.getUserConfig ||
       jest.fn(async (userId) => ({ deviceSn: `SN-${userId}`, timezone: 'UTC', automation: { intervalMs: 1000 } })),
-    getUserRules: overrides.getUserRules || jest.fn(async () => ({})),
+    getUserRules:
+      overrides.getUserRules ||
+      jest.fn(async () => ({
+        ruleA: { enabled: true, name: 'Rule A', priority: 1 }
+      })),
     isTimeInRange: overrides.isTimeInRange || jest.fn(() => false),
     logger,
     markCycleOutcome: overrides.markCycleOutcome || jest.fn(async () => undefined),
@@ -100,6 +104,14 @@ describe('automation scheduler service', () => {
     expect(automationCycleHandler).toHaveBeenCalledTimes(1);
     expect(automationCycleHandler.mock.calls[0][0]).toEqual(
       expect.objectContaining({
+        schedulerContext: expect.objectContaining({
+          rules: {
+            ruleA: { enabled: true, name: 'Rule A', priority: 1 }
+          },
+          state: { enabled: true, lastCheck: 0 },
+          userConfig: { deviceSn: 'SN-u-1', timezone: 'UTC', automation: { intervalMs: 1000 } },
+          userId: 'u-1'
+        }),
         user: { uid: 'u-1' }
       })
     );
@@ -270,6 +282,57 @@ describe('automation scheduler service', () => {
     expect(maxInFlightRuleLoads).toBeLessThanOrEqual(3);
   });
 
+  test('skips cycle execution when user has no enabled rules', async () => {
+    const automationCycleHandler = jest.fn(async (_req, res) => {
+      res.json({ errno: 0, result: { skipped: true, reason: 'No rules configured' } });
+    });
+    const getUserRules = jest.fn(async () => ({
+      ruleA: { enabled: false, name: 'Rule A' },
+      ruleB: { enabled: false, name: 'Rule B' }
+    }));
+    const { deps } = buildSchedulerDeps({
+      automationCycleHandler,
+      getUserRules,
+      userIds: ['u-1']
+    });
+
+    await runAutomationSchedulerCycle({}, deps);
+
+    expect(getUserRules).toHaveBeenCalledTimes(1);
+    expect(automationCycleHandler).not.toHaveBeenCalled();
+  });
+
+  test('uses config blackout windows to skip cycle before rule loading', async () => {
+    const automationCycleHandler = jest.fn(async (_req, res) => {
+      res.json({ errno: 0, result: { skipped: false } });
+    });
+    const getUserConfig = jest.fn(async () => ({
+      deviceSn: 'SN-u-1',
+      timezone: 'UTC',
+      automation: {
+        blackoutWindows: [{ start: '11:00', end: '13:00', enabled: true }],
+        intervalMs: 1000
+      }
+    }));
+    const getUserRules = jest.fn(async () => ({
+      ruleA: { enabled: true, name: 'Rule A' }
+    }));
+    const getTimeInTimezone = jest.fn(() => new Date('2026-03-06T12:00:00Z'));
+    const { deps } = buildSchedulerDeps({
+      automationCycleHandler,
+      getTimeInTimezone,
+      getUserConfig,
+      getUserRules,
+      isTimeInRange: jest.fn(() => true),
+      userIds: ['u-1']
+    });
+
+    await runAutomationSchedulerCycle({}, deps);
+
+    expect(automationCycleHandler).not.toHaveBeenCalled();
+    expect(getUserRules).not.toHaveBeenCalled();
+  });
+
   test('retries transient failures and succeeds before dead-letter', async () => {
     let attempt = 0;
     const automationCycleHandler = jest.fn(async (_req, res) => {
@@ -374,6 +437,7 @@ describe('automation scheduler service', () => {
     await runAutomationSchedulerCycle({}, deps);
 
     expect(automationCycleHandler).toHaveBeenCalledTimes(1);
+    expect(acquireUserCycleLock).toHaveBeenCalledTimes(2);
     expect(
       logger.log.mock.calls.some((call) => String(call[0]).includes('1 locked'))
     ).toBe(true);
@@ -491,7 +555,7 @@ describe('automation scheduler service', () => {
 
     expect(automationCycleHandler).toHaveBeenCalledTimes(1);
     expect(acquireUserCycleLock).toHaveBeenCalledTimes(2);
-    expect(shouldRunCycleKey).toHaveBeenCalledTimes(1);
+    expect(shouldRunCycleKey).toHaveBeenCalledTimes(3);
     expect(emitSchedulerMetrics).toHaveBeenCalledTimes(2);
 
     const totalCyclesRun = schedulerMetrics.reduce(
@@ -519,12 +583,14 @@ describe('automation scheduler service', () => {
       acquired: true,
       lockId: `lock-${userId}-${Math.random().toString(36).slice(2, 7)}`
     }));
-    const shouldRunCycleKey = jest.fn(async ({ userId, cycleKey }) => {
+    const shouldRunCycleKey = jest.fn(async ({ reserve = true, userId, cycleKey }) => {
       const key = `${userId}:${cycleKey}`;
       if (seenCycleKeys.has(key)) {
         return false;
       }
-      seenCycleKeys.add(key);
+      if (reserve) {
+        seenCycleKeys.add(key);
+      }
       return true;
     });
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1710000000000);
@@ -555,7 +621,8 @@ describe('automation scheduler service', () => {
     }
 
     expect(automationCycleHandler).toHaveBeenCalledTimes(1);
-    expect(shouldRunCycleKey).toHaveBeenCalledTimes(2);
+  expect(acquireUserCycleLock).toHaveBeenCalledTimes(2);
+  expect(shouldRunCycleKey).toHaveBeenCalledTimes(4);
     expect(emitSchedulerMetrics).toHaveBeenCalledTimes(2);
 
     const totalCyclesRun = schedulerMetrics.reduce(
@@ -610,12 +677,14 @@ describe('automation scheduler service', () => {
       }
     });
 
-    const shouldRunCycleKey = jest.fn(async ({ cycleKey, userId }) => {
+    const shouldRunCycleKey = jest.fn(async ({ reserve = true, cycleKey, userId }) => {
       const dedupeKey = `${userId}:${cycleKey}`;
       if (seenCycleKeys.has(dedupeKey)) {
         return false;
       }
-      seenCycleKeys.add(dedupeKey);
+      if (reserve) {
+        seenCycleKeys.add(dedupeKey);
+      }
       return true;
     });
 
@@ -723,12 +792,14 @@ describe('automation scheduler service', () => {
       }
     });
 
-    const shouldRunCycleKey = jest.fn(async ({ cycleKey, userId }) => {
+    const shouldRunCycleKey = jest.fn(async ({ reserve = true, cycleKey, userId }) => {
       const dedupeKey = `${userId}:${cycleKey}`;
       if (seenCycleKeys.has(dedupeKey)) {
         return false;
       }
-      seenCycleKeys.add(dedupeKey);
+      if (reserve) {
+        seenCycleKeys.add(dedupeKey);
+      }
       return true;
     });
 

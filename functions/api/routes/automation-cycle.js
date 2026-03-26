@@ -94,6 +94,8 @@ function registerAutomationCycleRoute(app, deps = {}) {
   const getUserTime = deps.getUserTime;
   const isForecastTemperatureType = deps.isForecastTemperatureType;
   const logger = deps.logger || console;
+  const warnLog = typeof logger.warn === 'function' ? logger.warn.bind(logger) : console.warn.bind(console);
+  const errorLog = typeof logger.error === 'function' ? logger.error.bind(logger) : console.error.bind(console);
   const saveUserAutomationState = deps.saveUserAutomationState;
   const serverTimestamp = deps.serverTimestamp;
   const setUserRule = deps.setUserRule;
@@ -206,6 +208,36 @@ function registerAutomationCycleRoute(app, deps = {}) {
   let telemetryStatePatch = null;
   try {
     const userId = req.user.uid;
+    const schedulerContext = req.schedulerContext && req.schedulerContext.userId === userId
+      ? req.schedulerContext
+      : null;
+    let resolvedState = schedulerContext && schedulerContext.state !== undefined
+      ? schedulerContext.state
+      : undefined;
+    let resolvedUserConfig = schedulerContext && schedulerContext.userConfig !== undefined
+      ? schedulerContext.userConfig
+      : undefined;
+    let resolvedRules = schedulerContext && schedulerContext.rules !== undefined
+      ? schedulerContext.rules
+      : undefined;
+    const loadAutomationState = async () => {
+      if (resolvedState === undefined) {
+        resolvedState = await getUserAutomationState(userId);
+      }
+      return resolvedState;
+    };
+    const loadUserConfig = async () => {
+      if (resolvedUserConfig === undefined) {
+        resolvedUserConfig = await getUserConfig(userId);
+      }
+      return resolvedUserConfig;
+    };
+    const loadUserRules = async () => {
+      if (resolvedRules === undefined) {
+        resolvedRules = await getUserRules(userId, { enabledOnly: true });
+      }
+      return resolvedRules;
+    };
     const cycleStartTime = Date.now();
     const phaseTimingsMs = {
       dataFetchMs: 0,
@@ -263,10 +295,10 @@ function registerAutomationCycleRoute(app, deps = {}) {
           `[Curtailment] Result: enabled=${curtailmentResult?.enabled === true}, adjusted=${curtailmentResult?.adjusted === true}, error=${curtailmentResult?.error ? 'yes' : 'no'}`
         );
         if (curtailmentResult.error) {
-          console.warn(`[Cycle] Curtailment check failed: ${curtailmentResult.error}`);
+          warnLog(`[Cycle] Curtailment check failed: ${curtailmentResult.error}`);
         }
       } catch (curtErr) {
-        console.error('[Cycle] Curtailment exception:', curtErr);
+        errorLog(`[Cycle] Curtailment exception: ${curtErr?.stack || curtErr?.message || curtErr}`);
         curtailmentResult = {
           error: curtErr.message,
           enabled: userConfig?.curtailment?.enabled || false
@@ -297,7 +329,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
     };
     
     // Get user's automation state
-    const state = await getUserAutomationState(userId);
+    const state = await loadAutomationState();
     // Check explicitly for enabled === false (not undefined which means not set yet)
     if (state && state.enabled === false) {
       const disabledNowMs = Date.now();
@@ -317,7 +349,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
       // Track with a flag in the state to avoid redundant API calls on every cycle
       if (state.segmentsCleared !== true) {
         try {
-          const userConfig = await getUserConfig(userId);
+          const userConfig = await loadUserConfig();
           const { deviceId } = resolveProviderDeviceId(userConfig);
           if (deviceId) {
             const clearOutcome = await withActionTiming(
@@ -328,13 +360,13 @@ function registerAutomationCycleRoute(app, deps = {}) {
               await saveUserAutomationState(userId, { segmentsCleared: true });
             } else {
               const clearResult = clearOutcome.clearResult;
-              console.warn(`[Automation] � ️ Segment clear returned errno=${clearResult?.errno}`);
+              warnLog(`[Automation] Segment clear returned errno=${clearResult?.errno}`);
             }
           } else {
-            console.warn('[Automation] No device identifier found - cannot clear segments');
+            warnLog('[Automation] No device identifier found - cannot clear segments');
           }
         } catch (err) {
-          console.error(`[Automation] ❌ Error clearing segments on disable:`, err.message);
+          errorLog(`[Automation] Error clearing segments on disable: ${err.message}`);
         }
       }
 
@@ -374,10 +406,10 @@ function registerAutomationCycleRoute(app, deps = {}) {
               automationDisabled: true  // Flag indicating this was due to automation being disabled
             });
           } catch (auditErr) {
-            console.warn(`[Automation] � ️ Failed to create audit entry:`, auditErr.message);
+            warnLog(`[Automation] Failed to create audit entry: ${auditErr.message}`);
           }
         } catch (err) {
-          console.warn(`[Automation] � ️ Error clearing rule lastTriggered:`, err.message);
+          warnLog(`[Automation] Error clearing rule lastTriggered: ${err.message}`);
         }
       }
       
@@ -422,7 +454,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
     }
     
     // Check for blackout windows
-    const userConfig = await getUserConfig(userId);
+    const userConfig = await loadUserConfig();
     const blackoutWindows = userConfig?.automation?.blackoutWindows || [];
     
     // Get user's timezone (from config which is kept up-to-date)
@@ -448,7 +480,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
     }
     
     // Get user's rules
-    const rules = await getUserRules(userId);
+    const rules = await loadUserRules();
     const totalRules = Object.keys(rules).length;
     
     if (totalRules === 0) {
@@ -469,10 +501,10 @@ function registerAutomationCycleRoute(app, deps = {}) {
         );
         const clearResult = clearOutcome.clearResult;
         if (clearResult?.errno !== 0) {
-          console.warn(`[Cycle] ⚠️ Failed to clear segments due to rule disable flag: errno=${clearResult?.errno}`);
+          warnLog(`[Cycle] Failed to clear segments due to rule disable flag: errno=${clearResult?.errno}`);
         }
       } catch (err) {
-        console.error('[Cycle] Error clearing segments:', err.message);
+        errorLog(`[Cycle] Error clearing segments: ${err.message}`);
       }
       
       // Clear the flag after processing
@@ -494,10 +526,10 @@ function registerAutomationCycleRoute(app, deps = {}) {
         );
         const clearResult = clearOutcome.clearResult;
         if (clearResult?.errno !== 0) {
-          console.warn(`[Automation] ⚠️ Failed to clear segments: errno=${clearResult?.errno}`);
+          warnLog(`[Automation] Failed to clear segments: errno=${clearResult?.errno}`);
         }
       } catch (err) {
-        console.error(`[Automation] ❌ Error clearing segments after rule disable:`, err.message);
+        errorLog(`[Automation] Error clearing segments after rule disable: ${err.message}`);
       }
       
       // Clear automation state (but DON'T update lastCheck - let scheduler timer continue)
@@ -550,20 +582,20 @@ function registerAutomationCycleRoute(app, deps = {}) {
     // parallel execution bounds it to the slowest single dependency.
     const weatherFetchPromise = weatherFetchPlan.needsWeatherData
       ? getCachedWeatherData(userId, userConfig?.location || 'Sydney', weatherFetchPlan.daysToFetch)
-          .catch((e) => {
-            console.warn('[Automation] Failed to get weather data:', e.message);
-            return null;
-          })
       : Promise.resolve(null);
 
     const dataFetchStartMs = Date.now();
+    const pricingProvider = String(userConfig?.pricingProvider || 'amber').toLowerCase().trim();
+    const tariffAdapter = adapterRegistry && typeof adapterRegistry.getTariffProvider === 'function'
+      ? adapterRegistry.getTariffProvider(pricingProvider)
+      : null;
     let inverterData;
     let amberData;
     let weatherDataRaw;
     let telemetryHealth = null;
     let telemetry = null;
     try {
-      [inverterData, amberData, weatherDataRaw] = await Promise.all([
+      const [inverterResult, amberResult, weatherResult] = await Promise.allSettled([
         fetchAutomationInverterData({
           deviceAdapter,
           provider,
@@ -578,11 +610,44 @@ function registerAutomationCycleRoute(app, deps = {}) {
           amberAPI,
           amberPricesInFlight,
           logger: console,
+          pricingProvider,
+          tariffAdapter,
           userConfig,
           userId
         }),
         weatherFetchPromise
       ]);
+
+      if (inverterResult.status === 'rejected') {
+        const inverterError = inverterResult.reason instanceof Error
+          ? inverterResult.reason
+          : new Error(String(inverterResult.reason || 'Failed to fetch inverter data'));
+        inverterError.cycleErrno = 503;
+        throw inverterError;
+      }
+
+      inverterData = inverterResult.value;
+      const inverterErrno = Number(inverterData?.errno);
+      if (!inverterData || (Number.isFinite(inverterErrno) && inverterErrno !== 0)) {
+        const message = inverterData?.error || 'Failed to fetch inverter data';
+        const inverterError = new Error(message);
+        inverterError.cycleErrno = Number.isInteger(inverterErrno) && inverterErrno >= 400 ? inverterErrno : 503;
+        throw inverterError;
+      }
+
+      if (amberResult.status === 'fulfilled') {
+        amberData = amberResult.value;
+      } else {
+        warnLog(`[Automation] Amber fetch degraded: ${amberResult.reason?.message || amberResult.reason}`);
+        amberData = null;
+      }
+
+      if (weatherResult.status === 'fulfilled') {
+        weatherDataRaw = weatherResult.value;
+      } else {
+        warnLog(`[Automation] Weather fetch degraded: ${weatherResult.reason?.message || weatherResult.reason}`);
+        weatherDataRaw = null;
+      }
     } finally {
       addPhaseDuration('dataFetchMs', dataFetchStartMs);
     }
@@ -694,7 +759,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
               );
               logger.debug('Automation', `📤 Retry result: errno=${retryResult?.errno}, msg=${retryResult?.msg}`);
             } catch (retryErr) {
-              console.error(`[Automation] ❌ Retry exception:`, retryErr);
+              errorLog(`[Automation] Retry exception: ${retryErr?.stack || retryErr?.message || retryErr}`);
               retryResult = { errno: -1, msg: retryErr.message || 'Retry failed' };
             }
             
@@ -710,7 +775,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
             if (retryResult?.errno === 0) {
               logger.debug('Automation', `✅ Segment re-send SUCCESSFUL - segment should now be on device`);
             } else {
-              console.error(`[Automation] ❌ Segment re-send FAILED: ${retryResult?.msg || 'unknown error'}`);
+              errorLog(`[Automation] Segment re-send failed: ${retryResult?.msg || 'unknown error'}`);
               throw createActionFailureError(rule.name, retryResult, 'active_rule_retry');
             }
             break;
@@ -734,7 +799,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
               );
               
             } catch (err) {
-              console.error(`[Automation] Error resetting rule after cooldown expiry:`, err.message);
+              errorLog(`[Automation] Error resetting rule after cooldown expiry: ${err.message}`);
             }
             
             // Mark as triggered - this is a re-trigger after cooldown expiry
@@ -835,7 +900,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
                   () => clearSegmentsForUser(userConfig, userId, { settleDelayMs: 2500 })
                 );
               } catch (err) {
-                console.error(`[Automation] ❌ Error clearing active rule segment:`, err.message);
+                errorLog(`[Automation] Error clearing active rule segment: ${err.message}`);
               }
               // Reset active rule's lastTriggered so it can be re-triggered later
               if (state.activeRule) {
@@ -883,7 +948,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
           logger.debug('Automation', `✅ State saved successfully - activeRule is now '${rule.name}'`);
           logger.debug('Automation', `🔍 Final segment status: ${actionResult?.errno === 0 ? 'ENABLED ✅' : 'FAILED ❌'}`);
           if (actionResult?.errno !== 0) {
-            console.error(`[Automation] 🚨 SEGMENT SEND FAILED - errno=${actionResult?.errno}, msg=${actionResult?.msg}`);
+            errorLog(`[Automation] Segment send failed: errno=${actionResult?.errno}, msg=${actionResult?.msg}`);
             throw createActionFailureError(rule.name, actionResult, 'new_trigger');
           }
           
@@ -957,7 +1022,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
               segmentClearSuccess = clearOutcome.success === true;
 
               if (!segmentClearSuccess) {
-                console.error(`[Automation] ❌ Failed to clear segments after 3 attempts - aborting replacement rule evaluation for safety`);
+                errorLog('[Automation] Failed to clear segments after 3 attempts; aborting replacement rule evaluation for safety');
                 // Break out of rule loop if we can't clear - too risky to apply new segment
                 break;
               }
@@ -969,7 +1034,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
               lastTriggered: null
             }, { merge: true });
           } catch (cancelError) {
-            console.error(`[Automation] Unexpected error during cancellation:`, cancelError.message);
+            errorLog(`[Automation] Unexpected error during cancellation: ${cancelError.message}`);
             // Break on unexpected errors - don't risk applying a replacement
             break;
           }
@@ -1040,7 +1105,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
       curtailment: curtailmentResult
     });
   } catch (error) {
-    console.error('[Automation] Cycle error:', error);
+    errorLog(`[Automation] Cycle error: ${error?.stack || error?.message || error}`);
     
     // Still update lastCheck even on error
     try {

@@ -100,13 +100,17 @@
     let behaviorSelectedPageKey = 'all';
     let firestoreMetricsChart = null;
     let schedulerMetricsChart = null;
+    let apiHealthTrendChart = null;
+    let apiHealthExecutionChart = null;
+    let apiHealthProviderChart = null;
+    let apiHealthData = null;
     let usersProviderChart = null;
     let usersInverterSizeChart = null;
     let usersBatterySizeChart = null;
     let usersCouplingChart = null;
     let usersTourChart = null;
     let activeTab = 'overview';
-    let tabsLoaded = { overview: false, behavior: false, announcement: false, scheduler: false, dataworks: false, users: false };
+    let tabsLoaded = { overview: false, behavior: false, announcement: false, scheduler: false, dataworks: false, users: false, apiHealth: false };
     let usersTableRequestSequence = 0;
     let usersSummaryRequestSequence = 0;
     let currentAdminAnnouncement = null;
@@ -121,9 +125,18 @@
             warning: 'var(--color-warning)',
             info: 'var(--accent-blue)'
         };
-        area.innerHTML = `<div style="padding: 10px 16px; border-radius: var(--radius-lg); background: ${colors[type] || colors.info}15; border: 1px solid ${colors[type] || colors.info}40; color: ${colors[type] || colors.info}; font-size: 13px; margin-bottom: 12px;">${msg}</div>`;
+        const messageEl = document.createElement('div');
+        messageEl.style.padding = '10px 16px';
+        messageEl.style.borderRadius = 'var(--radius-lg)';
+        messageEl.style.background = `${colors[type] || colors.info}15`;
+        messageEl.style.border = `1px solid ${colors[type] || colors.info}40`;
+        messageEl.style.color = colors[type] || colors.info;
+        messageEl.style.fontSize = '13px';
+        messageEl.style.marginBottom = '12px';
+        messageEl.textContent = msg;
+        area.replaceChildren(messageEl);
         if (duration > 0) {
-            setTimeout(() => { area.innerHTML = ''; }, duration);
+            setTimeout(() => { area.replaceChildren(); }, duration);
         }
     }
 
@@ -149,6 +162,130 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    }
+
+    let adminInfoTooltipEl = null;
+    let adminInfoTooltipTarget = null;
+
+    function ensureAdminInfoTooltip() {
+        if (adminInfoTooltipEl || !document.body) return adminInfoTooltipEl;
+        adminInfoTooltipEl = document.createElement('div');
+        adminInfoTooltipEl.id = 'adminInfoTooltip';
+        adminInfoTooltipEl.className = 'admin-info-tooltip';
+        adminInfoTooltipEl.setAttribute('role', 'tooltip');
+        adminInfoTooltipEl.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(adminInfoTooltipEl);
+        return adminInfoTooltipEl;
+    }
+
+    function positionAdminInfoTooltip(target) {
+        const tooltipEl = ensureAdminInfoTooltip();
+        if (!tooltipEl || !target) return;
+
+        const rect = target.getBoundingClientRect();
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        const margin = 10;
+
+        tooltipEl.style.top = '0px';
+        tooltipEl.style.left = '0px';
+        const tooltipRect = tooltipEl.getBoundingClientRect();
+        const tooltipWidth = tooltipRect.width || Math.min(320, Math.max(180, viewportWidth - (margin * 2)));
+        const tooltipHeight = tooltipRect.height || 0;
+
+        const preferredTop = rect.top - tooltipHeight - 10;
+        const placeBelow = preferredTop < margin && rect.bottom + tooltipHeight + 10 <= viewportHeight - margin;
+        const top = placeBelow
+            ? Math.min(viewportHeight - tooltipHeight - margin, rect.bottom + 10)
+            : Math.max(margin, preferredTop);
+        const centeredLeft = rect.left + (rect.width / 2) - (tooltipWidth / 2);
+        const left = Math.max(margin, Math.min(centeredLeft, viewportWidth - tooltipWidth - margin));
+
+        tooltipEl.dataset.placement = placeBelow ? 'bottom' : 'top';
+        tooltipEl.style.top = `${Math.round(top)}px`;
+        tooltipEl.style.left = `${Math.round(left)}px`;
+    }
+
+    function hideAdminInfoTooltip(target = null) {
+        const tooltipEl = ensureAdminInfoTooltip();
+        if (!tooltipEl) return;
+        if (target && adminInfoTooltipTarget && target !== adminInfoTooltipTarget) return;
+        if (adminInfoTooltipTarget) {
+            adminInfoTooltipTarget.removeAttribute('aria-describedby');
+        }
+        adminInfoTooltipTarget = null;
+        tooltipEl.classList.remove('is-visible');
+        tooltipEl.setAttribute('aria-hidden', 'true');
+        tooltipEl.textContent = '';
+        delete tooltipEl.dataset.placement;
+    }
+
+    function showAdminInfoTooltip(target) {
+        const tooltipEl = ensureAdminInfoTooltip();
+        if (!tooltipEl || !target) return;
+        const tipText = String(target.getAttribute('data-tip') || '').trim();
+        if (!tipText) {
+            hideAdminInfoTooltip();
+            return;
+        }
+        adminInfoTooltipTarget = target;
+        tooltipEl.textContent = tipText;
+        tooltipEl.setAttribute('aria-hidden', 'false');
+        target.setAttribute('aria-describedby', tooltipEl.id);
+        positionAdminInfoTooltip(target);
+        tooltipEl.classList.add('is-visible');
+    }
+
+    function initializeInfoTips() {
+        if (!document.body) return;
+        document.body.classList.add('js-info-tooltips');
+        ensureAdminInfoTooltip();
+
+        document.querySelectorAll('.info-tip').forEach((tipEl) => {
+            if (!(tipEl instanceof HTMLElement) || tipEl.dataset.tooltipBound === '1') return;
+            tipEl.dataset.tooltipBound = '1';
+            if (!tipEl.getAttribute('aria-label')) {
+                const tipText = String(tipEl.getAttribute('data-tip') || '').trim();
+                if (tipText) {
+                    tipEl.setAttribute('aria-label', tipText);
+                }
+            }
+            tipEl.addEventListener('mouseenter', () => showAdminInfoTooltip(tipEl));
+            tipEl.addEventListener('mouseleave', () => hideAdminInfoTooltip(tipEl));
+            tipEl.addEventListener('focus', () => showAdminInfoTooltip(tipEl));
+            tipEl.addEventListener('blur', () => hideAdminInfoTooltip(tipEl));
+            tipEl.addEventListener('click', (event) => {
+                event.preventDefault();
+                if (adminInfoTooltipTarget === tipEl) {
+                    hideAdminInfoTooltip(tipEl);
+                    return;
+                }
+                showAdminInfoTooltip(tipEl);
+            });
+        });
+
+        if (document.body.dataset.infoTooltipListenersBound === '1') return;
+        document.body.dataset.infoTooltipListenersBound = '1';
+        document.addEventListener('scroll', () => {
+            if (adminInfoTooltipTarget) {
+                positionAdminInfoTooltip(adminInfoTooltipTarget);
+            }
+        }, true);
+        window.addEventListener('resize', () => {
+            if (adminInfoTooltipTarget) {
+                positionAdminInfoTooltip(adminInfoTooltipTarget);
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                hideAdminInfoTooltip();
+            }
+        });
+        document.addEventListener('pointerdown', (event) => {
+            const target = event.target;
+            if (target instanceof Element && target.closest('.info-tip')) return;
+            hideAdminInfoTooltip();
+        });
     }
 
     function formatSummaryRatio(metric, totalUsers) {
@@ -840,6 +977,8 @@
                     setUsersSummaryLoading();
                 }
                 loadUsers({ includeSummary: false, requestSummary: true });
+            } else if (name === 'apiHealth') {
+                loadApiHealth();
             }
         }
     }
@@ -915,7 +1054,8 @@
             if (!currentUsersSummary) {
                 renderUsersSummary(null);
             }
-            loading.innerHTML = `<span style="color: var(--color-danger);">Failed to load users: ${e.message}</span>`;
+            loading.textContent = `Failed to load users: ${e.message}`;
+            loading.style.color = 'var(--color-danger)';
         }
     }
 
@@ -952,6 +1092,29 @@
             console.error('[Admin] Failed to load users summary:', e);
             if (!currentUsersSummary) {
                 renderUsersSummary(null);
+            }
+        }
+    }
+
+    async function refreshOverviewData() {
+        const refreshBtn = document.getElementById('refreshOverviewBtn');
+        if (refreshBtn?.disabled) return;
+
+        if (refreshBtn) {
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = 'Refreshing...';
+        }
+
+        try {
+            await Promise.allSettled([
+                loadPlatformStats(),
+                loadFirestoreCostMetrics()
+            ]);
+            tabsLoaded.overview = true;
+        } finally {
+            if (refreshBtn) {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '🔄 Refresh';
             }
         }
     }
@@ -2003,6 +2166,8 @@
 
             const firestore = data.result?.firestore || {};
             const billing = data.result?.billing || {};
+            const cache = data.result?.cache || {};
+            const quota = firestore.quota || {};
             const trend = Array.isArray(data.result?.trend) ? data.result.trend : [];
             const warnings = Array.isArray(data.result?.warnings) ? data.result.warnings : [];
 
@@ -2111,6 +2276,49 @@
                     docOpsBreakdownEl.textContent = '';
                     docOpsBreakdownEl.style.display = 'none';
                 }
+            }
+
+            const cacheTotals = cache && typeof cache === 'object' ? (cache.totals || {}) : {};
+            const cacheSources = Array.isArray(cache.sources) ? cache.sources : [];
+            const cacheHitRateEl = document.getElementById('cacheOverallHitRate');
+            const cacheTopMissSourceEl = document.getElementById('cacheTopMissSource');
+            const cacheHitRatePct = Number(cacheTotals.hitRatePct);
+            const topMissSource = cacheSources
+                .filter((entry) => Number(entry?.reads || 0) > 0)
+                .sort((a, b) => Number(b?.misses || 0) - Number(a?.misses || 0) || Number(a?.hitRatePct || 0) - Number(b?.hitRatePct || 0))[0] || null;
+
+            if (cacheHitRateEl) {
+                cacheHitRateEl.textContent = Number.isFinite(cacheHitRatePct)
+                    ? formatPercentage(cacheHitRatePct, 1)
+                    : 'No samples';
+                cacheHitRateEl.title = Number(cacheTotals.reads || 0) > 0
+                    ? `${formatCompactNumber(cacheTotals.hits || 0)} hits across ${formatCompactNumber(cacheTotals.reads || 0)} cache-backed reads since process start.`
+                    : 'No cache-backed reads recorded since process start.';
+            }
+            if (cacheTopMissSourceEl) {
+                cacheTopMissSourceEl.textContent = topMissSource
+                    ? `${topMissSource.source}: ${formatCompactNumber(topMissSource.misses || 0)} misses`
+                    : 'No cache misses recorded';
+            }
+
+            const quotaStatusEl = document.getElementById('firestoreQuotaStatus');
+            const quotaSummaryEl = document.getElementById('firestoreQuotaSummary');
+            const quotaMetrics = Array.isArray(quota.metrics) ? quota.metrics : [];
+            const busiestQuotaMetric = quotaMetrics
+                .slice()
+                .sort((a, b) => Number(b?.last24HoursUtilizationPct || 0) - Number(a?.last24HoursUtilizationPct || 0))[0] || null;
+
+            if (quotaStatusEl) {
+                const quotaStatus = String(quota.overallStatus || 'healthy').toUpperCase();
+                quotaStatusEl.textContent = quotaStatus;
+                quotaStatusEl.title = busiestQuotaMetric
+                    ? `${busiestQuotaMetric.label} last-24h utilization: ${formatPercentage(busiestQuotaMetric.last24HoursUtilizationPct, 1)}`
+                    : 'No quota utilization samples available';
+            }
+            if (quotaSummaryEl) {
+                quotaSummaryEl.textContent = busiestQuotaMetric
+                    ? `${busiestQuotaMetric.label}: ${formatCompactNumber(busiestQuotaMetric.last24Hours || 0)} last 24h / ${formatCompactNumber(busiestQuotaMetric.dailyFreeTier || 0)} free tier`
+                    : 'No recent Firestore quota usage samples';
             }
 
             const updatedAt = data.result?.updatedAt ? new Date(data.result.updatedAt) : new Date();
@@ -2287,6 +2495,79 @@
         return 'neutral';
     }
 
+    function statusSeverity(level) {
+        const tone = dataworksTone(level);
+        if (tone === 'bad') return 2;
+        if (tone === 'warn') return 1;
+        return 0;
+    }
+
+    function summarizeReleaseGuard(releaseAlignment) {
+        if (releaseAlignment?.matches === true) {
+            return { label: 'Aligned', level: 'good', reason: null };
+        }
+        if (releaseAlignment?.status === 'mismatch') {
+            return { label: 'Needs deploy', level: 'warn', reason: releaseAlignment.reason || 'Historical publish is blocked until the live release is deployed.' };
+        }
+        if (releaseAlignment?.status === 'target-unresolved') {
+            return { label: 'Blocked', level: 'warn', reason: releaseAlignment.reason || 'Workflow ref could not be resolved.' };
+        }
+        if (releaseAlignment?.status === 'manifest-missing') {
+            return { label: 'Bootstrap', level: 'neutral', reason: releaseAlignment.reason || 'Waiting for hosted release metadata.' };
+        }
+        return { label: 'Unknown', level: 'neutral', reason: releaseAlignment?.reason || null };
+    }
+
+    function formatMinutesCompact(value) {
+        const minutes = Number(value);
+        if (!Number.isFinite(minutes) || minutes < 0) return '-';
+        if (minutes < 60) return `${Math.round(minutes)}m`;
+        const totalHours = Math.floor(minutes / 60);
+        const remMinutes = Math.round(minutes % 60);
+        if (totalHours < 24) {
+            return remMinutes ? `${totalHours}h ${remMinutes}m` : `${totalHours}h`;
+        }
+        const days = Math.floor(totalHours / 24);
+        const remHours = totalHours % 24;
+        return remHours ? `${days}d ${remHours}h` : `${days}d`;
+    }
+
+    function buildDataworksOverallStatus({ marketSummary, liveAemo, opsSummary }) {
+        const reasons = [];
+        let level = 'good';
+        let label = 'Healthy';
+
+        const considerStatus = (status) => {
+            if (!status || typeof status !== 'object') return;
+            if (statusSeverity(status.level) > statusSeverity(level)) {
+                level = status.level || level;
+                label = status.label || label;
+            }
+            if (Array.isArray(status.reasons)) {
+                status.reasons.forEach((reason) => {
+                    if (reason) reasons.push(String(reason));
+                });
+            }
+        };
+
+        considerStatus(marketSummary?.status || null);
+        considerStatus(liveAemo?.status || null);
+
+        const releaseGuard = summarizeReleaseGuard(opsSummary?.releaseAlignment || null);
+        if (statusSeverity(releaseGuard.level) > statusSeverity(level)) {
+            level = releaseGuard.level;
+            label = releaseGuard.label;
+        }
+        if (releaseGuard.reason) reasons.push(releaseGuard.reason);
+
+        const uniqueReasons = Array.from(new Set(reasons.filter(Boolean)));
+        return {
+            level,
+            label,
+            reasons: uniqueReasons
+        };
+    }
+
     function renderDataworksBadge(label, level) {
         const tone = dataworksTone(level || label);
         return `<span class="dataworks-badge ${tone}">${escapeHtml(label || 'Unknown')}</span>`;
@@ -2404,6 +2685,9 @@
         const result = data?.result || {};
         const workflow = result.workflow || {};
         const dispatch = result.dispatch || {};
+        const liveAemo = result.liveAemo && typeof result.liveAemo === 'object'
+            ? result.liveAemo
+            : null;
         const latestRun = result.latestRun && typeof result.latestRun === 'object' ? result.latestRun : null;
         const lastSuccessfulRun = result.lastSuccessfulRun && typeof result.lastSuccessfulRun === 'object'
             ? result.lastSuccessfulRun
@@ -2431,6 +2715,7 @@
 
         return {
             workflow,
+            liveAemo,
             dispatchEnabled: !!dispatch.enabled,
             dispatchConfigured: !!dispatch.configured,
             dispatchReason: dispatch.reason || null,
@@ -2479,8 +2764,8 @@
     }
 
     function classifySchedulerSloLevel(value, target) {
-        const measured = Number(value || 0);
-        const threshold = Number(target || 0);
+        const measured = Number(value);
+        const threshold = Number(target);
         if (!Number.isFinite(measured) || !Number.isFinite(threshold) || threshold <= 0) {
             return { level: 'warn', label: 'No data' };
         }
@@ -2493,17 +2778,104 @@
         return { level: 'bad', label: 'Breach' };
     }
 
-    function renderSchedulerSloCards(summary, options = {}) {
+    function computeSchedulerRatePct(numerator, denominator) {
+        const safeNumerator = Number(numerator || 0);
+        const safeDenominator = Number(denominator || 0);
+        if (!Number.isFinite(safeNumerator) || !Number.isFinite(safeDenominator) || safeDenominator <= 0) {
+            return 0;
+        }
+        return Number(((safeNumerator / safeDenominator) * 100).toFixed(2));
+    }
+
+    function buildSchedulerCurrentSnapshotFallback(recentRuns, currentAlert) {
+        const latestRun = Array.isArray(recentRuns) && recentRuns.length ? recentRuns[0] : null;
+        if (!latestRun || typeof latestRun !== 'object') return null;
+        const alertMatchesRun = currentAlert && currentAlert.runId && currentAlert.runId === latestRun.runId;
+        return {
+            runId: latestRun.runId || null,
+            dayKey: latestRun.dayKey || null,
+            schedulerId: latestRun.schedulerId || null,
+            workerId: latestRun.workerId || null,
+            startedAtMs: Number(latestRun.startedAtMs || 0),
+            completedAtMs: Number(latestRun.completedAtMs || 0),
+            durationMs: Number(latestRun.durationMs || 0),
+            cycleCandidates: Number(latestRun.cycleCandidates || 0),
+            cyclesRun: Number(latestRun.cyclesRun || 0),
+            errors: Number(latestRun.errors || 0),
+            deadLetters: Number(latestRun.deadLetters || 0),
+            retries: Number(latestRun.retries || 0),
+            errorRatePct: computeSchedulerRatePct(latestRun.errors, latestRun.cyclesRun),
+            deadLetterRatePct: computeSchedulerRatePct(latestRun.deadLetters, latestRun.cyclesRun),
+            avgQueueLagMs: Number(latestRun.queueLagMs?.avgMs || 0),
+            maxQueueLagMs: Number(latestRun.queueLagMs?.maxMs || 0),
+            avgCycleDurationMs: Number(latestRun.cycleDurationMs?.avgMs || 0),
+            maxCycleDurationMs: Number(latestRun.cycleDurationMs?.maxMs || 0),
+            maxTelemetryAgeMs: Number(latestRun.telemetryAgeMs?.maxMs || 0),
+            p95CycleDurationMs: Number(latestRun.cycleDurationMs?.p95Ms || 0),
+            p99CycleDurationMs: Number(latestRun.cycleDurationMs?.p99Ms || 0),
+            phaseTimingsMaxMs: {
+                dataFetchMs: Number(latestRun.phaseTimingsMs?.dataFetchMs?.maxMs || 0),
+                ruleEvalMs: Number(latestRun.phaseTimingsMs?.ruleEvalMs?.maxMs || 0),
+                actionApplyMs: Number(latestRun.phaseTimingsMs?.actionApplyMs?.maxMs || 0),
+                curtailmentMs: Number(latestRun.phaseTimingsMs?.curtailmentMs?.maxMs || 0)
+            },
+            skipped: {
+                disabledOrBlackout: Number(latestRun.skipped?.disabledOrBlackout || 0),
+                idempotent: Number(latestRun.skipped?.idempotent || 0),
+                locked: Number(latestRun.skipped?.locked || 0),
+                tooSoon: Number(latestRun.skipped?.tooSoon || 0)
+            },
+            failureByType: latestRun.failureByType && typeof latestRun.failureByType === 'object'
+                ? latestRun.failureByType
+                : {},
+            telemetryPauseReasons: latestRun.telemetryPauseReasons && typeof latestRun.telemetryPauseReasons === 'object'
+                ? latestRun.telemetryPauseReasons
+                : {},
+            likelyCauses: [],
+            slo: {
+                status: alertMatchesRun ? String(currentAlert.status || 'healthy').toLowerCase() : String(latestRun.slo?.status || 'healthy').toLowerCase(),
+                breachedMetrics: alertMatchesRun && Array.isArray(currentAlert.breachedMetrics) ? currentAlert.breachedMetrics : (Array.isArray(latestRun.slo?.breachedMetrics) ? latestRun.slo.breachedMetrics : []),
+                watchMetrics: alertMatchesRun && Array.isArray(currentAlert.watchMetrics) ? currentAlert.watchMetrics : (Array.isArray(latestRun.slo?.watchMetrics) ? latestRun.slo.watchMetrics : [])
+            }
+        };
+    }
+
+    function renderSchedulerSloCards(prefix, summary, options = {}) {
+        const safePrefix = String(prefix || '').trim();
+        const hasWindowSummary = summary && typeof summary === 'object';
+        if (!safePrefix) return;
+        if (!hasWindowSummary) {
+            ['SloErrorRate', 'SloDeadLetterRate', 'SloQueueLag', 'SloCycleDuration', 'SloTelemetryAge', 'SloCycleTailP99'].forEach((suffix) => {
+                const id = `${safePrefix}${suffix}`;
+                const cardEl = document.getElementById(id);
+                if (!cardEl) return;
+                const statusEl = cardEl.querySelector('.slo-status');
+                const valueEl = cardEl.querySelector('.slo-value');
+                const metaEl = cardEl.querySelector('.slo-meta');
+                cardEl.classList.remove('good', 'warn', 'bad');
+                cardEl.classList.add('warn');
+                if (statusEl) statusEl.textContent = 'No data';
+                if (valueEl) valueEl.textContent = 'Window unavailable';
+                if (metaEl) metaEl.textContent = 'Refresh to load scheduler metrics.';
+            });
+            return;
+        }
         const cyclesRun = Number(summary?.cyclesRun || 0);
         const deadLetters = Number(summary?.deadLetters || 0);
         const errorRatePct = Number(summary?.errorRatePct || 0);
-        const deadLetterRatePct = cyclesRun > 0 ? (deadLetters / cyclesRun) * 100 : 0;
+        const deadLetterRatePct = Number(summary?.deadLetterRatePct || computeSchedulerRatePct(deadLetters, cyclesRun));
+        const p95QueueLagMs = Number(summary?.p95QueueLagMs || summary?.maxQueueLagMs || 0);
+        const p95CycleDurationMs = Number(summary?.p95CycleDurationMs || 0);
         const maxQueueLagMs = Number(summary?.maxQueueLagMs || 0);
         const maxCycleDurationMs = Number(summary?.maxCycleDurationMs || 0);
         const maxTelemetryAgeMs = Number(summary?.maxTelemetryAgeMs || 0);
         const p99CycleDurationMs = Number(summary?.p99CycleDurationMs || 0);
         const avgQueueLagMs = Number(summary?.avgQueueLagMs || options?.avgQueueLagMs || 0);
         const avgCycleDurationMs = Number(summary?.avgCycleDurationMs || options?.avgCycleDurationMs || 0);
+        const telemetryPauseReasons = summary?.telemetryPauseReasons && typeof summary.telemetryPauseReasons === 'object'
+            ? summary.telemetryPauseReasons
+            : {};
+        const telemetryMissingTimestampCount = Number(telemetryPauseReasons.stale_telemetry_missing_timestamp || 0);
         const thresholds = options?.thresholds && typeof options.thresholds === 'object'
             ? options.thresholds
             : {};
@@ -2523,46 +2895,56 @@
 
         const cards = [
             {
-                id: 'schedulerSloErrorRate',
+                id: `${safePrefix}SloErrorRate`,
                 value: errorRatePct,
                 target: Number(thresholds.errorRatePct || 1.0),
                 display: `${errorRatePct.toFixed(2)}%`,
-                targetDisplay: `Target <= ${Number(thresholds.errorRatePct || 1.0).toFixed(2)}%`
+                targetDisplay: `Target <= ${Number(thresholds.errorRatePct || 1.0).toFixed(2)}%`,
+                meta: `Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)} · Errors ${formatCompactNumber(summary?.errors || 0)} · Dead letters ${formatCompactNumber(summary?.deadLetters || 0)}`
             },
             {
-                id: 'schedulerSloDeadLetterRate',
+                id: `${safePrefix}SloDeadLetterRate`,
                 value: deadLetterRatePct,
                 target: Number(thresholds.deadLetterRatePct || 0.2),
                 display: `${deadLetterRatePct.toFixed(2)}%`,
-                targetDisplay: `Target <= ${Number(thresholds.deadLetterRatePct || 0.2).toFixed(2)}%`
+                targetDisplay: `Target <= ${Number(thresholds.deadLetterRatePct || 0.2).toFixed(2)}%`,
+                meta: `Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)} · Errors ${formatCompactNumber(summary?.errors || 0)} · Dead letters ${formatCompactNumber(summary?.deadLetters || 0)}`
             },
             {
-                id: 'schedulerSloQueueLag',
-                value: maxQueueLagMs,
+                id: `${safePrefix}SloQueueLag`,
+                value: p95QueueLagMs,
                 target: queueLagTargetMs,
-                display: `${formatDurationMs(avgQueueLagMs)} avg / ${formatDurationMs(maxQueueLagMs)} max`,
-                targetDisplay: `Target avg <= ${formatDurationMs(queueLagTargetMs)}, max <= ${formatDurationMs(queueLagTargetMs)}`
+                display: `${formatDurationMs(avgQueueLagMs)} avg / ${formatDurationMs(p95QueueLagMs)} p95`,
+                targetDisplay: `Target window p95 <= ${formatDurationMs(queueLagTargetMs)}`,
+                meta: `Weighted average across executed cycles in this window. Diagnostic max ${formatDurationMs(maxQueueLagMs)}. Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
             },
             {
-                id: 'schedulerSloCycleDuration',
-                value: maxCycleDurationMs,
+                id: `${safePrefix}SloCycleDuration`,
+                value: p95CycleDurationMs,
                 target: cycleDurationTargetMs,
-                display: `${formatDurationMs(avgCycleDurationMs)} avg / ${formatDurationMs(maxCycleDurationMs)} max`,
-                targetDisplay: `Target avg <= ${formatDurationMs(cycleDurationTargetMs)}, max <= ${formatDurationMs(cycleDurationTargetMs)}`
+                display: `${formatDurationMs(avgCycleDurationMs)} avg / ${formatDurationMs(p95CycleDurationMs)} p95`,
+                targetDisplay: `Target window p95 <= ${formatDurationMs(cycleDurationTargetMs)}`,
+                meta: `Weighted average across executed cycles in this window. Diagnostic max ${formatDurationMs(maxCycleDurationMs)}. Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
             },
             {
-                id: 'schedulerSloTelemetryAge',
+                id: `${safePrefix}SloTelemetryAge`,
                 value: maxTelemetryAgeMs,
                 target: telemetryAgeTargetMs,
-                display: `${formatDurationMs(maxTelemetryAgeMs)} max`,
-                targetDisplay: `Target max <= ${formatDurationMs(telemetryAgeTargetMs)}`
+                display: telemetryMissingTimestampCount > 0
+                    ? `${formatDurationMs(maxTelemetryAgeMs)} max · ${formatCompactNumber(telemetryMissingTimestampCount)} missing timestamp`
+                    : `${formatDurationMs(maxTelemetryAgeMs)} max`,
+                targetDisplay: `Target max <= ${formatDurationMs(telemetryAgeTargetMs)}`,
+                meta: telemetryMissingTimestampCount > 0
+                    ? `Derived from runs with parseable source timestamps. Missing timestamp cycles: ${formatCompactNumber(telemetryMissingTimestampCount)} · Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
+                    : `Derived from runs with parseable source timestamps. Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
             },
             {
-                id: 'schedulerSloCycleTailP99',
+                id: `${safePrefix}SloCycleTailP99`,
                 value: p99CycleDurationMs,
                 target: p99TargetMs,
-                display: `${formatDurationMs(p99CycleDurationMs)} p99`,
-                targetDisplay: `Target p99 <= ${formatDurationMs(p99TargetMs)} · sustained ${tailStatus} (${tailRunsAbove}/${tailObservedRuns} above ${formatDurationMs(tailThresholdMs)} in ${tailWindowMinutes}m, min ${tailMinRuns})`
+                display: `${formatDurationMs(p99CycleDurationMs)} window max p99`,
+                targetDisplay: `Target window max p99 <= ${formatDurationMs(p99TargetMs)}`,
+                meta: `Current sustained signal ${tailStatus} (${tailRunsAbove}/${tailObservedRuns} above ${formatDurationMs(tailThresholdMs)} in ${tailWindowMinutes}m, min ${tailMinRuns})`
             }
         ];
 
@@ -2572,6 +2954,7 @@
 
             const statusEl = cardEl.querySelector('.slo-status');
             const targetEl = cardEl.querySelector('.slo-value');
+            const metaEl = cardEl.querySelector('.slo-meta');
             const { level, label } = classifySchedulerSloLevel(card.value, card.target);
             cardEl.classList.remove('good', 'warn', 'bad');
             cardEl.classList.add(level);
@@ -2580,6 +2963,9 @@
             }
             if (targetEl && card.targetDisplay) {
                 targetEl.textContent = card.targetDisplay;
+            }
+            if (metaEl) {
+                metaEl.textContent = card.meta || '';
             }
         });
     }
@@ -2870,6 +3256,90 @@
         return `Scheduler SLO ${severity}${metricHint}. See SLO cards and diagnostics for details.`;
     }
 
+    async function retrySchedulerDeadLetter(userId, deadLetterId, buttonEl) {
+        if (!adminApiClient || !userId || !deadLetterId) return;
+        const button = buttonEl instanceof HTMLButtonElement ? buttonEl : null;
+        const originalLabel = button ? button.textContent : 'Retry now';
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Retrying...';
+        }
+
+        try {
+            const resp = await adminApiClient.fetch(`/api/admin/dead-letters/${encodeURIComponent(userId)}/${encodeURIComponent(deadLetterId)}/retry`, {
+                method: 'POST'
+            });
+            const payload = await resp.json();
+            if (!resp.ok || payload?.errno !== 0) {
+                throw new Error(payload?.error || `Retry failed (${resp.status})`);
+            }
+            showMessage('success', `Retried dead-letter cycle ${payload?.result?.cycleKey || deadLetterId}`);
+            await loadSchedulerMetrics();
+        } catch (error) {
+            showMessage('error', `Failed to retry dead letter: ${error.message || error}`);
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalLabel;
+            }
+        }
+    }
+
+    function renderSchedulerDeadLetters(payload) {
+        const countEl = document.getElementById('schedulerDeadLetterCount');
+        const retryReadyEl = document.getElementById('schedulerDeadLetterRetryReady');
+        const oldestEl = document.getElementById('schedulerDeadLetterOldest');
+        const topErrorsEl = document.getElementById('schedulerDeadLetterTopErrors');
+        const bodyEl = document.getElementById('schedulerDeadLettersBody');
+        const emptyEl = document.getElementById('schedulerDeadLettersEmpty');
+        if (!countEl || !retryReadyEl || !oldestEl || !topErrorsEl || !bodyEl || !emptyEl) return;
+
+        const result = payload && typeof payload === 'object' ? payload : {};
+        const items = Array.isArray(result.items) ? result.items : [];
+        const topErrors = Array.isArray(result.topErrors) ? result.topErrors : [];
+
+        if (!bodyEl.dataset.retryBound) {
+            bodyEl.dataset.retryBound = '1';
+            bodyEl.addEventListener('click', (event) => {
+                const button = event.target instanceof Element
+                    ? event.target.closest('button[data-dead-letter-retry="1"]')
+                    : null;
+                if (!button) return;
+                retrySchedulerDeadLetter(button.dataset.userId, button.dataset.deadLetterId, button);
+            });
+        }
+
+        countEl.textContent = formatCompactNumber(result.total || 0);
+        retryReadyEl.textContent = formatCompactNumber(result.retryReadyCount || 0);
+        oldestEl.textContent = formatDurationMs(result.oldestAgeMs || 0);
+        topErrorsEl.textContent = topErrors.length
+            ? `Top errors: ${topErrors.slice(0, 3).map((entry) => `${entry.error} (${entry.count})`).join(' · ')}`
+            : 'No dead-letter error clusters in this window.';
+
+        if (!items.length) {
+            bodyEl.innerHTML = '';
+            emptyEl.style.display = '';
+            return;
+        }
+
+        emptyEl.style.display = 'none';
+        bodyEl.innerHTML = items.map((item) => {
+            const createdAt = item.createdAt ? new Date(Number(item.createdAt)).toLocaleString('en-AU') : '-';
+            const retryState = item.retryReady ? 'Retry ready' : 'Cooling down';
+            return `
+                <tr>
+                    <td>${escapeHtml(createdAt)}</td>
+                    <td>${escapeHtml(item.userId || '-')}</td>
+                    <td title="${escapeHtml(item.cycleKey || '-')}">${escapeHtml(item.cycleKey || '-')}</td>
+                    <td>${formatCompactNumber(item.attempts || 0)}</td>
+                    <td>${escapeHtml(retryState)}</td>
+                    <td>${escapeHtml(item.error || '-')}</td>
+                    <td><button class="btn btn-sm" data-dead-letter-retry="1" data-user-id="${escapeHtml(item.userId || '')}" data-dead-letter-id="${escapeHtml(item.id || '')}">Retry now</button></td>
+                </tr>
+            `;
+        }).join('');
+    }
+
     async function loadSchedulerMetrics() {
         const updatedEl = document.getElementById('schedulerMetricsUpdated');
         const warningEl = document.getElementById('schedulerMetricsWarning');
@@ -2884,7 +3354,7 @@
         try {
             const days = 14;
             const includeRuns = true;
-            const runLimit = 30;
+            const runLimit = 1500;
             let data;
             if (typeof adminApiClient.getAdminSchedulerMetrics === 'function') {
                 data = await adminApiClient.getAdminSchedulerMetrics(days, includeRuns, runLimit);
@@ -2912,6 +3382,7 @@
 
             const result = data.result || {};
             const summary = result.summary || {};
+            const last24hSummary = result.last24hSummary || {};
             const daily = Array.isArray(result.daily) ? result.daily : [];
             const recentRuns = Array.isArray(result.recentRuns) ? result.recentRuns : [];
             const queueLagAverage = computeWeightedRunAverageMs(recentRuns, 'queueLagMs');
@@ -2922,11 +3393,17 @@
             const diagnostics = result.diagnostics && typeof result.diagnostics === 'object'
                 ? result.diagnostics
                 : {};
+            const currentSnapshot = result.currentSnapshot && typeof result.currentSnapshot === 'object'
+                ? result.currentSnapshot
+                : buildSchedulerCurrentSnapshotFallback(recentRuns, currentAlert);
             const tailLatency = diagnostics.tailLatency && typeof diagnostics.tailLatency === 'object'
                 ? diagnostics.tailLatency
                 : (currentAlert?.tailLatency && typeof currentAlert.tailLatency === 'object'
                     ? currentAlert.tailLatency
                     : null);
+            const last24hTailLatency = diagnostics.last24hTailLatency && typeof diagnostics.last24hTailLatency === 'object'
+                ? diagnostics.last24hTailLatency
+                : tailLatency;
             const sloThresholds = currentAlert?.thresholds && typeof currentAlert.thresholds === 'object'
                 ? currentAlert.thresholds
                 : {};
@@ -2943,7 +3420,13 @@
             const p99El = document.getElementById('schedulerTailP99');
             if (p95El) p95El.textContent = formatDurationMs(summary.p95CycleDurationMs || 0);
             if (p99El) p99El.textContent = formatDurationMs(summary.p99CycleDurationMs || 0);
-            renderSchedulerSloCards(summary, {
+            renderSchedulerSloCards('scheduler24h', last24hSummary, {
+                avgQueueLagMs: Number(last24hSummary.avgQueueLagMs || 0),
+                avgCycleDurationMs: Number(last24hSummary.avgCycleDurationMs || 0),
+                thresholds: sloThresholds,
+                tailLatency: last24hTailLatency
+            });
+            renderSchedulerSloCards('scheduler14d', summary, {
                 avgQueueLagMs: Number(summary.avgQueueLagMs || queueLagAverage.avgMs || 0),
                 avgCycleDurationMs: Number(summary.avgCycleDurationMs || cycleDurationAverage.avgMs || 0),
                 thresholds: sloThresholds,
@@ -2959,8 +3442,28 @@
                 telemetryPauseReasons: diagnostics.telemetryPauseReasons || summary.telemetryPauseReasons || {}
             });
 
+            try {
+                const deadLettersResp = await adminApiClient.fetch('/api/admin/dead-letters?days=7&limit=20');
+                const deadLettersData = await deadLettersResp.json();
+                if (!deadLettersResp.ok || deadLettersData?.errno !== 0) {
+                    throw new Error(deadLettersData?.error || `Dead-letter request failed (${deadLettersResp.status})`);
+                }
+                renderSchedulerDeadLetters(deadLettersData.result || {});
+            } catch (deadLetterError) {
+                renderSchedulerDeadLetters({
+                    total: 0,
+                    retryReadyCount: 0,
+                    oldestAgeMs: 0,
+                    topErrors: [{ error: deadLetterError.message || String(deadLetterError), count: 1 }],
+                    items: []
+                });
+            }
+
             const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
-            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} · window has ${daily.length} day(s) with data`;
+            const latestRunText = currentSnapshot?.startedAtMs
+                ? `latest run ${new Date(Number(currentSnapshot.startedAtMs)).toLocaleString('en-AU')}`
+                : 'latest run unavailable';
+            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} · ${latestRunText} · recent 24h has ${formatCompactNumber(last24hSummary.runs || 0)} run(s) · 14d window has ${daily.length} day(s) with data`;
 
             if (currentAlert && String(currentAlert.status || '').toLowerCase() === 'breach') {
                 warningEl.style.display = '';
@@ -2970,14 +3473,522 @@
             updatedEl.textContent = 'Unable to load scheduler metrics';
             warningEl.style.display = '';
             warningEl.textContent = e.message || String(e);
-            renderSchedulerSloCards(null);
+            renderSchedulerSloCards('scheduler24h', null);
+            renderSchedulerSloCards('scheduler14d', null);
             renderSchedulerRecentRuns([]);
             renderSchedulerDiagnostics(null);
+            renderSchedulerDeadLetters({ total: 0, retryReadyCount: 0, oldestAgeMs: 0, topErrors: [], items: [] });
             const p95El = document.getElementById('schedulerTailP95');
             const p99El = document.getElementById('schedulerTailP99');
             if (p95El) p95El.textContent = '-';
             if (p99El) p99El.textContent = '-';
             showMessage('warning', `Failed to load scheduler metrics: ${e.message || e}`);
+        } finally {
+            if (refreshBtn) refreshBtn.disabled = false;
+        }
+    }
+
+    const API_HEALTH_PROVIDER_COLORS = {
+        foxess: '#3b9eff',
+        sungrow: '#22d3a0',
+        sigenergy: '#fb923c',
+        alphaess: '#f472b6',
+        amber: '#facc15',
+        weather: '#38bdf8',
+        ev: '#a78bfa'
+    };
+
+    function formatSignedPercentage(value, digits = 1) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return 'N/A';
+        const sign = numeric > 0 ? '+' : '';
+        return `${sign}${numeric.toFixed(digits)}%`;
+    }
+
+    function getApiHealthStatusClass(level) {
+        const normalized = String(level || '').toLowerCase();
+        if (normalized === 'bad' || normalized === 'error') return 'bad';
+        if (normalized === 'warn' || normalized === 'warning') return 'warn';
+        return 'good';
+    }
+
+    function getApiHealthProviderColor(key) {
+        return API_HEALTH_PROVIDER_COLORS[key] || '#64748b';
+    }
+
+    function destroyApiHealthCharts() {
+        if (apiHealthTrendChart) {
+            apiHealthTrendChart.destroy();
+            apiHealthTrendChart = null;
+        }
+        if (apiHealthExecutionChart) {
+            apiHealthExecutionChart.destroy();
+            apiHealthExecutionChart = null;
+        }
+        if (apiHealthProviderChart) {
+            apiHealthProviderChart.destroy();
+            apiHealthProviderChart = null;
+        }
+    }
+
+    function renderApiHealthLead(summary, monitoring, alerts) {
+        const leadEl = document.getElementById('apiHealthLead');
+        if (!leadEl) return;
+        const level = getApiHealthStatusClass(summary?.healthStatus);
+        const dominantLabel = summary?.dominantProvider?.label || 'No dominant provider yet';
+        const dominantShare = Number.isFinite(Number(summary?.dominantProvider?.sharePct))
+            ? `${Number(summary.dominantProvider.sharePct).toFixed(1)}% share`
+            : 'share unavailable';
+        const failureNote = monitoring?.available
+            ? (Number.isFinite(Number(monitoring.errorRatePct))
+                ? `Execution failures are at ${Number(monitoring.errorRatePct).toFixed(2)}% over the window.`
+                : 'Execution totals are available, but failure breakdown is incomplete.')
+            : 'Cloud Monitoring execution overlay is unavailable, so this view is using the existing provider rollups only.';
+        const alertNote = Array.isArray(alerts) && alerts.length
+            ? alerts[0].detail
+            : 'No immediate spike, concentration, or traffic-drop alerts were detected in the current window.';
+
+        leadEl.dataset.level = level;
+        leadEl.innerHTML = `<strong>Scope:</strong> Provider/API traffic, request failures, and inferred overage risk. Scheduler queue, cycle, and dead-letter health stays in the Scheduler tab.<br><strong>Current mix:</strong> ${escapeHtml(dominantLabel)} leads with ${escapeHtml(dominantShare)}.<br><strong>Health:</strong> ${escapeHtml(failureNote)}<br><strong>Watch:</strong> ${escapeHtml(alertNote)}`;
+    }
+
+    function renderAlphaEssObservability(observability, providers) {
+        const summaryEl = document.getElementById('apiHealthAlphaEssSummary');
+        const badgesEl = document.getElementById('apiHealthAlphaEssBadges');
+        const checkWhenEl = document.getElementById('apiHealthAlphaEssCheckWhen');
+        const lookForEl = document.getElementById('apiHealthAlphaEssLookFor');
+        const costEl = document.getElementById('apiHealthAlphaEssCost');
+        const rollbackEl = document.getElementById('apiHealthAlphaEssRollback');
+        const footnoteEl = document.getElementById('apiHealthAlphaEssFootnote');
+        if (!summaryEl || !badgesEl || !checkWhenEl || !lookForEl || !costEl || !rollbackEl || !footnoteEl) return;
+
+        const alpha = observability && typeof observability === 'object' && observability.alphaess && typeof observability.alphaess === 'object'
+            ? observability.alphaess
+            : null;
+        const alphaProvider = Array.isArray(providers)
+            ? providers.find((provider) => String(provider?.key || '').toLowerCase() === 'alphaess')
+            : null;
+
+        if (!alpha || alpha.enabled !== true) {
+            summaryEl.textContent = 'AlphaESS observability guidance is currently unavailable.';
+            badgesEl.innerHTML = '';
+            checkWhenEl.innerHTML = '<li>No AlphaESS guidance published yet.</li>';
+            lookForEl.innerHTML = '<li>No AlphaESS anomaly catalogue is published yet.</li>';
+            costEl.innerHTML = '<li>No AlphaESS cost guidance is published yet.</li>';
+            rollbackEl.innerHTML = '<li>No rollback guidance is published yet.</li>';
+            footnoteEl.textContent = 'This panel remains passive and does not create extra provider traffic.';
+            return;
+        }
+
+        const alphaCalls = alphaProvider ? Number(alphaProvider.totalCalls || 0) : 0;
+        const alphaLastDayCalls = alphaProvider ? Number(alphaProvider.lastDayCalls || 0) : 0;
+        summaryEl.innerHTML = `Low-cost AlphaESS observability is active. <strong>Live realtime reads</strong> only log when an anomaly is detected, while <strong>manual deep diagnostics</strong> always log because they are operator-triggered. In the selected API-health window AlphaESS accounts for <strong>${escapeHtml(formatCompactNumber(alphaCalls))}</strong> provider calls, with <strong>${escapeHtml(formatCompactNumber(alphaLastDayCalls))}</strong> in the last day.`;
+
+        badgesEl.innerHTML = [
+            `<span class="api-health-observability-pill"><strong>Live</strong> ${escapeHtml(String(alpha.liveRealtimeLogging || 'unknown'))}</span>`,
+            `<span class="api-health-observability-pill"><strong>Manual</strong> ${escapeHtml(String(alpha.manualDiagnosticsLogging || 'unknown'))}</span>`,
+            `<span class="api-health-observability-pill"><strong>Extra provider calls</strong> ${escapeHtml(String(alpha.extraProviderCallsPerRequest || 0))}</span>`,
+            `<span class="api-health-observability-pill"><strong>Firestore writes</strong> ${escapeHtml(String(alpha.extraFirestoreWritesPerRequest || 0))}</span>`
+        ].join('');
+
+        const watchWhen = Array.isArray(alpha.watchWhen) ? alpha.watchWhen : [];
+        checkWhenEl.innerHTML = watchWhen.length
+            ? watchWhen.map((item) => `<li>${escapeHtml(item)}</li>`).join('')
+            : '<li>No AlphaESS timing guidance published.</li>';
+
+        const anomalyCodes = Array.isArray(alpha.anomalyCodes) ? alpha.anomalyCodes : [];
+        lookForEl.innerHTML = anomalyCodes.length
+            ? anomalyCodes.map((item) => `<li><span class="api-health-observability-code">${escapeHtml(item.code || 'code')}</span>${escapeHtml(item.lookFor || item.title || '')}</li>`).join('')
+            : '<li>No AlphaESS anomaly catalogue published.</li>';
+
+        const costItems = [];
+        if (Array.isArray(alpha.notes)) costItems.push(...alpha.notes);
+        costItems.push(`Extra provider calls per request: ${Number(alpha.extraProviderCallsPerRequest || 0)}.`);
+        costItems.push(`Extra Firestore writes per request: ${Number(alpha.extraFirestoreWritesPerRequest || 0)}.`);
+        costEl.innerHTML = costItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+
+        const rollbackItems = [];
+        if (alpha.rollback?.summary) rollbackItems.push(alpha.rollback.summary);
+        if (alpha.rollback?.docsPath) rollbackItems.push(`Runbook: ${alpha.rollback.docsPath}`);
+        rollbackEl.innerHTML = rollbackItems.length
+            ? rollbackItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')
+            : '<li>No rollback guidance published.</li>';
+
+        footnoteEl.textContent = 'Operator workflow: check this panel first, then inspect AlphaESSDiagnostics logs only when one of the listed watch conditions is true or the user reports an impossible power-flow reading.';
+    }
+
+    function renderApiHealthTrendChart(daily) {
+        const canvas = document.getElementById('apiHealthTrendChart');
+        if (!canvas || typeof Chart !== 'function') return;
+
+        if (apiHealthTrendChart) {
+            apiHealthTrendChart.destroy();
+            apiHealthTrendChart = null;
+        }
+
+        const palette = getChartPalette();
+        const labels = daily.map((row) => String(row.date || '').slice(5));
+        const providerCalls = daily.map((row) => Number(row.totalCalls || 0));
+
+        const datasets = [{
+            type: 'line',
+            label: 'Provider calls',
+            data: providerCalls,
+            borderColor: palette.accentBlue,
+            backgroundColor: withAlpha(palette.accentBlue, 0.14),
+            fill: true,
+            borderWidth: 2,
+            pointRadius: 2,
+            tension: 0.28,
+            yAxisID: 'y'
+        }];
+
+        apiHealthTrendChart = new Chart(canvas, {
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: palette.textSecondary,
+                            boxWidth: 12,
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: palette.textSecondary, maxTicksLimit: 10 },
+                        grid: { color: withAlpha(palette.textSecondary, 0.08) }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: palette.textSecondary, precision: 0 },
+                        grid: { color: withAlpha(palette.textSecondary, 0.08) }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderApiHealthExecutionChart(daily) {
+        const canvas = document.getElementById('apiHealthExecutionChart');
+        if (!canvas || typeof Chart !== 'function') return;
+
+        if (apiHealthExecutionChart) {
+            apiHealthExecutionChart.destroy();
+            apiHealthExecutionChart = null;
+        }
+
+        const labels = daily.map((row) => String(row.date || '').slice(5));
+        const requestExecutions = daily.map((row) => Number(row.requestExecutions || 0));
+        const errorExecutions = daily.map((row) => row.errorExecutions == null ? null : Number(row.errorExecutions || 0));
+        const hasRequestExecutions = daily.some((row) => Number(row.requestExecutions || 0) > 0);
+        const hasErrorExecutions = daily.some((row) => row.errorExecutions != null);
+        const palette = getChartPalette();
+
+        if (!hasRequestExecutions && !hasErrorExecutions) {
+          return;
+        }
+
+        const datasets = [];
+        if (hasRequestExecutions) {
+            datasets.push({
+                type: 'line',
+                label: 'Function executions',
+                data: requestExecutions,
+                borderColor: palette.accentGreen,
+                backgroundColor: withAlpha(palette.accentGreen, 0.08),
+                borderWidth: 2,
+                pointRadius: 2,
+                tension: 0.24,
+                yAxisID: 'y'
+            });
+        }
+
+        if (hasErrorExecutions) {
+            datasets.push({
+                type: 'bar',
+                label: 'Failed executions',
+                data: errorExecutions,
+                backgroundColor: withAlpha('#f87171', 0.72),
+                borderColor: '#f87171',
+                borderWidth: 1,
+                borderRadius: 8,
+                maxBarThickness: 28,
+                yAxisID: 'y'
+            });
+        }
+
+        apiHealthExecutionChart = new Chart(canvas, {
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: palette.textSecondary,
+                            boxWidth: 12,
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: palette.textSecondary, maxTicksLimit: 10 },
+                        grid: { color: withAlpha(palette.textSecondary, 0.08) }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: palette.textSecondary, precision: 0 },
+                        grid: { color: withAlpha(palette.textSecondary, 0.08) }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderApiHealthProviderChart(providers, summary) {
+        const canvas = document.getElementById('apiHealthProviderChart');
+        if (!canvas || typeof Chart !== 'function') return;
+
+        if (apiHealthProviderChart) {
+            apiHealthProviderChart.destroy();
+            apiHealthProviderChart = null;
+        }
+
+        const palette = getChartPalette();
+        const safeProviders = Array.isArray(providers) && providers.length
+            ? providers
+            : [{ key: 'none', label: 'No usage yet', totalCalls: 1, sharePct: 100 }];
+        const labels = safeProviders.map((provider) => provider.label || provider.key || 'Unknown');
+        const values = safeProviders.map((provider) => Number(provider.totalCalls || 0));
+        const colors = safeProviders.map((provider) => getApiHealthProviderColor(provider.key));
+
+        apiHealthProviderChart = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: colors,
+                    borderColor: withAlpha(palette.surface, 1),
+                    borderWidth: 2,
+                    hoverOffset: 6
+                }]
+            },
+            options: {
+                ...createDoughnutOptions(safeProviders),
+                plugins: {
+                    ...createDoughnutOptions(safeProviders).plugins,
+                    centerLabel: {
+                        value: formatCompactNumber(summary?.totalCalls || 0),
+                        sub: 'provider calls'
+                    }
+                }
+            },
+            plugins: [doughnutCenterPlugin]
+        });
+    }
+
+    function renderApiHealthAlerts(alerts, warnings) {
+        const alertsEl = document.getElementById('apiHealthAlerts');
+        if (!alertsEl) return;
+        const safeAlerts = Array.isArray(alerts) ? alerts : [];
+        const safeWarnings = Array.isArray(warnings) ? warnings.filter(Boolean) : [];
+
+        if (!safeAlerts.length && !safeWarnings.length) {
+            alertsEl.innerHTML = '<div class="api-health-empty">No active API health alerts. Provider traffic, concentration, and request-failure checks are currently within expected bounds.</div>';
+            return;
+        }
+
+        const alertRows = safeAlerts.map((alert) => {
+            const levelClass = getApiHealthStatusClass(alert.level);
+            return `<div class="api-health-alert ${levelClass}"><div class="api-health-alert-head"><span class="api-health-badge ${levelClass}">${escapeHtml(String(alert.level || 'info').toUpperCase())}</span><strong>${escapeHtml(alert.title || 'Alert')}</strong></div><div class="api-health-alert-body">${escapeHtml(alert.detail || '')}</div></div>`;
+        });
+        const warningRows = safeWarnings.map((warning) => `<div class="api-health-alert warn"><div class="api-health-alert-head"><span class="api-health-badge warn">NOTE</span><strong>Visibility gap</strong></div><div class="api-health-alert-body">${escapeHtml(warning)}</div></div>`);
+        alertsEl.innerHTML = alertRows.concat(warningRows).join('');
+    }
+
+    function humanizeApiHealthKey(value) {
+        const normalized = String(value || '').trim();
+        if (!normalized) return 'Other';
+        return normalized
+            .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+            .replace(/[\s_-]+/g, ' ')
+            .split(' ')
+            .filter(Boolean)
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+            .join(' ');
+    }
+
+    function normalizeApiHealthEvBreakdownLabel(key) {
+        const normalized = String(key || '').trim().toLowerCase();
+        if (!normalized) return 'Other';
+        if (/wake/.test(normalized)) return 'Wake';
+        if (/command|signed/.test(normalized)) return 'Command';
+        if (/data|status|vehicle|telemetry/.test(normalized)) return 'Data';
+        return humanizeApiHealthKey(key);
+    }
+
+    function formatApiHealthTeslaBreakdown(row) {
+        // Always render Wake/Command/Data counts as plain integers in the format x/y/z.
+        const rawBreakdown = row && row.evBreakdown && typeof row.evBreakdown === 'object'
+            ? row.evBreakdown
+            : {};
+        const grouped = new Map();
+
+        Object.entries(rawBreakdown).forEach(([key, value]) => {
+            const count = Number(value || 0);
+            if (!Number.isFinite(count) || count <= 0) return;
+            const label = normalizeApiHealthEvBreakdownLabel(key);
+            grouped.set(label, (grouped.get(label) || 0) + count);
+        });
+
+        const totalNumeric = Number(row?.categories?.ev || 0);
+        const wake = grouped.get('Wake') || 0;
+        const command = grouped.get('Command') || 0;
+        const data = grouped.get('Data') || 0;
+
+        // If breakdown was empty but a total exists, place the total in the first position (Wake) for visibility.
+        const outWake = (wake || command || data) ? wake : (totalNumeric || 0);
+
+        return `<span class="api-health-cell-primary">${escapeHtml(String(outWake))}/${escapeHtml(String(command))}/${escapeHtml(String(data))}</span>`;
+    }
+
+    function renderApiHealthProviderTable(providers) {
+        const body = document.getElementById('apiHealthProvidersBody');
+        const empty = document.getElementById('apiHealthProvidersEmpty');
+        if (!body || !empty) return;
+
+        if (!Array.isArray(providers) || !providers.length) {
+            body.innerHTML = '';
+            empty.style.display = '';
+            return;
+        }
+
+        body.innerHTML = providers.map((provider) => `
+            <tr>
+                <td data-label="Provider"><span class="api-health-provider-dot" style="background:${getApiHealthProviderColor(provider.key)}"></span>${escapeHtml(provider.label || provider.key || 'Unknown')}</td>
+                <td data-label="Window Calls">${escapeHtml(formatCompactNumber(provider.totalCalls || 0))}</td>
+                <td data-label="Share">${escapeHtml(formatPercentage(provider.sharePct || 0, 1))}</td>
+                <td data-label="Last Day">${escapeHtml(formatCompactNumber(provider.lastDayCalls || 0))}</td>
+                <td data-label="7d Avg">${escapeHtml(formatCompactNumber(Math.round(provider.avgDailyCalls7d || 0)))}</td>
+                <td data-label="Trend">${escapeHtml(formatSignedPercentage(provider.trendPct, 1))}</td>
+            </tr>`).join('');
+        empty.style.display = 'none';
+    }
+
+    function renderApiHealthDailyTable(daily) {
+        const body = document.getElementById('apiHealthDailyBody');
+        const empty = document.getElementById('apiHealthDailyEmpty');
+        if (!body || !empty) return;
+
+        const safeDaily = Array.isArray(daily) ? daily.slice(-14).reverse() : [];
+        if (!safeDaily.length) {
+            body.innerHTML = '';
+            empty.style.display = '';
+            return;
+        }
+
+        body.innerHTML = safeDaily.map((row) => `
+            <tr>
+                <td data-label="Date"><span class="api-health-cell-primary">${escapeHtml(row.date || '-')}</span></td>
+                <td data-label="Provider Calls"><span class="api-health-cell-primary">${escapeHtml(formatCompactNumber(row.totalCalls || 0))}</span></td>
+                <td data-label="Inverter">${escapeHtml(formatCompactNumber(row.categories?.inverter || 0))}</td>
+                <td data-label="Amber">${escapeHtml(formatCompactNumber(row.categories?.amber || 0))}</td>
+                <td data-label="Weather">${escapeHtml(formatCompactNumber(row.categories?.weather || 0))}</td>
+                <td data-label="Tesla EV">${formatApiHealthTeslaBreakdown(row)}</td>
+                <td data-label="Executions">${row.requestExecutions == null ? '-' : escapeHtml(formatCompactNumber(row.requestExecutions || 0))}</td>
+                <td data-label="Errors">${row.errorExecutions == null ? '-' : escapeHtml(formatCompactNumber(row.errorExecutions || 0))}</td>
+            </tr>`).join('');
+        empty.style.display = 'none';
+    }
+
+    async function loadApiHealth(options = {}) {
+        const updatedEl = document.getElementById('apiHealthUpdated');
+        const warningEl = document.getElementById('apiHealthWarning');
+        const refreshBtn = document.getElementById('refreshApiHealthBtn');
+        if (!adminApiClient || !updatedEl || !warningEl) return;
+
+        if (refreshBtn) refreshBtn.disabled = true;
+        updatedEl.textContent = 'Loading API health...';
+        warningEl.style.display = 'none';
+        warningEl.textContent = '';
+
+        try {
+            const days = 30;
+            let data;
+            if (typeof adminApiClient.getAdminApiHealth === 'function') {
+                data = await adminApiClient.getAdminApiHealth(days, options.force === true);
+            } else {
+                const query = new URLSearchParams({ days: String(days) });
+                if (options.force) query.set('refresh', '1');
+                const resp = await adminApiClient.fetch(`/api/admin/api-health?${query.toString()}`);
+                data = await resp.json();
+            }
+            if (!data || data.errno !== 0) throw new Error(data?.error || 'Failed to load API health');
+
+            const result = data.result || {};
+            apiHealthData = result;
+            const summary = result.summary || {};
+            const monitoring = result.monitoring || {};
+            const providers = Array.isArray(result.providers) ? result.providers : [];
+            const daily = Array.isArray(result.daily) ? result.daily : [];
+            const alerts = Array.isArray(result.alerts) ? result.alerts : [];
+            const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+            const observability = result.observability && typeof result.observability === 'object' ? result.observability : {};
+
+            document.getElementById('apiHealthTotalCalls').textContent = formatCompactNumber(summary.totalCalls || 0);
+            document.getElementById('apiHealthLastDayCalls').textContent = formatCompactNumber(summary.lastDayCalls || 0);
+            document.getElementById('apiHealthDailyAvg').textContent = `${formatCompactNumber(Math.round(summary.callsAvg7d || 0))}/d`;
+            document.getElementById('apiHealthDominantProvider').textContent = summary.dominantProvider?.label || 'None';
+            document.getElementById('apiHealthDominantProviderMeta').textContent = summary.dominantProvider
+                ? `${formatPercentage(summary.dominantProvider.sharePct || 0, 1)} of tracked calls`
+                : 'No tracked provider calls yet';
+            document.getElementById('apiHealthExecutions').textContent = monitoring.available
+                ? formatCompactNumber(monitoring.requestExecutionsTotal || 0)
+                : 'Unavailable';
+            document.getElementById('apiHealthErrorRate').textContent = monitoring.available && monitoring.errorRatePct != null
+                ? formatPercentage(monitoring.errorRatePct || 0, 2)
+                : 'Unavailable';
+            document.getElementById('apiHealthErrorRateMeta').textContent = summary.callsPerExecution != null
+                ? `${Number(summary.callsPerExecution).toFixed(2)} calls per execution`
+                : 'Execution overlay unavailable';
+
+            renderApiHealthLead(summary, monitoring, alerts);
+            renderAlphaEssObservability(observability, providers);
+            renderApiHealthTrendChart(daily);
+            renderApiHealthExecutionChart(daily);
+            renderApiHealthProviderChart(providers, summary);
+            renderApiHealthAlerts(alerts, warnings);
+            renderApiHealthProviderTable(providers);
+            renderApiHealthDailyTable(daily);
+
+            const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
+            updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} · window ${Number(result.window?.days || 30)} days · scheduler-specific orchestration issues stay in Scheduler`;
+
+            if (warnings.length) {
+                warningEl.style.display = '';
+                warningEl.textContent = warnings.join(' · ');
+            }
+        } catch (e) {
+            console.error('[Admin] Failed to load API health:', e);
+            destroyApiHealthCharts();
+            renderAlphaEssObservability({}, []);
+            renderApiHealthAlerts([], [e.message || String(e)]);
+            renderApiHealthProviderTable([]);
+            renderApiHealthDailyTable([]);
+            updatedEl.textContent = 'Unable to load API health';
+            warningEl.style.display = '';
+            warningEl.textContent = e.message || String(e);
+            showMessage('warning', `Failed to load API health: ${e.message || e}`);
         } finally {
             if (refreshBtn) refreshBtn.disabled = false;
         }
@@ -3004,21 +4015,21 @@
         if (refreshBtn) refreshBtn.disabled = true;
         if (dispatchBtn) {
             dispatchBtn.disabled = true;
-            dispatchBtn.textContent = 'Run now';
-            dispatchBtn.title = 'Loading workflow controls...';
+            dispatchBtn.textContent = 'Run historical';
+            dispatchBtn.title = 'Loading historical workflow controls...';
         }
-        updatedEl.textContent = 'Loading DataWorks snapshot...';
-        leadEl.textContent = 'Loading pipeline details...';
+        updatedEl.textContent = 'Loading NEM data jobs...';
+        leadEl.textContent = 'Loading NEM pipeline details...';
         statusEl.textContent = '-';
         rowsEl.textContent = '-';
         filesEl.textContent = '-';
         workflowStatusEl.textContent = '-';
-        pipelinePanel.innerHTML = '<div class="dataworks-empty">Loading pipeline health...</div>';
-        qualityPanel.innerHTML = '<div class="dataworks-empty">Loading quality summary...</div>';
-        footprintPanel.innerHTML = '<div class="dataworks-empty">Loading file footprint...</div>';
-        regionsPanel.innerHTML = '<div class="dataworks-empty">Loading region freshness...</div>';
-        workflowRunsPanel.innerHTML = '<div class="dataworks-empty">Loading workflow history...</div>';
-        opsPanel.innerHTML = '<div class="dataworks-empty">Loading workflow diagnostics...</div>';
+        pipelinePanel.innerHTML = '<div class="dataworks-empty">Loading NEM jobs overview...</div>';
+        qualityPanel.innerHTML = '<div class="dataworks-empty">Loading live AEMO snapshots...</div>';
+        footprintPanel.innerHTML = '<div class="dataworks-empty">Loading historical bundle...</div>';
+        regionsPanel.innerHTML = '<div class="dataworks-empty">Loading live region health...</div>';
+        workflowRunsPanel.innerHTML = '<div class="dataworks-empty">Loading historical workflow history...</div>';
+        opsPanel.innerHTML = '<div class="dataworks-empty">Loading historical workflow controls...</div>';
 
         try {
             const [marketResult, opsResult] = await Promise.allSettled([
@@ -3037,117 +4048,140 @@
                 throw new Error('Failed to load DataWorks summary and workflow diagnostics');
             }
 
-            const pipelineLabel = marketSummary?.status?.label || 'Unavailable';
+            const liveAemo = opsSummary?.liveAemo || null;
+            const releaseGuard = summarizeReleaseGuard(opsSummary?.releaseAlignment || null);
+            const overallStatus = buildDataworksOverallStatus({ marketSummary, liveAemo, opsSummary });
             const latestMarketDate = marketSummary?.latestDate || null;
-            const rawCsvFiles = Number(marketSummary?.files?.rawCsvFiles || 0);
-            const publishedAssetCount = Number(marketSummary?.files?.publishedAssetCount || 0);
-            const workflowStatusLabel = opsSummary?.badge?.label || 'Unavailable';
+            const historicalText = latestMarketDate
+                ? `${formatDateShort(latestMarketDate)}${marketSummary?.dataAgeDays !== null ? ` · ${formatDayAge(marketSummary.dataAgeDays)}` : ''}`
+                : 'Unavailable';
             const latestWorkflowRun = opsSummary?.latestRun?.createdAt || opsSummary?.latestRun?.updatedAt
                 ? formatRelativeTime(opsSummary.latestRun.createdAt || opsSummary.latestRun.updatedAt)
                 : '-';
-            const dataAgeText = latestMarketDate
-                ? `${formatDateShort(latestMarketDate)}${marketSummary?.dataAgeDays !== null ? ` · ${formatDayAge(marketSummary.dataAgeDays)}` : ''}`
+            const workflowStatusLabel = opsSummary?.badge?.label || 'Unavailable';
+            const liveAemoText = liveAemo?.latestAsOf
+                ? `${liveAemo?.status?.label || 'Live'} · ${formatRelativeTime(liveAemo.latestAsOf)}`
+                : (liveAemo?.status?.label || 'Unavailable');
+            const workflowKpiText = opsSummary
+                ? (releaseGuard.level === 'warn'
+                    ? `${workflowStatusLabel} · ${releaseGuard.label}`
+                    : (latestWorkflowRun !== '-' ? `${workflowStatusLabel} · ${latestWorkflowRun}` : workflowStatusLabel))
                 : 'Unavailable';
 
-            statusEl.textContent = pipelineLabel;
-            rowsEl.textContent = dataAgeText;
-            filesEl.textContent = rawCsvFiles > 0 || publishedAssetCount > 0
-                ? `${formatCompactNumber(rawCsvFiles)} / ${formatCompactNumber(publishedAssetCount)}`
-                : '-';
-            workflowStatusEl.textContent = opsSummary
-                ? (latestWorkflowRun !== '-' ? `${workflowStatusLabel} · ${latestWorkflowRun}` : workflowStatusLabel)
-                : 'Unavailable';
+            statusEl.textContent = overallStatus.label || 'Unavailable';
+            rowsEl.textContent = historicalText;
+            filesEl.textContent = liveAemoText;
+            workflowStatusEl.textContent = workflowKpiText;
 
             const leadParts = [];
             if (marketSummary) {
-                const reasonText = Array.isArray(marketSummary.status?.reasons) && marketSummary.status.reasons.length
+                const historicalReason = Array.isArray(marketSummary.status?.reasons) && marketSummary.status.reasons.length
                     ? marketSummary.status.reasons.join(' · ')
-                    : 'market data assets are publishing without active quality concerns.';
-                leadParts.push(`<strong>${escapeHtml(marketSummary.status?.label || 'Market data')}</strong> ${escapeHtml(reasonText)}`);
+                    : 'historical bundle is publishing cleanly.';
+                leadParts.push(`<strong>Historical ${escapeHtml(marketSummary.status?.label || 'Bundle')}</strong> ${escapeHtml(historicalReason)}`);
             }
-            if (opsSummary?.latestRun) {
+            if (releaseGuard.level === 'warn' && releaseGuard.reason) {
+                leadParts.push(`<strong>Manual historical runs ${escapeHtml(releaseGuard.label.toLowerCase())}</strong> ${escapeHtml(releaseGuard.reason)}`);
+            } else if (opsSummary?.latestRun) {
                 if (opsSummary.latestFailedStep?.name) {
-                    leadParts.push(`<strong>GitHub ${escapeHtml(opsSummary.badge.label)}</strong> latest workflow run failed at ${escapeHtml(opsSummary.latestFailedStep.name)}.`);
+                    leadParts.push(`<strong>Historical workflow ${escapeHtml(opsSummary.badge.label)}</strong> latest run failed at ${escapeHtml(opsSummary.latestFailedStep.name)}.`);
                 } else if (opsSummary.latestRun.status && String(opsSummary.latestRun.status).toLowerCase() !== 'completed') {
-                    leadParts.push(`<strong>GitHub Running</strong> latest workflow run is ${escapeHtml(formatStatusLabel(opsSummary.latestRun.status))}.`);
+                    leadParts.push(`<strong>Historical workflow Running</strong> latest run is ${escapeHtml(formatStatusLabel(opsSummary.latestRun.status))}.`);
                 } else {
-                    leadParts.push(`<strong>GitHub ${escapeHtml(opsSummary.badge.label)}</strong> latest workflow run is ${escapeHtml(formatStatusLabel(opsSummary.latestRun.conclusion || opsSummary.latestRun.status || 'unknown'))}.`);
+                    leadParts.push(`<strong>Historical workflow ${escapeHtml(opsSummary.badge.label)}</strong> latest run is ${escapeHtml(formatStatusLabel(opsSummary.latestRun.conclusion || opsSummary.latestRun.status || 'unknown'))}.`);
                 }
+            }
+            if (liveAemo) {
+                const liveReason = Array.isArray(liveAemo.status?.reasons) && liveAemo.status.reasons.length
+                    ? liveAemo.status.reasons.join(' · ')
+                    : `scheduler snapshots are ${String(liveAemo.status?.label || 'available').toLowerCase()} across ${Number(liveAemo.freshRegions || 0)}/${Number(liveAemo.expectedRegionCount || 5)} regions.`;
+                leadParts.push(`<strong>Live AEMO ${escapeHtml(liveAemo.status?.label || 'Snapshots')}</strong> ${escapeHtml(liveReason)}`);
             }
             leadEl.innerHTML = leadParts.length
                 ? leadParts.join(' ')
-                : 'Published market-data metadata and DataWorks workflow diagnostics are available.';
+                : 'Published historical metadata and live AEMO snapshot diagnostics are available.';
 
-            // Status-aware accents on KPI items and lead bar
             const kpiEls = document.querySelectorAll('#dataworksKpis .kpi-item');
-            if (kpiEls[0]) kpiEls[0].dataset.level = dataworksTone(marketSummary?.status?.level || 'neutral');
-            if (kpiEls[3]) kpiEls[3].dataset.level = dataworksTone(opsSummary?.badge?.level || 'neutral');
-            leadEl.dataset.level = dataworksTone(marketSummary?.status?.level || 'neutral');
+            if (kpiEls[0]) kpiEls[0].dataset.level = dataworksTone(overallStatus.level || 'neutral');
+            if (kpiEls[1]) kpiEls[1].dataset.level = dataworksTone(marketSummary?.status?.level || 'neutral');
+            if (kpiEls[2]) kpiEls[2].dataset.level = dataworksTone(liveAemo?.status?.level || 'neutral');
+            if (kpiEls[3]) kpiEls[3].dataset.level = dataworksTone(releaseGuard.level === 'warn' ? releaseGuard.level : (opsSummary?.badge?.level || 'neutral'));
+            leadEl.dataset.level = dataworksTone(overallStatus.level || 'neutral');
+
+            const dispatchLabel = opsSummary?.dispatchEnabled ? 'Available' : 'Read-only';
+            const dispatchMeta = opsSummary
+                ? (opsSummary.dispatchReason || `cooldown ${Math.round((opsSummary.dispatchCooldownMs || 0) / 1000)}s`)
+                : 'GitHub diagnostics unavailable';
+
+            pipelinePanel.innerHTML = renderDataworksPanel(
+                'NEM Jobs',
+                '🧭',
+                renderDataworksBadge(overallStatus.label || 'Unknown', overallStatus.level),
+                `<div class="dataworks-metric-list">
+                    ${renderDataworksMetricRow('Live AEMO snapshots', liveAemo?.status?.label || 'Unavailable', liveAemo ? `scheduler every ${Number(liveAemo.schedule?.cadenceMinutes || 5)}m with ${Number(liveAemo.schedule?.lagMinutes || 1)}m lag · ${Number(liveAemo.freshRegions || 0)}/${Number(liveAemo.expectedRegionCount || 5)} fresh` : 'Firestore snapshot health unavailable')}
+                    ${renderDataworksMetricRow('Historical bundle', marketSummary?.status?.label || 'Unavailable', historicalText)}
+                    ${renderDataworksMetricRow('Historical workflow', workflowStatusLabel, releaseGuard.reason ? `${releaseGuard.label} · ${releaseGuard.reason}` : (latestWorkflowRun !== '-' ? `latest run ${latestWorkflowRun}` : 'No recent workflow run'))}
+                    ${renderDataworksMetricRow('Manual historical runs', dispatchLabel, dispatchMeta)}
+                </div>
+                <div class="dataworks-note-list" style="margin-top:10px;">
+                    <div class="dataworks-note"><strong>Sources:</strong> hosted market-insights index, Firestore <code>aemoSnapshots/*</code>, and cached GitHub Actions diagnostics.</div>
+                    <div class="dataworks-note"><strong>Live path:</strong> dashboard and automation now read stored AEMO snapshots only; this tab does not trigger upstream AEMO refreshes.</div>
+                </div>`,
+                'High-level view of live and historical NEM data jobs.'
+            );
+
+            if (liveAemo) {
+                qualityPanel.innerHTML = renderDataworksPanel(
+                    'Live AEMO',
+                    '⚡',
+                    renderDataworksBadge(liveAemo.status?.label || 'Unknown', liveAemo.status?.level),
+                    `<div class="dataworks-metric-list">
+                        ${renderDataworksMetricRow('Scheduler', `Every ${Number(liveAemo.schedule?.cadenceMinutes || 5)}m`, `${Number(liveAemo.schedule?.lagMinutes || 1)}m lag · ${liveAemo.schedule?.timeZone || 'Australia/Brisbane'}`)}
+                        ${renderDataworksMetricRow('Latest interval', liveAemo.latestAsOf ? formatRelativeTime(liveAemo.latestAsOf) : '-', liveAemo.latestAsOf ? `as of ${formatDate(liveAemo.latestAsOf)}` : 'No stored intervals yet')}
+                        ${renderDataworksMetricRow('Region freshness', `${Number(liveAemo.freshRegions || 0)}/${Number(liveAemo.expectedRegionCount || 5)} fresh`, `${Number(liveAemo.watchRegions || 0)} watch · ${Number(liveAemo.staleRegions || 0)} stale · ${Number(liveAemo.missingRegions || 0)} missing`)}
+                        ${renderDataworksMetricRow('Forecast horizon', formatMinutesCompact(liveAemo.maxForecastHorizonMinutes || liveAemo.minForecastHorizonMinutes || 0), liveAemo.minForecastHorizonMinutes && liveAemo.maxForecastHorizonMinutes && liveAemo.minForecastHorizonMinutes !== liveAemo.maxForecastHorizonMinutes ? `min ${formatMinutesCompact(liveAemo.minForecastHorizonMinutes)}` : `${Number(liveAemo.forecastCompleteRegions || 0)}/${Number(liveAemo.expectedRegionCount || 5)} forecast-complete`)}
+                        ${renderDataworksMetricRow('Snapshot footprint', formatCompactNumber(liveAemo.totalRows || 0), `${liveAemo.source || 'firestore:aemoSnapshots'} · scheduler-only`)}
+                    </div>`,
+                    'Scheduler-backed live and forecast price snapshots used by dashboard and automation.'
+                );
+            } else {
+                qualityPanel.innerHTML = '<div class="dataworks-empty">Live AEMO snapshot diagnostics unavailable.</div>';
+            }
 
             if (marketSummary) {
                 const coverageWindow = marketSummary.bounds?.minPeriod && marketSummary.bounds?.maxPeriod
                     ? `${marketSummary.bounds.minPeriod} to ${marketSummary.bounds.maxPeriod}`
                     : '';
-                pipelinePanel.innerHTML = renderDataworksPanel(
-                    'Pipeline',
-                    '🧭',
+                const issueRegions = Array.isArray(marketSummary.quality?.issueRegions) ? marketSummary.quality.issueRegions : [];
+                footprintPanel.innerHTML = renderDataworksPanel(
+                    'Historical Bundle',
+                    '📦',
                     renderDataworksBadge(marketSummary.status?.label || 'Unknown', marketSummary.status?.level),
                     `<div class="dataworks-metric-list">
                         ${renderDataworksMetricRow('Published', formatRelativeTime(marketSummary.generatedAt), marketSummary.generatedAt ? `index generated ${formatDate(marketSummary.generatedAt)}` : '')}
                         ${renderDataworksMetricRow('Source aggregate', formatRelativeTime(marketSummary.sourceGeneratedAt), marketSummary.sourceGeneratedAt ? `aggregate manifest ${formatDate(marketSummary.sourceGeneratedAt)}` : '')}
                         ${renderDataworksMetricRow('Latest market date', formatDateShort(marketSummary.latestDate), marketSummary.dataAgeDays !== null ? `${formatDayAge(marketSummary.dataAgeDays)} behind UTC` : '')}
                         ${renderDataworksMetricRow('Coverage window', marketSummary.latestPeriod || '-', coverageWindow)}
-                    </div>`,
-                    'Static metadata from the published market-insights bundle.'
-                );
-
-                const issueRegions = Array.isArray(marketSummary.quality?.issueRegions) ? marketSummary.quality.issueRegions : [];
-                qualityPanel.innerHTML = renderDataworksPanel(
-                    'Quality',
-                    '🧪',
-                    renderDataworksBadge(
-                        Number(marketSummary.quality?.issuePeriods || 0) > 0 ? 'Watch' : 'Clean',
-                        Number(marketSummary.quality?.issuePeriods || 0) > 0 ? 'warn' : 'good'
-                    ),
-                    `<div class="dataworks-metric-list">
-                        ${renderDataworksMetricRow('Issue periods', formatCompactNumber(marketSummary.quality?.issuePeriods || 0), marketSummary.quality?.latestIssuePeriod ? `latest ${marketSummary.quality.latestIssuePeriod}` : 'No flagged periods')}
-                        ${renderDataworksMetricRow('Recent coverage', formatPercentage(marketSummary.quality?.recentAverageCoveragePct, 2), marketSummary.quality?.recentMinimumCoveragePct != null ? `min ${formatPercentage(marketSummary.quality.recentMinimumCoveragePct, 2)} in last 7d` : '')}
-                        ${renderDataworksMetricRow('Recent quality', marketSummary.quality?.recentAverageQualityScore != null ? Number(marketSummary.quality.recentAverageQualityScore).toFixed(2) : '-', marketSummary.quality?.recentMinimumQualityScore != null ? `min ${Number(marketSummary.quality.recentMinimumQualityScore).toFixed(2)} in last 7d` : '')}
-                        ${renderDataworksMetricRow('Missing / malformed', `${formatCompactNumber(marketSummary.quality?.estimatedMissingIntervals || 0)} / ${formatCompactNumber(marketSummary.quality?.malformedRows || 0)}`, `interval anomalies ${formatCompactNumber(marketSummary.quality?.intervalAnomalies || 0)}`)}
+                        ${renderDataworksMetricRow('Quality', formatPercentage(marketSummary.quality?.recentAverageCoveragePct, 2), marketSummary.quality?.recentAverageQualityScore != null ? `score ${Number(marketSummary.quality.recentAverageQualityScore).toFixed(2)} · issues ${formatCompactNumber(marketSummary.quality?.issuePeriods || 0)}` : 'Quality summary unavailable')}
+                        ${renderDataworksMetricRow('Files / assets', `${formatCompactNumber(marketSummary.files?.rawCsvFiles || 0)} / ${formatCompactNumber(marketSummary.files?.publishedAssetCount || 0)}`, marketSummary.files?.hourlyRows ? `${formatCompactNumber(marketSummary.files.hourlyRows)} hourly rows in aggregates` : '')}
                     </div>
                     ${issueRegions.length ? `<div class="dataworks-inline-list">${issueRegions.map((region) => `<span class="dataworks-chip">${escapeHtml(region)}</span>`).join('')}</div>` : ''}`,
-                    'Quality report roll-up from the aggregate build output.'
-                );
-
-                footprintPanel.innerHTML = renderDataworksPanel(
-                    'Footprint',
-                    '🗂️',
-                    renderDataworksBadge('Lightweight', 'good'),
-                    `<div class="dataworks-metric-list">
-                        ${renderDataworksMetricRow('Raw CSV files', formatCompactNumber(marketSummary.files?.rawCsvFiles || 0), `${formatCompactNumber(marketSummary.regions?.length || 0)} regions across ${marketSummary.bounds?.minPeriod || '-'} to ${marketSummary.bounds?.maxPeriod || '-'}`)}
-                        ${renderDataworksMetricRow('Published assets', formatCompactNumber(marketSummary.files?.publishedAssetCount || 0), 'region payloads + index.json')}
-                        ${renderDataworksMetricRow('Daily / monthly rows', `${formatCompactNumber(marketSummary.files?.dailyRows || marketSummary.counts?.daily || 0)} / ${formatCompactNumber(marketSummary.files?.monthlyRows || marketSummary.counts?.monthly || 0)}`, marketSummary.files?.hourlyRows ? `${formatCompactNumber(marketSummary.files.hourlyRows)} hourly rows in aggregates` : '')}
-                        ${renderDataworksMetricRow('Region coverage', `${formatCompactNumber(marketSummary.regions?.length || 0)} live`, marketSummary.bounds?.minDate && marketSummary.bounds?.maxDate ? `${marketSummary.bounds.minDate} to ${marketSummary.bounds.maxDate}` : '')}
-                    </div>`,
-                    'Uses static hosted JSON, so opening this tab does not trigger heavy scans.'
-                );
-
-                const regionRows = Array.isArray(marketSummary.regionRows) ? marketSummary.regionRows : [];
-                regionsPanel.innerHTML = renderDataworksPanel(
-                    'Region Freshness',
-                    '🗺️',
-                    renderDataworksBadge(`${regionRows.length || 0} regions`, 'neutral'),
-                    regionRows.length
-                        ? `<div class="dataworks-table-wrap"><table class="dataworks-table"><thead><tr><th>Region</th><th>Latest Date</th><th>Age</th><th>Recent Quality</th><th>Issues</th></tr></thead><tbody>${regionRows.map((row) => `<tr><td>${escapeHtml(row.region || '-')}</td><td>${escapeHtml(formatDateShort(row.latestDate))}</td><td>${escapeHtml(formatDayAge(row.ageDays))}</td><td>${escapeHtml(row.recentQualityScoreAvg != null ? Number(row.recentQualityScoreAvg).toFixed(2) : '-')}</td><td>${escapeHtml(String(Number(row.qualityIssuePeriods || 0)))}</td></tr>`).join('')}</tbody></table></div>`
-                        : '<div class="dataworks-empty">No region summaries available.</div>',
-                    'Per-region latest publish date and recent quality score.'
+                    'Hosted static market-insights bundle for historical NEM analysis.'
                 );
             } else {
-                pipelinePanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
-                qualityPanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
                 footprintPanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
-                regionsPanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
             }
+
+            const liveRegionRows = Array.isArray(liveAemo?.regions) ? liveAemo.regions : [];
+            regionsPanel.innerHTML = renderDataworksPanel(
+                'Live Region Health',
+                '🗺️',
+                renderDataworksBadge(`${liveRegionRows.length || 0} regions`, liveAemo?.status?.level || 'neutral'),
+                liveRegionRows.length
+                    ? `<div class="dataworks-table-wrap"><table class="dataworks-table"><thead><tr><th>Region</th><th>As Of</th><th>Stored</th><th>Forecast</th><th>Status</th></tr></thead><tbody>${liveRegionRows.map((row) => `<tr><td>${escapeHtml(row.regionCode || row.regionId || '-')}</td><td>${escapeHtml(row.asOf ? formatDate(row.asOf) : '-')}</td><td>${escapeHtml(row.storedAt ? formatRelativeTime(row.storedAt) : '-')}</td><td>${escapeHtml(formatMinutesCompact(row.forecastHorizonMinutes || 0))}</td><td>${renderDataworksBadge(row.statusLabel || 'Unknown', row.statusLevel || 'neutral')}</td></tr>`).join('')}</tbody></table></div>`
+                    : '<div class="dataworks-empty">No stored live AEMO snapshots available.</div>',
+                'Per-region freshness for the scheduler-written AEMO snapshots.'
+            );
 
             if (opsSummary) {
                 const workflowRuns = Array.isArray(opsSummary.recentRuns) ? opsSummary.recentRuns.slice(0, 5) : [];
@@ -3164,55 +4198,61 @@
                 const rateLimitMeta = Number.isFinite(Number(opsSummary.rateLimit?.remaining))
                     ? `API remaining ${Number(opsSummary.rateLimit.remaining)}`
                     : '';
+
                 workflowRunsPanel.innerHTML = renderDataworksPanel(
-                    'Workflow Runs',
+                    'Historical Workflow Runs',
                     '📜',
                     renderDataworksBadge(workflowRuns.length ? `${workflowRuns.length} runs` : 'No runs', workflowRuns.length ? 'neutral' : 'warn'),
                     workflowRuns.length
                         ? `<div class="dataworks-table-wrap"><table class="dataworks-table"><thead><tr><th>Run</th><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th></tr></thead><tbody>${workflowRuns.map((run) => `<tr><td>${escapeHtml(String(run.number || '-'))}</td><td>${escapeHtml(formatStatusLabel(run.conclusion || run.status || 'unknown'))}</td><td>${escapeHtml(formatStatusLabel(run.event || 'unknown'))}</td><td>${escapeHtml(formatRelativeTime(run.createdAt || run.updatedAt || null))}</td><td>${escapeHtml(run.durationMs != null ? formatDurationMs(run.durationMs) : '-')}</td></tr>`).join('')}</tbody></table></div>`
                         : '<div class="dataworks-empty">No recent workflow runs available.</div>',
-                    'Recent GitHub Actions runs for the hosted DataWorks pipeline.'
+                    'Recent GitHub Actions runs for the historical market-insights pipeline.'
                 );
+
                 opsPanel.innerHTML = renderDataworksPanel(
-                    'Workflow Ops',
+                    'Historical Workflow Ops',
                     '🚀',
-                    renderDataworksBadge(opsSummary.badge.label, opsSummary.badge.level),
+                    renderDataworksBadge(releaseGuard.level === 'warn' ? releaseGuard.label : opsSummary.badge.label, releaseGuard.level === 'warn' ? releaseGuard.level : opsSummary.badge.level),
                     `<div class="dataworks-metric-list">
                         ${renderDataworksMetricRow('Workflow', formatStatusLabel(opsSummary.workflow.state), opsSummary.workflow.ref ? `ref ${opsSummary.workflow.ref}` : '')}
-                        ${renderDataworksMetricRow('Release guard', opsSummary.releaseAlignment?.matches === true ? 'Aligned' : (opsSummary.releaseAlignment?.status === 'mismatch' ? 'Needs deploy' : (opsSummary.releaseAlignment?.status === 'target-unresolved' ? 'Blocked' : 'Bootstrap')), opsSummary.releaseAlignment?.reason || (opsSummary.releaseAlignment?.liveShortCommit ? `live ${opsSummary.releaseAlignment.liveShortCommit}` : 'waiting for release metadata'))}
+                        ${renderDataworksMetricRow('Release guard', releaseGuard.label, releaseGuard.reason || (opsSummary.releaseAlignment?.liveShortCommit ? `live ${opsSummary.releaseAlignment.liveShortCommit}` : 'waiting for release metadata'))}
                         ${renderDataworksMetricRow('Latest run', opsSummary.latestRun ? formatRelativeTime(opsSummary.latestRun.createdAt || opsSummary.latestRun.updatedAt) : '-', latestRunLabel)}
                         ${renderDataworksMetricRow('Latest step', opsSummary.latestStep?.name || '-', latestStepMeta)}
                         ${renderDataworksMetricRow('Last success', opsSummary.lastSuccessfulRun ? formatRelativeTime(opsSummary.lastSuccessfulRun.updatedAt || opsSummary.lastSuccessfulRun.createdAt) : '-', opsSummary.lastSuccessfulRun ? `run #${opsSummary.lastSuccessfulRun.number || '-'}` : 'No recent success')}
-                        ${renderDataworksMetricRow('Dispatch', opsSummary.dispatchEnabled ? 'Available' : 'Read-only', opsSummary.dispatchReason || `cooldown ${Math.round((opsSummary.dispatchCooldownMs || 0) / 1000)}s`)}
+                        ${renderDataworksMetricRow('Manual historical run', dispatchLabel, dispatchMeta)}
                     </div>
                     <div class="dataworks-note-list" style="margin-top:10px;">
                         <div class="dataworks-note"><strong>Links:</strong> ${workflowLink ? renderExternalLink(workflowLink, 'Open GitHub workflow') : 'Workflow link unavailable'}.</div>
                         <div class="dataworks-note"><strong>Diagnostics cache:</strong> ${escapeHtml(cacheMeta)}${rateLimitMeta ? ` · ${escapeHtml(rateLimitMeta)}` : ''}</div>
+                        <div class="dataworks-note"><strong>Live AEMO:</strong> scheduler-only path; this admin control does not manually refresh live snapshots.</div>
                     </div>`,
-                    'Cached GitHub Actions read model for the hosted market-insights workflow.'
+                    'GitHub Actions controls and release guard for the historical market-insights workflow.'
                 );
             } else {
                 workflowRunsPanel.innerHTML = renderDataworksPanel(
-                    'Workflow Runs',
+                    'Historical Workflow Runs',
                     '📜',
                     renderDataworksBadge('Unavailable', 'warn'),
-                    '<div class="dataworks-note-list"><div class="dataworks-note"><strong>Workflow history unavailable:</strong> GitHub diagnostics did not load.</div><div class="dataworks-note"><strong>Cost posture:</strong> DataWorks still reads one static JSON bundle plus a cached GitHub workflow read model when available.</div></div>'
+                    '<div class="dataworks-note-list"><div class="dataworks-note"><strong>Workflow history unavailable:</strong> GitHub diagnostics did not load.</div><div class="dataworks-note"><strong>Cost posture:</strong> DataWorks still reads one hosted historical bundle plus live Firestore snapshots when available.</div></div>'
                 );
-                opsPanel.innerHTML = '<div class="dataworks-empty">Workflow diagnostics unavailable.</div>';
+                opsPanel.innerHTML = '<div class="dataworks-empty">Historical workflow diagnostics unavailable.</div>';
             }
 
             if (dispatchBtn) {
                 const runInProgress = !!opsSummary?.latestRun?.status && String(opsSummary.latestRun.status).toLowerCase() !== 'completed';
                 dispatchBtn.disabled = !opsSummary?.dispatchEnabled || runInProgress;
-                dispatchBtn.textContent = runInProgress ? 'Run active' : 'Run now';
+                dispatchBtn.textContent = runInProgress ? 'Historical active' : 'Run historical';
                 dispatchBtn.title = runInProgress
-                    ? 'A DataWorks workflow run is already active.'
-                    : (opsSummary?.dispatchEnabled ? 'Trigger the GitHub DataWorks workflow now.' : (opsSummary?.dispatchReason || 'Manual dispatch unavailable.'));
+                    ? 'A historical DataWorks workflow run is already active.'
+                    : (opsSummary?.dispatchEnabled ? 'Trigger the GitHub historical market-insights workflow now.' : (opsSummary?.dispatchReason || 'Manual historical run unavailable.'));
             }
 
             const updatedParts = [];
+            if (liveAemo?.latestStoredAt || liveAemo?.latestAsOf) {
+                updatedParts.push(`live AEMO ${formatRelativeTime(liveAemo.latestStoredAt || liveAemo.latestAsOf)}`);
+            }
             if (marketSummary?.generatedAt) {
-                updatedParts.push(`market data ${formatRelativeTime(marketSummary.generatedAt)}`);
+                updatedParts.push(`historical bundle ${formatRelativeTime(marketSummary.generatedAt)}`);
             }
             if (opsSummary?.latestRun?.createdAt || opsSummary?.latestRun?.updatedAt) {
                 updatedParts.push(`workflow run ${formatRelativeTime(opsSummary.latestRun.createdAt || opsSummary.latestRun.updatedAt)}`);
@@ -3222,23 +4262,24 @@
                 : `Last checked ${new Date().toLocaleDateString('en-AU')} ${new Date().toLocaleTimeString('en-AU')}`;
         } catch (e) {
             console.error('[Admin] Failed to load DataWorks summary:', e);
-            updatedEl.textContent = 'Unable to load DataWorks snapshot';
-            leadEl.textContent = e?.message ? `Error: ${e.message}` : 'Failed to load DataWorks snapshot';
+            updatedEl.textContent = 'Unable to load NEM data jobs';
+            leadEl.textContent = e?.message ? `Error: ${e.message}` : 'Failed to load NEM data jobs';
             statusEl.textContent = 'Unavailable';
             rowsEl.textContent = '-';
             filesEl.textContent = '-';
             workflowStatusEl.textContent = '-';
-            pipelinePanel.innerHTML = '<div class="dataworks-empty">Unable to load pipeline summary.</div>';
-            qualityPanel.innerHTML = '<div class="dataworks-empty">Unable to load quality summary.</div>';
-            footprintPanel.innerHTML = '<div class="dataworks-empty">Unable to load file footprint.</div>';
-            regionsPanel.innerHTML = '<div class="dataworks-empty">Unable to load region freshness.</div>';
-            workflowRunsPanel.innerHTML = '<div class="dataworks-empty">Unable to load workflow history.</div>';
-            opsPanel.innerHTML = '<div class="dataworks-empty">Unable to load workflow diagnostics.</div>';
+            pipelinePanel.innerHTML = '<div class="dataworks-empty">Unable to load NEM jobs overview.</div>';
+            qualityPanel.innerHTML = '<div class="dataworks-empty">Unable to load live AEMO snapshots.</div>';
+            footprintPanel.innerHTML = '<div class="dataworks-empty">Unable to load historical bundle.</div>';
+            regionsPanel.innerHTML = '<div class="dataworks-empty">Unable to load live region health.</div>';
+            workflowRunsPanel.innerHTML = '<div class="dataworks-empty">Unable to load historical workflow history.</div>';
+            opsPanel.innerHTML = '<div class="dataworks-empty">Unable to load historical workflow diagnostics.</div>';
             if (dispatchBtn) {
                 dispatchBtn.disabled = true;
-                dispatchBtn.textContent = 'Run now';
-                dispatchBtn.title = 'Workflow diagnostics unavailable.';
+                dispatchBtn.textContent = 'Run historical';
+                dispatchBtn.title = 'Historical workflow diagnostics unavailable.';
             }
+            showMessage('warning', `Failed to load DataWorks summary: ${e.message || e}`);
         } finally {
             if (refreshBtn) refreshBtn.disabled = false;
         }
@@ -3247,7 +4288,7 @@
     async function triggerDataworksDispatch() {
         const dispatchBtn = document.getElementById('triggerDataworksRunBtn');
         if (!adminApiClient || !dispatchBtn) return;
-        if (!window.confirm('Trigger the DataWorks GitHub workflow now?')) return;
+        if (!window.confirm('Trigger the historical market-insights GitHub workflow now?')) return;
 
         dispatchBtn.disabled = true;
         const originalLabel = dispatchBtn.textContent;
@@ -3271,12 +4312,12 @@
             }
 
             const pollDelayMs = Number(data?.result?.recommendedPollAfterMs || 15000);
-            showMessage('success', `Queued DataWorks workflow on ${data?.result?.ref || 'main'}. Refreshing workflow diagnostics shortly...`, 6000);
+            showMessage('success', `Queued historical market-insights workflow on ${data?.result?.ref || 'main'}. Refreshing diagnostics shortly...`, 6000);
             window.setTimeout(() => {
                 loadDataworks({ forceOps: true });
             }, pollDelayMs);
         } catch (e) {
-            showMessage('error', `❌ Failed to trigger DataWorks workflow: ${e.message || e}`);
+            showMessage('error', `Failed to trigger historical workflow: ${e.message || e}`);
             dispatchBtn.textContent = originalLabel;
             loadDataworks({ forceOps: true });
         }
@@ -3400,7 +4441,12 @@
 
             renderStats(data.result);
         } catch (e) {
-            document.getElementById('statsDrawerBody').innerHTML = `<p style="color: var(--color-danger); padding: 20px;">Failed to load stats: ${e.message}</p>`;
+            const statsDrawerBody = document.getElementById('statsDrawerBody');
+            const errorEl = document.createElement('p');
+            errorEl.style.color = 'var(--color-danger)';
+            errorEl.style.padding = '20px';
+            errorEl.textContent = `Failed to load stats: ${e.message}`;
+            statsDrawerBody.replaceChildren(errorEl);
         }
     }
 
@@ -3676,6 +4722,7 @@
     AppShell.init({ pageName: 'admin', requireAuth: true, checkSetup: false });
     AppShell.onReady(async (ctx) => {
         adminApiClient = ctx.apiClient;
+        initializeInfoTips();
         bindAnnouncementEditorHandlers();
         if (!adminApiClient) {
             document.getElementById('accessDenied').style.display = '';

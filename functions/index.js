@@ -13,7 +13,9 @@
 const functions = require('firebase-functions');
 const { onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
+const { AsyncLocalStorage } = require('async_hooks');
 const admin = require('firebase-admin');
+const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const {
@@ -24,6 +26,7 @@ const {
 } = require('./lib/automation-conditions');
 const { createAdminAccess } = require('./lib/admin-access');
 const {
+  buildFirestoreQuotaSummary,
   estimateFirestoreCostFromUsage,
   fetchCloudBillingCost,
   getRuntimeProjectId,
@@ -55,6 +58,7 @@ const { registerAutomationCycleRoute } = require('./api/routes/automation-cycle'
 const { registerEVRoutes } = require('./api/routes/ev');
 const { runAutomationSchedulerCycle } = require('./lib/services/automation-scheduler-service');
 const { createAutomationSchedulerMetricsSink } = require('./lib/services/automation-scheduler-metrics-sink');
+const { createApiRateLimiter } = require('./lib/services/api-rate-limiter');
 const { createApiMetricsService } = require('./lib/services/api-metrics-service');
 const { createAutomationRuleActionService } = require('./lib/services/automation-rule-action-service');
 const { createAutomationRuleEvaluationService } = require('./lib/services/automation-rule-evaluation-service');
@@ -62,11 +66,14 @@ const { createCurtailmentService } = require('./lib/services/curtailment-service
 const { createQuickControlService } = require('./lib/services/quick-control-service');
 const { createSchedulerSloAlertNotifier } = require('./lib/services/scheduler-slo-alert-notifier');
 const { createWeatherService } = require('./lib/services/weather-service');
+const { createCacheMetricsService } = require('./lib/services/cache-metrics-service');
+const { createStructuredLogger } = require('./lib/structured-logger');
 const { parseAutomationTelemetry } = require('./lib/device-telemetry');
 const { getCurrentAmberPrices } = require('./lib/pricing-normalization');
 const { createAutomationStateRepository } = require('./lib/repositories/automation-state-repository');
 const { createUserAutomationRepository } = require('./lib/repositories/user-automation-repository');
 const { createVehiclesRepository } = require('./lib/repositories/vehicles-repository');
+const { buildAlphaEssDiagnostics, logAlphaEssDiagnostics } = require('./lib/alphaess-diagnostics');
 const {
   addMinutes,
   getAutomationTimezone: getAutomationTimezoneWithFallback,
@@ -77,6 +84,7 @@ const {
 } = require('./lib/time-utils');
 const { resolveProviderDeviceId } = require('./lib/provider-device-id');
 const amberModule = require('./api/amber');
+const aemoModule = require('./api/aemo');
 let googleApis = null;
 try {
   ({ google: googleApis } = require('googleapis'));
@@ -151,6 +159,14 @@ const amberAPI = amberModule.init({
   incrementApiCount: null // Will be defined below
 });
 
+const aemoAPI = aemoModule.init({
+  db,
+  logger: null, // Will be defined below
+  getConfig: null, // Will be defined below
+  incrementApiCount: null, // Will be defined below
+  serverTimestamp
+});
+
 // Import shared state from amber module (used for concurrency control)
 const { amberPricesInFlight } = amberModule;
 
@@ -187,6 +203,8 @@ const alphaEssAPI = alphaEssModule.init({
 });
 
 const { createAdapterRegistry } = require('./lib/adapters/adapter-registry');
+const { createAmberTariffAdapter } = require('./lib/adapters/amber-adapter');
+const { createAemoTariffAdapter } = require('./lib/adapters/aemo-adapter');
 const { createFoxessDeviceAdapter } = require('./lib/adapters/foxess-adapter');
 const { createSungrowDeviceAdapter } = require('./lib/adapters/sungrow-adapter');
 const { createSigenEnergyDeviceAdapter } = require('./lib/adapters/sigenergy-adapter');
@@ -249,6 +267,7 @@ const getConfig = () => {
       intervalMs: 60000,
       timeZone: 'Australia/Sydney',
       cacheTtl: {
+        aemo: 60000,       // 60 seconds
         amber: 60000,      // 60 seconds
         inverter: 300000,  // 5 minutes
         weather: 1800000,  // 30 minutes
@@ -272,24 +291,29 @@ const VERBOSE = process.env.VERBOSE === 'true';
 const VERBOSE_API = process.env.VERBOSE_API === 'true';
 
 // Centralized logger utility for consistent formatting and easy control
-const logger = {
-  error: (tag, message) => {
-    console.error(`[${tag}] ${message}`);
-  },
-  warn: (tag, message) => {
-    console.warn(`[${tag}] ${message}`);
-  },
-  info: (tag, message, onlyIfVerbose = false) => {
-    if (!onlyIfVerbose || VERBOSE) {
-      console.log(`[${tag}] ${message}`);
+const requestContextStorage = new AsyncLocalStorage();
+const logger = createStructuredLogger({
+  service: 'automation-api',
+  debugEnabled: DEBUG,
+  verboseEnabled: VERBOSE,
+  storage: requestContextStorage,
+  consoleImpl: console
+});
+const amberTariffAdapter = createAmberTariffAdapter({ amberAPI, amberPricesInFlight, logger });
+const aemoTariffAdapter = createAemoTariffAdapter({ aemoAPI });
+const cacheMetrics = createCacheMetricsService();
+const apiRateLimiter = createApiRateLimiter({
+  windowMs: 60 * 1000,
+  max: 100,
+  keyGenerator: (req) => {
+    const authHeader = String(req.headers?.authorization || '').trim();
+    if (authHeader) {
+      return `auth:${crypto.createHash('sha256').update(authHeader).digest('hex').slice(0, 16)}`;
     }
+    return `ip:${req.ip || req.headers?.['x-forwarded-for'] || 'anonymous'}`;
   },
-  debug: (tag, message) => {
-    if (DEBUG) {
-      console.log(`[${tag}] [DEBUG] ${message}`);
-    }
-  }
-};
+  skip: (req) => req.path === '/api/health' || req.path === '/api/health/auth'
+});
 
 const {
   addHistoryEntry,
@@ -334,16 +358,94 @@ const {
   serverTimestamp
 });
 
-const {
-  callWeatherAPI,
-  getCachedWeatherData
-} = createWeatherService({
+const weatherService = createWeatherService({
+  cacheMetrics,
   db,
   getConfig,
   incrementApiCount,
-  logger: console,
+  logger,
   setUserConfig
 });
+
+const {
+  callWeatherAPI,
+  getCachedWeatherData
+} = weatherService;
+
+const UPSTREAM_HEALTH_CACHE_TTL_MS = 5 * 60 * 1000;
+let upstreamHealthSnapshotCache = {
+  expiresAtMs: 0,
+  payload: null,
+  pending: null
+};
+
+function summarizePassiveCircuit(provider, circuitState) {
+  const state = circuitState && typeof circuitState === 'object'
+    ? circuitState
+    : { name: provider, state: 'unknown' };
+  return {
+    status: state.state === 'open' ? 'DEGRADED' : 'OK',
+    ok: state.state !== 'open',
+    mode: 'passive',
+    circuit: state
+  };
+}
+
+async function getUpstreamHealthSnapshot({ forceRefresh = false } = {}) {
+  const nowMs = Date.now();
+  if (!forceRefresh && upstreamHealthSnapshotCache.payload && upstreamHealthSnapshotCache.expiresAtMs > nowMs) {
+    return {
+      ...upstreamHealthSnapshotCache.payload,
+      cache: { hit: true, ttlMs: UPSTREAM_HEALTH_CACHE_TTL_MS }
+    };
+  }
+
+  if (!forceRefresh && upstreamHealthSnapshotCache.pending) {
+    return upstreamHealthSnapshotCache.pending;
+  }
+
+  const pending = Promise.resolve().then(async () => {
+    const weatherStatus = typeof weatherService.probeWeatherService === 'function'
+      ? await weatherService.probeWeatherService()
+      : {
+          status: 'unknown',
+          ok: null,
+          circuit: weatherService.getCircuitState ? weatherService.getCircuitState() : null
+        };
+    const foxessStatus = summarizePassiveCircuit('foxess', foxessAPI.getCircuitState ? foxessAPI.getCircuitState() : null);
+    const sungrowStatus = summarizePassiveCircuit('sungrow', sungrowAPI.getCircuitState ? sungrowAPI.getCircuitState() : null);
+    const services = {
+      foxess: foxessStatus,
+      sungrow: sungrowStatus,
+      weather: {
+        ...weatherStatus,
+        status: String(weatherStatus.status || 'unknown').toUpperCase()
+      }
+    };
+    const degraded = Object.values(services).some((service) => service && service.ok === false);
+    const payload = {
+      status: degraded ? 'DEGRADED' : 'OK',
+      checkedAtMs: Date.now(),
+      services
+    };
+
+    upstreamHealthSnapshotCache = {
+      expiresAtMs: Date.now() + UPSTREAM_HEALTH_CACHE_TTL_MS,
+      payload,
+      pending: null
+    };
+
+    return {
+      ...payload,
+      cache: { hit: false, ttlMs: UPSTREAM_HEALTH_CACHE_TTL_MS }
+    };
+  }).finally(() => {
+    upstreamHealthSnapshotCache.pending = null;
+  });
+
+  upstreamHealthSnapshotCache.pending = pending;
+  return pending;
+}
 
 const {
   checkAndApplyCurtailment
@@ -630,27 +732,44 @@ function isMatchingProviderCacheEntry(cacheRecord, provider, deviceSN) {
   return providerMatch && deviceMatch;
 }
 
+function isEmulatorRuntime() {
+  return Boolean(process.env.FUNCTIONS_EMULATOR || process.env.FIRESTORE_EMULATOR_HOST);
+}
+
 async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh = false) {
   const config = getConfig();
   const ttlMs = resolveInverterCacheTtlMs(userConfig, config?.automation?.cacheTtl?.inverter, { preferRealtime: false });
   const resolved = resolveProviderDeviceId(userConfig, deviceSN);
   const provider = String(resolved.provider || 'foxess').toLowerCase().trim();
   const resolvedDeviceSN = resolved.deviceId;
+  const emulatorRuntime = isEmulatorRuntime();
   
   try {
     if (!resolvedDeviceSN) {
       return { errno: 400, error: 'Device SN not configured' };
     }
 
-    // Check cache if not forcing refresh
-    if (!forceRefresh) {
+    // In emulator mode, keep seeded cache authoritative even after TTL expiry or manual refresh.
+    if (!forceRefresh || emulatorRuntime) {
       const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('inverter').get();
       if (cacheDoc.exists) {
         const cachePayload = cacheDoc.data() || {};
         const { data, timestamp } = cachePayload;
         const ageMs = Date.now() - timestamp;
         if (ageMs < ttlMs && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
+          cacheMetrics.record({ source: 'inverter', outcome: 'hit' });
           return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
+        }
+        if (emulatorRuntime && data && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
+          cacheMetrics.record({ source: 'inverter', outcome: 'hit' });
+          return {
+            ...data,
+            __cacheHit: true,
+            __cacheAgeMs: ageMs,
+            __cacheTtlMs: ttlMs,
+            __cacheStale: ageMs >= ttlMs,
+            __emulatorSeedFallback: true
+          };
         }
       }
     }
@@ -686,13 +805,17 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
         deviceSN: resolvedDeviceSN,
         ttl: Math.floor(Date.now() / 1000) + Math.floor(ttlMs / 1000) // Firestore TTL in seconds
       }, { merge: true }).catch(cacheErr => {
-        console.warn(`[Cache] Failed to store inverter cache: ${cacheErr.message}`);
+        cacheMetrics.record({ source: 'inverter', outcome: 'error' });
+        logger.warn(`[Cache] Failed to store inverter cache: ${cacheErr.message}`);
       });
+      cacheMetrics.record({ source: 'inverter', outcome: 'write', operation: 'write' });
     }
-    
+
+    cacheMetrics.record({ source: 'inverter', outcome: 'miss' });
     return { ...data, __cacheHit: false, __cacheAgeMs: 0, __cacheTtlMs: ttlMs };
   } catch (err) {
-    console.error(`[Cache] Error in getCachedInverterData: ${err.message}`);
+    cacheMetrics.record({ source: 'inverter', outcome: 'error' });
+    logger.error(`[Cache] Error in getCachedInverterData: ${err.message}`);
     return { errno: 500, error: err.message };
   }
 }
@@ -703,27 +826,42 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
  * Includes all variables needed for the dashboard display.
  * Respects TTL (default 5 minutes for real-time, configurable via user config).
  */
-async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, forceRefresh = false) {
+async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, forceRefresh = false, options = {}) {
   const config = getConfig();
   const ttlMs = resolveInverterCacheTtlMs(userConfig, config?.automation?.cacheTtl?.inverter || 300000, { preferRealtime: true });
   const resolved = resolveProviderDeviceId(userConfig, deviceSN);
   const provider = String(resolved.provider || 'foxess').toLowerCase().trim();
   const resolvedDeviceSN = resolved.deviceId;
+  const emulatorRuntime = isEmulatorRuntime();
+  const diagnosticsOptions = options && typeof options === 'object' ? options : {};
+  const diagnosticsLogger = diagnosticsOptions.logger || console;
   
   try {
     if (!resolvedDeviceSN) {
       return { errno: 400, error: 'Device SN not configured' };
     }
 
-    // Check cache if not forcing refresh
-    if (!forceRefresh) {
+    // In emulator mode, keep seeded cache authoritative even after TTL expiry or manual refresh.
+    if (!forceRefresh || emulatorRuntime) {
       const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('inverter-realtime').get();
       if (cacheDoc.exists) {
         const cachePayload = cacheDoc.data() || {};
         const { data, timestamp } = cachePayload;
         const ageMs = Date.now() - timestamp;
         if (ageMs < ttlMs && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
+          cacheMetrics.record({ source: 'inverter-realtime', outcome: 'hit' });
           return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
+        }
+        if (emulatorRuntime && data && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
+          cacheMetrics.record({ source: 'inverter-realtime', outcome: 'hit' });
+          return {
+            ...data,
+            __cacheHit: true,
+            __cacheAgeMs: ageMs,
+            __cacheTtlMs: ttlMs,
+            __cacheStale: ageMs >= ttlMs,
+            __emulatorSeedFallback: true
+          };
         }
       }
     }
@@ -747,6 +885,20 @@ async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, force
         normalizeToKw: provider === 'alphaess',
         invertBatteryPowerSign: invertAlphaEssBatteryPowerSign
       });
+      if (provider === 'alphaess') {
+        data.alphaessDiagnostics = buildAlphaEssDiagnostics({
+          route: diagnosticsOptions.route || 'inverter-real-time',
+          status,
+          userConfig,
+          userId,
+          userEmail: diagnosticsOptions.userEmail || null,
+          deviceSN: resolvedDeviceSN,
+          invertBatteryPowerSign: invertAlphaEssBatteryPowerSign
+        });
+        logAlphaEssDiagnostics(diagnosticsLogger, data.alphaessDiagnostics, {
+          mode: diagnosticsOptions.alphaessLogMode || 'suspicious-only'
+        });
+      }
     } else {
       // Fetch fresh data from FoxESS with all required variables
       data = await foxessAPI.callFoxESSAPI('/op/v0/device/real/query', 'POST', {
@@ -765,13 +917,17 @@ async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, force
         deviceSN: resolvedDeviceSN,
         ttl: Math.floor(Date.now() / 1000) + Math.floor(ttlMs / 1000) // Firestore TTL in seconds
       }, { merge: true }).catch(cacheErr => {
-        console.warn(`[Cache] Failed to store inverter realtime cache: ${cacheErr.message}`);
+        cacheMetrics.record({ source: 'inverter-realtime', outcome: 'error' });
+        logger.warn(`[Cache] Failed to store inverter realtime cache: ${cacheErr.message}`);
       });
+      cacheMetrics.record({ source: 'inverter-realtime', outcome: 'write', operation: 'write' });
     }
-    
+
+    cacheMetrics.record({ source: 'inverter-realtime', outcome: 'miss' });
     return { ...data, __cacheHit: false, __cacheAgeMs: 0, __cacheTtlMs: ttlMs };
   } catch (err) {
-    console.error(`[Cache] Error in getCachedInverterRealtimeData: ${err.message}`);
+    cacheMetrics.record({ source: 'inverter-realtime', outcome: 'error' });
+    logger.error(`[Cache] Error in getCachedInverterRealtimeData: ${err.message}`);
     return { errno: 500, error: err.message };
   }
 }
@@ -862,12 +1018,68 @@ async function getAutomationAuditLogs(userId, limitEntries = 100) {
 
 // ==================== EXPRESS APP ====================
 const app = express();
-app.use(cors({ origin: true }));
+const allowedCorsOrigins = new Set([
+  'https://socratesautomation.com',
+  'https://www.socratesautomation.com'
+]);
+
+function resolveRequestId(req) {
+  const explicitId = req.get('x-request-id') || req.get('x-correlation-id');
+  if (explicitId) {
+    return String(explicitId).trim().slice(0, 128);
+  }
+
+  const cloudTrace = req.get('x-cloud-trace-context');
+  if (cloudTrace) {
+    return String(cloudTrace).split('/')[0].trim().slice(0, 128);
+  }
+
+  if (typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+app.use(cors({
+  credentials: true,
+  origin(origin, callback) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    try {
+      const parsedOrigin = new URL(origin);
+      const normalizedOrigin = parsedOrigin.origin.toLowerCase();
+      const hostname = String(parsedOrigin.hostname || '').toLowerCase();
+      const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+
+      callback(null, allowedCorsOrigins.has(normalizedOrigin) || isLocalhost);
+      return;
+    } catch (_error) {
+      callback(null, false);
+      return;
+    }
+  }
+}));
+app.use((req, res, next) => {
+  const requestId = resolveRequestId(req);
+  req.requestId = requestId;
+  res.locals.requestId = requestId;
+  res.setHeader('X-Request-Id', requestId);
+  requestContextStorage.run({
+    requestId,
+    path: req.path,
+    method: req.method
+  }, next);
+});
+app.use('/api', apiRateLimiter);
 // Simple request logger (controlled by VERBOSE_API environment variable)
 app.use((req, res, next) => {
   try {
     if (VERBOSE_API) {
-      logger.debug('API', `${req.method} ${req.path}`);
+      logger.debug('API', `requestId=${req.requestId} ${req.method} ${req.path}`);
     }
   } catch (e) { /* ignore logging errors */ }
   next();
@@ -908,6 +1120,7 @@ const teslaFleetAdapter = new TeslaFleetAdapter({
 
 registerHealthRoutes(app, {
   getUserConfig,
+  getUpstreamHealthSnapshot,
   tryAttachUser
 });
 
@@ -928,6 +1141,7 @@ registerSetupPublicRoutes(app, {
 registerPricingRoutes(app, {
   amberAPI,
   amberPricesInFlight,
+  aemoAPI,
   authenticateUser,
   getUserConfig,
   incrementApiCount,
@@ -938,6 +1152,8 @@ registerPricingRoutes(app, {
 registerMetricsRoutes(app, {
   db,
   getAusDateKey,
+  isAdmin,
+  logger,
   tryAttachUser
 });
 
@@ -946,15 +1162,18 @@ registerMetricsRoutes(app, {
 // are registered before the catch-all app.use('/api', authenticateUser).
 const getRuntimeProjectIdForAdmin = () => getRuntimeProjectId(admin);
 const fetchCloudBillingCostForAdmin = (projectId) => fetchCloudBillingCost(projectId, { googleApis });
+let automationCycleHandler = null;
 
 registerAdminRoutes(app, {
   admin,
   authenticateUser,
+  buildFirestoreQuotaSummary,
   db,
   deleteCollectionDocs,
   deleteUserDataTree,
   estimateFirestoreCostFromUsage,
   fetchCloudBillingCost: fetchCloudBillingCostForAdmin,
+  getCacheMetricsSnapshot: () => cacheMetrics.getSnapshot(),
   getRuntimeProjectId: getRuntimeProjectIdForAdmin,
   googleApis,
   isAdmin,
@@ -971,7 +1190,8 @@ registerAdminRoutes(app, {
     workflowId: process.env.GITHUB_DATAWORKS_WORKFLOW || 'aemo-market-insights-delta.yml',
     ref: process.env.GITHUB_DATAWORKS_REF || 'main',
     dispatchToken: process.env.GITHUB_DATAWORKS_TOKEN || ''
-  }
+  },
+  getAutomationCycleHandler: () => automationCycleHandler
 });
 
 // Apply auth middleware to remaining API routes
@@ -1103,7 +1323,7 @@ registerAutomationMutationRoutes(app, {
   validateRuleActionForUser
 });
 
-const automationCycleHandler = registerAutomationCycleRoute(app, {
+automationCycleHandler = registerAutomationCycleRoute(app, {
   addAutomationAuditEntry,
   amberAPI,
   amberPricesInFlight,
@@ -1213,6 +1433,14 @@ registerSchedulerMutationRoutes(app, {
 // Now that all dependencies (logger, getConfig, incrementApiCount) are defined,
 // reinitialize the API modules with proper dependencies
 Object.assign(amberAPI, amberModule.init({
+  cacheMetrics,
+  db,
+  logger,
+  getConfig,
+  incrementApiCount
+}));
+
+Object.assign(aemoAPI, aemoModule.init({
   db,
   logger,
   getConfig,
@@ -1247,7 +1475,9 @@ Object.assign(alphaEssAPI, alphaEssModule.init({
   incrementApiCount
 }));
 
-// Register device adapters now that foxessAPI, sungrowAPI, and sigenEnergyAPI are fully initialised
+// Register adapters now that provider APIs are fully initialised.
+adapterRegistry.registerTariffProvider('amber', amberTariffAdapter);
+adapterRegistry.registerTariffProvider('aemo', aemoTariffAdapter);
 adapterRegistry.registerDeviceProvider('foxess', createFoxessDeviceAdapter({ foxessAPI, logger }));
 adapterRegistry.registerDeviceProvider('sungrow', createSungrowDeviceAdapter({ sungrowAPI, logger }));
 adapterRegistry.registerDeviceProvider('sigenergy', createSigenEnergyDeviceAdapter({ sigenEnergyAPI, logger }));
@@ -1345,6 +1575,43 @@ async function runAutomationHandler(context) {
   });
 }
 
+async function refreshAemoLiveSnapshotsHandler(_context) {
+  const results = await aemoAPI.refreshAllCurrentPriceData({});
+  const failures = results.filter((result) => !!result?.error);
+  const updated = results.filter((result) => result && result.updated === true);
+  const skipped = results.filter((result) => result && result.updated === false && !result.error);
+
+  console.log(
+    '[AEMO] Live snapshot refresh completed: updated=%s skipped=%s failed=%s',
+    updated.length,
+    skipped.length,
+    failures.length
+  );
+
+  results.forEach((result) => {
+    if (!result) return;
+    if (result.error) {
+      console.error(
+        '[AEMO] Snapshot refresh failed for %s: %s',
+        result.regionId || 'unknown',
+        result.error
+      );
+      return;
+    }
+    console.log(
+      '[AEMO] Snapshot refresh %s region=%s previousAsOf=%s currentAsOf=%s',
+      result.updated ? 'stored' : 'skipped',
+      result.regionId || 'unknown',
+      result.previousAsOf || '-',
+      result.currentAsOf || '-'
+    );
+  });
+
+  if (failures.length > 0) {
+    throw new Error(`AEMO live snapshot refresh failed for ${failures.length} region(s)`);
+  }
+}
+
 // ==================== EXPORT CLOUD SCHEDULER FUNCTION ====================
 // Scheduler for background automation (runs every 1 minute via Cloud Scheduler)
 // For firebase-functions v7+ (2nd gen), we use functions.scheduler
@@ -1360,4 +1627,11 @@ exports.runAutomation = onSchedule(
   runAutomationHandler
 );
 
+exports.refreshAemoLiveSnapshots = onSchedule(
+  {
+    schedule: '1-59/5 * * * *',
+    timeZone: 'Australia/Brisbane'
+  },
+  refreshAemoLiveSnapshotsHandler
+);
 

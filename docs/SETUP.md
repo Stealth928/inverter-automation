@@ -139,15 +139,32 @@ Notes:
 - AlphaESS is supported in the backend and settings flows even though the first
   run setup UX is still more FoxESS-first
 
-### Amber Electric
+### Pricing Provider
 
-Users need:
+Users can choose either pricing source during setup or later in Settings:
+
+- `Amber`
+- `AEMO`
+
+Amber users need:
 
 - Amber API token
 - site selection after validation where applicable
 
-Amber is optional, but price-aware automation, history, and ROI workflows are
-reduced without it.
+AEMO users need:
+
+- region selection only
+- one of `NSW1`, `QLD1`, `VIC1`, `SA1`, `TAS1`
+
+Notes:
+
+- A pricing source remains optional, but price-aware automation, history, and
+  ROI workflows are reduced without one.
+- AEMO uses public regional market pricing rather than a customer-specific
+  retailer tariff.
+- In the product, AEMO market pricing is normalized onto the same buy/feed-in
+  and forecast surfaces used by Amber so existing pricing views and rules keep
+  working.
 
 ### Weather
 

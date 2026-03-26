@@ -309,7 +309,7 @@
       selector: null,
       position: 'center',
       title: "You're all set! 🎉",
-      body: 'You\'ve seen a lot of what the app can do. Explore the docs for deeper dives, and use the Help menu (your avatar → ❓ Take a Tour) to relaunch this tour at any time.'
+      body: 'You\'ve seen some of what the app can do. Explore the docs for deeper dives, and use the Help menu (your avatar → ❓ Take a Tour) to relaunch this tour at any time.'
     }
   ];
 

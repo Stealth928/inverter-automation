@@ -13,110 +13,149 @@ const { resolveProviderDeviceId } = require('../lib/provider-device-id');
 
 const METRICS_TIMEZONE = 'Australia/Sydney';
 const INVERTER_CACHE_TTL_MS = 5 * 60 * 1000;
+const AEMO_SNAPSHOT_FORECAST_INTERVAL_COUNT = 12;
+
+const AEMO_SNAPSHOT_PRESETS = Object.freeze({
+  NSW1: Object.freeze({
+    regionId: 'NSW1',
+    basePrice: 86.4,
+    feedInBase: -18.7,
+    demand: 8420,
+    demandStep: 95
+  }),
+  QLD1: Object.freeze({
+    regionId: 'QLD1',
+    basePrice: 74.2,
+    feedInBase: -15.9,
+    demand: 6980,
+    demandStep: 88
+  }),
+  VIC1: Object.freeze({
+    regionId: 'VIC1',
+    basePrice: 68.9,
+    feedInBase: -14.1,
+    demand: 6210,
+    demandStep: 72
+  }),
+  SA1: Object.freeze({
+    regionId: 'SA1',
+    basePrice: 92.1,
+    feedInBase: -22.4,
+    demand: 1840,
+    demandStep: 36
+  }),
+  TAS1: Object.freeze({
+    regionId: 'TAS1',
+    basePrice: 58.7,
+    feedInBase: -10.8,
+    demand: 1280,
+    demandStep: 24
+  })
+});
 
 const AMBER_CACHE_PRESETS = Object.freeze({
   foxess: Object.freeze({
-    siteNmi: 'FOX-NMI-1001',
-    siteNetwork: 'Seed FoxESS Grid',
+    siteNmi: '2100165175',
+    siteNetwork: 'NEM_NSW',
     network: 'N2',
-    generalBase: 18.4,
-    generalStep: 0.35,
-    feedInBase: -7.8,
-    feedInStep: -0.22,
-    renewablesBase: 58,
-    renewablesStep: 2
+    generalBase: 35.2,
+    generalStep: 2.1,
+    feedInBase: -12.5,
+    feedInStep: -0.8,
+    renewablesBase: 42,
+    renewablesStep: 5
   }),
   sungrow: Object.freeze({
-    siteNmi: 'SUNG-NMI-2001',
-    siteNetwork: 'Seed Sungrow Grid',
-    network: 'NSW',
-    generalBase: 20.6,
-    generalStep: 0.28,
-    feedInBase: -8.2,
-    feedInStep: -0.21,
-    renewablesBase: 52,
-    renewablesStep: 3
+    siteNmi: '2200345689',
+    siteNetwork: 'NEM_QLD',
+    network: 'QLD',
+    generalBase: 32.8,
+    generalStep: 1.8,
+    feedInBase: -11.2,
+    feedInStep: -0.7,
+    renewablesBase: 38,
+    renewablesStep: 4
   }),
   sigenergy: Object.freeze({
-    siteNmi: 'SIGE-NMI-3001',
-    siteNetwork: 'Seed Sigen Grid',
-    network: 'QLD',
-    generalBase: 23.1,
-    generalStep: 0.33,
-    feedInBase: -6.9,
-    feedInStep: -0.19,
-    renewablesBase: 47,
-    renewablesStep: 2
+    siteNmi: '2300567123',
+    siteNetwork: 'NEM_VIC',
+    network: 'VIC',
+    generalBase: 38.5,
+    generalStep: 2.3,
+    feedInBase: -13.8,
+    feedInStep: -0.9,
+    renewablesBase: 35,
+    renewablesStep: 6
   }),
   alphaess: Object.freeze({
-    siteNmi: 'ALPH-NMI-4001',
-    siteNetwork: 'Seed AlphaESS Grid',
-    network: 'WA',
-    generalBase: 16.5,
-    generalStep: 0.31,
-    feedInBase: -7.5,
-    feedInStep: -0.18,
-    renewablesBase: 50,
-    renewablesStep: 2
+    siteNmi: '2400789234',
+    siteNetwork: 'NEM_SA',
+    network: 'SA',
+    generalBase: 41.2,
+    generalStep: 2.5,
+    feedInBase: -15.1,
+    feedInStep: -1.0,
+    renewablesBase: 48,
+    renewablesStep: 7
   })
 });
 
 const INVERTER_CACHE_PRESETS = Object.freeze({
   foxess: Object.freeze({
-    socPct: 82,
-    pvPowerW: 3800,
-    loadsPowerW: 1740,
-    gridConsumptionPowerW: 620,
-    batChargePowerW: 540,
-    batDischargePowerW: 120,
-    feedinPowerW: -80,
-    batTemperatureC: 28.6,
-    ambientTemperationC: 24.4,
-    invTemperationC: 36.2,
-    boostTemperationC: 41.7,
-    generationPowerW: 4080
+    socPct: 68,
+    pvPowerW: 4200,
+    loadsPowerW: 1850,
+    gridConsumptionPowerW: 450,
+    batChargePowerW: 280,
+    batDischargePowerW: 0,
+    feedinPowerW: 1620, // Net feed-in after loads covered
+    batTemperatureC: 26.4,
+    ambientTemperationC: 22.8,
+    invTemperationC: 34.9,
+    boostTemperationC: 41.2,
+    generationPowerW: 4350
   }),
   sungrow: Object.freeze({
-    socPct: 75,
-    pvPowerW: 3000,
-    loadsPowerW: 1500,
-    gridConsumptionPowerW: 540,
-    batChargePowerW: 410,
-    batDischargePowerW: 150,
-    feedinPowerW: -30,
-    batTemperatureC: 30.1,
-    ambientTemperationC: 25.0,
-    invTemperationC: 34.8,
-    boostTemperationC: 40.9,
-    generationPowerW: 3000
+    socPct: 72,
+    pvPowerW: 3650,
+    loadsPowerW: 1620,
+    gridConsumptionPowerW: 380,
+    batChargePowerW: 320,
+    batDischargePowerW: 0,
+    feedinPowerW: 1650,
+    batTemperatureC: 28.1,
+    ambientTemperationC: 24.5,
+    invTemperationC: 36.2,
+    boostTemperationC: 42.1,
+    generationPowerW: 3720
   }),
   sigenergy: Object.freeze({
-    socPct: 69,
-    pvPowerW: 2600,
-    loadsPowerW: 1310,
-    gridConsumptionPowerW: 470,
-    batChargePowerW: 220,
-    batDischargePowerW: 300,
-    feedinPowerW: -190,
-    batTemperatureC: 29.2,
-    ambientTemperationC: 23.8,
-    invTemperationC: 35.1,
-    boostTemperationC: 40.2,
-    generationPowerW: 2650
+    socPct: 55,
+    pvPowerW: 2950,
+    loadsPowerW: 1410,
+    gridConsumptionPowerW: 520,
+    batChargePowerW: 0,
+    batDischargePowerW: 380,
+    feedinPowerW: 40,
+    batTemperatureC: 31.2,
+    ambientTemperationC: 23.1,
+    invTemperationC: 35.8,
+    boostTemperationC: 39.5,
+    generationPowerW: 2890
   }),
   alphaess: Object.freeze({
-    socPct: 87,
-    pvPowerW: 4200,
-    loadsPowerW: 1620,
-    gridConsumptionPowerW: 580,
-    batChargePowerW: 320,
-    batDischargePowerW: 210,
-    feedinPowerW: -160,
-    batTemperatureC: 26.8,
-    ambientTemperationC: 22.9,
-    invTemperationC: 35.6,
-    boostTemperationC: 39.8,
-    generationPowerW: 4320
+    socPct: 82,
+    pvPowerW: 4600,
+    loadsPowerW: 1720,
+    gridConsumptionPowerW: 290,
+    batChargePowerW: 520,
+    batDischargePowerW: 0,
+    feedinPowerW: 2590,
+    batTemperatureC: 25.3,
+    ambientTemperationC: 21.9,
+    invTemperationC: 33.7,
+    boostTemperationC: 39.1,
+    generationPowerW: 4750
   })
 });
 
@@ -223,23 +262,32 @@ function buildAmberCurrentRows(seedUser) {
   aligned.setSeconds(0, 0);
   aligned.setMinutes(aligned.getMinutes() < 30 ? 0 : 30);
 
-  return Array.from({ length: 8 }, (_, idx) => {
+  // Generate 24 intervals (12 hours of 30-min intervals) for comprehensive pricing data
+  return Array.from({ length: 24 }, (_, idx) => {
     const intervalStart = new Date(aligned.getTime() + idx * 30 * 60 * 1000);
     const intervalEnd = new Date(aligned.getTime() + (idx + 1) * 30 * 60 * 1000);
     const base = intervalStart.toISOString();
     const end = intervalEnd.toISOString();
-    const renewables = roundTo(preset.renewablesBase + idx * preset.renewablesStep, 1);
+    
+    // Create realistic price curves with peak/off-peak variations
+    const hourOfDay = intervalStart.getHours();
+    const isPeakHour = hourOfDay >= 17 && hourOfDay <= 21;
+    const isPeakMultiplier = isPeakHour ? 1.4 : (hourOfDay >= 9 && hourOfDay <= 17 ? 1.1 : 0.8);
+    
+    const renewables = roundTo(preset.renewablesBase + (idx % 6) * preset.renewablesStep * isPeakMultiplier, 1);
     const isCurrent = idx === 0;
 
-    const buy = roundTo(preset.generalBase + (idx * preset.generalStep), 2);
-    const feedIn = roundTo(preset.feedInBase - (idx * Math.abs(preset.feedInStep)), 2);
+    const baseBuy = preset.generalBase * isPeakMultiplier;
+    const buy = roundTo(baseBuy + (idx % 4) * preset.generalStep, 2);
+    const feedIn = roundTo((preset.feedInBase * (1 / isPeakMultiplier)) - (idx % 3) * Math.abs(preset.feedInStep), 2);
 
     const common = {
       startTime: base,
       endTime: end,
       date: base.slice(0, 10),
       nemTime: base,
-      type: isCurrent ? 'CurrentInterval' : 'ForecastInterval'
+      type: isCurrent ? 'CurrentInterval' : 'ForecastInterval',
+      period: '30m'
     };
 
     return [{
@@ -248,16 +296,113 @@ function buildAmberCurrentRows(seedUser) {
       perKwh: buy,
       spotPerKwh: buy,
       renewables,
-      descriptor: 'seed'
+      descriptor: 'current',
+      spikeStatus: buy > preset.generalBase * 1.5 ? 'spike' : 'none'
     }, {
       ...common,
       channelType: 'feedIn',
       perKwh: feedIn,
       spotPerKwh: feedIn,
       renewables,
-      descriptor: 'seed'
+      descriptor: 'current',
+      spikeStatus: 'none'
     }];
   }).flat();
+}
+
+function alignToFiveMinuteBoundary(date = new Date()) {
+  const aligned = new Date(date);
+  aligned.setSeconds(0, 0);
+  aligned.setMinutes(Math.floor(aligned.getMinutes() / 5) * 5);
+  return aligned;
+}
+
+function buildAemoLegacyRow({ type, channelType, perKwh, startIso, endIso, regionId, demand, demandForecast, intervalType }) {
+  return {
+    type,
+    channelType,
+    perKwh,
+    spotPerKwh: perKwh,
+    startTime: startIso,
+    endTime: endIso,
+    nemTime: startIso,
+    descriptor: null,
+    spikeStatus: null,
+    advancedPrice: null,
+    sourceProvider: 'aemo',
+    regionId,
+    siteIdOrRegion: regionId,
+    asOf: startIso,
+    demand,
+    demandForecast,
+    aemoIntervalType: intervalType
+  };
+}
+
+function buildAemoSnapshotRows(regionId, preset, anchorDate = new Date()) {
+  const aligned = alignToFiveMinuteBoundary(anchorDate);
+  const rows = [];
+
+  for (let index = 0; index <= AEMO_SNAPSHOT_FORECAST_INTERVAL_COUNT; index += 1) {
+    const intervalStart = new Date(aligned.getTime() + index * 5 * 60 * 1000);
+    const intervalEnd = new Date(intervalStart.getTime() + 5 * 60 * 1000);
+    const startIso = intervalStart.toISOString();
+    const endIso = intervalEnd.toISOString();
+    const priceDrift = (index % 4) * 3.2;
+    const wave = Math.sin(index / 2.2) * 4.5;
+    const generalPrice = roundTo(preset.basePrice + priceDrift + wave, 2);
+    const feedInPrice = roundTo(preset.feedInBase - (index % 3) * 1.4 - (wave / 3), 2);
+    const demand = Math.round(preset.demand + index * preset.demandStep);
+    const demandForecast = Math.round(demand + preset.demandStep * 0.8);
+    const intervalType = index === 0 ? 'dispatch' : 'predispatch';
+    const type = index === 0 ? 'CurrentInterval' : 'ForecastInterval';
+
+    rows.push(buildAemoLegacyRow({
+      type,
+      channelType: 'general',
+      perKwh: generalPrice,
+      startIso,
+      endIso,
+      regionId,
+      demand,
+      demandForecast,
+      intervalType
+    }));
+    rows.push(buildAemoLegacyRow({
+      type,
+      channelType: 'feedIn',
+      perKwh: feedInPrice,
+      startIso,
+      endIso,
+      regionId,
+      demand,
+      demandForecast,
+      intervalType
+    }));
+  }
+
+  return rows;
+}
+
+function buildAemoSnapshot(regionId, anchorDate = new Date()) {
+  const preset = AEMO_SNAPSHOT_PRESETS[regionId];
+  if (!preset) {
+    throw new Error(`Unsupported AEMO snapshot region "${regionId}"`);
+  }
+
+  const rows = buildAemoSnapshotRows(regionId, preset, anchorDate);
+  const asOfIso = rows[0]?.startTime || alignToFiveMinuteBoundary(anchorDate).toISOString();
+
+  return {
+    regionId,
+    data: rows,
+    metadata: {
+      asOf: asOfIso,
+      forecastHorizonMinutes: AEMO_SNAPSHOT_FORECAST_INTERVAL_COUNT * 5,
+      isForecastComplete: true,
+      source: 'aemo'
+    }
+  };
 }
 
 function resolveProviderAndDeviceId(seedUser) {
@@ -412,7 +557,7 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
 
   const inverterCachePayload = buildInverterDataFrame(seedUser, deviceSN, cacheNowIso, false);
   await db.collection('users').doc(uid).collection('cache').doc('inverter').set({
-    ...inverterCachePayload,
+    data: inverterCachePayload,
     timestamp: cacheNowMs,
     ttlMs: INVERTER_CACHE_TTL_MS,
     provider,
@@ -423,7 +568,7 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
 
   const inverterRealtimePayload = buildInverterDataFrame(seedUser, deviceSN, cacheNowIso, true);
   await db.collection('users').doc(uid).collection('cache').doc('inverter-realtime').set({
-    ...inverterRealtimePayload,
+    data: inverterRealtimePayload,
     timestamp: cacheNowMs,
     ttlMs: INVERTER_CACHE_TTL_MS,
     provider,
@@ -435,7 +580,7 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
   const amberSites = buildAmberSites(seedUser);
   await db.collection('users').doc(uid).collection('cache').doc('amber_sites').set({
     sites: amberSites,
-    cachedAt: admin.firestore.Timestamp.fromDate(cacheNow)
+    cachedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   console.log('Wrote users/%s/cache/amber_sites', uid);
 
@@ -444,7 +589,7 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
   await db.collection('users').doc(uid).collection('cache').doc(`amber_current_${amberSiteId}`).set({
     siteId: amberSiteId,
     prices: currentRows,
-    cachedAt: admin.firestore.Timestamp.fromDate(cacheNow)
+    cachedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   console.log(`Wrote users/${uid}/cache/amber_current_${amberSiteId}`);
 
@@ -484,6 +629,23 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
   return userRecord;
 }
 
+async function seedAemoSnapshots({ db, ts, anchorDate = new Date() }) {
+  for (const regionId of Object.keys(AEMO_SNAPSHOT_PRESETS)) {
+    const snapshot = buildAemoSnapshot(regionId, anchorDate);
+    await db.collection('aemoSnapshots').doc(regionId).set({
+      ...snapshot,
+      storedAt: ts,
+      storedAtIso: anchorDate.toISOString(),
+      schedule: {
+        cadenceMinutes: 5,
+        lagMinutes: 1,
+        source: 'emulator-seed'
+      }
+    }, { merge: true });
+    console.log('Wrote aemoSnapshots/%s', regionId);
+  }
+}
+
 async function main() {
   try {
     assertEmulatorEnvironment();
@@ -503,6 +665,8 @@ async function main() {
       const userRecord = await seedSingleUser({ db, auth, seedUser, ts });
       seededUsers.push({ seedUser, userRecord });
     }
+
+    await seedAemoSnapshots({ db, ts });
 
     await db.collection('shared').doc('serverConfig').set({
       ...TEST_CONFIG,

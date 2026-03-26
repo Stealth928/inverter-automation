@@ -4,6 +4,15 @@
             return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         const OVERVIEW_ICON_SVGS = {
             customize: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/><circle cx="9" cy="6" r="1.8"/><circle cx="15" cy="12" r="1.8"/><circle cx="11" cy="18" r="1.8"/></svg>',
             settings: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -1173,16 +1182,20 @@
                     if (v === null || v === undefined || v === '-') return '-';
                     let n = Number(v);
                     if (isNaN(n)) return '-';
-                    // if value looks like watts (>2000), convert to kW
-                    if (Math.abs(n) > 2000) n = n / 1000;
+                    // if value looks like watts (>100), convert to kW
+                    if (Math.abs(n) > 100) n = n / 1000;
                     return n.toFixed(2) + ' kW';
                 }
 
                 // Interpret grid using feedIn and gridConsumption when available
                 function gridLabel(feedInVal, gridVal) {
                     try {
-                        const f = feedInVal !== null && feedInVal !== undefined ? Number(feedInVal) : null;
-                        const g = gridVal !== null && gridVal !== undefined ? Number(gridVal) : null;
+                        let f = feedInVal !== null && feedInVal !== undefined ? Number(feedInVal) : null;
+                        let g = gridVal !== null && gridVal !== undefined ? Number(gridVal) : null;
+                        
+                        // Convert watts to kW if needed (>100 likely means watts)
+                        if (f !== null && !isNaN(f) && Math.abs(f) > 100) f = f / 1000;
+                        if (g !== null && !isNaN(g) && Math.abs(g) > 100) g = g / 1000;
 
                         // if both provided and non-zero, show both
                         if (f !== null && !isNaN(f) && Math.abs(f) > 0 && g !== null && !isNaN(g) && Math.abs(g) > 0) {
@@ -1201,13 +1214,23 @@
                         if (typeof objOrVal === 'object') {
                             const ch = objOrVal.charge !== null && objOrVal.charge !== undefined ? Number(objOrVal.charge) : 0;
                             const dis = objOrVal.discharge !== null && objOrVal.discharge !== undefined ? Number(objOrVal.discharge) : 0;
-                            if (!isNaN(dis) && dis > 0) return `${Math.abs(dis).toFixed(2)} kW <span class="substatus">(discharging)</span>`;
-                            if (!isNaN(ch) && ch > 0) return `${Math.abs(ch).toFixed(2)} kW <span class="substatus">(charging)</span>`;
+                            if (!isNaN(dis) && dis > 0) {
+                                // Convert from watts to kW if value > 100
+                                const disKW = Math.abs(dis) > 100 ? dis / 1000 : dis;
+                                return `${disKW.toFixed(2)} kW <span class="substatus">(discharging)</span>`;
+                            }
+                            if (!isNaN(ch) && ch > 0) {
+                                // Convert from watts to kW if value > 100
+                                const chKW = Math.abs(ch) > 100 ? ch / 1000 : ch;
+                                return `${chKW.toFixed(2)} kW <span class="substatus">(charging)</span>`;
+                            }
                             return '—';
                         }
                         const n = Number(objOrVal);
                         if (isNaN(n)) return '—';
-                        return n > 0 ? `${Math.abs(n).toFixed(2)} kW <span class="substatus">(charging)</span>` : `${Math.abs(n).toFixed(2)} kW <span class="substatus">(discharging)</span>`;
+                        // Convert from watts to kW if value > 100
+                        const normalizedN = Math.abs(n) > 100 ? n / 1000 : n;
+                        return n > 0 ? `${Math.abs(normalizedN).toFixed(2)} kW <span class="substatus">(charging)</span>` : `${Math.abs(normalizedN).toFixed(2)} kW <span class="substatus">(discharging)</span>`;
                     } catch (e) { return '—'; }
                 }
 
@@ -1800,7 +1823,7 @@
                 }
                 document.getElementById('status-bar').querySelector('.endpoint').textContent = endpointText;
             } catch (e) {
-                card.innerHTML = `<div style="color:var(--color-danger)">Error: ${e.message}</div>`;
+                card.innerHTML = `<div style="color:var(--color-danger)">Error: ${escapeHtml(e.message)}</div>`;
             }
         }
 
@@ -2354,18 +2377,29 @@
 
         // Amber
         let amberSites = [];
+        let pricingProvider = 'amber';
         let amberConfiguredSiteId = '';
         let amberLastPersistedSiteId = '';
+
+        function getPricingProviderSafe() {
+            try {
+                if (window.sharedUtils && typeof window.sharedUtils.normalizePricingProviderKey === 'function') {
+                    return window.sharedUtils.normalizePricingProviderKey(pricingProvider);
+                }
+            } catch (e) { /* ignore */ }
+            return String(pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+        }
 
         // Prefer shared-utils helpers, but keep a local fallback for stale cached bundles.
         function getStoredAmberSiteIdSafe() {
             try {
-                if (window.sharedUtils && typeof window.sharedUtils.getStoredAmberSiteId === 'function') {
-                    return String(window.sharedUtils.getStoredAmberSiteId() || '').trim();
+                if (window.sharedUtils && typeof window.sharedUtils.getStoredPricingSelection === 'function') {
+                    return String(window.sharedUtils.getStoredPricingSelection(getPricingProviderSafe()) || '').trim();
                 }
             } catch (e) { /* ignore and fallback */ }
             try {
-                return String(localStorage.getItem('amberSiteId') || '').trim();
+                const legacyKey = getPricingProviderSafe() === 'aemo' ? 'aemoRegion' : 'amberSiteId';
+                return String(localStorage.getItem(legacyKey) || '').trim();
             } catch (e) {
                 return '';
             }
@@ -2376,14 +2410,15 @@
             if (!normalized) return;
 
             try {
-                if (window.sharedUtils && typeof window.sharedUtils.setStoredAmberSiteId === 'function') {
-                    window.sharedUtils.setStoredAmberSiteId(normalized);
+                if (window.sharedUtils && typeof window.sharedUtils.setStoredPricingSelection === 'function') {
+                    window.sharedUtils.setStoredPricingSelection(getPricingProviderSafe(), normalized);
                     return;
                 }
             } catch (e) { /* ignore and fallback */ }
 
             try {
-                localStorage.setItem('amberSiteId', normalized);
+                const legacyKey = getPricingProviderSafe() === 'aemo' ? 'aemoRegion' : 'amberSiteId';
+                localStorage.setItem(legacyKey, normalized);
             } catch (e) { /* ignore */ }
         }
 
@@ -2399,7 +2434,9 @@
                 const resp = await authenticatedFetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ amberSiteId: normalized })
+                    body: JSON.stringify(getPricingProviderSafe() === 'aemo'
+                        ? { pricingProvider: 'aemo', aemoRegion: normalized, siteIdOrRegion: normalized }
+                        : { pricingProvider: 'amber', amberSiteId: normalized, siteIdOrRegion: normalized })
                 });
                 if (!resp.ok) {
                     throw new Error(`HTTP ${resp.status}`);
@@ -2420,6 +2457,7 @@
         async function loadAmberSites(forceRefresh = false) {
             const select = document.getElementById('amberSiteId');
             const card = document.getElementById('amberCard');
+            const provider = getPricingProviderSafe();
             select.innerHTML = '<option value="">Loading...</option>';
 
             if (!select.dataset.boundAmberChange) {
@@ -2456,9 +2494,9 @@
             }
             
             try {
-                let url = '/api/pricing/sites';
+                let url = `/api/pricing/sites?provider=${encodeURIComponent(provider)}`;
                 if (forceRefresh) {
-                    url += '?forceRefresh=true';
+                    url += '&forceRefresh=true';
                 }
                 const resp = await authenticatedFetch(url);
                 const json = await resp.json();
@@ -2475,11 +2513,17 @@
                 
                 if (sites.length > 0) {
                     amberSites = sites;
-                    select.innerHTML = sites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
+                    select.innerHTML = sites.map((s) => {
+                        const value = provider === 'aemo' ? (s.region || s.id) : s.id;
+                        const label = provider === 'aemo'
+                            ? (s.displayName || s.name || s.region || s.id)
+                            : `${s.nmi} (${s.network})`;
+                        return `<option value="${value}">${label}</option>`;
+                    }).join('');
                     const storedSiteId = getStoredAmberSiteIdSafe();
                     // localStorage (user's last manual pick) takes priority over backend config
                     const preferredSiteId = storedSiteId || amberConfiguredSiteId;
-                    const preferredExists = preferredSiteId && sites.some(s => String(s.id) === String(preferredSiteId));
+                    const preferredExists = preferredSiteId && sites.some(s => String((provider === 'aemo' ? (s.region || s.id) : s.id)) === String(preferredSiteId));
                     if (preferredExists) {
                         select.value = String(preferredSiteId);
                     } else if (select.options.length > 0) {
@@ -2502,22 +2546,23 @@
                         // If preferredSiteId existed but wasn't found in the list, do NOT overwrite —
                         // keep the server-saved preference intact and just temporarily show the first site
                     }
-                    card.innerHTML = `<div style="color:var(--color-success)">✓ ${sites.length} site(s) found</div>`;
+                    card.innerHTML = `<div style="color:var(--color-success)">✓ ${sites.length} ${provider === 'aemo' ? 'region(s)' : 'site(s)'} found</div>`;
                     // Auto-fetch current prices
                     setTimeout(() => getAmberCurrent(forceRefresh), 500);
                 } else {
-                    select.innerHTML = '<option value="">No sites</option>';
-                    card.innerHTML = `<div style="color:var(--color-warning)">No sites found</div>`;
+                    select.innerHTML = `<option value="">No ${provider === 'aemo' ? 'regions' : 'sites'}</option>`;
+                    card.innerHTML = `<div style="color:var(--color-warning)">No ${provider === 'aemo' ? 'regions' : 'sites'} found</div>`;
                 }
             } catch (e) {
                 console.error('[Amber] Error loading sites:', e);
                 select.innerHTML = '<option value="">Error</option>';
-                card.innerHTML = `<div style="color:var(--color-danger)">Error: ${e.message}</div>`;
+                card.innerHTML = `<div style="color:var(--color-danger)">Error: ${escapeHtml(e.message)}</div>`;
             }
         }
 
         async function getAmberCurrent(force = false) {
             const select = document.getElementById('amberSiteId');
+            const provider = getPricingProviderSafe();
             let siteId = select.value;
             if (!siteId && isDashboardLocalMockEnabled()) {
                 const mockSites = getMockAmberSites();
@@ -2535,6 +2580,7 @@
             const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
             const age = Date.now() - (cacheState.amberTime || 0);
             const cacheSiteId = String(cacheState.amberSiteId || '');
+            const cacheProvider = String(cacheState.amberProvider || 'amber');
             const cacheOwnerId = String(cacheState.amberUserId || '');
             const currentOwnerId = getAmberUserStorageId();
             
@@ -2542,7 +2588,7 @@
             const mockMode = isDashboardLocalMockEnabled();
             const shouldBypassCache = force || isPageReload || mockMode;
             
-            if (!shouldBypassCache && cacheState.amberTime && age < CONFIG.cache.amber && cacheSiteId === String(siteId) && cacheOwnerId === currentOwnerId) {
+            if (!shouldBypassCache && cacheState.amberTime && age < CONFIG.cache.amber && cacheSiteId === String(siteId) && cacheProvider === provider && cacheOwnerId === currentOwnerId) {
                 // Load cached full prices array and render
                 try {
                     const cachedPricesFull = JSON.parse(localStorage.getItem('cachedPricesFull') || '[]');
@@ -2563,7 +2609,10 @@
                 if (mockMode) {
                     data = { errno: 0, result: getMockAmberPrices(next, siteId), mock: true };
                 } else {
-                    let url = `/api/pricing/current?siteId=${siteId}&next=${next}`;
+                    let url = `/api/pricing/current?provider=${encodeURIComponent(provider)}&next=${next}`;
+                    url += provider === 'aemo'
+                        ? `&regionId=${encodeURIComponent(siteId)}`
+                        : `&siteId=${encodeURIComponent(siteId)}`;
                     // Add forceRefresh if force flag is set
                     if (force) {
                         url += '&forceRefresh=true';
@@ -2603,6 +2652,7 @@
                         const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
                         cacheState.amberTime = Date.now();
                         cacheState.amberSiteId = String(siteId);
+                        cacheState.amberProvider = provider;
                         cacheState.amberUserId = currentOwnerId;
                         localStorage.setItem('cacheState', JSON.stringify(cacheState));
                     } catch (e) { /* ignore cache errors */ }
@@ -2616,7 +2666,7 @@
                 
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
                 document.getElementById('status-bar').style.display = 'flex';
-                document.getElementById('status-bar').querySelector('.endpoint').textContent = `Amber Prices`;
+                document.getElementById('status-bar').querySelector('.endpoint').textContent = `${provider === 'aemo' ? 'AEMO' : 'Amber'} Prices`;
             } catch (e) {
                 card.innerHTML = `<div style="color:var(--color-danger)">Error: ${e.message}</div>`;
             }
@@ -2679,6 +2729,7 @@
 
         async function getAmberRange(startDate, endDate) {
             const siteId = document.getElementById('amberSiteId').value;
+            const provider = getPricingProviderSafe();
             if (!siteId) return;
 
             const card = document.getElementById('amberCard');
@@ -2692,7 +2743,10 @@
                     s = yesterday.toISOString().slice(0,10);
                     e = today.toISOString().slice(0,10);
                 }
-                const resp = await authenticatedFetch(`/api/pricing/prices?siteId=${siteId}&startDate=${s}&endDate=${e}`);
+                const selectorQuery = provider === 'aemo'
+                    ? `regionId=${encodeURIComponent(siteId)}`
+                    : `siteId=${encodeURIComponent(siteId)}`;
+                const resp = await authenticatedFetch(`/api/pricing/prices?provider=${encodeURIComponent(provider)}&${selectorQuery}&startDate=${s}&endDate=${e}`);
                 const data = await resp.json();
                 renderAmberCard(data);
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
@@ -3460,6 +3514,13 @@
             return String(fallback || 'Tesla request failed');
         }
 
+        function extractEVApiErrorDetails(payload, fallback) {
+            return {
+                message: extractEVApiErrorMessage(payload, fallback),
+                reasonCode: String(payload?.result?.reasonCode || '').trim().toLowerCase()
+            };
+        }
+
         function updateEVVehicleCountBadge() {
             const badge = document.getElementById('evVehicleCountBadge');
             if (!badge) return;
@@ -3486,6 +3547,12 @@
             return String(meta.error || '');
         }
 
+        function getSelectedEVStatusMeta() {
+            const selectedId = String(evDashboardState.selectedVehicleId || '');
+            if (!selectedId) return {};
+            return evDashboardState.statusMetaByVehicleId[selectedId] || {};
+        }
+
         function getSelectedEVReadinessError() {
             const selectedId = String(evDashboardState.selectedVehicleId || '');
             if (!selectedId) return '';
@@ -3503,6 +3570,48 @@
             const reasonCode = String(status?.reasonCode || '').trim().toLowerCase();
             const errorText = String(statusError || '').trim().toLowerCase();
             return reasonCode === 'vehicle_offline' || /vehicle.*(offline|asleep|unavailable)|\boffline\b|\basleep\b|wake the vehicle/.test(errorText);
+        }
+
+        function getEVStatusMetaSource(statusMeta = {}) {
+            return String(statusMeta?.source || '').trim().toLowerCase();
+        }
+
+        function getEVStatusAgeMs(status = {}) {
+            const asOfIso = String(status?.asOfIso || '').trim();
+            if (!asOfIso) return null;
+            const parsedMs = Date.parse(asOfIso);
+            if (!Number.isFinite(parsedMs)) return null;
+            const ageMs = Date.now() - parsedMs;
+            return Number.isFinite(ageMs) && ageMs >= 0 ? ageMs : null;
+        }
+
+        function isEVReliableImmediateStatus(statusMeta = {}) {
+            const source = getEVStatusMetaSource(statusMeta);
+            return source === 'live' || source === 'command_confirmed';
+        }
+
+        function isEVPotentiallyStaleStatus(status = {}, statusMeta = {}) {
+            if (!isEVReliableImmediateStatus(statusMeta)) {
+                return true;
+            }
+            const ageMs = getEVStatusAgeMs(status);
+            return Number.isFinite(ageMs) && ageMs > 10 * 60 * 1000;
+        }
+
+        function isEVDisconnectedStatus(status = {}) {
+            return status?.isPluggedIn === false || String(status?.chargingState || '').trim().toLowerCase() === 'disconnected';
+        }
+
+        function isEVStaleDisconnectedStatus(status = {}, statusMeta = {}, statusError = '') {
+            if (!isEVDisconnectedStatus(status)) return false;
+            if (isEVVehicleOfflineStatus(status, statusError)) return true;
+            return isEVPotentiallyStaleStatus(status, statusMeta);
+        }
+
+        function isEVDisconnectedCommandError(reasonCode = '', errorText = '') {
+            const normalizedReasonCode = String(reasonCode || '').trim().toLowerCase();
+            const normalizedError = String(errorText || '').trim().toLowerCase();
+            return normalizedReasonCode === 'disconnected' || /\bdisconnected\b|not plugged/.test(normalizedError);
         }
 
         function isEVReconnectRequiredError(errorText = '') {
@@ -3542,7 +3651,7 @@
             return 'Checking Tesla command readiness';
         }
 
-        function describeEVCommandAvailability(selectedVehicle, readiness, status = {}, statusError = '', readinessError = '') {
+        function describeEVCommandAvailability(selectedVehicle, readiness, status = {}, statusMeta = {}, statusError = '', readinessError = '') {
             if (!selectedVehicle) {
                 return {
                     kind: 'info',
@@ -3579,11 +3688,28 @@
                     label: 'Wake Required',
                     detail: 'Tesla reports this vehicle is asleep or offline. Use the manual wake button, then retry charging controls. Wake requests are never automatic.',
                     canControl: false,
-                    canWake: true
+                    canWake: true,
+                    wakeTitle: 'Vehicle is asleep',
+                    wakeDetail: 'A manual wake is required before charging controls become available.',
+                    wakeNote: 'Wake requests are never sent automatically by dashboard refreshes or automations.'
                 };
             }
 
             const state = String(readiness?.state || '').trim();
+            if (isEVStaleDisconnectedStatus(status, statusMeta, statusError)) {
+                const canControl = state === 'ready_direct' || state === 'ready_signed';
+                return {
+                    kind: 'warn',
+                    label: 'Wake Recommended',
+                    detail: 'Tesla last reported this vehicle was not plugged in, but that status may be stale. If you connected the cable after the last update, wake the vehicle to refresh live status, then retry charging controls.',
+                    canControl,
+                    canWake: true,
+                    wakeTitle: 'Plug status may be stale',
+                    wakeDetail: 'Tesla last reported the cable as disconnected. If you plugged in after that, wake the vehicle to refresh live status before retrying charging controls.',
+                    wakeNote: 'Wake requests are manual only and should be used only when the dashboard status may be stale.'
+                };
+            }
+
             if (state === 'ready_direct') {
                 return {
                     kind: 'ok',
@@ -3767,7 +3893,7 @@
             const statusError = getSelectedEVStatusError();
             const readinessError = String(readinessMeta.error || '');
             const connectionDescriptor = getEVConnectionDescriptor(statusError);
-            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusError, readinessError);
+            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, meta, statusError, readinessError);
 
             const connectionPill = document.createElement('span');
             connectionPill.className = `ev-status-pill ${connectionDescriptor.kind}`;
@@ -3936,7 +4062,8 @@
             const ampsBtn = document.getElementById('evSetChargingAmpsBtn');
             if (!controlsEl || !hintEl) return;
 
-            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusError, String(readinessMeta?.error || ''));
+            const statusMeta = evDashboardState.statusMetaByVehicleId[String(selectedVehicle?.vehicleId || '')] || {};
+            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusMeta, statusError, String(readinessMeta?.error || ''));
             const canControl = commandDescriptor.canControl === true;
             const canWake = commandDescriptor.canWake === true;
             const inFlight = evDashboardState.commandInFlight === true || evDashboardState.wakeInFlight === true;
@@ -3949,6 +4076,18 @@
             }
             if (wakePrompt) {
                 wakePrompt.style.display = canWake ? '' : 'none';
+                const wakeTitleEl = wakePrompt.querySelector('.ev-wake-prompt-title');
+                const wakeDescEl = wakePrompt.querySelector('.ev-wake-prompt-desc');
+                const wakeNoteEl = document.getElementById('evWakeVehicleNote');
+                if (wakeTitleEl) {
+                    wakeTitleEl.textContent = commandDescriptor.wakeTitle || 'Vehicle wake recommended';
+                }
+                if (wakeDescEl) {
+                    wakeDescEl.textContent = commandDescriptor.wakeDetail || 'Wake the vehicle to refresh live Tesla status before retrying charging controls.';
+                }
+                if (wakeNoteEl) {
+                    wakeNoteEl.textContent = commandDescriptor.wakeNote || 'Wake requests are never sent automatically by dashboard refreshes or automations';
+                }
             }
             if (wakeBtn) {
                 wakeBtn.disabled = !canWake || inFlight;
@@ -4315,12 +4454,17 @@
             }
         }
 
-        function guardEVCommand(command, status = {}) {
+        function guardEVCommand(command, status = {}, statusMeta = {}) {
             const chargingState = String(status?.chargingState || '').toLowerCase();
             const isPluggedIn = status?.isPluggedIn;
-            const asOfIso = status?.asOfIso;
 
             if (command === 'startCharging') {
+                if (isEVStaleDisconnectedStatus(status, statusMeta, String(statusMeta?.error || ''))) {
+                    return {
+                        blocked: true,
+                        message: 'Tesla last reported the car was not plugged in, but that status may be stale. If you plugged it in after the last update, use Wake vehicle to refresh live status, then retry.'
+                    };
+                }
                 if (isPluggedIn === false) {
                     return { blocked: true, message: 'Car is not plugged in. Connect the charging cable before starting a session.' };
                 }
@@ -4335,9 +4479,9 @@
                 }
             }
 
-            if (asOfIso) {
-                const ageMs = Date.now() - Date.parse(asOfIso);
-                if (Number.isFinite(ageMs) && ageMs > 10 * 60 * 1000) {
+            const ageMs = getEVStatusAgeMs(status);
+            if (Number.isFinite(ageMs)) {
+                if (ageMs > 10 * 60 * 1000) {
                     return { blocked: false, staleWarning: true, message: `Vehicle status is ${Math.round(ageMs / 60000)} min old — the car's state may have changed. Sending command anyway.` };
                 }
             }
@@ -4359,16 +4503,17 @@
 
             const readiness = getSelectedEVCommandReadiness();
             const status = getSelectedEVStatus();
+            const statusMeta = getSelectedEVStatusMeta();
             const statusError = getSelectedEVStatusError();
             const readinessError = getSelectedEVReadinessError();
-            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusError, readinessError);
+            const commandDescriptor = describeEVCommandAvailability(selectedVehicle, readiness, status, statusMeta, statusError, readinessError);
             if (commandDescriptor.canControl !== true) {
                 setEVCommandHint('warning', commandDescriptor.detail);
                 renderEVOverview();
                 return null;
             }
 
-            const guard = guardEVCommand(command, status);
+            const guard = guardEVCommand(command, status, statusMeta);
             if (guard.blocked) {
                 setEVOverviewMessage('warning', guard.message);
                 return null;
@@ -4408,7 +4553,10 @@
                         data = null;
                     }
                     if (!response.ok || !data || data.errno !== 0) {
-                        throw new Error(extractEVApiErrorMessage(data, `Tesla command failed (HTTP ${response.status})`));
+                        const errorDetails = extractEVApiErrorDetails(data, `Tesla command failed (HTTP ${response.status})`);
+                        const requestError = new Error(errorDetails.message);
+                        requestError.reasonCode = errorDetails.reasonCode;
+                        throw requestError;
                     }
                 }
 
@@ -4434,6 +4582,7 @@
                 return data?.result || null;
             } catch (error) {
                 const message = String(error?.message || 'Tesla command failed');
+                const reasonCode = String(error?.reasonCode || '').trim().toLowerCase();
                 setEVOverviewMessage('error', message);
                 if (isEVReconnectRequiredError(message)) {
                     delete evDashboardState.commandReadinessByVehicleId[vehicleId];
@@ -4450,7 +4599,23 @@
                     const pairingDomain = String(window.location.hostname || '').trim().toLowerCase();
                     setEVCommandHint('warning', `This vehicle requires virtual-key pairing before charging commands will work. On your phone with the Tesla app installed, open tesla.com/_ak/${pairingDomain}, approve in the app, then confirm on the vehicle screen.`);
                 }
-                if (/offline|asleep|wake the vehicle/i.test(message)) {
+                if (isEVDisconnectedCommandError(reasonCode, message)) {
+                    evDashboardState.statusByVehicleId[vehicleId] = {
+                        ...(evDashboardState.statusByVehicleId[vehicleId] || {}),
+                        isPluggedIn: false,
+                        chargingState: 'disconnected',
+                        asOfIso: new Date().toISOString()
+                    };
+                    evDashboardState.statusMetaByVehicleId[vehicleId] = {
+                        ...(evDashboardState.statusMetaByVehicleId[vehicleId] || {}),
+                        source: 'command_confirmed',
+                        loadedAtMs: Date.now(),
+                        error: ''
+                    };
+                    setEVOverviewMessage('warning', 'Tesla reports the vehicle is not plugged in. Connect the charging cable, then retry charging controls.');
+                    setEVCommandHint('warning', 'Tesla confirmed the cable is disconnected. Connect it, then retry charging controls.');
+                }
+                if (reasonCode === 'vehicle_offline' || /offline|asleep|wake the vehicle/i.test(message)) {
                     evDashboardState.statusByVehicleId[vehicleId] = {
                         ...(evDashboardState.statusByVehicleId[vehicleId] || {}),
                         reasonCode: 'vehicle_offline'
@@ -5605,7 +5770,7 @@
                 inverterBadge.style.color = mock ? 'var(--color-warning)' : '';
             }
             if (amberBadge) {
-                amberBadge.textContent = preview ? 'Preview' : (mock ? 'Mock' : 'Amber');
+                amberBadge.textContent = preview ? 'Preview' : (mock ? 'Mock' : (getPricingProviderSafe() === 'aemo' ? 'AEMO' : 'Amber'));
                 amberBadge.style.background = mock ? 'color-mix(in srgb, var(--color-warning) 22%, transparent)' : '';
                 amberBadge.style.color = mock ? 'var(--color-warning)' : '';
             }
@@ -7192,7 +7357,12 @@
                     if (snInput && !snInput.value && cfg.result.deviceSn) {
                         snInput.value = cfg.result.deviceSn;
                     }
-                    const configuredAmberSite = String(cfg.result.amberSiteId || '').trim();
+                    pricingProvider = String(cfg.result.pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+                    const configuredAmberSite = String(
+                        pricingProvider === 'aemo'
+                            ? (cfg.result.aemoRegion || cfg.result.siteIdOrRegion || '')
+                            : (cfg.result.amberSiteId || cfg.result.siteIdOrRegion || '')
+                    ).trim();
                     amberConfiguredSiteId = configuredAmberSite;
                     amberLastPersistedSiteId = configuredAmberSite;
                     // Only seed localStorage from backend when it is empty (e.g. new browser / first login).
@@ -7201,6 +7371,7 @@
                     if (configuredAmberSite && !getStoredAmberSiteIdSafe()) {
                         setStoredAmberSiteIdSafe(configuredAmberSite);
                     }
+                    updateDataSourceBadges();
 
                     // Apply backend-configured refresh intervals so the UI honors settings
                     try {

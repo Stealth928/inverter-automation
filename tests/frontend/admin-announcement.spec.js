@@ -157,7 +157,8 @@ test.describe('Admin Announcement Tab', () => {
       '⚙️ Scheduler',
       '🛰️ DataWorks',
       '🧭 Behaviour',
-      '📣 Announcement'
+      '📣 Announcement',
+      '🩺 API Health'
     ]);
   });
 

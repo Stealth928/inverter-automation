@@ -91,9 +91,14 @@ function createUserAutomationRepository(deps = {}) {
     }
   }
 
-  async function getUserRules(userId) {
+  async function getUserRules(userId, options = {}) {
     try {
-      const rulesSnapshot = await getUserDocRef(userId).collection('rules').get();
+      const enabledOnly = options && options.enabledOnly === true;
+      const rulesCollection = getUserDocRef(userId).collection('rules');
+      const rulesQuery = enabledOnly && typeof rulesCollection.where === 'function'
+        ? rulesCollection.where('enabled', '==', true)
+        : rulesCollection;
+      const rulesSnapshot = await rulesQuery.get();
       const rules = {};
       forEachSnapshotDoc(rulesSnapshot, (doc) => {
         rules[doc.id] = doc.data();

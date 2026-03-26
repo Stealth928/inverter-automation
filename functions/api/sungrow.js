@@ -26,12 +26,35 @@
 'use strict';
 
 const crypto = require('crypto');
+const { createUpstreamCircuitBreaker } = require('../lib/services/upstream-circuit-breaker');
 
 // Module state — initialized via init()
 let _db = null;
 let logger = null;
 let getConfig = null;
 let incrementApiCount = null;
+const sungrowCircuitBreaker = createUpstreamCircuitBreaker({
+  name: 'sungrow',
+  failureThreshold: 3,
+  openWindowMs: 60000,
+  logger: console
+});
+
+function shouldTripSungrowCircuit(httpStatus, normalized = {}) {
+  if (Number.isFinite(httpStatus) && httpStatus >= 500) {
+    return true;
+  }
+  return normalized.errno === 408 || normalized.errno === 500 || normalized.errno === 3304;
+}
+
+function buildSungrowCircuitOpenResponse(state = sungrowCircuitBreaker.getState()) {
+  return {
+    errno: 503,
+    error: 'Sungrow temporarily unavailable. Upstream protection is active; retry shortly.',
+    circuitState: state.state,
+    retryAfterMs: state.retryAfterMs || 0
+  };
+}
 
 /**
  * Generate Sungrow API signature.
@@ -72,13 +95,16 @@ function init(deps) {
   logger = deps.logger || console;
   getConfig = deps.getConfig;
   incrementApiCount = deps.incrementApiCount;
+  sungrowCircuitBreaker.setLogger(logger);
 
   logger.info('[SungrowAPI] Module initialized');
 
   return {
     generateSungrowSign,
     callSungrowAPI,
-    loginSungrow
+    loginSungrow,
+    getCircuitState: () => sungrowCircuitBreaker.getState(),
+    resetCircuitState: () => sungrowCircuitBreaker.reset()
   };
 }
 
@@ -148,6 +174,11 @@ function normalizeResponse(raw) {
  * @returns {Promise<{ errno: number, result?: any, error?: string }>}
  */
 async function callSungrowAPI(service, reqBody, userConfig, userId = null) {
+  const circuitGate = sungrowCircuitBreaker.beforeRequest();
+  if (!circuitGate.allowed) {
+    return buildSungrowCircuitOpenResponse(sungrowCircuitBreaker.getState());
+  }
+
   const config = getConfig();
 
   const appKey = config.sungrow?.appKey || process.env.SUNGROW_APP_KEY || '';
@@ -189,6 +220,12 @@ async function callSungrowAPI(service, reqBody, userConfig, userId = null) {
   const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
+    if (userId && incrementApiCount) {
+      await incrementApiCount(userId, 'sungrow').catch((error) => {
+        logger.warn('[SungrowAPI] Failed to increment metrics: ' + (error?.message || error));
+      });
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -198,19 +235,34 @@ async function callSungrowAPI(service, reqBody, userConfig, userId = null) {
     clearTimeout(timeout);
     const text = await response.text();
 
+    if (response.ok === false) {
+      if (response.status >= 500) {
+        sungrowCircuitBreaker.recordFailure(`HTTP ${response.status}`);
+      } else {
+        sungrowCircuitBreaker.recordSuccess();
+      }
+      return {
+        errno: response.status >= 500 ? 503 : response.status,
+        error: `Sungrow request failed with HTTP ${response.status}`,
+        raw: text
+      };
+    }
+
     let parsed;
     try {
       parsed = JSON.parse(text);
     } catch {
+      sungrowCircuitBreaker.recordFailure('Invalid JSON response');
       logger.error('[SungrowAPI] Invalid JSON response: ' + text.substring(0, 200));
       return { errno: 500, error: 'Sungrow returned an unreadable response', raw: text };
     }
 
     const normalized = normalizeResponse(parsed);
 
-    // Count successful (non-rate-limited) calls
-    if (normalized.errno !== 3303 && userId && incrementApiCount) {
-      await incrementApiCount(userId, 'sungrow');
+    if (shouldTripSungrowCircuit(response.status, normalized)) {
+      sungrowCircuitBreaker.recordFailure(normalized.error || `errno ${normalized.errno}`);
+    } else {
+      sungrowCircuitBreaker.recordSuccess();
     }
 
     logger.info('[SungrowAPI] service=' + service + ' errno=' + normalized.errno, true);
@@ -218,9 +270,11 @@ async function callSungrowAPI(service, reqBody, userConfig, userId = null) {
   } catch (error) {
     clearTimeout(timeout);
     if (error.name === 'AbortError') {
+      sungrowCircuitBreaker.recordFailure('Request timeout');
       logger.error('[SungrowAPI] Request timeout');
       return { errno: 408, error: 'Sungrow took too long to respond. Check your internet connection.' };
     }
+    sungrowCircuitBreaker.recordFailure(error);
     logger.error('[SungrowAPI] Fetch error: ' + error.message);
     const isNetworkErr = error.name === 'TypeError' || (error.message || '').toLowerCase().includes('fetch');
     return {

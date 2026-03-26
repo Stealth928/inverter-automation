@@ -63,7 +63,7 @@ function buildDeps(overrides = {}) {
     getUserRules: jest.fn(async () => ({})),
     getUserTime: jest.fn(() => ({ dayOfWeek: 1, hour: 12, minute: 0 })),
     isForecastTemperatureType: jest.fn(() => false),
-    logger: { debug: jest.fn(), warn: jest.fn() },
+    logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
     saveUserAutomationState: jest.fn(async () => undefined),
     serverTimestamp: jest.fn(() => '__TS__'),
     setUserRule: jest.fn(async () => undefined),
@@ -211,7 +211,7 @@ describe('automation cycle route module', () => {
         })
       })
     }));
-    expect(deps.getUserRules).toHaveBeenCalledWith('u-cycle-rules');
+    expect(deps.getUserRules).toHaveBeenCalledWith('u-cycle-rules', { enabledOnly: true });
     expect(deps.saveUserAutomationState).toHaveBeenCalledWith(
       'u-cycle-rules',
       expect.objectContaining({
@@ -279,6 +279,54 @@ describe('automation cycle route module', () => {
         telemetryFailsafePauseReason: null
       })
     );
+  });
+
+  test('gracefully degrades when weather fetch rejects during data fan-out', async () => {
+    const deps = buildDeps({
+      getQuickControlState: jest.fn(async () => null),
+      getUserAutomationState: jest.fn(async () => ({ enabled: true })),
+      getUserConfig: jest.fn(async () => ({ automation: { blackoutWindows: [] }, deviceSn: 'SN-WEATHER-1' })),
+      getUserRules: jest.fn(async () => ({
+        ruleA: {
+          enabled: true,
+          name: 'Weather Rule',
+          priority: 1,
+          conditions: {
+            solarRadiation: { enabled: true, lookAhead: 6, lookAheadUnit: 'hours' }
+          }
+        }
+      })),
+      getCachedWeatherData: jest.fn(async () => {
+        throw new Error('weather upstream failed');
+      }),
+      evaluateRule: jest.fn(async () => ({ triggered: false, conditions: [] })),
+      logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-cycle-weather-degrade' };
+        next();
+      });
+      registerAutomationCycleRoute(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/automation/cycle')
+      .send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      errno: 0,
+      result: expect.objectContaining({
+        triggered: false,
+        rulesEvaluated: 1,
+        cycleDurationMs: expect.any(Number)
+      })
+    }));
+    expect(deps.getCachedWeatherData).toHaveBeenCalled();
+    expect(deps.logger.warn).toHaveBeenCalledWith(expect.stringContaining('Weather fetch degraded: weather upstream failed'));
+    expect(deps.evaluateRule).toHaveBeenCalled();
   });
 
   test('returns non-200 when segment apply fails so scheduler can retry/fail the cycle', async () => {
@@ -381,6 +429,54 @@ describe('automation cycle route module', () => {
         telemetryHealthStatus: 'healthy'
       })
     );
+  });
+
+  test('scheduler-preloaded context avoids redundant state, config, and rule reads', async () => {
+    const deps = buildDeps({
+      evaluateRule: jest.fn(async () => ({
+        triggered: false,
+        conditions: [{ passed: false }]
+      })),
+      getQuickControlState: jest.fn(async () => null),
+      getUserAutomationState: jest.fn(async () => ({ enabled: true })),
+      getUserConfig: jest.fn(async () => ({ automation: { blackoutWindows: [] }, deviceSn: 'SN-PRELOAD-1' })),
+      getUserRules: jest.fn(async () => ({
+        ruleA: {
+          enabled: true,
+          name: 'Rule A',
+          priority: 1,
+          action: { workMode: 'ForceCharge', durationMinutes: 30, minSocOnGrid: 0 }
+        }
+      }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-cycle-preload' };
+        req.schedulerContext = {
+          userConfig: { automation: { blackoutWindows: [] }, deviceSn: 'SN-PRELOAD-1' },
+          rules: {
+            ruleA: {
+              enabled: true,
+              name: 'Rule A',
+              priority: 1,
+              action: { workMode: 'ForceCharge', durationMinutes: 30, minSocOnGrid: 0 }
+            }
+          },
+          state: { enabled: true },
+          userId: 'u-cycle-preload'
+        };
+        next();
+      });
+      registerAutomationCycleRoute(instance, deps);
+    });
+
+    const response = await request(app).post('/api/automation/cycle').send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(deps.getUserAutomationState).not.toHaveBeenCalled();
+    expect(deps.getUserConfig).not.toHaveBeenCalled();
+    expect(deps.getUserRules).not.toHaveBeenCalled();
   });
 
   test('skips cycle when telemetry timestamp is older than 30 minutes', async () => {

@@ -404,28 +404,49 @@ class APIClient {
 
   // ==================== PRICING ====================
 
-  async getAmberSites() {
-    return this.get('/api/pricing/sites');
+  async getPricingSites(provider = 'amber') {
+    return this.get('/api/pricing/sites', { provider });
   }
 
-  async getAmberPrices(siteId) {
-    return this.get('/api/pricing/prices', { siteId });
+  async getPricingPrices(provider = 'amber', siteIdOrRegion = '', options = {}) {
+    const normalizedProvider = String(provider || 'amber').trim().toLowerCase() || 'amber';
+    const params = { provider: normalizedProvider, ...options };
+    if (normalizedProvider === 'aemo') {
+      params.regionId = siteIdOrRegion;
+    } else {
+      params.siteId = siteIdOrRegion;
+    }
+    return this.get('/api/pricing/prices', params);
   }
 
-  async getAmberCurrentPrices(siteId, forceRefresh = false) {
-    return this.get('/api/pricing/current', { siteId, forceRefresh });
+  async getPricingCurrentPrices(provider = 'amber', siteIdOrRegion = '', forceRefresh = false, options = {}) {
+    const normalizedProvider = String(provider || 'amber').trim().toLowerCase() || 'amber';
+    const params = { provider: normalizedProvider, forceRefresh, ...options };
+    if (normalizedProvider === 'aemo') {
+      params.regionId = siteIdOrRegion;
+    } else {
+      params.siteId = siteIdOrRegion;
+    }
+    return this.get('/api/pricing/current', params);
   }
 
-  async getAmberHistoricalPrices(siteId, startDate, endDate, resolution = 30, actualOnly = false) {
+  async getPricingHistoricalPrices(provider = 'amber', siteIdOrRegion, startDate, endDate, resolution = 30, actualOnly = false) {
     // startDate and endDate should be YYYY-MM-DD format
     // Backend handles per-user caching in Firestore
     // If actualOnly=true, bypasses cache and returns only materialized (past) prices
-    const params = { 
-      siteId, 
+    const normalizedProvider = String(provider || 'amber').trim().toLowerCase() || 'amber';
+    const params = {
+      provider: normalizedProvider,
       startDate, 
       endDate, 
       resolution
     };
+
+    if (normalizedProvider === 'aemo') {
+      params.regionId = siteIdOrRegion;
+    } else {
+      params.siteId = siteIdOrRegion;
+    }
     
     // Only add actual_only if true (don't send 'false' to keep query clean)
     if (actualOnly) {
@@ -434,6 +455,7 @@ class APIClient {
     
     return this.get('/api/pricing/prices', params);
   }
+
   /**
    * Get actual (settled) Amber prices for a specific timestamp
    * Used to improve ROI accuracy by replacing forecast prices with settled prices
@@ -442,8 +464,35 @@ class APIClient {
    * @param {number} resolution - 5 or 30 (minute interval)
    * @returns {Promise} Response with actual price data or null if unavailable
    */
+  async getPricingActualPrice(provider = 'amber', siteIdOrRegion, timestamp, resolution = 30) {
+    const normalizedProvider = String(provider || 'amber').trim().toLowerCase() || 'amber';
+    const params = { provider: normalizedProvider, timestamp, resolution };
+    if (normalizedProvider === 'aemo') {
+      params.regionId = siteIdOrRegion;
+    } else {
+      params.siteId = siteIdOrRegion;
+    }
+    return this.get('/api/pricing/actual', params);
+  }
+
+  async getAmberSites() {
+    return this.getPricingSites('amber');
+  }
+
+  async getAmberPrices(siteId) {
+    return this.getPricingPrices('amber', siteId);
+  }
+
+  async getAmberCurrentPrices(siteId, forceRefresh = false) {
+    return this.getPricingCurrentPrices('amber', siteId, forceRefresh);
+  }
+
+  async getAmberHistoricalPrices(siteId, startDate, endDate, resolution = 30, actualOnly = false) {
+    return this.getPricingHistoricalPrices('amber', siteId, startDate, endDate, resolution, actualOnly);
+  }
+
   async getAmberActualPrice(siteId, timestamp, resolution = 30) {
-    return this.get('/api/pricing/actual', { siteId, timestamp, resolution });
+    return this.getPricingActualPrice('amber', siteId, timestamp, resolution);
   }
 
   // ==================== QUICK CONTROL ====================
@@ -549,6 +598,10 @@ class APIClient {
 
   async getAdminSchedulerMetrics(days = 14, includeRuns = true, runLimit = 20) {
     return this.get('/api/admin/scheduler-metrics', { days, includeRuns, runLimit });
+  }
+
+  async getAdminApiHealth(days = 30, refresh = false) {
+    return this.get('/api/admin/api-health', refresh ? { days, refresh: 1 } : { days });
   }
 
   async getAdminDataworksOps(force = false) {

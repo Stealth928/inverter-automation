@@ -79,11 +79,22 @@
             justify-content: center;
             filter: drop-shadow(0 6px 20px rgba(0, 0, 0, 0.4));
         }
+        @keyframes logoGlowPulse {
+            0%, 100% {
+                filter: drop-shadow(0 0 6px rgba(52,211,153,0.35))
+                        drop-shadow(0 0 14px rgba(56,189,248,0.15));
+            }
+            50% {
+                filter: drop-shadow(0 0 18px rgba(52,211,153,0.85))
+                        drop-shadow(0 0 36px rgba(56,189,248,0.5));
+            }
+        }
         .logo img {
             width: 72px;
             height: 72px;
             object-fit: contain;
             display: block;
+            animation: logoGlowPulse 2.6s ease-in-out infinite;
         }
 
         .login-header h1 {

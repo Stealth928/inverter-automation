@@ -19,6 +19,16 @@ function buildApp(registerFn) {
   return app;
 }
 
+function buildAemoAPI(overrides = {}) {
+  return {
+    getActualPriceAtTimestamp: jest.fn(async () => ({ regionId: 'NSW1', result: null })),
+    getCurrentPriceData: jest.fn(async () => ({ regionId: 'NSW1', data: [], metadata: {} })),
+    getHistoricalPriceData: jest.fn(async () => ({ regionId: 'NSW1', data: [] })),
+    listSupportedAemoRegions: jest.fn(() => []),
+    ...overrides
+  };
+}
+
 describe('read-only route modules', () => {
   test('pricing routes return safe empty list when unauthenticated', async () => {
     const amberPricesInFlight = new Map();
@@ -32,6 +42,7 @@ describe('read-only route modules', () => {
 
     const app = buildApp((instance) => {
       registerPricingRoutes(instance, {
+        aemoAPI: buildAemoAPI(),
         amberAPI,
         amberPricesInFlight,
         authenticateUser: (_req, res, _next) => res.status(401).json({ errno: 401, error: 'Unauthorized' }),
@@ -64,7 +75,11 @@ describe('read-only route modules', () => {
       registerMetricsRoutes(instance, {
         db: null,
         getAusDateKey: (date) => date.toISOString().slice(0, 10),
-        tryAttachUser: jest.fn(async () => null)
+        isAdmin: jest.fn(() => true),
+        tryAttachUser: jest.fn(async (req) => {
+          req.user = { uid: 'admin-user' };
+          return req.user;
+        })
       });
     });
 
@@ -90,6 +105,7 @@ describe('read-only route modules', () => {
       registerMetricsRoutes(instance, {
         db,
         getAusDateKey: (date) => date.toISOString().slice(0, 10),
+        isAdmin: jest.fn(() => true),
         tryAttachUser: jest.fn(async (req) => {
           req.user = null;
           return null;
@@ -130,6 +146,7 @@ describe('read-only route modules', () => {
       registerMetricsRoutes(instance, {
         db,
         getAusDateKey: (date) => date.toISOString().slice(0, 10),
+        isAdmin: jest.fn(() => true),
         tryAttachUser: jest.fn(async (req) => {
           req.user = { uid: 'u-metrics' };
           return req.user;
@@ -192,6 +209,7 @@ describe('read-only route modules', () => {
       registerMetricsRoutes(instance, {
         db,
         getAusDateKey: (date) => date.toISOString().slice(0, 10),
+        isAdmin: jest.fn(() => true),
         tryAttachUser: jest.fn(async (req) => {
           req.user = { uid: 'u-metrics' };
           return req.user;
@@ -246,6 +264,7 @@ describe('read-only route modules', () => {
       registerMetricsRoutes(instance, {
         db,
         getAusDateKey: (date) => date.toISOString().slice(0, 10),
+        isAdmin: jest.fn(() => true),
         tryAttachUser: jest.fn(async (req) => {
           req.user = { uid: 'u-metrics' };
           return req.user;
@@ -283,6 +302,7 @@ describe('read-only route modules', () => {
 
     const app = buildApp((instance) => {
       registerPricingRoutes(instance, {
+        aemoAPI: buildAemoAPI(),
         amberAPI,
         amberPricesInFlight,
         authenticateUser: (_req, res, _next) => res.status(401).json({ errno: 401, error: 'Unauthorized' }),
@@ -305,6 +325,69 @@ describe('read-only route modules', () => {
     });
     expect(amberAPI.callAmberAPI).not.toHaveBeenCalled();
     expect(getUserConfig).toHaveBeenCalledWith('u-price');
+  });
+
+  test('pricing current endpoint ignores forceRefresh and serves cache in emulator mode', async () => {
+    const previousFunctionsEmulator = process.env.FUNCTIONS_EMULATOR;
+    const previousFirestoreEmulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
+    process.env.FUNCTIONS_EMULATOR = 'true';
+
+    try {
+      const amberPricesInFlight = new Map();
+      const amberAPI = {
+        callAmberAPI: jest.fn(),
+        cacheAmberPricesCurrent: jest.fn(),
+        cacheAmberSites: jest.fn(),
+        getCachedAmberPricesCurrent: jest.fn(async () => [{ perKwh: 0.31, channelType: 'general' }]),
+        getCachedAmberSites: jest.fn()
+      };
+      const getUserConfig = jest.fn(async () => ({
+        amberApiKey: 'amber-key',
+        amberSiteId: 'site-1'
+      }));
+
+      const app = buildApp((instance) => {
+        registerPricingRoutes(instance, {
+          aemoAPI: buildAemoAPI(),
+          amberAPI,
+          amberPricesInFlight,
+          authenticateUser: (_req, res, _next) => res.status(401).json({ errno: 401, error: 'Unauthorized' }),
+          getUserConfig,
+          incrementApiCount: jest.fn(),
+          logger: { debug: jest.fn(), warn: jest.fn() },
+          tryAttachUser: jest.fn(async (req) => {
+            req.user = { uid: 'u-price' };
+            return req.user;
+          })
+        });
+      });
+
+      const response = await request(app)
+        .get('/api/pricing/current')
+        .query({ forceRefresh: 'true' });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toEqual({
+        errno: 0,
+        result: [{ perKwh: 0.31, channelType: 'general' }]
+      });
+      expect(amberAPI.getCachedAmberPricesCurrent).toHaveBeenCalledWith('site-1', 'u-price', {
+        amberApiKey: 'amber-key',
+        amberSiteId: 'site-1'
+      });
+      expect(amberAPI.callAmberAPI).not.toHaveBeenCalled();
+    } finally {
+      if (previousFunctionsEmulator === undefined) {
+        delete process.env.FUNCTIONS_EMULATOR;
+      } else {
+        process.env.FUNCTIONS_EMULATOR = previousFunctionsEmulator;
+      }
+      if (previousFirestoreEmulatorHost === undefined) {
+        delete process.env.FIRESTORE_EMULATOR_HOST;
+      } else {
+        process.env.FIRESTORE_EMULATOR_HOST = previousFirestoreEmulatorHost;
+      }
+    }
   });
 
   test('pricing actual endpoint honors authentication middleware and returns matching interval', async () => {
@@ -339,6 +422,7 @@ describe('read-only route modules', () => {
 
     const app = buildApp((instance) => {
       registerPricingRoutes(instance, {
+        aemoAPI: buildAemoAPI(),
         amberAPI,
         amberPricesInFlight,
         authenticateUser,
@@ -382,6 +466,7 @@ describe('read-only route modules', () => {
 
     const app = buildApp((instance) => {
       registerPricingRoutes(instance, {
+        aemoAPI: buildAemoAPI(),
         amberAPI,
         amberPricesInFlight,
         authenticateUser: (_req, _res, next) => next(),
@@ -402,6 +487,70 @@ describe('read-only route modules', () => {
       error: 'Unsupported pricing provider: flat-rate',
       result: []
     });
+  });
+
+  test('pricing current endpoint for AEMO returns stored snapshot data and does not touch Amber', async () => {
+    const amberPricesInFlight = new Map();
+    const amberAPI = {
+      callAmberAPI: jest.fn(),
+      cacheAmberPricesCurrent: jest.fn(),
+      cacheAmberSites: jest.fn(),
+      getCachedAmberPricesCurrent: jest.fn(),
+      getCachedAmberSites: jest.fn()
+    };
+    const aemoRows = [
+      {
+        type: 'CurrentInterval',
+        channelType: 'general',
+        perKwh: 82.4,
+        startTime: '2026-03-26T00:00:00.000Z',
+        endTime: '2026-03-26T00:05:00.000Z'
+      }
+    ];
+    const aemoAPI = buildAemoAPI({
+      getCurrentPriceData: jest.fn(async () => ({
+        regionId: 'NSW1',
+        data: aemoRows,
+        metadata: { asOf: '2026-03-26T00:00:00.000Z' }
+      }))
+    });
+    const getUserConfig = jest.fn(async () => ({
+      pricingProvider: 'aemo',
+      aemoRegion: 'NSW1'
+    }));
+
+    const app = buildApp((instance) => {
+      registerPricingRoutes(instance, {
+        aemoAPI,
+        amberAPI,
+        amberPricesInFlight,
+        authenticateUser: (_req, _res, next) => next(),
+        getUserConfig,
+        incrementApiCount: jest.fn(),
+        logger: { debug: jest.fn(), warn: jest.fn() },
+        tryAttachUser: jest.fn(async (req) => {
+          req.user = { uid: 'u-aemo' };
+          return req.user;
+        })
+      });
+    });
+
+    const response = await request(app)
+      .get('/api/pricing/current')
+      .query({ provider: 'aemo', forceRefresh: 'true' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ errno: 0, result: aemoRows });
+    expect(aemoAPI.getCurrentPriceData).toHaveBeenCalledWith({
+      forceRefresh: true,
+      regionId: 'NSW1',
+      userConfig: {
+        pricingProvider: 'aemo',
+        aemoRegion: 'NSW1'
+      },
+      userId: 'u-aemo'
+    });
+    expect(amberAPI.callAmberAPI).not.toHaveBeenCalled();
   });
 
   test('weather routes proxy cached weather helper response', async () => {
@@ -531,23 +680,41 @@ describe('read-only route modules', () => {
       'u-inverter',
       'SN-2',
       { deviceSn: 'SN-2' },
-      true
+      true,
+      expect.objectContaining({
+        route: 'inverter-real-time',
+        userEmail: null,
+        alphaessLogMode: 'suspicious-only'
+      })
     );
   });
 
-  test('inverter real-time endpoint dispatches to non-FoxESS adapter when provider is configured', async () => {
-    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
-    const adapterGetStatus = jest.fn(async () => ({
-      socPct: 61,
-      batteryTempC: 28.5,
-      ambientTempC: 22.2,
-      pvPowerW: 4200,
-      loadPowerW: 1700,
-      gridPowerW: 300,
-      feedInPowerW: 0,
-      batteryPowerW: -1200,
-      observedAtIso: '2026-03-11T10:15:00.000Z'
+  test('inverter real-time endpoint uses shared realtime cache for AlphaESS providers', async () => {
+    const getCachedInverterRealtimeData = jest.fn(async () => ({
+      errno: 0,
+      msg: 'Operation successful',
+      result: [{
+        deviceSN: 'ALPHA-SN-1',
+        time: '2026-03-11T10:15:00.000Z',
+        datas: [
+          { variable: 'SoC', value: 61, unit: '%' },
+          { variable: 'pvPower', value: 4.2, unit: 'kW' },
+          { variable: 'loadsPower', value: 1.7, unit: 'kW' },
+          { variable: 'gridConsumptionPower', value: 0.3, unit: 'kW' },
+          { variable: 'feedinPower', value: 0, unit: 'kW' },
+          { variable: 'meterPower2', value: 0.3, unit: 'kW' },
+          { variable: 'batTemperature', value: 28.5, unit: 'C' },
+          { variable: 'ambientTemperation', value: 22.2, unit: 'C' },
+          { variable: 'batChargePower', value: 1.2, unit: 'kW' },
+          { variable: 'batDischargePower', value: 0, unit: 'kW' }
+        ]
+      }],
+      alphaessDiagnostics: {
+        provider: 'alphaess',
+        suspicious: false
+      }
     }));
+    const logger = { log: jest.fn(), warn: jest.fn() };
 
     const app = buildApp((instance) => {
       instance.use('/api', (req, _res, next) => {
@@ -557,9 +724,7 @@ describe('read-only route modules', () => {
       registerInverterReadRoutes(instance, {
         authenticateUser: (_req, _res, next) => next(),
         adapterRegistry: {
-          getDeviceProvider: jest.fn(() => ({
-            getStatus: adapterGetStatus
-          }))
+          getDeviceProvider: jest.fn(() => null)
         },
         foxessAPI: { callFoxESSAPI: jest.fn() },
         getCachedInverterRealtimeData,
@@ -567,7 +732,7 @@ describe('read-only route modules', () => {
           deviceProvider: 'alphaess',
           alphaessSystemSn: 'ALPHA-SN-1'
         })),
-        logger: { log: jest.fn(), warn: jest.fn() },
+        logger,
         setUserConfig: jest.fn(async () => undefined),
         serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
       });
@@ -587,29 +752,45 @@ describe('read-only route modules', () => {
       expect.objectContaining({ variable: 'batChargePower', value: 1.2, unit: 'kW' })
     ]));
     expect(chargePoint).toEqual(expect.objectContaining({ variable: 'batChargePower', value: 1.2, unit: 'kW' }));
-    expect(adapterGetStatus).toHaveBeenCalledWith({
-      deviceSN: 'ALPHA-SN-1',
-      userConfig: {
-        deviceProvider: 'alphaess',
-        alphaessSystemSn: 'ALPHA-SN-1'
-      },
-      userId: 'u-alpha'
+    expect(getCachedInverterRealtimeData).toHaveBeenCalledWith('u-alpha', 'ALPHA-SN-1', {
+      deviceProvider: 'alphaess',
+      alphaessSystemSn: 'ALPHA-SN-1'
+    }, false, {
+      route: 'inverter-real-time',
+      userEmail: null,
+      logger,
+      alphaessLogMode: 'suspicious-only'
     });
-    expect(getCachedInverterRealtimeData).not.toHaveBeenCalled();
+    expect(response.body.alphaessDiagnostics).toEqual(expect.objectContaining({
+      provider: 'alphaess',
+      suspicious: false
+    }));
+    expect(logger.log).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   test('inverter real-time endpoint inverts AlphaESS battery sign for AC-coupled topology', async () => {
-    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
-    const adapterGetStatus = jest.fn(async () => ({
-      socPct: 61,
-      batteryTempC: 28.5,
-      ambientTempC: 22.2,
-      pvPowerW: 0,
-      loadPowerW: 1700,
-      gridPowerW: 0,
-      feedInPowerW: 2400,
-      batteryPowerW: 1200,
-      observedAtIso: '2026-03-11T10:15:00.000Z'
+    const getCachedInverterRealtimeData = jest.fn(async () => ({
+      errno: 0,
+      msg: 'Operation successful',
+      result: [{
+        deviceSN: 'ALPHA-SN-1',
+        time: '2026-03-11T10:15:00.000Z',
+        datas: [
+          { variable: 'SoC', value: 61, unit: '%' },
+          { variable: 'pvPower', value: 0, unit: 'kW' },
+          { variable: 'loadsPower', value: 1.7, unit: 'kW' },
+          { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+          { variable: 'feedinPower', value: 2.4, unit: 'kW' },
+          { variable: 'meterPower2', value: -2.4, unit: 'kW' },
+          { variable: 'batChargePower', value: 0, unit: 'kW' },
+          { variable: 'batDischargePower', value: 1.2, unit: 'kW' }
+        ]
+      }],
+      alphaessDiagnostics: {
+        provider: 'alphaess',
+        suspicious: false
+      }
     }));
 
     const app = buildApp((instance) => {
@@ -620,9 +801,7 @@ describe('read-only route modules', () => {
       registerInverterReadRoutes(instance, {
         authenticateUser: (_req, _res, next) => next(),
         adapterRegistry: {
-          getDeviceProvider: jest.fn(() => ({
-            getStatus: adapterGetStatus
-          }))
+          getDeviceProvider: jest.fn(() => null)
         },
         foxessAPI: { callFoxESSAPI: jest.fn() },
         getCachedInverterRealtimeData,
@@ -651,18 +830,111 @@ describe('read-only route modules', () => {
     expect(dischargePoint).toEqual(expect.objectContaining({ variable: 'batDischargePower', value: 1.2, unit: 'kW' }));
   });
 
+  test('inverter real-time endpoint includes AlphaESS diagnostics and warns on suspicious telemetry', async () => {
+    const getCachedInverterRealtimeData = jest.fn(async () => ({
+      errno: 0,
+      msg: 'Operation successful',
+      result: [{
+        deviceSN: 'AL5002021090044',
+        time: '2026-03-25T00:38:55.576Z',
+        datas: [
+          { variable: 'SoC', value: 96, unit: '%' },
+          { variable: 'pvPower', value: 1.751, unit: 'kW' },
+          { variable: 'loadsPower', value: -19.82, unit: 'kW' },
+          { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+          { variable: 'feedinPower', value: 0.015, unit: 'kW' },
+          { variable: 'batChargePower', value: 1.7558, unit: 'kW' },
+          { variable: 'batDischargePower', value: 0, unit: 'kW' }
+        ]
+      }],
+      alphaessDiagnostics: {
+        provider: 'alphaess',
+        route: 'inverter-real-time',
+        userId: 'u-alpha-suspicious',
+        userEmail: 'william@acct.com.au',
+        deviceSN: 'AL5002021090044',
+        suspicious: true,
+        anomalies: ['negative-load-power', 'small-feed-in-value-may-be-watts', 'power-unit-normalization-ambiguity'],
+        flowBalance: {
+          selected: {
+            residualKw: 19.8408
+          }
+        }
+      }
+    }));
+    const logger = { log: jest.fn(), warn: jest.fn() };
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-alpha-suspicious', email: 'william@acct.com.au' };
+        next();
+      });
+      registerInverterReadRoutes(instance, {
+        authenticateUser: (_req, _res, next) => next(),
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => null)
+        },
+        foxessAPI: { callFoxESSAPI: jest.fn() },
+        getCachedInverterRealtimeData,
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'alphaess',
+          alphaessSystemSn: 'AL5002021090044'
+        })),
+        logger,
+        setUserConfig: jest.fn(async () => undefined),
+        serverTimestamp: jest.fn(() => ({ __serverTimestamp: true }))
+      });
+    });
+
+    const response = await request(app).get('/api/inverter/real-time');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.alphaessDiagnostics).toEqual(expect.objectContaining({
+      provider: 'alphaess',
+      route: 'inverter-real-time',
+      userId: 'u-alpha-suspicious',
+      userEmail: 'william@acct.com.au',
+      deviceSN: 'AL5002021090044',
+      suspicious: true,
+      anomalies: expect.arrayContaining(['negative-load-power', 'small-feed-in-value-may-be-watts', 'power-unit-normalization-ambiguity'])
+    }));
+    expect(response.body.alphaessDiagnostics.flowBalance.selected).toEqual(expect.objectContaining({
+      residualKw: expect.any(Number)
+    }));
+    expect(getCachedInverterRealtimeData).toHaveBeenCalledWith('u-alpha-suspicious', 'AL5002021090044', {
+      deviceProvider: 'alphaess',
+      alphaessSystemSn: 'AL5002021090044'
+    }, false, {
+      route: 'inverter-real-time',
+      userEmail: 'william@acct.com.au',
+      logger,
+      alphaessLogMode: 'suspicious-only'
+    });
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   test('inverter real-time endpoint honors explicit AlphaESS battery sign override', async () => {
-    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
-    const adapterGetStatus = jest.fn(async () => ({
-      socPct: 57,
-      batteryTempC: 27.1,
-      ambientTempC: 21.8,
-      pvPowerW: 0,
-      loadPowerW: 1600,
-      gridPowerW: 0,
-      feedInPowerW: 2200,
-      batteryPowerW: 1200,
-      observedAtIso: '2026-03-11T10:25:00.000Z'
+    const getCachedInverterRealtimeData = jest.fn(async () => ({
+      errno: 0,
+      msg: 'Operation successful',
+      result: [{
+        deviceSN: 'ALPHA-SN-1',
+        time: '2026-03-11T10:25:00.000Z',
+        datas: [
+          { variable: 'SoC', value: 57, unit: '%' },
+          { variable: 'pvPower', value: 0, unit: 'kW' },
+          { variable: 'loadsPower', value: 1.6, unit: 'kW' },
+          { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+          { variable: 'feedinPower', value: 2.2, unit: 'kW' },
+          { variable: 'meterPower2', value: -2.2, unit: 'kW' },
+          { variable: 'batChargePower', value: 1.2, unit: 'kW' },
+          { variable: 'batDischargePower', value: 0, unit: 'kW' }
+        ]
+      }],
+      alphaessDiagnostics: {
+        provider: 'alphaess',
+        suspicious: false
+      }
     }));
 
     const app = buildApp((instance) => {
@@ -673,9 +945,7 @@ describe('read-only route modules', () => {
       registerInverterReadRoutes(instance, {
         authenticateUser: (_req, _res, next) => next(),
         adapterRegistry: {
-          getDeviceProvider: jest.fn(() => ({
-            getStatus: adapterGetStatus
-          }))
+          getDeviceProvider: jest.fn(() => null)
         },
         foxessAPI: { callFoxESSAPI: jest.fn() },
         getCachedInverterRealtimeData,
@@ -706,17 +976,27 @@ describe('read-only route modules', () => {
   });
 
   test('inverter real-time endpoint infers AlphaESS sign inversion from flow balance when topology fallback is wrong', async () => {
-    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
-    const adapterGetStatus = jest.fn(async () => ({
-      socPct: 91.2,
-      batteryTempC: 0,
-      ambientTempC: 0,
-      pvPowerW: 0,
-      loadPowerW: 448,
-      gridPowerW: 0,
-      feedInPowerW: 0,
-      batteryPowerW: 448,
-      observedAtIso: '2026-03-13T13:27:57.885Z'
+    const getCachedInverterRealtimeData = jest.fn(async () => ({
+      errno: 0,
+      msg: 'Operation successful',
+      result: [{
+        deviceSN: 'ALPHA-SN-1',
+        time: '2026-03-13T13:27:57.885Z',
+        datas: [
+          { variable: 'SoC', value: 91.2, unit: '%' },
+          { variable: 'pvPower', value: 0, unit: 'kW' },
+          { variable: 'loadsPower', value: 0.448, unit: 'kW' },
+          { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+          { variable: 'feedinPower', value: 0, unit: 'kW' },
+          { variable: 'meterPower2', value: 0, unit: 'kW' },
+          { variable: 'batChargePower', value: 0, unit: 'kW' },
+          { variable: 'batDischargePower', value: 0.448, unit: 'kW' }
+        ]
+      }],
+      alphaessDiagnostics: {
+        provider: 'alphaess',
+        suspicious: false
+      }
     }));
 
     const app = buildApp((instance) => {
@@ -727,9 +1007,7 @@ describe('read-only route modules', () => {
       registerInverterReadRoutes(instance, {
         authenticateUser: (_req, _res, next) => next(),
         adapterRegistry: {
-          getDeviceProvider: jest.fn(() => ({
-            getStatus: adapterGetStatus
-          }))
+          getDeviceProvider: jest.fn(() => null)
         },
         foxessAPI: { callFoxESSAPI: jest.fn() },
         getCachedInverterRealtimeData,
@@ -759,17 +1037,23 @@ describe('read-only route modules', () => {
   });
 
   test('inverter real-time endpoint preserves provider-specific power semantics for non-alpha adapters', async () => {
-    const getCachedInverterRealtimeData = jest.fn(async () => ({ errno: 0, result: { shouldNotBeUsed: true } }));
-    const adapterGetStatus = jest.fn(async () => ({
-      socPct: 54,
-      batteryTempC: null,
-      ambientTempC: null,
-      pvPowerW: 2.5,
-      loadPowerW: 1.9,
-      gridPowerW: 0.4,
-      feedInPowerW: 0,
-      batteryPowerW: -0.8,
-      observedAtIso: '2026-03-11T11:20:00.000Z'
+    const getCachedInverterRealtimeData = jest.fn(async () => ({
+      errno: 0,
+      msg: 'Operation successful',
+      result: [{
+        deviceSN: 'SIGEN-STATION-1',
+        time: '2026-03-11T11:20:00.000Z',
+        datas: [
+          { variable: 'SoC', value: 54 },
+          { variable: 'pvPower', value: 2.5 },
+          { variable: 'loadsPower', value: 1.9 },
+          { variable: 'gridConsumptionPower', value: 0.4 },
+          { variable: 'feedinPower', value: 0 },
+          { variable: 'meterPower2', value: 0.4 },
+          { variable: 'batChargePower', value: 0 },
+          { variable: 'batDischargePower', value: 0.8 }
+        ]
+      }]
     }));
 
     const app = buildApp((instance) => {
@@ -780,9 +1064,7 @@ describe('read-only route modules', () => {
       registerInverterReadRoutes(instance, {
         authenticateUser: (_req, _res, next) => next(),
         adapterRegistry: {
-          getDeviceProvider: jest.fn(() => ({
-            getStatus: adapterGetStatus
-          }))
+          getDeviceProvider: jest.fn(() => null)
         },
         foxessAPI: { callFoxESSAPI: jest.fn() },
         getCachedInverterRealtimeData,
@@ -810,15 +1092,15 @@ describe('read-only route modules', () => {
     expect(dischargePoint).toEqual(expect.objectContaining({ variable: 'batDischargePower', value: 0.8 }));
     expect(pvPoint).not.toHaveProperty('unit');
     expect(loadPoint).not.toHaveProperty('unit');
-    expect(adapterGetStatus).toHaveBeenCalledWith({
-      deviceSN: 'SIGEN-STATION-1',
-      userConfig: {
-        deviceProvider: 'sigenergy',
-        sigenStationId: 'SIGEN-STATION-1'
-      },
-      userId: 'u-sigen'
+    expect(getCachedInverterRealtimeData).toHaveBeenCalledWith('u-sigen', 'SIGEN-STATION-1', {
+      deviceProvider: 'sigenergy',
+      sigenStationId: 'SIGEN-STATION-1'
+    }, false, {
+      route: 'inverter-real-time',
+      userEmail: null,
+      logger: expect.any(Object),
+      alphaessLogMode: 'suspicious-only'
     });
-    expect(getCachedInverterRealtimeData).not.toHaveBeenCalled();
   });
 
   test('inverter discover-variables endpoint dispatches to non-FoxESS adapter when provider is configured', async () => {
@@ -1124,16 +1406,27 @@ describe('read-only route modules', () => {
   });
 
   test('inverter real-time endpoint ignores AC solar mapping for providers without raw source mapping support', async () => {
-    const adapterGetStatus = jest.fn(async () => ({
-      socPct: 68,
-      batteryTempC: 27.1,
-      ambientTempC: 21.4,
-      pvPowerW: 0,
-      loadPowerW: 1800,
-      gridPowerW: 600,
-      feedInPowerW: 0,
-      batteryPowerW: -1200,
-      observedAtIso: '2026-03-20T00:20:00.000Z'
+    const getCachedInverterRealtimeData = jest.fn(async () => ({
+      errno: 0,
+      msg: 'Operation successful',
+      result: [{
+        deviceSN: 'ALPHA-MAP-1',
+        time: '2026-03-20T00:20:00.000Z',
+        datas: [
+          { variable: 'SoC', value: 68, unit: '%' },
+          { variable: 'pvPower', value: 0, unit: 'kW' },
+          { variable: 'loadsPower', value: 1.8, unit: 'kW' },
+          { variable: 'gridConsumptionPower', value: 0.6, unit: 'kW' },
+          { variable: 'feedinPower', value: 0, unit: 'kW' },
+          { variable: 'meterPower2', value: 0.6, unit: 'kW' },
+          { variable: 'batChargePower', value: 0, unit: 'kW' },
+          { variable: 'batDischargePower', value: 1.2, unit: 'kW' }
+        ]
+      }],
+      alphaessDiagnostics: {
+        provider: 'alphaess',
+        suspicious: false
+      }
     }));
 
     const app = buildApp((instance) => {
@@ -1143,13 +1436,11 @@ describe('read-only route modules', () => {
       });
       registerInverterReadRoutes(instance, {
         adapterRegistry: {
-          getDeviceProvider: jest.fn(() => ({
-            getStatus: adapterGetStatus
-          }))
+          getDeviceProvider: jest.fn(() => null)
         },
         authenticateUser: (_req, _res, next) => next(),
         foxessAPI: { callFoxESSAPI: jest.fn() },
-        getCachedInverterRealtimeData: jest.fn(),
+        getCachedInverterRealtimeData,
         getUserConfig: jest.fn(async () => ({
           deviceProvider: 'alphaess',
           alphaessSystemSn: 'ALPHA-MAP-1',
@@ -1772,6 +2063,55 @@ describe('read-only route modules', () => {
       userId: 'u-diagnostics-alpha'
     });
     expect(foxessAPI.callFoxESSAPI).not.toHaveBeenCalled();
+  });
+
+  test('diagnostics read routes include AlphaESS diagnostics and warn for suspicious payloads', async () => {
+    const adapterGetStatus = jest.fn(async () => ({
+      socPct: 96,
+      batteryTempC: 0,
+      ambientTempC: 0,
+      pvPowerW: 1751,
+      loadPowerW: -19820,
+      gridPowerW: 0,
+      feedInPowerW: 15,
+      batteryPowerW: 1755.8,
+      observedAtIso: '2026-03-25T00:38:55.576Z'
+    }));
+    const logger = { log: jest.fn(), warn: jest.fn() };
+
+    const app = buildApp((instance) => {
+      registerDiagnosticsReadRoutes(instance, {
+        adapterRegistry: {
+          getDeviceProvider: jest.fn(() => ({
+            getStatus: adapterGetStatus
+          }))
+        },
+        authenticateUser: (req, _res, next) => {
+          req.user = { uid: 'u-diagnostics-alpha-suspicious', email: 'william@acct.com.au' };
+          next();
+        },
+        foxessAPI: {
+          callFoxESSAPI: jest.fn(async () => ({ errno: 0, result: [] }))
+        },
+        getUserConfig: jest.fn(async () => ({
+          deviceProvider: 'alphaess',
+          alphaessSystemSn: 'AL5002021090044'
+        })),
+        logger
+      });
+    });
+
+    const response = await request(app).post('/api/inverter/all-data').send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.alphaessDiagnostics).toEqual(expect.objectContaining({
+      provider: 'alphaess',
+      route: 'diagnostics-all-data',
+      userId: 'u-diagnostics-alpha-suspicious',
+      suspicious: true,
+      anomalies: expect.arrayContaining(['negative-load-power', 'small-feed-in-value-may-be-watts', 'power-unit-normalization-ambiguity'])
+    }));
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('[AlphaESSDiagnostics]'));
   });
 
   test('diagnostics read routes suppress AC mapping hints for providers without raw source mapping support', async () => {

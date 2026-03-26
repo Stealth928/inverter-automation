@@ -41,6 +41,9 @@ function createInMemoryDb() {
           data: () => value
         };
       },
+      delete: async () => {
+        store.delete(path);
+      },
       set: async (value, options = {}) => {
         if (options && options.merge) {
           const existing = store.get(path) || {};
@@ -197,6 +200,7 @@ describe('automation scheduler metrics sink', () => {
       errors: 1,
       retries: 3,
       maxQueueLagMs: 80,
+      p95QueueLagMs: 70,
       maxCycleDurationMs: 140,
       maxTelemetryAgeMs: 120000,
       p95CycleDurationMs: 120,
@@ -440,5 +444,79 @@ describe('automation scheduler metrics sink', () => {
         maxTelemetryAgeMs: 1000
       })
     }));
+  });
+
+  test('does not persist current alert docs for healthy runs', async () => {
+    const { db, getDoc, listDocPaths } = createInMemoryDb();
+    const sink = createAutomationSchedulerMetricsSink({
+      db,
+      now: () => 1710000030000,
+      serverTimestamp: () => 'server-ts',
+      timezone: 'UTC'
+    });
+
+    await sink.emitSchedulerMetrics({
+      schedulerId: 'sched-healthy',
+      startedAtMs: 1710000030000,
+      completedAtMs: 1710000030100,
+      durationMs: 100,
+      totalEnabledUsers: 2,
+      cycleCandidates: 2,
+      cyclesRun: 2,
+      deadLetters: 0,
+      errors: 0,
+      retries: 0,
+      queueLagMs: { avgMs: 5, count: 2, maxMs: 6, minMs: 4, p95Ms: 6, p99Ms: 6 },
+      cycleDurationMs: { avgMs: 8, count: 2, maxMs: 9, minMs: 7, p95Ms: 9, p99Ms: 9 },
+      telemetryAgeMs: { avgMs: 1000, count: 2, maxMs: 1100, minMs: 900, p95Ms: 1100, p99Ms: 1100 },
+      skipped: { disabledOrBlackout: 0, idempotent: 0, locked: 0, tooSoon: 0 }
+    });
+
+    expect(getDoc('metrics/automationScheduler/alerts/current')).toBeUndefined();
+    expect(listDocPaths()).not.toContain('metrics/automationScheduler/alerts/current');
+  });
+
+  test('clears stale current alert once a healthy aggregate is emitted', async () => {
+    const { db, getDoc, listDocPaths } = createInMemoryDb();
+    const sink = createAutomationSchedulerMetricsSink({
+      db,
+      now: () => 1710000040000,
+      serverTimestamp: () => 'server-ts',
+      timezone: 'UTC',
+      sloThresholds: {
+        errorRatePct: 0.5,
+        deadLetterRatePct: 0.1,
+        maxQueueLagMs: 10,
+        maxCycleDurationMs: 10,
+        p99CycleDurationMs: 10
+      }
+    });
+
+    await db.collection('metrics').doc('automationScheduler').collection('alerts').doc('current').set({
+      status: 'breach',
+      dayKey: '2024-03-08',
+      runId: 'stale-breach',
+      updatedAt: 'server-ts'
+    });
+
+    await sink.emitSchedulerMetrics({
+      schedulerId: 'sched-recovered',
+      startedAtMs: 1710000040500,
+      completedAtMs: 1710000040600,
+      durationMs: 100,
+      totalEnabledUsers: 1,
+      cycleCandidates: 1,
+      cyclesRun: 1,
+      deadLetters: 0,
+      errors: 0,
+      retries: 0,
+      queueLagMs: { avgMs: 1, count: 1, maxMs: 1, minMs: 1, p95Ms: 1, p99Ms: 1 },
+      cycleDurationMs: { avgMs: 1, count: 1, maxMs: 1, minMs: 1, p95Ms: 1, p99Ms: 1 },
+      telemetryAgeMs: { avgMs: 100, count: 1, maxMs: 100, minMs: 100, p95Ms: 100, p99Ms: 100 },
+      skipped: { disabledOrBlackout: 0, idempotent: 0, locked: 0, tooSoon: 0 }
+    });
+
+    expect(getDoc('metrics/automationScheduler/alerts/current')).toBeUndefined();
+    expect(listDocPaths()).not.toContain('metrics/automationScheduler/alerts/current');
   });
 });

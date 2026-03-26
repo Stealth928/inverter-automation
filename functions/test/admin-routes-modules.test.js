@@ -27,6 +27,18 @@ function createDeps(overrides = {}) {
       accountId: null,
       raw: null
     })),
+    buildFirestoreQuotaSummary: jest.fn(() => ({
+      alerts: [],
+      dailyFreeTier: { reads: 50000, writes: 20000, deletes: 20000 },
+      generatedAt: '2026-03-25T00:00:00.000Z',
+      metrics: [],
+      overallStatus: 'healthy'
+    })),
+    getCacheMetricsSnapshot: jest.fn(() => ({
+      startedAtMs: 1711324800000,
+      totals: { reads: 0, hits: 0, misses: 0, errors: 0, writes: 0, hitRatePct: null, missRatePct: null },
+      sources: []
+    })),
     sumSeriesValues: jest.fn(() => 0),
     estimateFirestoreCostFromUsage: jest.fn(() => ({
       services: [],
@@ -95,6 +107,14 @@ function makeQuerySnapshot(docs = []) {
     docs,
     empty: docs.length === 0,
     forEach: (fn) => docs.forEach(fn)
+  };
+}
+
+function makeDocSnapshot(id, data) {
+  return {
+    id,
+    exists: true,
+    data: () => data
   };
 }
 
@@ -387,6 +407,9 @@ describe('admin route module', () => {
   });
 
   test('dataworks ops returns cached GitHub diagnostics without refetching immediately', async () => {
+    const nowMs = Date.now();
+    const asOfIso = new Date(nowMs - (4 * 60 * 1000)).toISOString();
+    const storedAtIso = new Date(nowMs - (3 * 60 * 1000)).toISOString();
     const fetchImpl = jest.fn()
       .mockResolvedValueOnce(makeFetchResponse(200, {
         state: 'active',
@@ -448,6 +471,53 @@ describe('admin route module', () => {
 
     const app = buildApp(createDeps({
       fetchImpl,
+      db: {
+        collection: jest.fn((name) => {
+          if (name === 'aemoSnapshots') {
+            return {
+              get: jest.fn(async () => makeQuerySnapshot([
+                makeDocSnapshot('NSW1', {
+                  data: [{ type: 'CurrentInterval' }, { type: 'ForecastInterval' }],
+                  metadata: { asOf: asOfIso, forecastHorizonMinutes: 1440, isForecastComplete: true },
+                  storedAtIso,
+                  schedule: { cadenceMinutes: 5, lagMinutes: 1, source: 'scheduler' }
+                }),
+                makeDocSnapshot('QLD1', {
+                  data: [{ type: 'CurrentInterval' }, { type: 'ForecastInterval' }],
+                  metadata: { asOf: asOfIso, forecastHorizonMinutes: 1440, isForecastComplete: true },
+                  storedAtIso,
+                  schedule: { cadenceMinutes: 5, lagMinutes: 1, source: 'scheduler' }
+                }),
+                makeDocSnapshot('SA1', {
+                  data: [{ type: 'CurrentInterval' }, { type: 'ForecastInterval' }],
+                  metadata: { asOf: asOfIso, forecastHorizonMinutes: 1440, isForecastComplete: true },
+                  storedAtIso,
+                  schedule: { cadenceMinutes: 5, lagMinutes: 1, source: 'scheduler' }
+                }),
+                makeDocSnapshot('TAS1', {
+                  data: [{ type: 'CurrentInterval' }, { type: 'ForecastInterval' }],
+                  metadata: { asOf: asOfIso, forecastHorizonMinutes: 1440, isForecastComplete: true },
+                  storedAtIso,
+                  schedule: { cadenceMinutes: 5, lagMinutes: 1, source: 'scheduler' }
+                }),
+                makeDocSnapshot('VIC1', {
+                  data: [{ type: 'CurrentInterval' }, { type: 'ForecastInterval' }],
+                  metadata: { asOf: asOfIso, forecastHorizonMinutes: 1440, isForecastComplete: true },
+                  storedAtIso,
+                  schedule: { cadenceMinutes: 5, lagMinutes: 1, source: 'scheduler' }
+                })
+              ]))
+            };
+          }
+          return {
+            doc: jest.fn(() => ({
+              set: jest.fn(async () => undefined)
+            })),
+            where: jest.fn(() => ({})),
+            add: jest.fn(async () => undefined)
+          };
+        })
+      },
       githubDataworks: {
         owner: 'Stealth928',
         repo: 'inverter-automation',
@@ -470,6 +540,8 @@ describe('admin route module', () => {
     expect(firstResponse.body.result.latestRun.conclusion).toBe('failure');
     expect(firstResponse.body.result.latestJob.steps[1].name).toBe('Deploy Firebase hosting');
     expect(firstResponse.body.result.releaseAlignment.matches).toBe(true);
+    expect(firstResponse.body.result.liveAemo.status.label).toBe('Healthy');
+    expect(firstResponse.body.result.liveAemo.freshRegions).toBe(5);
     expect(secondResponse.statusCode).toBe(200);
     expect(secondResponse.body.result.cache.hit).toBe(true);
     expect(fetchImpl).toHaveBeenCalledTimes(5);
@@ -1185,6 +1257,40 @@ describe('admin route module', () => {
           { service: 'Cloud Firestore writes', costUsd: 1.45 },
           { service: 'Cloud Firestore deletes', costUsd: 0.04 }
         ]
+      })),
+      buildFirestoreQuotaSummary: jest.fn(() => ({
+        alerts: [
+          {
+            code: 'firestore_reads_watch',
+            metric: 'reads',
+            severity: 'watch',
+            message: 'Reads last-24h usage is 72% of the daily free-tier allowance.'
+          }
+        ],
+        dailyFreeTier: { reads: 50000, writes: 20000, deletes: 20000 },
+        generatedAt: '2026-03-25T00:00:00.000Z',
+        metrics: [
+          {
+            key: 'reads',
+            label: 'Reads',
+            dailyFreeTier: 50000,
+            monthToDateAllowance: 1250000,
+            monthToDateUsage: 710000,
+            last24Hours: 36000,
+            last24HoursUtilizationPct: 72,
+            projectedMonthEnd: 880400,
+            projectedMonthEndUtilizationPct: 56.8,
+            status: 'watch'
+          }
+        ],
+        overallStatus: 'watch'
+      })),
+      getCacheMetricsSnapshot: jest.fn(() => ({
+        startedAtMs: 1711324800000,
+        totals: { reads: 20, hits: 15, misses: 5, errors: 1, writes: 4, hitRatePct: 75, missRatePct: 25 },
+        sources: [
+          { source: 'weather', reads: 8, hits: 7, misses: 1, errors: 0, writes: 2, hitRatePct: 87.5, missRatePct: 12.5, lastSeenAtMs: 1711328400000 }
+        ]
       }))
     });
     const app = buildApp(deps);
@@ -1197,9 +1303,18 @@ describe('admin route module', () => {
     expect(response.body.errno).toBe(0);
     expect(response.body.result.firestore.estimatedDocOpsCostUsd).toBeCloseTo(1.98);
     expect(response.body.result.firestore.estimatedDocOpsBreakdown).toHaveLength(3);
+    expect(response.body.result.firestore.quota).toEqual(expect.objectContaining({
+      overallStatus: 'watch',
+      alerts: [expect.objectContaining({ code: 'firestore_reads_watch' })]
+    }));
+    expect(response.body.result.cache).toEqual(expect.objectContaining({
+      totals: expect.objectContaining({ hitRatePct: 75 }),
+      sources: [expect.objectContaining({ source: 'weather' })]
+    }));
     expect(response.body.result.billing.projectMtdCostUsd).toBeCloseTo(4.23);
     expect(response.body.result.billing.projectServices).toHaveLength(3);
     expect(response.body.result.billing.projectBillingAccountId).toBe('123ABC');
+    expect(response.body.result.warnings).toContain('Reads last-24h usage is 72% of the daily free-tier allowance.');
     // Backward-compatible fields retained
     expect(response.body.result.billing.estimatedMtdCostUsd).toBeCloseTo(4.23);
     expect(response.body.result.billing.services).toHaveLength(3);
@@ -1246,6 +1361,164 @@ describe('admin route module', () => {
     expect(response.body.result.warnings).toContain(
       'Project-level billing unavailable. Showing Firestore doc-op estimate only for reads/writes/deletes.'
     );
+  });
+
+  test('api-health returns cached provider rollups with monitoring-based failure overlay', async () => {
+    const formatDayKey = (offset) => {
+      const date = new Date(Date.now() - (offset * 24 * 60 * 60 * 1000));
+      return date.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
+    };
+    const dayTwoAgo = formatDayKey(2);
+    const dayOneAgo = formatDayKey(1);
+    const dayToday = formatDayKey(0);
+    const metricDocs = new Map(Object.entries({
+      [dayTwoAgo]: { foxess: 20, amber: 9, weather: 4, teslaFleet: { calls: { byCategory: { wake: 1, vehicleData: 2 } } } },
+      [dayOneAgo]: { foxess: 24, amber: 11, weather: 5, teslaFleet: { calls: { byCategory: { wake: 1, command: 1, vehicleData: 2 } } } },
+      [dayToday]: { foxess: 36, amber: 12, weather: 6, teslaFleet: { calls: { byCategory: { wake: 1, command: 2, vehicleData: 2 } } } }
+    }));
+
+    const deps = createDeps({
+      googleApis: {
+        auth: {
+          GoogleAuth: jest.fn(() => ({}))
+        },
+        monitoring: jest.fn(() => ({}))
+      },
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'metrics') {
+            return {
+              doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
+              where: jest.fn(() => ({})),
+              add: jest.fn(async () => undefined)
+            };
+          }
+
+          return {
+            doc: jest.fn((docId) => ({
+              get: jest.fn(async () => ({
+                exists: metricDocs.has(docId),
+                data: () => metricDocs.get(docId) || {}
+              }))
+            }))
+          };
+        })
+      },
+      listMonitoringTimeSeries: jest.fn(async ({ filter }) => {
+        if (String(filter).includes('status!="ok"')) {
+          return [
+            { timestamp: `${dayOneAgo}T00:00:00.000Z`, value: 1 },
+            { timestamp: `${dayToday}T00:00:00.000Z`, value: 2 }
+          ];
+        }
+        if (String(filter).includes('execution_count')) {
+          return [
+            { timestamp: `${dayTwoAgo}T00:00:00.000Z`, value: 18 },
+            { timestamp: `${dayOneAgo}T00:00:00.000Z`, value: 21 },
+            { timestamp: `${dayToday}T00:00:00.000Z`, value: 25 }
+          ];
+        }
+        return [];
+      }),
+      sumSeriesValues: jest.fn((series = []) => series.reduce((sum, point) => sum + Number(point.value || 0), 0))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/api-health?days=30')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.summary.totalCalls).toBe(139);
+    expect(response.body.result.summary.dominantProvider).toEqual(expect.objectContaining({
+      key: 'foxess',
+      label: 'FoxESS'
+    }));
+    expect(response.body.result.monitoring).toEqual(expect.objectContaining({
+      available: true,
+      requestExecutionsTotal: 64,
+      errorExecutionsTotal: 3
+    }));
+    expect(response.body.result.observability.alphaess).toEqual(expect.objectContaining({
+      enabled: true,
+      liveRealtimeLogging: 'suspicious-only',
+      manualDiagnosticsLogging: 'always',
+      extraProviderCallsPerRequest: 0,
+      extraFirestoreWritesPerRequest: 0
+    }));
+    expect(response.body.result.providers[0]).toEqual(expect.objectContaining({
+      key: 'foxess',
+      totalCalls: 80
+    }));
+    expect(response.body.result.daily.find((row) => row.date === dayToday)).toEqual(expect.objectContaining({
+      evBreakdown: expect.objectContaining({
+        wake: 1,
+        command: 2,
+        vehicleData: 2
+      })
+    }));
+    expect(response.body.result.alerts.some((alert) => alert.code === 'error_rate_watch')).toBe(true);
+  });
+
+  test('api-health reads Tesla breakdown from flat dotted metrics fields', async () => {
+    const formatDayKey = (offset) => {
+      const date = new Date(Date.now() - (offset * 24 * 60 * 60 * 1000));
+      return date.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
+    };
+    const dayToday = formatDayKey(0);
+    const metricDocs = new Map(Object.entries({
+      [dayToday]: {
+        foxess: 12,
+        amber: 8,
+        weather: 3,
+        'teslaFleet.calls.total': 5,
+        'teslaFleet.calls.billable': 5,
+        'teslaFleet.calls.byCategory.wake': 1,
+        'teslaFleet.calls.byCategory.command': 2,
+        'teslaFleet.calls.byCategory.data_request': 2
+      }
+    }));
+
+    const deps = createDeps({
+      googleApis: null,
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'metrics') {
+            return {
+              doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
+              where: jest.fn(() => ({})),
+              add: jest.fn(async () => undefined)
+            };
+          }
+
+          return {
+            doc: jest.fn((docId) => ({
+              get: jest.fn(async () => ({
+                exists: metricDocs.has(docId),
+                data: () => metricDocs.get(docId) || {}
+              }))
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/api-health?days=7')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.daily.find((row) => row.date === dayToday)).toEqual(expect.objectContaining({
+      categories: expect.objectContaining({ ev: 5 }),
+      evBreakdown: expect.objectContaining({
+        wake: 1,
+        command: 2,
+        data_request: 2
+      })
+    }));
   });
 
   test('scheduler-metrics returns aggregate daily view with optional recent runs', async () => {
@@ -1543,6 +1816,7 @@ describe('admin route module', () => {
       errors: 1,
       retries: 3,
       maxQueueLagMs: 120,
+      p95QueueLagMs: 120,
       maxCycleDurationMs: 400,
       maxTelemetryAgeMs: 1900000,
       p95CycleDurationMs: 320,
@@ -1622,9 +1896,60 @@ describe('admin route module', () => {
         status: 'watch'
       })
     }));
+    expect(response.body.result.currentSnapshot).toEqual(expect.objectContaining({
+      runId: 'run-1',
+      dayKey: '2026-03-06',
+      schedulerId: 'sched-1',
+      workerId: 'worker-1',
+      cyclesRun: 2,
+      errors: 0,
+      deadLetters: 0,
+      retries: 1,
+      errorRatePct: 0,
+      deadLetterRatePct: 0,
+      avgQueueLagMs: 10,
+      maxQueueLagMs: 20,
+      avgCycleDurationMs: 40,
+      maxCycleDurationMs: 80,
+      maxTelemetryAgeMs: 1900000,
+      p95CycleDurationMs: 70,
+      p99CycleDurationMs: 79,
+      phaseTimingsMaxMs: expect.objectContaining({
+        dataFetchMs: 30,
+        actionApplyMs: 12
+      }),
+      likelyCauses: expect.arrayContaining(['external_api_slowness_or_retries']),
+      telemetryPauseReasons: expect.objectContaining({
+        stale_telemetry: 1
+      }),
+      slo: expect.objectContaining({
+        status: 'breach',
+        breachedMetrics: ['errorRatePct']
+      })
+    }));
+    expect(response.body.result.last24hSummary).toEqual(expect.objectContaining({
+      runs: 0,
+      cyclesRun: 0,
+      errors: 0,
+      deadLetters: 0,
+      retries: 0,
+      errorRatePct: 0,
+      deadLetterRatePct: 0,
+      avgQueueLagMs: 0,
+      avgCycleDurationMs: 0,
+      maxQueueLagMs: 0,
+      maxCycleDurationMs: 0,
+      maxTelemetryAgeMs: 0,
+      latestRunId: null
+    }));
     expect(response.body.result.diagnostics).toEqual(expect.objectContaining({
       tailLatency: expect.objectContaining({
         status: 'watch'
+      }),
+      last24hTailLatency: expect.objectContaining({
+        status: 'healthy',
+        observedRuns: 0,
+        latestP99Ms: 0
       }),
       outlierRun: expect.objectContaining({
         runId: 'run-daily-outlier',
@@ -1737,6 +2062,146 @@ describe('admin route module', () => {
     expect(response.body.result.soak.readiness.readyForCloseout).toBe(false);
     expect(dailyGet).toHaveBeenCalledTimes(1);
     expect(runsGet).not.toHaveBeenCalled();
+  });
+
+  test('dead-letters returns recent items with top error counts', async () => {
+    const deadLetterGet = jest.fn(async () => ({
+      forEach: (callback) => {
+        callback({
+          id: 'dl-1',
+          ref: { path: 'users/u-1/automation_dead_letters/dl-1' },
+          data: () => ({
+            cycleKey: 'u-1_1',
+            createdAt: 1710000000000,
+            expiresAt: 1710003600000,
+            attempts: 3,
+            error: 'FoxESS timeout'
+          })
+        });
+        callback({
+          id: 'dl-2',
+          ref: { path: 'users/u-2/automation_dead_letters/dl-2' },
+          data: () => ({
+            cycleKey: 'u-2_1',
+            createdAt: 1710000100000,
+            expiresAt: 1710003700000,
+            attempts: 3,
+            error: 'FoxESS timeout'
+          })
+        });
+      }
+    }));
+
+    const deps = createDeps({
+      db: {
+        collection: jest.fn(() => ({
+          doc: jest.fn(() => ({
+            collection: jest.fn(() => ({
+              orderBy: jest.fn(() => ({ limit: jest.fn(() => ({ get: jest.fn(async () => ({ forEach: () => {} })) })) }))
+            }))
+          }))
+        })),
+        collectionGroup: jest.fn((name) => {
+          if (name !== 'automation_dead_letters') {
+            throw new Error(`Unexpected collectionGroup: ${name}`);
+          }
+          return {
+            where: jest.fn(() => ({
+              orderBy: jest.fn(() => ({
+                limit: jest.fn(() => ({
+                  get: deadLetterGet
+                }))
+              }))
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/dead-letters?days=7&limit=10')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.total).toBe(2);
+    expect(response.body.result.topErrors).toEqual([
+      { error: 'foxess timeout', count: 2 }
+    ]);
+    expect(response.body.result.items[0]).toEqual(expect.objectContaining({
+      userId: 'u-1',
+      cycleKey: 'u-1_1',
+      attempts: 3
+    }));
+    expect(deadLetterGet).toHaveBeenCalledTimes(1);
+  });
+
+  test('dead-letter retry invokes automation cycle handler and deletes recovered item', async () => {
+    const deadLetterDelete = jest.fn(async () => undefined);
+    const deadLetterSet = jest.fn(async () => undefined);
+    const deadLetterGet = jest.fn(async () => ({
+      exists: true,
+      data: () => ({ cycleKey: 'cycle-u1-123', attempts: 3, error: 'timeout' })
+    }));
+    const adminAuditAdd = jest.fn(async () => undefined);
+    const deps = createDeps({
+      db: {
+        collection: jest.fn((name) => {
+          if (name === 'users') {
+            return {
+              doc: jest.fn((uid) => ({
+                collection: jest.fn((sub) => {
+                  if (sub !== 'automation_dead_letters') throw new Error(`Unexpected subcollection: ${sub}`);
+                  return {
+                    doc: jest.fn((id) => {
+                      expect(uid).toBe('u-1');
+                      expect(id).toBe('dl-1');
+                      return {
+                        get: deadLetterGet,
+                        delete: deadLetterDelete,
+                        set: deadLetterSet
+                      };
+                    })
+                  };
+                })
+              }))
+            };
+          }
+          if (name === 'admin_audit') {
+            return { add: adminAuditAdd };
+          }
+          return {
+            doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
+            where: jest.fn(() => ({})),
+            add: jest.fn(async () => undefined)
+          };
+        })
+      },
+      getAutomationCycleHandler: () => async (_req, res) => res.json({ errno: 0, result: { triggered: false } })
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/admin/dead-letters/u-1/dl-1/retry')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result).toEqual(expect.objectContaining({
+      userId: 'u-1',
+      deadLetterId: 'dl-1',
+      cycleKey: 'cycle-u1-123',
+      retried: true
+    }));
+    expect(deadLetterDelete).toHaveBeenCalledTimes(1);
+    expect(deadLetterSet).not.toHaveBeenCalled();
+    expect(adminAuditAdd).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'retry_dead_letter',
+      targetUid: 'u-1',
+      cycleKey: 'cycle-u1-123',
+      success: true
+    }));
   });
 
   test('user stats resolves AlphaESS credential presence from secrets doc', async () => {

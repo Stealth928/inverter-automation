@@ -745,7 +745,7 @@ app.post('/api/automation/test', async (req, res) => {
     const mockData = req.body && req.body.mockData ? req.body.mockData : (req.body || {});
 
     // Load user rules
-    const rules = await getUserRules(req.user.uid);
+    const rules = await getUserRules(req.user.uid, { enabledOnly: true });
     const sorted = Object.entries(rules || {}).filter(([_, r]) => r.enabled).sort((a,b) => (a[1].priority||99) - (b[1].priority||99));
 
     const allResults = [];

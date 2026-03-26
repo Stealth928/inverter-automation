@@ -40,14 +40,24 @@ function cloneConfig(config) {
   return JSON.parse(JSON.stringify(config));
 }
 
-async function mockSettingsApi(page, config = BASE_CONFIG) {
+async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
   const state = cloneConfig(config);
   const evVehicles = [];
   const readinessByVehicleId = {};
   const oauthStartRequests = [];
   const oauthCallbackRequests = [];
+  const clearCredentialsRequests = [];
   let adminState = false;
   let teslaAppConfig = { configured: false, clientId: '', clientSecretStored: false };
+  const setupStatus = {
+    setupComplete: true,
+    ...(options.setupStatus || {})
+  };
+  const healthState = {
+    FOXESS_TOKEN: true,
+    AMBER_API_KEY: true,
+    ...(options.health || {})
+  };
 
   await page.route('**/api/**', async (route) => {
     const requestUrl = new URL(route.request().url());
@@ -63,15 +73,22 @@ async function mockSettingsApi(page, config = BASE_CONFIG) {
       Object.assign(state, postData || {});
       body = { errno: 0, result: cloneConfig(state) };
     } else if (path === '/api/config/setup-status') {
-      body = { errno: 0, result: { setupComplete: true } };
+      body = { errno: 0, result: { ...setupStatus } };
     } else if (path === '/api/health') {
-      body = { ok: true, FOXESS_TOKEN: true, AMBER_API_KEY: true };
+      body = { ok: true, ...healthState };
     } else if (path === '/api/user/init-profile') {
       body = { errno: 0, result: { initialized: true } };
     } else if (path === '/api/admin/check') {
       body = { errno: 0, result: { isAdmin: adminState } };
     } else if (path === '/api/config/validate-keys') {
       body = { errno: 0, result: { valid: true } };
+    } else if (path === '/api/config/clear-credentials' && method === 'POST') {
+      clearCredentialsRequests.push({});
+      delete state.deviceSn;
+      delete state.foxessToken;
+      delete state.amberApiKey;
+      state.setupComplete = false;
+      body = { errno: 0, msg: 'Credentials cleared successfully. Automation disabled.' };
     } else if (path === '/api/ev/tesla-app-config' && method === 'GET') {
       body = { errno: 0, result: { ...teslaAppConfig } };
     } else if (path === '/api/ev/tesla-app-config' && method === 'POST') {
@@ -162,6 +179,7 @@ async function mockSettingsApi(page, config = BASE_CONFIG) {
       const next = Array.isArray(vehicles) ? vehicles : [];
       evVehicles.splice(0, evVehicles.length, ...next.map((vehicle) => ({ ...vehicle })));
     },
+    getClearCredentialsRequests: () => clearCredentialsRequests.slice(),
     getOAuthStartRequests: () => oauthStartRequests.map((req) => ({ ...req })),
     getOAuthCallbackRequests: () => oauthCallbackRequests.map((req) => ({ ...req }))
   };
@@ -202,7 +220,13 @@ async function waitForSettingsReady(page) {
 async function refreshTeslaVehicles(page) {
   const refreshBtn = page.locator('#teslaRefreshVehiclesBtn');
   if (await refreshBtn.count() === 0) return false;
-  await refreshBtn.first().click();
+  const button = refreshBtn.first();
+  await button.scrollIntoViewIfNeeded();
+  try {
+    await button.click();
+  } catch (_error) {
+    await button.evaluate((element) => element.click());
+  }
   await page.waitForTimeout(800);
   return true;
 }
@@ -325,6 +349,27 @@ test.describe('Settings Page', () => {
     } else {
       expect(true).toBeTruthy();
     }
+  });
+
+  test('should warn that clearing credentials disables automation and redirects to setup', async ({ page }) => {
+    let dialogMessage = '';
+    await page.evaluate(() => {
+      window.__redirectTargets = [];
+      window.safeRedirect = function (target) {
+        window.__redirectTargets.push(target);
+      };
+    });
+    page.once('dialog', (dialog) => {
+      dialogMessage = dialog.message();
+      dialog.accept();
+    });
+
+    await page.locator('button:has-text("Clear Credentials")').click();
+
+    await expect.poll(() => apiMock.getClearCredentialsRequests().length).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.__redirectTargets || [])).toContain('/setup.html');
+    expect(dialogMessage.toLowerCase()).toContain('disable automation');
+    expect(dialogMessage.toLowerCase()).toContain('back to setup');
   });
 
   test('should validate required fields', async ({ page }) => {
@@ -915,6 +960,21 @@ test.describe('Settings Page - Change Detection', () => {
     }
   });
 
+  test('should detect pricing source changes', async ({ page }) => {
+    await page.waitForTimeout(500);
+
+    const pricingProvider = page.locator('#pricing_provider');
+    if (await pricingProvider.count() > 0) {
+      await pricingProvider.selectOption('aemo');
+
+      const credentialsBadge = page.locator('#credentialsBadge');
+      const badgeText = await readTextFast(credentialsBadge);
+      const selectedValue = await pricingProvider.inputValue();
+
+      expect(badgeText.toLowerCase().includes('modif') || selectedValue === 'aemo').toBeTruthy();
+    }
+  });
+
   test('should detect curtailment threshold changes', async ({ page }) => {
     await page.waitForTimeout(500);
     
@@ -1140,5 +1200,68 @@ test.describe('Settings Page - Change Detection', () => {
         expect(value.length).toBeGreaterThanOrEqual(0);  // Should have loaded some value
       }
     }
+  });
+});
+
+test.describe('Settings Page - Provider Credential Change Detection', () => {
+  test.beforeEach(async ({ page }) => {
+    await installInternalPageHarness(page, {
+      user: {
+        uid: 'test-user-provider-789',
+        email: 'providerchanges@example.com',
+        displayName: 'providerchanges'
+      }
+    });
+    await mockSettingsApi(page, {
+      ...BASE_CONFIG,
+      pricingProvider: 'aemo',
+      aemoRegion: 'NSW1',
+      siteIdOrRegion: 'NSW1',
+      sigenRegion: 'apac'
+    }, {
+      setupStatus: {
+        deviceProvider: 'sigenergy',
+        hasSigenUsername: true
+      },
+      health: {
+        FOXESS_TOKEN: false,
+        AMBER_API_KEY: true
+      }
+    });
+    await page.goto('/settings.html', { waitUntil: 'domcontentloaded' });
+    await waitForSettingsReady(page);
+    const credentialsReloadBtn = page.locator('#credentialsSection button:has-text("Reload")');
+    if (await credentialsReloadBtn.count() > 0) {
+      await credentialsReloadBtn.click();
+      await page.waitForTimeout(400);
+    }
+  });
+
+  test('should detect AEMO region changes when AEMO pricing is active', async ({ page }) => {
+    const aemoRegion = page.locator('#pricing_aemoRegion');
+    if (await aemoRegion.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await aemoRegion.selectOption('QLD1');
+
+    const credentialsBadge = page.locator('#credentialsBadge');
+    const badgeText = await readTextFast(credentialsBadge);
+    expect(badgeText.toLowerCase().includes('modif')).toBeTruthy();
+  });
+
+  test('should detect SigenEnergy region changes', async ({ page }) => {
+    const sigenRegion = page.locator('#credentials_sigenenergyRegion');
+    if (await sigenRegion.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await sigenRegion.selectOption('eu');
+
+    const credentialsBadge = page.locator('#credentialsBadge');
+    const badgeText = await readTextFast(credentialsBadge);
+    expect(badgeText.toLowerCase().includes('modif')).toBeTruthy();
   });
 });

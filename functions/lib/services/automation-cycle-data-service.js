@@ -143,7 +143,26 @@ async function fetchAutomationInverterData(options = {}) {
     }
   }
 
-  // Non-FoxESS providers with an adapter: go directly to adapter without cache.
+  // Non-FoxESS providers should use the shared realtime cache first so per-user TTLs
+  // apply consistently across dashboard and automation reads.
+  if (!hasNestedDatasFrame(inverterData) && isNonFoxessWithAdapter && typeof getCachedInverterRealtimeData === 'function') {
+    try {
+      const realtimeData = await getCachedInverterRealtimeData(userId, deviceSN, userConfig, false, {
+        route: 'automation-cycle',
+        logger: options.logger,
+        alphaessLogMode: 'never'
+      });
+      if (hasNestedDatasFrame(realtimeData)) {
+        inverterData = realtimeData;
+        logger.info('[Automation] Shared realtime cache fetch succeeded for non-FoxESS provider');
+      }
+    } catch (error) {
+      logger.warn('[Automation] Failed to get non-FoxESS realtime cache:', error.message);
+    }
+  }
+
+  // Non-FoxESS providers with an adapter: fall back to a live adapter call only when
+  // shared realtime cache data is unavailable or invalid.
   if (!hasNestedDatasFrame(inverterData) && isNonFoxessWithAdapter) {
     try {
       const status = await deviceAdapter.getStatus({ deviceSN, userConfig, userId });
@@ -190,26 +209,37 @@ async function fetchAutomationAmberData(options = {}) {
   const amberAPI = options.amberAPI;
   const amberPricesInFlight = options.amberPricesInFlight;
   const logger = getLogger(options.logger);
+  const pricingProvider = String(options.pricingProvider || options.userConfig?.pricingProvider || 'amber').toLowerCase().trim();
+  const tariffAdapter = options.tariffAdapter || options.amberTariffAdapter || null;
   const userConfig = options.userConfig;
   const userId = options.userId;
-  const amberTariffAdapter = options.amberTariffAdapter || null;
 
-  if (!userConfig?.amberApiKey) {
+  if (pricingProvider === 'amber' && !userConfig?.amberApiKey) {
     return null;
   }
 
   // Prefer the adapter path when available — it owns its own caching strategy
-  if (amberTariffAdapter && typeof amberTariffAdapter.getCurrentPriceData === 'function') {
+  if (tariffAdapter && typeof tariffAdapter.getCurrentPriceData === 'function') {
     try {
-      const adapterResult = await amberTariffAdapter.getCurrentPriceData({ userConfig, userId });
+      const adapterResult = await tariffAdapter.getCurrentPriceData({ userConfig, userId });
       // Result may be { data: [...] } or a plain array
-      return (adapterResult && adapterResult.data !== undefined) ? adapterResult.data : adapterResult;
+      const rows = (adapterResult && adapterResult.data !== undefined) ? adapterResult.data : adapterResult;
+      logAmberForecastSummary(rows, options.logger);
+      return rows;
     } catch (adapterErr) {
+      const providerLabel = pricingProvider === 'amber' ? 'Amber' : pricingProvider;
       logger.warn(
-        `[Automation] Amber adapter fetch failed, falling back to legacy path: ${adapterErr.message}`,
+        `[Automation] ${providerLabel} adapter fetch failed, falling back to legacy path: ${adapterErr.message}`,
         adapterErr.message
       );
+      if (pricingProvider !== 'amber') {
+        return null;
+      }
     }
+  }
+
+  if (pricingProvider !== 'amber') {
+    return null;
   }
 
   if (

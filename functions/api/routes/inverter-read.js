@@ -303,8 +303,6 @@ function registerInverterReadRoutes(app, deps = {}) {
   app.get('/api/inverter/real-time', async (req, res) => {
     try {
       const userConfig = await getUserConfig(req.user.uid);
-      const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
-      const adapter = getProviderAdapter(userConfig);
       const sn = resolveProviderDeviceId(userConfig, req.query.sn).deviceId;
       // Check for force refresh query parameter (bypass cache when ?forceRefresh=true)
       const forceRefresh = req.query.forceRefresh === 'true' || req.query.force === 'true';
@@ -313,22 +311,14 @@ function registerInverterReadRoutes(app, deps = {}) {
         return res.status(400).json({ errno: 400, error: 'Device SN not configured' });
       }
 
-      if (provider !== 'foxess' && adapter && typeof adapter.getStatus === 'function') {
-        const status = await adapter.getStatus({ deviceSN: sn, userConfig, userId: req.user.uid });
-        const normalizeToKw = provider === 'alphaess';
-        const invertBatteryPowerSign = provider === 'alphaess'
-          ? resolveAlphaEssBatterySignInversion(userConfig, normalizeCouplingValue, status)
-          : false;
-        const normalized = buildRealtimePayloadFromDeviceStatus(status, sn, { normalizeToKw, invertBatteryPowerSign });
-        appendRealtimeTelemetryMappings(normalized, userConfig);
-        return res.json(normalized);
-      }
-
-      if (foxessGuard(res, userConfig)) return;
-
-      // Use cached data to avoid excessive Fox API calls (unless force refresh requested)
-      // This respects per-user cache TTL and reduces API quota usage significantly
-      const result = await getCachedInverterRealtimeData(req.user.uid, sn, userConfig, forceRefresh);
+      // Use shared cached realtime data for every provider unless force refresh is requested.
+      // This keeps AlphaESS aligned with the same per-user TTL strategy as FoxESS.
+      const result = await getCachedInverterRealtimeData(req.user.uid, sn, userConfig, forceRefresh, {
+        route: 'inverter-real-time',
+        userEmail: req.user && req.user.email ? req.user.email : null,
+        logger,
+        alphaessLogMode: 'suspicious-only'
+      });
       try {
         await persistTopologyFromRealtime(req.user.uid, userConfig, result);
       } catch (persistError) {

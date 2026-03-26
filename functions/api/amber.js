@@ -26,6 +26,10 @@ const amberRateLimitState = {
 // In-flight request tracker to prevent duplicate API calls
 const amberPricesInFlight = new Map(); // key: "userId:siteId", value: Promise
 
+function isEmulatorRuntime() {
+  return Boolean(process.env.FUNCTIONS_EMULATOR || process.env.FIRESTORE_EMULATOR_HOST);
+}
+
 /**
  * Initialize the module with dependencies from index.js.
  * Returns wrapper functions that have access to db, logger, config, incrementApiCount.
@@ -33,7 +37,12 @@ const amberPricesInFlight = new Map(); // key: "userId:siteId", value: Promise
  * This allows the module to be imported and used with minimal changes to existing code.
  */
 function init(dependencies) {
-  const { db, logger, getConfig, incrementApiCount } = dependencies;
+  const { cacheMetrics, db, logger, getConfig, incrementApiCount } = dependencies;
+
+  function recordCacheMetric(source, outcome, operation = 'read') {
+    if (!cacheMetrics || typeof cacheMetrics.record !== 'function') return;
+    cacheMetrics.record({ source, outcome, operation });
+  }
   
   /**
    * Make an API call to Amber Electric with rate limiting and error handling.
@@ -153,6 +162,7 @@ function init(dependencies) {
       
       const cacheDoc = await db.collection('users').doc(userId).collection('cache').doc('amber_sites').get();
       if (!cacheDoc.exists) {
+        recordCacheMetric('amber-sites', 'miss');
         return null;
       }
       
@@ -161,11 +171,18 @@ function init(dependencies) {
       const cacheTTL = 7 * 24 * 60 * 60 * 1000; // 7 days
       
       if (cacheAge > cacheTTL) {
+        if (isEmulatorRuntime()) {
+          recordCacheMetric('amber-sites', 'hit');
+          return cached.sites || [];
+        }
+        recordCacheMetric('amber-sites', 'miss');
         return null;
       }
-      
+
+      recordCacheMetric('amber-sites', 'hit');
       return cached.sites || [];
     } catch (e) {
+      recordCacheMetric('amber-sites', 'error');
       logger.error('Cache', `Error reading sites cache for ${userId}: ${e.message}`);
       return null;
     }
@@ -187,7 +204,9 @@ function init(dependencies) {
         sites,
         cachedAt: admin.firestore.FieldValue.serverTimestamp()
       });
+      recordCacheMetric('amber-sites', 'write', 'write');
     } catch (e) {
+      recordCacheMetric('amber-sites', 'error');
       logger.error('Cache', `Error storing sites cache for ${userId}: ${e.message}`);
     }
   }
@@ -209,6 +228,7 @@ function init(dependencies) {
       const snap = await cacheDoc.get();
       
       if (!snap.exists) {
+        recordCacheMetric('amber-current', 'miss');
         return null;
       }
       
@@ -217,11 +237,18 @@ function init(dependencies) {
       const cacheTTL = getAmberCacheTTL(userConfig);
       
       if (cacheAge > cacheTTL) {
+        if (isEmulatorRuntime()) {
+          recordCacheMetric('amber-current', 'hit');
+          return cached.prices || null;
+        }
+        recordCacheMetric('amber-current', 'miss');
         return null;
       }
-      
+
+      recordCacheMetric('amber-current', 'hit');
       return cached.prices || null;
     } catch (error) {
+      recordCacheMetric('amber-current', 'error');
       console.warn(`[Cache] Error reading current prices for user ${userId}, site ${siteId}:`, error.message);
       return null;
     }
@@ -247,7 +274,9 @@ function init(dependencies) {
         prices,
         cachedAt: admin.firestore.FieldValue.serverTimestamp()
       });
+      recordCacheMetric('amber-current', 'write', 'write');
     } catch (error) {
+      recordCacheMetric('amber-current', 'error');
       console.warn(`[Cache] Error caching current prices for user ${userId}, site ${siteId}:`, error.message);
     }
   }
@@ -273,6 +302,7 @@ function init(dependencies) {
       const snap = await cacheRef.get();
       
       if (!snap.exists) {
+        recordCacheMetric('amber-historical', 'miss');
         return [];
       }
       
@@ -288,8 +318,10 @@ function init(dependencies) {
         return priceMs >= startMs && priceMs <= endMs;
       });
       
+      recordCacheMetric('amber-historical', filtered.length > 0 ? 'hit' : 'miss');
       return filtered;
     } catch (error) {
+      recordCacheMetric('amber-historical', 'error');
       console.warn(`[Cache] Error reading prices for user ${userId}, site ${siteId}:`, error.message);
       return [];
     }
@@ -386,7 +418,9 @@ function init(dependencies) {
         priceCount: merged.length,
         ttl: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60) // Firestore TTL in seconds (30 days)
       });
+      recordCacheMetric('amber-historical', 'write', 'write');
     } catch (error) {
+      recordCacheMetric('amber-historical', 'error');
       console.warn(`[Cache] Error caching prices for user ${userId}, site ${siteId}:`, error.message);
     }
   }
@@ -450,11 +484,6 @@ function init(dependencies) {
    * @returns {Promise<Object>} Response with actual prices only
    */
   async function fetchAmberHistoricalPricesActualOnly(siteId, startDate, endDate, resolution, userConfig, userId) {
-    // Increment API counter once per request (bypassing cache means we're hitting the API)
-    if (userId && incrementApiCount) {
-      incrementApiCount(userId, 'amber').catch(() => {});
-    }
-    
     const now = new Date();
     let allPrices = [];
     
@@ -463,7 +492,7 @@ function init(dependencies) {
     
     for (const chunk of chunks) {
       
-      // Call Amber API directly (skip counter since we'll track at endpoint level)
+      // Count every chunk request as an upstream Amber call attempt.
       const result = await callAmberAPI(
         `/sites/${encodeURIComponent(siteId)}/prices`, 
         {
@@ -473,7 +502,7 @@ function init(dependencies) {
         }, 
         userConfig, 
         userId, 
-        true // skipCounter = true
+        false
       );
       
       // Handle error responses
@@ -557,17 +586,12 @@ function init(dependencies) {
     
     // Step 3: Fetch gaps from API (split into 30-day chunks)
     if (gaps.length > 0) {
-      // Increment API counter once per cache miss (not per chunk)
-      if (userId && incrementApiCount) {
-        incrementApiCount(userId, 'amber').catch(() => {});
-      }
-      
       for (const gap of gaps) {
         const chunks = splitRangeIntoChunks(gap.start, gap.end, 30);
         
         for (const chunk of chunks) {
           
-          // Call Amber API directly (skip counter since we track at cache level)
+          // Count every chunk request as an upstream Amber call attempt.
           const result = await callAmberAPI(
             `/sites/${encodeURIComponent(siteId)}/prices`, 
             {
@@ -577,7 +601,7 @@ function init(dependencies) {
             }, 
             userConfig, 
             userId, 
-            true // skipCounter = true
+            false
           );
           
           // Handle error responses

@@ -58,6 +58,7 @@ a:hover { text-decoration: underline; }
   justify-content: center;
   gap: 8px;
   padding: 11px 24px;
+  min-height: 46px;
   font-size: 0.95rem;
   font-weight: 600;
   border-radius: 8px;
@@ -109,7 +110,7 @@ a:hover { text-decoration: underline; }
   top: 0;
   z-index: 100;
   height: var(--land-nav-h);
-  background: rgba(255,255,255,.88);
+  background: rgba(255,255,255,.92);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--land-border);
@@ -119,6 +120,7 @@ a:hover { text-decoration: underline; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 24px;
   height: 100%;
 }
 
@@ -128,7 +130,8 @@ a:hover { text-decoration: underline; }
   color: var(--land-text);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  flex-shrink: 0;
   text-decoration: none;
 }
 .land-nav__logo:hover { text-decoration: none; }
@@ -145,29 +148,70 @@ a:hover { text-decoration: underline; }
 .land-nav__links {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 2px;
+  flex: 1 1 auto;
   list-style: none;
 }
+.land-nav__links li {
+  display: flex;
+  align-items: center;
+}
 .land-nav__links a {
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 0.88rem;
+  font-weight: 600;
   color: var(--land-text-muted);
-  padding: 6px 12px;
-  border-radius: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
   transition: color 0.15s, background 0.15s;
   text-decoration: none;
+  white-space: nowrap;
 }
 .land-nav__links a:hover { color: var(--land-text); background: var(--land-bg); }
+
+.land-nav__btn {
+  min-height: 40px;
+  padding: 9px 16px;
+  border-radius: 12px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.land-nav__btn--secondary {
+  margin-left: 6px;
+  background: rgba(246, 248, 250, 0.72);
+}
+
+.land-nav__btn--secondary:hover {
+  background: #eef1f5;
+}
+
+.land-nav__btn--primary {
+  padding-inline: 18px;
+  box-shadow: 0 10px 22px rgba(88,166,255,.18);
+}
+
+.land-nav__btn--primary:hover {
+  box-shadow: 0 12px 24px rgba(31,111,235,.22);
+}
 
 /* Mobile nav toggler */
 .land-nav__burger {
   display: none;
   flex-direction: column;
   gap: 5px;
-  background: none;
-  border: none;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  background: rgba(246,248,250,.9);
+  border: 1px solid rgba(208,215,222,.9);
+  border-radius: 12px;
   cursor: pointer;
-  padding: 6px;
+  padding: 0;
+  transition: background 0.18s, border-color 0.18s, transform 0.18s;
 }
 .land-nav__burger span {
   display: block;
@@ -177,12 +221,24 @@ a:hover { text-decoration: underline; }
   transition: transform 0.2s, opacity 0.2s;
 }
 
+.land-nav__burger:hover {
+  background: #eef1f5;
+  border-color: #b9c3cf;
+}
+
+.land-nav__burger:focus-visible,
+.land-nav__links a:focus-visible,
+.btn:focus-visible {
+  outline: 3px solid rgba(88,166,255,.3);
+  outline-offset: 2px;
+}
+
 /* ---- Hero ----------------------------------------------- */
 .land-hero {
   background:
     radial-gradient(75% 60% at 50% 0%, rgba(56, 139, 253, 0.23), rgba(7, 13, 24, 0) 65%),
     linear-gradient(180deg, #07101d 0%, #0b1627 60%, #0f1d32 100%);
-  padding: 80px 0 90px;
+  padding: 92px 0 90px;
   text-align: center;
 }
 
@@ -227,8 +283,8 @@ a:hover { text-decoration: underline; }
   order: 3;
   font-size: clamp(1rem, 2.2vw, 1.2rem);
   color: rgba(211, 225, 241, 0.8);
-  max-width: 600px;
-  margin: 36px auto 36px;
+  max-width: 680px;
+  margin: 28px auto 34px;
 }
 
 .land-hero__actions {
@@ -238,11 +294,12 @@ a:hover { text-decoration: underline; }
   justify-content: center;
   gap: 16px;
   flex-wrap: wrap;
+  margin-bottom: 4px;
 }
 
 .land-hero__notes {
   order: 5;
-  margin-top: 20px;
+  margin-top: 18px;
   font-size: 0.82rem;
   color: rgba(159, 183, 209, 0.86);
 }
@@ -256,6 +313,49 @@ a:hover { text-decoration: underline; }
 .land-hero .btn-ghost:hover {
   background: rgba(121, 192, 255, 0.12);
   border-color: rgba(121, 192, 255, 0.66);
+}
+
+@media (max-width: 1120px) {
+  .land-nav__links {
+    display: none;
+  }
+
+  .land-nav__links.is-open {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    position: absolute;
+    top: calc(var(--land-nav-h) - 1px);
+    left: 0;
+    right: 0;
+    background: rgba(255,255,255,.98);
+    border-bottom: 1px solid var(--land-border);
+    padding: 16px 24px 20px;
+    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
+    z-index: 99;
+  }
+
+  .land-nav__links.is-open li {
+    width: 100%;
+  }
+
+  .land-nav__links.is-open a {
+    width: 100%;
+    justify-content: flex-start;
+    padding: 12px 10px;
+  }
+
+  .land-nav__links.is-open .land-nav__btn {
+    justify-content: center;
+    min-height: 44px;
+    margin-left: 0;
+  }
+
+  .land-nav__burger {
+    display: flex;
+    flex-shrink: 0;
+  }
 }
 
 .land-hero__preview {
@@ -1398,7 +1498,7 @@ section { padding: 80px 0; }
 @media (max-width: 768px) {
   section { padding: 56px 0; }
 
-  .land-hero { padding: 42px 0 48px; }
+  .land-hero { padding: 56px 0 48px; }
 
   .land-hero__sub {
     margin: 28px auto 24px;
@@ -1413,25 +1513,6 @@ section { padding: 80px 0; }
     margin-top: 16px;
     gap: 6px;
   }
-
-  .land-nav__links { display: none; }
-  .land-nav__links.is-open {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    position: absolute;
-    top: var(--land-nav-h);
-    left: 0;
-    right: 0;
-    background: var(--land-white);
-    border-bottom: 1px solid var(--land-border);
-    padding: 12px 24px 16px;
-    box-shadow: 0 4px 20px rgba(0,0,0,.08);
-    z-index: 99;
-  }
-  .land-nav__links.is-open a { padding: 10px 6px; width: 100%; }
-  .land-nav__burger { display: flex; }
 
   .land-hero__preview-body { grid-template-columns: 1fr; }
 
@@ -1453,6 +1534,14 @@ section { padding: 80px 0; }
 }
 
 @media (max-width: 480px) {
+  .land-nav__inner {
+    gap: 14px;
+  }
+
+  .land-nav__logo {
+    font-size: 1.12rem;
+  }
+
   .land-hero__actions { flex-direction: column; align-items: stretch; }
   .tools-footer__actions { flex-direction: column; align-items: stretch; }
   .blog-featured__actions,

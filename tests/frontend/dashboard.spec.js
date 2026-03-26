@@ -827,6 +827,170 @@ test.describe('Dashboard Page', () => {
     expect(wakeRequests).toContainEqual({});
   });
 
+  test('should recommend waking when cached Tesla status says not plugged in because the plug state may be stale', async ({ page }) => {
+    const commandRequests = [];
+
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-stale-plug', displayName: 'Model Y', hasCredentials: true }],
+      statusByVehicleId: {
+        'veh-stale-plug': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache',
+            result: {
+              socPct: 57,
+              chargingState: 'stopped',
+              isPluggedIn: false,
+              isHome: true,
+              rangeKm: 284,
+              chargeLimitPct: 80,
+              asOfIso: '2026-03-14T00:00:00.000Z'
+            }
+          }
+        }
+      },
+      readinessByVehicleId: {
+        'veh-stale-plug': {
+          status: 200,
+          body: {
+            errno: 0,
+            result: {
+              state: 'ready_direct',
+              transport: 'direct',
+              source: 'fleet_status',
+              vehicleCommandProtocolRequired: false
+            }
+          }
+        }
+      },
+      onCommandRequest: async (request) => {
+        commandRequests.push(request.postDataJSON());
+      }
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evSelectedStatusPills')).toContainText(/Wake Recommended/i);
+    await expect(page.locator('#evWakeVehicleBtn')).toBeVisible();
+    await expect(page.locator('#evWakePrompt')).toContainText(/plug status may be stale/i);
+
+    await page.locator('#evStartChargingBtn').click();
+
+    await expect(page.locator('#evOverviewMessage')).toContainText(/status may be stale/i);
+    expect(commandRequests).toHaveLength(0);
+  });
+
+  test('should keep normal unplugged guidance when Tesla live status says the cable is disconnected', async ({ page }) => {
+    const commandRequests = [];
+
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-live-unplugged', displayName: 'Model 3', hasCredentials: true }],
+      statusByVehicleId: {
+        'veh-live-unplugged': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'live',
+            result: {
+              socPct: 41,
+              chargingState: 'disconnected',
+              isPluggedIn: false,
+              isHome: true,
+              rangeKm: 230,
+              chargeLimitPct: 80,
+              asOfIso: '2026-03-14T00:00:00.000Z'
+            }
+          }
+        }
+      },
+      readinessByVehicleId: {
+        'veh-live-unplugged': {
+          status: 200,
+          body: {
+            errno: 0,
+            result: {
+              state: 'ready_direct',
+              transport: 'direct',
+              source: 'fleet_status',
+              vehicleCommandProtocolRequired: false
+            }
+          }
+        }
+      },
+      onCommandRequest: async (request) => {
+        commandRequests.push(request.postDataJSON());
+      }
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evSelectedStatusPills')).not.toContainText(/Wake Recommended/i);
+    await expect(page.locator('#evWakePrompt')).toBeHidden();
+
+    await page.locator('#evStartChargingBtn').click();
+
+    await expect(page.locator('#evOverviewMessage')).toContainText(/not plugged in/i);
+    expect(commandRequests).toHaveLength(0);
+  });
+
+  test('should update the dashboard to disconnected when Tesla rejects a start command as unplugged', async ({ page }) => {
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-now-unplugged', displayName: 'Model 3', hasCredentials: true }],
+      statusByVehicleId: {
+        'veh-now-unplugged': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache',
+            result: {
+              socPct: 58,
+              chargingState: 'stopped',
+              isPluggedIn: true,
+              isHome: true,
+              rangeKm: 280,
+              chargeLimitPct: 80,
+              asOfIso: '2026-03-14T00:00:00.000Z'
+            }
+          }
+        }
+      },
+      readinessByVehicleId: {
+        'veh-now-unplugged': {
+          status: 200,
+          body: {
+            errno: 0,
+            result: {
+              state: 'ready_direct',
+              transport: 'direct',
+              source: 'fleet_status',
+              vehicleCommandProtocolRequired: false
+            }
+          }
+        }
+      },
+      commandByVehicleId: {
+        'veh-now-unplugged': {
+          status: 409,
+          body: {
+            errno: 409,
+            error: 'Tesla command could not be applied in the current vehicle state',
+            result: {
+              reasonCode: 'disconnected'
+            }
+          }
+        }
+      }
+    });
+
+    await page.reload();
+    await page.locator('#evStartChargingBtn').click();
+
+    await expect(page.locator('#evOverviewMessage')).toContainText(/not plugged in/i);
+    await expect(page.locator('#evSelectedSummary')).toContainText(/Not plugged/i);
+    await expect(page.locator('#evWakePrompt')).toBeHidden();
+  });
+
   test('should keep charging controls disabled and show proxy guidance when Tesla signed proxy is unavailable', async ({ page }) => {
     await mockEvApis(page, {
       vehicles: [{ vehicleId: 'veh-model-s', displayName: 'Model S', hasCredentials: true }],

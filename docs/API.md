@@ -1,6 +1,6 @@
 # API Reference
 
-Last updated: 2026-03-22
+Last updated: 2026-03-25
 
 ## Overview
 
@@ -20,7 +20,148 @@ For the most complete measured route inventory, use
 This document focuses on commonly used product and operator workflows rather
 than listing every backend route exhaustively.
 
+## Pricing Providers
+
+Pricing endpoints support a provider-aware contract while keeping the existing
+Amber-shaped UX and automation model intact.
+
+Supported providers:
+
+- `amber`
+- `aemo`
+
+Supported AEMO regions:
+
+- `NSW1`
+- `QLD1`
+- `VIC1`
+- `SA1`
+- `TAS1`
+
+Primary endpoints:
+
+```text
+GET /api/pricing/sites?provider=amber|aemo
+GET /api/pricing/current?provider=amber|aemo&siteId=<amber-site>|regionId=<aemo-region>
+GET /api/pricing/prices?provider=amber|aemo&siteId=<amber-site>|regionId=<aemo-region>
+GET /api/pricing/prices?provider=amber|aemo&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&resolution=5|30
+GET /api/pricing/actual?provider=amber|aemo&siteId=<amber-site>|regionId=<aemo-region>&timestamp=<iso>
+```
+
+Legacy Amber aliases still exist for backward compatibility:
+
+- `/api/amber/sites`
+- `/api/amber/prices/current`
+- `/api/amber/prices`
+- `/api/amber/prices/actual`
+
+Provider behavior:
+
+- Amber continues to use site-specific retail pricing.
+- AEMO uses public regional market pricing and forecast data.
+- When AEMO is selected, the regional spot price is mirrored into both buy and
+  feed-in fields so existing dashboard cards, rules, ROI, and history surfaces
+  continue to work without schema changes.
+- AEMO may provide a longer forecast horizon than Amber. Clients should use the
+  returned metadata rather than assuming a fixed horizon.
+
+Normalized provider payloads expose the existing interval list plus provider
+metadata such as:
+
+- `source`
+- `siteIdOrRegion`
+- `buyPriceCurrent`
+- `feedInPriceCurrent`
+- `forecastBuy`
+- `forecastFeedIn`
+- `asOf`
+- `forecastHorizonMinutes`
+- `isForecastComplete`
+
 ## Admin Operator Metrics
+
+### Firestore, Quota, and Cache Monitoring
+```
+GET /api/admin/firestore-metrics?hours=36
+Authorization: Bearer <token>
+```
+Admin-only endpoint used by the Admin overview tab for cost and capacity monitoring.
+
+The response includes:
+- Firestore month-to-date reads, writes, deletes, and storage estimate
+- Project month-to-date billing when Cloud Billing access is available
+- Firestore doc-op-only estimate fallback when project billing is unavailable
+- `firestore.quota` daily free-tier monitoring summary based on the last 24 hours of Monitoring data
+- `cache` process-level cache effectiveness summary with hits, misses, writes, and per-source hit rates
+- Operator warnings when Firestore daily free-tier utilization enters watch or breach ranges
+
+Typical success payload excerpt:
+
+```json
+{
+  "errno": 0,
+  "result": {
+    "source": "gcp-monitoring+cloud-billing",
+    "updatedAt": "2026-03-25T09:15:00.000Z",
+    "firestore": {
+      "readsMtd": 710000,
+      "writesMtd": 148000,
+      "deletesMtd": 2100,
+      "storageGb": 0.42,
+      "quota": {
+        "overallStatus": "watch",
+        "dailyFreeTier": { "reads": 50000, "writes": 20000, "deletes": 20000 },
+        "metrics": [
+          {
+            "key": "reads",
+            "last24Hours": 36000,
+            "last24HoursUtilizationPct": 72,
+            "projectedMonthEnd": 880400,
+            "status": "watch"
+          }
+        ],
+        "alerts": [
+          {
+            "code": "firestore_reads_watch",
+            "severity": "watch",
+            "message": "Reads last-24h usage is 72% of the daily free-tier allowance."
+          }
+        ]
+      },
+      "estimatedDocOpsCostUsd": 1.98
+    },
+    "cache": {
+      "totals": {
+        "reads": 20,
+        "hits": 15,
+        "misses": 5,
+        "writes": 4,
+        "hitRatePct": 75
+      },
+      "sources": [
+        {
+          "source": "weather",
+          "reads": 8,
+          "hits": 7,
+          "misses": 1,
+          "hitRatePct": 87.5
+        }
+      ]
+    }
+  }
+}
+```
+
+### Dead-Letter Operations
+```
+GET /api/admin/dead-letters?days=7&limit=50
+POST /api/admin/dead-letters/:userId/:deadLetterId/retry
+Authorization: Bearer <token>
+```
+Admin-only scheduler dead-letter visibility and manual retry endpoints.
+
+- `GET` returns recent retry-exhausted automation cycles, top error clusters, retry-ready counts, and oldest item age.
+- `POST` invokes the real automation cycle handler for the captured `cycleKey`, deletes recovered dead-letter items on success, and writes an `admin_audit` entry for the retry attempt.
 
 ### Shared Announcement Configuration
 ```

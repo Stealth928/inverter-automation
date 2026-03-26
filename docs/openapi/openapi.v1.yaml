@@ -11,6 +11,7 @@ servers:
 tags:
   - name: Health
   - name: Config
+  - name: Pricing
   - name: Automation
   - name: Admin
 paths:
@@ -90,6 +91,10 @@ paths:
                       type: string
                       nullable: true
                       description: Amber Electric API key (optional)
+                    pricing_provider:
+                      $ref: "#/components/schemas/PricingProvider"
+                    aemo_region:
+                      $ref: "#/components/schemas/AemoRegion"
                 - title: Sungrow credentials
                   type: object
                   required: [sungrow_device_sn, sungrow_username, sungrow_password]
@@ -107,6 +112,10 @@ paths:
                       type: string
                       nullable: true
                       description: Amber Electric API key (optional)
+                    pricing_provider:
+                      $ref: "#/components/schemas/PricingProvider"
+                    aemo_region:
+                      $ref: "#/components/schemas/AemoRegion"
                 - title: SigenEnergy credentials
                   type: object
                   required: [sigenergy_username, sigenergy_password]
@@ -126,6 +135,10 @@ paths:
                       type: string
                       nullable: true
                       description: Amber Electric API key (optional)
+                    pricing_provider:
+                      $ref: "#/components/schemas/PricingProvider"
+                    aemo_region:
+                      $ref: "#/components/schemas/AemoRegion"
                 - title: AlphaESS credentials
                   type: object
                   required: [alphaess_system_sn, alphaess_app_id, alphaess_app_secret]
@@ -143,6 +156,10 @@ paths:
                       type: string
                       nullable: true
                       description: Amber Electric API key (optional)
+                    pricing_provider:
+                      $ref: "#/components/schemas/PricingProvider"
+                    aemo_region:
+                      $ref: "#/components/schemas/AemoRegion"
       responses:
         "200":
           description: Validation and save result
@@ -164,6 +181,129 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiEnvelopeSetupStatus"
+  /api/pricing/sites:
+    get:
+      tags: [Pricing]
+      summary: List available pricing sites or supported AEMO regions
+      operationId: getPricingSites
+      parameters:
+        - in: query
+          name: provider
+          schema:
+            $ref: "#/components/schemas/PricingProvider"
+      responses:
+        "200":
+          description: Pricing site or region list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopePricingSelectionList"
+  /api/pricing/current:
+    get:
+      tags: [Pricing]
+      summary: Get current pricing intervals for the selected provider
+      operationId: getPricingCurrent
+      parameters:
+        - in: query
+          name: provider
+          schema:
+            $ref: "#/components/schemas/PricingProvider"
+        - in: query
+          name: siteId
+          schema:
+            type: string
+        - in: query
+          name: regionId
+          schema:
+            $ref: "#/components/schemas/AemoRegion"
+        - in: query
+          name: forceRefresh
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Current pricing intervals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopePricingIntervals"
+  /api/pricing/prices:
+    get:
+      tags: [Pricing]
+      summary: Get forecast or historical pricing intervals for the selected provider
+      operationId: getPricingPrices
+      parameters:
+        - in: query
+          name: provider
+          schema:
+            $ref: "#/components/schemas/PricingProvider"
+        - in: query
+          name: siteId
+          schema:
+            type: string
+        - in: query
+          name: regionId
+          schema:
+            $ref: "#/components/schemas/AemoRegion"
+        - in: query
+          name: startDate
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: endDate
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: resolution
+          schema:
+            type: integer
+            enum: [5, 30]
+        - in: query
+          name: actual_only
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Forecast or historical pricing intervals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopePricingIntervals"
+  /api/pricing/actual:
+    get:
+      tags: [Pricing]
+      summary: Get a settled or historical price interval at a timestamp
+      operationId: getPricingActual
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: provider
+          schema:
+            $ref: "#/components/schemas/PricingProvider"
+        - in: query
+          name: siteId
+          schema:
+            type: string
+        - in: query
+          name: regionId
+          schema:
+            $ref: "#/components/schemas/AemoRegion"
+        - in: query
+          name: timestamp
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Matching actual price interval or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopePricingActual"
   /api/config/announcement:
     get:
       tags: [Config]
@@ -372,6 +512,94 @@ components:
           properties:
             result:
               type: object
+              properties:
+                pricingProvider:
+                  $ref: "#/components/schemas/PricingProvider"
+                amberApiKey:
+                  type: string
+                  nullable: true
+                amberSiteId:
+                  type: string
+                  nullable: true
+                aemoRegion:
+                  $ref: "#/components/schemas/AemoRegion"
+                siteIdOrRegion:
+                  type: string
+                  nullable: true
+    PricingProvider:
+      type: string
+      enum: [amber, aemo]
+    AemoRegion:
+      type: string
+      enum: [NSW1, QLD1, VIC1, SA1, TAS1]
+      nullable: true
+    PricingSelection:
+      type: object
+      properties:
+        id:
+          type: string
+        regionId:
+          $ref: "#/components/schemas/AemoRegion"
+        name:
+          type: string
+        source:
+          $ref: "#/components/schemas/PricingProvider"
+    PricingInterval:
+      type: object
+      properties:
+        type:
+          type: string
+          nullable: true
+        channelType:
+          type: string
+          nullable: true
+        descriptorType:
+          type: string
+          nullable: true
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        perKwh:
+          type: number
+          nullable: true
+        spotPerKwh:
+          type: number
+          nullable: true
+        estimate:
+          type: boolean
+          nullable: true
+        source:
+          $ref: "#/components/schemas/PricingProvider"
+    ApiEnvelopePricingSelectionList:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            result:
+              type: array
+              items:
+                $ref: "#/components/schemas/PricingSelection"
+    ApiEnvelopePricingIntervals:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            result:
+              type: array
+              items:
+                $ref: "#/components/schemas/PricingInterval"
+    ApiEnvelopePricingActual:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            result:
+              anyOf:
+                - $ref: "#/components/schemas/PricingInterval"
+                - type: 'null'
     AnnouncementAudience:
       type: object
       properties:

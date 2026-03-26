@@ -132,6 +132,108 @@ function estimateFirestoreCostFromUsage(readsMtd, writesMtd, deletesMtd, nowDate
   };
 }
 
+const FIRESTORE_DAILY_FREE_TIER = Object.freeze({
+  reads: 50000,
+  writes: 20000,
+  deletes: 20000
+});
+
+function sumTrailingWindow(series = [], trailingMs, nowMs = Date.now()) {
+  if (!Array.isArray(series) || trailingMs <= 0) return 0;
+  const windowStartMs = nowMs - trailingMs;
+  return series.reduce((sum, point) => {
+    const timestampMs = new Date(point?.timestamp || 0).getTime();
+    if (!Number.isFinite(timestampMs) || timestampMs < windowStartMs || timestampMs > nowMs) {
+      return sum;
+    }
+    return sum + Number(point?.value || 0);
+  }, 0);
+}
+
+function describeQuotaStatus(utilizationPct) {
+  const value = Number(utilizationPct || 0);
+  if (value >= 90) return 'breach';
+  if (value >= 70) return 'watch';
+  return 'healthy';
+}
+
+function buildQuotaMetricSummary({ key, label, last24Hours, mtd, dayOfMonth, daysInMonth }) {
+  const dailyFreeTier = Number(FIRESTORE_DAILY_FREE_TIER[key] || 0);
+  const monthToDateAllowance = dailyFreeTier * dayOfMonth;
+  const projectedMonthEnd = dayOfMonth > 0 ? Math.round((Number(mtd || 0) / dayOfMonth) * daysInMonth) : 0;
+  const last24HoursUtilizationPct = dailyFreeTier > 0 ? Number(((Number(last24Hours || 0) / dailyFreeTier) * 100).toFixed(1)) : null;
+  const projectedMonthEndUtilizationPct = monthToDateAllowance > 0
+    ? Number(((projectedMonthEnd / (dailyFreeTier * daysInMonth)) * 100).toFixed(1))
+    : null;
+  return {
+    key,
+    label,
+    dailyFreeTier,
+    monthToDateAllowance,
+    monthToDateUsage: Math.round(Number(mtd || 0)),
+    last24Hours: Math.round(Number(last24Hours || 0)),
+    last24HoursUtilizationPct,
+    projectedMonthEnd,
+    projectedMonthEndUtilizationPct,
+    status: describeQuotaStatus(last24HoursUtilizationPct)
+  };
+}
+
+function buildFirestoreQuotaSummary({ deletesMtd, deletesSeries, nowDate = new Date(), readsMtd, readsSeries, writesMtd, writesSeries }) {
+  const nowMs = nowDate.getTime();
+  const dayOfMonth = Math.max(1, nowDate.getUTCDate());
+  const daysInMonth = new Date(Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth() + 1, 0)).getUTCDate();
+  const trailing24hMs = 24 * 60 * 60 * 1000;
+
+  const metrics = [
+    buildQuotaMetricSummary({
+      key: 'reads',
+      label: 'Reads',
+      last24Hours: sumTrailingWindow(readsSeries, trailing24hMs, nowMs),
+      mtd: readsMtd,
+      dayOfMonth,
+      daysInMonth
+    }),
+    buildQuotaMetricSummary({
+      key: 'writes',
+      label: 'Writes',
+      last24Hours: sumTrailingWindow(writesSeries, trailing24hMs, nowMs),
+      mtd: writesMtd,
+      dayOfMonth,
+      daysInMonth
+    }),
+    buildQuotaMetricSummary({
+      key: 'deletes',
+      label: 'Deletes',
+      last24Hours: sumTrailingWindow(deletesSeries, trailing24hMs, nowMs),
+      mtd: deletesMtd,
+      dayOfMonth,
+      daysInMonth
+    })
+  ];
+
+  const alerts = metrics
+    .filter((metric) => metric.status !== 'healthy')
+    .map((metric) => ({
+      code: `firestore_${metric.key}_${metric.status}`,
+      metric: metric.key,
+      severity: metric.status,
+      message: `${metric.label} last-24h usage is ${metric.last24HoursUtilizationPct}% of the daily free-tier allowance.`
+    }));
+
+  const overallStatus = alerts.some((alert) => alert.severity === 'breach')
+    ? 'breach'
+    : (alerts.length ? 'watch' : 'healthy');
+
+  return {
+    alerts,
+    dailyFreeTier: { ...FIRESTORE_DAILY_FREE_TIER },
+    generatedAt: nowDate.toISOString(),
+    metrics,
+    overallStatus
+  };
+}
+
 async function fetchCloudBillingCost(projectId, options = {}) {
   const googleApis = options.googleApis;
   if (!googleApis) throw new Error('googleapis not available');
@@ -391,6 +493,7 @@ async function fetchCloudBillingCost(projectId, options = {}) {
 }
 
 module.exports = {
+  buildFirestoreQuotaSummary,
   estimateFirestoreCostFromUsage,
   fetchCloudBillingCost,
   getRuntimeProjectId,

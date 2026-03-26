@@ -304,6 +304,7 @@ async function defaultShouldRunCycleKey(options = {}) {
   const cycleKey = options.cycleKey;
   const schedulerId = options.schedulerId;
   const idempotencyTtlMs = options.idempotencyTtlMs;
+  const reserve = options.reserve !== false;
   const idempotencyRef = createIdempotencyRef(db, userId, cycleKey);
   const nowMs = Date.now();
   let shouldRun = false;
@@ -320,6 +321,11 @@ async function defaultShouldRunCycleKey(options = {}) {
         (status === 'started' || status === 'completed');
       if (hasActiveMarker) {
         shouldRun = false;
+        return;
+      }
+
+       if (!reserve) {
+        shouldRun = true;
         return;
       }
 
@@ -344,6 +350,10 @@ async function defaultShouldRunCycleKey(options = {}) {
     if (expiresAt > nowMs && (status === 'started' || status === 'completed')) {
       return false;
     }
+  }
+
+  if (!reserve) {
+    return true;
   }
 
   await idempotencyRef.set({
@@ -588,17 +598,42 @@ function tallyTelemetryPauseReasons(entries) {
   return pauseReasons;
 }
 
+function hasConfiguredSchedulerDevice(userConfig) {
+  const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();
+  if (provider === 'alphaess') {
+    return Boolean(userConfig?.alphaessSystemSn || userConfig?.alphaessSysSn || userConfig?.deviceSn);
+  }
+  if (provider === 'sungrow') {
+    return Boolean(userConfig?.sungrowDeviceSn || userConfig?.deviceSn);
+  }
+  if (provider === 'sigenergy') {
+    return Boolean(userConfig?.sigenStationId || userConfig?.sigenDeviceSn || userConfig?.deviceSn);
+  }
+  return Boolean(userConfig?.deviceSn);
+}
+
+function hasEnabledAutomationRules(userRules) {
+  return Object.values(userRules || {}).some((rule) => rule && rule.enabled === true);
+}
+
 async function invokeAutomationCycleHandler(options = {}) {
   const automationCycleHandler = options.automationCycleHandler;
   const userId = options.userId;
   const cycleKey = options.cycleKey;
+  const schedulerContext = options.schedulerContext && typeof options.schedulerContext === 'object'
+    ? options.schedulerContext
+    : null;
   const collector = createMockResponseCollector();
   const headers = { 'x-automation-cycle-key': cycleKey };
   const mockReq = {
     user: { uid: userId },
     body: { cycleKey },
     headers,
-    get: (name) => headers[String(name || '').toLowerCase()] || null
+    get: (name) => headers[String(name || '').toLowerCase()] || null,
+    schedulerContext: schedulerContext ? {
+      ...schedulerContext,
+      userId
+    } : null
   };
 
   await automationCycleHandler(mockReq, collector.response);
@@ -621,6 +656,9 @@ async function runCycleWithRetry(options = {}) {
   const retryAttempts = options.retryAttempts;
   const retryBaseDelayMs = options.retryBaseDelayMs;
   const retryJitterMs = options.retryJitterMs;
+  const schedulerContext = options.schedulerContext && typeof options.schedulerContext === 'object'
+    ? options.schedulerContext
+    : null;
   const sleepFn = options.sleepFn;
   const userId = options.userId;
   const runStartMs = Date.now();
@@ -633,6 +671,7 @@ async function runCycleWithRetry(options = {}) {
     const invokeResult = await invokeAutomationCycleHandler({
       automationCycleHandler,
       cycleKey,
+      schedulerContext,
       userId
     });
     if (invokeResult.success) {
@@ -790,48 +829,32 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
     }
 
     const totalEnabled = usersSnapshot.size;
-    const userDataAll = await mapWithConcurrency(
-      usersSnapshot.docs,
-      schedulerOptions.maxConcurrentUsers,
-      async (userDoc) => {
-      const userId = userDoc.id;
-      try {
-        const state = await getUserAutomationState(userId);
-        const userConfig = await getUserConfig(userId);
-        return {
-          userId,
-          state,
-          userConfig,
-          ready: state && state.enabled === true && userConfig?.deviceSn
-        };
-      } catch (error) {
-        return { userId, error: error.message, ready: false };
-      }
-    });
-
     const cycleCandidates = [];
     let skippedDisabled = 0;
     let skippedTooSoon = 0;
+    let skippedIdempotentPrefilter = 0;
     const now = Date.now();
     const cycleEligibility = await mapWithConcurrency(
-      userDataAll,
+      usersSnapshot.docs,
       schedulerOptions.maxConcurrentUsers,
-      async (userData) => {
-        if (!userData.ready) {
-          return { reason: 'disabled_or_invalid' };
-        }
-
-        const { userId, state, userConfig } = userData;
-        const userIntervalMs = userConfig?.automation?.intervalMs || defaultIntervalMs;
-        const lastCheck = state?.lastCheck || 0;
-        if ((now - lastCheck) < userIntervalMs) {
-          return { reason: 'too_soon' };
-        }
+      async (userDoc) => {
+        const userId = userDoc.id;
 
         try {
-          const userRules = await getUserRules(userId);
-          const blackoutWindows = userRules?.blackoutWindows || [];
-          let inBlackout = false;
+          const state = await getUserAutomationState(userId);
+          const userConfig = await getUserConfig(userId);
+
+          if (!state || state.enabled !== true || !userConfig || !hasConfiguredSchedulerDevice(userConfig)) {
+            return { reason: 'disabled_or_invalid' };
+          }
+
+          const userIntervalMs = userConfig?.automation?.intervalMs || defaultIntervalMs;
+          const lastCheck = state?.lastCheck || 0;
+          if ((now - lastCheck) < userIntervalMs) {
+            return { reason: 'too_soon' };
+          }
+
+          const blackoutWindows = userConfig?.automation?.blackoutWindows || [];
           if (Array.isArray(blackoutWindows) && blackoutWindows.length > 0) {
             const userTz = userConfig?.timezone || 'UTC';
             const userNow = getTimeInTimezone(userTz);
@@ -845,32 +868,49 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
                 continue;
               }
               if (isTimeInRange(currentTime, window.start, window.end)) {
-                inBlackout = true;
-                break;
+                return { reason: 'disabled_or_invalid' };
               }
             }
           }
 
-          if (inBlackout) {
+          const userRules = await getUserRules(userId, { enabledOnly: true });
+          const requiresCycleForCleanup = Boolean(state?.activeRule || state?.clearSegmentsOnNextCycle);
+          if (!hasEnabledAutomationRules(userRules) && !requiresCycleForCleanup) {
             return { reason: 'disabled_or_invalid' };
           }
-        } catch (rulesError) {
+
+          const cycleKey = buildCycleKey(userId, now, userIntervalMs);
+          const shouldRunPreflight = await shouldRunCycleKey({
+            cycleKey,
+            db,
+            idempotencyTtlMs: schedulerOptions.idempotencyTtlMs,
+            reserve: false,
+            schedulerId: schedId,
+            userId
+          });
+          if (!shouldRunPreflight) {
+            return { reason: 'idempotent' };
+          }
+
+          return {
+            reason: 'candidate',
+            value: {
+              userId,
+              cycleKey,
+              schedulerContext: {
+                rules: userRules,
+                state,
+                userConfig
+              }
+            }
+          };
+        } catch (error) {
           warnLog(
             logger,
-            `[Scheduler] User ${userId}: failed to load/evaluate blackout rules: ${rulesError.message}`
+            `[Scheduler] User ${userId}: failed eligibility evaluation: ${error.message}`
           );
           return { reason: 'disabled_or_invalid' };
         }
-
-        return {
-          reason: 'candidate',
-          value: {
-            userId,
-            cycleKey: buildCycleKey(userId, now, userIntervalMs),
-            state,
-            userConfig
-          }
-        };
       }
     );
 
@@ -883,6 +923,10 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
         skippedTooSoon++;
         continue;
       }
+      if (entry.reason === 'idempotent') {
+        skippedIdempotentPrefilter++;
+        continue;
+      }
       if (entry.reason === 'candidate' && entry.value) {
         cycleCandidates.push(entry.value);
       }
@@ -891,7 +935,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
     let cyclesRun = 0;
     let errors = 0;
     let skippedLocked = 0;
-    let skippedIdempotent = 0;
+    let skippedIdempotent = skippedIdempotentPrefilter;
     let deadLetters = 0;
     let totalRetries = 0;
     let queueLagStats = buildDurationStats([]);
@@ -905,7 +949,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
       const cycleResults = await mapWithConcurrency(
         cycleCandidates,
         schedulerOptions.maxConcurrentUsers,
-        async ({ userId, cycleKey }) => {
+        async ({ userId, cycleKey, schedulerContext }) => {
         const cycleStartMs = Date.now();
         const queueLagMs = Math.max(0, cycleStartMs - schedulerStartTime);
         let lockHandle = null;
@@ -980,6 +1024,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
             retryAttempts: schedulerOptions.retryAttempts,
             retryBaseDelayMs: schedulerOptions.retryBaseDelayMs,
             retryJitterMs: schedulerOptions.retryJitterMs,
+            schedulerContext,
             sleepFn,
             userId
           });
@@ -1091,7 +1136,10 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
       cyclesRun = executedCycleResults.length;
       errors = cycleResults.filter((entry) => !entry.success).length;
       skippedLocked = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.skippedLocked, 0), 0);
-      skippedIdempotent = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.skippedIdempotent, 0), 0);
+      skippedIdempotent = skippedIdempotentPrefilter + cycleResults.reduce(
+        (sum, entry) => sum + toFiniteNumber(entry.skippedIdempotent, 0),
+        0
+      );
       deadLetters = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.deadLetters, 0), 0);
       totalRetries = cycleResults.reduce((sum, entry) => sum + toFiniteNumber(entry.retriesUsed, 0), 0);
       queueLagStats = buildDurationStats(executedCycleResults.map((entry) => entry.queueLagMs));

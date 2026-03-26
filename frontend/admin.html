@@ -290,6 +290,11 @@
             gap: 12px;
             margin-bottom: 20px;
         }
+            .platform-top-actions {
+                display: flex;
+                justify-content: flex-end;
+                align-items: center;
+            }
         .platform-kpis-wrap {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
@@ -807,6 +812,44 @@
         .info-tip:focus-visible::before {
             opacity: 1;
         }
+        .js-info-tooltips .info-tip::after,
+        .js-info-tooltips .info-tip::before {
+            display: none;
+        }
+        .admin-info-tooltip {
+            position: fixed;
+            top: 0;
+            left: 0;
+            max-width: min(320px, calc(100vw - 20px));
+            padding: 9px 10px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-primary);
+            background: color-mix(in srgb, var(--bg-primary) 96%, black 4%);
+            color: var(--text-primary);
+            font-size: 11px;
+            font-weight: 400;
+            line-height: 1.45;
+            box-shadow: var(--shadow-lg);
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(4px);
+            transition: opacity 0.12s ease, transform 0.12s ease;
+            z-index: 2000;
+        }
+        .admin-info-tooltip.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .admin-info-tooltip[data-placement="top"] {
+            transform: translateY(4px);
+        }
+        .admin-info-tooltip[data-placement="bottom"] {
+            transform: translateY(-4px);
+        }
+        .admin-info-tooltip.is-visible[data-placement="top"],
+        .admin-info-tooltip.is-visible[data-placement="bottom"] {
+            transform: translateY(0);
+        }
         .scheduler-kpi .value {
             font-size: 20px;
             font-weight: 700;
@@ -831,6 +874,26 @@
             color: var(--color-warning);
             margin-top: 6px;
         }
+        .scheduler-slo-section {
+            margin-bottom: 8px;
+        }
+        .scheduler-slo-section-title {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            margin: 12px 0 8px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.45px;
+        }
+        .scheduler-slo-section-note {
+            font-size: 10px;
+            color: color-mix(in srgb, var(--text-secondary) 85%, var(--text-primary));
+            text-transform: none;
+            letter-spacing: 0;
+        }
         .scheduler-slo-grid {
             display: grid;
             grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -843,7 +906,7 @@
             border-radius: var(--radius-md);
             padding: 8px 10px;
             position: relative;
-            overflow: hidden;
+            overflow: visible;
             transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
         }
         .scheduler-slo-item::before {
@@ -920,9 +983,15 @@
             color: color-mix(in srgb, var(--color-danger) 92%, var(--text-primary));
         }
         .scheduler-slo-item .slo-value {
-            margin-top: 2px;
+            margin-top: 5px;
             font-size: 10px;
             color: var(--text-secondary);
+        }
+        .scheduler-slo-item .slo-meta {
+            margin-top: 4px;
+            font-size: 10px;
+            line-height: 1.4;
+            color: color-mix(in srgb, var(--text-secondary) 86%, var(--text-primary));
         }
         .scheduler-recent-wrap {
             margin-top: 10px;
@@ -1577,6 +1646,389 @@
             }
         }
 
+        .api-health-lead {
+            margin-top: 16px;
+            padding: 14px 16px;
+            border-radius: var(--radius-lg);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 65%, transparent);
+            background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .api-health-lead strong {
+            color: var(--text-primary);
+        }
+        .api-health-lead[data-level="good"] {
+            border-color: color-mix(in srgb, var(--color-success) 28%, transparent);
+            background: color-mix(in srgb, var(--color-success) 8%, var(--bg-secondary));
+        }
+        .api-health-lead[data-level="warn"] {
+            border-color: color-mix(in srgb, var(--color-warning) 28%, transparent);
+            background: color-mix(in srgb, var(--color-warning) 8%, var(--bg-secondary));
+        }
+        .api-health-lead[data-level="bad"] {
+            border-color: color-mix(in srgb, var(--color-danger) 28%, transparent);
+            background: color-mix(in srgb, var(--color-danger) 8%, var(--bg-secondary));
+        }
+        .api-health-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+            margin-top: 18px;
+        }
+        .api-health-panel {
+            background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+        }
+        .api-health-panel h3 {
+            margin: 0 0 6px;
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+        .api-health-panel p {
+            margin: 0 0 12px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .api-health-chart-wrap {
+            position: relative;
+            min-height: 300px;
+        }
+        .api-health-chart-wrap-compact {
+            min-height: 260px;
+        }
+        .api-health-alert-list {
+            display: grid;
+            gap: 10px;
+        }
+        .api-health-alert {
+            border-radius: var(--radius-lg);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 65%, transparent);
+            background: color-mix(in srgb, var(--bg-tertiary) 92%, transparent);
+            padding: 12px 14px;
+        }
+        .api-health-alert.good {
+            border-color: color-mix(in srgb, var(--color-success) 26%, transparent);
+        }
+        .api-health-alert.warn {
+            border-color: color-mix(in srgb, var(--color-warning) 30%, transparent);
+        }
+        .api-health-alert.bad {
+            border-color: color-mix(in srgb, var(--color-danger) 30%, transparent);
+        }
+        .api-health-alert-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        .api-health-alert-head strong {
+            color: var(--text-primary);
+            font-size: 13px;
+        }
+        .api-health-alert-body {
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.55;
+        }
+        .api-health-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            background: color-mix(in srgb, var(--bg-overlay) 85%, transparent);
+            color: var(--text-secondary);
+        }
+        .api-health-badge.good {
+            color: var(--color-success);
+            background: color-mix(in srgb, var(--color-success) 12%, transparent);
+        }
+        .api-health-badge.warn {
+            color: var(--color-warning);
+            background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+        }
+        .api-health-badge.bad {
+            color: var(--color-danger);
+            background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+        }
+        .api-health-table-wrap {
+            overflow-x: auto;
+        }
+        .api-health-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .api-health-table th,
+        .api-health-table td {
+            padding: 9px 8px;
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
+            text-align: left;
+            vertical-align: top;
+        }
+        .api-health-table th {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        #apiHealthKpis .kpi-item {
+            min-width: 0;
+        }
+        #apiHealthKpis .label,
+        #apiHealthKpis .sub {
+            overflow-wrap: anywhere;
+        }
+        #apiHealthKpis .value.small {
+            font-size: 18px;
+            line-height: 1.15;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .api-health-table td[data-label]::before {
+            content: attr(data-label);
+            display: none;
+            margin-bottom: 4px;
+            color: var(--text-secondary);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        .api-health-provider-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        .api-health-cell-primary {
+            color: var(--text-primary);
+            font-weight: 600;
+            line-height: 1.3;
+        }
+        .api-health-cell-secondary {
+            display: block;
+            margin-top: 4px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            line-height: 1.45;
+        }
+        .api-health-breakdown-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 6px;
+            margin-top: 6px;
+        }
+        .api-health-breakdown-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 7px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--bg-overlay) 78%, transparent);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 55%, transparent);
+            color: var(--text-secondary);
+            font-size: 10px;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .api-health-breakdown-chip strong {
+            color: var(--text-primary);
+            font-size: 10px;
+            font-weight: 700;
+        }
+        .api-health-empty {
+            color: var(--text-secondary);
+            font-size: 13px;
+            padding: 12px 0 4px;
+        }
+        .api-health-observability-panel {
+            margin-top: 18px;
+            background:
+                radial-gradient(circle at top right, color-mix(in srgb, #f472b6 18%, transparent), transparent 42%),
+                color-mix(in srgb, var(--bg-secondary) 94%, transparent);
+        }
+        .api-health-observability-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .api-health-observability-head h3 {
+            margin-bottom: 4px;
+        }
+        .api-health-observability-summary {
+            margin: 0;
+            max-width: 760px;
+        }
+        .api-health-observability-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        .api-health-observability-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 55%, transparent);
+            background: color-mix(in srgb, var(--bg-overlay) 82%, transparent);
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+        .api-health-observability-pill strong {
+            color: var(--text-primary);
+            font-size: 11px;
+        }
+        .api-health-observability-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            margin-top: 16px;
+        }
+        .api-health-observability-card {
+            border-radius: var(--radius-lg);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 50%, transparent);
+            background: color-mix(in srgb, var(--bg-tertiary) 90%, transparent);
+            padding: 14px;
+        }
+        .api-health-observability-card h4 {
+            margin: 0 0 8px;
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--text-primary);
+        }
+        .api-health-observability-list {
+            margin: 0;
+            padding-left: 18px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .api-health-observability-list li + li {
+            margin-top: 6px;
+        }
+        .api-health-observability-code {
+            display: inline-block;
+            margin-right: 6px;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--bg-overlay) 85%, transparent);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
+            color: var(--text-primary);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+        }
+        .api-health-observability-footnote {
+            margin-top: 12px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            line-height: 1.55;
+        }
+        @media (max-width: 900px) {
+            .api-health-grid {
+                grid-template-columns: 1fr;
+            }
+            .api-health-chart-wrap {
+                min-height: 260px;
+            }
+            .api-health-observability-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            #apiHealthKpis {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .api-health-panel {
+                padding: 14px;
+            }
+            .api-health-lead {
+                padding: 12px 14px;
+            }
+            #apiHealthKpis .kpi-item {
+                padding: 10px 11px;
+                gap: 3px;
+            }
+            #apiHealthKpis .label {
+                font-size: 10px;
+                line-height: 1.25;
+            }
+            #apiHealthKpis .value,
+            #apiHealthKpis .value.small {
+                font-size: 18px;
+                line-height: 1.12;
+            }
+            #apiHealthKpis .sub {
+                font-size: 10px;
+                line-height: 1.35;
+            }
+            .api-health-table-wrap {
+                overflow: visible;
+            }
+            .api-health-table,
+            .api-health-table tbody,
+            .api-health-table tr,
+            .api-health-table td {
+                display: block;
+                width: 100%;
+            }
+            .api-health-table thead {
+                display: none;
+            }
+            .api-health-table {
+                border-collapse: separate;
+                border-spacing: 0;
+            }
+            .api-health-table tr {
+                margin-bottom: 12px;
+                padding: 12px;
+                border: 1px solid color-mix(in srgb, var(--border-primary) 60%, transparent);
+                border-radius: var(--radius-lg);
+                background: color-mix(in srgb, var(--bg-tertiary) 88%, transparent);
+            }
+            .api-health-table tr:last-child {
+                margin-bottom: 0;
+            }
+            .api-health-table td {
+                padding: 0;
+                border: 0;
+            }
+            .api-health-table td + td {
+                margin-top: 10px;
+                padding-top: 10px;
+                border-top: 1px solid color-mix(in srgb, var(--border-primary) 42%, transparent);
+            }
+            .api-health-table td[data-label]::before {
+                display: block;
+            }
+            .api-health-chart-wrap {
+                min-height: 220px;
+            }
+            .api-health-chart-wrap-compact {
+                min-height: 220px;
+            }
+        }
+
         /* Admin Tabs */
         .admin-tab-nav {
             display: flex;
@@ -2006,6 +2458,9 @@
         }
 
         @media (max-width: 720px) {
+            #apiHealthKpis {
+                grid-template-columns: 1fr;
+            }
             .announcement-form-grid {
                 grid-template-columns: 1fr;
             }
@@ -2069,11 +2524,15 @@
             <button class="tab-btn" data-tab="dataworks" onclick="switchTab('dataworks')">🛰️ DataWorks</button>
             <button class="tab-btn" data-tab="behavior" onclick="switchTab('behavior')">🧭 Behaviour</button>
             <button class="tab-btn" data-tab="announcement" onclick="switchTab('announcement')">📣 Announcement</button>
+            <button class="tab-btn" data-tab="apiHealth" onclick="switchTab('apiHealth')">🩺 API Health</button>
         </nav>
 
         <div id="tab-overview" class="tab-panel active">
         <!-- Platform Overview (compact top row + trends) -->
         <div class="platform-top">
+            <div class="platform-top-actions">
+                <button class="action-btn" onclick="refreshOverviewData()" id="refreshOverviewBtn">🔄 Refresh</button>
+            </div>
             <div class="platform-kpis-wrap">
                 <div class="platform-kpis" id="platformStats">
                     <div class="kpi-item">
@@ -2142,6 +2601,16 @@
                         <div class="label">Firestore Doc-Ops Est.</div>
                         <div class="value small" id="firestoreDocOpsCost">-</div>
                         <div class="sub" id="firestoreDocOpsBreakdown"></div>
+                    </div>
+                    <div class="firestore-kpi">
+                        <div class="label">Cache Hit Rate</div>
+                        <div class="value small" id="cacheOverallHitRate">-</div>
+                        <div class="sub" id="cacheTopMissSource"></div>
+                    </div>
+                    <div class="firestore-kpi">
+                        <div class="label">Quota Status</div>
+                        <div class="value small" id="firestoreQuotaStatus">-</div>
+                        <div class="sub" id="firestoreQuotaSummary"></div>
                     </div>
                 </div>
                 <div class="firestore-chart-wrap">
@@ -2441,66 +2910,146 @@
         <div id="tab-scheduler" class="tab-panel">
         <div class="card scheduler-metrics-card">
             <div class="card-header">
-                <div class="card-title"><span class="icon">Scheduler</span> Orchestration Metrics (14d)</div>
+                <div class="card-title"><span class="icon">Scheduler</span> Orchestration Metrics</div>
                 <button class="action-btn" onclick="loadSchedulerMetrics()" id="refreshSchedulerBtn">Refresh</button>
             </div>
             <div class="card-body">
                 <div class="scheduler-updated" id="schedulerMetricsUpdated">Loading scheduler metrics...</div>
-                <div class="scheduler-slo-grid">
-                    <div class="scheduler-slo-item" id="schedulerSloErrorRate">
+                <div class="scheduler-slo-section">
+                    <div class="scheduler-slo-section-title">
+                        <span>Recent 24h</span>
+                        <span class="scheduler-slo-section-note">Fast-moving operational view from recent runs</span>
+                    </div>
+                    <div class="scheduler-slo-grid">
+                    <div class="scheduler-slo-item" id="scheduler24hSloErrorRate">
                         <div class="slo-title">
                             <span class="label-row">SLO: Error Rate
                                 <span class="info-tip" tabindex="0" data-tip="Share of executed user cycles that ended in an error for the selected day window. Healthy when <= 1.00%.">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target <= 1.00%</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target <= 1.00%</div>
                     </div>
-                    <div class="scheduler-slo-item" id="schedulerSloDeadLetterRate">
+                    <div class="scheduler-slo-item" id="scheduler24hSloDeadLetterRate">
                         <div class="slo-title">
                             <span class="label-row">SLO: Dead Letter Rate
                                 <span class="info-tip" tabindex="0" data-tip="Share of executed user cycles that exhausted retries and were written to dead letters in the selected day window. Healthy when <= 0.20%.">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target <= 0.20%</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target <= 0.20%</div>
                     </div>
-                    <div class="scheduler-slo-item" id="schedulerSloQueueLag">
+                    <div class="scheduler-slo-item" id="scheduler24hSloQueueLag">
                         <div class="slo-title">
                             <span class="label-row">SLO: Queue Lag
-                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 2m 0s).">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Shows the weighted average queue lag across executed cycles in the selected window and the worst single-cycle max observed in that window. Card status is based on the max (target <= 2m 0s).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target avg <= 2m 0s, max <= 2m 0s</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target avg <= 2m 0s, max <= 2m 0s</div>
                     </div>
-                    <div class="scheduler-slo-item" id="schedulerSloCycleDuration">
+                    <div class="scheduler-slo-item" id="scheduler24hSloCycleDuration">
                         <div class="slo-title">
                             <span class="label-row">SLO: Cycle Duration
-                                <span class="info-tip" tabindex="0" data-tip="Shows weighted avg from the latest run sample (up to 100 runs) and max for the selected day window. Healthy status is based on max (target <= 20s).">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Shows the weighted average cycle duration across executed cycles in the selected window and the worst single-cycle max observed in that window. Card status is based on the max (target <= 20s).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target avg <= 20s, max <= 20s</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target avg <= 20s, max <= 20s</div>
                     </div>
-                    <div class="scheduler-slo-item" id="schedulerSloTelemetryAge">
+                    <div class="scheduler-slo-item" id="scheduler24hSloTelemetryAge">
                         <div class="slo-title">
                             <span class="label-row">SLO: Telemetry Age
-                                <span class="info-tip" tabindex="0" data-tip="Maximum telemetry staleness observed across executed cycles in the selected day window. Healthy when <= 30m.">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Derived from the source timestamp embedded in inverter telemetry. Shows the highest telemetry age among executed cycles where a parseable timestamp was present; cycles with missing timestamps are excluded from this age max and counted separately in diagnostics. Healthy when <= 30m.">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target max <= 30m 0s</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target max <= 30m 0s</div>
                     </div>
-                    <div class="scheduler-slo-item" id="schedulerSloCycleTailP99">
+                    <div class="scheduler-slo-item" id="scheduler24hSloCycleTailP99">
                         <div class="slo-title">
                             <span class="label-row">SLO: Cycle Tail (P99)
-                                <span class="info-tip" tabindex="0" data-tip="Uses p99 cycle duration; sustained alerting defaults to p99 > 10s for 15 minutes.">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Shows the highest p99 cycle duration observed in the selected window. The card colour reflects that window-max p99; the supporting text also shows the current sustained 15-minute tail signal used for alerting (default threshold 10s, minimum 10 runs).">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
-                        <div class="slo-value">Target p99 <= 10s</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target p99 <= 10s</div>
                     </div>
+                </div>
+                </div>
+                <div class="scheduler-slo-section">
+                    <div class="scheduler-slo-section-title">
+                        <span>14 Day Window</span>
+                        <span class="scheduler-slo-section-note">Historical view that keeps regressions visible after recovery</span>
+                    </div>
+                    <div class="scheduler-slo-grid">
+                    <div class="scheduler-slo-item" id="scheduler14dSloErrorRate">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Error Rate
+                                <span class="info-tip" tabindex="0" data-tip="Share of executed user cycles that ended in an error for the selected day window. Healthy when <= 1.00%.">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target <= 1.00%</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="scheduler14dSloDeadLetterRate">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Dead Letter Rate
+                                <span class="info-tip" tabindex="0" data-tip="Share of executed user cycles that exhausted retries and were written to dead letters in the selected day window. Healthy when <= 0.20%.">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target <= 0.20%</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="scheduler14dSloQueueLag">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Queue Lag
+                                <span class="info-tip" tabindex="0" data-tip="Shows the weighted average queue lag across executed cycles in the selected window and the worst single-cycle max observed in that window. Card status is based on the max (target <= 2m 0s).">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target avg <= 2m 0s, max <= 2m 0s</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="scheduler14dSloCycleDuration">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Cycle Duration
+                                <span class="info-tip" tabindex="0" data-tip="Shows the weighted average cycle duration across executed cycles in the selected window and the worst single-cycle max observed in that window. Card status is based on the max (target <= 20s).">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target avg <= 20s, max <= 20s</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="scheduler14dSloTelemetryAge">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Telemetry Age
+                                <span class="info-tip" tabindex="0" data-tip="Derived from the source timestamp embedded in inverter telemetry. Shows the highest telemetry age among executed cycles where a parseable timestamp was present; cycles with missing timestamps are excluded from this age max and counted separately in diagnostics. Healthy when <= 30m.">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target max <= 30m 0s</div>
+                    </div>
+                    <div class="scheduler-slo-item" id="scheduler14dSloCycleTailP99">
+                        <div class="slo-title">
+                            <span class="label-row">SLO: Cycle Tail (P99)
+                                <span class="info-tip" tabindex="0" data-tip="Shows the highest p99 cycle duration observed in the selected window. The card colour reflects that window-max p99; the supporting text also shows the current sustained 15-minute tail signal used for alerting (default threshold 10s, minimum 10 runs).">i</span>
+                            </span>
+                        </div>
+                        <div class="slo-status">-</div>
+                        <div class="slo-value">-</div>
+                        <div class="slo-meta">Target p99 <= 10s</div>
+                    </div>
+                </div>
                 </div>
                 <div class="scheduler-kpis">
                     <div class="scheduler-kpi">
@@ -2592,6 +3141,44 @@
                     <div class="scheduler-recent-empty" id="schedulerRecentRunsEmpty">No recent runs in window.</div>
                 </div>
                 <div class="scheduler-diagnostics" id="schedulerDiagnostics">No scheduler outlier diagnostics available yet.</div>
+                <section class="scheduler-dead-letters-panel">
+                    <div class="scheduler-slo-section-title">
+                        <span>Dead Letter Queue</span>
+                        <span class="scheduler-slo-section-note">Retry-exhausted automation cycles captured for operator review</span>
+                    </div>
+                    <div class="scheduler-kpis">
+                        <div class="scheduler-kpi">
+                            <div class="label">Dead letters (7d)</div>
+                            <div class="value" id="schedulerDeadLetterCount">-</div>
+                        </div>
+                        <div class="scheduler-kpi">
+                            <div class="label">Retry ready</div>
+                            <div class="value small" id="schedulerDeadLetterRetryReady">-</div>
+                        </div>
+                        <div class="scheduler-kpi">
+                            <div class="label">Oldest age</div>
+                            <div class="value small" id="schedulerDeadLetterOldest">-</div>
+                        </div>
+                    </div>
+                    <div class="scheduler-diagnostics" id="schedulerDeadLetterTopErrors">Loading dead-letter summary...</div>
+                    <div class="table-wrap" style="margin-top: 12px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Created</th>
+                                    <th>User</th>
+                                    <th>Cycle</th>
+                                    <th>Attempts</th>
+                                    <th>Status</th>
+                                    <th>Error</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="schedulerDeadLettersBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="scheduler-recent-empty" id="schedulerDeadLettersEmpty">No dead-letter items in the selected window.</div>
+                </section>
                 <div class="scheduler-warning" id="schedulerMetricsWarning" style="display: none;"></div>
             </div>
         </div>
@@ -2600,35 +3187,35 @@
         <div id="tab-dataworks" class="tab-panel">
             <div class="card dataworks-card">
                 <div class="card-header">
-                    <div class="card-title"><span class="icon">🛰️</span> DataWorks Snapshot</div>
+                    <div class="card-title"><span class="icon">🛰️</span> NEM DataWorks</div>
                     <div class="actions-cell">
-                        <button class="action-btn success" onclick="triggerDataworksDispatch()" id="triggerDataworksRunBtn" disabled>Run now</button>
+                        <button class="action-btn success" onclick="triggerDataworksDispatch()" id="triggerDataworksRunBtn" disabled>Run historical</button>
                         <button class="action-btn" onclick="loadDataworks({ forceOps: true })" id="refreshDataworksBtn">Refresh</button>
                     </div>
                 </div>
                 <div class="card-body">
-                    <div id="dataworksUpdated" class="firestore-updated">Loading DataWorks snapshot...</div>
+                    <div id="dataworksUpdated" class="firestore-updated">Loading NEM data jobs...</div>
                     <div class="platform-kpis-wrap">
                         <div class="platform-kpis" id="dataworksKpis">
                             <div class="kpi-item">
-                                <div class="label">Pipeline Health</div>
+                                <div class="label">NEM Jobs</div>
                                 <div class="value" id="dataworksPipelineStatus">-</div>
                             </div>
                             <div class="kpi-item">
-                                <div class="label">Latest Market Date</div>
+                                <div class="label">Historical Bundle</div>
                                 <div class="value" id="dataworksRowsProcessed">-</div>
                             </div>
                             <div class="kpi-item">
-                                <div class="label">Files / Assets</div>
+                                <div class="label">Live AEMO</div>
                                 <div class="value" id="dataworksFilesIngested">-</div>
                             </div>
                             <div class="kpi-item">
-                                <div class="label">GitHub Workflow</div>
+                                <div class="label">Historical Workflow</div>
                                 <div class="value" id="dataworksWorkflowStatus">-</div>
                             </div>
                         </div>
                     </div>
-                    <div id="dataworksLead" class="dataworks-lead">Loading pipeline details...</div>
+                    <div id="dataworksLead" class="dataworks-lead">Loading NEM pipeline details...</div>
                     <div class="dataworks-grid-3">
                         <section class="dataworks-panel" id="dataworksPipelinePanel"></section>
                         <section class="dataworks-panel" id="dataworksQualityPanel"></section>
@@ -2693,6 +3280,150 @@
             </div>
         </div>
         </div><!-- /tab-users -->
+
+        <div id="tab-apiHealth" class="tab-panel">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">🩺</span> API Health</div>
+                <button class="action-btn" onclick="loadApiHealth({ force: true })" id="refreshApiHealthBtn">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div class="firestore-updated" id="apiHealthUpdated">Loading API health...</div>
+                <div class="platform-kpis-wrap">
+                    <div class="platform-kpis" id="apiHealthKpis">
+                        <div class="kpi-item">
+                            <div class="label">Provider Calls</div>
+                            <div class="value" id="apiHealthTotalCalls">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Last Day</div>
+                            <div class="value" id="apiHealthLastDayCalls">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">7d Avg / Day</div>
+                            <div class="value" id="apiHealthDailyAvg">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Dominant Provider</div>
+                            <div class="value small" id="apiHealthDominantProvider">-</div>
+                            <div class="sub" id="apiHealthDominantProviderMeta"></div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Function Executions</div>
+                            <div class="value small" id="apiHealthExecutions">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Execution Error Rate</div>
+                            <div class="value small" id="apiHealthErrorRate">-</div>
+                            <div class="sub" id="apiHealthErrorRateMeta"></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="apiHealthLead" class="api-health-lead">Scheduler queue, cycle, and dead-letter diagnostics stay in the Scheduler tab. This view focuses on provider/API traffic, request failures, and usage acceleration patterns.</div>
+                <section class="api-health-panel api-health-observability-panel" id="apiHealthAlphaEssPanel">
+                    <div class="api-health-observability-head">
+                        <div>
+                            <h3>AlphaESS observability</h3>
+                            <p class="api-health-observability-summary" id="apiHealthAlphaEssSummary">Loading AlphaESS diagnostics guidance...</p>
+                        </div>
+                        <div class="api-health-observability-badges" id="apiHealthAlphaEssBadges"></div>
+                    </div>
+                    <div class="api-health-observability-grid">
+                        <article class="api-health-observability-card">
+                            <h4>Check When</h4>
+                            <ul class="api-health-observability-list" id="apiHealthAlphaEssCheckWhen"></ul>
+                        </article>
+                        <article class="api-health-observability-card">
+                            <h4>Look For</h4>
+                            <ul class="api-health-observability-list" id="apiHealthAlphaEssLookFor"></ul>
+                        </article>
+                        <article class="api-health-observability-card">
+                            <h4>Cost And Safety</h4>
+                            <ul class="api-health-observability-list" id="apiHealthAlphaEssCost"></ul>
+                        </article>
+                        <article class="api-health-observability-card">
+                            <h4>Rollback</h4>
+                            <ul class="api-health-observability-list" id="apiHealthAlphaEssRollback"></ul>
+                        </article>
+                    </div>
+                    <div class="api-health-observability-footnote" id="apiHealthAlphaEssFootnote">This panel is documentation-backed operational guidance. It does not trigger extra provider calls by itself.</div>
+                </section>
+                <div class="api-health-grid">
+                    <section class="api-health-panel">
+                        <h3>Provider traffic</h3>
+                        <p>Provider calls come from the daily metrics rollups only, so this chart stays on one unit system.</p>
+                        <div class="api-health-chart-wrap">
+                            <canvas id="apiHealthTrendChart"></canvas>
+                        </div>
+                    </section>
+                    <section class="api-health-panel">
+                        <h3>Execution health</h3>
+                        <p>Cloud Monitoring request executions and failed executions are shown separately from provider traffic to avoid mixed-unit comparisons.</p>
+                        <div class="api-health-chart-wrap api-health-chart-wrap-compact">
+                            <canvas id="apiHealthExecutionChart"></canvas>
+                        </div>
+                    </section>
+                    <section class="api-health-panel">
+                        <h3>Provider mix</h3>
+                        <p>Share of tracked provider categories across the selected window.</p>
+                        <div class="api-health-chart-wrap api-health-chart-wrap-compact">
+                            <canvas id="apiHealthProviderChart"></canvas>
+                        </div>
+                    </section>
+                </div>
+                <div class="api-health-grid">
+                    <section class="api-health-panel">
+                        <h3>Emerging patterns</h3>
+                        <p>Potential spikes, concentration, execution failures, and inferred overage risks. Scheduler-specific orchestration alerts stay separate.</p>
+                        <div id="apiHealthAlerts" class="api-health-alert-list"></div>
+                    </section>
+                    <section class="api-health-panel">
+                        <h3>Provider breakdown</h3>
+                        <p>Window totals, mix share, last-day volume, and week-over-week change.</p>
+                        <div class="api-health-table-wrap">
+                            <table class="api-health-table">
+                                <thead>
+                                    <tr>
+                                        <th>Provider</th>
+                                        <th>Window Calls</th>
+                                        <th>Share</th>
+                                        <th>Last Day</th>
+                                        <th>7d Avg</th>
+                                        <th>Trend</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="apiHealthProvidersBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="api-health-empty" id="apiHealthProvidersEmpty">No provider traffic recorded in this window.</div>
+                    </section>
+                </div>
+                <section class="api-health-panel" style="margin-top: 18px;">
+                    <h3>Recent daily breakdown</h3>
+                    <p>Latest 14 days. Error columns stay blank when the Cloud Monitoring failure overlay is unavailable.</p>
+                    <div class="api-health-table-wrap">
+                        <table class="api-health-table api-health-daily-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Provider Calls</th>
+                                    <th>Inverter</th>
+                                    <th>Amber</th>
+                                    <th>Weather</th>
+                                    <th>Tesla EV (Wake/Command/Data)</th>
+                                    <th>Executions</th>
+                                    <th>Errors</th>
+                                </tr>
+                            </thead>
+                            <tbody id="apiHealthDailyBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="api-health-empty" id="apiHealthDailyEmpty">No daily API health data yet.</div>
+                </section>
+                <div class="firestore-warning" id="apiHealthWarning" style="display: none;"></div>
+            </div>
+        </div>
+        </div><!-- /tab-apiHealth -->
     </div>
 
     <!-- Stats Drawer -->
@@ -2707,6 +3438,6 @@
         </div>
     </div>
 
-    <script defer src="js/admin.js?v=13"></script>
+    <script defer src="js/admin.js?v=14"></script>
 </body>
 </html>

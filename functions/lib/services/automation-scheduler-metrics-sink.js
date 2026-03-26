@@ -106,6 +106,7 @@ function buildSchedulerSloSnapshot(metrics = {}, thresholds = {}, monitoredAtMs 
   const errors = toFiniteNumber(metrics.errors, 0);
   const deadLetters = toFiniteNumber(metrics.deadLetters, 0);
   const maxQueueLagMs = toFiniteNumber(metrics.maxQueueLagMs, 0);
+  const p95QueueLagMs = toFiniteNumber(metrics.p95QueueLagMs, 0);
   const maxCycleDurationMs = toFiniteNumber(metrics.maxCycleDurationMs, 0);
   const maxTelemetryAgeMs = toFiniteNumber(metrics.maxTelemetryAgeMs, 0);
   const p95CycleDurationMs = toFiniteNumber(metrics.p95CycleDurationMs, 0);
@@ -184,6 +185,7 @@ function buildSchedulerSloSnapshot(metrics = {}, thresholds = {}, monitoredAtMs 
       errorRatePct,
       deadLetterRatePct,
       maxQueueLagMs,
+      p95QueueLagMs,
       maxCycleDurationMs,
       maxTelemetryAgeMs,
       p95CycleDurationMs,
@@ -412,6 +414,7 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
   const serverTimestamp = typeof deps.serverTimestamp === 'function' ? deps.serverTimestamp : () => new Date();
   const sloThresholds = resolveSloThresholds(deps.sloThresholds);
   const timezone = deps.timezone || 'UTC';
+  let currentAlertStatusCache = null;
 
   if (!db || typeof db.collection !== 'function') {
     throw new Error('createAutomationSchedulerMetricsSink requires Firestore db');
@@ -507,11 +510,13 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       );
       const previousRuns = toFiniteNumber(existingData.runs, 0);
       const previousMaxQueueLag = toFiniteNumber(existingData.maxQueueLagMs, 0);
+      const previousP95QueueLag = toFiniteNumber(existingData.p95QueueLagMs, 0);
       const previousMaxCycleDuration = toFiniteNumber(existingData.maxCycleDurationMs, 0);
       const previousMaxTelemetryAge = toFiniteNumber(existingData.maxTelemetryAgeMs, 0);
       const previousP95CycleDuration = toFiniteNumber(existingData.p95CycleDurationMs, 0);
       const previousP99CycleDuration = toFiniteNumber(existingData.p99CycleDurationMs, 0);
       const nextMaxQueueLagMs = Math.max(previousMaxQueueLag, normalizedMetrics.queueLagMs.maxMs);
+      const nextP95QueueLagMs = Math.max(previousP95QueueLag, normalizedMetrics.queueLagMs.p95Ms);
       const nextMaxCycleDurationMs = Math.max(previousMaxCycleDuration, normalizedMetrics.cycleDurationMs.maxMs);
       const nextMaxTelemetryAgeMs = Math.max(previousMaxTelemetryAge, normalizedMetrics.telemetryAgeMs.maxMs);
       const nextP95CycleDurationMs = Math.max(previousP95CycleDuration, normalizedMetrics.cycleDurationMs.p95Ms);
@@ -547,6 +552,7 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
         deadLetters: nextDeadLetters,
         errors: nextErrors,
         maxQueueLagMs: nextMaxQueueLagMs,
+        p95QueueLagMs: nextP95QueueLagMs,
         maxCycleDurationMs: nextMaxCycleDurationMs,
         maxTelemetryAgeMs: nextMaxTelemetryAgeMs,
         p95CycleDurationMs: nextP95CycleDurationMs,
@@ -629,6 +635,7 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
             tooSoon: toFiniteNumber(existingData.skipped?.tooSoon, 0) + normalizedSkipped.tooSoon
           },
           maxQueueLagMs: nextMaxQueueLagMs,
+          p95QueueLagMs: nextP95QueueLagMs,
           maxCycleDurationMs: nextMaxCycleDurationMs,
           maxTelemetryAgeMs: nextMaxTelemetryAgeMs,
           p95CycleDurationMs: nextP95CycleDurationMs,
@@ -734,8 +741,9 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
       updatedAt: serverTimestamp()
     };
 
-    await currentAlertRef.set(currentAlert, { merge: true });
     if (status !== 'healthy') {
+      await currentAlertRef.set(currentAlert, { merge: true });
+      currentAlertStatusCache = status;
       await dayAlertRef.set({
         ...currentAlert,
         alertStatus: status,
@@ -762,6 +770,21 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
           }
         }
       }
+    } else {
+      let shouldClearCurrentAlert = currentAlertStatusCache != null && currentAlertStatusCache !== 'healthy';
+      if (!shouldClearCurrentAlert) {
+        const currentAlertSnapshot = await currentAlertRef.get();
+        if (currentAlertSnapshot.exists) {
+          const existingAlert = currentAlertSnapshot.data() || {};
+          const existingStatus = String(existingAlert.status || '').trim().toLowerCase();
+          shouldClearCurrentAlert = existingStatus === 'watch' || existingStatus === 'breach';
+        }
+      }
+
+      if (shouldClearCurrentAlert && typeof currentAlertRef.delete === 'function') {
+        await currentAlertRef.delete();
+      }
+      currentAlertStatusCache = 'healthy';
     }
   }
 

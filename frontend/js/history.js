@@ -20,6 +20,19 @@
         const DEFAULT_TOPOLOGY_REFRESH_MS = 4 * 60 * 60 * 1000;
         const HISTORY_DEBUG_STORAGE_KEY = 'debug:history';
 
+        async function getPricingContext() {
+            const configResp = await apiClient.getConfig();
+            const config = configResp?.result || {};
+            const provider = String(config.pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+            const storedSelection = window.sharedUtils && typeof window.sharedUtils.getStoredPricingSelection === 'function'
+                ? window.sharedUtils.getStoredPricingSelection(provider)
+                : '';
+            const selection = storedSelection || (provider === 'aemo'
+                ? (config.aemoRegion || config.siteIdOrRegion || 'NSW1')
+                : (config.amberSiteId || config.siteIdOrRegion || ''));
+            return { provider, selection, config };
+        }
+
         function historyDebugLog(...args) {
             try {
                 if (window.localStorage && window.localStorage.getItem(HISTORY_DEBUG_STORAGE_KEY) === '1') {
@@ -1367,9 +1380,9 @@
                 // Ensure Chart.js is loaded before rendering
                 await ensureChartJs();
                 
-                // Get site ID first (with debug info)
-                const sitesResp = await apiClient.getAmberSites();
-                historyDebugLog('[Prices] getAmberSites response:', sitesResp);
+                const pricingContext = await getPricingContext();
+                const sitesResp = await apiClient.getPricingSites(pricingContext.provider);
+                historyDebugLog('[Prices] getPricingSites response:', pricingContext.provider, sitesResp);
                 
                 // Extract sites from response - handle both array and {errno, result} formats
                 let sites = [];
@@ -1386,13 +1399,15 @@
                     const debugResp = await apiClient.fetch('/api/pricing/sites?debug=true');
                     const debugJson = await debugResp.json();
                     historyDebugLog('[Prices] Debug response:', debugJson);
-                    throw new Error('No Amber sites available. Please configure your Amber API key in Settings → Integrations → Amber API.');
+                    throw new Error(pricingContext.provider === 'aemo'
+                        ? 'No AEMO regions are available. Check your pricing settings.'
+                        : 'No Amber sites available. Please configure your Amber API key in Settings → Integrations → Amber API.');
                 }
-                
-                const storedSiteId = (window.sharedUtils && window.sharedUtils.getStoredAmberSiteId) ? window.sharedUtils.getStoredAmberSiteId() : '';
-                const siteId = (storedSiteId && sites.some(s => String(s.id) === storedSiteId))
-                    ? storedSiteId
-                    : sites[0].id;
+
+                const selectionKey = pricingContext.provider === 'aemo' ? 'region' : 'id';
+                const siteId = (pricingContext.selection && sites.some(s => String(s[selectionKey] || s.id) === pricingContext.selection))
+                    ? pricingContext.selection
+                    : String(sites[0][selectionKey] || sites[0].id || '');
                 const { dates } = validation;
                 const resolution = document.getElementById('priceResolution').value;
 
@@ -1415,10 +1430,10 @@
 
                 status.textContent = `⏳ Fetching prices for ${dates.rangeDays} days at ${resolution}-minute resolution...`;
                 status.textContent += ` [Requesting: ${startDate} to ${endDate}]`;
-                historyDebugLog('[Prices] Request details:', { siteId, startDate, endDate, resolution });
+                historyDebugLog('[Prices] Request details:', { provider: pricingContext.provider, siteId, startDate, endDate, resolution });
 
                 // Fetch historical prices (actual only, no forecasts)
-                const pricesResp = await apiClient.getAmberHistoricalPrices(siteId, startDate, endDate, resolution, true);
+                const pricesResp = await apiClient.getPricingHistoricalPrices(pricingContext.provider, siteId, startDate, endDate, resolution, true);
                 
                 historyDebugLog('[Prices] Response from API:', pricesResp);
                 historyDebugLog('[Prices] First 3 price timestamps:', pricesResp.result?.slice(0, 3).map(p => ({ startTime: p.startTime, channel: p.channelType })));
