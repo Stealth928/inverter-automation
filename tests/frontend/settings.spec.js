@@ -47,6 +47,8 @@ async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
   const oauthStartRequests = [];
   const oauthCallbackRequests = [];
   const clearCredentialsRequests = [];
+  const configPosts = [];
+  const validateKeysRequests = [];
   let adminState = false;
   let teslaAppConfig = { configured: false, clientId: '', clientSecretStored: false };
   const setupStatus = {
@@ -70,6 +72,7 @@ async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
       body = { errno: 0, result: cloneConfig(state) };
     } else if (path === '/api/config' && method === 'POST') {
       const postData = route.request().postDataJSON ? route.request().postDataJSON() : {};
+      configPosts.push(cloneConfig(postData || {}));
       Object.assign(state, postData || {});
       body = { errno: 0, result: cloneConfig(state) };
     } else if (path === '/api/config/setup-status') {
@@ -81,6 +84,22 @@ async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
     } else if (path === '/api/admin/check') {
       body = { errno: 0, result: { isAdmin: adminState } };
     } else if (path === '/api/config/validate-keys') {
+      const postData = route.request().postDataJSON ? route.request().postDataJSON() : {};
+      validateKeysRequests.push(cloneConfig(postData || {}));
+      if (postData?.device_sn) state.deviceSn = String(postData.device_sn).trim();
+      if (postData?.foxess_token) state.foxessToken = String(postData.foxess_token).trim();
+      if (Object.prototype.hasOwnProperty.call(postData || {}, 'amber_api_key')) {
+        state.amberApiKey = postData.amber_api_key || '';
+      }
+      const pricingProvider = String(postData?.pricing_provider || '').trim().toLowerCase();
+      if (pricingProvider === 'aemo') {
+        const aemoRegion = String(postData?.aemo_region || state.aemoRegion || 'NSW1').trim().toUpperCase() || 'NSW1';
+        state.pricingProvider = 'aemo';
+        state.aemoRegion = aemoRegion;
+        state.siteIdOrRegion = aemoRegion;
+      } else if (pricingProvider === 'amber') {
+        state.pricingProvider = 'amber';
+      }
       body = { errno: 0, result: { valid: true } };
     } else if (path === '/api/config/clear-credentials' && method === 'POST') {
       clearCredentialsRequests.push({});
@@ -202,6 +221,9 @@ async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
       const next = Array.isArray(vehicles) ? vehicles : [];
       evVehicles.splice(0, evVehicles.length, ...next.map((vehicle) => ({ ...vehicle })));
     },
+    getConfigState: () => cloneConfig(state),
+    getConfigPosts: () => configPosts.map((entry) => cloneConfig(entry)),
+    getValidateKeysRequests: () => validateKeysRequests.map((entry) => cloneConfig(entry)),
     getClearCredentialsRequests: () => clearCredentialsRequests.slice(),
     getOAuthStartRequests: () => oauthStartRequests.map((req) => ({ ...req })),
     getOAuthCallbackRequests: () => oauthCallbackRequests.map((req) => ({ ...req }))
@@ -1223,6 +1245,61 @@ test.describe('Settings Page - Change Detection', () => {
         expect(value.length).toBeGreaterThanOrEqual(0);  // Should have loaded some value
       }
     }
+  });
+});
+
+test.describe('Settings Page - Pricing Source Persistence', () => {
+  let apiMock;
+
+  test.beforeEach(async ({ page }) => {
+    await installInternalPageHarness(page, {
+      user: {
+        uid: 'test-user-pricing-456',
+        email: 'pricingpersist@example.com',
+        displayName: 'pricingpersist'
+      }
+    });
+    apiMock = await mockSettingsApi(page, {
+      ...BASE_CONFIG,
+      pricingProvider: 'aemo',
+      aemoRegion: 'NSW1',
+      siteIdOrRegion: 'NSW1',
+      foxessToken: 'mock-foxess-token-existing',
+      amberApiKey: 'mock-amber-key-existing'
+    }, {
+      health: {
+        FOXESS_TOKEN: true,
+        AMBER_API_KEY: true
+      }
+    });
+    await page.goto('/settings.html', { waitUntil: 'domcontentloaded' });
+    await waitForSettingsReady(page);
+    const credentialsReloadBtn = page.locator('#credentialsSection button:has-text("Reload")');
+    if (await credentialsReloadBtn.count() > 0) {
+      await credentialsReloadBtn.click();
+      await page.waitForTimeout(400);
+    }
+  });
+
+  test('keeps Amber selected when saving credentials with unchanged FoxESS token', async ({ page }) => {
+    const pricingProvider = page.locator('#pricing_provider');
+    const saveCredentialsBtn = page.locator('#credentialsSaveBtn');
+
+    if (await pricingProvider.count() === 0 || await saveCredentialsBtn.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await pricingProvider.selectOption('amber');
+    await saveCredentialsBtn.click();
+
+    await expect.poll(() => apiMock.getConfigState().pricingProvider).toBe('amber');
+    await expect.poll(() => {
+      const posts = apiMock.getConfigPosts();
+      return posts.length ? posts[posts.length - 1].pricingProvider : '';
+    }).toBe('amber');
+    expect(apiMock.getValidateKeysRequests()).toHaveLength(0);
+    await expect.poll(async () => pricingProvider.inputValue()).toBe('amber');
   });
 });
 

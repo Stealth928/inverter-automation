@@ -45,6 +45,38 @@
             ).trim() || 'NSW1';
         }
 
+        function buildSelectedPricingConfigPayload() {
+            const pricingProvider = getSelectedPricingProvider();
+            if (pricingProvider === 'aemo') {
+                const aemoRegion = getSelectedAemoRegion();
+                return {
+                    pricingProvider: 'aemo',
+                    aemoRegion,
+                    siteIdOrRegion: aemoRegion
+                };
+            }
+
+            return {
+                pricingProvider: 'amber'
+            };
+        }
+
+        function buildSelectedPricingValidationPayload(payload = {}) {
+            const pricingProvider = getSelectedPricingProvider();
+            if (pricingProvider === 'aemo') {
+                return {
+                    ...payload,
+                    pricing_provider: 'aemo',
+                    aemo_region: getSelectedAemoRegion()
+                };
+            }
+
+            return {
+                ...payload,
+                pricing_provider: 'amber'
+            };
+        }
+
         function isCredentialInputUnchanged(input, originalValue = '') {
             const currentValue = String(input?.value || '').trim();
             const baselineValue = String(originalValue || '').trim();
@@ -3099,12 +3131,7 @@
                 saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
 
                 try {
-                    const selectedRegion = document.getElementById('pricing_aemoRegion')?.value || currentConfig?.aemoRegion || 'NSW1';
-                    const patchPayload = {
-                        pricingProvider: 'aemo',
-                        aemoRegion: selectedRegion,
-                        siteIdOrRegion: selectedRegion
-                    };
+                    const patchPayload = buildSelectedPricingConfigPayload();
                     const patchResp = await authenticatedFetch('/api/config', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -3171,7 +3198,7 @@
                     showMessage('warning', 'Enter a new token or keep the existing hidden token unchanged.');
                     return;
                 }
-                const patchPayload = { deviceSn };
+                const patchPayload = { deviceSn, ...buildSelectedPricingConfigPayload() };
                 if (!amberUnchanged && amberToSend) patchPayload.amberApiKey = amberToSend;
                 const pr = await authenticatedFetch('/api/config', {
                     method: 'POST',
@@ -3201,7 +3228,7 @@
 
             try {
                 if (foxessUnchanged) {
-                    const patchPayload = { deviceSn };
+                    const patchPayload = { deviceSn, ...buildSelectedPricingConfigPayload() };
                     if (!amberUnchanged) {
                         patchPayload.amberApiKey = amberToSend || '';
                     }
@@ -3222,7 +3249,11 @@
                 const resp = await authenticatedFetch('/api/config/validate-keys', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ device_sn: deviceSn, foxess_token: tokenToSend, amber_api_key: amberToSend })
+                    body: JSON.stringify(buildSelectedPricingValidationPayload({
+                        device_sn: deviceSn,
+                        foxess_token: tokenToSend,
+                        amber_api_key: amberToSend
+                    }))
                 });
                 const data = await resp.json();
                 if (data.errno !== 0) {
@@ -3276,7 +3307,7 @@
             try {
                 if (credsUnchanged) {
                     // Only region (and optionally amber key) changed
-                    const patchPayload = { sigenRegion: region };
+                    const patchPayload = { sigenRegion: region, ...buildSelectedPricingConfigPayload() };
                     if (!amberUnchanged) patchPayload.amberApiKey = amberToSend || '';
                     const patchResp = await authenticatedFetch('/api/config', {
                         method: 'POST',
@@ -3302,7 +3333,7 @@
                 const resp = await authenticatedFetch('/api/config/validate-keys', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(buildSelectedPricingValidationPayload(payload))
                 });
                 const data = await resp.json();
                 if (data.errno !== 0) {
@@ -3362,7 +3393,7 @@
             try {
                 if (credsUnchanged) {
                     // Only device SN (and optionally amber key) changed
-                    const patchPayload = { sungrowDeviceSn: deviceSn };
+                    const patchPayload = { sungrowDeviceSn: deviceSn, ...buildSelectedPricingConfigPayload() };
                     if (!amberUnchanged) patchPayload.amberApiKey = amberToSend || '';
                     const patchResp = await authenticatedFetch('/api/config', {
                         method: 'POST',
@@ -3388,7 +3419,7 @@
                 const resp = await authenticatedFetch('/api/config/validate-keys', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(buildSelectedPricingValidationPayload(payload))
                 });
                 const data = await resp.json();
                 if (data.errno !== 0) {
@@ -3448,7 +3479,7 @@
 
             try {
                 if (credsUnchanged) {
-                    const patchPayload = { alphaessSystemSn: systemSn };
+                    const patchPayload = { alphaessSystemSn: systemSn, ...buildSelectedPricingConfigPayload() };
                     if (!amberUnchanged) patchPayload.amberApiKey = amberToSend || '';
                     const patchResp = await authenticatedFetch('/api/config', {
                         method: 'POST',
@@ -3474,7 +3505,7 @@
                 const resp = await authenticatedFetch('/api/config/validate-keys', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(buildSelectedPricingValidationPayload(payload))
                 });
                 const data = await resp.json();
                 if (data.errno !== 0) {
