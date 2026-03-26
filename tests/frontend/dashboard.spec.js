@@ -1407,4 +1407,120 @@ test.describe('Dashboard Page', () => {
     await expect(page.locator('#solar-tile .value')).toHaveText('0.00 kW');
     await expect(page.locator('#solar-tile .value')).not.toHaveText('4.45 kW');
   });
+
+  test('should animate the dashboard battery icon upward from current SoC while charging', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'BAT-SN-CHARGE',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'BAT-SN-CHARGE',
+            time: '2026-03-26T10:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 42, unit: '%' },
+              { variable: 'pvPower', value: 1.2, unit: 'kW' },
+              { variable: 'loadsPower', value: 0.5, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 1.9, unit: 'kW' },
+              { variable: 'feedinPower', value: 0, unit: 'kW' },
+              { variable: 'batChargePower', value: 2.7, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?batteryAnimationCharge=1', { waitUntil: 'domcontentloaded' });
+
+    const batteryIcon = page.locator('.tile-icon.battery').first();
+    await expect(batteryIcon).toHaveAttribute('data-battery-animation', 'charging');
+
+    const animationState = await batteryIcon.evaluate((el) => {
+      const level = el.querySelector('.level');
+      const computed = level ? window.getComputedStyle(level) : null;
+      return {
+        className: el.className,
+        fillCurrent: parseFloat(el.style.getPropertyValue('--battery-fill-current')),
+        fillTarget: parseFloat(el.style.getPropertyValue('--battery-fill-target')),
+        fillDurationMs: parseFloat(el.style.getPropertyValue('--battery-fill-duration')),
+        animationName: computed ? computed.animationName : '',
+        animationDuration: computed ? computed.animationDuration : '',
+        animationIterationCount: computed ? computed.animationIterationCount : ''
+      };
+    });
+
+    expect(animationState.className).toContain('charging');
+    expect(animationState.className).toContain('is-animating');
+    expect(animationState.fillCurrent).toBeCloseTo(0.42, 5);
+    expect(animationState.fillTarget).toBe(1);
+    expect(animationState.fillDurationMs).toBeGreaterThan(0);
+    expect(animationState.animationName).toBe('battery-fill-level');
+    expect(animationState.animationDuration).not.toBe('0s');
+    expect(animationState.animationIterationCount).toBe('infinite');
+  });
+
+  test('should animate the dashboard battery icon downward from current SoC while discharging', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'BAT-SN-DISCHARGE',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'BAT-SN-DISCHARGE',
+            time: '2026-03-26T10:05:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 49, unit: '%' },
+              { variable: 'pvPower', value: 0.1, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.2, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0.3, unit: 'kW' },
+              { variable: 'feedinPower', value: 0, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0.74, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?batteryAnimationDischarge=1', { waitUntil: 'domcontentloaded' });
+
+    const batteryIcon = page.locator('.tile-icon.battery').first();
+    await expect(batteryIcon).toHaveAttribute('data-battery-animation', 'discharging');
+
+    const animationState = await batteryIcon.evaluate((el) => {
+      const level = el.querySelector('.level');
+      const computed = level ? window.getComputedStyle(level) : null;
+      return {
+        className: el.className,
+        fillCurrent: parseFloat(el.style.getPropertyValue('--battery-fill-current')),
+        fillTarget: parseFloat(el.style.getPropertyValue('--battery-fill-target')),
+        fillDurationMs: parseFloat(el.style.getPropertyValue('--battery-fill-duration')),
+        animationName: computed ? computed.animationName : '',
+        animationDuration: computed ? computed.animationDuration : '',
+        animationIterationCount: computed ? computed.animationIterationCount : ''
+      };
+    });
+
+    expect(animationState.className).toContain('discharging');
+    expect(animationState.className).toContain('is-animating');
+    expect(animationState.fillCurrent).toBeCloseTo(0.49, 5);
+    expect(animationState.fillTarget).toBe(0);
+    expect(animationState.fillDurationMs).toBeGreaterThan(0);
+    expect(animationState.animationName).toBe('battery-fill-level');
+    expect(animationState.animationDuration).not.toBe('0s');
+    expect(animationState.animationIterationCount).toBe('infinite');
+  });
 });

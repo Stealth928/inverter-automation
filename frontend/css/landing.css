@@ -344,6 +344,12 @@ a:hover { text-decoration: underline; }
   }
 }
 
+@media (min-width: 1121px) {
+  .land-nav__links li:last-child {
+    margin-left: 10px;
+  }
+}
+
 .land-hero__preview {
   margin: 60px auto 0;
   max-width: 900px;

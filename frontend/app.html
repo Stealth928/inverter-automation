@@ -1289,13 +1289,31 @@
         /* Battery SVG sizing and charging animation */
         /* Larger battery tile for improved alignment */
         .stat-item.battery-tile { min-width: 180px; padding: 12px 18px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-        .tile-icon.battery { width: 54px; height: 60px; padding-top: 2px; }
+        .tile-icon.battery { width: 54px; height: 60px; padding-top: 2px; --battery-fill-current: 0; --battery-fill-target: 0; --battery-fill-duration: 0ms; }
         .tile-icon.battery svg { width: 36px; height: 52px; display:block; }
-        .tile-icon.battery .level { transition: all 600ms cubic-bezier(.2,.9,.2,1); }
+        .tile-icon.battery .level {
+            transform-box: fill-box;
+            transform-origin: center bottom;
+            transform: scaleY(var(--battery-fill-current));
+            transition: transform 600ms cubic-bezier(.2,.9,.2,1), fill 300ms ease;
+        }
         .tile-icon.battery.charging { box-shadow: 0 6px 18px rgba(88,166,255,0.12); }
         .tile-icon.battery.charging svg { filter: drop-shadow(0 4px 8px rgba(88,166,255,0.18)); }
+        .tile-icon.battery.discharging svg { filter: drop-shadow(0 4px 8px rgba(255,107,107,0.14)); }
         @keyframes batt-pulse { 0% { opacity: 0.95 } 50% { opacity: 1 } 100% { opacity: 0.95 } }
+        @keyframes battery-fill-level {
+            from { transform: scaleY(var(--battery-fill-current)); }
+            to { transform: scaleY(var(--battery-fill-target)); }
+        }
         .tile-icon.battery.charging { animation: batt-pulse 1.2s infinite ease-in-out; }
+        .tile-icon.battery.is-animating .level { animation: battery-fill-level var(--battery-fill-duration) linear infinite; }
+        @media (prefers-reduced-motion: reduce) {
+            .tile-icon.battery.charging { animation: none; }
+            .tile-icon.battery.is-animating .level {
+                animation: none;
+                transform: scaleY(var(--battery-fill-current));
+            }
+        }
         .stat-item.warning .value { color: var(--color-warning); }
         .stat-item.danger .value { color: var(--color-danger); }
 

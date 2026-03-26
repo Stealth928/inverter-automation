@@ -1406,26 +1406,45 @@
                     return `${hours}h ${mins}m`;
                 }
 
+                function estimateChargeHoursToFull(currentEnergy, capacityKWh, chargeKw) {
+                    if (!Number.isFinite(currentEnergy) || !Number.isFinite(capacityKWh) || !Number.isFinite(chargeKw) || chargeKw <= 0) return null;
+                    const energyNeeded = Math.max(0, capacityKWh - currentEnergy);
+                    if (energyNeeded <= 0) return 0;
+
+                    let hrs = energyNeeded / chargeKw;
+                    const ninetyKwh = 0.9 * capacityKWh;
+                    if (currentEnergy >= ninetyKwh) {
+                        hrs *= 1.05;
+                    } else if ((currentEnergy + energyNeeded) > ninetyKwh) {
+                        const portionAbove90 = (currentEnergy + energyNeeded) - ninetyKwh;
+                        const proportion = portionAbove90 / energyNeeded;
+                        hrs *= (1 + 0.05 * proportion);
+                    }
+                    return hrs;
+                }
+
+                function getBatteryFillAnimationDurationMs(currentFill, targetFill, powerKw) {
+                    const normalizedCurrent = Number(currentFill);
+                    const normalizedTarget = Number(targetFill);
+                    if (!Number.isFinite(normalizedCurrent) || !Number.isFinite(normalizedTarget)) return 0;
+
+                    // Keep the icon motion visibly responsive in emulator/live UI.
+                    // ETA text still carries the real timing; the SVG animation is directional UI feedback only.
+                    const travel = Math.max(0, Math.min(1, Math.abs(normalizedTarget - normalizedCurrent)));
+                    if (travel <= 0.0001) return 0;
+
+                    const clampedPower = Math.max(0.15, Math.min(6, Math.abs(Number(powerKw) || 0.15)));
+                    const powerRatio = (clampedPower - 0.15) / (6 - 0.15);
+                    const travelMs = 2200 + (travel * 2600);
+                    const slowSpeedBonusMs = (1 - powerRatio) * 4200;
+                    return Math.max(1800, Math.min(9000, Math.round(travelMs + slowSpeedBonusMs)));
+                }
+
                 if (batteryIsCharging && chKW && chKW > 0 && currentEnergyKWh !== null) {
                     const energyNeeded = Math.max(0, BATTERY_CAP_KWH - currentEnergyKWh);
                     if (energyNeeded <= 0) batteryTimeText = 'Full';
                     else {
-                        // base hours to full at current power (kW)
-                        let hrs = energyNeeded / chKW;
-
-                        // Add a 5% buffer for the portion of charge above 90% SoC
-                        // Battery slows when >90%, so if current or future charge includes >90% portion we increase time accordingly
-                        const ninetyKwh = 0.9 * BATTERY_CAP_KWH;
-                        if (currentEnergyKWh >= ninetyKwh) {
-                            // already beyond 90% — apply full 5% buffer
-                            hrs *= 1.05;
-                        } else if ((currentEnergyKWh + energyNeeded) > ninetyKwh) {
-                            // charging will cross 90% — only apply buffer proportional to the portion above 90%
-                            const portionAbove90 = (currentEnergyKWh + energyNeeded) - ninetyKwh;
-                            const proportion = portionAbove90 / energyNeeded; // 0..1
-                            hrs *= (1 + 0.05 * proportion);
-                        }
-
+                        const hrs = estimateChargeHoursToFull(currentEnergyKWh, BATTERY_CAP_KWH, chKW);
                         const s = fmtTimeHours(hrs);
                         batteryTimeText = s ? `≈ ${s} to ${BATTERY_CAP_KWH.toFixed(2)} kWh` : '';
                     }
@@ -1508,26 +1527,46 @@
                 const curtailmentActive = window.curtailmentState && window.curtailmentState.active;
                 const solarTileClass = curtailmentActive ? 'stat-item curtailed' : 'stat-item';
                 const curtailmentLabel = curtailmentActive ? ' (Curtailed)' : '';
+                const batteryFillCurrent = socNum !== null && Number.isFinite(Number(socNum))
+                    ? Math.max(0, Math.min(1, Number(socNum) / 100))
+                    : 0;
+                let batteryFillTarget = batteryFillCurrent;
+                let batteryFillDurationMs = 0;
+                let batteryAnimationState = 'idle';
+
+                if (batteryPowerKW !== null && !isNaN(batteryPowerKW) && Math.abs(batteryPowerKW) >= SMALL_BATT_THRESHOLD && socNum !== null) {
+                    if (batteryIsCharging && chKW && chKW > 0 && batteryFillCurrent < 1) {
+                            batteryFillTarget = 1;
+                            batteryFillDurationMs = getBatteryFillAnimationDurationMs(batteryFillCurrent, batteryFillTarget, chKW);
+                            batteryAnimationState = 'charging';
+                    } else if (batteryIsDischarging && disKW && disKW > 0 && batteryFillCurrent > 0) {
+                            batteryFillTarget = 0;
+                            batteryFillDurationMs = getBatteryFillAnimationDurationMs(batteryFillCurrent, batteryFillTarget, disKW);
+                            batteryAnimationState = 'discharging';
+                    }
+                }
+
+                const batteryIconClasses = ['tile-icon', 'battery'];
+                if (batteryIsCharging) batteryIconClasses.push('charging');
+                if (batteryIsDischarging) batteryIconClasses.push('discharging');
+                if (batteryFillDurationMs > 0 && Math.abs(batteryFillTarget - batteryFillCurrent) > 0.0001) batteryIconClasses.push('is-animating');
+                const batteryIconStyle = `--battery-fill-current:${batteryFillCurrent.toFixed(4)};--battery-fill-target:${batteryFillTarget.toFixed(4)};--battery-fill-duration:${batteryFillDurationMs}ms;`;
 
                 const html = `<div class="stat-row">
                     <div class="${solarTileClass}" id="solar-tile"><div class="tile-icon tile-icon--glyph">${overviewIconChipHtml('solar', 'app-overview-icon--tile')}</div><div class="value">${solarDisplay}</div><div class="label">Solar Production${curtailmentLabel}</div></div>
                     <div class="stat-item"><div class="tile-icon tile-icon--glyph">${overviewIconChipHtml('home', 'app-overview-icon--tile')}</div><div class="value">${loadDisplay}</div><div class="label">House Load</div></div>
                     <div class="stat-item"><div class="tile-icon tile-icon--glyph">${overviewIconChipHtml('grid', 'app-overview-icon--tile')}</div><div class="value ${gridClass}">${gridDisplay}</div><div class="label">Grid Import/Export</div></div>
-                    <div class="stat-item battery-tile"><div class="tile-icon battery ${batteryIsCharging ? 'charging' : ''}">
+                    <div class="stat-item battery-tile"><div class="${batteryIconClasses.join(' ')}" style="${batteryIconStyle}" data-battery-animation="${batteryAnimationState}">
                                 <!-- Inline SVG battery: fill level reflects SoC -->
                                 ${(() => {
                                     const socPct = (socNum !== null && !isNaN(Number(socNum))) ? Math.max(0, Math.min(100, Number(socNum))) : 0;
-                                    // innerHeight = 28 (y from 4..32). Compute rect y and height so fill starts at bottom
-                                    const innerH = 28;
-                                    const fillH = Math.round((socPct / 100) * innerH);
-                                    const y = 4 + (innerH - fillH);
                                     // Conditional coloring: green >=50%, amber 25-44%, red <25%
                                     const fillColor = socPct >= 50 ? 'var(--color-success-dark)' : (socPct >= 25 ? 'var(--color-warning)' : 'var(--color-danger)');
                                     return `
                                     <svg viewBox="0 0 24 40" aria-hidden="true">
                                         <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="var(--battery-shell-bg)"></rect>
                                         <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="none" stroke="var(--battery-shell-color)" stroke-width="1.5"></rect>
-                                        <rect x="3" y="${y}" width="18" height="${fillH}" rx="2" ry="2" class="level" fill="${fillColor}"></rect>
+                                        <rect x="3" y="4" width="18" height="28" rx="2" ry="2" class="level" fill="${fillColor}"></rect>
                                         <rect x="9" y="1" width="6" height="2" rx="1" ry="1" fill="var(--battery-shell-color)"></rect>
                                     </svg>`;
                                 })()}
