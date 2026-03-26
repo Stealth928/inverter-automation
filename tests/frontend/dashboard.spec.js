@@ -871,7 +871,7 @@ test.describe('Dashboard Page', () => {
 
     await page.reload();
 
-    await expect(page.locator('#evSelectedStatusPills')).toContainText(/Wake Recommended/i);
+    await expect(page.locator('#evSelectedStatusPills')).toContainText(/Might Need Wake/i);
     await expect(page.locator('#evWakeVehicleBtn')).toBeVisible();
     await expect(page.locator('#evWakePrompt')).toContainText(/plug status may be stale/i);
 
@@ -925,7 +925,7 @@ test.describe('Dashboard Page', () => {
 
     await page.reload();
 
-    await expect(page.locator('#evSelectedStatusPills')).not.toContainText(/Wake Recommended/i);
+    await expect(page.locator('#evSelectedStatusPills')).not.toContainText(/Might Need Wake/i);
     await expect(page.locator('#evWakePrompt')).toBeHidden();
 
     await page.locator('#evStartChargingBtn').click();

@@ -3745,7 +3745,7 @@
                 const canControl = state === 'ready_direct' || state === 'ready_signed';
                 return {
                     kind: 'warn',
-                    label: 'Wake Recommended',
+                    label: 'Might Need Wake',
                     detail: 'Plug state may be stale. If you connected after the last update, wake the vehicle and retry.',
                     canControl,
                     canWake: true,

@@ -75,8 +75,8 @@ describe('api metrics service', () => {
     const key = service.getDateKey(new Date('2026-03-06T00:00:00.000Z'), 'Australia/Sydney');
     const ausKey = service.getAusDateKey(new Date('2026-03-06T00:00:00.000Z'));
 
-    expect(key).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(ausKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(key).toBe('2026-03-06');
+    expect(ausKey).toBe('2026-03-06');
   });
 
   test('incrementApiCount updates user and global metrics', async () => {

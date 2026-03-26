@@ -15,7 +15,30 @@ function createApiMetricsService(deps = {}) {
   }
 
   function getDateKey(date = new Date(), timezone = defaultTimezone) {
-    return date.toLocaleDateString('en-CA', { timeZone: timezone || defaultTimezone });
+    const resolvedDate = (date instanceof Date) ? date : new Date(date);
+    const resolvedTimezone = timezone || defaultTimezone;
+
+    try {
+      // Build date keys from typed parts so we never depend on locale separators/order.
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: resolvedTimezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).formatToParts(resolvedDate);
+
+      const year = parts.find((part) => part.type === 'year')?.value;
+      const month = parts.find((part) => part.type === 'month')?.value;
+      const day = parts.find((part) => part.type === 'day')?.value;
+      if (year && month && day) {
+        return `${year}-${month}-${day}`;
+      }
+    } catch (_error) {
+      // Fall through to the UTC fallback below.
+    }
+
+    // Last resort: stable UTC ISO date key.
+    return resolvedDate.toISOString().slice(0, 10);
   }
 
   function getAusDateKey(date = new Date()) {
