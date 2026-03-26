@@ -2380,6 +2380,7 @@
         let pricingProvider = 'amber';
         let amberConfiguredSiteId = '';
         let amberLastPersistedSiteId = '';
+        const AEMO_SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
 
         function getPricingProviderSafe() {
             try {
@@ -2388,6 +2389,48 @@
                 }
             } catch (e) { /* ignore */ }
             return String(pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+        }
+
+        function normalizePricingRefreshMode(value) {
+            if (value && typeof value === 'object' && typeof value.mode === 'string') {
+                return value.mode;
+            }
+            if (typeof value === 'string' && value.trim()) {
+                return value.trim().toLowerCase();
+            }
+            return value === true ? 'manual' : 'auto';
+        }
+
+        function getPricingLocalCacheTtlMs(provider = getPricingProviderSafe()) {
+            const configuredTtlMs = Math.max(10 * 1000, Number(CONFIG.cache.amber) || (60 * 1000));
+            return provider === 'aemo'
+                ? Math.max(AEMO_SNAPSHOT_INTERVAL_MS, configuredTtlMs)
+                : configuredTtlMs;
+        }
+
+        function getPricingAutoRefreshCadenceMs(provider = getPricingProviderSafe()) {
+            const configuredRefreshMs = Math.max(10 * 1000, Number(CONFIG.refresh.amberPricesMs) || (60 * 1000));
+            return provider === 'aemo'
+                ? AEMO_SNAPSHOT_INTERVAL_MS
+                : configuredRefreshMs;
+        }
+
+        function shouldForcePricingUpstreamRefresh(provider = getPricingProviderSafe(), refreshMode = 'auto') {
+            return provider === 'amber' && refreshMode === 'manual';
+        }
+
+        function updatePricingRefreshControl() {
+            const refreshButton = document.getElementById('pricingRefreshBtn');
+            if (!refreshButton) return;
+
+            const provider = getPricingProviderSafe();
+            refreshButton.title = provider === 'aemo'
+                ? 'Refresh displayed prices from the latest stored AEMO snapshot'
+                : 'Force refresh Amber prices from API (bypasses cache)';
+        }
+
+        function refreshPricingCard(mode = 'manual') {
+            return getAmberCurrent({ mode });
         }
 
         // Prefer shared-utils helpers, but keep a local fallback for stale cached bundles.
@@ -2467,7 +2510,7 @@
                     if (!selectedSiteId) return;
                     setStoredAmberSiteIdSafe(selectedSiteId);
                     persistAmberSiteSelection(selectedSiteId);
-                    getAmberCurrent(true);
+                    refreshPricingCard('selection');
                 });
             }
 
@@ -2489,7 +2532,7 @@
                     setStoredAmberSiteIdSafe(selectedSiteId);
                 }
                 card.innerHTML = '<div style="color:var(--color-success)">Mock sites loaded (local mode)</div>';
-                setTimeout(() => getAmberCurrent(forceRefresh), 80);
+                setTimeout(() => refreshPricingCard(forceRefresh ? 'reload' : 'load'), 80);
                 return;
             }
             
@@ -2548,7 +2591,7 @@
                     }
                     card.innerHTML = `<div style="color:var(--color-success)">✓ ${sites.length} ${provider === 'aemo' ? 'region(s)' : 'site(s)'} found</div>`;
                     // Auto-fetch current prices
-                    setTimeout(() => getAmberCurrent(forceRefresh), 500);
+                    setTimeout(() => refreshPricingCard(forceRefresh ? 'reload' : 'load'), 500);
                 } else {
                     select.innerHTML = `<option value="">No ${provider === 'aemo' ? 'regions' : 'sites'}</option>`;
                     card.innerHTML = `<div style="color:var(--color-warning)">No ${provider === 'aemo' ? 'regions' : 'sites'} found</div>`;
@@ -2560,9 +2603,10 @@
             }
         }
 
-        async function getAmberCurrent(force = false) {
+        async function getAmberCurrent(refreshRequest = false) {
             const select = document.getElementById('amberSiteId');
             const provider = getPricingProviderSafe();
+            const refreshMode = normalizePricingRefreshMode(refreshRequest);
             let siteId = select.value;
             if (!siteId && isDashboardLocalMockEnabled()) {
                 const mockSites = getMockAmberSites();
@@ -2584,11 +2628,13 @@
             const cacheOwnerId = String(cacheState.amberUserId || '');
             const currentOwnerId = getAmberUserStorageId();
             
-            // Force refresh if requested (either explicit parameter or page reload bypass)
+            // Manual Amber refreshes can bypass backend cache; AEMO stays store-backed.
             const mockMode = isDashboardLocalMockEnabled();
-            const shouldBypassCache = force || isPageReload || mockMode;
+            const shouldForceUpstreamRefresh = shouldForcePricingUpstreamRefresh(provider, refreshMode);
+            const shouldBypassLocalCache = shouldForceUpstreamRefresh || refreshMode === 'reload' || mockMode;
+            const localCacheTtlMs = getPricingLocalCacheTtlMs(provider);
             
-            if (!shouldBypassCache && cacheState.amberTime && age < CONFIG.cache.amber && cacheSiteId === String(siteId) && cacheProvider === provider && cacheOwnerId === currentOwnerId) {
+            if (!shouldBypassLocalCache && cacheState.amberTime && age < localCacheTtlMs && cacheSiteId === String(siteId) && cacheProvider === provider && cacheOwnerId === currentOwnerId) {
                 // Load cached full prices array and render
                 try {
                     const cachedPricesFull = JSON.parse(localStorage.getItem('cachedPricesFull') || '[]');
@@ -2613,8 +2659,7 @@
                     url += provider === 'aemo'
                         ? `&regionId=${encodeURIComponent(siteId)}`
                         : `&siteId=${encodeURIComponent(siteId)}`;
-                    // Add forceRefresh if force flag is set
-                    if (force) {
+                    if (shouldForceUpstreamRefresh) {
                         url += '&forceRefresh=true';
                     }
                     const resp = await authenticatedFetch(url);
@@ -3686,12 +3731,12 @@
                 return {
                     kind: 'warn',
                     label: 'Wake Required',
-                    detail: 'Tesla reports this vehicle is asleep or offline. Use the manual wake button, then retry charging controls. Wake requests are never automatic.',
+                    detail: 'Tesla reports this vehicle is asleep or offline. Wake it, then retry charging controls.',
                     canControl: false,
                     canWake: true,
                     wakeTitle: 'Vehicle is asleep',
-                    wakeDetail: 'A manual wake is required before charging controls become available.',
-                    wakeNote: 'Wake requests are never sent automatically by dashboard refreshes or automations.'
+                    wakeDetail: 'Wake once to refresh live Tesla status.',
+                    wakeNote: 'Manual only. Never sent automatically.'
                 };
             }
 
@@ -3701,12 +3746,12 @@
                 return {
                     kind: 'warn',
                     label: 'Wake Recommended',
-                    detail: 'Tesla last reported this vehicle was not plugged in, but that status may be stale. If you connected the cable after the last update, wake the vehicle to refresh live status, then retry charging controls.',
+                    detail: 'Plug state may be stale. If you connected after the last update, wake the vehicle and retry.',
                     canControl,
                     canWake: true,
                     wakeTitle: 'Plug status may be stale',
-                    wakeDetail: 'Tesla last reported the cable as disconnected. If you plugged in after that, wake the vehicle to refresh live status before retrying charging controls.',
-                    wakeNote: 'Wake requests are manual only and should be used only when the dashboard status may be stale.'
+                    wakeDetail: 'Wake once if you plugged in after the last update.',
+                    wakeNote: 'Manual only when status looks stale.'
                 };
             }
 
@@ -4083,10 +4128,12 @@
                     wakeTitleEl.textContent = commandDescriptor.wakeTitle || 'Vehicle wake recommended';
                 }
                 if (wakeDescEl) {
-                    wakeDescEl.textContent = commandDescriptor.wakeDetail || 'Wake the vehicle to refresh live Tesla status before retrying charging controls.';
+                    wakeDescEl.textContent = commandDescriptor.wakeDetail || 'Wake once to refresh live Tesla status.';
                 }
                 if (wakeNoteEl) {
-                    wakeNoteEl.textContent = commandDescriptor.wakeNote || 'Wake requests are never sent automatically by dashboard refreshes or automations';
+                    const wakeNote = String(commandDescriptor.wakeNote || 'Manual only. Never sent automatically.').trim();
+                    wakeNoteEl.textContent = wakeNote;
+                    wakeNoteEl.style.display = wakeNote ? '' : 'none';
                 }
             }
             if (wakeBtn) {
@@ -5774,6 +5821,8 @@
                 amberBadge.style.background = mock ? 'color-mix(in srgb, var(--color-warning) 22%, transparent)' : '';
                 amberBadge.style.color = mock ? 'var(--color-warning)' : '';
             }
+
+            updatePricingRefreshControl();
         }
 
         function maybeEnableAutoLocalMockFromConfig(configResult) {
@@ -6606,14 +6655,25 @@
                 return; // Already running
             }
             
-            // Amber prices: every 60s (with cache bypass)
+            // Pricing: use a light UI heartbeat, but only fetch when the
+            // active provider's cadence says prices may have changed.
             if (!amberRefreshTimer) {
+                const pricingHeartbeatMs = Math.max(
+                    10 * 1000,
+                    Math.min(Number(REFRESH.amberPricesMs) || (60 * 1000), 60 * 1000)
+                );
                 amberRefreshTimer = setInterval(() => {
                     const siteId = document.getElementById('amberSiteId')?.value;
                     if (siteId) {
-                        getAmberCurrent(true);
+                        const provider = getPricingProviderSafe();
+                        const cadenceMs = getPricingAutoRefreshCadenceMs(provider);
+                        const lastRefreshMs = Number(lastUpdated.amber || 0);
+                        if (lastRefreshMs && (Date.now() - lastRefreshMs) < cadenceMs) {
+                            return;
+                        }
+                        refreshPricingCard('auto');
                     }
-                }, REFRESH.amberPricesMs);
+                }, pricingHeartbeatMs);
             }
 
             // Inverter real-time data: auto-refresh via cached path.

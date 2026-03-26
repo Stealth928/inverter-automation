@@ -144,6 +144,35 @@ describe('metrics route module', () => {
     expect(response.body.result['2026-03-14'].foxess).toBe(164);
   });
 
+  test('aggregates AEMO pricing without inflating inverter totals', async () => {
+    const todayDoc = {
+      id: '2026-03-14',
+      data: () => ({
+        foxess: 7,
+        amber: 5,
+        aemo: 4,
+        weather: 2
+      })
+    };
+
+    const db = createDbWithUserMetrics([todayDoc]);
+    const app = buildApp({ db });
+
+    const response = await request(app)
+      .get('/api/metrics/api-calls?scope=user&days=1');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result['2026-03-14']).toEqual(expect.objectContaining({
+      inverter: 7,
+      foxess: 7,
+      pricing: 9,
+      amber: 9,
+      aemo: 4,
+      weather: 2
+    }));
+  });
+
   test('rejects unauthenticated global metrics access', async () => {
     const app = buildApp({
       db: null,

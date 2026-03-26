@@ -491,41 +491,48 @@
         }
         .ev-wake-prompt {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            text-align: center;
-            padding: 20px 16px 24px;
-            gap: 6px;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 12px 14px;
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 24%, var(--border-primary));
+            border-radius: 12px;
+            background: color-mix(in srgb, var(--accent-blue) 7%, var(--bg-primary));
         }
         .ev-wake-prompt-icon {
-            font-size: 26px;
+            font-size: 20px;
             line-height: 1;
-            margin-bottom: 4px;
-            opacity: 0.65;
+            opacity: 0.75;
+            flex: 0 0 auto;
+            margin-top: 2px;
+        }
+        .ev-wake-prompt-copy {
+            min-width: 0;
+            flex: 1 1 auto;
         }
         .ev-wake-prompt-title {
             font-size: 13px;
             font-weight: 700;
             color: var(--text-primary);
+            margin-bottom: 2px;
         }
         .ev-wake-prompt-desc {
             font-size: 12px;
             color: var(--text-secondary);
-            max-width: 300px;
-            line-height: 1.5;
-            margin-bottom: 10px;
+            line-height: 1.4;
         }
         .ev-wake-prompt-note {
             font-size: 11px;
             color: var(--text-secondary);
-            max-width: 280px;
-            line-height: 1.5;
-            opacity: 0.65;
+            line-height: 1.35;
+            opacity: 0.72;
             margin-top: 4px;
         }
         .ev-wake-prompt .ev-action-btn--wake {
-            min-width: 160px;
-            padding: 10px 20px;
+            width: auto;
+            min-width: 132px;
+            margin: 0;
+            padding: 10px 16px;
             font-weight: 600;
             background: linear-gradient(135deg, color-mix(in srgb, var(--accent-blue) 55%, transparent), color-mix(in srgb, var(--accent-blue) 30%, var(--bg-input)));
             border-color: color-mix(in srgb, var(--accent-blue) 55%, transparent);
@@ -535,6 +542,15 @@
         .ev-wake-prompt .ev-action-btn--wake:hover:not(:disabled) {
             background: linear-gradient(135deg, color-mix(in srgb, var(--accent-blue) 68%, transparent), color-mix(in srgb, var(--accent-blue) 42%, var(--bg-input)));
             box-shadow: inset 0 1px 0 color-mix(in srgb, white 14%, transparent), 0 6px 18px color-mix(in srgb, var(--accent-blue) 28%, transparent);
+        }
+        @media (max-width: 720px) {
+            .ev-wake-prompt {
+                flex-wrap: wrap;
+                align-items: flex-start;
+            }
+            .ev-wake-prompt .ev-action-btn--wake {
+                width: 100%;
+            }
         }
         .ev-control-group {
             display: flex;
@@ -2599,7 +2615,7 @@
                         <div style="display:flex;align-items:center;gap:8px">
                             <span class="card-badge" id="amberSourceBadge">Pricing</span>
                             <div id="amberLastUpdate" style="font-size:11px;color:var(--text-secondary);">—</div>
-                            <button class="btn btn-icon" onclick="getAmberCurrent(true)" title="Force refresh from API (bypasses cache)">🔄</button>
+                            <button class="btn btn-icon" id="pricingRefreshBtn" onclick="refreshPricingCard('manual')" title="Refresh prices">🔄</button>
                         </div>
                     </div>
                     <div class="card-body">
@@ -2692,10 +2708,12 @@
                         <div class="ev-controls-body">
                             <div class="ev-wake-prompt" id="evWakePrompt" style="display:none;">
                                 <div class="ev-wake-prompt-icon">🌙</div>
-                                <div class="ev-wake-prompt-title">Vehicle is asleep</div>
-                                <div class="ev-wake-prompt-desc">A manual wake is required before charging controls become available</div>
+                                <div class="ev-wake-prompt-copy">
+                                    <div class="ev-wake-prompt-title">Vehicle is asleep</div>
+                                    <div class="ev-wake-prompt-desc">Wake once to refresh live Tesla status.</div>
+                                    <div class="ev-wake-prompt-note" id="evWakeVehicleNote">Manual only. Never sent automatically.</div>
+                                </div>
                                 <button class="ev-action-btn ev-action-btn--wake" type="button" id="evWakeVehicleBtn">Wake vehicle</button>
-                                <div class="ev-wake-prompt-note" id="evWakeVehicleNote">Wake requests are never sent automatically by dashboard refreshes or automations</div>
                             </div>
                             <div class="ev-session-section ev-control-group" id="evSessionControlGroup">
                                 <div class="ev-section-label">Session</div>

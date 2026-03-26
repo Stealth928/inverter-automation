@@ -52,12 +52,13 @@ class AemoTariffAdapter extends TariffProviderAdapter {
 
   async getCurrentPriceData(context = {}) {
     const regionId = this.resolveRegionId(context);
-    return this.aemoAPI.getCurrentPriceData({ ...context, regionId });
+    const { forceRefresh: _forceRefresh, ...safeContext } = context || {};
+    return this.aemoAPI.getCurrentPriceData({ ...safeContext, regionId });
   }
 
   async getCurrentPrices(context = {}) {
     const regionId = this.resolveRegionId(context);
-    const { data } = await this.aemoAPI.getCurrentPriceData({ ...context, regionId });
+    const { data } = await this.getCurrentPriceData({ ...context, regionId });
     return {
       ...this.buildSnapshot(data),
       siteId: regionId,

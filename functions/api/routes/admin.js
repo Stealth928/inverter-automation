@@ -1341,6 +1341,12 @@ function registerAdminRoutes(app, deps = {}) {
     return toCounter(root[key]);
   };
 
+  const resolvePricingCounter = (metricsDoc = {}) => {
+    const explicitPricing = toCounter(metricsDoc.pricing);
+    if (explicitPricing) return explicitPricing;
+    return toCounter(metricsDoc.amber) + toCounter(metricsDoc.aemo);
+  };
+
   const buildEvBreakdown = (metricsDoc = {}) => {
     const teslaFleetRoot = getTeslaFleetRoot(metricsDoc);
     const byCategory = teslaFleetRoot && teslaFleetRoot.calls && typeof teslaFleetRoot.calls.byCategory === 'object'
@@ -1409,7 +1415,7 @@ function registerAdminRoutes(app, deps = {}) {
       sungrow: toCounter(metricsDoc.sungrow),
       sigenergy: toCounter(metricsDoc.sigenergy),
       alphaess: toCounter(metricsDoc.alphaess),
-      amber: toCounter(metricsDoc.amber),
+      amber: resolvePricingCounter(metricsDoc),
       weather: toCounter(metricsDoc.weather),
       ev: resolveEvCounter(metricsDoc)
     };
@@ -4688,7 +4694,7 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
   try {
     const { uid } = req.params;
     const KNOWN_INVERTER_METRIC_KEYS = new Set(['foxess', 'sungrow', 'sigenergy', 'alphaess']);
-    const KNOWN_NON_INVERTER_METRIC_KEYS = new Set(['amber', 'weather', 'ev', 'tesla', 'teslafleet', 'updatedat']);
+    const KNOWN_NON_INVERTER_METRIC_KEYS = new Set(['amber', 'aemo', 'pricing', 'weather', 'ev', 'tesla', 'teslafleet', 'updatedat']);
     const PROVIDER_KEYS = ['foxess', 'sungrow', 'sigenergy', 'alphaess'];
 
     const toCounter = (value) => {
@@ -4848,10 +4854,14 @@ app.get('/api/admin/users/:uid/stats', authenticateUser, requireAdmin, async (re
         });
       }
 
+      const pricingCount = resolvePricingCounter(rawMetrics);
+
       metrics[doc.id] = {
         inverter: inverterTotal,
         inverterByProvider,
-        amber: toCounter(rawMetrics.amber),
+        pricing: pricingCount,
+        amber: pricingCount,
+        aemo: toCounter(rawMetrics.aemo),
         weather: toCounter(rawMetrics.weather),
         ev: resolveEvCounter(rawMetrics),
         // Legacy keys retained for compatibility with older admin clients.

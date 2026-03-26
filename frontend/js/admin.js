@@ -3705,7 +3705,7 @@
                 borderWidth: 2,
                 pointRadius: 2,
                 tension: 0.24,
-                yAxisID: 'y'
+                yAxisID: 'yExecutions'
             });
         }
 
@@ -3719,7 +3719,7 @@
                 borderWidth: 1,
                 borderRadius: 8,
                 maxBarThickness: 28,
-                yAxisID: 'y'
+                yAxisID: 'yFailures'
             });
         }
 
@@ -3744,10 +3744,19 @@
                         ticks: { color: palette.textSecondary, maxTicksLimit: 10 },
                         grid: { color: withAlpha(palette.textSecondary, 0.08) }
                     },
-                    y: {
+                    yExecutions: {
+                        type: 'linear',
+                        position: 'left',
                         beginAtZero: true,
-                        ticks: { color: palette.textSecondary, precision: 0 },
+                        ticks: { color: palette.accentGreen, precision: 0 },
                         grid: { color: withAlpha(palette.textSecondary, 0.08) }
+                    },
+                    yFailures: {
+                        type: 'linear',
+                        position: 'right',
+                        beginAtZero: true,
+                        ticks: { color: '#f87171', precision: 0 },
+                        grid: { drawOnChartArea: false }
                     }
                 }
             }

@@ -165,7 +165,6 @@ function registerPricingRoutes(app, deps = {}) {
 
       if (provider === 'aemo') {
         const result = await aemoAPI.getCurrentPriceData({
-          forceRefresh: req.query.forceRefresh === 'true' || req.query.force === 'true',
           regionId: resolveAemoRegionId(req, userConfig),
           userConfig,
           userId

@@ -65,6 +65,12 @@ function registerMetricsRoutes(app, deps = {}) {
     return 0;
   };
 
+  const resolvePricingCounter = (metricsDoc = {}) => {
+    const explicitPricing = toCounter(metricsDoc.pricing);
+    if (explicitPricing) return explicitPricing;
+    return toCounter(metricsDoc.amber) + toCounter(metricsDoc.aemo);
+  };
+
   const buildMetricsEnvelope = (rawDoc = {}) => {
     const metricsDoc = (rawDoc && typeof rawDoc === 'object') ? rawDoc : {};
     const providerBreakdown = {};
@@ -105,7 +111,9 @@ function registerMetricsRoutes(app, deps = {}) {
       sungrow: inverterByProvider.sungrow || 0,
       sigenergy: inverterByProvider.sigenergy || 0,
       alphaess: inverterByProvider.alphaess || 0,
-      amber: toCounter(metricsDoc.amber),
+      pricing: resolvePricingCounter(metricsDoc),
+      amber: resolvePricingCounter(metricsDoc),
+      aemo: toCounter(metricsDoc.aemo),
       weather: toCounter(metricsDoc.weather),
       ev: resolveEvCounter(metricsDoc)
     };

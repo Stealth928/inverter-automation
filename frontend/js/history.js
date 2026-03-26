@@ -1251,11 +1251,14 @@
 
                 document.getElementById('metricsDate').textContent = formatDate(new Date(todayKey), false);
                 const inverterCount = (typeof getInverterApiCount === 'function') ? getInverterApiCount(today) : toCounter(today.inverter ?? today.foxess ?? 0);
+                const pricingCount = (typeof getPricingApiCount === 'function')
+                    ? getPricingApiCount(today)
+                    : (toCounter(today.pricing) || (toCounter(today.amber) + toCounter(today.aemo)));
                 const evCount = (typeof getEvApiCount === 'function')
                     ? getEvApiCount(today)
                     : fallbackEvCounter(today);
                 document.getElementById('countFox').textContent = inverterCount;
-                document.getElementById('countAmber').textContent = toCounter(today.amber);
+                document.getElementById('countAmber').textContent = pricingCount;
                 document.getElementById('countWeather').textContent = toCounter(today.weather);
                 const evEl = document.getElementById('countEV');
                 if (evEl) evEl.textContent = evCount;
@@ -1709,4 +1712,3 @@
                 }
             });
         }
-

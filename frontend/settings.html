@@ -167,6 +167,8 @@
             transition: border-color 0.2s;
             display: flex;
             flex-direction: column;
+            height: 100%;
+            box-sizing: border-box;
         }
         .setting-item:hover {
             border-color: var(--accent-blue);
@@ -203,6 +205,77 @@
             font-size: 14px;
             font-family: 'Courier New', monospace;
             transition: border-color 0.2s;
+        }
+        .setting-input select {
+            flex: 1;
+            min-width: 0;
+            width: 100%;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--accent-blue) 8%, var(--bg-input)), var(--bg-input));
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 18%, var(--border-primary));
+            color: var(--text-primary);
+            padding: 11px 42px 11px 14px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 1.2;
+            box-shadow: 0 8px 20px color-mix(in srgb, var(--accent-blue) 8%, transparent);
+            transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+            cursor: pointer;
+        }
+        .setting-input select:hover {
+            border-color: color-mix(in srgb, var(--accent-blue) 40%, var(--border-primary));
+        }
+        .setting-input select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow:
+                0 0 0 3px var(--accent-blue-bg),
+                0 10px 24px color-mix(in srgb, var(--accent-blue) 12%, transparent);
+            transform: translateY(-1px);
+        }
+        .setting-input select option {
+            color: var(--text-primary);
+            background: var(--bg-primary);
+        }
+        .setting-input--select {
+            position: relative;
+        }
+        .setting-input--select::after {
+            content: "";
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            width: 10px;
+            height: 10px;
+            border-right: 2px solid color-mix(in srgb, var(--accent-blue) 72%, var(--text-secondary));
+            border-bottom: 2px solid color-mix(in srgb, var(--accent-blue) 72%, var(--text-secondary));
+            transform: translateY(-65%) rotate(45deg);
+            pointer-events: none;
+            opacity: 0.92;
+        }
+        .setting-item--feature {
+            border-radius: 6px;
+            padding: 16px;
+            background:
+                radial-gradient(circle at top right, color-mix(in srgb, var(--accent-blue) 10%, transparent), transparent 48%),
+                linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 94%, transparent), var(--bg-primary));
+            box-shadow: 0 10px 24px color-mix(in srgb, #000 8%, transparent);
+        }
+        .setting-item--feature .setting-label {
+            margin-bottom: 8px;
+        }
+        .setting-item--feature .setting-hint {
+            line-height: 1.55;
+            margin-bottom: 14px;
+            max-width: 48ch;
+        }
+        [data-theme="light"] .setting-input select {
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--accent-blue) 6%, #ffffff), #ffffff);
         }
         .setting-input input:focus {
             outline: none;
@@ -1608,7 +1681,7 @@
                     <div class="setting-item">
                         <div class="setting-label">Region</div>
                         <div class="setting-hint">Your geographic region for the SigenEnergy cloud API</div>
-                        <div class="setting-input">
+                        <div class="setting-input setting-input--select">
                             <select id="credentials_sigenenergyRegion">
                                 <option value="apac">APAC (Australia / Asia-Pacific)</option>
                                 <option value="eu">Europe</option>
@@ -1630,10 +1703,10 @@
                     </div>
                 </div>
 
-                <div class="setting-item">
+                <div class="setting-item setting-item--feature">
                     <div class="setting-label">Pricing Source</div>
                     <div class="setting-hint">Choose which market data provider powers pricing cards, automation price rules, history, and ROI.</div>
-                    <div class="setting-input">
+                    <div class="setting-input setting-input--select">
                         <select id="pricing_provider">
                             <option value="amber">Amber</option>
                             <option value="aemo">AEMO</option>
@@ -1644,7 +1717,7 @@
                 <div class="setting-item" id="pricingAemoRegionSection" style="display:none">
                     <div class="setting-label">AEMO Region</div>
                     <div class="setting-hint">Select the NEM region to use for live and forecast spot pricing.</div>
-                    <div class="setting-input">
+                    <div class="setting-input setting-input--select">
                         <select id="pricing_aemoRegion">
                             <option value="NSW1">New South Wales (NSW1)</option>
                             <option value="QLD1">Queensland (QLD1)</option>

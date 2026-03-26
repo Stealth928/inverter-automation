@@ -1374,7 +1374,7 @@ describe('admin route module', () => {
     const metricDocs = new Map(Object.entries({
       [dayTwoAgo]: { foxess: 20, amber: 9, weather: 4, teslaFleet: { calls: { byCategory: { wake: 1, vehicleData: 2 } } } },
       [dayOneAgo]: { foxess: 24, amber: 11, weather: 5, teslaFleet: { calls: { byCategory: { wake: 1, command: 1, vehicleData: 2 } } } },
-      [dayToday]: { foxess: 36, amber: 12, weather: 6, teslaFleet: { calls: { byCategory: { wake: 1, command: 2, vehicleData: 2 } } } }
+      [dayToday]: { foxess: 36, amber: 12, aemo: 7, weather: 6, teslaFleet: { calls: { byCategory: { wake: 1, command: 2, vehicleData: 2 } } } }
     }));
 
     const deps = createDeps({
@@ -1430,7 +1430,7 @@ describe('admin route module', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body.errno).toBe(0);
-    expect(response.body.result.summary.totalCalls).toBe(139);
+    expect(response.body.result.summary.totalCalls).toBe(146);
     expect(response.body.result.summary.dominantProvider).toEqual(expect.objectContaining({
       key: 'foxess',
       label: 'FoxESS'
@@ -1451,7 +1451,14 @@ describe('admin route module', () => {
       key: 'foxess',
       totalCalls: 80
     }));
+    expect(response.body.result.providers.find((provider) => provider.key === 'amber')).toEqual(expect.objectContaining({
+      key: 'amber',
+      totalCalls: 39
+    }));
     expect(response.body.result.daily.find((row) => row.date === dayToday)).toEqual(expect.objectContaining({
+      categories: expect.objectContaining({
+        amber: 19
+      }),
       evBreakdown: expect.objectContaining({
         wake: 1,
         command: 2,
@@ -2306,6 +2313,105 @@ describe('admin route module', () => {
     expect(response.body.result.configSummary.alphaessAppSecret).toBeUndefined();
     expect(configGet).toHaveBeenCalledTimes(1);
     expect(secretsGet).toHaveBeenCalledTimes(1);
+  });
+
+  test('user stats treat AEMO counters as pricing instead of inverter usage', async () => {
+    const metricDoc = {
+      id: '2026-03-14',
+      data: () => ({
+        foxess: 12,
+        aemo: 4,
+        weather: 3
+      })
+    };
+    const metricsGet = jest.fn(async () => ({
+      size: 1,
+      docs: [metricDoc],
+      forEach: (fn) => [metricDoc].forEach(fn)
+    }));
+    const automationGet = jest.fn(async () => ({
+      exists: false,
+      data: () => ({})
+    }));
+    const rulesGet = jest.fn(async () => ({ size: 0 }));
+    const configGet = jest.fn(async () => ({
+      exists: false,
+      data: () => ({})
+    }));
+    const secretsGet = jest.fn(async () => ({
+      exists: false,
+      data: () => ({})
+    }));
+
+    const userDocRef = {
+      collection: jest.fn((subName) => {
+        if (subName === 'metrics') {
+          return {
+            orderBy: jest.fn(() => ({
+              limit: jest.fn(() => ({
+                get: metricsGet
+              }))
+            }))
+          };
+        }
+        if (subName === 'automation') {
+          return {
+            doc: jest.fn(() => ({
+              get: automationGet
+            }))
+          };
+        }
+        if (subName === 'rules') {
+          return {
+            get: rulesGet
+          };
+        }
+        if (subName === 'config') {
+          return {
+            doc: jest.fn(() => ({
+              get: configGet
+            }))
+          };
+        }
+        if (subName === 'secrets') {
+          return {
+            doc: jest.fn(() => ({
+              get: secretsGet
+            }))
+          };
+        }
+        throw new Error(`Unexpected user subcollection: ${subName}`);
+      })
+    };
+
+    const deps = createDeps({
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') {
+            throw new Error(`Unexpected collection: ${name}`);
+          }
+          return {
+            doc: jest.fn(() => userDocRef)
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/users/user-aemo/stats')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.metrics['2026-03-14']).toEqual(expect.objectContaining({
+      inverter: 12,
+      pricing: 4,
+      amber: 4,
+      aemo: 4,
+      weather: 3,
+      foxess: 12
+    }));
   });
 
   test('admin users summary includes EV configured coverage from vehicle existence probes', async () => {

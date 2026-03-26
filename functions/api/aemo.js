@@ -557,10 +557,10 @@ function init(dependencies = {}) {
   }
 
   async function fetchCurrentPayloadsFromUpstream(userId = null) {
-    const [{ dispatchPrices, dispatchDemand }, { predispatchPrices, predispatchDemand }] = await Promise.all([
-      fetchLatestDispatchSections(userId),
-      fetchLatestPredispatchSections(userId)
-    ]);
+    // Process the two large archives sequentially so the scheduler does not
+    // hold both expanded CSV payloads in memory at the same time.
+    const { dispatchPrices, dispatchDemand } = await fetchLatestDispatchSections(userId);
+    const { predispatchPrices, predispatchDemand } = await fetchLatestPredispatchSections(userId);
 
     const payloads = new Map();
     for (const regionId of Object.keys(AEMO_SUPPORTED_REGIONS)) {
@@ -708,26 +708,25 @@ function init(dependencies = {}) {
   async function refreshAllCurrentPriceData(context = {}) {
     const payloads = await fetchCurrentPayloadsFromUpstream(context.userId || null);
     const regions = Object.keys(AEMO_SUPPORTED_REGIONS);
-    const settled = await Promise.allSettled(
-      regions.map((regionId) => {
-        const payload = payloads.get(regionId) || buildEmptyCurrentPayload(regionId);
-        return storeCurrentPricePayload(payload, context);
-      })
-    );
+    const results = [];
 
-    return settled.map((result, index) => {
-      if (result.status === 'fulfilled') {
-        return result.value;
+    for (const regionId of regions) {
+      try {
+        const payload = payloads.get(regionId) || buildEmptyCurrentPayload(regionId);
+        results.push(await storeCurrentPricePayload(payload, context));
+      } catch (error) {
+        results.push({
+          regionId,
+          updated: false,
+          payload: buildEmptyCurrentPayload(regionId),
+          previousAsOf: null,
+          currentAsOf: null,
+          error: error && error.message ? error.message : String(error || 'Unknown error')
+        });
       }
-      return {
-        regionId: regions[index],
-        updated: false,
-        payload: buildEmptyCurrentPayload(regions[index]),
-        previousAsOf: null,
-        currentAsOf: null,
-        error: result.reason && result.reason.message ? result.reason.message : String(result.reason || 'Unknown error')
-      };
-    });
+    }
+
+    return results;
   }
 
   async function getCurrentPriceData(context = {}) {

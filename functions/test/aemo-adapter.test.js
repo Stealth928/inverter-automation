@@ -104,4 +104,22 @@ describe('aemo tariff adapter', () => {
       error: 'AEMO provider upstream failure'
     });
   });
+
+  test('getCurrentPriceData strips forceRefresh so AEMO stays scheduler-backed', async () => {
+    const aemoAPI = buildAemoAPI();
+    const adapter = createAemoTariffAdapter({ aemoAPI });
+
+    await adapter.getCurrentPriceData({
+      forceRefresh: true,
+      regionId: 'nsw1',
+      userConfig: { aemoRegion: 'nsw1' },
+      userId: 'u-aemo'
+    });
+
+    expect(aemoAPI.getCurrentPriceData).toHaveBeenCalledWith({
+      regionId: 'NSW1',
+      userConfig: { aemoRegion: 'nsw1' },
+      userId: 'u-aemo'
+    });
+  });
 });

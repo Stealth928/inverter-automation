@@ -542,7 +542,6 @@ describe('read-only route modules', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ errno: 0, result: aemoRows });
     expect(aemoAPI.getCurrentPriceData).toHaveBeenCalledWith({
-      forceRefresh: true,
       regionId: 'NSW1',
       userConfig: {
         pricingProvider: 'aemo',

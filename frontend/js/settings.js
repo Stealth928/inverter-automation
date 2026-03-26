@@ -3505,8 +3505,6 @@
             'credentials_deviceSn',
             'credentials_foxessToken',
             'credentials_amberKey',
-            'pricing_provider',
-            'pricing_aemoRegion',
             'credentials_alphaessSystemSn',
             'credentials_alphaessAppId',
             'credentials_alphaessAppSecret',
@@ -3514,10 +3512,20 @@
             'credentials_sungrowUsername',
             'credentials_sungrowPassword',
             'credentials_sigenenergyUsername',
-            'credentials_sigenenergyPassword',
-            'credentials_sigenenergyRegion'
+            'credentials_sigenenergyPassword'
         ].forEach(id => {
             document.getElementById(id)?.addEventListener('input', () => {
+                checkCredentialsChanged();
+                updateStatus();
+            });
+        });
+
+        [
+            'pricing_provider',
+            'pricing_aemoRegion',
+            'credentials_sigenenergyRegion'
+        ].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', () => {
                 checkCredentialsChanged();
                 updateStatus();
             });

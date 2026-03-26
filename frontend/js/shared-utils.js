@@ -159,6 +159,19 @@ function getEvApiCount(dayMetrics = {}) {
     return 0;
 }
 
+function getPricingApiCount(dayMetrics = {}) {
+    const metrics = (dayMetrics && typeof dayMetrics === 'object') ? dayMetrics : {};
+    const toCounter = (value) => {
+        const n = Number(value);
+        return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+    };
+
+    const explicitPricing = toCounter(metrics.pricing);
+    if (explicitPricing) return explicitPricing;
+
+    return toCounter(metrics.amber) + toCounter(metrics.aemo);
+}
+
 /* ============================================
    PROVIDER CAPABILITIES
    ============================================ */
@@ -293,7 +306,7 @@ async function loadApiMetrics(days = 1) {
 
         if (dateEl) dateEl.textContent = formatted;
         if (inverterEl) inverterEl.textContent = getInverterApiCount(today);
-        if (amberEl) amberEl.textContent = displayCounter(today.amber);
+        if (amberEl) amberEl.textContent = getPricingApiCount(today);
         if (weatherEl) weatherEl.textContent = displayCounter(today.weather);
         if (evEl) evEl.textContent = getEvApiCount(today);
     } catch (e) {
@@ -707,6 +720,7 @@ if (typeof module !== 'undefined' && module.exports) {
         showWarning,
         showInfo,
         loadApiMetrics,
+        getPricingApiCount,
         getInverterApiCount,
         getProviderCapabilities,
         startMetricsAutoRefresh,
@@ -749,6 +763,7 @@ if (typeof window !== 'undefined') {
         formatValue,
         formatDate,
         formatTimeAgo,
+        getPricingApiCount,
         getInverterApiCount,
         getProviderCapabilities,
         getStoredPricingSelection,

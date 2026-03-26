@@ -1630,8 +1630,8 @@ exports.runAutomation = onSchedule(
 exports.refreshAemoLiveSnapshots = onSchedule(
   {
     schedule: '1-59/5 * * * *',
-    timeZone: 'Australia/Brisbane'
+    timeZone: 'Australia/Brisbane',
+    memory: '512MiB'
   },
   refreshAemoLiveSnapshotsHandler
 );
-
