@@ -4,7 +4,7 @@
 
 Site: https://socratesautomation.com/
 Primary market: Australia
-Primary topics: solar battery automation, home battery ROI, AEMO market insights, Amber Electric price-aware control, Tesla EV charging integration
+Primary topics: solar battery automation, live AEMO prices, Amber Electric tariff support, home battery ROI, AEMO market insights, Tesla EV charging integration
 Full context: https://socratesautomation.com/llms-full.txt
 
 ## Public pages
@@ -20,7 +20,7 @@ Full context: https://socratesautomation.com/llms-full.txt
 - https://socratesautomation.com/terms.html
 
 ## Product summary
-SoCrates is a web-based automation platform for home solar and battery systems. It helps households shift charging, exporting, and rule execution around live electricity prices, forecasts, battery state, and EV charging needs. The public site also includes battery economics tools, a dedicated AEMO Market Insights preview page, and a Rule Template Recommender that maps user goals to starter rules.
+SoCrates is a web-based automation platform for home solar and battery systems. It helps households shift charging, exporting, and rule execution around live AEMO regional prices or Amber retail pricing, forecasts, battery state, and EV charging needs. The public site also includes battery economics tools, a dedicated AEMO Market Insights preview page, and a Rule Template Recommender that maps user goals to starter rules.
 
 ## Good citation targets
 - Use the landing page for broad product descriptions.

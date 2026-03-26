@@ -2914,6 +2914,16 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
       return 'foxess';
     };
 
+    const normalizePricingProvider = (providerRaw, config = null) => {
+      const provider = String(providerRaw || '').toLowerCase().trim();
+      if (provider) return provider;
+      if (!config || typeof config !== 'object') return 'unknown';
+      if (config.aemoRegion) return 'aemo';
+      // Amber remains the long-standing default pricing mode when config exists
+      // but an explicit provider was never persisted.
+      return 'amber';
+    };
+
     const buildProviderFlags = (config = {}, secrets = {}) => {
       const provider = normalizeProvider(config.deviceProvider, config);
       return {
@@ -2971,6 +2981,13 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
     };
 
     const normalizeLocation = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+
+    const extractCountryFromLocation = (location) => {
+      const normalized = normalizeLocation(location);
+      if (!normalized) return null;
+      const parts = normalized.split(',').map((part) => part.trim()).filter(Boolean);
+      return parts.length >= 2 ? parts[parts.length - 1] : null;
+    };
 
     const formatInverterSizeLabel = (capacityW) => {
       const roundedKw = Math.round((Number(capacityW) / 1000) * 10) / 10;
@@ -3130,25 +3147,29 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
         const hasAmberApiKey = !!configMain?.amberApiKey;
         const providerFlags = buildProviderFlags(configMain || {}, secrets);
         const configured = !!(configMain?.setupComplete === true || isProviderConfigured(providerFlags.provider, providerFlags) || hasAnyProviderConfigured(providerFlags));
-        const deviceProvider = providerFlags.provider;
+        const deviceProvider = configMain ? providerFlags.provider : 'unknown';
+        const pricingProvider = normalizePricingProvider(configMain?.pricingProvider, configMain);
         const inverterCapacityW = Number.isFinite(Number(configMain?.inverterCapacityW)) ? Number(configMain.inverterCapacityW) : null;
         const batteryCapacityKWh = Number.isFinite(Number(configMain?.batteryCapacityKWh)) ? Number(configMain.batteryCapacityKWh) : null;
+        const inverterSizeLabel = inverterCapacityW ? formatInverterSizeLabel(inverterCapacityW) : null;
+        const batterySizeLabel = batteryCapacityKWh ? formatBatterySizeLabel(batteryCapacityKWh) : null;
         const coupling = resolveCoupling(configMain || {});
         const location = normalizeLocation(configMain?.location);
+        const country = extractCountryFromLocation(location);
+        const tourStatus = configMain === null ? 'no_config' : (configMain.tourComplete ? 'watched' : 'not_watched');
 
         if (shouldCollectSummary) {
           incrementCount(summaryCollectors.providerCounts, deviceProvider || 'unknown');
           incrementCount(summaryCollectors.couplingCounts, coupling || 'unknown');
-          const tourStatus = configMain === null ? 'no_config' : (configMain.tourComplete ? 'watched' : 'not_watched');
           incrementCount(summaryCollectors.tourStatusCounts, tourStatus);
           if (location) {
             incrementNamedCount(summaryCollectors.locationCounts, location.toLowerCase(), location);
           }
-          if (inverterCapacityW) {
-            incrementCount(summaryCollectors.inverterSizeCounts, formatInverterSizeLabel(inverterCapacityW));
+          if (inverterSizeLabel) {
+            incrementCount(summaryCollectors.inverterSizeCounts, inverterSizeLabel);
           }
-          if (batteryCapacityKWh) {
-            incrementCount(summaryCollectors.batterySizeCounts, formatBatterySizeLabel(batteryCapacityKWh));
+          if (batterySizeLabel) {
+            incrementCount(summaryCollectors.batterySizeCounts, batterySizeLabel);
           }
         }
 
@@ -3157,11 +3178,19 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
           email,
           role: data.role || (isSeedAdmin ? 'admin' : 'user'),
           configured,
+          deviceProvider,
+          pricingProvider,
           hasDeviceSn,
           hasFoxessToken,
           hasAmberApiKey,
           inverterCapacityW,
           batteryCapacityKWh,
+          inverterSizeLabel,
+          batterySizeLabel,
+          location,
+          country,
+          topology: coupling,
+          tourStatus,
           automationEnabled: !!data.automationEnabled,
           hasEVConfigured,
           createdAt: data.createdAt || null,
@@ -3178,11 +3207,19 @@ app.get('/api/admin/users', authenticateUser, requireAdmin, async (req, res) => 
           email,
           role: data.role || (isSeedAdmin ? 'admin' : 'user'),
           configured: false,
+          deviceProvider: 'unknown',
+          pricingProvider: 'unknown',
           hasDeviceSn: false,
           hasFoxessToken: false,
           hasAmberApiKey: false,
           inverterCapacityW: null,
           batteryCapacityKWh: null,
+          inverterSizeLabel: null,
+          batterySizeLabel: null,
+          location: '',
+          country: null,
+          topology: 'unknown',
+          tourStatus: 'no_config',
           automationEnabled: false,
           hasEVConfigured: false,
           createdAt: data.createdAt || null,

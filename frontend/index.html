@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SoCrates — Smart Solar Battery Automation</title>
-  <meta name="description" content="Rule-based solar battery automation for homes with Tesla EV integration. Shift charging and exporting around live electricity prices, weather, demand, and EV charging needs. Free for the first 500 members.">
+  <title>SoCrates — Solar Battery Automation | Live AEMO Prices</title>
+  <meta name="description" content="Rule-based solar battery automation for Australian homes with live AEMO prices, Amber Electric tariff support, weather-aware rules, and Tesla EV integration. Free for the first 500 members.">
   <meta name="robots" content="index, follow">
   <meta name="googlebot" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
   <link rel="canonical" href="https://socratesautomation.com/">
@@ -15,20 +15,20 @@
   <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
   <meta property="og:site_name" content="SoCrates">
   <meta property="og:locale" content="en_AU">
-  <meta property="og:title" content="SoCrates — Smart Inverter Automation">
-  <meta property="og:description" content="Rule-based solar battery automation for homes with Tesla EV integration. Automate charging, exporting, and EV charging around live prices, weather, and demand.">
+  <meta property="og:title" content="SoCrates — Solar Battery Automation | Live AEMO Prices">
+  <meta property="og:description" content="Rule-based solar battery automation for Australian homes. Automate charging, exporting, and EV charging around live AEMO prices, Amber tariffs, weather, and demand.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://socratesautomation.com/">
   <meta property="og:image" content="https://socratesautomation.com/images/screenshots/screen-1.png">
   <meta property="og:image:width" content="3832">
   <meta property="og:image:height" content="1516">
-  <meta property="og:image:alt" content="SoCrates dashboard showing automation rules and battery status">
+  <meta property="og:image:alt" content="SoCrates dashboard showing live pricing, automation status, and battery state">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="SoCrates - Smart Inverter Automation">
-  <meta name="twitter:description" content="Rule-based solar battery automation for homes with Tesla EV integration. Automate charging, exporting, and EV charging around live prices, weather, and demand.">
+  <meta name="twitter:title" content="SoCrates — Solar Battery Automation | Live AEMO Prices">
+  <meta name="twitter:description" content="Rule-based solar battery automation for Australian homes. Automate charging, exporting, and EV charging around live AEMO prices, Amber tariffs, weather, and demand.">
   <meta name="twitter:url" content="https://socratesautomation.com/">
   <meta name="twitter:image" content="https://socratesautomation.com/images/screenshots/screen-1.png">
-  <meta name="twitter:image:alt" content="SoCrates dashboard showing automation rules and battery status">
+  <meta name="twitter:image:alt" content="SoCrates dashboard showing live pricing, automation status, and battery state">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -38,7 +38,7 @@
         "@id": "https://socratesautomation.com/#website",
         "url": "https://socratesautomation.com/",
         "name": "SoCrates",
-        "description": "Rule-based solar battery automation for homes with Tesla EV integration.",
+        "description": "Rule-based solar battery automation for Australian homes with live AEMO prices, Amber Electric tariff support, and Tesla EV integration.",
         "inLanguage": "en-AU",
         "publisher": {
           "@id": "https://socratesautomation.com/#organization"
@@ -58,8 +58,17 @@
         "@type": "WebPage",
         "@id": "https://socratesautomation.com/#webpage",
         "url": "https://socratesautomation.com/",
-        "name": "SoCrates - Smart Solar Battery Automation",
-        "description": "Rule-based solar battery automation for homes with Tesla EV integration. Shift charging and exporting around live electricity prices, weather, demand, and EV charging needs.",
+        "name": "SoCrates - Solar Battery Automation with Live AEMO Prices",
+        "description": "Rule-based solar battery automation for Australian homes. Shift charging and exporting around live AEMO prices, Amber tariffs, weather, demand, and EV charging needs.",
+        "keywords": [
+          "solar battery automation",
+          "AEMO live prices",
+          "Amber Electric",
+          "Tesla EV integration",
+          "FoxESS",
+          "AlphaESS",
+          "Australia"
+        ],
         "isPartOf": {
           "@id": "https://socratesautomation.com/#website"
         },
@@ -75,7 +84,14 @@
         "url": "https://socratesautomation.com/",
         "applicationCategory": "UtilitiesApplication",
         "operatingSystem": "Web",
-        "description": "Rule-based solar battery automation platform for managing charge, export, inverter modes, and Tesla EV charging control.",
+        "description": "Rule-based solar battery automation platform for managing charge, export, inverter modes, live AEMO or Amber pricing, and Tesla EV charging control.",
+        "keywords": [
+          "solar battery automation",
+          "AEMO live prices",
+          "Amber Electric",
+          "Tesla EV integration",
+          "home battery automation Australia"
+        ],
         "isAccessibleForFree": true,
         "offers": {
           "@type": "Offer",
@@ -97,7 +113,7 @@
             "name": "Which inverter brands are supported?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "FoxESS is fully supported today. AlphaESS is in live beta. Sigenergy, and SunGrow integration is in development and coming soon. More brands are on the roadmap."
+              "text": "FoxESS and AlphaESS are fully supported today. Sigenergy and SunGrow integration is in development and coming soon. More brands are on the roadmap."
             }
           },
           {
@@ -113,7 +129,7 @@
             "name": "Which electricity retailers or price feeds are supported?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Amber Electric is supported today for live and forecast prices in Australia. Static time-of-use schedules work without any live price feed."
+              "text": "AEMO live regional prices are now supported across NSW, QLD, SA, TAS, and VIC. Amber Electric remains supported for customer-specific live and forecast pricing. Static time-of-use schedules also work without any live price feed."
             }
           },
           {
@@ -129,7 +145,7 @@
             "name": "How does automation work?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "SoCrates runs a cloud scheduler every minute that evaluates your rules in priority order and sends the first eligible command to your inverter. Automation can be paused at any time with the master toggle."
+              "text": "SoCrates runs a configurable cloud scheduler that evaluates your rules in priority order on the cadence you set and sends the first eligible command to your inverter. Automation can be paused at any time with the master toggle."
             }
           },
           {
@@ -187,16 +203,18 @@
   <section class="land-hero" aria-labelledby="heroH1">
     <div class="container">
 
+      <span class="land-hero__eyebrow">New rollout: Live AEMO prices across the NEM</span>
+
       <h1 class="land-hero__h1" id="heroH1">
         Automate your solar battery<br>
         <em>around live & future conditions</em>
       </h1>
 
       <p class="land-hero__sub">
-        SoCrates runs your custom rules at a cadence you choose — charging when prices are cheap,
-        exporting at peaks, and switching modes automatically. You set the logic, limits, and
-        priorities; SoCrates handles execution. Tesla EV integration is now live for connected
-        vehicle status and charging control in the same platform.
+        SoCrates runs your custom rules at a cadence you choose — charging when live AEMO or
+        Amber prices are cheap, exporting at peaks, and switching modes automatically. You set
+        the logic, limits, and priorities; SoCrates handles execution. Tesla EV integration is
+        now live for connected vehicle status and charging control in the same platform.
       </p>
 
       <div class="land-hero__actions">
@@ -221,6 +239,8 @@
           <img src="/icons/logo-sungrow.svg" alt="SunGrow" class="brand-logo brand-logo--sungrow">
           <span class="brand-soon">Soon</span>
         </span>
+        <span class="brand-sep">&nbsp;+&nbsp;</span>
+        <span class="brand-badge brand-badge--aemo">AEMO Live Prices</span>
         <span class="brand-sep">&nbsp;+&nbsp;</span>
         <span class="brand-badge brand-badge--amber">Amber Electric</span>
         <span class="brand-sep">&nbsp;+&nbsp;</span>
@@ -301,7 +321,7 @@
               <header class="product-card__head">
                 <h3>&#128176; Electricity Prices</h3>
                 <div class="product-card__meta">
-                  <span class="product-badge product-badge--amber">AMBER</span>
+                  <span class="product-badge product-badge--provider">AEMO LIVE</span>
                   <span class="product-card__age">18s ago</span>
                 </div>
               </header>
@@ -521,7 +541,7 @@
           <div class="how-step__num">02</div>
           <div class="how-step__icon">&#128203;</div>
           <h3 class="how-step__title">Set your rules</h3>
-          <p class="how-step__body">Set charge, discharge, or export rules with simple conditions: price, battery level, time, and solar forecast. Start from a template or build your own.</p>
+          <p class="how-step__body">Set charge, discharge, or export rules with simple conditions: AEMO live prices, Amber tariffs, battery level, time, and solar forecast. Start from a template or build your own.</p>
         </div>
 
         <div class="how-step__arrow" aria-hidden="true">&#8594;</div>
@@ -530,7 +550,7 @@
           <div class="how-step__num">03</div>
           <div class="how-step__icon">&#128176;</div>
           <h3 class="how-step__title">Save automatically</h3>
-          <p class="how-step__body">Rules run every 60 seconds in the cloud and send commands automatically. Check in anytime, or just watch your bill drop.</p>
+          <p class="how-step__body">Rules run on the cloud cadence you configure and send commands automatically. Check in anytime, or just watch your bill drop.</p>
         </div>
 
       </div>
@@ -546,7 +566,7 @@
 
       <span class="section-label">Features</span>
       <h2 class="section-title" id="featuresTitle">Everything you need to automate your energy</h2>
-      <p class="section-sub">From live rule execution to quick controls, Tesla EV charging, and audit history, SoCrates keeps the operating layer in one place.</p>
+      <p class="section-sub">From live AEMO pricing and rule execution to quick controls, Tesla EV charging, and audit history, SoCrates keeps the operating layer in one place.</p>
 
       <div class="features-grid">
 
@@ -563,7 +583,7 @@
             </svg>
           </div>
           <h3 class="feature-card__title">Automation Engine</h3>
-          <p class="feature-card__body">Rules evaluate every 60 seconds in the cloud. Combine price signals, battery SoC, time of day, solar and weather forecasts. First matching rule fires, with a full decision log.</p>
+          <p class="feature-card__body">Rules evaluate on the cloud cadence you choose. Combine price signals, battery SoC, time of day, solar and weather forecasts. First matching rule fires, with a full decision log.</p>
         </div>
 
         <div class="feature-card reveal">
@@ -583,7 +603,7 @@
             </svg>
           </div>
           <h3 class="feature-card__title">Price &amp; Weather</h3>
-          <p class="feature-card__body">Blend live import and feed-in prices with forward price outlooks and multi-day weather forecasts. Forecast trends feed your rules so you can act before spikes or curtailment windows.</p>
+          <p class="feature-card__body">Blend live AEMO regional prices or Amber retail prices with forward price outlooks and multi-day weather forecasts. Forecast trends feed your rules so you can act before spikes, negative-price windows, or curtailment events.</p>
         </div>
 
         <div class="feature-card reveal">
@@ -699,7 +719,7 @@
             </svg>
           </div>
           <h3 class="feature-card__title">Market Insights</h3>
-          <p class="feature-card__body">Track AEMO price trends, volatility, and negative-price events across NEM regions. <a href="/market-insights/" data-analytics-event="tool_open_click" data-analytics-location="features_section" data-analytics-label="AEMO Market Insights Preview">Open the public preview</a>.</p>
+          <p class="feature-card__body">Track AEMO price trends, volatility, negative-price events, and the regions now live for AEMO-powered automation. <a href="/market-insights/" data-analytics-event="tool_open_click" data-analytics-location="features_section" data-analytics-label="AEMO Market Insights Preview">Open the public preview</a>.</p>
         </div>
 
       </div>
@@ -721,8 +741,8 @@
         <div class="sc-track-wrap">
           <div class="sc-track" id="scTrack">
 
-            <div class="sc-slide is-active" role="group" aria-roledescription="slide" aria-label="1 of 11" data-caption="Automation Dashboard & Overview - your live system status, active rule, and current savings at a glance.">
-              <img src="/images/screenshots/screen-1.png" alt="Automation dashboard overview with battery SoC, active rule, pricing and savings" loading="lazy" width="900" height="562">
+            <div class="sc-slide is-active" role="group" aria-roledescription="slide" aria-label="1 of 11" data-caption="Automation Dashboard & Overview - live AEMO or Amber pricing, active rules, battery status, and savings in one place.">
+              <img src="/images/screenshots/screen-1.png" alt="Automation dashboard overview with battery SoC, active rule, live pricing and savings" loading="lazy" width="900" height="562">
             </div>
 
             <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="2 of 11" data-caption="Quick Controls - instantly charge or discharge with one tap, plus power and duration controls.">
@@ -745,8 +765,8 @@
               <img src="/images/screenshots/screen-6.png" alt="Automation Lab simulation panel with scenario testing and outcomes" loading="lazy" width="900" height="562">
             </div>
 
-            <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="7 of 11" data-caption="Reporting - review performance snapshots, trends, and outcomes over time.">
-              <img src="/images/screenshots/screen-7.png" alt="Reporting view with historical summaries and performance trends" loading="lazy" width="900" height="562">
+            <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="7 of 11" data-caption="Price History - review buy and feed-in history alongside live operating traces and broader performance trends.">
+              <img src="/images/screenshots/screen-7.png" alt="Price history view with historical buy and feed-in trends" loading="lazy" width="900" height="562">
             </div>
 
             <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="8 of 11" data-caption="Advanced Controls - configure deeper inverter behavior and automation constraints.">
@@ -782,7 +802,7 @@
         <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 10" data-sc="9"></button>
         <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 11" data-sc="10"></button>
       </div>
-      <p class="sc-caption" id="scCaption" aria-live="polite">Automation Dashboard &amp; Overview - your live system status, active rule, and current savings at a glance.</p>
+      <p class="sc-caption" id="scCaption" aria-live="polite">Automation Dashboard &amp; Overview - live AEMO or Amber pricing, active rules, battery status, and savings in one place.</p>
 
     </div>
   </section>
@@ -795,8 +815,8 @@
     <div class="container">
       <div class="stats-grid">
         <div class="stat-item reveal">
-          <div class="stat-item__val">60s</div>
-          <div class="stat-item__label">automation cycle time</div>
+          <div class="stat-item__val">Custom</div>
+          <div class="stat-item__label">automation cadence</div>
         </div>
         <div class="stat-item reveal">
           <div class="stat-item__val">400+</div>
@@ -972,8 +992,8 @@
             <span class="tool-card__badge tool-card__badge--live">Live now</span>
           </div>
           <h3 class="tool-card__title">AEMO Market Snapshot</h3>
-          <p class="tool-card__body">See recent price moves, volatility, and negative-price activity in your region.</p>
-          <p class="tool-card__micro">Fast public preview. Full workspace stays behind login.</p>
+          <p class="tool-card__body">See recent AEMO price moves, volatility, and negative-price activity in your region.</p>
+          <p class="tool-card__micro">Same NEM context now available as a live pricing source inside SoCrates.</p>
           <div class="tool-card__actions">
             <a href="/market-insights/" class="tool-card__cta" data-analytics-event="tool_open_click" data-analytics-location="tools_section" data-analytics-label="AEMO Market Insights Preview">Open preview</a>
           </div>
@@ -1086,7 +1106,7 @@
             <li>Solar curtailment monitor</li>
             <li>ROI &amp; automation history</li>
             <li>Time segment scheduler (8 segments)</li>
-            <li>Live price feeds + forecasts</li>
+            <li>Live AEMO prices + Amber tariffs</li>
             <li>Weather &amp; solar intelligence</li>
             <li>Real-time inverter dashboard</li>
             <li>Tesla EV connect + status visibility</li>
@@ -1133,7 +1153,7 @@
         <div class="faq-item">
           <details>
             <summary>Which inverter brands are supported?</summary>
-            <div class="faq-item__body"><strong>FoxESS</strong> is fully supported today. <strong>AlphaESS</strong>, <strong>Sigenergy</strong>, and <strong>SunGrow</strong> integration is in development and coming soon. More brands are on the roadmap — <a href="mailto:socrates.team.comms@gmail.com" data-analytics-event="contact_click" data-analytics-location="faq_brands">let us know</a> which you'd like to see next.</div>
+            <div class="faq-item__body"><strong>FoxESS</strong> and <strong>AlphaESS</strong> are fully supported today. <strong>Sigenergy</strong> and <strong>SunGrow</strong> integration is in development and coming soon. More brands are on the roadmap — <a href="mailto:socrates.team.comms@gmail.com" data-analytics-event="contact_click" data-analytics-location="faq_brands">let us know</a> which you'd like to see next.</div>
           </details>
         </div>
 
@@ -1147,7 +1167,7 @@
         <div class="faq-item">
           <details>
             <summary>Which electricity retailers / price feeds are supported?</summary>
-            <div class="faq-item__body">Currently <strong>Amber Electric</strong> is supported for live and forecast prices in Australia. Support for additional retailers and markets is planned. Static time-of-use schedules work without any price feed.</div>
+            <div class="faq-item__body"><strong>AEMO live regional prices</strong> are now supported across <strong>NSW, QLD, SA, TAS, and VIC</strong>. <strong>Amber Electric</strong> remains supported for customer-specific live and forecast pricing. Static time-of-use schedules also work without any live price feed.</div>
           </details>
         </div>
 
@@ -1161,7 +1181,7 @@
         <div class="faq-item">
           <details>
             <summary>How does automation work — is it always-on?</summary>
-            <div class="faq-item__body">Yes. SoCrates runs a cloud scheduler every minute that evaluates your rules in priority order. The first rule whose conditions are all met sends a command to your inverter. You can pause automation globally with the Master toggle any time.</div>
+            <div class="faq-item__body">Yes. SoCrates runs a configurable cloud scheduler that evaluates your rules in priority order on the cadence you set. The first rule whose conditions are all met sends a command to your inverter. You can pause automation globally with the Master toggle any time.</div>
           </details>
         </div>
 

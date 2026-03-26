@@ -115,6 +115,29 @@ async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
         evVehicles.push(payload);
       }
       body = { errno: 0, result: payload };
+    } else if (path === '/api/ev/vehicles/command-readiness' && method === 'POST') {
+      const postData = route.request().postDataJSON ? route.request().postDataJSON() : {};
+      const vehicleIds = Array.isArray(postData?.vehicleIds) ? postData.vehicleIds : [];
+      body = {
+        errno: 0,
+        result: {
+          byVehicleId: vehicleIds.reduce((acc, vehicleId) => {
+            const key = String(vehicleId || '').trim();
+            if (!key) return acc;
+            const readiness = readinessByVehicleId[key] || {
+              errno: 0,
+              result: {
+                state: 'ready_direct',
+                transport: 'direct',
+                source: 'test',
+                vehicleCommandProtocolRequired: false
+              }
+            };
+            acc[key] = readiness?.result || readiness;
+            return acc;
+          }, {})
+        }
+      };
     } else if (/^\/api\/ev\/vehicles\/[^/]+\/command-readiness$/.test(path) && method === 'GET') {
       const segments = path.split('/');
       const vehicleId = decodeURIComponent(segments[segments.length - 2] || '');

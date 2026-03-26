@@ -678,6 +678,13 @@ class APIClient {
     return this.get(`/api/ev/vehicles/${encodeURIComponent(vehicleId)}/command-readiness`);
   }
 
+  async getEVVehicleCommandReadinessBatch(vehicleIds = [], options = {}) {
+    return this.post('/api/ev/vehicles/command-readiness', {
+      vehicleIds: Array.isArray(vehicleIds) ? vehicleIds : [],
+      ...(options && options.live ? { live: true } : {})
+    });
+  }
+
   async issueEVVehicleCommand(vehicleId, command, options = {}) {
     return this.post(`/api/ev/vehicles/${encodeURIComponent(vehicleId)}/command`, {
       command,

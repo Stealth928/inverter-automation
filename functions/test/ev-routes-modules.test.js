@@ -33,6 +33,8 @@ function makeVehiclesRepo(overrides = {}) {
     deleteVehicle: jest.fn(async () => true),
     getVehicleState: jest.fn(async () => null),
     saveVehicleState: jest.fn(async () => {}),
+    getVehicleCommandReadiness: jest.fn(async () => null),
+    saveVehicleCommandReadiness: jest.fn(async () => {}),
     getVehicleCredentials: jest.fn(async () => ({ accessToken: 'tok' })),
     setVehicleCredentials: jest.fn(async () => {}),
     ...overrides
@@ -71,6 +73,19 @@ function makeAdapter(overrides = {}) {
       source: 'test',
       vehicleCommandProtocolRequired: false
     })),
+    getCommandReadinessBatch: jest.fn(async (requests = []) => (
+      (Array.isArray(requests) ? requests : []).reduce((acc, request) => {
+        const key = String(request?.key || request?.vehicleId || '').trim();
+        if (!key) return acc;
+        acc[key] = {
+          state: 'ready_direct',
+          transport: 'direct',
+          source: 'fleet_status',
+          vehicleCommandProtocolRequired: false
+        };
+        return acc;
+      }, {})
+    )),
     wakeVehicle: jest.fn(async () => ({ accepted: true, status: 'online', wakeState: 'online', transport: 'direct', asOfIso: '2025-01-01T00:00:00.000Z' })),
     startCharging: jest.fn(async () => ({ accepted: true, status: 'confirmed', transport: 'direct', asOfIso: '2025-01-01T00:00:00.000Z' })),
     stopCharging: jest.fn(async () => ({ accepted: true, status: 'confirmed', transport: 'direct', asOfIso: '2025-01-01T00:00:00.000Z' })),
@@ -675,6 +690,36 @@ describe('GET /api/ev/vehicles/:vehicleId/command-readiness', () => {
     expect(res.statusCode).toBe(404);
   });
 
+  test('returns cached command readiness when cache is populated and live=0', async () => {
+    const cached = {
+      state: 'ready_direct',
+      transport: 'direct',
+      source: 'cache',
+      vehicleCommandProtocolRequired: false,
+      savedAt: new Date()
+    };
+    const adapter = makeAdapter();
+    const deps = makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({ vehicleId: 'v1', provider: 'tesla', region: 'na' })),
+        getVehicleCommandReadiness: jest.fn(async () => cached)
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app)
+      .get('/api/ev/vehicles/v1/command-readiness')
+      .set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.source).toBe('cache');
+    expect(res.body.result).toMatchObject({
+      state: 'ready_direct',
+      transport: 'direct'
+    });
+    expect(adapter.getCommandReadiness).not.toHaveBeenCalled();
+  });
+
   test('returns adapter command readiness with audit metadata', async () => {
     const adapter = makeAdapter({
       getCommandReadiness: jest.fn(async (_vehicleId, context) => {
@@ -788,6 +833,58 @@ describe('GET /api/ev/vehicles/:vehicleId/command-readiness', () => {
     expect(res.statusCode).toBe(403);
     expect(res.body.error).toMatch(/permissions|vehicle approval|reconnect tesla/i);
     expect(res.body.result.reasonCode).toBe('tesla_permission_denied');
+  });
+});
+
+describe('POST /api/ev/vehicles/command-readiness', () => {
+  test('returns batched readiness results and only calls batch adapter once', async () => {
+    const adapter = makeAdapter({
+      getCommandReadinessBatch: jest.fn(async (requests, context) => {
+        await context.recordTeslaApiCall({ category: 'data_request', status: 200, billable: true });
+        return (Array.isArray(requests) ? requests : []).reduce((acc, request) => {
+          acc[request.key] = {
+            state: request.key === 'v2' ? 'ready_signed' : 'ready_direct',
+            transport: request.key === 'v2' ? 'signed' : 'direct',
+            source: 'fleet_status',
+            vehicleCommandProtocolRequired: request.key === 'v2'
+          };
+          return acc;
+        }, {});
+      })
+    });
+    const deps = makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async (_uid, vehicleId) => ({ vehicleId, provider: 'tesla', region: 'na', vin: vehicleId === 'v1' ? '5YJ3E1EA7JF000001' : '5YJ3E1EA7JF000002' })),
+        getVehicleCredentials: jest.fn(async () => ({
+          accessToken: 'tok',
+          refreshToken: 'ref',
+          clientId: 'client-1'
+        })),
+        saveVehicleCommandReadiness: jest.fn(async () => {})
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app)
+      .post('/api/ev/vehicles/command-readiness')
+      .set('Authorization', 'Bearer tok')
+      .send({ vehicleIds: ['v1', 'v2'] });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.result.byVehicleId.v1).toMatchObject({
+      state: 'ready_direct',
+      transport: 'direct'
+    });
+    expect(res.body.result.byVehicleId.v2).toMatchObject({
+      state: 'ready_signed',
+      transport: 'signed'
+    });
+    expect(adapter.getCommandReadinessBatch).toHaveBeenCalledTimes(1);
+    expect(res.body.audit).toMatchObject({
+      routeName: 'command_readiness_batch',
+      teslaApiCalls: 1,
+      teslaBillableApiCalls: 1
+    });
   });
 });
 

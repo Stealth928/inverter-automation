@@ -3741,6 +3741,17 @@
             }
 
             const state = String(readiness?.state || '').trim();
+            if (state === 'proxy_unavailable') {
+                const pairingDomain = String(window.location.hostname || '').trim().toLowerCase();
+                return {
+                    kind: 'warn',
+                    label: 'Pairing Required',
+                    detail: `This vehicle requires virtual-key pairing before charging controls can be used. Open tesla.com/_ak/${pairingDomain} on your phone with the Tesla app, approve the key, then confirm on the vehicle screen.`,
+                    canControl: false,
+                    canWake: false
+                };
+            }
+
             if (isEVStaleDisconnectedStatus(status, statusMeta, statusError)) {
                 const canControl = state === 'ready_direct' || state === 'ready_signed';
                 return {
@@ -3770,16 +3781,6 @@
                     label: 'Controls Ready',
                     detail: 'Tesla signed charging commands are available for this vehicle.',
                     canControl: true,
-                    canWake: false
-                };
-            }
-            if (state === 'proxy_unavailable') {
-                const pairingDomain = String(window.location.hostname || '').trim().toLowerCase();
-                return {
-                    kind: 'warn',
-                    label: 'Pairing Required',
-                    detail: `This vehicle requires virtual-key pairing before charging controls can be used. Open tesla.com/_ak/${pairingDomain} on your phone with the Tesla app, approve the key, then confirm on the vehicle screen.`,
-                    canControl: false,
                     canWake: false
                 };
             }
@@ -3887,7 +3888,7 @@
                 const socText = formatEVSoc(status?.socPct);
                 const chargingText = formatEVChargingState(status?.chargingState);
                 const summaryText = hasCredentials
-                    ? `${socText} • ${chargingText}`
+                    ? (status ? `${socText} • ${chargingText}` : 'Status pending')
                     : 'Setup Required';
 
                 const button = document.createElement('button');
@@ -4203,6 +4204,7 @@
         }
 
         async function fetchEVVehicleCommandReadiness(vehicleId, options = {}) {
+            const live = options.live === true;
             const silent = options.silent === true;
             const selectedId = String(vehicleId || '');
             if (!selectedId) return null;
@@ -4248,7 +4250,8 @@
             if (!silent) renderEVOverview();
 
             try {
-                const response = await authenticatedFetch(`/api/ev/vehicles/${encodeURIComponent(selectedId)}/command-readiness`);
+                const query = live ? '?live=1' : '';
+                const response = await authenticatedFetch(`/api/ev/vehicles/${encodeURIComponent(selectedId)}/command-readiness${query}`);
                 let data = null;
                 try {
                     data = await response.json();
@@ -4376,8 +4379,10 @@
             }
 
             const forceLive = options.forceLive === true;
-            await fetchEVVehicleStatus(selectedId, { live: forceLive, silent: true });
-            await fetchEVVehicleCommandReadiness(selectedId, { silent: true });
+            await Promise.all([
+                fetchEVVehicleStatus(selectedId, { live: forceLive, silent: true }),
+                fetchEVVehicleCommandReadiness(selectedId, { live: forceLive, silent: true })
+            ]);
 
         }
 
@@ -4470,27 +4475,22 @@
                 setEVOverviewMessage('', '');
                 renderEVOverview();
 
-                const statusFetches = evDashboardState.vehicles.map((vehicle) => {
+                evDashboardState.vehicles.forEach((vehicle) => {
                     const vehicleId = String(vehicle.vehicleId || '');
-                    if (!vehicleId) return Promise.resolve(null);
-
-                    if (!hasEVVehicleCredentialsConfigured(vehicle)) {
-                        delete evDashboardState.statusByVehicleId[vehicleId];
-                        evDashboardState.statusMetaByVehicleId[vehicleId] = {
-                            source: 'setup',
-                            loadedAtMs: Date.now(),
-                            error: 'Vehicle credentials not configured. Connect Tesla in Settings to finish setup.'
-                        };
-                        return Promise.resolve(null);
-                    }
-
-                    const live = forceLiveSelected && vehicleId === evDashboardState.selectedVehicleId;
-                    return fetchEVVehicleStatus(vehicleId, { live, silent: true });
+                    if (!vehicleId || hasEVVehicleCredentialsConfigured(vehicle)) return;
+                    delete evDashboardState.statusByVehicleId[vehicleId];
+                    evDashboardState.statusMetaByVehicleId[vehicleId] = {
+                        source: 'setup',
+                        loadedAtMs: Date.now(),
+                        error: 'Vehicle credentials not configured. Connect Tesla in Settings to finish setup.'
+                    };
                 });
-                await Promise.all(statusFetches);
 
                 if (evDashboardState.selectedVehicleId) {
-                    await fetchEVVehicleCommandReadiness(evDashboardState.selectedVehicleId, { silent: true });
+                    await Promise.all([
+                        fetchEVVehicleStatus(evDashboardState.selectedVehicleId, { live: forceLiveSelected, silent: true }),
+                        fetchEVVehicleCommandReadiness(evDashboardState.selectedVehicleId, { live: forceLiveSelected, silent: true })
+                    ]);
                 }
             } catch (error) {
                 const message = String(error?.message || 'Failed to load EV overview');
@@ -4538,6 +4538,12 @@
 
         async function refreshEVOverview(forceLiveSelected = false) {
             await loadEVOverviewData(forceLiveSelected === true);
+        }
+
+        async function refreshSelectedEVStatusOnVisibility() {
+            const selectedId = String(evDashboardState.selectedVehicleId || '');
+            if (!selectedId) return;
+            await fetchEVVehicleStatus(selectedId, { live: false, silent: true });
         }
 
         async function submitEVVehicleCommand(command, extraPayload = {}) {
@@ -8190,10 +8196,13 @@
                             <h4 style="margin:0 0 12px 0;font-size:14px;color:var(--accent-blue)">📋 Conditions (ALL must be true)</h4>
                             
                             <!-- Feed-in Price -->
-                            <div data-condition-key="feedInPrice" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px">
-                                <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
-                                    <input type="checkbox" id="condFeedInEnabled" style="width:16px;height:16px">
-                                    <span style="color:var(--text-primary);font-size:13px">💰 Feed-in Price (current)</span>
+                            <div data-condition-key="feedInPrice" style="display:flex;align-items:center;gap:10px 12px;padding:12px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap;transition:opacity 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease">
+                                <label style="display:flex;align-items:flex-start;gap:8px;min-width:220px;cursor:pointer">
+                                    <input type="checkbox" id="condFeedInEnabled" style="width:16px;height:16px;margin-top:2px">
+                                    <span style="display:flex;flex-direction:column;gap:2px">
+                                        <span style="color:var(--text-primary);font-size:13px">💰 Feed-in Price (current)</span>
+                                        <span data-condition-hint style="color:var(--text-muted);font-size:10px;line-height:1.3">Live export spot price</span>
+                                    </span>
                                 </label>
                                 <select id="condFeedInOp" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
                                     <option value=">">&gt;</option>
@@ -8208,10 +8217,13 @@
                             </div>
                             
                             <!-- Buy Price -->
-                            <div data-condition-key="buyPrice" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px">
-                                <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
-                                    <input type="checkbox" id="condBuyEnabled" style="width:16px;height:16px">
-                                    <span style="color:var(--text-primary);font-size:13px">🛒 Buy Price (current)</span>
+                            <div data-condition-key="buyPrice" style="display:flex;align-items:center;gap:10px 12px;padding:12px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap;transition:opacity 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease">
+                                <label style="display:flex;align-items:flex-start;gap:8px;min-width:220px;cursor:pointer">
+                                    <input type="checkbox" id="condBuyEnabled" style="width:16px;height:16px;margin-top:2px">
+                                    <span style="display:flex;flex-direction:column;gap:2px">
+                                        <span style="color:var(--text-primary);font-size:13px">🛒 Buy Price (current)</span>
+                                        <span data-condition-hint style="color:var(--text-muted);font-size:10px;line-height:1.3">Live import spot price</span>
+                                    </span>
                                 </label>
                                 <select id="condBuyOp" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
                                     <option value="<">&lt;</option>
@@ -8226,10 +8238,13 @@
                             </div>
                             
                             <!-- Forecast Price -->
-                            <div data-condition-key="forecastPrice" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
-                                <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
-                                    <input type="checkbox" id="condForecastEnabled" style="width:16px;height:16px">
-                                    <span style="color:var(--text-primary);font-size:13px">📈 Forecast Price</span>
+                            <div data-condition-key="forecastPrice" style="display:flex;align-items:center;gap:10px 12px;padding:12px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap;transition:opacity 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease">
+                                <label style="display:flex;align-items:flex-start;gap:8px;min-width:220px;cursor:pointer">
+                                    <input type="checkbox" id="condForecastEnabled" style="width:16px;height:16px;margin-top:2px">
+                                    <span style="display:flex;flex-direction:column;gap:2px">
+                                        <span style="color:var(--text-primary);font-size:13px">📈 Forecast Price</span>
+                                        <span data-condition-hint style="color:var(--text-muted);font-size:10px;line-height:1.3">Upcoming price window</span>
+                                    </span>
                                 </label>
                                 <select id="condForecastType" style="padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
                                     <option value="feedIn">Feed-in</option>
@@ -8257,7 +8272,7 @@
                             </div>
                             
                             <!-- Battery SoC -->
-                            <div data-condition-key="soc" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px">
+                            <div data-condition-key="soc" style="display:flex;align-items:center;gap:10px 12px;padding:12px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap;transition:opacity 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condSocEnabled" style="width:16px;height:16px">
                                     <span style="color:var(--text-primary);font-size:13px">🔋 Battery SoC</span>
@@ -8275,7 +8290,7 @@
                             </div>
                             
                             <!-- Temperature -->
-                            <div data-condition-key="temperature" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
+                            <div data-condition-key="temperature" style="display:flex;align-items:center;gap:10px 12px;padding:12px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap;transition:opacity 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condTempEnabled" style="width:16px;height:16px">
                                     <span style="color:var(--text-primary);font-size:13px">🌡️ Temperature</span>
@@ -8295,9 +8310,9 @@
                                 </select>
                                 <input type="number" id="condTempVal" placeholder="°C" value="40" min="-40" max="80" step="1" style="width:70px;padding:6px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
                                 <span style="color:var(--text-secondary);font-size:11px">°C</span>
-                                <span id="condTempDayOffsetWrap" style="display:none;color:var(--text-secondary);font-size:11px">
-                                    in next
-                                    <select id="condTempDayOffset" style="min-width:180px;padding:4px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
+                                <span id="condTempDayOffsetWrap" style="display:none;align-items:center;gap:8px;color:var(--text-secondary);font-size:11px;flex-wrap:wrap">
+                                    for
+                                    <select id="condTempDayOffset" style="min-width:180px;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:4px;color:var(--text-primary);font-size:12px">
                                         <option value="0">0 days (today)</option>
                                         <option value="1">1 day</option>
                                         <option value="2">2 days</option>
@@ -8310,12 +8325,11 @@
                                         <option value="9">9 days</option>
                                         <option value="10">10 days</option>
                                     </select>
-                                    days
                                 </span>
                             </div>
                             
                             <!-- Solar Radiation Forecast -->
-                            <div data-condition-key="solarRadiation" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
+                            <div data-condition-key="solarRadiation" style="display:flex;align-items:center;gap:10px 12px;padding:12px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap;transition:opacity 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condSolarEnabled" style="width:16px;height:16px">
                                     <span style="color:var(--text-primary);font-size:13px">☀️ Solar Radiation</span>
@@ -8341,7 +8355,7 @@
                             </div>
                             
                             <!-- Cloud Cover Forecast -->
-                            <div data-condition-key="cloudCover" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
+                            <div data-condition-key="cloudCover" style="display:flex;align-items:center;gap:10px 12px;padding:12px;background:var(--bg-secondary);border-radius:6px;margin-bottom:8px;flex-wrap:wrap;transition:opacity 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condCloudEnabled" style="width:16px;height:16px">
                                     <span style="color:var(--text-primary);font-size:13px">☁️ Cloud Cover</span>
@@ -8367,7 +8381,7 @@
                             </div>
                             
                             <!-- Time Window -->
-                            <div data-condition-key="time" style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap">
+                            <div data-condition-key="time" style="display:flex;align-items:center;gap:10px 12px;padding:12px;background:var(--bg-secondary);border-radius:6px;flex-wrap:wrap;transition:opacity 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease">
                                 <label style="display:flex;align-items:center;gap:6px;min-width:160px;cursor:pointer">
                                     <input type="checkbox" id="condTimeEnabled" style="width:16px;height:16px">
                                     <span style="color:var(--text-primary);font-size:13px">🕐 Time Window</span>
@@ -8511,11 +8525,13 @@
                 if (opSelect && val2Wrap) {
                     opSelect.addEventListener('change', () => {
                         val2Wrap.style.display = opSelect.value === 'between' ? 'inline' : 'none';
+                        updateConditionRowStates(modal);
                     });
                 }
             });
 
             setupRulePlainEnglishListeners(modal);
+            updateConditionRowStates(modal);
             updateTemperatureConditionUI(modal);
             updateRulePlainEnglishSummary(modal);
         }
@@ -8593,9 +8609,9 @@
 
         function getForecastOffsetDisplayLabel(offset) {
             const n = Number.isInteger(offset) ? offset : 0;
-            if (n === 0) return '0 days (today)';
-            if (n === 1) return '1 day';
-            return `${n} days`;
+            if (n === 0) return 'today';
+            if (n === 1) return 'tomorrow';
+            return `${n} days ahead`;
         }
 
         function getForecastWindowSentence(offset) {
@@ -8818,13 +8834,74 @@
             if (!modal || modal.dataset.rulePlainEnglishBound === '1') return;
             modal.dataset.rulePlainEnglishBound = '1';
 
-            const refresh = () => updateRulePlainEnglishSummary(modal);
+            const refresh = () => {
+                updateConditionRowStates(modal);
+                updateRulePlainEnglishSummary(modal);
+            };
             modal.addEventListener('input', (event) => {
-                if (event?.target && event.target.matches && event.target.matches('input, select, textarea')) refresh();
+                if (!event?.target || !event.target.matches || !event.target.matches('input, select, textarea')) return;
+                if (event.target.id === 'condTempEnabled' || event.target.id === 'condTempType') {
+                    updateTemperatureConditionUI(modal);
+                    return;
+                }
+                refresh();
             });
             modal.addEventListener('change', (event) => {
-                if (event?.target && event.target.matches && event.target.matches('input, select, textarea')) refresh();
+                if (!event?.target || !event.target.matches || !event.target.matches('input, select, textarea')) return;
+                if (event.target.id === 'condTempEnabled' || event.target.id === 'condTempType') {
+                    updateTemperatureConditionUI(modal);
+                    return;
+                }
+                refresh();
             });
+        }
+
+        function updateConditionRowStates(modalRef = null) {
+            const modal = modalRef || document.getElementById('addRuleModal') || document;
+            if (!modal || !modal.querySelectorAll) return;
+
+            modal.querySelectorAll('[data-condition-key]').forEach((row) => {
+                const checkbox = row.querySelector('input[type="checkbox"]');
+                if (!checkbox) return;
+
+                const enabled = checkbox.checked === true;
+                row.style.opacity = enabled ? '1' : '0.65';
+                row.style.background = enabled ? 'var(--bg-secondary)' : 'rgba(255,255,255,0.03)';
+                row.style.border = enabled ? '1px solid rgba(88,166,255,0.16)' : '1px solid rgba(255,255,255,0.04)';
+                row.style.boxShadow = enabled ? '0 0 0 1px rgba(88,166,255,0.04)' : 'none';
+
+                row.querySelectorAll('input, select, textarea').forEach((control) => {
+                    if (control === checkbox) return;
+                    control.disabled = !enabled;
+                });
+            });
+
+            const feedInOp = modal.querySelector('#condFeedInOp');
+            const feedInVal2Wrap = modal.querySelector('#condFeedInVal2Wrap');
+            const feedInVal2 = modal.querySelector('#condFeedInVal2');
+            if (feedInOp && feedInVal2Wrap && feedInVal2) {
+                const isBetween = feedInOp.value === 'between';
+                feedInVal2Wrap.style.display = isBetween ? 'inline-flex' : 'none';
+                feedInVal2.disabled = feedInVal2.disabled || !isBetween;
+            }
+
+            const buyOp = modal.querySelector('#condBuyOp');
+            const buyVal2Wrap = modal.querySelector('#condBuyVal2Wrap');
+            const buyVal2 = modal.querySelector('#condBuyVal2');
+            if (buyOp && buyVal2Wrap && buyVal2) {
+                const isBetween = buyOp.value === 'between';
+                buyVal2Wrap.style.display = isBetween ? 'inline-flex' : 'none';
+                buyVal2.disabled = buyVal2.disabled || !isBetween;
+            }
+
+            const socOp = modal.querySelector('#condSocOp');
+            const socVal2Wrap = modal.querySelector('#condSocVal2Wrap');
+            const socVal2 = modal.querySelector('#condSocVal2');
+            if (socOp && socVal2Wrap && socVal2) {
+                const isBetween = socOp.value === 'between';
+                socVal2Wrap.style.display = isBetween ? 'inline-flex' : 'none';
+                socVal2.disabled = socVal2.disabled || !isBetween;
+            }
         }
 
         function updateTemperatureConditionUI(modalRef = null) {
@@ -8835,10 +8912,12 @@
             if (!typeEl || !dayWrap || !daySelect) return;
 
             const type = typeEl.value || 'battery';
+            const enabled = modal.querySelector('#condTempEnabled')?.checked === true;
             const isForecastType = type === 'forecastMax' || type === 'forecastMin';
-            dayWrap.style.display = isForecastType ? 'inline-flex' : 'none';
+            dayWrap.style.display = enabled && isForecastType ? 'inline-flex' : 'none';
             buildTemperatureDayOffsetOptions(modal);
             if (!isForecastType) daySelect.value = '0';
+            updateConditionRowStates(modal);
             updateRulePlainEnglishSummary(modal);
         }
         
@@ -9404,6 +9483,7 @@
                 document.getElementById('newRuleMinSoc').value = editMinSoc;
                 document.getElementById('newRuleMaxSoc').value = action.maxSoc || 100;
                 updateRuleMinSocFloorWarning();
+                updateConditionRowStates(modal);
                 updateRulePlainEnglishSummary(modal);
                 
                 // Change button text
@@ -10194,8 +10274,8 @@
                 if (typeof refreshQuickControlStatus === 'function') {
                     refreshQuickControlStatus();
                 }
-                if (typeof refreshEVOverview === 'function') {
-                    refreshEVOverview(false);
+                if (typeof refreshSelectedEVStatusOnVisibility === 'function') {
+                    refreshSelectedEVStatusOnVisibility();
                 }
             }
         });

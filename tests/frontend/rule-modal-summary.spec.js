@@ -147,8 +147,13 @@ test.describe('Rule Modal Summaries', () => {
     expect(dayOffsetValues).toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
 
     const dayOffsetLabels = await page.locator('#addRuleModal #condTempDayOffset option').allTextContents();
-    expect(dayOffsetLabels[0]).toContain('0 days (today)');
-    expect(dayOffsetLabels[10]).toContain('10 days');
+    expect(dayOffsetLabels[0]).toBe('today');
+    expect(dayOffsetLabels[1]).toBe('tomorrow');
+    expect(dayOffsetLabels[10]).toBe('10 days ahead');
+
+    await page.check('#addRuleModal #condTempEnabled');
+    await expect(page.locator('#addRuleModal #condTempDayOffsetWrap')).toBeVisible();
+    await expect(page.locator('#addRuleModal #condTempDayOffsetWrap')).toContainText('for');
 
     await page.selectOption('#addRuleModal #condTempType', 'battery');
     await expect(page.locator('#addRuleModal #condTempDayOffsetWrap')).toBeHidden();
@@ -160,6 +165,9 @@ test.describe('Rule Modal Summaries', () => {
 
     await expect(page.locator('#addRuleModal')).toContainText('Feed-in Price (current)');
     await expect(page.locator('#addRuleModal')).toContainText('Buy Price (current)');
+    await expect(page.locator('#addRuleModal')).toContainText('Live export spot price');
+    await expect(page.locator('#addRuleModal')).toContainText('Live import spot price');
+    await expect(page.locator('#addRuleModal')).toContainText('Upcoming price window');
 
     const conditionOrder = await page.locator('#addRuleModal [data-condition-key]').evaluateAll((nodes) =>
       nodes.map((node) => node.getAttribute('data-condition-key'))
@@ -171,6 +179,22 @@ test.describe('Rule Modal Summaries', () => {
       'forecastPrice',
       'soc'
     ]);
+  });
+
+  test('dims inactive condition rows and enables controls only when selected', async ({ page }) => {
+    await openAddRuleModal(page);
+
+    const buyRow = page.locator('#addRuleModal [data-condition-key="buyPrice"]');
+    const buyOperator = page.locator('#addRuleModal #condBuyOp');
+    const buyValue = page.locator('#addRuleModal #condBuyVal');
+
+    await expect(buyOperator).toBeDisabled();
+    await expect(buyValue).toBeDisabled();
+
+    await page.check('#addRuleModal #condBuyEnabled');
+    await expect(buyOperator).toBeEnabled();
+    await expect(buyValue).toBeEnabled();
+    await expect(buyRow).toHaveCSS('opacity', '1');
   });
 
   test('uses master summaries only and omits legacy temperature panel', async ({ page }) => {

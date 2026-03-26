@@ -4,17 +4,24 @@ test.describe('SEO Metadata', () => {
   test('landing page exposes canonical, social, and structured data tags', async ({ page }) => {
     await page.goto('/index.html');
 
+    await expect(page).toHaveTitle('SoCrates — Solar Battery Automation | Live AEMO Prices');
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', 'Rule-based solar battery automation for Australian homes with live AEMO prices, Amber Electric tariff support, weather-aware rules, and Tesla EV integration. Free for the first 500 members.');
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/');
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow');
     await expect(page.locator('meta[name="googlebot"]')).toHaveAttribute('content', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
     await expect(page.locator('meta[property="og:locale"]')).toHaveAttribute('content', 'en_AU');
     await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://socratesautomation.com/');
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', 'SoCrates — Solar Battery Automation | Live AEMO Prices');
+    await expect(page.locator('meta[property="og:description"]')).toHaveAttribute('content', 'Rule-based solar battery automation for Australian homes. Automate charging, exporting, and EV charging around live AEMO prices, Amber tariffs, weather, and demand.');
     await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', 'https://socratesautomation.com/images/screenshots/screen-1.png');
     await expect(page.locator('meta[property="og:image:width"]')).toHaveAttribute('content', '3832');
     await expect(page.locator('meta[property="og:image:height"]')).toHaveAttribute('content', '1516');
+    await expect(page.locator('meta[property="og:image:alt"]')).toHaveAttribute('content', 'SoCrates dashboard showing live pricing, automation status, and battery state');
     await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute('content', 'summary_large_image');
+    await expect(page.locator('meta[name="twitter:title"]')).toHaveAttribute('content', 'SoCrates — Solar Battery Automation | Live AEMO Prices');
+    await expect(page.locator('meta[name="twitter:description"]')).toHaveAttribute('content', 'Rule-based solar battery automation for Australian homes. Automate charging, exporting, and EV charging around live AEMO prices, Amber tariffs, weather, and demand.');
     await expect(page.locator('meta[name="twitter:url"]')).toHaveAttribute('content', 'https://socratesautomation.com/');
-    await expect(page.locator('meta[name="twitter:image:alt"]')).toHaveAttribute('content', 'SoCrates dashboard showing automation rules and battery status');
+    await expect(page.locator('meta[name="twitter:image:alt"]')).toHaveAttribute('content', 'SoCrates dashboard showing live pricing, automation status, and battery state');
 
     const structuredData = page.locator('script[type="application/ld+json"]');
     await expect(structuredData).toHaveCount(1);
@@ -24,6 +31,8 @@ test.describe('SEO Metadata', () => {
     expect(ldJsonText).toContain('"@type": "WebPage"');
     expect(ldJsonText).toContain('"@type": "SoftwareApplication"');
     expect(ldJsonText).toContain('"@type": "FAQPage"');
+    expect(ldJsonText).toContain('Live AEMO Prices');
+    expect(ldJsonText).toContain('"AEMO live prices"');
   });
 
   test('landing page includes analytics instrumentation for CTA tracking', async ({ page }) => {
@@ -39,13 +48,63 @@ test.describe('SEO Metadata', () => {
     expect(typeof analyticsState.measurementId).toBe('string');
   });
 
+  test('landing page highlights the AEMO live prices rollout in copy and structured answers', async ({ page }) => {
+    await page.goto('/index.html');
+
+    await expect(page.locator('.land-hero__eyebrow')).toContainText('Live AEMO prices');
+    await expect(page.locator('.brand-strip')).toContainText('AEMO Live Prices');
+
+    const pricingFaq = page.locator('.faq-item', {
+      has: page.locator('summary', { hasText: 'Which electricity retailers / price feeds are supported?' })
+    });
+    await expect(pricingFaq).toContainText('AEMO live regional prices');
+    await expect(pricingFaq).toContainText('Amber Electric');
+    await expect(pricingFaq).toContainText('NSW, QLD, SA, TAS, and VIC');
+
+    const structuredData = await page.locator('script[type="application/ld+json"]').first().textContent();
+    expect(structuredData).toContain('AEMO live regional prices are now supported across NSW, QLD, SA, TAS, and VIC.');
+    expect(structuredData).toContain('Amber Electric remains supported for customer-specific live and forecast pricing.');
+  });
+
+  test('landing page shows FoxESS and AlphaESS as supported today', async ({ page }) => {
+    await page.goto('/index.html');
+
+    const inverterFaq = page.locator('.faq-item', {
+      has: page.locator('summary', { hasText: 'Which inverter brands are supported?' })
+    });
+    await expect(inverterFaq).toContainText('FoxESS');
+    await expect(inverterFaq).toContainText('AlphaESS');
+    await expect(inverterFaq).toContainText('are fully supported today');
+
+    const structuredData = await page.locator('script[type="application/ld+json"]').first().textContent();
+    expect(structuredData).toContain('FoxESS and AlphaESS are fully supported today.');
+  });
+
+  test('landing page describes automation cadence as configurable', async ({ page }) => {
+    await page.goto('/index.html');
+
+    const automationFeature = page.locator('.feature-card', {
+      has: page.locator('h3', { hasText: 'Automation Engine' })
+    });
+    await expect(automationFeature).toContainText('cloud cadence you choose');
+
+    const automationFaq = page.locator('.faq-item', {
+      has: page.locator('summary', { hasText: 'How does automation work' })
+    });
+    await expect(automationFaq).toContainText('configurable cloud scheduler');
+    await expect(automationFaq).toContainText('cadence you set');
+
+    const structuredData = await page.locator('script[type="application/ld+json"]').first().textContent();
+    expect(structuredData).toContain('configurable cloud scheduler that evaluates your rules in priority order on the cadence you set');
+  });
+
   test('landing page links to the dedicated market insights preview from the tools section', async ({ page }) => {
     await page.goto('/index.html');
 
     const marketTool = page.locator('.tool-card', { has: page.locator('h3', { hasText: 'AEMO Market Snapshot' }) });
     await expect(marketTool).toHaveCount(1);
     await expect(marketTool.locator('a[href="/market-insights/"]')).toHaveCount(1);
-    await expect(marketTool).toContainText('Fast public preview');
+    await expect(marketTool).toContainText('Same NEM context now available as a live pricing source inside SoCrates.');
   });
 
   test('landing page links to the battery wear estimator from the tools section', async ({ page }) => {

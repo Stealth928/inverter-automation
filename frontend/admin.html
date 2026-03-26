@@ -71,6 +71,66 @@
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
         }
+        .users-filters-bar {
+            padding: 16px 18px 14px;
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 50%, transparent);
+            background: color-mix(in srgb, var(--bg-overlay) 82%, transparent);
+        }
+        .users-filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+        }
+        .users-filter-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+        }
+        .users-filter-field--search {
+            grid-column: span 2;
+        }
+        .users-filter-label {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+        .users-filter-field input,
+        .users-filter-field select {
+            width: 100%;
+            min-width: 0;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 70%, transparent);
+            border-radius: var(--radius-md);
+            background: color-mix(in srgb, var(--bg-tertiary) 92%, transparent);
+            color: var(--text-primary);
+            font-size: 13px;
+            padding: 9px 11px;
+            transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+        }
+        .users-filter-field input::placeholder {
+            color: var(--text-muted);
+        }
+        .users-filter-field input:focus,
+        .users-filter-field select:focus {
+            outline: none;
+            border-color: color-mix(in srgb, var(--accent-blue) 60%, transparent);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 14%, transparent);
+            background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+        }
+        .users-filters-footer {
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .users-filters-status {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
         .users-table {
             width: 100%;
             border-collapse: collapse;
@@ -177,6 +237,12 @@
             display: flex;
             gap: 6px;
             flex-wrap: wrap;
+        }
+
+        @media (max-width: 900px) {
+            .users-filter-field--search {
+                grid-column: span 1;
+            }
         }
 
         /* Automation status indicator */
@@ -3253,6 +3319,68 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
+                <div class="users-filters-bar">
+                    <div class="users-filters-grid">
+                        <label class="users-filter-field users-filter-field--search" for="usersFilterSearch">
+                            <span class="users-filter-label">Search</span>
+                            <input type="search" id="usersFilterSearch" placeholder="Email, uid, provider, location, size, topology..." autocomplete="off">
+                        </label>
+                        <label class="users-filter-field" for="usersFilterProvider">
+                            <span class="users-filter-label">Inverter Provider</span>
+                            <select id="usersFilterProvider">
+                                <option value="">All providers</option>
+                            </select>
+                        </label>
+                        <label class="users-filter-field" for="usersFilterInverterSize">
+                            <span class="users-filter-label">Inverter Size</span>
+                            <select id="usersFilterInverterSize">
+                                <option value="">All inverter sizes</option>
+                            </select>
+                        </label>
+                        <label class="users-filter-field" for="usersFilterBatterySize">
+                            <span class="users-filter-label">Battery Size</span>
+                            <select id="usersFilterBatterySize">
+                                <option value="">All battery sizes</option>
+                            </select>
+                        </label>
+                        <label class="users-filter-field" for="usersFilterPricing">
+                            <span class="users-filter-label">Pricing</span>
+                            <select id="usersFilterPricing">
+                                <option value="">All pricing</option>
+                            </select>
+                        </label>
+                        <label class="users-filter-field" for="usersFilterCountry">
+                            <span class="users-filter-label">Country</span>
+                            <select id="usersFilterCountry">
+                                <option value="">All countries</option>
+                            </select>
+                        </label>
+                        <label class="users-filter-field" for="usersFilterRules">
+                            <span class="users-filter-label">Rules</span>
+                            <select id="usersFilterRules">
+                                <option value="">Any rule count</option>
+                                <option value="has_rules">Has rules</option>
+                                <option value="no_rules">No rules</option>
+                            </select>
+                        </label>
+                        <label class="users-filter-field" for="usersFilterTopology">
+                            <span class="users-filter-label">Topology</span>
+                            <select id="usersFilterTopology">
+                                <option value="">All topology</option>
+                            </select>
+                        </label>
+                        <label class="users-filter-field" for="usersFilterTourStatus">
+                            <span class="users-filter-label">Tour Status</span>
+                            <select id="usersFilterTourStatus">
+                                <option value="">All tour states</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="users-filters-footer">
+                        <div class="users-filters-status" id="usersFiltersStatus">Filters apply to the loaded page unless you choose Show all.</div>
+                        <button class="action-btn" type="button" id="usersClearFiltersBtn" onclick="clearUsersFilters()">Clear filters</button>
+                    </div>
+                </div>
                 <div id="usersLoading" class="loading-spinner">Loading users...</div>
                 <div id="usersTableWrapper" class="users-table-wrapper" style="display: none;">
                     <table class="users-table">

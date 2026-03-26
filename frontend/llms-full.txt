@@ -29,8 +29,8 @@ SoCrates is a serverless web platform for home solar and battery automation. The
 ## Product facts from public pages
 - SoCrates positions itself as rule-based solar battery automation for homes
 - The site messaging highlights Tesla EV integration
-- The site messaging highlights Amber Electric support for price-aware automation
-- FoxESS is presented as supported today, while AlphaESS, Sigenergy, and SunGrow are presented on the landing page as coming soon or in progress
+- The site messaging highlights live AEMO regional prices and Amber Electric tariff support for price-aware automation
+- FoxESS and AlphaESS are presented as supported today, while Sigenergy and SunGrow are presented on the landing page as coming soon or in progress
 - The public calculator, rule recommender, and market insights preview are intended as top-of-funnel educational tools
 
 ## Topics the site is well suited to answer

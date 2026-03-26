@@ -33,6 +33,10 @@ function createVehiclesRepository(deps = {}) {
     return vehicleRef(userId, vehicleId).collection('state').doc('current');
   }
 
+  function vehicleCommandReadinessRef(userId, vehicleId) {
+    return vehicleRef(userId, vehicleId).collection('state').doc('commandReadiness');
+  }
+
   function describeDocRef(docRef) {
     return docRef?._path || docRef?.path || 'unknown';
   }
@@ -207,6 +211,32 @@ function createVehiclesRepository(deps = {}) {
     return doc.data();
   }
 
+  /**
+   * Persist the most recent command-readiness snapshot.
+   * @param {string} userId
+   * @param {string} vehicleId
+   * @param {object} readiness
+   * @returns {Promise<void>}
+   */
+  async function saveVehicleCommandReadiness(userId, vehicleId, readiness) {
+    await vehicleCommandReadinessRef(userId, vehicleId).set({
+      ...readiness,
+      savedAt: serverTimestamp()
+    });
+  }
+
+  /**
+   * Read the most recent cached command-readiness snapshot.
+   * @param {string} userId
+   * @param {string} vehicleId
+   * @returns {Promise<object|null>}
+   */
+  async function getVehicleCommandReadiness(userId, vehicleId) {
+    const doc = await vehicleCommandReadinessRef(userId, vehicleId).get();
+    if (!doc.exists) return null;
+    return doc.data();
+  }
+
   return {
     listVehicles,
     getVehicle,
@@ -216,7 +246,9 @@ function createVehiclesRepository(deps = {}) {
     setVehicleCredentials,
     getVehicleCredentials,
     saveVehicleState,
-    getVehicleState
+    getVehicleState,
+    saveVehicleCommandReadiness,
+    getVehicleCommandReadiness
   };
 }
 

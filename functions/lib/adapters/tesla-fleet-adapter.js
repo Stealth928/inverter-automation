@@ -711,6 +711,107 @@ class TeslaFleetAdapter extends EVAdapter {
     }
   }
 
+  async getCommandReadinessBatch(requests = [], context = {}) {
+    const normalizedRequests = Array.isArray(requests) ? requests : [];
+    const output = {};
+    const vinRequests = [];
+
+    for (const request of normalizedRequests) {
+      const requestKey = String(request?.key || request?.vehicleId || '').trim();
+      if (!requestKey) continue;
+
+      const mergedContext = {
+        ...(context || {}),
+        ...(request?.context || {})
+      };
+      const vehicleRef = resolveVehicleReference(request?.vehicleId, mergedContext);
+      if (!vehicleRef.vin) {
+        output[requestKey] = {
+          state: 'ready_direct',
+          transport: 'direct',
+          source: 'assumed_no_vin',
+          vehicleVin: null,
+          vehicleCommandProtocolRequired: null,
+          totalNumberOfKeys: null,
+          firmwareVersion: null
+        };
+        continue;
+      }
+
+      vinRequests.push({
+        key: requestKey,
+        vehicleRef
+      });
+    }
+
+    if (vinRequests.length === 0) {
+      return output;
+    }
+
+    const fleetBase = this._fleetBaseForContext(context);
+    const url = `${fleetBase}/api/1/vehicles/fleet_status`;
+
+    try {
+      const response = await this._requestWithAuthRefresh(
+        context,
+        (headers) => this._makeRequest('POST', url, {
+          headers: {
+            ...headers,
+            'Content-Type': 'application/json'
+          },
+          body: { vins: vinRequests.map((entry) => entry.vehicleRef.vin) },
+          categoryHint: 'data_request',
+          onApiCall: context?.recordTeslaApiCall
+        })
+      );
+      const payload = response.data?.response ?? response.data;
+      const hasProxy = this._hasSignedCommandProxy();
+
+      for (const request of vinRequests) {
+        const entry = extractFleetStatusEntry(payload, request.vehicleRef.vin) || {};
+        const readiness = buildTeslaCommandReadiness(entry, {
+          source: 'fleet_status',
+          vehicleVin: request.vehicleRef.vin,
+          hasSignedCommandProxy: hasProxy
+        });
+        output[request.key] = (
+          readiness?.vehicleCommandProtocolRequired === true
+          && readiness?.state === 'ready_signed'
+          && !hasTeslaScope(context?.credentials, 'vehicle_cmds')
+        )
+          ? {
+            ...readiness,
+            state: 'oauth_scope_upgrade_required',
+            reasonCode: 'tesla_vehicle_cmds_scope_required',
+            missingScopes: ['vehicle_cmds']
+          }
+          : readiness;
+      }
+
+      return output;
+    } catch (error) {
+      this._logger.warn('TeslaFleetAdapter', `Command readiness batch lookup failed: ${error?.message || error}`);
+      if (this._isAuthError(error) || Number(error?.status) === 429 || Number(error?.status) >= 500 || isProxyFailureError(error)) {
+        throw error;
+      }
+
+      for (const request of vinRequests) {
+        output[request.key] = {
+          state: 'read_only',
+          transport: 'none',
+          source: 'fleet_status_unavailable',
+          vehicleVin: request.vehicleRef.vin,
+          vehicleCommandProtocolRequired: null,
+          totalNumberOfKeys: null,
+          firmwareVersion: null,
+          reasonCode: 'command_readiness_unavailable',
+          warning: String(error?.message || 'fleet_status_unavailable')
+        };
+      }
+      return output;
+    }
+  }
+
   _normalizeCommandResponse(commandPath, rawResponse, transport, readiness) {
     const response = rawResponse?.response || rawResponse || {};
     const reasonText = String(response?.reason || response?.error || '').trim();

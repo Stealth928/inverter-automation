@@ -89,10 +89,12 @@
     }
 
     let currentUsers = [];
+    let currentUsersFiltered = [];
     let currentUsersPagination = { page: 1, pageSize: 50, totalUsers: 0, totalPages: 1, showAll: false, sortingScope: 'current-page' };
     let currentUsersSummary = null;
     let adminApiClient = null;
     let currentSort = { key: 'lastSignedInAt', direction: 'desc' };
+    let currentUsersFilters = createDefaultUsersFilters();
     let platformTrendChart = null;
     let behaviorTrendChart = null;
     let behaviorEventsChart = null;
@@ -113,8 +115,369 @@
     let tabsLoaded = { overview: false, behavior: false, announcement: false, scheduler: false, dataworks: false, users: false, apiHealth: false };
     let usersTableRequestSequence = 0;
     let usersSummaryRequestSequence = 0;
+    let usersFilterInputDebounce = null;
     let currentAdminAnnouncement = null;
     let announcementEditorBound = false;
+
+    function createDefaultUsersFilters() {
+        return {
+            search: '',
+            inverterProvider: '',
+            inverterSize: '',
+            batterySize: '',
+            pricing: '',
+            country: '',
+            rules: '',
+            topology: '',
+            tourStatus: ''
+        };
+    }
+
+    function normalizeUsersFilterValue(value) {
+        return String(value || '').trim().toLowerCase();
+    }
+
+    function countActiveUsersFilters(filters = currentUsersFilters) {
+        return Object.values(filters || {}).filter((value) => normalizeUsersFilterValue(value)).length;
+    }
+
+    function getUsersFilterScopeLabel() {
+        return currentUsersPagination.showAll ? 'all loaded users' : 'the loaded page';
+    }
+
+    function formatUsersPricingLabel(pricingProvider) {
+        switch (normalizeUsersFilterValue(pricingProvider)) {
+            case 'amber': return 'Amber';
+            case 'aemo': return 'AEMO';
+            case 'flat-rate': return 'Flat rate';
+            case 'unknown':
+            default: return 'Not set';
+        }
+    }
+
+    function formatUsersTopologyLabel(topology) {
+        switch (normalizeUsersFilterValue(topology)) {
+            case 'ac': return 'AC-Coupled';
+            case 'dc': return 'DC-Coupled';
+            case 'unknown':
+            default: return 'Not set';
+        }
+    }
+
+    function formatUsersTourStatusLabel(tourStatus) {
+        switch (normalizeUsersFilterValue(tourStatus)) {
+            case 'watched': return 'Watched';
+            case 'not_watched': return 'Not watched';
+            case 'no_config':
+            default: return 'No config';
+        }
+    }
+
+    function formatUsersInverterSizeLabel(user) {
+        if (user?.inverterSizeLabel) return String(user.inverterSizeLabel);
+        const inverterCapacityW = Number(user?.inverterCapacityW);
+        if (!Number.isFinite(inverterCapacityW) || inverterCapacityW <= 0) return 'Not set';
+        const inverterKw = inverterCapacityW / 1000;
+        return `${Number.isInteger(inverterKw) ? inverterKw.toFixed(0) : inverterKw.toFixed(1)} kW`;
+    }
+
+    function formatUsersBatterySizeLabel(user) {
+        if (user?.batterySizeLabel) return String(user.batterySizeLabel);
+        const batteryCapacityKWh = Number(user?.batteryCapacityKWh);
+        if (!Number.isFinite(batteryCapacityKWh) || batteryCapacityKWh <= 0) return 'Not set';
+        return `${batteryCapacityKWh.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 1 })} kWh`;
+    }
+
+    function readUsersCountry(user) {
+        const country = String(user?.country || '').trim();
+        return country || 'Not set';
+    }
+
+    function getUsersFiltersFromDom() {
+        return {
+            search: document.getElementById('usersFilterSearch')?.value || '',
+            inverterProvider: document.getElementById('usersFilterProvider')?.value || '',
+            inverterSize: document.getElementById('usersFilterInverterSize')?.value || '',
+            batterySize: document.getElementById('usersFilterBatterySize')?.value || '',
+            pricing: document.getElementById('usersFilterPricing')?.value || '',
+            country: document.getElementById('usersFilterCountry')?.value || '',
+            rules: document.getElementById('usersFilterRules')?.value || '',
+            topology: document.getElementById('usersFilterTopology')?.value || '',
+            tourStatus: document.getElementById('usersFilterTourStatus')?.value || ''
+        };
+    }
+
+    function setUsersFiltersDom(filters = currentUsersFilters) {
+        const searchInput = document.getElementById('usersFilterSearch');
+        if (searchInput && searchInput.value !== (filters.search || '')) {
+            searchInput.value = filters.search || '';
+        }
+
+        const assignments = [
+            ['usersFilterProvider', filters.inverterProvider],
+            ['usersFilterInverterSize', filters.inverterSize],
+            ['usersFilterBatterySize', filters.batterySize],
+            ['usersFilterPricing', filters.pricing],
+            ['usersFilterCountry', filters.country],
+            ['usersFilterRules', filters.rules],
+            ['usersFilterTopology', filters.topology],
+            ['usersFilterTourStatus', filters.tourStatus]
+        ];
+
+        assignments.forEach(([id, value]) => {
+            const el = document.getElementById(id);
+            if (el && el.value !== (value || '')) {
+                el.value = value || '';
+            }
+        });
+    }
+
+    function sortUsersFilterOptions(options = [], type = 'alpha') {
+        const rows = Array.isArray(options) ? [...options] : [];
+        if (type === 'numeric-label') {
+            rows.sort((a, b) => {
+                const av = parseFloat(String(a.label || '').replace(/[^\d.]+/g, ''));
+                const bv = parseFloat(String(b.label || '').replace(/[^\d.]+/g, ''));
+                if (Number.isFinite(av) && Number.isFinite(bv) && av !== bv) return av - bv;
+                return String(a.label || '').localeCompare(String(b.label || ''));
+            });
+            return rows;
+        }
+        rows.sort((a, b) => String(a.label || '').localeCompare(String(b.label || '')));
+        return rows;
+    }
+
+    function ensureUsersFilterOption(options, value, label) {
+        const normalizedValue = String(value || '');
+        if (!normalizedValue) return options;
+        if (options.some((option) => option.value === normalizedValue)) return options;
+        return [...options, { value: normalizedValue, label }];
+    }
+
+    function populateUsersFilterSelect(selectId, placeholderLabel, options, selectedValue) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        const optionHtml = [
+            `<option value="">${escapeHtml(placeholderLabel)}</option>`,
+            ...options.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+        ].join('');
+        select.innerHTML = optionHtml;
+        select.value = selectedValue || '';
+    }
+
+    function collectUsersFilterOptions(users = currentUsers) {
+        const providerOptions = new Map();
+        const inverterSizeOptions = new Map();
+        const batterySizeOptions = new Map();
+        const pricingOptions = new Map();
+        const countryOptions = new Map();
+        const topologyOptions = new Map();
+        const tourStatusOptions = new Map();
+
+        (Array.isArray(users) ? users : []).forEach((user) => {
+            const provider = normalizeUsersFilterValue(user?.deviceProvider || 'unknown');
+            providerOptions.set(provider || 'unknown', providerLabel(provider || 'unknown'));
+
+            const inverterSizeLabel = formatUsersInverterSizeLabel(user);
+            inverterSizeOptions.set(normalizeUsersFilterValue(inverterSizeLabel) || 'not set', inverterSizeLabel);
+
+            const batterySizeLabel = formatUsersBatterySizeLabel(user);
+            batterySizeOptions.set(normalizeUsersFilterValue(batterySizeLabel) || 'not set', batterySizeLabel);
+
+            const pricing = normalizeUsersFilterValue(user?.pricingProvider || 'unknown');
+            pricingOptions.set(pricing || 'unknown', formatUsersPricingLabel(pricing || 'unknown'));
+
+            const country = readUsersCountry(user);
+            countryOptions.set(normalizeUsersFilterValue(country) || 'not set', country);
+
+            const topology = normalizeUsersFilterValue(user?.topology || 'unknown');
+            topologyOptions.set(topology || 'unknown', formatUsersTopologyLabel(topology || 'unknown'));
+
+            const tourStatus = normalizeUsersFilterValue(user?.tourStatus || 'no_config');
+            tourStatusOptions.set(tourStatus || 'no_config', formatUsersTourStatusLabel(tourStatus || 'no_config'));
+        });
+
+        return {
+            provider: Array.from(providerOptions.entries()).map(([value, label]) => ({ value, label })),
+            inverterSize: sortUsersFilterOptions(Array.from(inverterSizeOptions.entries()).map(([value, label]) => ({ value, label })), 'numeric-label'),
+            batterySize: sortUsersFilterOptions(Array.from(batterySizeOptions.entries()).map(([value, label]) => ({ value, label })), 'numeric-label'),
+            pricing: Array.from(pricingOptions.entries()).map(([value, label]) => ({ value, label })),
+            country: sortUsersFilterOptions(Array.from(countryOptions.entries()).map(([value, label]) => ({ value, label }))),
+            topology: Array.from(topologyOptions.entries()).map(([value, label]) => ({ value, label })),
+            tourStatus: Array.from(tourStatusOptions.entries()).map(([value, label]) => ({ value, label }))
+        };
+    }
+
+    function renderUsersFilterOptions(users = currentUsers) {
+        const options = collectUsersFilterOptions(users);
+
+        const providerOptions = ensureUsersFilterOption(
+            sortUsersFilterOptions(options.provider),
+            currentUsersFilters.inverterProvider,
+            providerLabel(currentUsersFilters.inverterProvider || 'unknown')
+        );
+        const inverterSizeOptions = ensureUsersFilterOption(
+            options.inverterSize,
+            currentUsersFilters.inverterSize,
+            currentUsersFilters.inverterSize || 'Not set'
+        );
+        const batterySizeOptions = ensureUsersFilterOption(
+            options.batterySize,
+            currentUsersFilters.batterySize,
+            currentUsersFilters.batterySize || 'Not set'
+        );
+        const pricingOptions = ensureUsersFilterOption(
+            sortUsersFilterOptions(options.pricing),
+            currentUsersFilters.pricing,
+            formatUsersPricingLabel(currentUsersFilters.pricing)
+        );
+        const countryOptions = ensureUsersFilterOption(
+            options.country,
+            currentUsersFilters.country,
+            currentUsersFilters.country || 'Not set'
+        );
+        const topologyOptions = ensureUsersFilterOption(
+            sortUsersFilterOptions(options.topology),
+            currentUsersFilters.topology,
+            formatUsersTopologyLabel(currentUsersFilters.topology)
+        );
+        const tourStatusOptions = ensureUsersFilterOption(
+            sortUsersFilterOptions(options.tourStatus),
+            currentUsersFilters.tourStatus,
+            formatUsersTourStatusLabel(currentUsersFilters.tourStatus)
+        );
+
+        populateUsersFilterSelect('usersFilterProvider', 'All providers', providerOptions, currentUsersFilters.inverterProvider);
+        populateUsersFilterSelect('usersFilterInverterSize', 'All inverter sizes', inverterSizeOptions, currentUsersFilters.inverterSize);
+        populateUsersFilterSelect('usersFilterBatterySize', 'All battery sizes', batterySizeOptions, currentUsersFilters.batterySize);
+        populateUsersFilterSelect('usersFilterPricing', 'All pricing', pricingOptions, currentUsersFilters.pricing);
+        populateUsersFilterSelect('usersFilterCountry', 'All countries', countryOptions, currentUsersFilters.country);
+        populateUsersFilterSelect('usersFilterTopology', 'All topology', topologyOptions, currentUsersFilters.topology);
+        populateUsersFilterSelect('usersFilterTourStatus', 'All tour states', tourStatusOptions, currentUsersFilters.tourStatus);
+        setUsersFiltersDom(currentUsersFilters);
+    }
+
+    function buildUsersSearchHaystack(user) {
+        return [
+            user?.email,
+            user?.uid,
+            providerLabel(user?.deviceProvider || 'unknown'),
+            formatUsersPricingLabel(user?.pricingProvider),
+            user?.location,
+            readUsersCountry(user),
+            formatUsersInverterSizeLabel(user),
+            formatUsersBatterySizeLabel(user),
+            formatUsersTopologyLabel(user?.topology),
+            formatUsersTourStatusLabel(user?.tourStatus),
+            String(user?.rulesCount || 0)
+        ].map((value) => String(value || '').toLowerCase()).join(' ');
+    }
+
+    function userMatchesUsersFilters(user, filters = currentUsersFilters) {
+        const search = normalizeUsersFilterValue(filters.search);
+        if (search && !buildUsersSearchHaystack(user).includes(search)) return false;
+
+        if (filters.inverterProvider && normalizeUsersFilterValue(user?.deviceProvider || 'unknown') !== normalizeUsersFilterValue(filters.inverterProvider)) {
+            return false;
+        }
+        if (filters.inverterSize && normalizeUsersFilterValue(formatUsersInverterSizeLabel(user)) !== normalizeUsersFilterValue(filters.inverterSize)) {
+            return false;
+        }
+        if (filters.batterySize && normalizeUsersFilterValue(formatUsersBatterySizeLabel(user)) !== normalizeUsersFilterValue(filters.batterySize)) {
+            return false;
+        }
+        if (filters.pricing && normalizeUsersFilterValue(user?.pricingProvider || 'unknown') !== normalizeUsersFilterValue(filters.pricing)) {
+            return false;
+        }
+        if (filters.country && normalizeUsersFilterValue(readUsersCountry(user)) !== normalizeUsersFilterValue(filters.country)) {
+            return false;
+        }
+        if (filters.topology && normalizeUsersFilterValue(user?.topology || 'unknown') !== normalizeUsersFilterValue(filters.topology)) {
+            return false;
+        }
+        if (filters.tourStatus && normalizeUsersFilterValue(user?.tourStatus || 'no_config') !== normalizeUsersFilterValue(filters.tourStatus)) {
+            return false;
+        }
+
+        const rulesCount = Number(user?.rulesCount || 0);
+        if (filters.rules === 'has_rules' && rulesCount <= 0) return false;
+        if (filters.rules === 'no_rules' && rulesCount > 0) return false;
+
+        return true;
+    }
+
+    function getFilteredUsers(users = currentUsers) {
+        return (Array.isArray(users) ? users : []).filter((user) => userMatchesUsersFilters(user));
+    }
+
+    function renderUsersFiltersStatus(filteredUsers = currentUsersFiltered, users = currentUsers) {
+        const status = document.getElementById('usersFiltersStatus');
+        const clearBtn = document.getElementById('usersClearFiltersBtn');
+        if (!status || !clearBtn) return;
+
+        const loadedCount = Array.isArray(users) ? users.length : 0;
+        const filteredCount = Array.isArray(filteredUsers) ? filteredUsers.length : 0;
+        const scope = getUsersFilterScopeLabel();
+        const activeCount = countActiveUsersFilters();
+
+        status.textContent = activeCount
+            ? `${filteredCount} of ${loadedCount} loaded users match the current filters. Filters only apply to ${scope}.`
+            : `Filters only apply to ${scope}. Choose Show all if you want to filter every loaded user at once.`;
+        clearBtn.disabled = activeCount === 0;
+    }
+
+    function renderUsersView() {
+        renderUsersFilterOptions(currentUsers);
+        currentUsersFiltered = getFilteredUsers(currentUsers);
+        renderUsersFiltersStatus(currentUsersFiltered, currentUsers);
+        renderUsersTable(currentUsersFiltered);
+        renderUsersPagination(currentUsersPagination);
+    }
+
+    function applyUsersFilters() {
+        currentUsersFilters = getUsersFiltersFromDom();
+        renderUsersView();
+    }
+
+    function clearUsersFilters() {
+        currentUsersFilters = createDefaultUsersFilters();
+        setUsersFiltersDom(currentUsersFilters);
+        renderUsersView();
+    }
+
+    function bindUsersFilterHandlers() {
+        const searchInput = document.getElementById('usersFilterSearch');
+        if (searchInput && searchInput.dataset.bound !== '1') {
+            searchInput.dataset.bound = '1';
+            searchInput.addEventListener('input', () => {
+                window.clearTimeout(usersFilterInputDebounce);
+                usersFilterInputDebounce = window.setTimeout(() => {
+                    applyUsersFilters();
+                }, 180);
+            });
+        }
+
+        [
+            'usersFilterProvider',
+            'usersFilterInverterSize',
+            'usersFilterBatterySize',
+            'usersFilterPricing',
+            'usersFilterCountry',
+            'usersFilterRules',
+            'usersFilterTopology',
+            'usersFilterTourStatus'
+        ].forEach((id) => {
+            const el = document.getElementById(id);
+            if (!el || el.dataset.bound === '1') return;
+            el.dataset.bound = '1';
+            el.addEventListener('change', () => {
+                applyUsersFilters();
+            });
+        });
+
+        renderUsersFilterOptions(currentUsers);
+        renderUsersFiltersStatus(currentUsersFiltered, currentUsers);
+    }
 
     function showMessage(type, msg, duration = 5000) {
         const area = document.getElementById('messageArea');
@@ -456,8 +819,22 @@
     function updateUsersScopeNote() {
         const note = document.getElementById('usersTableScopeNote');
         if (!note) return;
-        const scope = currentUsersPagination.showAll ? 'all loaded users' : 'the loaded page';
-        note.textContent = `Top ${currentUsersPagination.showAll ? currentUsersPagination.totalUsers : currentUsersPagination.pageSize} by last sign-in. Column sorting applies to ${scope}.`;
+        const scope = getUsersFilterScopeLabel();
+        const activeFilterCount = countActiveUsersFilters();
+        const loadedCount = Array.isArray(currentUsers) ? currentUsers.length : 0;
+        const filteredCount = Array.isArray(currentUsersFiltered) ? currentUsersFiltered.length : loadedCount;
+
+        if (activeFilterCount > 0) {
+            note.textContent = `Loaded ${loadedCount} users in last sign-in order. ${filteredCount} match the current filters. Filters and column sorting apply to ${scope}.`;
+            return;
+        }
+
+        if (currentUsersPagination.showAll) {
+            note.textContent = `All ${loadedCount} users loaded. Filters and column sorting apply to ${scope}.`;
+            return;
+        }
+
+        note.textContent = `Top ${currentUsersPagination.pageSize} by last sign-in. Filters and column sorting apply to ${scope}.`;
     }
 
     function buildUsersQuery({ page, pageSize, showAll, includeSummary, refreshSummary }) {
@@ -482,11 +859,19 @@
         if (!footer || !meta || !status || !prevBtn || !nextBtn || !toggleBtn) return;
 
         const info = pagination || currentUsersPagination;
+        const activeFilterCount = countActiveUsersFilters();
+        const loadedCount = Array.isArray(currentUsers) ? currentUsers.length : 0;
+        const filteredCount = Array.isArray(currentUsersFiltered) ? currentUsersFiltered.length : loadedCount;
         footer.style.display = '';
         meta.textContent = info.showAll
             ? `Showing all ${info.totalUsers} users. Server default order is last sign-in.`
             : `Showing page ${info.page} of ${info.totalPages}. Default page order is by last sign-in.`;
-        status.textContent = info.showAll ? `All ${info.totalUsers}` : `Page ${info.page} of ${info.totalPages}`;
+        if (activeFilterCount > 0) {
+            meta.textContent += ` ${filteredCount} of ${loadedCount} loaded users match the current filters.`;
+        }
+        status.textContent = activeFilterCount > 0
+            ? `${filteredCount} / ${loadedCount} match`
+            : (info.showAll ? `All ${info.totalUsers}` : `Page ${info.page} of ${info.totalPages}`);
         prevBtn.disabled = info.showAll || info.page <= 1;
         nextBtn.disabled = info.showAll || info.page >= info.totalPages;
         toggleBtn.textContent = info.showAll ? 'Back to top 50' : 'Show all';
@@ -925,8 +1310,7 @@
             currentSort.key = key;
             currentSort.direction = 'asc';
         }
-        renderUsersTable(currentUsers);
-        renderUsersPagination(currentUsersPagination);
+        renderUsersView();
     }
 
     function sortIcon(key) {
@@ -1015,6 +1399,8 @@
         const showAll = options.showAll ?? currentUsersPagination.showAll ?? false;
         const page = options.page ?? currentUsersPagination.page ?? 1;
         const pageSize = options.pageSize ?? currentUsersPagination.pageSize ?? 50;
+        loading.textContent = 'Loading users...';
+        loading.style.color = '';
         loading.style.display = '';
         tableWrapper.style.display = 'none';
         if (footer) footer.style.display = 'none';
@@ -1038,8 +1424,7 @@
             } else if (currentUsersSummary) {
                 renderUsersSummary(currentUsersSummary);
             }
-            renderUsersTable(currentUsers);
-            renderUsersPagination(currentUsersPagination);
+            renderUsersView();
 
             loading.style.display = 'none';
             tableWrapper.style.display = '';
@@ -1982,7 +2367,10 @@
         `;
 
         if (!users.length) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color: var(--text-secondary); padding: 30px;">No users found</td></tr>';
+            const emptyLabel = countActiveUsersFilters() > 0
+                ? 'No loaded users match the current filters'
+                : 'No users found';
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color: var(--text-secondary); padding: 30px;">${emptyLabel}</td></tr>`;
             return;
         }
 
@@ -4732,6 +5120,7 @@
     AppShell.onReady(async (ctx) => {
         adminApiClient = ctx.apiClient;
         initializeInfoTips();
+        bindUsersFilterHandlers();
         bindAnnouncementEditorHandlers();
         if (!adminApiClient) {
             document.getElementById('accessDenied').style.display = '';

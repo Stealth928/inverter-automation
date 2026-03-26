@@ -371,6 +371,58 @@ describe('TeslaFleetAdapter — getCommandReadiness', () => {
       credentials: { accessToken: 'test-access-token' }
     })).rejects.toThrow(/unauthorized/i);
   });
+
+  test('batches command readiness for multiple VINs into one fleet_status request', async () => {
+    const recordTeslaApiCall = jest.fn(async () => {});
+    const http = makeHttpClient({
+      [`POST ${FLEET_NA_BASE}/api/1/vehicles/fleet_status`]: {
+        status: 200,
+        data: {
+          response: [
+            {
+              vin: '5YJ3E1EA7JF000001',
+              vehicle_command_protocol_required: false
+            },
+            {
+              vin: '5YJ3E1EA7JF000002',
+              vehicle_command_protocol_required: true,
+              total_number_of_keys: 2
+            }
+          ]
+        },
+        headers: {}
+      }
+    });
+    const adapter = new TeslaFleetAdapter({
+      httpClient: http,
+      signedCommandProxyUrl: 'https://tesla-proxy.example.com'
+    });
+
+    const readinessMap = await adapter.getCommandReadinessBatch([
+      { key: 'v1', vehicleId: '5YJ3E1EA7JF000001' },
+      { key: 'v2', vehicleId: '5YJ3E1EA7JF000002' }
+    ], {
+      ...makeContext(),
+      recordTeslaApiCall
+    });
+
+    expect(readinessMap.v1).toMatchObject({
+      state: 'ready_direct',
+      transport: 'direct'
+    });
+    expect(readinessMap.v2).toMatchObject({
+      state: 'ready_signed',
+      transport: 'signed',
+      vehicleCommandProtocolRequired: true
+    });
+    expect(http.calls).toHaveLength(1);
+    expect(http.calls[0].opts.body).toEqual({ vins: ['5YJ3E1EA7JF000001', '5YJ3E1EA7JF000002'] });
+    expect(recordTeslaApiCall).toHaveBeenCalledWith(expect.objectContaining({
+      category: 'data_request',
+      status: 200,
+      billable: true
+    }));
+  });
 });
 
 describe('TeslaFleetAdapter — charging commands', () => {

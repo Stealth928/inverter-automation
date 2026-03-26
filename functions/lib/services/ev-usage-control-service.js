@@ -3,6 +3,7 @@
 const DEFAULT_RATE_WINDOW_MS = 60 * 1000;
 const DEFAULT_STATUS_LIVE_RATE_PER_WINDOW = 30;
 const DEFAULT_COMMAND_RATE_PER_WINDOW = 15;
+const DEFAULT_COMMAND_READINESS_RATE_PER_WINDOW = 15;
 const METRICS_TIMEZONE = 'Australia/Sydney';
 
 const CATEGORY_TO_UNIT_COST_DENOMINATOR = Object.freeze({
@@ -80,6 +81,10 @@ function createEvUsageControlService(deps = {}) {
     process.env.EV_TESLA_RATE_STATUS_PER_WINDOW,
     DEFAULT_STATUS_LIVE_RATE_PER_WINDOW
   );
+  const commandReadinessRatePerWindow = parsePositiveInt(
+    process.env.EV_TESLA_RATE_READINESS_PER_WINDOW,
+    DEFAULT_COMMAND_READINESS_RATE_PER_WINDOW
+  );
   const commandRatePerWindow = parsePositiveInt(
     process.env.EV_TESLA_RATE_COMMAND_PER_WINDOW,
     DEFAULT_COMMAND_RATE_PER_WINDOW
@@ -125,6 +130,9 @@ function createEvUsageControlService(deps = {}) {
     const normalized = String(action || '').trim().toLowerCase();
     if (normalized === 'status_live') {
       return statusLiveRatePerWindow;
+    }
+    if (normalized === 'command_readiness') {
+      return commandReadinessRatePerWindow;
     }
     if (normalized === 'command') {
       return commandRatePerWindow;

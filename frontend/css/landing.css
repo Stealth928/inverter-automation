@@ -1514,6 +1514,15 @@ section { padding: 80px 0; }
     gap: 6px;
   }
 
+  .brand-strip__label {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .brand-sep {
+    display: none;
+  }
+
   .land-hero__preview-body { grid-template-columns: 1fr; }
 
   .tools-grid { grid-template-columns: 1fr; }
@@ -1550,6 +1559,7 @@ section { padding: 80px 0; }
   .blog-article__footer { flex-direction: column; align-items: stretch; }
   .land-cta__actions { flex-direction: column; align-items: stretch; }
   .btn-lg { width: 100%; }
+  .brand-badge { font-size: 0.72rem; padding: 3px 9px; }
 }
 
 /* ============================================================
@@ -1631,6 +1641,11 @@ section { padding: 80px 0; }
   color: #f2ca78;
   background: rgba(85, 59, 14, 0.58);
   border-color: rgba(210, 153, 34, 0.62);
+}
+.brand-badge--aemo {
+  color: #9bd6ff;
+  background: rgba(16, 52, 88, 0.58);
+  border-color: rgba(88, 166, 255, 0.62);
 }
 .brand-badge--tesla {
   color: #ffb4ae;

@@ -155,6 +155,22 @@ class EVAdapter {
     };
   }
 
+  async getCommandReadinessBatch(requests = [], context = {}) {
+    const output = {};
+    for (const request of Array.isArray(requests) ? requests : []) {
+      const requestKey = String(request?.key || request?.vehicleId || '').trim();
+      if (!requestKey) continue;
+      output[requestKey] = await this.getCommandReadiness(
+        request?.vehicleId,
+        {
+          ...(context || {}),
+          ...(request?.context || {})
+        }
+      );
+    }
+    return output;
+  }
+
   async startCharging(_vehicleId, _context) {
     throw new Error('EVAdapter.startCharging not implemented');
   }

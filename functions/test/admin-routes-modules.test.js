@@ -2642,6 +2642,114 @@ describe('admin route module', () => {
     ]));
   });
 
+  test('admin users route includes lightweight filter metadata on loaded rows', async () => {
+    const makeQuerySnapshot = (docs = []) => ({
+      docs,
+      size: docs.length,
+      empty: docs.length === 0,
+      forEach: (fn) => docs.forEach(fn)
+    });
+    const userProfiles = {
+      'user-1': { email: 'one@example.com', role: 'user', automationEnabled: true }
+    };
+    const configByUid = {
+      'user-1': {
+        deviceProvider: 'foxess',
+        deviceSn: 'FOX-1',
+        foxessToken: 'tok-1',
+        pricingProvider: 'aemo',
+        inverterCapacityW: 6500,
+        batteryCapacityKWh: 13.5,
+        location: 'Adelaide, Australia',
+        systemTopology: { coupling: 'ac' },
+        tourComplete: true
+      }
+    };
+
+    const deps = createDeps({
+      admin: {
+        auth: jest.fn(() => ({
+          listUsers: jest.fn(async () => ({
+            users: [
+              { uid: 'user-1', email: 'one@example.com', metadata: { creationTime: '2026-01-01T00:00:00.000Z', lastSignInTime: '2026-03-02T08:00:00.000Z' } }
+            ],
+            pageToken: undefined
+          }))
+        }))
+      },
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') {
+            throw new Error(`Unexpected collection: ${name}`);
+          }
+
+          return {
+            get: jest.fn(async () => makeQuerySnapshot(Object.entries(userProfiles).map(([uid, data]) => ({
+              id: uid,
+              data: () => data
+            })))),
+            doc: jest.fn((uid) => ({
+              collection: jest.fn((subName) => {
+                if (subName === 'rules') {
+                  return {
+                    get: jest.fn(async () => makeQuerySnapshot([{ id: 'rule-1', data: () => ({ enabled: true }) }]))
+                  };
+                }
+                if (subName === 'config') {
+                  return {
+                    doc: jest.fn(() => ({
+                      get: jest.fn(async () => ({
+                        exists: true,
+                        data: () => configByUid[uid]
+                      }))
+                    }))
+                  };
+                }
+                if (subName === 'vehicles') {
+                  return {
+                    limit: jest.fn(() => ({
+                      get: jest.fn(async () => makeQuerySnapshot([]))
+                    }))
+                  };
+                }
+                if (subName === 'secrets') {
+                  return {
+                    doc: jest.fn(() => ({
+                      get: jest.fn(async () => ({ exists: false, data: () => ({}) }))
+                    }))
+                  };
+                }
+                throw new Error(`Unexpected subcollection: ${subName}`);
+              })
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/users?includeSummary=0')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.users).toEqual([
+      expect.objectContaining({
+        uid: 'user-1',
+        deviceProvider: 'foxess',
+        pricingProvider: 'aemo',
+        inverterSizeLabel: '6.5 kW',
+        batterySizeLabel: '13.5 kWh',
+        location: 'Adelaide, Australia',
+        country: 'Australia',
+        topology: 'ac',
+        tourStatus: 'watched',
+        rulesCount: 1
+      })
+    ]);
+  });
+
   test('admin users route paginates table rows by last sign-in without recomputing summary', async () => {
     const makeQuerySnapshot = (docs = []) => ({
       docs,

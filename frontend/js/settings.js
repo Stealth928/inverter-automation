@@ -896,12 +896,45 @@
             setTeslaOnboardingStatus(`${vehicleCount} Tesla vehicle(s) listed. ${suffix}`, 'success');
         }
 
-        async function loadTeslaCommandReadinessMap(vehicles = []) {
-            if (!window.apiClient || typeof window.apiClient.getEVVehicleCommandReadiness !== 'function') {
+        async function loadTeslaCommandReadinessMap(vehicles = [], options = {}) {
+            const list = Array.isArray(vehicles) ? vehicles : [];
+            const live = options?.live === true;
+            const vehicleIds = list
+                .map((vehicle) => String(vehicle?.vehicleId || '').trim())
+                .filter((vehicleId, index, allIds) => vehicleId && allIds.indexOf(vehicleId) === index);
+
+            if (!window.apiClient || vehicleIds.length === 0) {
                 return {};
             }
 
-            const readinessEntries = await Promise.all((Array.isArray(vehicles) ? vehicles : []).map(async (vehicle) => {
+            if (typeof window.apiClient.getEVVehicleCommandReadinessBatch === 'function') {
+                try {
+                    const resp = await window.apiClient.getEVVehicleCommandReadinessBatch(vehicleIds, { live });
+                    const byVehicleId = resp?.result?.byVehicleId && typeof resp.result.byVehicleId === 'object'
+                        ? resp.result.byVehicleId
+                        : {};
+                    return vehicleIds.reduce((acc, vehicleId) => {
+                        if (byVehicleId[vehicleId]) {
+                            acc[vehicleId] = byVehicleId[vehicleId];
+                            return acc;
+                        }
+                        acc[vehicleId] = {
+                            state: 'read_only',
+                            source: 'settings_batch_missing',
+                            warning: 'Command readiness unavailable'
+                        };
+                        return acc;
+                    }, {});
+                } catch (error) {
+                    console.warn('[Tesla Settings] Batch command readiness failed, falling back to per-vehicle calls', error);
+                }
+            }
+
+            if (typeof window.apiClient.getEVVehicleCommandReadiness !== 'function') {
+                return {};
+            }
+
+            const readinessEntries = await Promise.all(list.map(async (vehicle) => {
                 const vehicleId = String(vehicle?.vehicleId || '').trim();
                 if (!vehicleId || vehicle?.hasCredentials === false) {
                     return [vehicleId, null];
@@ -1031,7 +1064,7 @@
         }
 
         async function loadTeslaVehicles(options = {}) {
-            const { silent = false, preserveStatus = false } = options || {};
+            const { silent = false, preserveStatus = false, liveReadiness = false } = options || {};
             if (!window.apiClient || typeof window.apiClient.listEVVehicles !== 'function') {
                 return [];
             }
@@ -1044,7 +1077,7 @@
                 const allVehicles = Array.isArray(resp.result) ? resp.result : [];
                 const teslaVehicles = allVehicles.filter((vehicle) => String(vehicle?.provider || '').toLowerCase() === 'tesla');
                 teslaVehiclesState = teslaVehicles;
-                const readinessByVehicleId = await loadTeslaCommandReadinessMap(teslaVehicles);
+                const readinessByVehicleId = await loadTeslaCommandReadinessMap(teslaVehicles, { live: liveReadiness });
                 const statusSummary = renderTeslaVehicles(teslaVehicles, readinessByVehicleId);
                 updateTeslaOnboardingSummary(statusSummary, teslaVehicles.length, preserveStatus);
                 return teslaVehicles;
@@ -1442,7 +1475,7 @@
             }
             if (refreshBtn) {
                 refreshBtn.addEventListener('click', () => {
-                    loadTeslaVehicles();
+                    loadTeslaVehicles({ liveReadiness: true });
                 });
             }
             if (regionInput) {
@@ -1496,7 +1529,7 @@
             const pendingBeforeCallback = readTeslaPendingOAuth();
             const callbackResult = await handleTeslaOAuthCallbackIfPresent();
             const preserveStatus = Boolean(callbackResult?.handled || pendingBeforeCallback);
-            await loadTeslaVehicles({ silent: callbackResult.handled, preserveStatus });
+            await loadTeslaVehicles({ silent: callbackResult.handled, preserveStatus, liveReadiness: callbackResult.handled });
             syncTeslaPendingAuthControls();
             return callbackResult;
         }
@@ -2754,7 +2787,7 @@
             return changed;
         }
         
-        async function loadCredentials() {
+        async function loadCredentials(options = {}) {
             try {
                 const [configResp, healthResp, statusResp] = await Promise.all([
                     authenticatedFetch('/api/config?t=' + Date.now()),
@@ -3030,7 +3063,9 @@
                 // Update badge after reload
                 checkCredentialsChanged();
                 updateStatus();
-                await loadTeslaVehicles({ silent: true });
+                if (options?.refreshTeslaVehicles === true) {
+                    await loadTeslaVehicles({ silent: true, liveReadiness: false });
+                }
             } catch (e) {
                 console.warn('loadCredentials failed', e);
             }
