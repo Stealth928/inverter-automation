@@ -3911,7 +3911,7 @@
                 <td data-label="Date"><span class="api-health-cell-primary">${escapeHtml(row.date || '-')}</span></td>
                 <td data-label="Provider Calls"><span class="api-health-cell-primary">${escapeHtml(formatCompactNumber(row.totalCalls || 0))}</span></td>
                 <td data-label="Inverter">${escapeHtml(formatCompactNumber(row.categories?.inverter || 0))}</td>
-                <td data-label="Amber">${escapeHtml(formatCompactNumber(row.categories?.amber || 0))}</td>
+                <td data-label="Pricing">${escapeHtml(formatCompactNumber(row.categories?.amber || 0))}</td>
                 <td data-label="Weather">${escapeHtml(formatCompactNumber(row.categories?.weather || 0))}</td>
                 <td data-label="Tesla EV">${formatApiHealthTeslaBreakdown(row)}</td>
                 <td data-label="Executions">${row.requestExecutions == null ? '-' : escapeHtml(formatCompactNumber(row.requestExecutions || 0))}</td>
@@ -4694,7 +4694,7 @@
         } else {
             metricsHtml += `<div class="metrics-legend">
                 <span class="inverter">Inverter</span>
-                <span class="amber">Amber</span>
+                <span class="amber">Pricing</span>
                 <span class="weather">Weather</span>
                 <span class="ev">EV</span>
             </div>`;
@@ -4714,7 +4714,7 @@
                     <span class="date">${day.slice(5)}</span>
                     <div class="metrics-bar-group">
                         <div class="metrics-bar inverter" style="width: ${Math.max(2, inverter / maxTotal * barScale)}px;" title="${inverterTitle}"></div>
-                        <div class="metrics-bar amber" style="width: ${Math.max(2, amber / maxTotal * barScale)}px;" title="Amber: ${amber}"></div>
+                        <div class="metrics-bar amber" style="width: ${Math.max(2, amber / maxTotal * barScale)}px;" title="Pricing: ${amber}"></div>
                         <div class="metrics-bar weather" style="width: ${Math.max(2, weather / maxTotal * barScale)}px;" title="Weather: ${weather}"></div>
                         <div class="metrics-bar ev" style="width: ${Math.max(2, ev / maxTotal * barScale)}px;" title="EV: ${ev}"></div>
                     </div>

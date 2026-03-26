@@ -160,16 +160,10 @@ function registerMetricsRoutes(app, deps = {}) {
         }
 
         const metricsCollection = db.collection('users').doc(userId).collection('metrics');
-        let metricsQuery = metricsCollection;
-
-        if (typeof metricsCollection.orderBy === 'function') {
-          metricsQuery = metricsCollection.orderBy('__name__', 'desc');
-        }
-        if (metricsQuery && typeof metricsQuery.limit === 'function') {
-          metricsQuery = metricsQuery.limit(days);
-        }
-
-        const metricsSnapshot = await metricsQuery.get();
+        // Read the small per-user daily metrics set directly and sort in memory.
+        // In production, ordering this subcollection by document ID can trigger
+        // a Firestore index requirement and the route silently falls back to zeros.
+        const metricsSnapshot = await metricsCollection.get();
 
         const result = {};
         const allDocs = [];

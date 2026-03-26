@@ -631,6 +631,111 @@ describe('admin route module', () => {
     }));
   });
 
+  test('dataworks ops and dispatch follow the live hosting branch when ref is not pinned', async () => {
+    const addMock = jest.fn(async () => undefined);
+    const workflowResponse = makeFetchResponse(200, {
+      state: 'active',
+      path: '.github/workflows/aemo-market-insights-delta.yml',
+      html_url: 'https://github.com/example/repo/workflow'
+    });
+    const runsResponse = makeFetchResponse(200, {
+      workflow_runs: [
+        {
+          id: 123,
+          run_number: 7,
+          status: 'completed',
+          conclusion: 'success',
+          event: 'workflow_dispatch',
+          created_at: '2026-03-19T02:08:53Z',
+          updated_at: '2026-03-19T02:10:43Z',
+          html_url: 'https://github.com/example/repo/actions/runs/123',
+          jobs_url: 'https://api.github.com/repos/example/repo/actions/runs/123/jobs'
+        }
+      ]
+    });
+    const jobsResponse = makeFetchResponse(200, {
+      jobs: [
+        {
+          id: 1,
+          name: 'delta-update-and-deploy',
+          status: 'completed',
+          conclusion: 'success',
+          steps: []
+        }
+      ]
+    });
+    const manifestResponse = makeFetchResponse(200, {
+      generatedAt: '2026-03-19T02:10:43Z',
+      git: {
+        commit: 'rel1234567890defabc1234567890defabc12345',
+        branch: 'release/prod'
+      }
+    });
+    const commitResponse = makeFetchResponse(200, {
+      sha: 'rel1234567890defabc1234567890defabc12345'
+    });
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce(workflowResponse)
+      .mockResolvedValueOnce(runsResponse)
+      .mockResolvedValueOnce(jobsResponse)
+      .mockResolvedValueOnce(manifestResponse)
+      .mockResolvedValueOnce(commitResponse)
+      .mockResolvedValueOnce(workflowResponse)
+      .mockResolvedValueOnce(runsResponse)
+      .mockResolvedValueOnce(jobsResponse)
+      .mockResolvedValueOnce(manifestResponse)
+      .mockResolvedValueOnce(commitResponse)
+      .mockResolvedValueOnce(makeFetchResponse(204, null));
+
+    const app = buildApp(createDeps({
+      fetchImpl,
+      githubDataworks: {
+        owner: 'Stealth928',
+        repo: 'inverter-automation',
+        workflowId: 'aemo-market-insights-delta.yml',
+        ref: '',
+        refMode: 'auto',
+        dispatchToken: 'token-123'
+      },
+      db: {
+        collection: jest.fn(() => ({
+          doc: jest.fn(() => ({
+            set: jest.fn(async () => undefined)
+          })),
+          where: jest.fn(() => ({})),
+          add: addMock
+        }))
+      }
+    }));
+
+    const opsResponse = await request(app)
+      .get('/api/admin/dataworks/ops')
+      .set('Authorization', 'Bearer token');
+
+    const dispatchResponse = await request(app)
+      .post('/api/admin/dataworks/dispatch')
+      .set('Authorization', 'Bearer token')
+      .send({});
+
+    expect(opsResponse.statusCode).toBe(200);
+    expect(opsResponse.body.result.workflow.ref).toBe('release/prod');
+    expect(opsResponse.body.result.workflow.refSource).toBe('live-release');
+    expect(opsResponse.body.result.releaseAlignment.matches).toBe(true);
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(dispatchResponse.body.result.ref).toBe('release/prod');
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      'https://api.github.com/repos/Stealth928/inverter-automation/actions/workflows/aemo-market-insights-delta.yml/dispatches',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ ref: 'release/prod' })
+      })
+    );
+    expect(addMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'dataworks_dispatch',
+      ref: 'release/prod'
+    }));
+  });
+
   test('dataworks dispatch is blocked when live hosting release does not match configured ref', async () => {
     const fetchImpl = jest.fn()
       .mockResolvedValueOnce(makeFetchResponse(200, {

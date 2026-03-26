@@ -1188,7 +1188,8 @@ registerAdminRoutes(app, {
     owner: process.env.GITHUB_DATAWORKS_OWNER || 'Stealth928',
     repo: process.env.GITHUB_DATAWORKS_REPO || 'inverter-automation',
     workflowId: process.env.GITHUB_DATAWORKS_WORKFLOW || 'aemo-market-insights-delta.yml',
-    ref: process.env.GITHUB_DATAWORKS_REF || 'main',
+    ref: process.env.GITHUB_DATAWORKS_REF || '',
+    refMode: process.env.GITHUB_DATAWORKS_REF_MODE || 'auto',
     dispatchToken: process.env.GITHUB_DATAWORKS_TOKEN || ''
   },
   getAutomationCycleHandler: () => automationCycleHandler

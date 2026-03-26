@@ -265,7 +265,8 @@ Optional DataWorks admin controls can also be configured for the admin panel:
   `GITHUB_DATAWORKS_TOKEN`
 - Optional environment overrides:
   `GITHUB_DATAWORKS_OWNER`, `GITHUB_DATAWORKS_REPO`,
-  `GITHUB_DATAWORKS_WORKFLOW`, `GITHUB_DATAWORKS_REF`
+  `GITHUB_DATAWORKS_WORKFLOW`, `GITHUB_DATAWORKS_REF`,
+  `GITHUB_DATAWORKS_REF_MODE`
 
 Example:
 
@@ -276,7 +277,10 @@ firebase functions:secrets:set GITHUB_DATAWORKS_TOKEN
 # Default owner: Stealth928
 # Default repo: inverter-automation
 # Default workflow: aemo-market-insights-delta.yml
-# Default ref: main
+# Default ref mode: auto
+# Auto mode follows the branch currently live on hosting.
+# Set GITHUB_DATAWORKS_REF to pin dispatch/guard checks to a branch.
+# Set GITHUB_DATAWORKS_REF_MODE=live to force live-branch targeting.
 ```
 
 Without `GITHUB_DATAWORKS_TOKEN`, the DataWorks tab stays read-only and only

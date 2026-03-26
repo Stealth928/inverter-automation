@@ -42,7 +42,7 @@ function createDbWithUserMetrics(userDocs = []) {
           collection: jest.fn((sub) => {
             if (sub !== 'metrics') throw new Error(`Unexpected subcollection ${sub}`);
             return {
-              get: jest.fn(async () => createQuerySnapshot(userDocs)),
+              get,
               orderBy
             };
           })
@@ -117,9 +117,9 @@ describe('metrics route module', () => {
       sigenergy: 0,
       alphaess: 0
     });
-    expect(db.__mocks.orderBy).toHaveBeenCalledWith('__name__', 'desc');
-    expect(db.__mocks.limit).toHaveBeenCalledWith(1);
     expect(db.__mocks.get).toHaveBeenCalledTimes(1);
+    expect(db.__mocks.orderBy).not.toHaveBeenCalled();
+    expect(db.__mocks.limit).not.toHaveBeenCalled();
   });
 
   test('respects explicit inverter field when present', async () => {

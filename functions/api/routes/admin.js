@@ -34,7 +34,9 @@ function registerAdminRoutes(app, deps = {}) {
   const githubOwner = String(githubDataworks.owner || '').trim() || 'Stealth928';
   const githubRepo = String(githubDataworks.repo || '').trim() || 'inverter-automation';
   const githubWorkflowId = String(githubDataworks.workflowId || '').trim() || 'aemo-market-insights-delta.yml';
-  const githubRef = String(githubDataworks.ref || '').trim() || 'main';
+  const configuredGithubRef = String(githubDataworks.ref || '').trim();
+  const githubRefMode = String(githubDataworks.refMode || '').trim().toLowerCase() || 'auto';
+  const fallbackGithubRef = 'main';
   const githubDispatchToken = String(githubDataworks.dispatchToken || '').trim();
   const githubUserAgent = String(githubDataworks.userAgent || '').trim() || 'SoCrates-Admin-DataWorks';
   const githubHostingOrigins = Array.from(new Set([
@@ -590,6 +592,37 @@ function registerAdminRoutes(app, deps = {}) {
     }
   }
 
+  function chooseGithubTargetRef(liveRelease) {
+    const liveManifest = liveRelease && liveRelease.manifest ? liveRelease.manifest : null;
+    const liveBranch = normalizeGithubBranch(liveManifest?.git?.branch || liveManifest?.git?.ref);
+
+    if (configuredGithubRef) {
+      return {
+        ref: configuredGithubRef,
+        source: 'configured'
+      };
+    }
+
+    if (githubRefMode === 'live' && liveBranch) {
+      return {
+        ref: liveBranch,
+        source: 'live-release'
+      };
+    }
+
+    if (githubRefMode === 'auto' && liveBranch) {
+      return {
+        ref: liveBranch,
+        source: 'live-release'
+      };
+    }
+
+    return {
+      ref: fallbackGithubRef,
+      source: githubRefMode === 'live' ? 'fallback-main' : 'default-main'
+    };
+  }
+
   function buildReleaseAlignmentSummary({ liveRelease, targetRef }) {
     const liveManifest = liveRelease && liveRelease.manifest ? liveRelease.manifest : null;
     const liveCommit = trimString(liveManifest?.git?.commit);
@@ -605,7 +638,8 @@ function registerAdminRoutes(app, deps = {}) {
         liveBranch: null,
         targetCommit,
         targetShortCommit: shortenCommit(targetCommit),
-        targetRef: targetRef?.ref || githubRef,
+        targetRef: targetRef?.ref || fallbackGithubRef,
+        targetRefSource: targetRef?.source || null,
         sourceUrl: liveRelease?.sourceUrl || null,
         reason: liveRelease?.error || 'hosted release manifest unavailable'
       };
@@ -620,7 +654,8 @@ function registerAdminRoutes(app, deps = {}) {
         liveBranch,
         targetCommit: null,
         targetShortCommit: null,
-        targetRef: targetRef?.ref || githubRef,
+        targetRef: targetRef?.ref || fallbackGithubRef,
+        targetRefSource: targetRef?.source || null,
         sourceUrl: liveRelease?.sourceUrl || null,
         reason: targetRef?.error || 'unable to resolve workflow ref commit'
       };
@@ -635,9 +670,10 @@ function registerAdminRoutes(app, deps = {}) {
         liveBranch,
         targetCommit,
         targetShortCommit: shortenCommit(targetCommit),
-        targetRef: targetRef?.ref || githubRef,
+        targetRef: targetRef?.ref || fallbackGithubRef,
+        targetRefSource: targetRef?.source || null,
         sourceUrl: liveRelease?.sourceUrl || null,
-        reason: `Live hosting is on ${liveBranch || 'unknown'} @ ${shortenCommit(liveCommit) || 'unknown'}, but ref ${targetRef?.ref || githubRef} resolves to ${shortenCommit(targetCommit) || 'unknown'}. Deploy the current release first.`
+        reason: `Live hosting is on ${liveBranch || 'unknown'} @ ${shortenCommit(liveCommit) || 'unknown'}, but ref ${targetRef?.ref || fallbackGithubRef} resolves to ${shortenCommit(targetCommit) || 'unknown'}. Deploy the current release first.`
       };
     }
 
@@ -649,7 +685,8 @@ function registerAdminRoutes(app, deps = {}) {
       liveBranch,
       targetCommit,
       targetShortCommit: shortenCommit(targetCommit),
-      targetRef: targetRef?.ref || githubRef,
+      targetRef: targetRef?.ref || fallbackGithubRef,
+      targetRefSource: targetRef?.source || null,
       sourceUrl: liveRelease?.sourceUrl || null,
       reason: null
     };
@@ -900,11 +937,15 @@ function registerAdminRoutes(app, deps = {}) {
       latestJob = normalizeGithubJob(jobs[0] || null);
     }
 
-    const [liveRelease, targetRef, liveAemo] = await Promise.all([
+    const [liveRelease, liveAemo] = await Promise.all([
       fetchHostedReleaseManifest(),
-      resolveGithubRefCommit(githubRef),
       loadAemoLiveSnapshotSummary()
     ]);
+    const selectedTargetRef = chooseGithubTargetRef(liveRelease);
+    const targetRef = {
+      ...selectedTargetRef,
+      ...(await resolveGithubRefCommit(selectedTargetRef.ref))
+    };
     const releaseAlignment = buildReleaseAlignmentSummary({ liveRelease, targetRef });
     const workflowActive = String(workflowData?.state || '').toLowerCase() === 'active';
     let dispatchEnabled = !!githubDispatchToken && workflowActive;
@@ -927,7 +968,8 @@ function registerAdminRoutes(app, deps = {}) {
         owner: githubOwner,
         repo: githubRepo,
         workflowId: githubWorkflowId,
-        ref: githubRef,
+        ref: targetRef.ref,
+        refSource: targetRef.source,
         state: workflowData?.state || null,
         path: workflowData?.path || null,
         htmlUrl: workflowData?.html_url || null
@@ -935,7 +977,8 @@ function registerAdminRoutes(app, deps = {}) {
       dispatch: {
         enabled: dispatchEnabled,
         configured: !!githubDispatchToken,
-        ref: githubRef,
+        ref: targetRef.ref,
+        refSource: targetRef.source,
         cooldownMs: githubDispatchCooldownMs,
         reason: dispatchReason
       },
@@ -4358,11 +4401,12 @@ app.post('/api/admin/dataworks/dispatch', authenticateUser, requireAdmin, async 
       });
     }
 
+    const dispatchRef = trimString(latestOps?.dispatch?.ref) || trimString(latestOps?.workflow?.ref) || fallbackGithubRef;
     const dispatchUrl = `https://api.github.com/repos/${encodeURIComponent(githubOwner)}/${encodeURIComponent(githubRepo)}/actions/workflows/${encodeURIComponent(githubWorkflowId)}/dispatches`;
     await callGithubApi(dispatchUrl, {
       method: 'POST',
       token: githubDispatchToken,
-      body: { ref: githubRef },
+      body: { ref: dispatchRef },
       expectStatus: 204
     });
 
@@ -4377,7 +4421,7 @@ app.post('/api/admin/dataworks/dispatch', authenticateUser, requireAdmin, async 
       workflowOwner: githubOwner,
       workflowRepo: githubRepo,
       workflowId: githubWorkflowId,
-      ref: githubRef,
+      ref: dispatchRef,
       timestamp: serverTimestamp()
     });
 
@@ -4388,7 +4432,7 @@ app.post('/api/admin/dataworks/dispatch', authenticateUser, requireAdmin, async 
         workflowOwner: githubOwner,
         workflowRepo: githubRepo,
         workflowId: githubWorkflowId,
-        ref: githubRef,
+        ref: dispatchRef,
         requestedAtMs: lastDataworksDispatchAtMs,
         recommendedPollAfterMs: 15000
       }
