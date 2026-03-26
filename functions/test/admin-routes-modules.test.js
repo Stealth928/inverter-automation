@@ -110,6 +110,14 @@ function makeQuerySnapshot(docs = []) {
   };
 }
 
+function makeDocSnapshot(id, data) {
+  return {
+    id,
+    exists: true,
+    data: () => data
+  };
+}
+
 function makeRulesQuery(docs = []) {
   const snapshot = makeQuerySnapshot(docs);
   const query = {
@@ -399,6 +407,9 @@ describe('admin route module', () => {
   });
 
   test('dataworks ops returns cached GitHub diagnostics without refetching immediately', async () => {
+    const nowMs = Date.now();
+    const asOfIso = new Date(nowMs - (4 * 60 * 1000)).toISOString();
+    const storedAtIso = new Date(nowMs - (3 * 60 * 1000)).toISOString();
     const fetchImpl = jest.fn()
       .mockResolvedValueOnce(makeFetchResponse(200, {
         state: 'active',
@@ -460,6 +471,53 @@ describe('admin route module', () => {
 
     const app = buildApp(createDeps({
       fetchImpl,
+      db: {
+        collection: jest.fn((name) => {
+          if (name === 'aemoSnapshots') {
+            return {
+              get: jest.fn(async () => makeQuerySnapshot([
+                makeDocSnapshot('NSW1', {
+                  data: [{ type: 'CurrentInterval' }, { type: 'ForecastInterval' }],
+                  metadata: { asOf: asOfIso, forecastHorizonMinutes: 1440, isForecastComplete: true },
+                  storedAtIso,
+                  schedule: { cadenceMinutes: 5, lagMinutes: 1, source: 'scheduler' }
+                }),
+                makeDocSnapshot('QLD1', {
+                  data: [{ type: 'CurrentInterval' }, { type: 'ForecastInterval' }],
+                  metadata: { asOf: asOfIso, forecastHorizonMinutes: 1440, isForecastComplete: true },
+                  storedAtIso,
+                  schedule: { cadenceMinutes: 5, lagMinutes: 1, source: 'scheduler' }
+                }),
+                makeDocSnapshot('SA1', {
+                  data: [{ type: 'CurrentInterval' }, { type: 'ForecastInterval' }],
+                  metadata: { asOf: asOfIso, forecastHorizonMinutes: 1440, isForecastComplete: true },
+                  storedAtIso,
+                  schedule: { cadenceMinutes: 5, lagMinutes: 1, source: 'scheduler' }
+                }),
+                makeDocSnapshot('TAS1', {
+                  data: [{ type: 'CurrentInterval' }, { type: 'ForecastInterval' }],
+                  metadata: { asOf: asOfIso, forecastHorizonMinutes: 1440, isForecastComplete: true },
+                  storedAtIso,
+                  schedule: { cadenceMinutes: 5, lagMinutes: 1, source: 'scheduler' }
+                }),
+                makeDocSnapshot('VIC1', {
+                  data: [{ type: 'CurrentInterval' }, { type: 'ForecastInterval' }],
+                  metadata: { asOf: asOfIso, forecastHorizonMinutes: 1440, isForecastComplete: true },
+                  storedAtIso,
+                  schedule: { cadenceMinutes: 5, lagMinutes: 1, source: 'scheduler' }
+                })
+              ]))
+            };
+          }
+          return {
+            doc: jest.fn(() => ({
+              set: jest.fn(async () => undefined)
+            })),
+            where: jest.fn(() => ({})),
+            add: jest.fn(async () => undefined)
+          };
+        })
+      },
       githubDataworks: {
         owner: 'Stealth928',
         repo: 'inverter-automation',
@@ -482,6 +540,8 @@ describe('admin route module', () => {
     expect(firstResponse.body.result.latestRun.conclusion).toBe('failure');
     expect(firstResponse.body.result.latestJob.steps[1].name).toBe('Deploy Firebase hosting');
     expect(firstResponse.body.result.releaseAlignment.matches).toBe(true);
+    expect(firstResponse.body.result.liveAemo.status.label).toBe('Healthy');
+    expect(firstResponse.body.result.liveAemo.freshRegions).toBe(5);
     expect(secondResponse.statusCode).toBe(200);
     expect(secondResponse.body.result.cache.hit).toBe(true);
     expect(fetchImpl).toHaveBeenCalledTimes(5);

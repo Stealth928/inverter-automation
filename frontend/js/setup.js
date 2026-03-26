@@ -72,11 +72,13 @@
             if (restored) {
                 clearAllFieldStates();
                 applyProviderSelection(getSelectedProvider());
+                applyPricingProviderSelection(getSelectedPricingProvider());
                 updateProgress();
             }
         }
 
         updateProgress();
+        applyPricingProviderSelection(getSelectedPricingProvider());
 
         AppShell.init({
             pageName: 'setup',
@@ -154,9 +156,28 @@
             updateProgress();
         }
 
+        function getSelectedPricingProvider() {
+            const select = document.getElementById('pricingProvider');
+            return select ? String(select.value || 'amber').trim().toLowerCase() || 'amber' : 'amber';
+        }
+
+        function applyPricingProviderSelection(pricingProvider) {
+            const amberGroup = document.getElementById('amberApiKeyGroup');
+            const aemoRegionGroup = document.getElementById('pricingAemoRegionGroup');
+            const useAemo = pricingProvider === 'aemo';
+
+            if (amberGroup) amberGroup.style.display = useAemo ? 'none' : '';
+            if (aemoRegionGroup) aemoRegionGroup.style.display = useAemo ? '' : 'none';
+        }
+
         document.querySelectorAll('input[name="provider"]').forEach(radio => {
             radio.addEventListener('change', () => applyProviderSelection(getSelectedProvider()));
         });
+
+        const pricingProviderSelect = document.getElementById('pricingProvider');
+        if (pricingProviderSelect) {
+            pricingProviderSelect.addEventListener('change', () => applyPricingProviderSelection(getSelectedPricingProvider()));
+        }
 
         // Sign out link
         document.getElementById('signOutLink').addEventListener('click', async (e) => {
@@ -177,7 +198,11 @@
             e.preventDefault();
 
             const provider = getSelectedProvider();
-            const amberApiKey = sanitizeInput(document.getElementById('amberApiKey').value);
+            const pricingProvider = getSelectedPricingProvider();
+            const amberApiKey = pricingProvider === 'amber'
+                ? sanitizeInput(document.getElementById('amberApiKey').value)
+                : '';
+            const aemoRegion = document.getElementById('pricingAemoRegion')?.value || 'NSW1';
             const weatherPlaceInput = document.getElementById('weatherPlace');
             const weatherPlaceValidation = validateWeatherPlace(weatherPlaceInput.value);
             const weatherPlace = weatherPlaceValidation.normalized;
@@ -285,6 +310,8 @@
             }
 
             Object.assign(requestBody, {
+                pricing_provider:    pricingProvider,
+                aemo_region:         pricingProvider === 'aemo' ? aemoRegion : undefined,
                 amber_api_key:       amberApiKey || null,
                 weather_place:       weatherPlace,
                 inverter_capacity_w: Math.round(inverterCapacityKw * 1000),
@@ -357,7 +384,7 @@
                     setFieldSuccess('deviceSn');
                     setFieldSuccess('foxessToken');
                 }
-                if (amberApiKey) setFieldSuccess('amberApiKey');
+                if (pricingProvider === 'amber' && amberApiKey) setFieldSuccess('amberApiKey');
 
                 // Update button to show success
                 submitBtn.innerHTML = '<span>✓</span><span>Success! Redirecting...</span>';
@@ -377,8 +404,16 @@
                     const sn = sanitizeInput(document.getElementById('deviceSn').value);
                     localStorage.setItem('foxess_setup_device_sn', sn);
                 }
-                if (amberApiKey) {
+                localStorage.setItem('setup_pricing_provider', pricingProvider);
+                if (pricingProvider === 'aemo') {
+                    localStorage.setItem('setup_pricing_region', aemoRegion);
+                } else {
+                    localStorage.removeItem('setup_pricing_region');
+                }
+                if (pricingProvider === 'amber' && amberApiKey) {
                     localStorage.setItem('foxess_setup_amber_api_key', amberApiKey);
+                } else {
+                    localStorage.removeItem('foxess_setup_amber_api_key');
                 }
 
                 if (window.PreviewSession) {

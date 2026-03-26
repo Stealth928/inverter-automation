@@ -36,6 +36,22 @@
             return String(providerInput?.value || currentConfig?.pricingProvider || 'amber').trim().toLowerCase() || 'amber';
         }
 
+        function getSelectedAemoRegion() {
+            return String(
+                document.getElementById('pricing_aemoRegion')?.value ||
+                currentConfig?.aemoRegion ||
+                currentConfig?.siteIdOrRegion ||
+                'NSW1'
+            ).trim() || 'NSW1';
+        }
+
+        function isCredentialInputUnchanged(input, originalValue = '') {
+            const currentValue = String(input?.value || '').trim();
+            const baselineValue = String(originalValue || '').trim();
+            return currentValue === baselineValue ||
+                (isMaskedCredentialValue(currentValue) && input?.dataset.hasSavedCredential === '1');
+        }
+
         function togglePricingProviderFields(provider = getSelectedPricingProvider()) {
             const normalizedProvider = String(provider || 'amber').trim().toLowerCase() || 'amber';
             const amberSection = document.getElementById('pricingAmberKeySection');
@@ -1631,7 +1647,11 @@
                 setInput('cache_teslaStatus', cacheTeslaStatusMs);
                 setInput('pricing_provider', currentConfig.pricingProvider || 'amber');
                 setInput('pricing_aemoRegion', currentConfig.aemoRegion || currentConfig.siteIdOrRegion || 'NSW1');
+                setInput('credentials_sigenenergyRegion', currentConfig.sigenRegion || 'apac');
                 togglePricingProviderFields(currentConfig.pricingProvider || 'amber');
+                originalCredentials.pricingProvider = currentConfig.pricingProvider || 'amber';
+                originalCredentials.aemoRegion = currentConfig.aemoRegion || currentConfig.siteIdOrRegion || 'NSW1';
+                originalCredentials.sigenenergyRegion = currentConfig.sigenRegion || 'apac';
                 
                 // Defaults
                 if (currentConfig.defaults) {
@@ -2655,60 +2675,70 @@
             const isAlphaEss = document.getElementById('alphaessCredentialsSection')?.style.display !== 'none';
             const isSungrow = document.getElementById('sungrowCredentialsSection')?.style.display !== 'none';
             const isSigenEnergy = document.getElementById('sigenenergyCredentialsSection')?.style.display !== 'none';
+            const pricingProvider = getSelectedPricingProvider();
+            const originalPricingProvider = String(
+                originalCredentials.pricingProvider ||
+                originalConfig?.pricingProvider ||
+                currentConfig?.pricingProvider ||
+                'amber'
+            ).trim().toLowerCase() || 'amber';
+            const selectedAemoRegion = getSelectedAemoRegion();
+            const originalAemoRegion = String(
+                originalCredentials.aemoRegion ||
+                originalConfig?.aemoRegion ||
+                originalConfig?.siteIdOrRegion ||
+                currentConfig?.aemoRegion ||
+                currentConfig?.siteIdOrRegion ||
+                'NSW1'
+            ).trim() || 'NSW1';
+            const pricingChanged = pricingProvider !== originalPricingProvider ||
+                (pricingProvider === 'aemo' && selectedAemoRegion !== originalAemoRegion);
             const amberInput = document.getElementById('credentials_amberKey');
-            const amberKey = (amberInput?.value || '').trim();
-            const amberMatchesOriginal = amberKey === (originalCredentials.amberKey || '');
-            const amberMaskedSaved = isMaskedCredentialValue(amberKey) && amberInput?.dataset.hasSavedCredential === '1';
+            const amberMatchesOriginal = isCredentialInputUnchanged(amberInput, originalCredentials.amberKey || '');
 
             let changed;
             if (isSigenEnergy) {
                 const sgUserInput = document.getElementById('credentials_sigenenergyUsername');
                 const sgPassInput = document.getElementById('credentials_sigenenergyPassword');
-                const sgUser = (sgUserInput?.value || '').trim();
-                const sgPass = (sgPassInput?.value || '').trim();
-                const sgUserChanged = !(sgUser === (originalCredentials.sigenenergyUsername || '') ||
-                    (isMaskedCredentialValue(sgUser) && sgUserInput?.dataset.hasSavedCredential === '1'));
-                const sgPassChanged = !(sgPass === (originalCredentials.sigenenergyPassword || '') ||
-                    (isMaskedCredentialValue(sgPass) && sgPassInput?.dataset.hasSavedCredential === '1'));
+                const sgRegionInput = document.getElementById('credentials_sigenenergyRegion');
+                const sgRegion = (sgRegionInput?.value || '').trim() || 'apac';
+                const sgUserChanged = !isCredentialInputUnchanged(sgUserInput, originalCredentials.sigenenergyUsername || '');
+                const sgPassChanged = !isCredentialInputUnchanged(sgPassInput, originalCredentials.sigenenergyPassword || '');
+                const sgRegionChanged = sgRegion !== (originalCredentials.sigenenergyRegion || 'apac');
                 changed = sgUserChanged || sgPassChanged ||
-                    !(amberMatchesOriginal || amberMaskedSaved);
+                    sgRegionChanged ||
+                    !amberMatchesOriginal ||
+                    pricingChanged;
             } else if (isAlphaEss) {
                 const snInput = document.getElementById('credentials_alphaessSystemSn');
                 const appIdInput = document.getElementById('credentials_alphaessAppId');
                 const appSecretInput = document.getElementById('credentials_alphaessAppSecret');
                 const systemSn = (snInput?.value || '').trim();
-                const appId = (appIdInput?.value || '').trim();
-                const appSecret = (appSecretInput?.value || '').trim();
                 const systemSnChanged = systemSn !== (originalCredentials.alphaessSystemSn || '');
-                const appIdChanged = !(appId === (originalCredentials.alphaessAppId || '') ||
-                    (isMaskedCredentialValue(appId) && appIdInput?.dataset.hasSavedCredential === '1'));
-                const appSecretChanged = !(appSecret === (originalCredentials.alphaessAppSecret || '') ||
-                    (isMaskedCredentialValue(appSecret) && appSecretInput?.dataset.hasSavedCredential === '1'));
+                const appIdChanged = !isCredentialInputUnchanged(appIdInput, originalCredentials.alphaessAppId || '');
+                const appSecretChanged = !isCredentialInputUnchanged(appSecretInput, originalCredentials.alphaessAppSecret || '');
                 changed = systemSnChanged || appIdChanged || appSecretChanged ||
-                    !(amberMatchesOriginal || amberMaskedSaved);
+                    !amberMatchesOriginal ||
+                    pricingChanged;
             } else if (isSungrow) {
                 const sgSnInput = document.getElementById('credentials_sungrowDeviceSn');
                 const sgUserInput = document.getElementById('credentials_sungrowUsername');
                 const sgPassInput = document.getElementById('credentials_sungrowPassword');
                 const sgSn = (sgSnInput?.value || '').trim();
-                const sgUser = (sgUserInput?.value || '').trim();
-                const sgPass = (sgPassInput?.value || '').trim();
                 const sgSnChanged = sgSn !== (originalCredentials.sungrowDeviceSn || '');
-                const sgUserChanged = !(sgUser === (originalCredentials.sungrowUsername || '') ||
-                    (isMaskedCredentialValue(sgUser) && sgUserInput?.dataset.hasSavedCredential === '1'));
-                const sgPassChanged = !(sgPass === (originalCredentials.sungrowPassword || '') ||
-                    (isMaskedCredentialValue(sgPass) && sgPassInput?.dataset.hasSavedCredential === '1'));
+                const sgUserChanged = !isCredentialInputUnchanged(sgUserInput, originalCredentials.sungrowUsername || '');
+                const sgPassChanged = !isCredentialInputUnchanged(sgPassInput, originalCredentials.sungrowPassword || '');
                 changed = sgSnChanged || sgUserChanged || sgPassChanged ||
-                    !(amberMatchesOriginal || amberMaskedSaved);
+                    !amberMatchesOriginal ||
+                    pricingChanged;
             } else {
                 const deviceSn = (document.getElementById('credentials_deviceSn')?.value || '').trim();
                 const foxessInput = document.getElementById('credentials_foxessToken');
-                const foxessToken = (foxessInput?.value || '').trim();
-                const foxessMatchesOriginal = foxessToken === (originalCredentials.foxessToken || '');
-                const foxessMaskedSaved = isMaskedCredentialValue(foxessToken) && foxessInput?.dataset.hasSavedCredential === '1';
-                const credentialsChanged = !(foxessMatchesOriginal || foxessMaskedSaved) ||
-                    !(amberMatchesOriginal || amberMaskedSaved);
-                changed = (deviceSn !== originalCredentials.deviceSn) || credentialsChanged;
+                const foxessChanged = !isCredentialInputUnchanged(foxessInput, originalCredentials.foxessToken || '');
+                changed = (deviceSn !== originalCredentials.deviceSn) ||
+                    foxessChanged ||
+                    !amberMatchesOriginal ||
+                    pricingChanged;
             }
             
             const badge = document.getElementById('credentialsBadge');
@@ -2763,8 +2793,29 @@
                 if (curtailmentSec) curtailmentSec.style.display = isFoxess ? '' : 'none';
 
                 if (data.errno === 0 && data.result) {
+                    const pricingProvider = String(data.result.pricingProvider || currentConfig?.pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+                    const aemoRegion = String(data.result.aemoRegion || data.result.siteIdOrRegion || currentConfig?.aemoRegion || 'NSW1').trim() || 'NSW1';
+                    const pricingProviderInput = document.getElementById('pricing_provider');
+                    const aemoRegionInput = document.getElementById('pricing_aemoRegion');
+                    if (pricingProviderInput) pricingProviderInput.value = pricingProvider;
+                    if (aemoRegionInput) aemoRegionInput.value = aemoRegion;
+                    togglePricingProviderFields(pricingProvider);
+                    originalCredentials.pricingProvider = pricingProvider;
+                    originalCredentials.aemoRegion = aemoRegion;
+                    currentConfig.pricingProvider = pricingProvider;
+                    currentConfig.aemoRegion = aemoRegion;
+                    currentConfig.siteIdOrRegion = data.result.siteIdOrRegion || aemoRegion;
+                    originalConfig.pricingProvider = pricingProvider;
+                    originalConfig.aemoRegion = aemoRegion;
+                    originalConfig.siteIdOrRegion = data.result.siteIdOrRegion || aemoRegion;
+
                     if (isSigenEnergy) {
-                        // No non-credential config fields for SigenEnergy on this path
+                        const sgRegionInput = document.getElementById('credentials_sigenenergyRegion');
+                        const sigenRegion = String(data.result.sigenRegion || currentConfig?.sigenRegion || 'apac').trim() || 'apac';
+                        if (sgRegionInput) sgRegionInput.value = sigenRegion;
+                        originalCredentials.sigenenergyRegion = sigenRegion;
+                        currentConfig.sigenRegion = sigenRegion;
+                        originalConfig.sigenRegion = sigenRegion;
                     } else if (isAlphaEss) {
                         const alphaSystemSnInput = document.getElementById('credentials_alphaessSystemSn');
                         const systemSnVal = data.result.alphaessSystemSn || '';
@@ -2905,6 +2956,7 @@
                     const sgUserInput = document.getElementById('credentials_sigenenergyUsername');
                     const sgPassInput = document.getElementById('credentials_sigenenergyPassword');
                     const sgRegionInput = document.getElementById('credentials_sigenenergyRegion');
+                    const sigenRegion = String(data.result?.sigenRegion || currentConfig?.sigenRegion || 'apac').trim() || 'apac';
                     if (sgUserInput) {
                         if (hasSigenUsername) {
                             sgUserInput.value = '••••••••';
@@ -2930,9 +2982,8 @@
                             originalCredentials.sigenenergyPassword = '';
                         }
                     }
-                    if (sgRegionInput && data.result?.sigenRegion) {
-                        sgRegionInput.value = data.result.sigenRegion;
-                    }
+                    if (sgRegionInput) sgRegionInput.value = sigenRegion;
+                    originalCredentials.sigenenergyRegion = sigenRegion;
                 }
 
                 const credStatusEl = document.getElementById('credentialsStatus');

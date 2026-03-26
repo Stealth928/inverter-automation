@@ -3,6 +3,10 @@
 const fetch = global.fetch;
 const unzipper = require('unzipper');
 const { parse } = require('csv-parse/sync');
+const {
+  createAemoSnapshotRepository,
+  createEmptySnapshot
+} = require('../lib/repositories/aemo-snapshot-repository');
 
 if (typeof fetch !== 'function') {
   throw new Error('Global fetch is not available in this runtime.');
@@ -436,6 +440,10 @@ function init(dependencies = {}) {
   const _logger = dependencies.logger || console;
   const getConfig = dependencies.getConfig || (() => ({}));
   const incrementApiCount = dependencies.incrementApiCount;
+  const serverTimestamp = dependencies.serverTimestamp || (() => new Date());
+  const snapshotRepository = _db && typeof _db.collection === 'function'
+    ? createAemoSnapshotRepository({ db: _db, serverTimestamp })
+    : null;
 
   async function fetchText(url, timeoutMs = 15000) {
     const controller = new AbortController();
@@ -513,6 +521,15 @@ function init(dependencies = {}) {
       || CURRENT_ARCHIVE_CACHE_MS;
   }
 
+  function buildEmptyCurrentPayload(regionId) {
+    const empty = createEmptySnapshot(regionId);
+    return {
+      regionId: empty.regionId,
+      data: empty.data,
+      metadata: empty.metadata
+    };
+  }
+
   async function fetchLatestDispatchSections(userId) {
     const archiveUrl = await fetchLatestArchiveUrl(DISPATCH_LISTING_URL, 'PUBLIC_DISPATCHIS_');
     if (userId && incrementApiCount) {
@@ -539,6 +556,22 @@ function init(dependencies = {}) {
     };
   }
 
+  async function fetchCurrentPayloadsFromUpstream(userId = null) {
+    const [{ dispatchPrices, dispatchDemand }, { predispatchPrices, predispatchDemand }] = await Promise.all([
+      fetchLatestDispatchSections(userId),
+      fetchLatestPredispatchSections(userId)
+    ]);
+
+    const payloads = new Map();
+    for (const regionId of Object.keys(AEMO_SUPPORTED_REGIONS)) {
+      payloads.set(
+        regionId,
+        buildCurrentPayload(regionId, dispatchPrices, dispatchDemand, predispatchPrices, predispatchDemand)
+      );
+    }
+    return payloads;
+  }
+
   async function fetchMonthlyRows(monthKey, regionId, userId) {
     const cacheKey = `${monthKey}|${regionId}`;
     const cached = readCacheEntry(monthlyCsvCache, cacheKey);
@@ -562,30 +595,143 @@ function init(dependencies = {}) {
     });
   }
 
-  async function getCurrentPriceData(context = {}) {
+  async function readStoredCurrentPriceData(context = {}) {
     const regionId = normalizeAemoRegion(context.regionId || context.userConfig?.aemoRegion || context.userConfig?.siteIdOrRegion);
     if (!regionId) {
-      return { regionId: null, data: [], metadata: getForecastMetadata([], new Date().toISOString()) };
+      return buildEmptyCurrentPayload(null);
     }
 
     const ttlMs = getAemoCacheTtl(context.userConfig);
-    const forceRefresh = context.forceRefresh === true;
     const cacheKey = `${regionId}`;
-    if (!forceRefresh) {
-      const cached = readCacheEntry(currentRegionCache, cacheKey);
-      if (cached) {
-        return cached;
-      }
+    const cached = readCacheEntry(currentRegionCache, cacheKey);
+    if (cached) {
+      return cached;
     }
 
     return withInFlight(currentRegionInFlight, cacheKey, async () => {
-      const [{ dispatchPrices, dispatchDemand }, { predispatchPrices, predispatchDemand }] = await Promise.all([
-        fetchLatestDispatchSections(context.userId || null),
-        fetchLatestPredispatchSections(context.userId || null)
-      ]);
-      const payload = buildCurrentPayload(regionId, dispatchPrices, dispatchDemand, predispatchPrices, predispatchDemand);
+      const snapshot = snapshotRepository
+        ? await snapshotRepository.getCurrentSnapshot(regionId)
+        : buildEmptyCurrentPayload(regionId);
+      const payload = {
+        regionId,
+        data: Array.isArray(snapshot?.data) ? snapshot.data : [],
+        metadata: snapshot?.metadata && typeof snapshot.metadata === 'object'
+          ? snapshot.metadata
+          : buildEmptyCurrentPayload(regionId).metadata
+      };
       return storeCacheEntry(currentRegionCache, cacheKey, ttlMs, payload);
     });
+  }
+
+  async function storeCurrentPricePayload(payload, context = {}) {
+    const regionId = normalizeAemoRegion(payload?.regionId);
+    if (!regionId) {
+      return {
+        regionId: null,
+        updated: false,
+        payload: buildEmptyCurrentPayload(null),
+        previousAsOf: null,
+        currentAsOf: null
+      };
+    }
+
+    const normalizedPayload = {
+      regionId,
+      data: Array.isArray(payload?.data) ? payload.data : [],
+      metadata: payload?.metadata && typeof payload.metadata === 'object'
+        ? payload.metadata
+        : buildEmptyCurrentPayload(regionId).metadata
+    };
+    const nextAsOf = trimString(normalizedPayload.metadata?.asOf);
+    let storedPayload = normalizedPayload;
+    let previousAsOf = null;
+    let updated = true;
+
+    if (snapshotRepository) {
+      const existing = await snapshotRepository.getCurrentSnapshot(regionId);
+      previousAsOf = trimString(existing?.metadata?.asOf);
+      const existingHasRows = Array.isArray(existing?.data) && existing.data.length > 0;
+      const nextHasRows = normalizedPayload.data.length > 0;
+
+      const previousMs = Date.parse(previousAsOf);
+      const nextMs = Date.parse(nextAsOf);
+      const shouldPersist = nextHasRows && (
+        !previousAsOf
+        || !nextAsOf
+        || !Number.isFinite(previousMs)
+        || !Number.isFinite(nextMs)
+        || nextMs >= previousMs
+      );
+
+      if (shouldPersist) {
+        storedPayload = await snapshotRepository.saveCurrentSnapshot(normalizedPayload, {
+          cadenceMinutes: 5,
+          lagMinutes: 1
+        });
+      } else if (existingHasRows) {
+        storedPayload = existing;
+        updated = false;
+      } else {
+        storedPayload = normalizedPayload;
+        updated = false;
+      }
+    }
+
+    storeCacheEntry(currentRegionCache, `${regionId}`, getAemoCacheTtl(context.userConfig), storedPayload);
+
+    return {
+      regionId,
+      updated,
+      payload: storedPayload,
+      previousAsOf,
+      currentAsOf: trimString(storedPayload?.metadata?.asOf)
+    };
+  }
+
+  async function refreshCurrentPriceData(context = {}) {
+    const regionId = normalizeAemoRegion(context.regionId || context.userConfig?.aemoRegion || context.userConfig?.siteIdOrRegion);
+    if (!regionId) {
+      return {
+        regionId: null,
+        updated: false,
+        payload: buildEmptyCurrentPayload(null),
+        previousAsOf: null,
+        currentAsOf: null
+      };
+    }
+
+    const payloads = await fetchCurrentPayloadsFromUpstream(context.userId || null);
+    const payload = payloads.get(regionId) || buildEmptyCurrentPayload(regionId);
+    return storeCurrentPricePayload(payload, context);
+  }
+
+  async function refreshAllCurrentPriceData(context = {}) {
+    const payloads = await fetchCurrentPayloadsFromUpstream(context.userId || null);
+    const regions = Object.keys(AEMO_SUPPORTED_REGIONS);
+    const settled = await Promise.allSettled(
+      regions.map((regionId) => {
+        const payload = payloads.get(regionId) || buildEmptyCurrentPayload(regionId);
+        return storeCurrentPricePayload(payload, context);
+      })
+    );
+
+    return settled.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return result.value;
+      }
+      return {
+        regionId: regions[index],
+        updated: false,
+        payload: buildEmptyCurrentPayload(regions[index]),
+        previousAsOf: null,
+        currentAsOf: null,
+        error: result.reason && result.reason.message ? result.reason.message : String(result.reason || 'Unknown error')
+      };
+    });
+  }
+
+  async function getCurrentPriceData(context = {}) {
+    return readStoredCurrentPriceData(context);
   }
 
   async function getHistoricalPriceData(context = {}, startIso, endIso) {
@@ -635,6 +781,8 @@ function init(dependencies = {}) {
   return {
     DEFAULT_AEMO_REGION,
     AEMO_SUPPORTED_REGIONS,
+    refreshAllCurrentPriceData,
+    refreshCurrentPriceData,
     getActualPriceAtTimestamp,
     getCurrentPriceData,
     getHistoricalPriceData,

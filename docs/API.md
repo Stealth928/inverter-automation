@@ -20,6 +20,64 @@ For the most complete measured route inventory, use
 This document focuses on commonly used product and operator workflows rather
 than listing every backend route exhaustively.
 
+## Pricing Providers
+
+Pricing endpoints support a provider-aware contract while keeping the existing
+Amber-shaped UX and automation model intact.
+
+Supported providers:
+
+- `amber`
+- `aemo`
+
+Supported AEMO regions:
+
+- `NSW1`
+- `QLD1`
+- `VIC1`
+- `SA1`
+- `TAS1`
+
+Primary endpoints:
+
+```text
+GET /api/pricing/sites?provider=amber|aemo
+GET /api/pricing/current?provider=amber|aemo&siteId=<amber-site>|regionId=<aemo-region>
+GET /api/pricing/prices?provider=amber|aemo&siteId=<amber-site>|regionId=<aemo-region>
+GET /api/pricing/prices?provider=amber|aemo&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&resolution=5|30
+GET /api/pricing/actual?provider=amber|aemo&siteId=<amber-site>|regionId=<aemo-region>&timestamp=<iso>
+```
+
+Legacy Amber aliases still exist for backward compatibility:
+
+- `/api/amber/sites`
+- `/api/amber/prices/current`
+- `/api/amber/prices`
+- `/api/amber/prices/actual`
+
+Provider behavior:
+
+- Amber continues to use site-specific retail pricing.
+- AEMO uses public regional market pricing and forecast data.
+- When AEMO is selected, the regional spot price is mirrored into both buy and
+  feed-in fields so existing dashboard cards, rules, ROI, and history surfaces
+  continue to work without schema changes.
+- AEMO may provide a longer forecast horizon than Amber. Clients should use the
+  returned metadata rather than assuming a fixed horizon.
+
+Normalized provider payloads expose the existing interval list plus provider
+metadata such as:
+
+- `source`
+- `siteIdOrRegion`
+- `buyPriceCurrent`
+- `feedInPriceCurrent`
+- `forecastBuy`
+- `forecastFeedIn`
+- `asOf`
+- `forecastHorizonMinutes`
+- `isForecastComplete`
+
 ## Admin Operator Metrics
 
 ### Firestore, Quota, and Cache Monitoring

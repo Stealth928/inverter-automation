@@ -2,6 +2,7 @@
 
 function registerAdminRoutes(app, deps = {}) {
   const { buildSchedulerSoakSummary } = require('../../lib/services/scheduler-soak-summary');
+  const { AEMO_SUPPORTED_REGIONS } = require('../aemo');
   const authenticateUser = deps.authenticateUser;
   const requireAdmin = deps.requireAdmin;
   const googleApis = deps.googleApis;
@@ -160,6 +161,14 @@ function registerAdminRoutes(app, deps = {}) {
   let dataworksOpsCache = null;
   let dataworksOpsCacheExpiresAtMs = 0;
   let lastDataworksDispatchAtMs = 0;
+  const aemoSnapshotScheduleDefaults = Object.freeze({
+    cadenceMinutes: 5,
+    lagMinutes: 1,
+    timeZone: 'Australia/Brisbane',
+    jobName: 'refreshAemoLiveSnapshots',
+    source: 'scheduler',
+    mode: 'scheduler-only'
+  });
 
   const toMs = (value) => {
     if (!value) return null;
@@ -646,6 +655,217 @@ function registerAdminRoutes(app, deps = {}) {
     };
   }
 
+  function buildAemoLiveSnapshotRegionSummary(regionId, snapshotDoc, nowMs) {
+    const regionMeta = AEMO_SUPPORTED_REGIONS[regionId] || {};
+    const source = snapshotDoc && typeof snapshotDoc === 'object' ? snapshotDoc : {};
+    const metadata = source.metadata && typeof source.metadata === 'object' ? source.metadata : {};
+    const schedule = source.schedule && typeof source.schedule === 'object' ? source.schedule : {};
+    const rows = Array.isArray(source.data) ? source.data : [];
+    const cadenceMinutes = Number.isFinite(Number(schedule.cadenceMinutes))
+      ? Math.max(1, Math.round(Number(schedule.cadenceMinutes)))
+      : aemoSnapshotScheduleDefaults.cadenceMinutes;
+    const lagMinutes = Number.isFinite(Number(schedule.lagMinutes))
+      ? Math.max(0, Math.round(Number(schedule.lagMinutes)))
+      : aemoSnapshotScheduleDefaults.lagMinutes;
+    const freshThresholdMinutes = Math.max(12, cadenceMinutes + lagMinutes + 4);
+    const staleThresholdMinutes = Math.max(20, cadenceMinutes * 4);
+    const asOf = trimString(metadata.asOf);
+    const asOfMs = toMs(asOf);
+    const storedAtIso = trimString(source.storedAtIso);
+    const storedAtMs = toMs(storedAtIso) || toMs(source.storedAt);
+    const forecastHorizonMinutes = Number.isFinite(Number(metadata.forecastHorizonMinutes))
+      ? Math.max(0, Math.round(Number(metadata.forecastHorizonMinutes)))
+      : 0;
+    const asOfAgeMinutes = Number.isFinite(asOfMs)
+      ? Math.max(0, Math.round(((nowMs - asOfMs) / 60000) * 10) / 10)
+      : null;
+    const storedAgeMinutes = Number.isFinite(storedAtMs)
+      ? Math.max(0, Math.round(((nowMs - storedAtMs) / 60000) * 10) / 10)
+      : null;
+    const currentRowCount = rows.filter((row) => row && row.type === 'CurrentInterval').length;
+    const forecastRowCount = rows.filter((row) => row && row.type === 'ForecastInterval').length;
+
+    let status = 'missing';
+    let statusLabel = 'Missing';
+    let statusLevel = 'warn';
+    if (rows.length > 0 && Number.isFinite(asOfAgeMinutes)) {
+      if (asOfAgeMinutes <= freshThresholdMinutes) {
+        status = 'fresh';
+        statusLabel = 'Fresh';
+        statusLevel = 'good';
+      } else if (asOfAgeMinutes <= staleThresholdMinutes) {
+        status = 'watch';
+        statusLabel = 'Watch';
+        statusLevel = 'warn';
+      } else {
+        status = 'stale';
+        statusLabel = 'Stale';
+        statusLevel = 'bad';
+      }
+    }
+
+    return {
+      regionId,
+      regionCode: trimString(regionMeta.code) || regionId.replace(/\d+$/g, ''),
+      regionName: trimString(regionMeta.label) || regionId,
+      asOf,
+      asOfAgeMinutes,
+      storedAt: storedAtIso || (Number.isFinite(storedAtMs) ? new Date(storedAtMs).toISOString() : null),
+      storedAgeMinutes,
+      rowCount: rows.length,
+      currentRowCount,
+      forecastRowCount,
+      forecastHorizonMinutes,
+      isForecastComplete: metadata.isForecastComplete === true,
+      schedule: {
+        cadenceMinutes,
+        lagMinutes,
+        source: trimString(schedule.source) || aemoSnapshotScheduleDefaults.source
+      },
+      status,
+      statusLabel,
+      statusLevel
+    };
+  }
+
+  async function loadAemoLiveSnapshotSummary() {
+    const nowMs = Date.now();
+    const expectedRegions = Object.keys(AEMO_SUPPORTED_REGIONS);
+
+    if (!db || typeof db.collection !== 'function') {
+      return {
+        available: false,
+        status: {
+          level: 'warn',
+          label: 'Unavailable',
+          reasons: ['Firestore db unavailable for AEMO snapshot health']
+        },
+        expectedRegionCount: expectedRegions.length,
+        regions: [],
+        schedule: aemoSnapshotScheduleDefaults,
+        source: 'firestore:aemoSnapshots',
+        queryOk: false
+      };
+    }
+
+    try {
+      const collectionRef = db.collection('aemoSnapshots');
+      if (!collectionRef || typeof collectionRef.get !== 'function') {
+        return {
+          available: false,
+          status: {
+            level: 'warn',
+            label: 'Unavailable',
+            reasons: ['AEMO snapshot diagnostics not supported by this Firestore adapter']
+          },
+          expectedRegionCount: expectedRegions.length,
+          regions: [],
+          schedule: aemoSnapshotScheduleDefaults,
+          source: 'firestore:aemoSnapshots',
+          queryOk: false
+        };
+      }
+
+      const snapshot = await collectionRef.get();
+      const docMap = new Map();
+      const docs = Array.isArray(snapshot?.docs) ? snapshot.docs : [];
+      docs.forEach((doc) => {
+        const regionId = trimString(doc?.id);
+        if (!regionId || !expectedRegions.includes(regionId) || typeof doc?.data !== 'function') return;
+        docMap.set(regionId, doc.data() || {});
+      });
+
+      const regions = expectedRegions
+        .map((regionId) => buildAemoLiveSnapshotRegionSummary(regionId, docMap.get(regionId) || null, nowMs))
+        .sort((left, right) => String(left.regionCode || left.regionId).localeCompare(String(right.regionCode || right.regionId)));
+
+      const freshRegions = regions.filter((row) => row.status === 'fresh').length;
+      const watchRegions = regions.filter((row) => row.status === 'watch').length;
+      const staleRegions = regions.filter((row) => row.status === 'stale').length;
+      const missingRegions = regions.filter((row) => row.status === 'missing').length;
+      const forecastCompleteRegions = regions.filter((row) => row.isForecastComplete === true).length;
+      const availableAsOfRows = regions.filter((row) => Number.isFinite(row.asOfAgeMinutes));
+      const availableStoredRows = regions.filter((row) => Number.isFinite(row.storedAgeMinutes));
+      const latestAsOfRow = availableAsOfRows
+        .slice()
+        .sort((left, right) => toMs(right.asOf) - toMs(left.asOf))[0] || null;
+      const oldestAsOfRow = availableAsOfRows
+        .slice()
+        .sort((left, right) => toFiniteNumber(right.asOfAgeMinutes, -1) - toFiniteNumber(left.asOfAgeMinutes, -1))[0] || null;
+      const latestStoredRow = availableStoredRows
+        .slice()
+        .sort((left, right) => toMs(right.storedAt) - toMs(left.storedAt))[0] || null;
+      const horizonValues = regions
+        .map((row) => Number(row.forecastHorizonMinutes))
+        .filter((value) => Number.isFinite(value) && value > 0);
+      const totalRows = regions.reduce((sum, row) => sum + toFiniteNumber(row.rowCount, 0), 0);
+      const reasons = [];
+      let level = 'good';
+      let label = 'Healthy';
+
+      if (missingRegions > 0) {
+        reasons.push(`${missingRegions} of ${expectedRegions.length} live region snapshot${missingRegions === 1 ? ' is' : 's are'} missing`);
+      }
+      if (staleRegions > 0) {
+        reasons.push(`${staleRegions} live region snapshot${staleRegions === 1 ? ' is' : 's are'} stale`);
+      }
+      if (watchRegions > 0) {
+        reasons.push(`${watchRegions} live region snapshot${watchRegions === 1 ? ' is' : 's are'} aging`);
+      }
+      if (oldestAsOfRow && Number.isFinite(oldestAsOfRow.asOfAgeMinutes)) {
+        reasons.push(`oldest live interval is ${Math.round(oldestAsOfRow.asOfAgeMinutes)}m old`);
+      }
+
+      if (staleRegions > 0 || missingRegions >= 2) {
+        level = 'bad';
+        label = 'Stale';
+      } else if (missingRegions > 0 || watchRegions > 0) {
+        level = 'warn';
+        label = 'Watch';
+      }
+
+      return {
+        available: true,
+        status: {
+          level,
+          label,
+          reasons
+        },
+        expectedRegionCount: expectedRegions.length,
+        freshRegions,
+        watchRegions,
+        staleRegions,
+        missingRegions,
+        forecastCompleteRegions,
+        totalRows,
+        latestAsOf: latestAsOfRow?.asOf || null,
+        latestStoredAt: latestStoredRow?.storedAt || null,
+        oldestAsOfAgeMinutes: oldestAsOfRow?.asOfAgeMinutes ?? null,
+        minForecastHorizonMinutes: horizonValues.length ? Math.min(...horizonValues) : 0,
+        maxForecastHorizonMinutes: horizonValues.length ? Math.max(...horizonValues) : 0,
+        regions,
+        schedule: aemoSnapshotScheduleDefaults,
+        source: 'firestore:aemoSnapshots',
+        queryOk: true
+      };
+    } catch (error) {
+      return {
+        available: false,
+        status: {
+          level: 'warn',
+          label: 'Unavailable',
+          reasons: [error?.message || 'Failed to load AEMO live snapshot health']
+        },
+        expectedRegionCount: expectedRegions.length,
+        regions: [],
+        schedule: aemoSnapshotScheduleDefaults,
+        source: 'firestore:aemoSnapshots',
+        queryOk: false,
+        error: error?.message || String(error)
+      };
+    }
+  }
+
   async function loadGithubWorkflowOps(forceRefresh = false) {
     const nowMs = Date.now();
     if (!forceRefresh && dataworksOpsCache && nowMs < dataworksOpsCacheExpiresAtMs) {
@@ -680,9 +900,10 @@ function registerAdminRoutes(app, deps = {}) {
       latestJob = normalizeGithubJob(jobs[0] || null);
     }
 
-    const [liveRelease, targetRef] = await Promise.all([
+    const [liveRelease, targetRef, liveAemo] = await Promise.all([
       fetchHostedReleaseManifest(),
-      resolveGithubRefCommit(githubRef)
+      resolveGithubRefCommit(githubRef),
+      loadAemoLiveSnapshotSummary()
     ]);
     const releaseAlignment = buildReleaseAlignmentSummary({ liveRelease, targetRef });
     const workflowActive = String(workflowData?.state || '').toLowerCase() === 'active';
@@ -718,6 +939,7 @@ function registerAdminRoutes(app, deps = {}) {
         cooldownMs: githubDispatchCooldownMs,
         reason: dispatchReason
       },
+      liveAemo,
       releaseAlignment,
       latestRun,
       lastSuccessfulRun,

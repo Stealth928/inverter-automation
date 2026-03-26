@@ -276,9 +276,62 @@
         }
 
         .setup-trust-icon {
-            font-size: 14px;
-            line-height: 1;
+            --trust-icon-glyph: #9fcfff;
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+            border: 1px solid rgba(180, 220, 255, 0.42);
+            background:
+                radial-gradient(circle at 24% 18%, rgba(255,255,255,.30), rgba(255,255,255,0) 44%),
+                linear-gradient(165deg, #173661 0%, #10284a 56%, #0d203d 100%);
+            color: var(--trust-icon-glyph);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             flex-shrink: 0;
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,.2),
+                0 8px 14px -10px rgba(9, 23, 45, 0.75);
+        }
+
+        .setup-trust-icon svg {
+            width: 12px;
+            height: 12px;
+            display: block;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.9;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .setup-trust-icon--secure { --trust-icon-glyph: #ffd978; }
+        .setup-trust-icon--access { --trust-icon-glyph: #9fcfff; }
+        .setup-trust-icon--homes { --trust-icon-glyph: #9be8ff; }
+        .setup-trust-icon--cost { --trust-icon-glyph: #7af0b0; }
+
+        [data-theme="light"] .setup-trust-icon {
+            border-color: #b6c6d9;
+            background:
+                radial-gradient(circle at 24% 18%, rgba(255,255,255,.84), rgba(255,255,255,0) 45%),
+                linear-gradient(165deg, #f2f8ff 0%, #e6f0fb 56%, #d9e7f6 100%);
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,.86),
+                0 8px 14px -10px rgba(23, 54, 97, 0.5);
+        }
+
+        [data-theme="light"] .setup-trust-icon svg {
+            stroke-width: 2.15;
+        }
+
+        [data-theme="light"] .setup-trust-icon--secure { --trust-icon-glyph: #9b6700; }
+        [data-theme="light"] .setup-trust-icon--access { --trust-icon-glyph: #1869c6; }
+        [data-theme="light"] .setup-trust-icon--homes { --trust-icon-glyph: #0c7db0; }
+        [data-theme="light"] .setup-trust-icon--cost { --trust-icon-glyph: #1f7a3e; }
+
+        .setup-trust-item:hover .setup-trust-icon {
+            border-color: rgba(145, 205, 255, 0.58);
+            transform: translateY(-1px);
         }
 
         .setup-trust-text {
@@ -520,10 +573,25 @@
             left: 14px;
             top: 50%;
             transform: translateY(-50%);
-            font-size: 16px;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             color: var(--text-placeholder);
             pointer-events: none;
             transition: color 0.2s ease;
+        }
+
+        .input-icon svg {
+            width: 18px;
+            height: 18px;
+            display: block;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
 
         .form-group input {
@@ -554,12 +622,16 @@
 
         .form-group select {
             width: 100%;
-            padding: 14px 44px 14px 14px;
+            min-height: 48px;
+            padding: 14px 46px 14px 44px;
             background: var(--bg-input);
             border: 1px solid var(--border-primary);
-            border-radius: 10px;
+            border-radius: 12px;
             color: var(--text-primary);
             font-size: 14px;
+            font-weight: 500;
+            line-height: 1.2;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
             transition: all 0.2s ease;
             appearance: none;
             -webkit-appearance: none;
@@ -570,10 +642,20 @@
             background-size: 10px 6px;
         }
 
+        .form-group select:hover {
+            border-color: rgba(88, 166, 255, 0.38);
+            background-color: color-mix(in srgb, var(--bg-primary) 84%, transparent);
+        }
+
         .form-group select:focus {
             outline: none;
             border-color: var(--accent-blue);
             box-shadow: 0 0 0 3px var(--accent-blue-bg), 0 2px 12px rgba(88,166,255,0.14);
+        }
+
+        .form-group select option {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
         }
 
         .password-toggle {
@@ -1076,19 +1158,19 @@
                     <p class="setup-tagline">One page. 4 steps. You are good to go!</p>
                     <div class="setup-trust-strip" aria-label="Trust and privacy highlights">
                         <div class="setup-trust-item">
-                            <span class="setup-trust-icon" aria-hidden="true">🔒</span>
+                            <span class="setup-trust-icon setup-trust-icon--secure" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
                             <div class="setup-trust-text"><strong>Secure</strong> &amp; private storage</div>
                         </div>
                         <div class="setup-trust-item">
-                            <span class="setup-trust-icon" aria-hidden="true">🔄</span>
+                            <span class="setup-trust-icon setup-trust-icon--access" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M6.5 10.5A6 6 0 0 1 17 7"/><path d="M17.5 13.5A6 6 0 0 1 7 17"/></svg></span>
                             <div class="setup-trust-text"><strong>Revocable</strong> access anytime</div>
                         </div>
                         <div class="setup-trust-item">
-                            <span class="setup-trust-icon" aria-hidden="true">🏠</span>
+                            <span class="setup-trust-icon setup-trust-icon--homes" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.8V20h14V9.8"/><path d="M9.5 20v-6h5v6"/></svg></span>
                             <div class="setup-trust-text"><strong>400+</strong> households trust us</div>
                         </div>
                         <div class="setup-trust-item">
-                            <span class="setup-trust-icon" aria-hidden="true">💡</span>
+                            <span class="setup-trust-icon setup-trust-icon--cost" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M6 7h8a4 4 0 0 1 0 8H8a3 3 0 0 1 0-6h9"/><path d="M15 6.2v1.6"/><path d="M15 14.2v1.6"/></svg></span>
                             <div class="setup-trust-text"><strong>No extra cost</strong> — your providers</div>
                         </div>
                     </div>
@@ -1137,7 +1219,7 @@
                                 <input type="radio" name="provider" value="foxess" checked id="providerFoxess">
                                 <img src="icons/logo-foxess.svg" alt="FoxESS" class="provider-logo-img">
                             </label>
-                            <label class="provider-option provider-option--testing" id="providerAlphaEssOption">
+                            <label class="provider-option" id="providerAlphaEssOption">
                                 <input type="radio" name="provider" value="alphaess" id="providerAlphaEss">
                                 <img src="icons/logo-alphaess.svg?v=3" alt="AlphaESS" class="provider-logo-img">
                             </label>
@@ -1170,7 +1252,7 @@
                                     autocomplete="off"
                                     spellcheck="false"
                                 >
-                                <span class="input-icon">🔌</span>
+                                <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7v10"/><path d="M7 7v10"/><path d="M10 7v10"/><path d="M14 7v10"/><path d="M17 7v10"/><path d="M20 7v10"/><path d="M3 5h18"/><path d="M3 19h18"/></svg></span>
                             </div>
                             <div class="field-message error-message">
                                 <span>⚠️</span>
@@ -1198,7 +1280,7 @@
                                     autocomplete="off"
                                     spellcheck="false"
                                 >
-                                <span class="input-icon">🔑</span>
+                                <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="15" cy="9" r="3"/><path d="M12.5 11.5 4 20"/><path d="M7 17h3v3"/></svg></span>
                                 <button type="button" class="password-toggle" data-target="foxessToken" aria-label="Toggle visibility">👁️</button>
                             </div>
                             <div class="field-message error-message">
@@ -1229,7 +1311,7 @@
                                     autocomplete="off"
                                     spellcheck="false"
                                 >
-                                <span class="input-icon">🔌</span>
+                                <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 7 21"/><path d="M17 3 15 21"/><path d="M4 9h16"/><path d="M3 15h16"/></svg></span>
                             </div>
                             <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
                             <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
@@ -1250,7 +1332,7 @@
                                     autocomplete="off"
                                     spellcheck="false"
                                 >
-                                <span class="input-icon">🆔</span>
+                                <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 9h16"/><path d="M8 14h4"/><path d="M14 14h2"/></svg></span>
                             </div>
                             <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
                             <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
@@ -1271,7 +1353,7 @@
                                     autocomplete="off"
                                     spellcheck="false"
                                 >
-                                <span class="input-icon">🔑</span>
+                                <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v6c0 4.5 2.8 7.2 7 9 4.2-1.8 7-4.5 7-9V6l-7-3z"/><path d="M12 10v4"/><circle cx="12" cy="17" r="0.8"/></svg></span>
                                 <button type="button" class="password-toggle" data-target="alphaessAppSecret" aria-label="Toggle visibility">👁️</button>
                             </div>
                             <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
@@ -1296,7 +1378,7 @@
                                     autocomplete="off"
                                     spellcheck="false"
                                 >
-                                <span class="input-icon">🔌</span>
+                                <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V5h2"/><path d="M20 7V5h-2"/><path d="M4 17v2h2"/><path d="M20 17v2h-2"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/></svg></span>
                             </div>
                             <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
                             <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
@@ -1317,7 +1399,7 @@
                                     autocomplete="email"
                                     spellcheck="false"
                                 >
-                                <span class="input-icon">📧</span>
+                                <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="m5 8 7 5 7-5"/></svg></span>
                             </div>
                             <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
                             <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
@@ -1338,7 +1420,7 @@
                                     autocomplete="current-password"
                                     spellcheck="false"
                                 >
-                                <span class="input-icon">🔑</span>
+                                <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
                                 <button type="button" class="password-toggle" data-target="sungrowPassword" aria-label="Toggle visibility">👁️</button>
                             </div>
                             <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
@@ -1363,7 +1445,7 @@
                                     autocomplete="email"
                                     spellcheck="false"
                                 >
-                                <span class="input-icon">📧</span>
+                                <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M16 12v-1a4 4 0 1 0-4 4h1a3 3 0 0 0 3-3z"/></svg></span>
                             </div>
                             <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
                             <div class="field-message success-message"><span>✓</span><span class="message-text">Valid</span></div>
@@ -1384,7 +1466,7 @@
                                     autocomplete="current-password"
                                     spellcheck="false"
                                 >
-                                <span class="input-icon">🔑</span>
+                                <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="6" width="14" height="12" rx="2"/><circle cx="9" cy="10" r="0.8"/><circle cx="12" cy="10" r="0.8"/><circle cx="15" cy="10" r="0.8"/><circle cx="9" cy="14" r="0.8"/><circle cx="12" cy="14" r="0.8"/><circle cx="15" cy="14" r="0.8"/></svg></span>
                                 <button type="button" class="password-toggle" data-target="sigenenergyPassword" aria-label="Toggle visibility">👁️</button>
                             </div>
                             <div class="field-message error-message"><span>⚠️</span><span class="message-text"></span></div>
@@ -1403,6 +1485,7 @@
                                     <option value="us">North America</option>
                                     <option value="cn">China</option>
                                 </select>
+                                <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M4 12h16"/><path d="M8.5 4.8a13 13 0 0 0 0 14.4"/><path d="M15.5 4.8a13 13 0 0 1 0 14.4"/></svg></span>
                             </div>
                         </div>
                     </div><!-- /#sigenenergyFields -->
@@ -1433,7 +1516,7 @@
                                 autocomplete="off"
                                 spellcheck="false"
                             >
-                            <span class="input-icon">🌤️</span>
+                            <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s6-5.4 6-10a6 6 0 1 0-12 0c0 4.6 6 10 6 10z"/><circle cx="12" cy="10" r="2"/></svg></span>
                         </div>
                         <div class="field-message error-message">
                             <span>⚠️</span>
@@ -1452,7 +1535,38 @@
                             <span class="form-section-title">Electricity Pricing</span>
                             <span class="form-section-badge">Optional</span>
                         </div>
-                        <div class="form-section-subtitle">Optional. Connect Amber Electric for price-aware charging and discharging.</div>
+                        <div class="form-section-subtitle">Optional. Choose Amber or AEMO to enable price-aware automation with the same in-app pricing surfaces.</div>
+                    </div>
+
+                    <div class="form-group" id="pricingProviderGroup">
+                        <label for="pricingProvider">
+                            <span>Pricing Source</span>
+                        </label>
+                        <div class="hint">Amber uses your retail site pricing. AEMO uses public regional market pricing.</div>
+                        <div class="input-wrapper">
+                            <select id="pricingProvider" name="pricingProvider">
+                                <option value="amber" selected>Amber</option>
+                                <option value="aemo">AEMO</option>
+                            </select>
+                            <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"/><path d="m5 15 4-4 4 3 6-7"/></svg></span>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="pricingAemoRegionGroup" style="display:none">
+                        <label for="pricingAemoRegion">
+                            <span>AEMO Region</span>
+                        </label>
+                        <div class="hint">Choose the NEM region for market pricing and forecasts.</div>
+                        <div class="input-wrapper">
+                            <select id="pricingAemoRegion" name="pricingAemoRegion">
+                                <option value="NSW1" selected>NSW1</option>
+                                <option value="QLD1">QLD1</option>
+                                <option value="VIC1">VIC1</option>
+                                <option value="SA1">SA1</option>
+                                <option value="TAS1">TAS1</option>
+                            </select>
+                            <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/><path d="M9 4v14"/><path d="M15 6v14"/></svg></span>
+                        </div>
                     </div>
 
                     <!-- Amber API Key (Optional) -->
@@ -1461,7 +1575,7 @@
                             <span>Amber API Key</span>
                             <span class="optional-badge">Optional</span>
                         </label>
-                        <div class="hint">Get a key from the <a href="https://app.amber.com.au/developers" target="_blank">Amber Developer Portal</a> to enable price-aware automation.</div>
+                        <div class="hint">Get a key from the <a href="https://app.amber.com.au/developers" target="_blank">Amber Developer Portal</a> when Amber is your selected pricing source.</div>
                         <div class="input-wrapper">
                             <input 
                                 type="password" 
@@ -1471,7 +1585,7 @@
                                 autocomplete="off"
                                 spellcheck="false"
                             >
-                            <span class="input-icon">⚡</span>
+                            <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M7 10h6"/><path d="M7 14h4"/><circle cx="16.5" cy="12" r="1.5"/></svg></span>
                             <button type="button" class="password-toggle" data-target="amberApiKey" aria-label="Toggle visibility">👁️</button>
                         </div>
                         <div class="field-message error-message">
@@ -1509,7 +1623,7 @@
                                 placeholder="e.g., 10"
                                 required
                             >
-                            <span class="input-icon">⚡</span>
+                            <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16a7 7 0 0 1 14 0"/><path d="m12 13 3-4"/><circle cx="8" cy="16" r="0.8"/><circle cx="16" cy="16" r="0.8"/></svg></span>
                         </div>
                         <div class="field-message error-message">
                             <span>⚠️</span>
@@ -1533,7 +1647,7 @@
                                 placeholder="e.g., 41.93"
                                 required
                             >
-                            <span class="input-icon">🔋</span>
+                            <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="15" height="10" rx="2"/><path d="M19 10h2v4h-2"/><path d="M7 10h6"/><path d="M7 14h8"/></svg></span>
                         </div>
                         <div class="field-message error-message">
                             <span>⚠️</span>

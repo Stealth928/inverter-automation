@@ -78,4 +78,7 @@ test('global hosting headers include a content security policy', () => {
   assert.ok(cspHeader, 'Expected Content-Security-Policy header');
   assert.match(String(cspHeader.value || ''), /frame-ancestors 'none'/);
   assert.match(String(cspHeader.value || ''), /connect-src 'self'/);
+  assert.match(String(cspHeader.value || ''), /frame-src 'self'/);
+  assert.match(String(cspHeader.value || ''), /https:\/\/apis\.google\.com/);
+  assert.match(String(cspHeader.value || ''), /http:\/\/127\.0\.0\.1:\*/);
 });

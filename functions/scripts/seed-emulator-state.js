@@ -13,6 +13,45 @@ const { resolveProviderDeviceId } = require('../lib/provider-device-id');
 
 const METRICS_TIMEZONE = 'Australia/Sydney';
 const INVERTER_CACHE_TTL_MS = 5 * 60 * 1000;
+const AEMO_SNAPSHOT_FORECAST_INTERVAL_COUNT = 12;
+
+const AEMO_SNAPSHOT_PRESETS = Object.freeze({
+  NSW1: Object.freeze({
+    regionId: 'NSW1',
+    basePrice: 86.4,
+    feedInBase: -18.7,
+    demand: 8420,
+    demandStep: 95
+  }),
+  QLD1: Object.freeze({
+    regionId: 'QLD1',
+    basePrice: 74.2,
+    feedInBase: -15.9,
+    demand: 6980,
+    demandStep: 88
+  }),
+  VIC1: Object.freeze({
+    regionId: 'VIC1',
+    basePrice: 68.9,
+    feedInBase: -14.1,
+    demand: 6210,
+    demandStep: 72
+  }),
+  SA1: Object.freeze({
+    regionId: 'SA1',
+    basePrice: 92.1,
+    feedInBase: -22.4,
+    demand: 1840,
+    demandStep: 36
+  }),
+  TAS1: Object.freeze({
+    regionId: 'TAS1',
+    basePrice: 58.7,
+    feedInBase: -10.8,
+    demand: 1280,
+    demandStep: 24
+  })
+});
 
 const AMBER_CACHE_PRESETS = Object.freeze({
   foxess: Object.freeze({
@@ -271,6 +310,101 @@ function buildAmberCurrentRows(seedUser) {
   }).flat();
 }
 
+function alignToFiveMinuteBoundary(date = new Date()) {
+  const aligned = new Date(date);
+  aligned.setSeconds(0, 0);
+  aligned.setMinutes(Math.floor(aligned.getMinutes() / 5) * 5);
+  return aligned;
+}
+
+function buildAemoLegacyRow({ type, channelType, perKwh, startIso, endIso, regionId, demand, demandForecast, intervalType }) {
+  return {
+    type,
+    channelType,
+    perKwh,
+    spotPerKwh: perKwh,
+    startTime: startIso,
+    endTime: endIso,
+    nemTime: startIso,
+    descriptor: null,
+    spikeStatus: null,
+    advancedPrice: null,
+    sourceProvider: 'aemo',
+    regionId,
+    siteIdOrRegion: regionId,
+    asOf: startIso,
+    demand,
+    demandForecast,
+    aemoIntervalType: intervalType
+  };
+}
+
+function buildAemoSnapshotRows(regionId, preset, anchorDate = new Date()) {
+  const aligned = alignToFiveMinuteBoundary(anchorDate);
+  const rows = [];
+
+  for (let index = 0; index <= AEMO_SNAPSHOT_FORECAST_INTERVAL_COUNT; index += 1) {
+    const intervalStart = new Date(aligned.getTime() + index * 5 * 60 * 1000);
+    const intervalEnd = new Date(intervalStart.getTime() + 5 * 60 * 1000);
+    const startIso = intervalStart.toISOString();
+    const endIso = intervalEnd.toISOString();
+    const priceDrift = (index % 4) * 3.2;
+    const wave = Math.sin(index / 2.2) * 4.5;
+    const generalPrice = roundTo(preset.basePrice + priceDrift + wave, 2);
+    const feedInPrice = roundTo(preset.feedInBase - (index % 3) * 1.4 - (wave / 3), 2);
+    const demand = Math.round(preset.demand + index * preset.demandStep);
+    const demandForecast = Math.round(demand + preset.demandStep * 0.8);
+    const intervalType = index === 0 ? 'dispatch' : 'predispatch';
+    const type = index === 0 ? 'CurrentInterval' : 'ForecastInterval';
+
+    rows.push(buildAemoLegacyRow({
+      type,
+      channelType: 'general',
+      perKwh: generalPrice,
+      startIso,
+      endIso,
+      regionId,
+      demand,
+      demandForecast,
+      intervalType
+    }));
+    rows.push(buildAemoLegacyRow({
+      type,
+      channelType: 'feedIn',
+      perKwh: feedInPrice,
+      startIso,
+      endIso,
+      regionId,
+      demand,
+      demandForecast,
+      intervalType
+    }));
+  }
+
+  return rows;
+}
+
+function buildAemoSnapshot(regionId, anchorDate = new Date()) {
+  const preset = AEMO_SNAPSHOT_PRESETS[regionId];
+  if (!preset) {
+    throw new Error(`Unsupported AEMO snapshot region "${regionId}"`);
+  }
+
+  const rows = buildAemoSnapshotRows(regionId, preset, anchorDate);
+  const asOfIso = rows[0]?.startTime || alignToFiveMinuteBoundary(anchorDate).toISOString();
+
+  return {
+    regionId,
+    data: rows,
+    metadata: {
+      asOf: asOfIso,
+      forecastHorizonMinutes: AEMO_SNAPSHOT_FORECAST_INTERVAL_COUNT * 5,
+      isForecastComplete: true,
+      source: 'aemo'
+    }
+  };
+}
+
 function resolveProviderAndDeviceId(seedUser) {
   const cfg = seedUser && seedUser.config ? seedUser.config : {};
   const provider = cfg.deviceProvider || String(seedUser?.provider || 'foxess');
@@ -495,6 +629,23 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
   return userRecord;
 }
 
+async function seedAemoSnapshots({ db, ts, anchorDate = new Date() }) {
+  for (const regionId of Object.keys(AEMO_SNAPSHOT_PRESETS)) {
+    const snapshot = buildAemoSnapshot(regionId, anchorDate);
+    await db.collection('aemoSnapshots').doc(regionId).set({
+      ...snapshot,
+      storedAt: ts,
+      storedAtIso: anchorDate.toISOString(),
+      schedule: {
+        cadenceMinutes: 5,
+        lagMinutes: 1,
+        source: 'emulator-seed'
+      }
+    }, { merge: true });
+    console.log('Wrote aemoSnapshots/%s', regionId);
+  }
+}
+
 async function main() {
   try {
     assertEmulatorEnvironment();
@@ -514,6 +665,8 @@ async function main() {
       const userRecord = await seedSingleUser({ db, auth, seedUser, ts });
       seededUsers.push({ seedUser, userRecord });
     }
+
+    await seedAemoSnapshots({ db, ts });
 
     await db.collection('shared').doc('serverConfig').set({
       ...TEST_CONFIG,

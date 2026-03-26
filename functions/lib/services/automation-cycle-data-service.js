@@ -227,8 +227,9 @@ async function fetchAutomationAmberData(options = {}) {
       logAmberForecastSummary(rows, options.logger);
       return rows;
     } catch (adapterErr) {
+      const providerLabel = pricingProvider === 'amber' ? 'Amber' : pricingProvider;
       logger.warn(
-        `[Automation] ${pricingProvider} tariff adapter fetch failed, falling back to legacy path: ${adapterErr.message}`,
+        `[Automation] ${providerLabel} adapter fetch failed, falling back to legacy path: ${adapterErr.message}`,
         adapterErr.message
       );
       if (pricingProvider !== 'amber') {

@@ -384,7 +384,7 @@
           },
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; connect-src 'self' https: wss:; img-src 'self' data: blob: https:; font-src 'self' data: https:;"
+            "value": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; connect-src 'self' https: wss: http://127.0.0.1:*; frame-src 'self' https://apis.google.com https://*.google.com https://*.firebaseapp.com http://127.0.0.1:*; img-src 'self' data: blob: https:; font-src 'self' data: https:;"
           },
           {
             "key": "Referrer-Policy",

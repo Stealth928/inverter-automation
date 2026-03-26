@@ -135,6 +135,33 @@ describe('setup public route module', () => {
     }), { merge: true });
   });
 
+  test('validate-keys persists AEMO pricing selection during setup', async () => {
+    process.env.FUNCTIONS_EMULATOR = 'true';
+
+    const deps = buildDeps();
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/config/validate-keys')
+      .send({
+        device_sn: 'SN-AEMO-001',
+        foxess_token: 'emu-token',
+        pricing_provider: 'aemo',
+        aemo_region: 'VIC1',
+        amber_api_key: 'ignored-amber-key'
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(deps.__sharedDoc.set).toHaveBeenCalledWith(expect.objectContaining({
+      deviceSn: 'SN-AEMO-001',
+      foxessToken: 'emu-token',
+      pricingProvider: 'aemo',
+      aemoRegion: 'VIC1',
+      siteIdOrRegion: 'VIC1',
+      amberApiKey: ''
+    }), { merge: true });
+  });
+
   test('validate-keys saves to user config when tryAttachUser provides uid', async () => {
     process.env.FUNCTIONS_EMULATOR = 'true';
 

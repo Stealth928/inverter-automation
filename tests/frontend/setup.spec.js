@@ -59,8 +59,11 @@ test.describe('Setup Page', () => {
 
     await expect(page).toHaveTitle(/Setup/i);
     await expect(page.locator('#providerFoxess')).toBeChecked();
+    await expect(page.locator('#pricingProvider')).toHaveValue('amber');
     await expect(page.locator('#deviceSn')).toBeVisible();
     await expect(page.locator('#foxessToken')).toBeVisible();
+    await expect(page.locator('#amberApiKeyGroup')).toBeVisible();
+    await expect(page.locator('#pricingAemoRegionGroup')).toBeHidden();
     await expect(page.locator('#weatherPlace')).toBeVisible();
     await expect(page.locator('#previewLaunchBtn')).toContainText(/Preview With Sample Data/i);
   });
@@ -116,6 +119,35 @@ test.describe('Setup Page', () => {
     await expect(page.locator('#foxessTokenGroup')).toHaveClass(/success/);
     await expect.poll(() => page.evaluate(() => localStorage.getItem('foxess_setup_device_sn'))).toBe('TEST-SN-001');
     await expect.poll(() => page.evaluate(() => sessionStorage.getItem('tourAutoLaunch'))).toBe('1');
+  });
+
+  test('posts AEMO pricing selection when AEMO is chosen', async ({ page }) => {
+    const { validateCalls } = await mountSetupPage(page);
+
+    await page.locator('#pricingProvider').selectOption('aemo');
+    await expect(page.locator('#pricingAemoRegionGroup')).toBeVisible();
+    await expect(page.locator('#amberApiKeyGroup')).toBeHidden();
+
+    await page.locator('#pricingAemoRegion').selectOption('SA1');
+    await page.locator('#deviceSn').fill(' TEST-SN-002 ');
+    await page.locator('#foxessToken').fill(' foxess-token-2 ');
+    await page.locator('#weatherPlace').fill('Sydney,Australia');
+    await page.locator('#inverterCapacityKw').fill('10');
+    await page.locator('#batteryCapacityKwh').fill('13.5');
+
+    await page.locator('#submitBtn').click();
+
+    await expect.poll(() => validateCalls.length).toBe(1);
+    expect(validateCalls[0]).toMatchObject({
+      device_sn: 'TEST-SN-002',
+      foxess_token: 'foxess-token-2',
+      pricing_provider: 'aemo',
+      aemo_region: 'SA1',
+      amber_api_key: null,
+      weather_place: 'Sydney, Australia',
+      inverter_capacity_w: 10000,
+      battery_capacity_kwh: 13.5
+    });
   });
 
   test('surfaces validate-keys errors on the mapped field and restores the submit button', async ({ page }) => {

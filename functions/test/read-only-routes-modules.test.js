@@ -19,6 +19,16 @@ function buildApp(registerFn) {
   return app;
 }
 
+function buildAemoAPI(overrides = {}) {
+  return {
+    getActualPriceAtTimestamp: jest.fn(async () => ({ regionId: 'NSW1', result: null })),
+    getCurrentPriceData: jest.fn(async () => ({ regionId: 'NSW1', data: [], metadata: {} })),
+    getHistoricalPriceData: jest.fn(async () => ({ regionId: 'NSW1', data: [] })),
+    listSupportedAemoRegions: jest.fn(() => []),
+    ...overrides
+  };
+}
+
 describe('read-only route modules', () => {
   test('pricing routes return safe empty list when unauthenticated', async () => {
     const amberPricesInFlight = new Map();
@@ -32,6 +42,7 @@ describe('read-only route modules', () => {
 
     const app = buildApp((instance) => {
       registerPricingRoutes(instance, {
+        aemoAPI: buildAemoAPI(),
         amberAPI,
         amberPricesInFlight,
         authenticateUser: (_req, res, _next) => res.status(401).json({ errno: 401, error: 'Unauthorized' }),
@@ -291,6 +302,7 @@ describe('read-only route modules', () => {
 
     const app = buildApp((instance) => {
       registerPricingRoutes(instance, {
+        aemoAPI: buildAemoAPI(),
         amberAPI,
         amberPricesInFlight,
         authenticateUser: (_req, res, _next) => res.status(401).json({ errno: 401, error: 'Unauthorized' }),
@@ -336,6 +348,7 @@ describe('read-only route modules', () => {
 
       const app = buildApp((instance) => {
         registerPricingRoutes(instance, {
+          aemoAPI: buildAemoAPI(),
           amberAPI,
           amberPricesInFlight,
           authenticateUser: (_req, res, _next) => res.status(401).json({ errno: 401, error: 'Unauthorized' }),
@@ -409,6 +422,7 @@ describe('read-only route modules', () => {
 
     const app = buildApp((instance) => {
       registerPricingRoutes(instance, {
+        aemoAPI: buildAemoAPI(),
         amberAPI,
         amberPricesInFlight,
         authenticateUser,
@@ -452,6 +466,7 @@ describe('read-only route modules', () => {
 
     const app = buildApp((instance) => {
       registerPricingRoutes(instance, {
+        aemoAPI: buildAemoAPI(),
         amberAPI,
         amberPricesInFlight,
         authenticateUser: (_req, _res, next) => next(),
@@ -472,6 +487,70 @@ describe('read-only route modules', () => {
       error: 'Unsupported pricing provider: flat-rate',
       result: []
     });
+  });
+
+  test('pricing current endpoint for AEMO returns stored snapshot data and does not touch Amber', async () => {
+    const amberPricesInFlight = new Map();
+    const amberAPI = {
+      callAmberAPI: jest.fn(),
+      cacheAmberPricesCurrent: jest.fn(),
+      cacheAmberSites: jest.fn(),
+      getCachedAmberPricesCurrent: jest.fn(),
+      getCachedAmberSites: jest.fn()
+    };
+    const aemoRows = [
+      {
+        type: 'CurrentInterval',
+        channelType: 'general',
+        perKwh: 82.4,
+        startTime: '2026-03-26T00:00:00.000Z',
+        endTime: '2026-03-26T00:05:00.000Z'
+      }
+    ];
+    const aemoAPI = buildAemoAPI({
+      getCurrentPriceData: jest.fn(async () => ({
+        regionId: 'NSW1',
+        data: aemoRows,
+        metadata: { asOf: '2026-03-26T00:00:00.000Z' }
+      }))
+    });
+    const getUserConfig = jest.fn(async () => ({
+      pricingProvider: 'aemo',
+      aemoRegion: 'NSW1'
+    }));
+
+    const app = buildApp((instance) => {
+      registerPricingRoutes(instance, {
+        aemoAPI,
+        amberAPI,
+        amberPricesInFlight,
+        authenticateUser: (_req, _res, next) => next(),
+        getUserConfig,
+        incrementApiCount: jest.fn(),
+        logger: { debug: jest.fn(), warn: jest.fn() },
+        tryAttachUser: jest.fn(async (req) => {
+          req.user = { uid: 'u-aemo' };
+          return req.user;
+        })
+      });
+    });
+
+    const response = await request(app)
+      .get('/api/pricing/current')
+      .query({ provider: 'aemo', forceRefresh: 'true' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ errno: 0, result: aemoRows });
+    expect(aemoAPI.getCurrentPriceData).toHaveBeenCalledWith({
+      forceRefresh: true,
+      regionId: 'NSW1',
+      userConfig: {
+        pricingProvider: 'aemo',
+        aemoRegion: 'NSW1'
+      },
+      userId: 'u-aemo'
+    });
+    expect(amberAPI.callAmberAPI).not.toHaveBeenCalled();
   });
 
   test('weather routes proxy cached weather helper response', async () => {

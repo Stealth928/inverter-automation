@@ -2495,6 +2495,79 @@
         return 'neutral';
     }
 
+    function statusSeverity(level) {
+        const tone = dataworksTone(level);
+        if (tone === 'bad') return 2;
+        if (tone === 'warn') return 1;
+        return 0;
+    }
+
+    function summarizeReleaseGuard(releaseAlignment) {
+        if (releaseAlignment?.matches === true) {
+            return { label: 'Aligned', level: 'good', reason: null };
+        }
+        if (releaseAlignment?.status === 'mismatch') {
+            return { label: 'Needs deploy', level: 'warn', reason: releaseAlignment.reason || 'Historical publish is blocked until the live release is deployed.' };
+        }
+        if (releaseAlignment?.status === 'target-unresolved') {
+            return { label: 'Blocked', level: 'warn', reason: releaseAlignment.reason || 'Workflow ref could not be resolved.' };
+        }
+        if (releaseAlignment?.status === 'manifest-missing') {
+            return { label: 'Bootstrap', level: 'neutral', reason: releaseAlignment.reason || 'Waiting for hosted release metadata.' };
+        }
+        return { label: 'Unknown', level: 'neutral', reason: releaseAlignment?.reason || null };
+    }
+
+    function formatMinutesCompact(value) {
+        const minutes = Number(value);
+        if (!Number.isFinite(minutes) || minutes < 0) return '-';
+        if (minutes < 60) return `${Math.round(minutes)}m`;
+        const totalHours = Math.floor(minutes / 60);
+        const remMinutes = Math.round(minutes % 60);
+        if (totalHours < 24) {
+            return remMinutes ? `${totalHours}h ${remMinutes}m` : `${totalHours}h`;
+        }
+        const days = Math.floor(totalHours / 24);
+        const remHours = totalHours % 24;
+        return remHours ? `${days}d ${remHours}h` : `${days}d`;
+    }
+
+    function buildDataworksOverallStatus({ marketSummary, liveAemo, opsSummary }) {
+        const reasons = [];
+        let level = 'good';
+        let label = 'Healthy';
+
+        const considerStatus = (status) => {
+            if (!status || typeof status !== 'object') return;
+            if (statusSeverity(status.level) > statusSeverity(level)) {
+                level = status.level || level;
+                label = status.label || label;
+            }
+            if (Array.isArray(status.reasons)) {
+                status.reasons.forEach((reason) => {
+                    if (reason) reasons.push(String(reason));
+                });
+            }
+        };
+
+        considerStatus(marketSummary?.status || null);
+        considerStatus(liveAemo?.status || null);
+
+        const releaseGuard = summarizeReleaseGuard(opsSummary?.releaseAlignment || null);
+        if (statusSeverity(releaseGuard.level) > statusSeverity(level)) {
+            level = releaseGuard.level;
+            label = releaseGuard.label;
+        }
+        if (releaseGuard.reason) reasons.push(releaseGuard.reason);
+
+        const uniqueReasons = Array.from(new Set(reasons.filter(Boolean)));
+        return {
+            level,
+            label,
+            reasons: uniqueReasons
+        };
+    }
+
     function renderDataworksBadge(label, level) {
         const tone = dataworksTone(level || label);
         return `<span class="dataworks-badge ${tone}">${escapeHtml(label || 'Unknown')}</span>`;
@@ -2612,6 +2685,9 @@
         const result = data?.result || {};
         const workflow = result.workflow || {};
         const dispatch = result.dispatch || {};
+        const liveAemo = result.liveAemo && typeof result.liveAemo === 'object'
+            ? result.liveAemo
+            : null;
         const latestRun = result.latestRun && typeof result.latestRun === 'object' ? result.latestRun : null;
         const lastSuccessfulRun = result.lastSuccessfulRun && typeof result.lastSuccessfulRun === 'object'
             ? result.lastSuccessfulRun
@@ -2639,6 +2715,7 @@
 
         return {
             workflow,
+            liveAemo,
             dispatchEnabled: !!dispatch.enabled,
             dispatchConfigured: !!dispatch.configured,
             dispatchReason: dispatch.reason || null,
@@ -3938,21 +4015,21 @@
         if (refreshBtn) refreshBtn.disabled = true;
         if (dispatchBtn) {
             dispatchBtn.disabled = true;
-            dispatchBtn.textContent = 'Run now';
-            dispatchBtn.title = 'Loading workflow controls...';
+            dispatchBtn.textContent = 'Run historical';
+            dispatchBtn.title = 'Loading historical workflow controls...';
         }
-        updatedEl.textContent = 'Loading DataWorks snapshot...';
-        leadEl.textContent = 'Loading pipeline details...';
+        updatedEl.textContent = 'Loading NEM data jobs...';
+        leadEl.textContent = 'Loading NEM pipeline details...';
         statusEl.textContent = '-';
         rowsEl.textContent = '-';
         filesEl.textContent = '-';
         workflowStatusEl.textContent = '-';
-        pipelinePanel.innerHTML = '<div class="dataworks-empty">Loading pipeline health...</div>';
-        qualityPanel.innerHTML = '<div class="dataworks-empty">Loading quality summary...</div>';
-        footprintPanel.innerHTML = '<div class="dataworks-empty">Loading file footprint...</div>';
-        regionsPanel.innerHTML = '<div class="dataworks-empty">Loading region freshness...</div>';
-        workflowRunsPanel.innerHTML = '<div class="dataworks-empty">Loading workflow history...</div>';
-        opsPanel.innerHTML = '<div class="dataworks-empty">Loading workflow diagnostics...</div>';
+        pipelinePanel.innerHTML = '<div class="dataworks-empty">Loading NEM jobs overview...</div>';
+        qualityPanel.innerHTML = '<div class="dataworks-empty">Loading live AEMO snapshots...</div>';
+        footprintPanel.innerHTML = '<div class="dataworks-empty">Loading historical bundle...</div>';
+        regionsPanel.innerHTML = '<div class="dataworks-empty">Loading live region health...</div>';
+        workflowRunsPanel.innerHTML = '<div class="dataworks-empty">Loading historical workflow history...</div>';
+        opsPanel.innerHTML = '<div class="dataworks-empty">Loading historical workflow controls...</div>';
 
         try {
             const [marketResult, opsResult] = await Promise.allSettled([
@@ -3971,117 +4048,140 @@
                 throw new Error('Failed to load DataWorks summary and workflow diagnostics');
             }
 
-            const pipelineLabel = marketSummary?.status?.label || 'Unavailable';
+            const liveAemo = opsSummary?.liveAemo || null;
+            const releaseGuard = summarizeReleaseGuard(opsSummary?.releaseAlignment || null);
+            const overallStatus = buildDataworksOverallStatus({ marketSummary, liveAemo, opsSummary });
             const latestMarketDate = marketSummary?.latestDate || null;
-            const rawCsvFiles = Number(marketSummary?.files?.rawCsvFiles || 0);
-            const publishedAssetCount = Number(marketSummary?.files?.publishedAssetCount || 0);
-            const workflowStatusLabel = opsSummary?.badge?.label || 'Unavailable';
+            const historicalText = latestMarketDate
+                ? `${formatDateShort(latestMarketDate)}${marketSummary?.dataAgeDays !== null ? ` · ${formatDayAge(marketSummary.dataAgeDays)}` : ''}`
+                : 'Unavailable';
             const latestWorkflowRun = opsSummary?.latestRun?.createdAt || opsSummary?.latestRun?.updatedAt
                 ? formatRelativeTime(opsSummary.latestRun.createdAt || opsSummary.latestRun.updatedAt)
                 : '-';
-            const dataAgeText = latestMarketDate
-                ? `${formatDateShort(latestMarketDate)}${marketSummary?.dataAgeDays !== null ? ` · ${formatDayAge(marketSummary.dataAgeDays)}` : ''}`
+            const workflowStatusLabel = opsSummary?.badge?.label || 'Unavailable';
+            const liveAemoText = liveAemo?.latestAsOf
+                ? `${liveAemo?.status?.label || 'Live'} · ${formatRelativeTime(liveAemo.latestAsOf)}`
+                : (liveAemo?.status?.label || 'Unavailable');
+            const workflowKpiText = opsSummary
+                ? (releaseGuard.level === 'warn'
+                    ? `${workflowStatusLabel} · ${releaseGuard.label}`
+                    : (latestWorkflowRun !== '-' ? `${workflowStatusLabel} · ${latestWorkflowRun}` : workflowStatusLabel))
                 : 'Unavailable';
 
-            statusEl.textContent = pipelineLabel;
-            rowsEl.textContent = dataAgeText;
-            filesEl.textContent = rawCsvFiles > 0 || publishedAssetCount > 0
-                ? `${formatCompactNumber(rawCsvFiles)} / ${formatCompactNumber(publishedAssetCount)}`
-                : '-';
-            workflowStatusEl.textContent = opsSummary
-                ? (latestWorkflowRun !== '-' ? `${workflowStatusLabel} · ${latestWorkflowRun}` : workflowStatusLabel)
-                : 'Unavailable';
+            statusEl.textContent = overallStatus.label || 'Unavailable';
+            rowsEl.textContent = historicalText;
+            filesEl.textContent = liveAemoText;
+            workflowStatusEl.textContent = workflowKpiText;
 
             const leadParts = [];
             if (marketSummary) {
-                const reasonText = Array.isArray(marketSummary.status?.reasons) && marketSummary.status.reasons.length
+                const historicalReason = Array.isArray(marketSummary.status?.reasons) && marketSummary.status.reasons.length
                     ? marketSummary.status.reasons.join(' · ')
-                    : 'market data assets are publishing without active quality concerns.';
-                leadParts.push(`<strong>${escapeHtml(marketSummary.status?.label || 'Market data')}</strong> ${escapeHtml(reasonText)}`);
+                    : 'historical bundle is publishing cleanly.';
+                leadParts.push(`<strong>Historical ${escapeHtml(marketSummary.status?.label || 'Bundle')}</strong> ${escapeHtml(historicalReason)}`);
             }
-            if (opsSummary?.latestRun) {
+            if (releaseGuard.level === 'warn' && releaseGuard.reason) {
+                leadParts.push(`<strong>Manual historical runs ${escapeHtml(releaseGuard.label.toLowerCase())}</strong> ${escapeHtml(releaseGuard.reason)}`);
+            } else if (opsSummary?.latestRun) {
                 if (opsSummary.latestFailedStep?.name) {
-                    leadParts.push(`<strong>GitHub ${escapeHtml(opsSummary.badge.label)}</strong> latest workflow run failed at ${escapeHtml(opsSummary.latestFailedStep.name)}.`);
+                    leadParts.push(`<strong>Historical workflow ${escapeHtml(opsSummary.badge.label)}</strong> latest run failed at ${escapeHtml(opsSummary.latestFailedStep.name)}.`);
                 } else if (opsSummary.latestRun.status && String(opsSummary.latestRun.status).toLowerCase() !== 'completed') {
-                    leadParts.push(`<strong>GitHub Running</strong> latest workflow run is ${escapeHtml(formatStatusLabel(opsSummary.latestRun.status))}.`);
+                    leadParts.push(`<strong>Historical workflow Running</strong> latest run is ${escapeHtml(formatStatusLabel(opsSummary.latestRun.status))}.`);
                 } else {
-                    leadParts.push(`<strong>GitHub ${escapeHtml(opsSummary.badge.label)}</strong> latest workflow run is ${escapeHtml(formatStatusLabel(opsSummary.latestRun.conclusion || opsSummary.latestRun.status || 'unknown'))}.`);
+                    leadParts.push(`<strong>Historical workflow ${escapeHtml(opsSummary.badge.label)}</strong> latest run is ${escapeHtml(formatStatusLabel(opsSummary.latestRun.conclusion || opsSummary.latestRun.status || 'unknown'))}.`);
                 }
+            }
+            if (liveAemo) {
+                const liveReason = Array.isArray(liveAemo.status?.reasons) && liveAemo.status.reasons.length
+                    ? liveAemo.status.reasons.join(' · ')
+                    : `scheduler snapshots are ${String(liveAemo.status?.label || 'available').toLowerCase()} across ${Number(liveAemo.freshRegions || 0)}/${Number(liveAemo.expectedRegionCount || 5)} regions.`;
+                leadParts.push(`<strong>Live AEMO ${escapeHtml(liveAemo.status?.label || 'Snapshots')}</strong> ${escapeHtml(liveReason)}`);
             }
             leadEl.innerHTML = leadParts.length
                 ? leadParts.join(' ')
-                : 'Published market-data metadata and DataWorks workflow diagnostics are available.';
+                : 'Published historical metadata and live AEMO snapshot diagnostics are available.';
 
-            // Status-aware accents on KPI items and lead bar
             const kpiEls = document.querySelectorAll('#dataworksKpis .kpi-item');
-            if (kpiEls[0]) kpiEls[0].dataset.level = dataworksTone(marketSummary?.status?.level || 'neutral');
-            if (kpiEls[3]) kpiEls[3].dataset.level = dataworksTone(opsSummary?.badge?.level || 'neutral');
-            leadEl.dataset.level = dataworksTone(marketSummary?.status?.level || 'neutral');
+            if (kpiEls[0]) kpiEls[0].dataset.level = dataworksTone(overallStatus.level || 'neutral');
+            if (kpiEls[1]) kpiEls[1].dataset.level = dataworksTone(marketSummary?.status?.level || 'neutral');
+            if (kpiEls[2]) kpiEls[2].dataset.level = dataworksTone(liveAemo?.status?.level || 'neutral');
+            if (kpiEls[3]) kpiEls[3].dataset.level = dataworksTone(releaseGuard.level === 'warn' ? releaseGuard.level : (opsSummary?.badge?.level || 'neutral'));
+            leadEl.dataset.level = dataworksTone(overallStatus.level || 'neutral');
+
+            const dispatchLabel = opsSummary?.dispatchEnabled ? 'Available' : 'Read-only';
+            const dispatchMeta = opsSummary
+                ? (opsSummary.dispatchReason || `cooldown ${Math.round((opsSummary.dispatchCooldownMs || 0) / 1000)}s`)
+                : 'GitHub diagnostics unavailable';
+
+            pipelinePanel.innerHTML = renderDataworksPanel(
+                'NEM Jobs',
+                '🧭',
+                renderDataworksBadge(overallStatus.label || 'Unknown', overallStatus.level),
+                `<div class="dataworks-metric-list">
+                    ${renderDataworksMetricRow('Live AEMO snapshots', liveAemo?.status?.label || 'Unavailable', liveAemo ? `scheduler every ${Number(liveAemo.schedule?.cadenceMinutes || 5)}m with ${Number(liveAemo.schedule?.lagMinutes || 1)}m lag · ${Number(liveAemo.freshRegions || 0)}/${Number(liveAemo.expectedRegionCount || 5)} fresh` : 'Firestore snapshot health unavailable')}
+                    ${renderDataworksMetricRow('Historical bundle', marketSummary?.status?.label || 'Unavailable', historicalText)}
+                    ${renderDataworksMetricRow('Historical workflow', workflowStatusLabel, releaseGuard.reason ? `${releaseGuard.label} · ${releaseGuard.reason}` : (latestWorkflowRun !== '-' ? `latest run ${latestWorkflowRun}` : 'No recent workflow run'))}
+                    ${renderDataworksMetricRow('Manual historical runs', dispatchLabel, dispatchMeta)}
+                </div>
+                <div class="dataworks-note-list" style="margin-top:10px;">
+                    <div class="dataworks-note"><strong>Sources:</strong> hosted market-insights index, Firestore <code>aemoSnapshots/*</code>, and cached GitHub Actions diagnostics.</div>
+                    <div class="dataworks-note"><strong>Live path:</strong> dashboard and automation now read stored AEMO snapshots only; this tab does not trigger upstream AEMO refreshes.</div>
+                </div>`,
+                'High-level view of live and historical NEM data jobs.'
+            );
+
+            if (liveAemo) {
+                qualityPanel.innerHTML = renderDataworksPanel(
+                    'Live AEMO',
+                    '⚡',
+                    renderDataworksBadge(liveAemo.status?.label || 'Unknown', liveAemo.status?.level),
+                    `<div class="dataworks-metric-list">
+                        ${renderDataworksMetricRow('Scheduler', `Every ${Number(liveAemo.schedule?.cadenceMinutes || 5)}m`, `${Number(liveAemo.schedule?.lagMinutes || 1)}m lag · ${liveAemo.schedule?.timeZone || 'Australia/Brisbane'}`)}
+                        ${renderDataworksMetricRow('Latest interval', liveAemo.latestAsOf ? formatRelativeTime(liveAemo.latestAsOf) : '-', liveAemo.latestAsOf ? `as of ${formatDate(liveAemo.latestAsOf)}` : 'No stored intervals yet')}
+                        ${renderDataworksMetricRow('Region freshness', `${Number(liveAemo.freshRegions || 0)}/${Number(liveAemo.expectedRegionCount || 5)} fresh`, `${Number(liveAemo.watchRegions || 0)} watch · ${Number(liveAemo.staleRegions || 0)} stale · ${Number(liveAemo.missingRegions || 0)} missing`)}
+                        ${renderDataworksMetricRow('Forecast horizon', formatMinutesCompact(liveAemo.maxForecastHorizonMinutes || liveAemo.minForecastHorizonMinutes || 0), liveAemo.minForecastHorizonMinutes && liveAemo.maxForecastHorizonMinutes && liveAemo.minForecastHorizonMinutes !== liveAemo.maxForecastHorizonMinutes ? `min ${formatMinutesCompact(liveAemo.minForecastHorizonMinutes)}` : `${Number(liveAemo.forecastCompleteRegions || 0)}/${Number(liveAemo.expectedRegionCount || 5)} forecast-complete`)}
+                        ${renderDataworksMetricRow('Snapshot footprint', formatCompactNumber(liveAemo.totalRows || 0), `${liveAemo.source || 'firestore:aemoSnapshots'} · scheduler-only`)}
+                    </div>`,
+                    'Scheduler-backed live and forecast price snapshots used by dashboard and automation.'
+                );
+            } else {
+                qualityPanel.innerHTML = '<div class="dataworks-empty">Live AEMO snapshot diagnostics unavailable.</div>';
+            }
 
             if (marketSummary) {
                 const coverageWindow = marketSummary.bounds?.minPeriod && marketSummary.bounds?.maxPeriod
                     ? `${marketSummary.bounds.minPeriod} to ${marketSummary.bounds.maxPeriod}`
                     : '';
-                pipelinePanel.innerHTML = renderDataworksPanel(
-                    'Pipeline',
-                    '🧭',
+                const issueRegions = Array.isArray(marketSummary.quality?.issueRegions) ? marketSummary.quality.issueRegions : [];
+                footprintPanel.innerHTML = renderDataworksPanel(
+                    'Historical Bundle',
+                    '📦',
                     renderDataworksBadge(marketSummary.status?.label || 'Unknown', marketSummary.status?.level),
                     `<div class="dataworks-metric-list">
                         ${renderDataworksMetricRow('Published', formatRelativeTime(marketSummary.generatedAt), marketSummary.generatedAt ? `index generated ${formatDate(marketSummary.generatedAt)}` : '')}
                         ${renderDataworksMetricRow('Source aggregate', formatRelativeTime(marketSummary.sourceGeneratedAt), marketSummary.sourceGeneratedAt ? `aggregate manifest ${formatDate(marketSummary.sourceGeneratedAt)}` : '')}
                         ${renderDataworksMetricRow('Latest market date', formatDateShort(marketSummary.latestDate), marketSummary.dataAgeDays !== null ? `${formatDayAge(marketSummary.dataAgeDays)} behind UTC` : '')}
                         ${renderDataworksMetricRow('Coverage window', marketSummary.latestPeriod || '-', coverageWindow)}
-                    </div>`,
-                    'Static metadata from the published market-insights bundle.'
-                );
-
-                const issueRegions = Array.isArray(marketSummary.quality?.issueRegions) ? marketSummary.quality.issueRegions : [];
-                qualityPanel.innerHTML = renderDataworksPanel(
-                    'Quality',
-                    '🧪',
-                    renderDataworksBadge(
-                        Number(marketSummary.quality?.issuePeriods || 0) > 0 ? 'Watch' : 'Clean',
-                        Number(marketSummary.quality?.issuePeriods || 0) > 0 ? 'warn' : 'good'
-                    ),
-                    `<div class="dataworks-metric-list">
-                        ${renderDataworksMetricRow('Issue periods', formatCompactNumber(marketSummary.quality?.issuePeriods || 0), marketSummary.quality?.latestIssuePeriod ? `latest ${marketSummary.quality.latestIssuePeriod}` : 'No flagged periods')}
-                        ${renderDataworksMetricRow('Recent coverage', formatPercentage(marketSummary.quality?.recentAverageCoveragePct, 2), marketSummary.quality?.recentMinimumCoveragePct != null ? `min ${formatPercentage(marketSummary.quality.recentMinimumCoveragePct, 2)} in last 7d` : '')}
-                        ${renderDataworksMetricRow('Recent quality', marketSummary.quality?.recentAverageQualityScore != null ? Number(marketSummary.quality.recentAverageQualityScore).toFixed(2) : '-', marketSummary.quality?.recentMinimumQualityScore != null ? `min ${Number(marketSummary.quality.recentMinimumQualityScore).toFixed(2)} in last 7d` : '')}
-                        ${renderDataworksMetricRow('Missing / malformed', `${formatCompactNumber(marketSummary.quality?.estimatedMissingIntervals || 0)} / ${formatCompactNumber(marketSummary.quality?.malformedRows || 0)}`, `interval anomalies ${formatCompactNumber(marketSummary.quality?.intervalAnomalies || 0)}`)}
+                        ${renderDataworksMetricRow('Quality', formatPercentage(marketSummary.quality?.recentAverageCoveragePct, 2), marketSummary.quality?.recentAverageQualityScore != null ? `score ${Number(marketSummary.quality.recentAverageQualityScore).toFixed(2)} · issues ${formatCompactNumber(marketSummary.quality?.issuePeriods || 0)}` : 'Quality summary unavailable')}
+                        ${renderDataworksMetricRow('Files / assets', `${formatCompactNumber(marketSummary.files?.rawCsvFiles || 0)} / ${formatCompactNumber(marketSummary.files?.publishedAssetCount || 0)}`, marketSummary.files?.hourlyRows ? `${formatCompactNumber(marketSummary.files.hourlyRows)} hourly rows in aggregates` : '')}
                     </div>
                     ${issueRegions.length ? `<div class="dataworks-inline-list">${issueRegions.map((region) => `<span class="dataworks-chip">${escapeHtml(region)}</span>`).join('')}</div>` : ''}`,
-                    'Quality report roll-up from the aggregate build output.'
-                );
-
-                footprintPanel.innerHTML = renderDataworksPanel(
-                    'Footprint',
-                    '🗂️',
-                    renderDataworksBadge('Lightweight', 'good'),
-                    `<div class="dataworks-metric-list">
-                        ${renderDataworksMetricRow('Raw CSV files', formatCompactNumber(marketSummary.files?.rawCsvFiles || 0), `${formatCompactNumber(marketSummary.regions?.length || 0)} regions across ${marketSummary.bounds?.minPeriod || '-'} to ${marketSummary.bounds?.maxPeriod || '-'}`)}
-                        ${renderDataworksMetricRow('Published assets', formatCompactNumber(marketSummary.files?.publishedAssetCount || 0), 'region payloads + index.json')}
-                        ${renderDataworksMetricRow('Daily / monthly rows', `${formatCompactNumber(marketSummary.files?.dailyRows || marketSummary.counts?.daily || 0)} / ${formatCompactNumber(marketSummary.files?.monthlyRows || marketSummary.counts?.monthly || 0)}`, marketSummary.files?.hourlyRows ? `${formatCompactNumber(marketSummary.files.hourlyRows)} hourly rows in aggregates` : '')}
-                        ${renderDataworksMetricRow('Region coverage', `${formatCompactNumber(marketSummary.regions?.length || 0)} live`, marketSummary.bounds?.minDate && marketSummary.bounds?.maxDate ? `${marketSummary.bounds.minDate} to ${marketSummary.bounds.maxDate}` : '')}
-                    </div>`,
-                    'Uses static hosted JSON, so opening this tab does not trigger heavy scans.'
-                );
-
-                const regionRows = Array.isArray(marketSummary.regionRows) ? marketSummary.regionRows : [];
-                regionsPanel.innerHTML = renderDataworksPanel(
-                    'Region Freshness',
-                    '🗺️',
-                    renderDataworksBadge(`${regionRows.length || 0} regions`, 'neutral'),
-                    regionRows.length
-                        ? `<div class="dataworks-table-wrap"><table class="dataworks-table"><thead><tr><th>Region</th><th>Latest Date</th><th>Age</th><th>Recent Quality</th><th>Issues</th></tr></thead><tbody>${regionRows.map((row) => `<tr><td>${escapeHtml(row.region || '-')}</td><td>${escapeHtml(formatDateShort(row.latestDate))}</td><td>${escapeHtml(formatDayAge(row.ageDays))}</td><td>${escapeHtml(row.recentQualityScoreAvg != null ? Number(row.recentQualityScoreAvg).toFixed(2) : '-')}</td><td>${escapeHtml(String(Number(row.qualityIssuePeriods || 0)))}</td></tr>`).join('')}</tbody></table></div>`
-                        : '<div class="dataworks-empty">No region summaries available.</div>',
-                    'Per-region latest publish date and recent quality score.'
+                    'Hosted static market-insights bundle for historical NEM analysis.'
                 );
             } else {
-                pipelinePanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
-                qualityPanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
                 footprintPanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
-                regionsPanel.innerHTML = '<div class="dataworks-empty">Static market-insights metadata unavailable.</div>';
             }
+
+            const liveRegionRows = Array.isArray(liveAemo?.regions) ? liveAemo.regions : [];
+            regionsPanel.innerHTML = renderDataworksPanel(
+                'Live Region Health',
+                '🗺️',
+                renderDataworksBadge(`${liveRegionRows.length || 0} regions`, liveAemo?.status?.level || 'neutral'),
+                liveRegionRows.length
+                    ? `<div class="dataworks-table-wrap"><table class="dataworks-table"><thead><tr><th>Region</th><th>As Of</th><th>Stored</th><th>Forecast</th><th>Status</th></tr></thead><tbody>${liveRegionRows.map((row) => `<tr><td>${escapeHtml(row.regionCode || row.regionId || '-')}</td><td>${escapeHtml(row.asOf ? formatDate(row.asOf) : '-')}</td><td>${escapeHtml(row.storedAt ? formatRelativeTime(row.storedAt) : '-')}</td><td>${escapeHtml(formatMinutesCompact(row.forecastHorizonMinutes || 0))}</td><td>${renderDataworksBadge(row.statusLabel || 'Unknown', row.statusLevel || 'neutral')}</td></tr>`).join('')}</tbody></table></div>`
+                    : '<div class="dataworks-empty">No stored live AEMO snapshots available.</div>',
+                'Per-region freshness for the scheduler-written AEMO snapshots.'
+            );
 
             if (opsSummary) {
                 const workflowRuns = Array.isArray(opsSummary.recentRuns) ? opsSummary.recentRuns.slice(0, 5) : [];
@@ -4098,55 +4198,61 @@
                 const rateLimitMeta = Number.isFinite(Number(opsSummary.rateLimit?.remaining))
                     ? `API remaining ${Number(opsSummary.rateLimit.remaining)}`
                     : '';
+
                 workflowRunsPanel.innerHTML = renderDataworksPanel(
-                    'Workflow Runs',
+                    'Historical Workflow Runs',
                     '📜',
                     renderDataworksBadge(workflowRuns.length ? `${workflowRuns.length} runs` : 'No runs', workflowRuns.length ? 'neutral' : 'warn'),
                     workflowRuns.length
                         ? `<div class="dataworks-table-wrap"><table class="dataworks-table"><thead><tr><th>Run</th><th>Status</th><th>Trigger</th><th>Started</th><th>Duration</th></tr></thead><tbody>${workflowRuns.map((run) => `<tr><td>${escapeHtml(String(run.number || '-'))}</td><td>${escapeHtml(formatStatusLabel(run.conclusion || run.status || 'unknown'))}</td><td>${escapeHtml(formatStatusLabel(run.event || 'unknown'))}</td><td>${escapeHtml(formatRelativeTime(run.createdAt || run.updatedAt || null))}</td><td>${escapeHtml(run.durationMs != null ? formatDurationMs(run.durationMs) : '-')}</td></tr>`).join('')}</tbody></table></div>`
                         : '<div class="dataworks-empty">No recent workflow runs available.</div>',
-                    'Recent GitHub Actions runs for the hosted DataWorks pipeline.'
+                    'Recent GitHub Actions runs for the historical market-insights pipeline.'
                 );
+
                 opsPanel.innerHTML = renderDataworksPanel(
-                    'Workflow Ops',
+                    'Historical Workflow Ops',
                     '🚀',
-                    renderDataworksBadge(opsSummary.badge.label, opsSummary.badge.level),
+                    renderDataworksBadge(releaseGuard.level === 'warn' ? releaseGuard.label : opsSummary.badge.label, releaseGuard.level === 'warn' ? releaseGuard.level : opsSummary.badge.level),
                     `<div class="dataworks-metric-list">
                         ${renderDataworksMetricRow('Workflow', formatStatusLabel(opsSummary.workflow.state), opsSummary.workflow.ref ? `ref ${opsSummary.workflow.ref}` : '')}
-                        ${renderDataworksMetricRow('Release guard', opsSummary.releaseAlignment?.matches === true ? 'Aligned' : (opsSummary.releaseAlignment?.status === 'mismatch' ? 'Needs deploy' : (opsSummary.releaseAlignment?.status === 'target-unresolved' ? 'Blocked' : 'Bootstrap')), opsSummary.releaseAlignment?.reason || (opsSummary.releaseAlignment?.liveShortCommit ? `live ${opsSummary.releaseAlignment.liveShortCommit}` : 'waiting for release metadata'))}
+                        ${renderDataworksMetricRow('Release guard', releaseGuard.label, releaseGuard.reason || (opsSummary.releaseAlignment?.liveShortCommit ? `live ${opsSummary.releaseAlignment.liveShortCommit}` : 'waiting for release metadata'))}
                         ${renderDataworksMetricRow('Latest run', opsSummary.latestRun ? formatRelativeTime(opsSummary.latestRun.createdAt || opsSummary.latestRun.updatedAt) : '-', latestRunLabel)}
                         ${renderDataworksMetricRow('Latest step', opsSummary.latestStep?.name || '-', latestStepMeta)}
                         ${renderDataworksMetricRow('Last success', opsSummary.lastSuccessfulRun ? formatRelativeTime(opsSummary.lastSuccessfulRun.updatedAt || opsSummary.lastSuccessfulRun.createdAt) : '-', opsSummary.lastSuccessfulRun ? `run #${opsSummary.lastSuccessfulRun.number || '-'}` : 'No recent success')}
-                        ${renderDataworksMetricRow('Dispatch', opsSummary.dispatchEnabled ? 'Available' : 'Read-only', opsSummary.dispatchReason || `cooldown ${Math.round((opsSummary.dispatchCooldownMs || 0) / 1000)}s`)}
+                        ${renderDataworksMetricRow('Manual historical run', dispatchLabel, dispatchMeta)}
                     </div>
                     <div class="dataworks-note-list" style="margin-top:10px;">
                         <div class="dataworks-note"><strong>Links:</strong> ${workflowLink ? renderExternalLink(workflowLink, 'Open GitHub workflow') : 'Workflow link unavailable'}.</div>
                         <div class="dataworks-note"><strong>Diagnostics cache:</strong> ${escapeHtml(cacheMeta)}${rateLimitMeta ? ` · ${escapeHtml(rateLimitMeta)}` : ''}</div>
+                        <div class="dataworks-note"><strong>Live AEMO:</strong> scheduler-only path; this admin control does not manually refresh live snapshots.</div>
                     </div>`,
-                    'Cached GitHub Actions read model for the hosted market-insights workflow.'
+                    'GitHub Actions controls and release guard for the historical market-insights workflow.'
                 );
             } else {
                 workflowRunsPanel.innerHTML = renderDataworksPanel(
-                    'Workflow Runs',
+                    'Historical Workflow Runs',
                     '📜',
                     renderDataworksBadge('Unavailable', 'warn'),
-                    '<div class="dataworks-note-list"><div class="dataworks-note"><strong>Workflow history unavailable:</strong> GitHub diagnostics did not load.</div><div class="dataworks-note"><strong>Cost posture:</strong> DataWorks still reads one static JSON bundle plus a cached GitHub workflow read model when available.</div></div>'
+                    '<div class="dataworks-note-list"><div class="dataworks-note"><strong>Workflow history unavailable:</strong> GitHub diagnostics did not load.</div><div class="dataworks-note"><strong>Cost posture:</strong> DataWorks still reads one hosted historical bundle plus live Firestore snapshots when available.</div></div>'
                 );
-                opsPanel.innerHTML = '<div class="dataworks-empty">Workflow diagnostics unavailable.</div>';
+                opsPanel.innerHTML = '<div class="dataworks-empty">Historical workflow diagnostics unavailable.</div>';
             }
 
             if (dispatchBtn) {
                 const runInProgress = !!opsSummary?.latestRun?.status && String(opsSummary.latestRun.status).toLowerCase() !== 'completed';
                 dispatchBtn.disabled = !opsSummary?.dispatchEnabled || runInProgress;
-                dispatchBtn.textContent = runInProgress ? 'Run active' : 'Run now';
+                dispatchBtn.textContent = runInProgress ? 'Historical active' : 'Run historical';
                 dispatchBtn.title = runInProgress
-                    ? 'A DataWorks workflow run is already active.'
-                    : (opsSummary?.dispatchEnabled ? 'Trigger the GitHub DataWorks workflow now.' : (opsSummary?.dispatchReason || 'Manual dispatch unavailable.'));
+                    ? 'A historical DataWorks workflow run is already active.'
+                    : (opsSummary?.dispatchEnabled ? 'Trigger the GitHub historical market-insights workflow now.' : (opsSummary?.dispatchReason || 'Manual historical run unavailable.'));
             }
 
             const updatedParts = [];
+            if (liveAemo?.latestStoredAt || liveAemo?.latestAsOf) {
+                updatedParts.push(`live AEMO ${formatRelativeTime(liveAemo.latestStoredAt || liveAemo.latestAsOf)}`);
+            }
             if (marketSummary?.generatedAt) {
-                updatedParts.push(`market data ${formatRelativeTime(marketSummary.generatedAt)}`);
+                updatedParts.push(`historical bundle ${formatRelativeTime(marketSummary.generatedAt)}`);
             }
             if (opsSummary?.latestRun?.createdAt || opsSummary?.latestRun?.updatedAt) {
                 updatedParts.push(`workflow run ${formatRelativeTime(opsSummary.latestRun.createdAt || opsSummary.latestRun.updatedAt)}`);
@@ -4156,23 +4262,24 @@
                 : `Last checked ${new Date().toLocaleDateString('en-AU')} ${new Date().toLocaleTimeString('en-AU')}`;
         } catch (e) {
             console.error('[Admin] Failed to load DataWorks summary:', e);
-            updatedEl.textContent = 'Unable to load DataWorks snapshot';
-            leadEl.textContent = e?.message ? `Error: ${e.message}` : 'Failed to load DataWorks snapshot';
+            updatedEl.textContent = 'Unable to load NEM data jobs';
+            leadEl.textContent = e?.message ? `Error: ${e.message}` : 'Failed to load NEM data jobs';
             statusEl.textContent = 'Unavailable';
             rowsEl.textContent = '-';
             filesEl.textContent = '-';
             workflowStatusEl.textContent = '-';
-            pipelinePanel.innerHTML = '<div class="dataworks-empty">Unable to load pipeline summary.</div>';
-            qualityPanel.innerHTML = '<div class="dataworks-empty">Unable to load quality summary.</div>';
-            footprintPanel.innerHTML = '<div class="dataworks-empty">Unable to load file footprint.</div>';
-            regionsPanel.innerHTML = '<div class="dataworks-empty">Unable to load region freshness.</div>';
-            workflowRunsPanel.innerHTML = '<div class="dataworks-empty">Unable to load workflow history.</div>';
-            opsPanel.innerHTML = '<div class="dataworks-empty">Unable to load workflow diagnostics.</div>';
+            pipelinePanel.innerHTML = '<div class="dataworks-empty">Unable to load NEM jobs overview.</div>';
+            qualityPanel.innerHTML = '<div class="dataworks-empty">Unable to load live AEMO snapshots.</div>';
+            footprintPanel.innerHTML = '<div class="dataworks-empty">Unable to load historical bundle.</div>';
+            regionsPanel.innerHTML = '<div class="dataworks-empty">Unable to load live region health.</div>';
+            workflowRunsPanel.innerHTML = '<div class="dataworks-empty">Unable to load historical workflow history.</div>';
+            opsPanel.innerHTML = '<div class="dataworks-empty">Unable to load historical workflow diagnostics.</div>';
             if (dispatchBtn) {
                 dispatchBtn.disabled = true;
-                dispatchBtn.textContent = 'Run now';
-                dispatchBtn.title = 'Workflow diagnostics unavailable.';
+                dispatchBtn.textContent = 'Run historical';
+                dispatchBtn.title = 'Historical workflow diagnostics unavailable.';
             }
+            showMessage('warning', `Failed to load DataWorks summary: ${e.message || e}`);
         } finally {
             if (refreshBtn) refreshBtn.disabled = false;
         }
@@ -4181,7 +4288,7 @@
     async function triggerDataworksDispatch() {
         const dispatchBtn = document.getElementById('triggerDataworksRunBtn');
         if (!adminApiClient || !dispatchBtn) return;
-        if (!window.confirm('Trigger the DataWorks GitHub workflow now?')) return;
+        if (!window.confirm('Trigger the historical market-insights GitHub workflow now?')) return;
 
         dispatchBtn.disabled = true;
         const originalLabel = dispatchBtn.textContent;
@@ -4205,12 +4312,12 @@
             }
 
             const pollDelayMs = Number(data?.result?.recommendedPollAfterMs || 15000);
-            showMessage('success', `Queued DataWorks workflow on ${data?.result?.ref || 'main'}. Refreshing workflow diagnostics shortly...`, 6000);
+            showMessage('success', `Queued historical market-insights workflow on ${data?.result?.ref || 'main'}. Refreshing diagnostics shortly...`, 6000);
             window.setTimeout(() => {
                 loadDataworks({ forceOps: true });
             }, pollDelayMs);
         } catch (e) {
-            showMessage('error', `❌ Failed to trigger DataWorks workflow: ${e.message || e}`);
+            showMessage('error', `Failed to trigger historical workflow: ${e.message || e}`);
             dispatchBtn.textContent = originalLabel;
             loadDataworks({ forceOps: true });
         }

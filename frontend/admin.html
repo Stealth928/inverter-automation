@@ -3187,35 +3187,35 @@
         <div id="tab-dataworks" class="tab-panel">
             <div class="card dataworks-card">
                 <div class="card-header">
-                    <div class="card-title"><span class="icon">🛰️</span> DataWorks Snapshot</div>
+                    <div class="card-title"><span class="icon">🛰️</span> NEM DataWorks</div>
                     <div class="actions-cell">
-                        <button class="action-btn success" onclick="triggerDataworksDispatch()" id="triggerDataworksRunBtn" disabled>Run now</button>
+                        <button class="action-btn success" onclick="triggerDataworksDispatch()" id="triggerDataworksRunBtn" disabled>Run historical</button>
                         <button class="action-btn" onclick="loadDataworks({ forceOps: true })" id="refreshDataworksBtn">Refresh</button>
                     </div>
                 </div>
                 <div class="card-body">
-                    <div id="dataworksUpdated" class="firestore-updated">Loading DataWorks snapshot...</div>
+                    <div id="dataworksUpdated" class="firestore-updated">Loading NEM data jobs...</div>
                     <div class="platform-kpis-wrap">
                         <div class="platform-kpis" id="dataworksKpis">
                             <div class="kpi-item">
-                                <div class="label">Pipeline Health</div>
+                                <div class="label">NEM Jobs</div>
                                 <div class="value" id="dataworksPipelineStatus">-</div>
                             </div>
                             <div class="kpi-item">
-                                <div class="label">Latest Market Date</div>
+                                <div class="label">Historical Bundle</div>
                                 <div class="value" id="dataworksRowsProcessed">-</div>
                             </div>
                             <div class="kpi-item">
-                                <div class="label">Files / Assets</div>
+                                <div class="label">Live AEMO</div>
                                 <div class="value" id="dataworksFilesIngested">-</div>
                             </div>
                             <div class="kpi-item">
-                                <div class="label">GitHub Workflow</div>
+                                <div class="label">Historical Workflow</div>
                                 <div class="value" id="dataworksWorkflowStatus">-</div>
                             </div>
                         </div>
                     </div>
-                    <div id="dataworksLead" class="dataworks-lead">Loading pipeline details...</div>
+                    <div id="dataworksLead" class="dataworks-lead">Loading NEM pipeline details...</div>
                     <div class="dataworks-grid-3">
                         <section class="dataworks-panel" id="dataworksPipelinePanel"></section>
                         <section class="dataworks-panel" id="dataworksQualityPanel"></section>

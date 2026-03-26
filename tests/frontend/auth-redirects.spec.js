@@ -7,7 +7,7 @@ const FAKE_FIREBASE_SDK = `
 
   const USER_KEY = 'mockAuthUser';
   const TOKEN_KEY = 'mockAuthToken';
-  const state = { callbacks: [], currentUser: null };
+  const state = { callbacks: [], currentUser: null, lastRedirectResult: null, popupCalls: 0, redirectCalls: 0 };
 
   function attachGetIdToken(user) {
     if (!user) return null;
@@ -102,6 +102,7 @@ const FAKE_FIREBASE_SDK = `
       return { user: state.currentUser };
     },
     async signInWithPopup() {
+      state.popupCalls += 1;
       if (!state.currentUser) {
         setUser({
           uid: 'mock-google-' + Date.now(),
@@ -114,6 +115,7 @@ const FAKE_FIREBASE_SDK = `
       return { user: state.currentUser };
     },
     async signInWithRedirect() {
+      state.redirectCalls += 1;
       if (!state.currentUser) {
         setUser({
           uid: 'mock-google-' + Date.now(),
@@ -123,6 +125,12 @@ const FAKE_FIREBASE_SDK = `
       } else {
         setTimeout(notifyAuthState, 0);
       }
+      state.lastRedirectResult = { user: state.currentUser };
+    },
+    async getRedirectResult() {
+      const result = state.lastRedirectResult;
+      state.lastRedirectResult = null;
+      return result;
     },
     async signOut() {
       setUser(null);
@@ -156,6 +164,7 @@ const FAKE_FIREBASE_SDK = `
   window.firebase.firestore = function () {
     return {};
   };
+  window.__fakeFirebaseAuthState = state;
 })();
 `;
 
@@ -279,5 +288,13 @@ test.describe('Auth Redirect Rules', () => {
     expect(new URL(page.url()).pathname).toBe('/app.html');
     expect(visitedPaths).not.toContain('/index.html');
     expect(visitedPaths).not.toContain('/');
+  });
+
+  test('google sign-in on localhost emulator reaches app page', async ({ page }) => {
+    await seedAuthUser(page, null);
+    await page.goto('/login.html');
+    await page.click('#googleSigninBtn');
+
+    await expect.poll(() => new URL(page.url()).pathname, { timeout: 7000 }).toBe('/app.html');
   });
 });

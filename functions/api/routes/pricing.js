@@ -37,10 +37,6 @@ function rejectUnsupportedProvider(provider, res) {
   return false;
 }
 
-function registerGetAliases(app, routes, ...handlers) {
-  routes.forEach((route) => app.get(route, ...handlers));
-}
-
 function registerPricingRoutes(app, deps = {}) {
   const amberAPI = deps.amberAPI;
   const amberPricesInFlight = deps.amberPricesInFlight;
@@ -60,7 +56,12 @@ function registerPricingRoutes(app, deps = {}) {
   if (!amberPricesInFlight || typeof amberPricesInFlight.has !== 'function') {
     throw new Error('registerPricingRoutes requires amberPricesInFlight Map');
   }
-  if (!aemoAPI || typeof aemoAPI.getCurrentPriceData !== 'function' || typeof aemoAPI.listSupportedAemoRegions !== 'function') {
+  if (
+    !aemoAPI
+    || typeof aemoAPI.getActualPriceAtTimestamp !== 'function'
+    || typeof aemoAPI.getCurrentPriceData !== 'function'
+    || typeof aemoAPI.listSupportedAemoRegions !== 'function'
+  ) {
     throw new Error('registerPricingRoutes requires aemoAPI');
   }
   if (typeof authenticateUser !== 'function') {
@@ -473,10 +474,14 @@ function registerPricingRoutes(app, deps = {}) {
     }
   };
 
-  registerGetAliases(app, ['/api/pricing/sites', '/api/amber/sites'], sitesHandler);
-  registerGetAliases(app, ['/api/pricing/current', '/api/amber/prices/current'], currentPricesHandler);
-  registerGetAliases(app, ['/api/pricing/prices', '/api/amber/prices'], pricesHandler);
-  registerGetAliases(app, ['/api/pricing/actual', '/api/amber/prices/actual'], authenticateUser, actualPricesHandler);
+  app.get('/api/pricing/sites', sitesHandler);
+  app.get('/api/amber/sites', sitesHandler);
+  app.get('/api/pricing/current', currentPricesHandler);
+  app.get('/api/amber/prices/current', currentPricesHandler);
+  app.get('/api/pricing/prices', pricesHandler);
+  app.get('/api/amber/prices', pricesHandler);
+  app.get('/api/pricing/actual', authenticateUser, actualPricesHandler);
+  app.get('/api/amber/prices/actual', authenticateUser, actualPricesHandler);
 }
 
 module.exports = {

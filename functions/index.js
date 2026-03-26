@@ -163,7 +163,8 @@ const aemoAPI = aemoModule.init({
   db,
   logger: null, // Will be defined below
   getConfig: null, // Will be defined below
-  incrementApiCount: null // Will be defined below
+  incrementApiCount: null, // Will be defined below
+  serverTimestamp
 });
 
 // Import shared state from amber module (used for concurrency control)
@@ -1574,6 +1575,43 @@ async function runAutomationHandler(context) {
   });
 }
 
+async function refreshAemoLiveSnapshotsHandler(_context) {
+  const results = await aemoAPI.refreshAllCurrentPriceData({});
+  const failures = results.filter((result) => !!result?.error);
+  const updated = results.filter((result) => result && result.updated === true);
+  const skipped = results.filter((result) => result && result.updated === false && !result.error);
+
+  console.log(
+    '[AEMO] Live snapshot refresh completed: updated=%s skipped=%s failed=%s',
+    updated.length,
+    skipped.length,
+    failures.length
+  );
+
+  results.forEach((result) => {
+    if (!result) return;
+    if (result.error) {
+      console.error(
+        '[AEMO] Snapshot refresh failed for %s: %s',
+        result.regionId || 'unknown',
+        result.error
+      );
+      return;
+    }
+    console.log(
+      '[AEMO] Snapshot refresh %s region=%s previousAsOf=%s currentAsOf=%s',
+      result.updated ? 'stored' : 'skipped',
+      result.regionId || 'unknown',
+      result.previousAsOf || '-',
+      result.currentAsOf || '-'
+    );
+  });
+
+  if (failures.length > 0) {
+    throw new Error(`AEMO live snapshot refresh failed for ${failures.length} region(s)`);
+  }
+}
+
 // ==================== EXPORT CLOUD SCHEDULER FUNCTION ====================
 // Scheduler for background automation (runs every 1 minute via Cloud Scheduler)
 // For firebase-functions v7+ (2nd gen), we use functions.scheduler
@@ -1589,4 +1627,11 @@ exports.runAutomation = onSchedule(
   runAutomationHandler
 );
 
+exports.refreshAemoLiveSnapshots = onSchedule(
+  {
+    schedule: '1-59/5 * * * *',
+    timeZone: 'Australia/Brisbane'
+  },
+  refreshAemoLiveSnapshotsHandler
+);
 
