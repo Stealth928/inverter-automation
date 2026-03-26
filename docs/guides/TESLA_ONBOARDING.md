@@ -1,7 +1,17 @@
+# Tesla EV Onboarding Guide
+
 Purpose: operator and end-user guide for Tesla connection flow, command
 readiness, and charging control behavior in the shipped product.
 
 Last updated: 2026-03-17
+
+## At a Glance
+
+- Canonical Tesla guide for the shipped OAuth, readiness, and charging flow
+- Covers the Settings onboarding path, dashboard controls, signed-command
+  transport, and operational setup
+- The legacy product-framing alias is
+  [TESLA_EV_INTEGRATION.md](TESLA_EV_INTEGRATION.md)
 
 ## Scope
 

@@ -100,6 +100,7 @@
     let behaviorEventsChart = null;
     let behaviorMetricsData = null;
     let behaviorSelectedPageKey = 'all';
+    let behaviorWindowDays = 30;
     let firestoreMetricsChart = null;
     let schedulerMetricsChart = null;
     let apiHealthTrendChart = null;
@@ -1504,6 +1505,49 @@
         }
     }
 
+    function isRetryableServerErrorCode(statusCode) {
+        const code = Number(statusCode || 0);
+        return Number.isFinite(code) && code >= 500 && code < 600;
+    }
+
+    async function fetchAdminJsonWithRetry(path, options = {}) {
+        const attempts = Number.isFinite(Number(options.attempts)) ? Math.max(1, Math.floor(Number(options.attempts))) : 2;
+        const retryDelayMs = Number.isFinite(Number(options.retryDelayMs)) ? Math.max(0, Math.floor(Number(options.retryDelayMs))) : 350;
+        const fallbackError = options.fallbackError || 'Request failed';
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= attempts; attempt += 1) {
+            try {
+                const resp = await adminApiClient.fetch(path);
+                const data = await resp.json();
+                if (data && data.errno === 0) {
+                    return data;
+                }
+
+                const statusCode = Number(data?.errno || resp?.status || 0);
+                const message = data?.error || `${fallbackError}${statusCode ? ` (${statusCode})` : ''}`;
+                lastError = new Error(message);
+                lastError.retryable = isRetryableServerErrorCode(statusCode);
+
+                if (attempt < attempts && lastError.retryable) {
+                    await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
+                    continue;
+                }
+                throw lastError;
+            } catch (error) {
+                lastError = error instanceof Error ? error : new Error(String(error || fallbackError));
+                const retryable = typeof error?.retryable === 'boolean' ? error.retryable : true;
+                if (attempt < attempts && retryable) {
+                    await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
+                    continue;
+                }
+                throw lastError;
+            }
+        }
+
+        throw lastError || new Error(fallbackError);
+    }
+
     function refreshAdminData() {
         tabsLoaded[activeTab] = false;
         currentUsersPagination = { page: 1, pageSize: 50, totalUsers: 0, totalPages: 1, showAll: false, sortingScope: 'current-page' };
@@ -1535,9 +1579,11 @@
         }
 
         try {
-            const resp = await adminApiClient.fetch('/api/admin/platform-stats?days=90');
-            const data = await resp.json();
-            if (data.errno !== 0) throw new Error(data.error || 'Failed to load platform stats');
+            const data = await fetchAdminJsonWithRetry('/api/admin/platform-stats?days=90', {
+                attempts: 2,
+                retryDelayMs: 300,
+                fallbackError: 'Failed to load platform stats'
+            });
 
             const summary = data.result?.summary || {};
             const trend = Array.isArray(data.result?.trend) ? data.result.trend : [];
@@ -1720,6 +1766,156 @@
             .replace(/\b\w/g, (char) => char.toUpperCase());
     }
 
+    function formatOneDecimal(value) {
+        const num = Number(value || 0);
+        if (!Number.isFinite(num)) return '-';
+        return num.toLocaleString('en-AU', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    }
+
+    function toFiniteNumber(value, fallback = 0) {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : fallback;
+    }
+
+    function computePercentDelta(current, previous) {
+        const currentValue = toFiniteNumber(current, 0);
+        const previousValue = toFiniteNumber(previous, 0);
+        if (previousValue <= 0) return currentValue > 0 ? null : 0;
+        return ((currentValue - previousValue) / previousValue) * 100;
+    }
+
+    function formatPercentDelta(deltaPct) {
+        if (deltaPct === null) return 'new from zero baseline';
+        const rounded = Math.round(deltaPct * 10) / 10;
+        const sign = rounded > 0 ? '+' : '';
+        return `${sign}${rounded.toFixed(1)}%`;
+    }
+
+    function formatPointsDelta(points) {
+        const rounded = Math.round(points * 10) / 10;
+        const sign = rounded > 0 ? '+' : '';
+        return `${sign}${rounded.toFixed(1)} pts`;
+    }
+
+    function normalizeBehaviorSeries(series) {
+        if (!Array.isArray(series)) return [];
+        return series
+            .map((entry) => ({
+                date: String(entry?.date || '').trim(),
+                activeUsers: toFiniteNumber(entry?.activeUsers, 0),
+                pageViews: toFiniteNumber(entry?.pageViews, 0),
+                eventCount: toFiniteNumber(entry?.eventCount, 0)
+            }))
+            .filter((entry) => !!entry.date)
+            .sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    function selectSeriesWindow(series, windowSize, trailingOffset = 0) {
+        const normalized = normalizeBehaviorSeries(series);
+        const safeWindow = Math.max(0, Math.floor(Number(windowSize) || 0));
+        const safeOffset = Math.max(0, Math.floor(Number(trailingOffset) || 0));
+        if (!safeWindow || !normalized.length) return [];
+        const endIndex = normalized.length - safeOffset;
+        if (endIndex <= 0) return [];
+        const startIndex = Math.max(0, endIndex - safeWindow);
+        return normalized.slice(startIndex, endIndex);
+    }
+
+    function sumSeriesMetric(series, key) {
+        if (!Array.isArray(series)) return 0;
+        return series.reduce((sum, entry) => sum + toFiniteNumber(entry?.[key], 0), 0);
+    }
+
+    function findBehaviorPageLabel(pageKey, options = []) {
+        if (!pageKey) return 'Unknown';
+        const match = Array.isArray(options)
+            ? options.find((option) => option?.key === pageKey)
+            : null;
+        return match?.label || humanizeEventName(pageKey);
+    }
+
+    function buildBehaviorSignals(summary = {}, result = {}) {
+        const pageSeries = normalizeBehaviorSeries(result.pageSeries);
+        const recent7 = selectSeriesWindow(pageSeries, 7, 0);
+        const prior7 = selectSeriesWindow(pageSeries, 7, 7);
+        let momentumText = 'Need at least 14 days of activity for 7d momentum.';
+        if (recent7.length === 7 && prior7.length === 7) {
+            const recentUsers = sumSeriesMetric(recent7, 'activeUsers');
+            const priorUsers = sumSeriesMetric(prior7, 'activeUsers');
+            const recentViews = sumSeriesMetric(recent7, 'pageViews');
+            const priorViews = sumSeriesMetric(prior7, 'pageViews');
+            const usersDelta = computePercentDelta(recentUsers, priorUsers);
+            const viewsDelta = computePercentDelta(recentViews, priorViews);
+            momentumText = `Users ${formatPercentDelta(usersDelta)} (${formatCount(recentUsers)} vs ${formatCount(priorUsers)}) · Views ${formatPercentDelta(viewsDelta)} (${formatCount(recentViews)} vs ${formatCount(priorViews)}).`;
+        }
+
+        const activeUsers = toFiniteNumber(summary.activeUsers, 0);
+        const pageViews = toFiniteNumber(summary.pageViews, 0);
+        const eventCount = toFiniteNumber(summary.eventCount, 0);
+        const eventsPerUser = toFiniteNumber(
+            summary.avgEventsPerUser,
+            activeUsers > 0 ? (eventCount / activeUsers) : 0
+        );
+        const viewsPerUser = activeUsers > 0 ? (pageViews / activeUsers) : 0;
+        const repeatPressureText = activeUsers > 0
+            ? `${formatOneDecimal(viewsPerUser)} views/user and ${formatOneDecimal(eventsPerUser)} actions/user in the selected window.`
+            : 'No active-user signal yet for repeat-pressure analysis.';
+
+        const pageSeriesByKey = result.pageSeriesByKey && typeof result.pageSeriesByKey === 'object'
+            ? result.pageSeriesByKey
+            : {};
+        const pageOptions = Array.isArray(result.mainPageOptions) ? result.mainPageOptions : [];
+        const pageMixRows = Object.entries(pageSeriesByKey).map(([key, series]) => {
+            const recentViews = sumSeriesMetric(selectSeriesWindow(series, 7, 0), 'pageViews');
+            const priorViews = sumSeriesMetric(selectSeriesWindow(series, 7, 7), 'pageViews');
+            return { key, recentViews, priorViews };
+        });
+        const totalRecentViews = pageMixRows.reduce((sum, row) => sum + row.recentViews, 0);
+        const totalPriorViews = pageMixRows.reduce((sum, row) => sum + row.priorViews, 0);
+        const dominantPage = pageMixRows.length
+            ? pageMixRows.slice().sort((a, b) => b.recentViews - a.recentViews)[0]
+            : null;
+        let pageMixText = 'Main-page mix appears once filtered page views are available.';
+        if (dominantPage && totalRecentViews > 0) {
+            const dominantLabel = findBehaviorPageLabel(dominantPage.key, pageOptions);
+            const shareRecentPct = (dominantPage.recentViews / totalRecentViews) * 100;
+            if (totalPriorViews > 0) {
+                const sharePriorPct = (dominantPage.priorViews / totalPriorViews) * 100;
+                pageMixText = `${dominantLabel} is ${formatOneDecimal(shareRecentPct)}% of tracked main-page views (${formatPointsDelta(shareRecentPct - sharePriorPct)} vs prior 7d).`;
+            } else {
+                pageMixText = `${dominantLabel} is ${formatOneDecimal(shareRecentPct)}% of tracked main-page views in last 7d.`;
+            }
+        }
+
+        return {
+            momentumText,
+            repeatPressureText,
+            pageMixText
+        };
+    }
+
+    function renderBehaviorSignals(summary, result) {
+        const signals = buildBehaviorSignals(summary, result);
+        const momentumEl = document.getElementById('behaviorSignalMomentum');
+        const repeatEl = document.getElementById('behaviorSignalRepeatPressure');
+        const pageMixEl = document.getElementById('behaviorSignalPageMix');
+        if (momentumEl) momentumEl.textContent = signals.momentumText;
+        if (repeatEl) repeatEl.textContent = signals.repeatPressureText;
+        if (pageMixEl) pageMixEl.textContent = signals.pageMixText;
+    }
+
+    function setBehaviorWindowDays(value) {
+        const parsed = Number(value);
+        behaviorWindowDays = [7, 30, 90].includes(parsed) ? parsed : 30;
+        const windowSelect = document.getElementById('behaviorWindowDays');
+        if (windowSelect && windowSelect.value !== String(behaviorWindowDays)) {
+            windowSelect.value = String(behaviorWindowDays);
+        }
+        if (activeTab === 'behavior') {
+            loadBehaviorMetrics();
+        }
+    }
+
     function resetBehaviorView() {
         destroyBehaviorCharts();
         behaviorMetricsData = null;
@@ -1731,7 +1927,11 @@
         const eventsEmpty = document.getElementById('behaviorTopEventsEmpty');
         const pageFilter = document.getElementById('behaviorPageFilter');
         const pageFilterSummary = document.getElementById('behaviorPageFilterSummary');
-        ['behaviorActiveUsers', 'behaviorPageViews', 'behaviorEvents', 'behaviorAvgEngagement'].forEach((id) => {
+        ['behaviorActiveUsers', 'behaviorPageViews', 'behaviorEvents', 'behaviorAvgEngagement', 'behaviorEventsPerUser', 'behaviorTrackedPages', 'behaviorCustomEventTypes'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '-';
+        });
+        ['behaviorSignalMomentum', 'behaviorSignalRepeatPressure', 'behaviorSignalPageMix'].forEach((id) => {
             const el = document.getElementById(id);
             if (el) el.textContent = '-';
         });
@@ -1748,7 +1948,7 @@
             pageFilter.value = 'all';
             pageFilter.disabled = true;
         }
-        if (pageFilterSummary) pageFilterSummary.textContent = 'Showing all tracked product pages.';
+        if (pageFilterSummary) pageFilterSummary.textContent = 'Showing all tracked product pages in the daily chart.';
     }
 
     function getBehaviorSelectedPageOption() {
@@ -1772,8 +1972,8 @@
         if (!summaryEl) return;
         const selected = getBehaviorSelectedPageOption();
         summaryEl.textContent = selected
-            ? `Showing ${selected.label} only.`
-            : 'Showing all tracked product pages.';
+            ? `Daily chart showing ${selected.label} only. KPI cards and tables remain unfiltered.`
+            : 'Showing all tracked product pages in the daily chart.';
     }
 
     function populateBehaviorPageFilter() {
@@ -1960,7 +2160,11 @@
         const updatedEl = document.getElementById('behaviorMetricsUpdated');
         const warningEl = document.getElementById('behaviorMetricsWarning');
         const setupEl = document.getElementById('behaviorSetup');
+        const windowSelect = document.getElementById('behaviorWindowDays');
         if (!adminApiClient || !updatedEl || !warningEl || !setupEl) return;
+        if (windowSelect && windowSelect.value !== String(behaviorWindowDays)) {
+            windowSelect.value = String(behaviorWindowDays);
+        }
 
         updatedEl.textContent = 'Loading behaviour analytics...';
         warningEl.style.display = 'none';
@@ -1968,7 +2172,7 @@
         resetBehaviorView();
 
         try {
-            const params = new URLSearchParams({ days: '30', limit: '8' });
+            const params = new URLSearchParams({ days: String(behaviorWindowDays), limit: '8' });
             if (options.force) params.set('refresh', '1');
             const resp = await adminApiClient.fetch(`/api/admin/behavior-metrics?${params.toString()}`);
             const data = await resp.json();
@@ -1994,11 +2198,15 @@
             document.getElementById('behaviorPageViews').textContent = formatCount(summary.pageViews);
             document.getElementById('behaviorEvents').textContent = formatCount(summary.eventCount);
             document.getElementById('behaviorAvgEngagement').textContent = formatSeconds(summary.avgEngagementSecondsPerUser);
+            document.getElementById('behaviorEventsPerUser').textContent = formatOneDecimal(summary.avgEventsPerUser);
+            document.getElementById('behaviorTrackedPages').textContent = formatCount(summary.trackedPageCount);
+            document.getElementById('behaviorCustomEventTypes').textContent = formatCount(summary.customEventTypes);
 
             populateBehaviorPageFilter();
             renderBehaviorTrendChart(getBehaviorTrendSeries());
             renderBehaviorEventsChart(Array.isArray(result.topEvents) ? result.topEvents : []);
             renderBehaviorTables(result.topPages, result.topEvents);
+            renderBehaviorSignals(summary, result);
 
             const updatedAt = result.updatedAt ? new Date(result.updatedAt) : new Date();
             updatedEl.textContent = `Last updated ${updatedAt.toLocaleDateString('en-AU')} ${updatedAt.toLocaleTimeString('en-AU')} · last ${Number(result.window?.days || 30)} days · GA4 property ${result.propertyId}`;
@@ -2548,9 +2756,11 @@
         warningEl.textContent = '';
 
         try {
-            const resp = await adminApiClient.fetch('/api/admin/firestore-metrics?hours=36');
-            const data = await resp.json();
-            if (data.errno !== 0) throw new Error(data.error || 'Failed to load Firestore metrics');
+            const data = await fetchAdminJsonWithRetry('/api/admin/firestore-metrics?hours=36', {
+                attempts: 2,
+                retryDelayMs: 350,
+                fallbackError: 'Failed to load Firestore metrics'
+            });
 
             const firestore = data.result?.firestore || {};
             const billing = data.result?.billing || {};

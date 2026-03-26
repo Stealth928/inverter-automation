@@ -98,5 +98,5 @@ After enabling curtailment, verify:
 ## Related Docs
 
 - [CURTAILMENT_MONITORING_GUIDE.md](CURTAILMENT_MONITORING_GUIDE.md)
-- [guides/PRODUCT_GUIDE.md](guides/PRODUCT_GUIDE.md)
+- [guides/PRODUCT_CAPABILITY_GUIDE.md](guides/PRODUCT_CAPABILITY_GUIDE.md)
 - [SETUP.md](SETUP.md)

@@ -9,10 +9,8 @@ Purpose: canonical map of the actively maintained documentation set.
   project.
 - [SETUP.md](SETUP.md): local development, provider onboarding, secrets,
   Firestore model, and deployment prerequisites.
-- [guides/PRODUCT_GUIDE.md](guides/PRODUCT_GUIDE.md): concise description of the
-  shipped product surface and key boundaries.
 - [guides/PRODUCT_CAPABILITY_GUIDE.md](guides/PRODUCT_CAPABILITY_GUIDE.md):
-  detailed product reference covering public pages, authenticated surfaces,
+  canonical product reference covering public pages, authenticated surfaces,
   integrations, admin tooling, and boundaries.
 - [guides/FRONTEND_CONTENT_GUIDE.md](guides/FRONTEND_CONTENT_GUIDE.md):
   canonical guide for public pages, directory URLs, blog slugs, sitemap, robots
@@ -33,10 +31,8 @@ Purpose: canonical map of the actively maintained documentation set.
 - [AEMO_AGGREGATION_PIPELINE.md](AEMO_AGGREGATION_PIPELINE.md): raw AEMO
   ingestion, aggregate generation, published market-insights bundle flow, and
   live snapshot refresh job.
-- [guides/TESLA_ONBOARDING.md](guides/TESLA_ONBOARDING.md): Tesla OAuth,
-  readiness, command transport, and operational setup.
-- [guides/TESLA_EV_INTEGRATION.md](guides/TESLA_EV_INTEGRATION.md): Tesla
-  product framing and user-facing messaging guidance.
+- [guides/TESLA_ONBOARDING.md](guides/TESLA_ONBOARDING.md): canonical Tesla
+  OAuth, readiness, command transport, and operational setup guide.
 - [CURTAILMENT_QUICK_START.md](CURTAILMENT_QUICK_START.md): curtailment setup
   and user/operator quick start.
 - [CURTAILMENT_MONITORING_GUIDE.md](CURTAILMENT_MONITORING_GUIDE.md): runtime
@@ -88,6 +84,16 @@ the day-to-day source of truth for shipped behavior.
 - [evidence/REFACTORING_EXECUTION_LOG_MAR26.md](evidence/REFACTORING_EXECUTION_LOG_MAR26.md)
 - [evidence/scheduler-soak/README.md](evidence/scheduler-soak/README.md)
 - [COST_ANALYSIS.md](COST_ANALYSIS.md)
+
+## Legacy Aliases
+
+These files are kept to avoid breaking older links, but their canonical
+content now lives elsewhere.
+
+- [guides/PRODUCT_GUIDE.md](guides/PRODUCT_GUIDE.md): short alias for the
+  canonical product reference.
+- [guides/TESLA_EV_INTEGRATION.md](guides/TESLA_EV_INTEGRATION.md): short alias
+  for the canonical Tesla onboarding guide.
 
 ## Hygiene Rules
 

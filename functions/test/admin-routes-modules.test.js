@@ -1332,6 +1332,14 @@ describe('admin route module', () => {
     ]);
     expect(runReport).toHaveBeenCalledTimes(4);
     expect(batchRunReports).toHaveBeenCalledTimes(1);
+    const appPageFilter = batchRunReports.mock.calls[0][0]?.requestBody?.requests?.[0]?.dimensionFilter;
+    const appPageFilterValues = Array.isArray(appPageFilter?.orGroup?.expressions)
+      ? appPageFilter.orGroup.expressions
+        .map((expression) => expression?.filter?.stringFilter?.value)
+        .filter(Boolean)
+      : [];
+    expect(appPageFilterValues).toEqual(expect.arrayContaining(['/app']));
+    expect(appPageFilterValues).not.toContain('/');
   });
 
   test('firestore-metrics returns separate project cost and firestore doc-ops estimate fields', async () => {
@@ -3350,6 +3358,118 @@ describe('admin route module', () => {
       }));
     } finally {
       jest.useRealTimers();
+    }
+  });
+
+  test('platform-stats bounds per-user lifecycle scan concurrency', async () => {
+    const originalPlatformStatsConcurrency = process.env.ADMIN_PLATFORM_STATS_SCAN_MAX_CONCURRENCY;
+    process.env.ADMIN_PLATFORM_STATS_SCAN_MAX_CONCURRENCY = '4';
+
+    try {
+      const userCount = 18;
+      const userProfiles = Object.fromEntries(
+        Array.from({ length: userCount }, (_, index) => {
+          const uid = `user-${index + 1}`;
+          return [uid, { email: `${uid}@example.com`, role: 'user', automationEnabled: false }];
+        })
+      );
+
+      const activeConfigReads = { count: 0, max: 0 };
+      const delayedConfigGet = jest.fn(async () => {
+        activeConfigReads.count += 1;
+        activeConfigReads.max = Math.max(activeConfigReads.max, activeConfigReads.count);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        activeConfigReads.count -= 1;
+        return {
+          exists: true,
+          data: () => ({
+            setupComplete: true,
+            setupCompletedAt: '2026-01-02T00:00:00.000Z'
+          })
+        };
+      });
+
+      const deps = createDeps({
+        admin: {
+          auth: jest.fn(() => ({
+            listUsers: jest.fn(async () => ({
+              users: Object.keys(userProfiles).map((uid, index) => ({
+                uid,
+                email: userProfiles[uid].email,
+                metadata: {
+                  creationTime: '2026-01-01T00:00:00.000Z',
+                  lastSignInTime: `2026-03-${String((index % 28) + 1).padStart(2, '0')}T08:00:00.000Z`
+                }
+              })),
+              pageToken: undefined
+            }))
+          }))
+        },
+        db: {
+          collection: jest.fn((name) => {
+            if (name === 'users') {
+              return {
+                get: jest.fn(async () => makeQuerySnapshot(
+                  Object.entries(userProfiles).map(([uid, profile]) => ({ id: uid, data: () => profile }))
+                )),
+                doc: jest.fn(() => ({
+                  collection: jest.fn((subName) => {
+                    if (subName === 'config') {
+                      return {
+                        doc: jest.fn(() => ({
+                          get: delayedConfigGet
+                        }))
+                      };
+                    }
+                    if (subName === 'rules') {
+                      const firstRuleSnapshot = makeQuerySnapshot([
+                        makeDocSnapshot('rule-1', { createdAt: '2026-01-03T00:00:00.000Z' })
+                      ]);
+                      const rulesQuery = {
+                        get: jest.fn(async () => firstRuleSnapshot)
+                      };
+                      rulesQuery.orderBy = jest.fn(() => rulesQuery);
+                      rulesQuery.limit = jest.fn(() => rulesQuery);
+                      return rulesQuery;
+                    }
+                    throw new Error(`Unexpected user subcollection: ${subName}`);
+                  })
+                }))
+              };
+            }
+
+            if (name === 'admin_audit') {
+              return {
+                where: jest.fn(() => ({
+                  get: jest.fn(async () => makeQuerySnapshot([]))
+                })),
+                add: jest.fn(async () => undefined)
+              };
+            }
+
+            throw new Error(`Unexpected collection lookup: ${name}`);
+          })
+        }
+      });
+      const app = buildApp(deps);
+
+      const response = await request(app)
+        .get('/api/admin/platform-stats?days=30')
+        .set('Authorization', 'Bearer token');
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body.errno).toBe(0);
+      expect(response.body.result.summary).toEqual(expect.objectContaining({
+        totalUsers: userCount,
+        configuredUsers: userCount
+      }));
+      expect(activeConfigReads.max).toBeLessThanOrEqual(4);
+    } finally {
+      if (typeof originalPlatformStatsConcurrency === 'string') {
+        process.env.ADMIN_PLATFORM_STATS_SCAN_MAX_CONCURRENCY = originalPlatformStatsConcurrency;
+      } else {
+        delete process.env.ADMIN_PLATFORM_STATS_SCAN_MAX_CONCURRENCY;
+      }
     }
   });
 

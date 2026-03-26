@@ -8,7 +8,7 @@ Current Working Branch: `MarchWorks`
 
 Historical status note (2026-03-21): This file is retained as a planning and
 execution record, not the current source of truth for live product, provider,
-or API status. For current behavior, use `docs/guides/PRODUCT_GUIDE.md`,
+or API status. For current behavior, use `docs/guides/PRODUCT_CAPABILITY_GUIDE.md`,
 `docs/API.md`, `docs/API_CONTRACT_BASELINE_MAR26.md`, and
 `docs/openapi/openapi.v1.yaml`.
 

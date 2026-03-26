@@ -209,7 +209,6 @@ Important runtime nuance:
 Related docs:
 
 - [guides/TESLA_ONBOARDING.md](guides/TESLA_ONBOARDING.md)
-- [guides/TESLA_EV_INTEGRATION.md](guides/TESLA_EV_INTEGRATION.md)
 
 ## 6. Runtime Secrets and Environment Variables
 

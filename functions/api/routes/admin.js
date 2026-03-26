@@ -1144,6 +1144,11 @@ function registerAdminRoutes(app, deps = {}) {
     8,
     50
   );
+  const ADMIN_PLATFORM_STATS_SCAN_MAX_CONCURRENCY = parseBoundedPositiveInt(
+    process.env.ADMIN_PLATFORM_STATS_SCAN_MAX_CONCURRENCY,
+    8,
+    50
+  );
   const ADMIN_USERS_SUMMARY_CACHE_TTL_MS = parseBoundedPositiveInt(
     process.env.ADMIN_USERS_SUMMARY_CACHE_TTL_MS,
     2 * 60 * 1000,
@@ -1256,12 +1261,6 @@ function registerAdminRoutes(app, deps = {}) {
       buildFilter: () => ({
         orGroup: {
           expressions: [
-            {
-              filter: {
-                fieldName: 'pagePath',
-                stringFilter: { matchType: 'EXACT', value: '/' }
-              }
-            },
             {
               filter: {
                 fieldName: 'pagePath',
@@ -3428,11 +3427,45 @@ app.get('/api/admin/platform-stats', authenticateUser, requireAdmin, async (req,
 
     const allUids = new Set([...profileByUid.keys(), ...authByUid.keys()]);
 
-    const users = await Promise.all(Array.from(allUids).map((uid) => loadUserLifecycleSnapshot(uid, {
-      profile: profileByUid.get(uid) || {},
-      profileExists: profileByUid.has(uid),
-      authUser: authByUid.get(uid) || null
-    })));
+    let lifecycleSnapshotFailures = 0;
+    const users = await mapWithConcurrency(
+      Array.from(allUids),
+      ADMIN_PLATFORM_STATS_SCAN_MAX_CONCURRENCY,
+      async (uid) => {
+        const profile = profileByUid.get(uid) || {};
+        const authUser = authByUid.get(uid) || null;
+
+        try {
+          return await loadUserLifecycleSnapshot(uid, {
+            profile,
+            profileExists: profileByUid.has(uid),
+            authUser
+          });
+        } catch (snapshotErr) {
+          lifecycleSnapshotFailures += 1;
+          console.warn(`[Admin] platform-stats: lifecycle snapshot failed for uid=${uid}:`, snapshotErr?.message || snapshotErr);
+          const authMetadata = authUser && authUser.metadata ? authUser.metadata : null;
+          const email = profile.email || (authUser?.email || '');
+          return {
+            uid,
+            email,
+            role: inferUserRole(profile.role, email),
+            automationEnabled: !!profile.automationEnabled,
+            joinedAtMs: toMs(authMetadata?.creationTime) || toMs(profile.createdAt),
+            lastSignInMs: toMs(authMetadata?.lastSignInTime) || null,
+            configured: false,
+            configuredAtMs: null,
+            hasRules: false,
+            firstRuleAtMs: null
+          };
+        }
+      }
+    );
+    if (lifecycleSnapshotFailures > 0) {
+      warnings.push(
+        `${lifecycleSnapshotFailures} user lifecycle snapshot${lifecycleSnapshotFailures === 1 ? '' : 's'} failed to load; trend values may be understated.`
+      );
+    }
 
     const deletionSeries = [];
     const deletedUserSnapshots = [];

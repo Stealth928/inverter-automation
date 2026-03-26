@@ -13,6 +13,20 @@ product. Use it when you need an accurate answer to:
 - how provider support differs across integrations
 - what product boundaries must be stated clearly
 
+For a short legacy summary alias, see
+[PRODUCT_GUIDE.md](PRODUCT_GUIDE.md). This file is the canonical product
+reference.
+
+## At a Glance
+
+- Browser-based energy automation platform with PWA support
+- Public surface includes the landing page, public battery tools, market
+  insights preview, blog, and policy pages
+- Authenticated surface includes the dashboard, control, history, ROI, rules
+  library, full market workspace, settings, admin, and Automation Lab
+- Core systems include rule-based automation, pricing integrations, provider
+  adapters, Tesla EV, and solar curtailment
+
 ## Product Definition
 
 SoCrates is a browser-based energy automation platform for residential solar,

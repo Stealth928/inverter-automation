@@ -366,9 +366,59 @@ test.describe('Admin Behaviour Tab', () => {
           customEventTypes: 2
         },
         pageSeries: [
-          { date: '2026-03-18', activeUsers: 7, pageViews: 44, eventCount: 65 },
-          { date: '2026-03-19', activeUsers: 11, pageViews: 52, eventCount: 81 }
+          { date: '2026-03-08', activeUsers: 5, pageViews: 10, eventCount: 12 },
+          { date: '2026-03-09', activeUsers: 5, pageViews: 10, eventCount: 12 },
+          { date: '2026-03-10', activeUsers: 5, pageViews: 10, eventCount: 12 },
+          { date: '2026-03-11', activeUsers: 5, pageViews: 10, eventCount: 12 },
+          { date: '2026-03-12', activeUsers: 5, pageViews: 10, eventCount: 12 },
+          { date: '2026-03-13', activeUsers: 5, pageViews: 10, eventCount: 12 },
+          { date: '2026-03-14', activeUsers: 5, pageViews: 10, eventCount: 12 },
+          { date: '2026-03-15', activeUsers: 8, pageViews: 16, eventCount: 16 },
+          { date: '2026-03-16', activeUsers: 8, pageViews: 16, eventCount: 16 },
+          { date: '2026-03-17', activeUsers: 8, pageViews: 16, eventCount: 16 },
+          { date: '2026-03-18', activeUsers: 8, pageViews: 16, eventCount: 16 },
+          { date: '2026-03-19', activeUsers: 8, pageViews: 16, eventCount: 16 },
+          { date: '2026-03-20', activeUsers: 8, pageViews: 16, eventCount: 16 },
+          { date: '2026-03-21', activeUsers: 8, pageViews: 16, eventCount: 16 }
         ],
+        mainPageOptions: [
+          { key: 'app', label: 'Dashboard' },
+          { key: 'settings', label: 'Settings' }
+        ],
+        pageSeriesByKey: {
+          app: [
+            { date: '2026-03-08', activeUsers: 4, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-09', activeUsers: 4, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-10', activeUsers: 4, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-11', activeUsers: 4, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-12', activeUsers: 4, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-13', activeUsers: 4, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-14', activeUsers: 4, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-15', activeUsers: 6, pageViews: 10, eventCount: 0 },
+            { date: '2026-03-16', activeUsers: 6, pageViews: 10, eventCount: 0 },
+            { date: '2026-03-17', activeUsers: 6, pageViews: 10, eventCount: 0 },
+            { date: '2026-03-18', activeUsers: 6, pageViews: 10, eventCount: 0 },
+            { date: '2026-03-19', activeUsers: 6, pageViews: 10, eventCount: 0 },
+            { date: '2026-03-20', activeUsers: 6, pageViews: 10, eventCount: 0 },
+            { date: '2026-03-21', activeUsers: 6, pageViews: 10, eventCount: 0 }
+          ],
+          settings: [
+            { date: '2026-03-08', activeUsers: 2, pageViews: 4, eventCount: 0 },
+            { date: '2026-03-09', activeUsers: 2, pageViews: 4, eventCount: 0 },
+            { date: '2026-03-10', activeUsers: 2, pageViews: 4, eventCount: 0 },
+            { date: '2026-03-11', activeUsers: 2, pageViews: 4, eventCount: 0 },
+            { date: '2026-03-12', activeUsers: 2, pageViews: 4, eventCount: 0 },
+            { date: '2026-03-13', activeUsers: 2, pageViews: 4, eventCount: 0 },
+            { date: '2026-03-14', activeUsers: 2, pageViews: 4, eventCount: 0 },
+            { date: '2026-03-15', activeUsers: 3, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-16', activeUsers: 3, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-17', activeUsers: 3, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-18', activeUsers: 3, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-19', activeUsers: 3, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-20', activeUsers: 3, pageViews: 6, eventCount: 0 },
+            { date: '2026-03-21', activeUsers: 3, pageViews: 6, eventCount: 0 }
+          ]
+        },
         topPages: [
           { path: '/app.html', title: 'Overview', pageViews: 81, activeUsers: 14, avgEngagementSeconds: 43.6 },
           { path: '/settings.html', title: 'Settings', pageViews: 32, activeUsers: 8, avgEngagementSeconds: 26.8 }
@@ -388,6 +438,12 @@ test.describe('Admin Behaviour Tab', () => {
     await expect(page.locator('#behaviorActiveUsers')).toHaveText('18');
     await expect(page.locator('#behaviorPageViews')).toHaveText('146');
     await expect(page.locator('#behaviorEvents')).toHaveText('221');
+    await expect(page.locator('#behaviorEventsPerUser')).toHaveText('12.3');
+    await expect(page.locator('#behaviorTrackedPages')).toHaveText('6');
+    await expect(page.locator('#behaviorCustomEventTypes')).toHaveText('2');
+    await expect(page.locator('#behaviorSignalMomentum')).toContainText(/Users \+60\.0%/i);
+    await expect(page.locator('#behaviorSignalRepeatPressure')).toContainText(/8\.1 views\/user/i);
+    await expect(page.locator('#behaviorSignalPageMix')).toContainText(/Dashboard is 62\.5%/i);
     await expect(page.locator('#behaviorTopPagesBody')).toContainText('/app.html');
     await expect(page.locator('#behaviorTopEventsBody')).toContainText('Settings Save All');
     await expect(page.locator('#behaviorMetricsUpdated')).toContainText(/GA4 property 123456789/i);

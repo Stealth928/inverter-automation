@@ -48,7 +48,7 @@ High-signal entry points:
 | [docs/AUTOMATION.md](docs/AUTOMATION.md) | Rule model, supported conditions/actions, provider behavior |
 | [docs/BACKGROUND_AUTOMATION.md](docs/BACKGROUND_AUTOMATION.md) | Scheduled jobs, cadence, locks, idempotency, metrics, alerting |
 | [docs/AEMO_AGGREGATION_PIPELINE.md](docs/AEMO_AGGREGATION_PIPELINE.md) | Raw AEMO ingest, aggregate generation, published bundle flow, live snapshot job |
-| [docs/guides/PRODUCT_GUIDE.md](docs/guides/PRODUCT_GUIDE.md) | Concise product surface and boundaries |
+| [docs/guides/PRODUCT_CAPABILITY_GUIDE.md](docs/guides/PRODUCT_CAPABILITY_GUIDE.md) | Canonical product reference covering the shipped surface and boundaries |
 | [docs/guides/TESTING_GUIDE.md](docs/guides/TESTING_GUIDE.md) | Backend, frontend, contract, and release test tracks |
 | [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | Practical production-safe release workflow |
 

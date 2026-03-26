@@ -1659,6 +1659,50 @@
             padding: 8px 10px;
             min-width: 180px;
         }
+        .behavior-window-filter {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            padding: 3px 8px;
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+        }
+        .behavior-window-filter select {
+            background: transparent;
+            border: 0;
+            color: var(--text-primary);
+            font-size: 11px;
+            outline: none;
+            cursor: pointer;
+        }
+        .behavior-signals-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .behavior-signal-card {
+            background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-lg);
+            padding: 10px 12px;
+        }
+        .behavior-signal-card .label {
+            margin: 0 0 6px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-secondary);
+        }
+        .behavior-signal-card .value {
+            margin: 0;
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text-primary);
+        }
         .behavior-setup {
             display: none;
             margin-top: 16px;
@@ -1708,6 +1752,9 @@
         }
         @media (max-width: 900px) {
             .behavior-grid {
+                grid-template-columns: 1fr;
+            }
+            .behavior-signals-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -2691,7 +2738,17 @@
         <div class="card">
             <div class="card-header">
                 <div class="card-title"><span class="icon">🧭</span> Behaviour Analytics</div>
-                <button class="action-btn" onclick="loadBehaviorMetrics({ force: true })" id="refreshBehaviorBtn">Refresh</button>
+                <div class="actions-cell">
+                    <label class="behavior-window-filter" for="behaviorWindowDays">
+                        <span>Window</span>
+                        <select id="behaviorWindowDays" onchange="setBehaviorWindowDays(this.value)">
+                            <option value="7">7d</option>
+                            <option value="30" selected>30d</option>
+                            <option value="90">90d</option>
+                        </select>
+                    </label>
+                    <button class="action-btn" onclick="loadBehaviorMetrics({ force: true })" id="refreshBehaviorBtn">Refresh</button>
+                </div>
             </div>
             <div class="card-body">
                 <div class="firestore-updated" id="behaviorMetricsUpdated">Loading behaviour analytics...</div>
@@ -2713,13 +2770,40 @@
                             <div class="label">Avg Engagement / User</div>
                             <div class="value" id="behaviorAvgEngagement">-</div>
                         </div>
+                        <div class="kpi-item">
+                            <div class="label">Actions / User</div>
+                            <div class="value" id="behaviorEventsPerUser">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Tracked Pages</div>
+                            <div class="value" id="behaviorTrackedPages">-</div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="label">Action Types</div>
+                            <div class="value" id="behaviorCustomEventTypes">-</div>
+                        </div>
                     </div>
                 </div>
+                <div class="behavior-signals-grid">
+                    <article class="behavior-signal-card">
+                        <h4 class="label">7d Momentum</h4>
+                        <p class="value" id="behaviorSignalMomentum">-</p>
+                    </article>
+                    <article class="behavior-signal-card">
+                        <h4 class="label">Repeat Pressure</h4>
+                        <p class="value" id="behaviorSignalRepeatPressure">-</p>
+                    </article>
+                    <article class="behavior-signal-card">
+                        <h4 class="label">Page Mix</h4>
+                        <p class="value" id="behaviorSignalPageMix">-</p>
+                    </article>
+                </div>
+                <div class="behavior-empty" id="behaviorScopeHint" style="padding:10px 0 0;">Page filter applies to the Daily Activity chart only. KPI cards and tables remain unfiltered.</div>
                 <div id="behaviorSetup" class="behavior-setup"></div>
                 <div class="behavior-grid">
                     <section class="behavior-panel">
                         <h3>Daily Activity</h3>
-                        <p>Page views and active users over the selected GA4 window.</p>
+                        <p>Page views and active users over the selected GA4 window. Use the page filter to isolate the chart trend.</p>
                         <div class="behavior-chart-toolbar">
                             <div class="behavior-empty" id="behaviorPageFilterSummary" style="padding:0;">Showing all tracked product pages.</div>
                             <label class="behavior-chart-filter" for="behaviorPageFilter">

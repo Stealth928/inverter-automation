@@ -2468,6 +2468,19 @@
                 : 'Force refresh Amber prices from API (bypasses cache)';
         }
 
+        function updatePricingHeaderNote() {
+            const note = document.getElementById('pricingHeaderNote');
+            if (!note) return;
+
+            if (getPricingProviderSafe() === 'aemo') {
+                note.textContent = 'AEMO reference only. Your retail import and feed-in rates may differ.';
+                note.style.display = 'block';
+            } else {
+                note.textContent = '';
+                note.style.display = 'none';
+            }
+        }
+
         function refreshPricingCard(mode = 'manual') {
             return getAmberCurrent({ mode });
         }
@@ -5868,6 +5881,7 @@
             }
 
             updatePricingRefreshControl();
+            updatePricingHeaderNote();
         }
 
         function maybeEnableAutoLocalMockFromConfig(configResult) {
