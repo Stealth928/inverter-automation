@@ -3,231 +3,25 @@
 
 const fs = require('fs');
 const path = require('path');
+const {
+  getLiveBackendRouteInventory,
+  getRepoRoot,
+  normalizeEndpointPath,
+  pathsEquivalent,
+  pathsMatch,
+  readFileOrThrow,
+  toRelPath,
+  walkFiles
+} = require('./lib/backend-route-inventory');
 
 const args = new Set(process.argv.slice(2));
 const shouldWriteDoc = args.has('--write-doc') || args.has('--write') || args.has('--update-docs');
 const silent = args.has('--silent');
 
-function getRepoRoot() {
-  let root = process.cwd();
-  if (path.basename(root) === 'functions') {
-    root = path.dirname(root);
-  }
-  return root;
-}
-
 const repoRoot = getRepoRoot();
-const backendFile = path.join(repoRoot, 'functions', 'index.js');
-const backendRoutesDir = path.join(repoRoot, 'functions', 'api', 'routes');
 const apiClientFile = path.join(repoRoot, 'frontend', 'js', 'api-client.js');
 const frontendDir = path.join(repoRoot, 'frontend');
 const outputDocFile = path.join(repoRoot, 'docs', 'API_CONTRACT_BASELINE_MAR26.md');
-
-function toPosix(filePath) {
-  return filePath.replace(/\\/g, '/');
-}
-
-function toRelPath(filePath) {
-  return toPosix(path.relative(repoRoot, filePath));
-}
-
-function readFileOrThrow(filePath) {
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`Required file not found: ${filePath}`);
-  }
-  return fs.readFileSync(filePath, 'utf8');
-}
-
-function normalizeEndpointPath(raw) {
-  if (!raw || typeof raw !== 'string') {
-    return '';
-  }
-
-  let value = raw.trim();
-  if (!value) {
-    return '';
-  }
-
-  const apiIndex = value.indexOf('/api/');
-  if (apiIndex === -1) {
-    return '';
-  }
-  value = value.slice(apiIndex);
-
-  value = value.split('#')[0];
-  value = value.split('?')[0];
-  value = value.replace(/\$\{[^}]+\}/g, ':param');
-  value = value.replace(/\/+/g, '/');
-  if (value.length > 1 && value.endsWith('/')) {
-    value = value.slice(0, -1);
-  }
-
-  return value;
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function compilePathPattern(patternPath) {
-  const normalized = normalizeEndpointPath(patternPath);
-  if (!normalized) {
-    return null;
-  }
-
-  const segments = normalized.split('/').filter(Boolean);
-  const regexSegments = segments.map((segment) => {
-    if (segment.startsWith(':')) {
-      return '[^/]+';
-    }
-    return escapeRegExp(segment);
-  });
-
-  return new RegExp(`^/${regexSegments.join('/')}$`);
-}
-
-function pathsMatch(patternPath, actualPath) {
-  const regex = compilePathPattern(patternPath);
-  const normalizedActual = normalizeEndpointPath(actualPath);
-  if (!regex || !normalizedActual) {
-    return false;
-  }
-  return regex.test(normalizedActual);
-}
-
-function pathsEquivalent(pathA, pathB) {
-  return pathsMatch(pathA, pathB) || pathsMatch(pathB, pathA);
-}
-
-function lineNumberFromIndex(content, index) {
-  return content.slice(0, index).split(/\r?\n/).length;
-}
-
-function parseBackendRoutesFromFile(content, sourceFile) {
-  const lines = content.split(/\r?\n/);
-  const routeLinePattern = /^\s*app\.(get|post|put|delete|patch)\(\s*['"]([^'"]+)['"]\s*,\s*(.*)$/;
-  const routeStartPattern = /^\s*app\.(get|post|put|delete|patch)\(\s*$/;
-  const aliasRouteLinePattern = /^\s*register(Get|Post|Put|Delete|Patch)Aliases\(\s*app\s*,\s*\[([^\]]+)\]\s*,\s*(.*)$/;
-  const pathLiteralPattern = /['"]([^'"]+)['"]/g;
-  const routes = [];
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    const match = line.match(routeLinePattern);
-    if (match) {
-      const method = match[1].toUpperCase();
-      const routePath = normalizeEndpointPath(match[2]);
-      if (!routePath) {
-        continue;
-      }
-
-      routes.push({
-        method,
-        path: routePath,
-        middlewareSegment: match[3] || '',
-        line: i + 1,
-        lineIndex: i,
-      });
-      continue;
-    }
-
-    const routeStartMatch = line.match(routeStartPattern);
-    if (routeStartMatch) {
-      const method = routeStartMatch[1].toUpperCase();
-      let routePath = '';
-      let middlewareSegment = '';
-
-      for (let j = i + 1; j < Math.min(lines.length, i + 8); j += 1) {
-        const candidateLine = lines[j];
-        const pathMatch = candidateLine.match(/['"]([^'"]+)['"]/);
-        if (!pathMatch) {
-          continue;
-        }
-        routePath = normalizeEndpointPath(pathMatch[1]);
-        middlewareSegment = lines.slice(j + 1, Math.min(lines.length, j + 4)).join(' ');
-        break;
-      }
-
-      if (!routePath) {
-        continue;
-      }
-
-      routes.push({
-        method,
-        path: routePath,
-        middlewareSegment,
-        line: i + 1,
-        lineIndex: i,
-      });
-      continue;
-    }
-
-    const aliasMatch = line.match(aliasRouteLinePattern);
-    if (!aliasMatch) {
-      continue;
-    }
-
-    const method = aliasMatch[1].toUpperCase();
-    const middlewareSegment = aliasMatch[3] || '';
-    pathLiteralPattern.lastIndex = 0;
-    let pathMatch;
-    while ((pathMatch = pathLiteralPattern.exec(aliasMatch[2])) !== null) {
-      const routePath = normalizeEndpointPath(pathMatch[1]);
-      if (!routePath) {
-        continue;
-      }
-      routes.push({
-        method,
-        path: routePath,
-        middlewareSegment,
-        line: i + 1,
-        lineIndex: i,
-      });
-    }
-  }
-
-  return routes.map((route, idx) => {
-    const nextLineIndex = idx + 1 < routes.length ? routes[idx + 1].lineIndex : lines.length;
-    const block = lines.slice(route.lineIndex, nextLineIndex).join('\n');
-
-    let authRequirement = 'public';
-    if (route.middlewareSegment.includes('requireAdmin')) {
-      authRequirement = 'admin';
-    } else if (route.middlewareSegment.includes('authenticateUser')) {
-      authRequirement = 'authenticated';
-    } else if (/tryAttachUser\s*\(\s*req\s*\)/.test(block)) {
-      authRequirement = 'optional';
-    }
-
-    return {
-      method: route.method,
-      path: route.path,
-      authRequirement,
-      handlerLocation: `${sourceFile}:${route.line}`,
-      lineIndex: route.lineIndex,
-    };
-  });
-}
-
-function getBackendRouteFiles() {
-  const files = [backendFile];
-  if (fs.existsSync(backendRoutesDir)) {
-    const routeFiles = walkFiles(backendRoutesDir, (filePath) => filePath.toLowerCase().endsWith('.js'))
-      .sort();
-    files.push(...routeFiles);
-  }
-  return files;
-}
-
-function parseBackendRoutes(routeFiles) {
-  const routes = [];
-  routeFiles.forEach((filePath) => {
-    const content = readFileOrThrow(filePath);
-    const source = toRelPath(filePath);
-    routes.push(...parseBackendRoutesFromFile(content, source));
-  });
-  return routes;
-}
 
 function parseApiClientEndpoints(content) {
   const lines = content.split(/\r?\n/);
@@ -248,24 +42,6 @@ function parseApiClientEndpoints(content) {
         path: endpointPath,
         source: `frontend/js/api-client.js:${i + 1}`,
       });
-    }
-  }
-
-  return results;
-}
-
-function walkFiles(dirPath, predicate) {
-  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-  const results = [];
-
-  for (const entry of entries) {
-    const fullPath = path.join(dirPath, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...walkFiles(fullPath, predicate));
-      continue;
-    }
-    if (predicate(fullPath)) {
-      results.push(fullPath);
     }
   }
 
@@ -295,7 +71,7 @@ function parseInlineHtmlEndpoints(frontendPath) {
   const results = [];
 
   for (const filePath of htmlFiles) {
-    const relPath = toRelPath(filePath);
+    const relPath = toRelPath(repoRoot, filePath);
     const content = fs.readFileSync(filePath, 'utf8');
     const lines = content.split(/\r?\n/);
 
@@ -415,6 +191,8 @@ function generateMarkdownReport(data) {
   lines.push('## Summary');
   lines.push('');
   lines.push(`- Backend routes discovered: **${data.routes.length}**`);
+  lines.push(`- Mounted route modules scanned: **${data.mountedRouteModules.length}**`);
+  lines.push(`- Unmounted route modules excluded: **${data.unmountedRouteModules.length}**`);
   lines.push(`- APIClient endpoint-method entries: **${data.apiClientEntries.length}**`);
   lines.push(`- Inline HTML endpoint paths discovered: **${data.inlinePathEntries.length}**`);
   lines.push(`- Inline HTML endpoint paths missing from APIClient: **${data.inlineMissing.length}**`);
@@ -455,7 +233,9 @@ function generateMarkdownReport(data) {
   lines.push('## Notes');
   lines.push('');
   lines.push('- Consumer classification priority: `APIClient` -> `inline` -> `server-only`.');
-  lines.push('- `Auth Requirement = optional` means no auth middleware on route declaration, but `tryAttachUser(req)` is used in the handler.');
+  lines.push('- `Auth Requirement = optional` means the route is mounted before the global `/api` auth middleware and calls `tryAttachUser(req)` inside the handler.');
+  lines.push('- Routes mounted after `app.use(\'/api\', authenticateUser)` inherit `authenticated` even when their route modules omit explicit middleware.');
+  lines.push(`- Unmounted route modules are intentionally excluded from this report: ${data.unmountedRouteModules.map((entry) => `\`${entry.source}\``).join(', ') || 'none'}.`);
   lines.push('- This file is generated and should be refreshed whenever API routes or frontend endpoint calls change.');
   lines.push('');
 
@@ -463,10 +243,10 @@ function generateMarkdownReport(data) {
 }
 
 function main() {
-  const routeFiles = getBackendRouteFiles();
   const apiClientContent = readFileOrThrow(apiClientFile);
+  const backendInventory = getLiveBackendRouteInventory(repoRoot);
 
-  const backendRoutes = parseBackendRoutes(routeFiles);
+  const backendRoutes = backendInventory.routes;
   const apiClientEntries = dedupeByMethodAndPath(parseApiClientEndpoints(apiClientContent));
   const inlineHtmlEntries = parseInlineHtmlEndpoints(frontendDir);
   const inlinePathEntries = groupByPath(inlineHtmlEntries);
@@ -541,6 +321,8 @@ function main() {
   if (shouldWriteDoc) {
     const markdown = generateMarkdownReport({
       routes: routesWithConsumer,
+      mountedRouteModules: backendInventory.mountedRouteModules,
+      unmountedRouteModules: backendInventory.unmountedRouteModules,
       apiClientEntries,
       inlinePathEntries,
       inlineMissing,
@@ -548,7 +330,7 @@ function main() {
     });
     fs.writeFileSync(outputDocFile, markdown, 'utf8');
     if (!silent) {
-      console.log(`[API Contract] Wrote report: ${toRelPath(outputDocFile)}`);
+      console.log(`[API Contract] Wrote report: ${toRelPath(repoRoot, outputDocFile)}`);
     }
   }
 

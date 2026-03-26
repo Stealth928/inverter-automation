@@ -360,7 +360,8 @@
                     
                     // Fetch all prices for the date range with 5-minute resolution (not actualOnly to get recent data)
                     const pricesResp = await apiClient.getPricingHistoricalPrices(pricingContext.provider, siteId, fetchStartDate, fetchEndDate, 5, false);
-                    if (pricesResp && pricesResp.errno === 0 && pricesResp.result) {                        
+                    if (pricesResp && pricesResp.errno === 0 && pricesResp.result) {
+                        const applyAmberSecondOffset = pricingContext.provider === 'amber';
                         const nowMs = Date.now();
                         // Build map of prices indexed by EPOCH MILLISECONDS (avoids timezone issues)
                         for (const pricePoint of pricesResp.result) {
@@ -369,9 +370,10 @@
                             if (pricePoint.type === 'ForecastInterval' || startMs > nowMs) {
                                 continue;
                             }
-                            // Amber API adds +1 second to timestamps (14:00:01 instead of 14:00:00)
-                            // Subtract 1 second so it aligns with our 5-minute interval rounding
-                            const priceEpochMs = startMs - 1000;
+                            // Amber historical rows sometimes land one second after the interval boundary
+                            // (for example 14:00:01 instead of 14:00:00). Keep that compatibility shim
+                            // for Amber only; AEMO rows already align to exact 5-minute boundaries.
+                            const priceEpochMs = applyAmberSecondOffset ? (startMs - 1000) : startMs;
                             const channelType = pricePoint.channelType;
                             
                             // Amber API returns prices in cents/kWh already (e.g., 105.87 = 105.87¢/kWh)

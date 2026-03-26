@@ -3264,12 +3264,17 @@
             ? summary.telemetryPauseReasons
             : {};
         const telemetryMissingTimestampCount = Number(telemetryPauseReasons.stale_telemetry_missing_timestamp || 0);
+        const telemetryStaleCount = Number(telemetryPauseReasons.stale_telemetry || 0);
+        const telemetryStaleRatePct = cyclesRun > 0
+            ? Number(((telemetryStaleCount / cyclesRun) * 100).toFixed(2))
+            : 0;
         const thresholds = options?.thresholds && typeof options.thresholds === 'object'
             ? options.thresholds
             : {};
         const queueLagTargetMs = Number(thresholds.maxQueueLagMs || 120000);
         const cycleDurationTargetMs = Number(thresholds.maxCycleDurationMs || 20000);
         const telemetryAgeTargetMs = Number(thresholds.maxTelemetryAgeMs || (30 * 60 * 1000));
+        const telemetryStaleRateTargetPct = 1.0;
         const p99TargetMs = Number(thresholds.p99CycleDurationMs || 10000);
         const tailWindowMinutes = Math.max(1, Number(thresholds.tailWindowMinutes || 15));
         const tailInfo = options?.tailLatency && typeof options.tailLatency === 'object'
@@ -3316,15 +3321,15 @@
             },
             {
                 id: `${safePrefix}SloTelemetryAge`,
-                value: maxTelemetryAgeMs,
-                target: telemetryAgeTargetMs,
-                display: telemetryMissingTimestampCount > 0
-                    ? `${formatDurationMs(maxTelemetryAgeMs)} max · ${formatCompactNumber(telemetryMissingTimestampCount)} missing timestamp`
+                value: telemetryStaleRatePct,
+                target: telemetryStaleRateTargetPct,
+                display: telemetryStaleCount > 0
+                    ? `${telemetryStaleRatePct.toFixed(2)}% stale · ${formatDurationMs(maxTelemetryAgeMs)} max`
                     : `${formatDurationMs(maxTelemetryAgeMs)} max`,
-                targetDisplay: `Target max <= ${formatDurationMs(telemetryAgeTargetMs)}`,
+                targetDisplay: `Target stale rate <= ${telemetryStaleRateTargetPct.toFixed(2)}% - diagnostic max <= ${formatDurationMs(telemetryAgeTargetMs)}`,
                 meta: telemetryMissingTimestampCount > 0
-                    ? `Derived from runs with parseable source timestamps. Missing timestamp cycles: ${formatCompactNumber(telemetryMissingTimestampCount)} · Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
-                    : `Derived from runs with parseable source timestamps. Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
+                    ? `Stale timestamped cycles ${formatCompactNumber(telemetryStaleCount)}/${formatCompactNumber(summary?.cyclesRun || 0)} executed. Missing timestamp cycles: ${formatCompactNumber(telemetryMissingTimestampCount)} · Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
+                    : `Stale timestamped cycles ${formatCompactNumber(telemetryStaleCount)}/${formatCompactNumber(summary?.cyclesRun || 0)} executed. Runs ${formatCompactNumber(summary?.runs || 0)} · Cycles ${formatCompactNumber(summary?.cyclesRun || 0)}`
             },
             {
                 id: `${safePrefix}SloCycleTailP99`,

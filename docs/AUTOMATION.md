@@ -1,697 +1,274 @@
-# Automation Rules Engine Documentation
+# Automation Rules Engine
+
+Last updated: 2026-03-26
 
 ## Overview
 
-The automation engine runs every minute via Cloud Scheduler, evaluating
-user-defined rules against live inverter/provider data, Amber electricity
-prices, and weather forecasts. Supported inverter paths include FoxESS,
-Sungrow, SigenEnergy, and AlphaESS, although FoxESS remains the richest
-diagnostics and curtailment path.
+The automation engine evaluates user rules against live or cached telemetry,
+pricing, weather, and EV state, then applies provider-aware scheduler actions
+when a rule wins.
 
-For the current provider support matrix and maturity notes, use
-`docs/guides/PRODUCT_GUIDE.md` alongside this document.
+Core properties of the shipped runtime:
 
----
+- default cycle cadence is 60 seconds
+- per-user interval overrides are supported
+- rules are sorted by numeric priority
+- lower numeric priority wins
+- rule evaluation is AND-only
+- the first matching rule wins a cycle
+- an active higher-priority rule can block or preempt a newly matching
+  lower-priority rule
+- quick control pauses normal automation while active
 
-## Architecture
+Automation can be triggered by:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Cloud Scheduler (Every 1 min)                │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   runAutomation() Function                       │
-│  For each user with automation enabled:                         │
-│    1. Fetch live data (Amber, Weather, Inverter)                │
-│    2. Get user's rules (sorted by priority)                     │
-│    3. Evaluate each rule's conditions                           │
-│    4. If conditions met → Apply action (set scheduler segment)  │
-│    5. Log result to automation history                          │
-└─────────────────────────────────────────────────────────────────┘
-```
+- `POST /api/automation/cycle`
+- the scheduled `runAutomation` Cloud Function
 
----
+## Rule Storage and State
 
-## Critical Fix: Hour Normalization (December 10, 2025)
+Important Firestore paths:
 
-⚠️ **Issue**: Time values at midnight (00:00-00:59) were being sent to FoxESS API as hour `24` instead of `00`, causing API error 40257 ("Parameters do not meet expectations") and segment creation failure.
+- `users/{uid}/rules/{ruleId}`
+- `users/{uid}/automation/state`
+- `users/{uid}/history/{docId}`
+- `users/{uid}/automationAudit/{docId}`
+- `users/{uid}/quickControl/state`
+- `users/{uid}/curtailment/state`
 
-**Root Cause**: Node.js `toLocaleString('en-AU', {hour12: false})` returns `24:xx` for midnight in Google Cloud Functions environment, while local Node.js returns `00:xx`. This environment-specific ICU library behavior broke segment scheduling.
+## Rule Shape
 
-**Solution Implemented**: Added hour normalization in `getSydneyTime()` function:
-```javascript
-const parsedHour = parseInt(hour, 10);
-const normalizedHour = parsedHour === 24 ? 0 : parsedHour;
-```
+The current rule model is stored as JSON-like documents and includes:
 
-**Impact**: Segment creation now succeeds 100% of the time. If you see timestamps in logs or API responses with hour values, they are now guaranteed to be in the valid 0-23 range.
-
----
-
-## Rule Structure
-
-Each automation rule has the following structure:
-
-```javascript
+```json
 {
-  name: "High Feed-in Export",        // Unique rule identifier
-  enabled: true,                       // Whether rule is active
-  priority: 1,                         // Lower = higher priority (1-10)
-  cooldownMinutes: 5,                  // Minimum time between triggers
-  
-  conditions: {
-    feedInPrice: { enabled, operator, value, value2 },
-    buyPrice: { enabled, operator, value, value2 },
-    soc: { enabled, operator, value, value2 },
-    temperature: { enabled, type, operator, value },
-    solarRadiation: { enabled, checkType, operator, value, lookAhead, lookAheadUnit },
-    cloudCover: { enabled, checkType, operator, value, lookAhead, lookAheadUnit },
-    forecastPrice: { enabled, type, checkType, operator, value, lookAhead, lookAheadUnit },
-    time: { enabled, startTime, endTime }
+  "name": "High Export Event",
+  "enabled": true,
+  "priority": 1,
+  "cooldownMinutes": 5,
+  "conditions": {
+    "soc": { "enabled": true, "operator": ">=", "value": 80 },
+    "price": { "enabled": true, "type": "feedIn", "operator": ">", "value": 25 },
+    "time": { "enabled": true, "startTime": "16:00", "endTime": "20:00", "days": [1, 2, 3, 4, 5] }
   },
-  
-  action: {
-    workMode: "ForceDischarge",        // SelfUse, ForceDischarge, ForceCharge, Feedin, Backup
-    durationMinutes: 30,               // How long the scheduler segment runs
-    fdPwr: 5000,                       // Power setpoint (required for ForceCharge/ForceDischarge/Feedin)
-    fdSoc: 10,                         // Force discharge minimum SoC
-    minSocOnGrid: 10,                  // Minimum SoC on grid
-    maxSoc: 100                        // Maximum SoC limit
+  "action": {
+    "workMode": "ForceDischarge",
+    "durationMinutes": 30,
+    "fdPwr": 5000,
+    "fdSoc": 20,
+    "minSocOnGrid": 20,
+    "maxSoc": 90
   }
 }
 ```
 
----
-
-## Condition Types
-
-### 1. Feed-in Price (`feedInPrice`)
-Triggers based on the current Amber feed-in (export) price.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Whether this condition is active |
-| `operator` | string | `>`, `>=`, `<`, `<=`, `between` |
-| `value` | number | Price threshold in ¢/kWh |
-| `value2` | number | Upper bound (only for `between`) |
-
-**Example**: Export battery when feed-in price > 30¢/kWh
-```javascript
-feedInPrice: { enabled: true, operator: '>', value: 30 }
-```
-
-### 2. Buy Price (`buyPrice`)
-Triggers based on the current Amber buy (import) price.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Whether this condition is active |
-| `operator` | string | `>`, `>=`, `<`, `<=`, `between` |
-| `value` | number | Price threshold in ¢/kWh |
-| `value2` | number | Upper bound (only for `between`) |
-
-**Example**: Charge battery when buy price < 10¢/kWh
-```javascript
-buyPrice: { enabled: true, operator: '<', value: 10 }
-```
-
-### 3. Battery State of Charge (`soc`)
-Triggers based on current battery SoC percentage.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Whether this condition is active |
-| `operator` | string | `>`, `>=`, `<`, `<=`, `between` |
-| `value` | number | SoC percentage (0-100) |
-| `value2` | number | Upper bound (only for `between`) |
-
-**Example**: Only discharge when battery > 80%
-```javascript
-soc: { enabled: true, operator: '>', value: 80 }
-```
-
-### 4. Temperature (`temperature`)
-Triggers based on battery, ambient, or inverter temperature.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Whether this condition is active |
-| `type` | string | `battery`, `ambient`, `inverter` |
-| `operator` | string | `>`, `>=`, `<`, `<=` |
-| `value` | number | Temperature in °C |
-
-**Example**: Reduce charging if battery > 40°C
-```javascript
-temperature: { enabled: true, type: 'battery', operator: '>', value: 40 }
-```
-
-### 5. Solar Radiation (`solarRadiation`)
-Triggers based on forecast shortwave radiation (W/m²) from Open-Meteo API. This is more accurate than simple weather codes for predicting solar energy availability.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Whether this condition is active |
-| `checkType` | string | `'average'`, `'min'`, `'max'` |
-| `operator` | string | `>`, `>=`, `<`, `<=` |
-| `value` | number | Radiation threshold in W/m² |
-| `lookAhead` | number | Amount of time to look ahead |
-| `lookAheadUnit` | string | `'hours'` (1-168) or `'days'` (1-7) |
-
-**Radiation Values**:
-- 0-100 W/m²: Heavily overcast, minimal solar
-- 100-300 W/m²: Partly cloudy, moderate solar
-- 300-600 W/m²: Mostly clear, good solar
-- 600+ W/m²: Clear sunny day, excellent solar
-
-**⚠️ Important**: The lookAhead period starts from the **next full hour** (current hour is skipped since it's already partially elapsed). If current time is 14:23 and you request "next 6 hours", you get 15:00-21:00 (not 14:00-20:00).
-
-**Example**: Force discharge if avg solar radiation > 300 W/m² in next 6 hours
-```javascript
-solarRadiation: { 
-  enabled: true, 
-  checkType: 'average',
-  operator: '>', 
-  value: 300, 
-  lookAhead: 6,
-  lookAheadUnit: 'hours'
-}
-```
-
-**Example**: Prepare battery charge if max radiation < 200 W/m² in next 2 days
-```javascript
-solarRadiation: { 
-  enabled: true, 
-  checkType: 'max',
-  operator: '<', 
-  value: 200, 
-  lookAhead: 2,
-  lookAheadUnit: 'days'
-}
-```
-
-### 6. Cloud Cover (`cloudCover`)
-Triggers based on forecast cloud cover percentage from Open-Meteo API.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Whether this condition is active |
-| `checkType` | string | `'average'`, `'min'`, `'max'` |
-| `operator` | string | `>`, `>=`, `<`, `<=` |
-| `value` | number | Cloud cover percentage (0-100) |
-| `lookAhead` | number | Amount of time to look ahead |
-| `lookAheadUnit` | string | `'hours'` (1-168) or `'days'` (1-7) |
-
-**Cloud Cover Values**:
-- 0-30%: Clear skies, good solar expected
-- 30-70%: Partly cloudy, moderate solar
-- 70-100%: Overcast, minimal solar
-
-**⚠️ Important**: The lookAhead period starts from the **next full hour** (current hour is skipped since it's already partially elapsed). If current time is 14:23 and you request "next 12 hours", you get 15:00-03:00 (not 14:00-02:00).
-
-**Example**: Allow discharge only if avg cloud cover < 50% in next 12 hours
-```javascript
-cloudCover: { 
-  enabled: true, 
-  checkType: 'average',
-  operator: '<', 
-  value: 50, 
-  lookAhead: 12,
-  lookAheadUnit: 'hours'
-}
-```
-
-**Example**: Force charge if min cloud cover > 70% (overcast day ahead)
-```javascript
-cloudCover: { 
-  enabled: true, 
-  checkType: 'min',
-  operator: '>', 
-  value: 70, 
-  lookAhead: 1,
-  lookAheadUnit: 'days'
-}
-```
-
-### 7. Forecast Price (`forecastPrice`)
-Triggers based on **future** Amber prices (not current). Now supports extended lookAhead periods.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Whether this condition is active |
-| `type` | string | `feedIn` (export) or `general` (buy) |
-| `checkType` | string | `average`, `min`, `max`, `any` |
-| `operator` | string | `>`, `>=`, `<`, `<=` |
-| `value` | number | Price threshold in ¢/kWh |
-| `lookAhead` | number | Amount of time to look ahead |
-| `lookAheadUnit` | string | `'minutes'` (1-60), `'hours'` (1-48), `'days'` (1-7) |
-
-**Check Types**:
-- `average`: Average price across all intervals
-- `min`: Minimum price in the period
-- `max`: Maximum price in the period
-- `any`: Any single interval meets the threshold
-
-⚠️ **Important API Limitation**: 
-The Amber API provides approximately **1 hour of forecast data** (~12 × 5-min intervals).
-When you request longer periods (e.g., 2 hours, 7 days), the system:
-- Returns only the available ~1 hour of data
-- Logs a warning to indicate incomplete data
-- Still evaluates the rule correctly on available data
-- Includes `incomplete: true` flag in result object
-
-For multi-day electricity cost optimization, consider using `solarRadiation` and `cloudCover` conditions (which have 7-day forecasts) combined with shorter `forecastPrice` windows.
-
-**Example**: Pre-discharge if avg feed-in in next 2 hours > 25¢
-```javascript
-forecastPrice: { 
-  enabled: true, 
-  type: 'feedIn', 
-  checkType: 'average', 
-  operator: '>', 
-  value: 25, 
-  lookAhead: 2,
-  lookAheadUnit: 'hours'
-}
-```
-
-**Example**: Charge if min buy price in next 3 days < 5¢
-```javascript
-forecastPrice: { 
-  enabled: true, 
-  type: 'general', 
-  checkType: 'min', 
-  operator: '<', 
-  value: 5, 
-  lookAhead: 3,
-  lookAheadUnit: 'days'
-}
-```
-
-### 8. Time Window (`time`)
-Restricts rule to specific hours of the day and optionally specific days of the week.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Whether this condition is active |
-| `startTime` | string | Start time in HH:MM format |
-| `endTime` | string | End time in HH:MM format |
-| `days` | array | Day-of-week filter: 0=Sunday through 6=Saturday. Empty/omitted = every day |
-
-**Note**: Supports overnight ranges (e.g., 22:00 to 06:00).
-
-**Example**: Only between 6am and 6pm
-```javascript
-time: { enabled: true, startTime: '06:00', endTime: '18:00' }
-```
-
-**Example**: Weekends only, 10am–3pm
-```javascript
-time: { enabled: true, startTime: '10:00', endTime: '15:00', days: [0, 6] }
-```
-
----
-
-## Condition Evaluation Logic
-
-**All enabled conditions must be true** for a rule to trigger (AND logic).
-
-```javascript
-// Pseudocode
-function evaluateRule(rule, cache, inverterData) {
-  const results = [];
-  
-  // Check each enabled condition
-  if (conditions.feedInPrice?.enabled) {
-    const met = compareValue(cache.amber.feedInPrice, operator, value);
-    results.push({ condition: 'feedInPrice', met, actual, target });
-  }
-  
-  if (conditions.soc?.enabled) {
-    const met = compareValue(inverterData.SoC, operator, value);
-    results.push({ condition: 'soc', met, actual, target });
-  }
-  
-  // ... other conditions ...
-  
-  // ALL must be met
-  const allMet = results.length > 0 && results.every(r => r.met);
-  return { triggered: allMet, results };
-}
-```
-
----
-
-## Actions (Work Modes)
-
-When a rule triggers, it creates a **scheduler segment** on the inverter.
-
-### Work Modes
-
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| `SelfUse` | Prioritize self-consumption | Default mode, use solar first |
-| `ForceDischarge` | Force battery to discharge | Export to grid when prices high |
-| `ForceCharge` | Force battery to charge | Charge when prices low |
-| `Feedin` | Force feed-in/export mode | Export-focused dispatch on supported inverters |
-| `Backup` | Preserve battery for backup | Storm warning, grid instability |
-
-### Action Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `workMode` | string | One of the work modes above |
-| `durationMinutes` | number | How long the segment runs (5-1440) |
-| `fdPwr` | number | Power in watts. Required and >0 for `ForceCharge`, `ForceDischarge`, `Feedin`; optional non-negative for other modes |
-| `fdSoc` | number | Stop SoC threshold (0-100) - min for discharge, max for charge |
-| `minSocOnGrid` | number | Min SoC when in grid mode (0-100) |
-| `maxSoc` | number | Max SoC limit (0-100) |
-
-Validation notes:
-- `fdPwr` must not exceed user inverter capacity (`inverterCapacityW`, fallback 10000W).
-- Invalid action payloads are rejected on both rule create and rule update endpoints.
-
----
-
-## Priority System
-
-Rules are evaluated in **priority order** (lowest number first):
-- Priority 1: Highest priority (evaluated first)
-- Priority 10: Lowest priority (evaluated last)
-
-**First matching rule wins** - once a rule triggers, remaining rules are skipped.
-
-```javascript
-// Example rule priorities
-{ name: "Emergency High Price", priority: 1 }  // Checked first
-{ name: "High Feed-in", priority: 2 }
-{ name: "Low Buy Price", priority: 3 }
-{ name: "Default Behavior", priority: 10 }     // Checked last
-```
-
-Rules Library import behavior:
-- If imported templates clash on priority, import auto-assigns the next free priority (1-10) and reports adjustments.
-- Templates can include absolute `fdPwr` and/or template-only `fdPwrPercent` (% of inverter capacity).
-- `fdPwrPercent` is resolved to watts at import time (rounded/clamped against inverter capacity) and is not persisted in API payloads.
-- Force-charge templates with placeholder `fdPwr: 0` are normalized at import from inverter capacity (50% baseline, clamped to inverter limits).
-
----
-
-## Cooldown System
-
-After a rule triggers, it enters a **cooldown period** to prevent rapid re-triggering.
-
-- Default cooldown: 5 minutes
-- Configurable per rule: 1–1440 minutes (up to 24 hours)
-- Cooldown resets when:
-  - Rule is manually disabled
-  - Rule is manually cancelled
-  - Active segment ends naturally
-
----
-
-## Active Rule Management
-
-### State Tracking
-```javascript
-// Firestore: users/{uid}/automation/state
-{
-  enabled: true,                    // Master automation toggle
-  lastCheck: 1733400000000,         // Last cycle timestamp
-  activeRule: "High Feed-in",       // Currently active rule name (or null)
-  activeRuleId: "rule_abc123",      // Rule document ID
-  activeUntil: 1733401800000,       // When segment expires
-  inBlackout: false                 // In error recovery period
-}
-```
-
-### Automatic Segment Expiry
-When the active segment expires:
-1. UI shows segment as no longer active
-2. Rule exits active state
-3. Rule becomes eligible for re-evaluation
-4. Cooldown still applies
-
-### Manual Cancellation
-Users can cancel an active rule via the UI:
-1. Clears all scheduler segments
-2. Resets rule to SelfUse mode
-3. Clears cooldown
-4. Rule can trigger again immediately
-
----
-
-## Data Sources
-
-### Amber API
-- **Current prices**: `CurrentInterval` with `channelType` = `general` (buy) or `feedIn`
-- **Forecast prices**: `ForecastInterval` (next 12 intervals = 1 hour)
-- **Price units**: Cents per kWh (¢/kWh)
-- **Update frequency**: Every 5 minutes
-
-### Weather API (Open-Meteo)
-- **Current conditions**: Temperature, weather code
-- **Forecast**: Daily forecasts for 3 days
-- **Update frequency**: Every 30 minutes (via `getCachedWeatherData()`, 30-min cache TTL)
-
-### FoxESS API
-- **Real-time data**: SoC, temperatures, power flows
-- **Scheduler**: Get/set time-based work modes
-- **Update frequency**: Every 5 minutes (rate limited)
-
----
-
-## FoxESS Scheduler Behavior
-
-### ⚠️ Important: Group Reordering
-
-FoxESS API **reorders scheduler groups** after saving. This is undocumented behavior:
-
-- You send a segment to Group 1
-- FoxESS API returns success
-- When you read back, segment may be in Group 8
-
-**Our solution**: Match segments by content (time, mode), not by position.
-
-See `BACKGROUND_AUTOMATION.md` for scheduler/runtime details.
-
-### Scheduler Limits
-- **8 groups maximum** per device
-- **Each group**: start/end time, work mode, power settings
-- **Minimum duration**: 5 minutes
-- **Times**: 24-hour format (HH:MM)
-
----
-
-## Error Handling
-
-### Blackout Period
-After certain errors, automation enters a "blackout" period:
-- Duration: 5 minutes
-- Prevents rapid retry on persistent errors
-- Auto-clears after period expires
-
-### Common Errors
-| Error | Cause | Resolution |
-|-------|-------|------------|
-| `errno: 41808` | FoxESS rate limit | Wait 5 minutes |
-| `No inverter data` | Device offline | Check device connection |
-| `No Amber data` | API key invalid | Verify Amber settings |
-| `No conditions enabled` | Empty rule | Add at least one condition |
-
----
-
-## UI Debug Information
-
-The automation panel shows real-time debug info:
-
-```
-✅ Triggered: High Feed-in Export
-   ✓ feedInPrice: 32.5¢ > 30¢
-   ✓ soc: 85% > 80%
-   ✓ time: 14:30 in 06:00-18:00
-   → API: errno=0
-
-Evaluated: 3/5 rules
-```
-
-- ✓ Green checkmark = condition met
-- ✗ Red X = condition not met
-- Shows actual vs target values for debugging
-
----
-
-## Example Rules
-
-### 1. High Feed-in Export
-Export battery when feed-in price is high and battery is charged.
-
-```javascript
-{
-  name: "High Feed-in Export",
-  priority: 1,
-  conditions: {
-    feedInPrice: { enabled: true, operator: '>', value: 30 },
-    soc: { enabled: true, operator: '>', value: 80 },
-    time: { enabled: true, startTime: '06:00', endTime: '20:00' }
-  },
-  action: {
-    workMode: "ForceDischarge",
-    durationMinutes: 30,
-    fdPwr: 5000,
-    fdSoc: 20
-  }
-}
-```
-
-### 2. Cheap Rate Charging
-Charge battery when electricity is cheap overnight.
-
-```javascript
-{
-  name: "Cheap Night Charge",
-  priority: 2,
-  conditions: {
-    buyPrice: { enabled: true, operator: '<', value: 10 },
-    soc: { enabled: true, operator: '<', value: 50 },
-    time: { enabled: true, startTime: '00:00', endTime: '06:00' }
-  },
-  action: {
-    workMode: "ForceCharge",
-    durationMinutes: 60,
-    maxSoc: 100
-  }
-}
-```
-
-### 3. Cloud-Aware Self-Use
-Maximize self-consumption when cloud cover is low and solar radiation is strong.
-
-```javascript
-{
-  name: "Clear Sky Self-Use",
-  priority: 5,
-  conditions: {
-    solarRadiation: { enabled: true, checkType: 'average', operator: '>=', value: 300, lookAhead: 6, lookAheadUnit: 'hours' },
-    cloudCover: { enabled: true, checkType: 'average', operator: '<', value: 40, lookAhead: 6, lookAheadUnit: 'hours' },
-    soc: { enabled: true, operator: '<', value: 90 }
-  },
-  action: {
-    workMode: "SelfUse",
-    durationMinutes: 120,
-    fdPwr: 0,
-    fdSoc: 0,
-    minSocOnGrid: 20,
-    maxSoc: 100
-  }
-}
-```
-
-### 4. Pre-emptive Discharge
-Discharge before predicted high prices.
-
-```javascript
-{
-  name: "Pre-emptive Discharge",
-  priority: 3,
-  conditions: {
-    forecastPrice: { 
-      enabled: true, 
-      type: 'feedIn', 
-      checkType: 'average', 
-      operator: '>', 
-      value: 25, 
-      lookAhead: 1,
-      lookAheadUnit: 'hours'
-    },
-    soc: { enabled: true, operator: '>', value: 70 }
-  },
-  action: {
-    workMode: "ForceDischarge",
-    durationMinutes: 30,
-    fdPwr: 3000,
-    fdSoc: 20,
-    minSocOnGrid: 20,
-    maxSoc: 100
-  }
-}
-```
-
----
-
-## API Endpoints
-
-### Automation Control
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/automation/status` | GET | Get automation state and rules |
-| `/api/automation/toggle` | POST | Enable/disable automation |
-| `/api/automation/cycle` | POST | Force immediate evaluation cycle |
-| `/api/automation/cancel` | POST | Cancel active rule |
-| `/api/automation/reset` | POST | Reset automation state |
-
-### Rule Management
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/automation/rule/create` | POST | Create new rule |
-| `/api/automation/rule/update` | POST | Update existing rule |
-| `/api/automation/rule/delete` | POST | Delete rule |
-
-### History
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/automation/history` | GET | Get automation event history |
-
----
-
-## Troubleshooting
-
-### Rule Not Triggering
-1. Check if automation is enabled (master toggle)
-2. Check if rule is enabled
-3. Check cooldown status
-4. Verify all conditions are met (see debug panel)
-5. Check rule priority (higher priority rule may be blocking)
-
-### Action Not Applied
-1. Check provider API connectivity for the configured inverter path
-2. Verify credentials and device identifiers in Settings
-3. Check for provider rate limiting or upstream errors (for example FoxESS `errno 41808`)
-4. Review scheduler read-back and provider-specific capability limits
-
-### Stale Data
-1. Check cache TTLs (FoxESS telemetry default: 5 min, FoxESS history default: 30 min, Amber current prices default: 60 sec per user, Amber sites: 7 days, Amber historical cache retention field: 30 days, Weather default: 30 min)
-2. Force refresh with automation cycle trigger
-3. Verify API keys are valid
-
----
-
-## Recent Updates (December 2025)
-
-### UI/UX Improvements
-- **Condensed Debug Info Box**: Redesigned the automation debug display to be more compact and horizontal, showing rule evaluation results inline with color-coded badges (green for triggered, red for failed, orange for cooldown)
-- **Expanded Automation Panel**: Increased vertical height by 40% to provide better visibility of rules, debug info, and automation status
-- **Enhanced Master Switch**: Improved visual prominence with gradient backgrounds, smooth animations, and clear active/inactive states
-- **Unified Automation Card**: Consolidated countdown timer and master switch into a single centered card with better visual hierarchy
-
-### Form Validations
-- **Comprehensive Input Validation**: Added strict validation for all rule creation/edit form fields:
-  - Rule name: 3-100 characters required
-  - Price values: 0-100¢ range
-  - SoC values: 0-100% range
-  - Temperature: -20 to +80°C range
-  - Power: 0-10500W range (realistic inverter limits)
-  - Time window: Start time must be before end time
-  - Range conditions: First value must be less than second value
-- **User Feedback**: Clear error messages with emoji indicators, auto-focus on invalid fields
-- **Condition Requirements**: At least one condition must be enabled, at least one action must be configured
-
-### Bug Fixes
-- **Last Triggered Timestamp**: Fixed issue where rule's "Last triggered" indicator wasn't displaying when a rule was activated - now updates immediately after automation cycle completes
-
-### Technical Details
-- Debug display now uses flexible layout with wrapping badges instead of stacked containers
-- Form validation runs before server submission to prevent invalid rule creation
-- All validations provide specific, actionable error messages to guide users
+## Supported Condition Keys
+
+### Current state and price
 
+- `soc`
+  - battery state of charge
+  - operators: `>`, `>=`, `<`, `<=`, `==`, `!=`, `between`
+- `price`
+  - preferred current-price condition
+  - `type` is `feedIn` or `buy`
+  - operators: `>`, `>=`, `<`, `<=`, `==`, `!=`, `between`
+- `feedInPrice`
+  - legacy export-price condition still evaluated for backward compatibility
+- `buyPrice`
+  - direct current buy-price condition
+
+### Temperature
+
+- `temperature`
+- `temp`
+
+Supported temperature types in the current helper logic:
+
+- `battery`
+- ambient/inverter-style legacy values, which map to ambient input in the
+  current shared helper
+- forecast daily max variants:
+  `forecastMax`, `forecast_max`, `dailyMax`, `daily_max`
+- forecast daily min variants:
+  `forecastMin`, `forecast_min`, `dailyMin`, `daily_min`
+
+Forecast temperature conditions may also use:
+
+- `dayOffset`
+- `operator`
+- `value`
+- `value2` for `between`
+
+### Time windows
+
+- `time`
+- `timeWindow`
+
+Supported fields:
+
+- `startTime` or `start`
+- `endTime` or `end`
+- `days`
+
+Behavior:
+
+- supports overnight windows
+- day filters accept weekday numbers or weekday names
+- evaluation uses the resolved automation timezone
+
+### Weather forecast conditions
+
+- `solarRadiation`
+  - forecast shortwave radiation
+  - `checkType`: `average`, `min`, `max`
+  - `lookAheadUnit`: `hours` or `days`
+- `cloudCover`
+  - forecast cloud cover
+  - `checkType`: `average`, `min`, `max`
+  - `lookAheadUnit`: `hours` or `days`
+- `forecastPrice`
+  - future Amber/AEMO-shaped price window
+  - `type`: `general` or `feedIn`
+  - `checkType`: `average`, `min`, `max`, `any`
+  - `lookAheadUnit`: `minutes`, `hours`, or `days`
+
+Weather legacy compatibility remains in place through `conditions.weather`.
+That legacy path still supports:
+
+- weather-code style `sunny`, `cloudy`, `rainy`
+- older radiation/cloud-cover condition shapes
+
+### EV-aware conditions
+
+The evaluator now supports EV state when vehicle data is available:
+
+- `evVehicleSoC`
+  - optional `vehicleId`
+  - numeric operators including `between`
+- `evVehicleLocation`
+  - optional `vehicleId`
+  - `requireHome: true|false`
+- `evChargingState`
+  - optional `vehicleId`
+  - `state`: string or array of strings
+
+## Evaluation Behavior
+
+Rule evaluation currently works like this:
+
+1. Load the enabled conditions for a rule.
+2. Evaluate each enabled condition.
+3. Require every enabled condition to pass.
+4. Respect cooldown and active-rule state.
+5. Stop at the first winning rule in priority order.
+
+Important implications:
+
+- there is no OR tree or nested boolean expression support
+- rules with no enabled conditions do not trigger
+- lower-priority matching rules do not run once a higher-priority rule wins
+
+## Supported Actions
+
+The action validator accepts these work modes:
+
+- `SelfUse`
+- `ForceDischarge`
+- `ForceCharge`
+- `Feedin`
+- `Backup`
+
+Relevant action fields:
+
+- `durationMinutes`
+- `fdPwr`
+- `fdSoc`
+- `minSocOnGrid`
+- `maxSoc`
+
+Scheduler-segment defaults applied by the current segment builder:
+
+- `minSocOnGrid`: `20`
+- `fdSoc`: `35`
+- `maxSoc`: `90`
+
+Safety and validation rules:
+
+- `fdPwr` is required for `ForceDischarge`, `ForceCharge`, and `Feedin`
+- `fdPwr` must be greater than zero for those modes
+- `fdPwr` is capped by effective inverter capacity
+- `durationMinutes` must be between `5` and `1440`
+- `fdSoc` is clamped so it cannot be lower than `minSocOnGrid`
+- midnight-crossing segments are capped at `23:59`
+
+## Provider-specific Behavior
+
+### Action execution
+
+- FoxESS uses the direct FoxESS scheduler path.
+- Sungrow, SigenEnergy, and AlphaESS use adapter-backed schedule reads and
+  writes when adapters are registered.
+
+### Work-mode restrictions
+
+- `Backup` is currently rejected for:
+  - `alphaess`
+  - `sigenergy`
+
+### Diagnostics and maturity
+
+- FoxESS remains the richest diagnostics path.
+- Cross-provider support exists, but feature parity is not identical across all
+  device integrations.
+
+## Quick Control and Manual Scheduler Interplay
+
+Important runtime behavior:
+
+- quick control is a temporary override path
+- quick control cleanup runs before normal automation evaluation
+- while quick control is active, normal automation is effectively paused
+- manual scheduler changes can later be overwritten by automation
+
+## Curtailment Interplay
+
+Curtailment is evaluated alongside automation but tracked separately.
+
+Current behavior:
+
+- curtailment state lives under `users/{uid}/curtailment/state`
+- curtailment compares current feed-in price against the user threshold
+- FoxESS is the only provider with live export-limit mutation support
+- for non-FoxESS providers, the runtime reports unsupported-provider state and
+  deactivates any previously active curtailment state
+
+## Operational Endpoints
+
+Main automation-facing endpoints:
+
+- `GET /api/automation/status`
+- `POST /api/automation/toggle`
+- `POST /api/automation/enable`
+- `POST /api/automation/trigger`
+- `POST /api/automation/reset`
+- `POST /api/automation/cancel`
+- `POST /api/automation/rule/create`
+- `POST /api/automation/rule/update`
+- `POST /api/automation/rule/delete`
+- `POST /api/automation/rule/end`
+- `POST /api/automation/test`
+- `POST /api/automation/cycle`
+- `GET /api/automation/history`
+- `GET /api/automation/audit`
+
+## Practical Boundaries
+
+Keep these product and support constraints explicit:
+
+- rule logic is deterministic and rule-based, not ML-driven
+- only one rule wins a cycle
+- provider capability is not identical across all integrations
+- quick control and manual scheduling are not reservation systems; automation can
+  overwrite later scheduler state
+- curtailment is operationally strongest on the FoxESS path

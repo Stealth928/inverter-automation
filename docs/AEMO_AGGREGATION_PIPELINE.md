@@ -1,267 +1,232 @@
-# AEMO Aggregate Data Processing Methodology
+# AEMO Market Data Pipeline
 
-This document explains how the AEMO price-and-demand aggregates are produced and
-what each generated table contains.
+Last updated: 2026-03-26
 
-## 1) Pipeline overview
+Purpose: document the current end-to-end AEMO data flow in this repo, from raw
+monthly CSV files to published market-insights JSON bundles and live current
+snapshot refreshes.
 
-The dataset is produced in two stages:
+## Pipeline Overview
 
-1. Download raw monthly AEMO CSV files (optional if files are already present locally).
-2. Aggregate raw files into:
-   - `monthly_summary.csv`
-   - `daily_summary.csv`
-   - `hourly_summary.csv`
-   - `quality_report.csv`
-   - `manifest.json`
+The repo now has four distinct AEMO-related layers:
 
-All outputs are written to `aemo-aggregated-data/aggregates` by default.
+1. Raw monthly CSV files in `aemo-aggregated-data/`
+2. Aggregate CSV outputs in `aemo-aggregated-data/aggregates/`
+3. Published frontend JSON bundle in `frontend/data/aemo-market-insights/`
+4. Firestore-backed current-price snapshots in `aemoSnapshots/{region}`
 
-## 2) Scripts in use
+Those layers serve different jobs:
 
-### `download_aemo_monthly.py`
+- aggregates power the historical market-insights experience
+- published JSON powers the public preview and authenticated market-insights UI
+- Firestore snapshots power current AEMO pricing and admin health views
 
-- Purpose: Pull monthly AEMO `PRICE_AND_DEMAND` CSVs directly into a local folder.
-- Default output folder: `aemo-aggregated-data`
-- URL pattern used:
-  `https://www.aemo.com.au/aemo/data/nem/priceanddemand/PRICE_AND_DEMAND_{YYYYMM}_{REGION}1.csv`
-- Expected region codes:
-  `NSW`, `QLD`, `VIC`, `SA`, `TAS`, `SNOWY` (unless overridden)
-- Output files are named like:
-  `NSW202601.csv`
+## Current Scripts and Package Commands
 
-CLI arguments:
-- `--start YYYY-MM` (default: `1998-12`)
-- `--end YYYY-MM` (default: previous month)
-- `--regions` (space-separated list)
-- `--out` (default: `aemo-aggregated-data`)
-- `--overwrite` (force re-download existing files)
+### Historical aggregate and bundle generation
 
-### `aggregate_aemo_monthly.py`
+| Command | Script | Purpose |
+| --- | --- | --- |
+| `npm run aemo:dashboard:build` | `scripts/generate-aemo-market-insights.js` | Build the published frontend JSON bundle from aggregate CSVs |
+| `npm run aemo:dashboard:update:delta` | `scripts/aemo-market-insights-delta-update.js` | Re-aggregate only changed raw CSV months, update manifest/state, then rebuild published JSON |
+| `npm run test:market-insights:contracts` | `tests/scripts/aemo-market-insights-*.test.js` | Contract tests for the published market-insights data bundle |
 
-- Purpose: Read raw monthly files and generate all aggregate output files listed above.
-- Default source folder: `aemo-aggregated-data`
-- Default output folder: `aemo-aggregated-data/aggregates`
+### Legacy/raw Python aggregation path
 
-CLI arguments:
-- `--source` (folder with monthly raw files)
-- `--out` (aggregate output folder)
-- `--start YYYY-MM` (optional lower bound)
-- `--end YYYY-MM` (optional upper bound)
-- `--regions` (optional region filter)
+| Script | Purpose |
+| --- | --- |
+| `download_aemo_monthly.py` | Download raw monthly AEMO `PRICE_AND_DEMAND` CSV files |
+| `aggregate_aemo_monthly.py` | Build aggregate CSV outputs and manifest from raw monthly CSV files |
 
-This is the script that:
-- parses each raw monthly CSV,
-- validates numeric fields,
-- computes interval statistics,
-- builds day/hour buckets,
-- writes aggregate tables,
-- writes `manifest.json` with run metadata.
+### Hosting synchronization
 
-### `download_aemo_price_and_demand.py`
+| Command | Script | Purpose |
+| --- | --- | --- |
+| `npm run aemo:dashboard:sync:hosting` | `scripts/sync-hosted-market-insights.js` | Compare local bundle freshness with hosted bundle and sync the fresher hosted copy into `frontend/data/aemo-market-insights/` |
 
-- Purpose: A legacy/manual year-based downloader.
-- Uses fixed `year = 2026` and hardcoded output under `~/Downloads/aemo_price_and_demand_<year>/YYYYMM/`.
-- Not used by the current aggregate pipeline flow above unless manually selected.
+This command is part of Hosting predeploy and is run in strict mode from
+`firebase.json`.
 
-## 3) Processing methodology (aggregate script)
+## Historical Aggregate Inputs and Outputs
 
-For each raw input file matching:
+### Inputs
 
-- filename pattern `REGIONYYYYMM.csv` (e.g. `NSW202601.csv`)
-- required raw columns:
-  - `SETTLEMENTDATE` (parsed with `%Y/%m/%d %H:%M:%S`)
-  - `RRP` (float)
-  - `TOTALDEMAND` (float)
+Raw monthly CSVs live in:
 
-Rows with missing/invalid `SETTLEMENTDATE`, `RRP`, or `TOTALDEMAND` are skipped and counted as `malformedRows`.
+- `aemo-aggregated-data/`
 
-### Interval and quality logic
+Expected filename shape:
 
-For each file, the script computes:
+- `NSW202601.csv`
+- `QLD202601.csv`
+- `VIC202601.csv`
+- `SA202601.csv`
+- `TAS202601.csv`
 
-- consecutive timestamp deltas in minutes,
-- `intervalModeMinutes` = mode of positive intervals,
-- `intervalAnomalies` for non-positive/irregular intervals,
-- `estimatedMissingIntervals` from gaps larger than one interval,
-- `duplicateIntervals`,
-- expected rows from time span and interval mode,
-- `issues` flags:
-  - `nonstandard-interval` (if mode is not 5 or 30 min),
-  - `interval-anomalies`,
-  - `malformed-rows`,
-  - `partial-month`,
-  - `incomplete-month`,
-  - `empty` (if no valid rows).
+### Aggregate outputs
 
-For each numeric vector it computes:
-- count/min/max/mean
-- quantiles: p05, p25, p50, p75, p90, p95, p99.
+Aggregate CSVs and manifest live in:
 
-Daily/Hourly event metrics:
-- `negativeRRPCount`: number of values `< 0`.
-- `highRRPIntervalCount`: intervals with `RRP >= p95`.
-- `highRRPEventCount`: number of contiguous high-RRP runs above `p95`.
-- `longestHighRRPEventIntervals` and `longestHighRRPEventMinutes`.
+- `aemo-aggregated-data/aggregates/`
 
-## 4) Output tables and columns
+Current aggregate outputs:
 
-### `monthly_summary.csv`
+- `monthly_summary.csv`
+- `daily_summary.csv`
+- `hourly_summary.csv`
+- `quality_report.csv`
+- `manifest.json`
+- `delta-state.json` for incremental tracking
 
-Generated columns:
+## Published Frontend Bundle
 
-- `region` — file region token (`NSW`, `QLD`, etc)
-- `period` — month key `YYYYMM`
-- `file` — source filename
-- `firstTimestamp` — earliest valid settlement timestamp
-- `lastTimestamp` — latest valid settlement timestamp
-- `rows` — number of valid rows used
-- `malformedRows` — skipped row count
-- `intervalModeMinutes` — dominant interval in minutes
-- `firstIntervalMinutes` — first non-zero interval value
-- `expectedFullRows` — theoretical full-month row count from calendar interval
-- `expectedSpanRows` — theoretical rows for observed month span
-- `coverageFullPct` — `rows / expectedFullRows * 100`
-- `coverageSpanPct` — `rows / expectedSpanRows * 100`
-- `estimatedMissingIntervals` — inferred missing intervals due to gaps
-- `intervalAnomalies` — anomaly count
-- `duplicateIntervals` — duplicate timestamp interval count
-- `isPartialMonth` — `True` when file does not cover full month end
-- `status` — `"ok"` or `;`-delimited issue flags
-- `meanRRP`, `minRRP`, `maxRRP`
-- `p05RRP`, `p25RRP`, `p50RRP`, `p75RRP`, `p90RRP`, `p95RRP`, `p99RRP`
-- `meanDemand`, `minDemand`, `maxDemand`, `demandP95`
-- `negativeRRPCount` — count of `RRP <= 0`
-- `highRRPIntervalCount`
-- `highRRPEventCount`
-- `longestHighRRPEventIntervals`
-- `longestHighRRPEventMinutes`
+The published bundle lives in:
 
-### `hourly_summary.csv`
+- `frontend/data/aemo-market-insights/`
+
+Current asset shape:
+
+- `index.json`
+- one per-region file for each published region, such as `NSW.json`
+
+`index.json` currently carries:
+
+- `generatedAt`
+- `sourceGeneratedAt`
+- `regions`
+- `files`
+- `defaults`
+- `bounds`
+- `counts`
+- `dataworks`
+
+Each region file currently contains:
 
 - `region`
-- `period`
-- `hour` — `YYYY-MM-DD HH` bucket
-- `rowCount`
-- `meanRRP`, `minRRP`, `maxRRP`
-- `p50RRP`, `p90RRP`, `p95RRP`
-- `meanDemand`, `minDemand`, `maxDemand`
+- `generatedAt`
+- `sourceGeneratedAt`
+- `latestDate`
+- `latestPeriod`
+- `daily`
+- `monthly`
+- `quality`
+- `qualityPeriods`
 
-### `daily_summary.csv`
+This bundle is consumed by:
 
-Current committed output file currently in this workspace has:
+- the public preview at `/market-insights/`
+- the authenticated member workspace at `/market-insights.html`
 
-- `region`, `period`, `date`, `rowCount`,
-  `meanRRP`, `minRRP`, `maxRRP`,
-  `p05RRP`, `p25RRP`, `p50RRP`, `p75RRP`, `p90RRP`, `p95RRP`,
-  `meanDemand`, `minDemand`, `maxDemand`, `negativeRRPCount`
+## Delta Update Flow
 
-The current `aggregate_aemo_monthly.py` now includes additional derived daily fields in
-its write schema, so a rerun will append these columns:
+`scripts/aemo-market-insights-delta-update.js` performs the current incremental
+historical refresh.
 
-- `stdRRP` — standard deviation of hourly RRP values in the day
-- `volatilityRRP` — `maxRRP - minRRP`
-- `expectedRowCount` — expected rows for full day (based on file interval mode)
-- `missingRowCount` — `expectedRowCount - rowCount`
-- `coveragePct` — day completeness percentage
-- `qualityScore` — same as `coveragePct`
-- `hourCount` — number of hour buckets present
-- `hourCoveragePct` — `(hourCount / 24) * 100`
-- `peakHour` — hour of max hourly mean RRP (string, `00`-`23`)
-- `peakHourRRP` — hourly-mean RRP at `peakHour`
-- `offPeakMeanRRP` — mean of hourly means during off-peak hours (`0-6`, `22-23`)
-- `hoursAboveP95` — number of hours with hourly mean RRP >= daily `p95`
+High-level flow:
 
-### `quality_report.csv`
+1. inspect raw monthly CSV files under `aemo-aggregated-data/`
+2. compare file size and modification time against `delta-state.json`
+3. identify changed regions and periods
+4. run `aggregate_aemo_monthly.py` only for the changed month range and regions
+5. merge updated aggregate CSV slices back into the full aggregate outputs
+6. rewrite `manifest.json`
+7. update `delta-state.json`
+8. rebuild the published JSON bundle by running
+   `scripts/generate-aemo-market-insights.js`
 
-- `file` — source filename
-- `region` — source file region
-- `period` — file month
-- `rows` — valid row count
-- `issue` — issue string (`none` or semicolon-separated flags)
-- `estimatedMissingIntervals`
-- `intervalAnomalies`
-- `malformedRows`
+This means the repo is no longer limited to full historical rebuilds for every
+update.
 
-### `manifest.json`
+## Hosted Sync and Deploy Flow
 
-Run-level metadata written with each aggregate run:
+`scripts/sync-hosted-market-insights.js` compares:
 
-- `generatedAt` (UTC timestamp)
-- `sourceDir`
-- `filesProcessed`
-- `outDir`
-- `monthlyCount`
-- `dailyCount`
-- `hourlyCount`
-- `start` and `end` month filters (or `null`)
-- `regions` array
+- local bundle freshness
+- hosted bundle freshness from the configured/default hosting origins
 
-## 5) Where the data lives now
+Behavior:
 
-- Source raw files: `aemo-aggregated-data/`
-- Aggregates: `aemo-aggregated-data/aggregates/`
-- In-memory/CSV processing is local to this repo; no Firestore writes happen in these scripts.
+- if hosted data is fresher, local files are replaced
+- if local data is current or fresher, nothing changes
+- in strict mode, failure to fetch the hosted bundle aborts the command
 
-## 6) Recommended commands
+This protects Hosting deploys from shipping an older checked-out local bundle
+when the live site already has a newer published dataset.
+
+## Live Snapshot Refresh Job
+
+Historical bundle generation is separate from current AEMO snapshot refreshes.
+
+The scheduled Cloud Function:
+
+- export name: `refreshAemoLiveSnapshots`
+- schedule: every 5 minutes
+- time zone: `Australia/Brisbane`
+
+writes current-region snapshots into:
+
+- `aemoSnapshots/{region}`
+
+These live snapshots support:
+
+- `/api/pricing/current?provider=aemo`
+- `/api/pricing/prices?provider=aemo`
+- `/api/pricing/actual?provider=aemo`
+- admin health and DataWorks diagnostics
+
+## Admin and DataWorks Integration
+
+The admin surface now includes DataWorks operations for market-data visibility
+and dispatch.
+
+Relevant endpoints:
+
+- `GET /api/admin/dataworks/ops`
+- `POST /api/admin/dataworks/dispatch`
+
+Current DataWorks-related behavior includes:
+
+- GitHub workflow status summary
+- freshness and quality summary derived from the published bundle
+- snapshot health summary derived from Firestore `aemoSnapshots`
+- manual workflow dispatch when `GITHUB_DATAWORKS_TOKEN` is configured
+
+## Recommended Commands
+
+### Full historical rebuild
 
 ```bash
-python download_aemo_monthly.py --start 2025-01 --end 2026-03 --regions NSW QLD VIC SA TAS
-python aggregate_aemo_monthly.py --source aemo-aggregated-data --out aemo-aggregated-data/aggregates --start 2025-01 --end 2026-03 --regions NSW QLD VIC SA TAS
+python aggregate_aemo_monthly.py --source aemo-aggregated-data --out aemo-aggregated-data/aggregates
+npm run aemo:dashboard:build
 ```
 
-Both scripts default to local file paths shown above, so reruns are deterministic for the same inputs and same flags.
+### Incremental update
 
-## 7) Runbook (recommended operational flow)
+```bash
+npm run aemo:dashboard:update:delta
+```
 
-Use this flow for scheduled or ad-hoc refreshes:
+### Contract verification
 
-1. Create/prepare a clean run target
-- Keep outputs in a staging folder first:
-  - `python aggregate_aemo_monthly.py --source ... --out aemo-aggregated-data/aggregates-staging ...`
-- Compare with previous run:
-  - `Get-ChildItem aemo-aggregated-data/aggregates-staging` (or your equivalent `ls`) and check file counts.
+```bash
+npm run test:market-insights:contracts
+```
 
-2. Refresh raw data (optional)
-- Use `download_aemo_monthly.py` when source coverage is missing or stale.
-- Prefer `--overwrite` for backfilled months; otherwise the script skips existing files.
+### Hosting freshness sync
 
-3. Run aggregation
-- Use the same filters in both staging and production runs.
-- If you add/remove regions, keep flags identical for fair comparisons.
+```bash
+npm run aemo:dashboard:sync:hosting -- --strict
+```
 
-4. Validate outputs before swap
-- Open `manifest.json` and verify:
-  - `filesProcessed` matches expected month-region combinations.
-  - `monthlyCount`, `dailyCount`, `hourlyCount` are non-zero and plausible.
-  - `regions` includes the expected set.
-- Check quality health:
-  - `quality_report.csv` should have no unexpected `issue` spikes for normal historical months.
+## Validation Checklist
 
-5. Detect drift
-- Compare `generatedAt`, row counts, and sample distributions between old and new aggregates.
-- If only new data was added, expect:
-  - same schema,
-  - higher `dailyCount`/`hourlyCount`,
-  - mostly stable historical summary deltas.
+After updating historical data, verify:
 
-6. Promote staging to production
-- Replace `aemo-aggregated-data/aggregates` only after validation.
-- Keep staged outputs for one cycle for rollback.
-
-## 8) Quick integrity checks
-
-Recommended checks after each successful run:
-
-- Confirm all expected output files exist:
-  - `monthly_summary.csv`
-  - `daily_summary.csv`
-  - `hourly_summary.csv`
-  - `quality_report.csv`
-  - `manifest.json`
-- Confirm file sizes are non-zero and not just headers.
-- Confirm schema expected for all CSV files (`header line`).
-- Review top quality issues:
-  - high `malformedRows`,
-  - high `estimatedMissingIntervals`,
-  - `partial-month` on recent/current incomplete month files.
+1. `aemo-aggregated-data/aggregates/manifest.json` has plausible counts and
+   expected regions
+2. `frontend/data/aemo-market-insights/index.json` points at all expected
+   region files
+3. `npm run test:market-insights:contracts` passes
+4. public `/market-insights/` and authenticated `/market-insights.html` still
+   render the updated bundle
+5. `refreshAemoLiveSnapshots` logs show healthy current-snapshot refreshes

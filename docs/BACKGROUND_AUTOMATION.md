@@ -1,112 +1,98 @@
-# Background Automation System
+# Background Automation and Scheduled Jobs
 
-Purpose: document how automation runs when users are online and when they are
-not, and explain the current scheduler orchestration that ships in code.
+Last updated: 2026-03-26
 
-Last updated: 2026-03-17
+Purpose: document the scheduled backend jobs that run without the browser being
+open and explain how the current orchestration behaves in production.
 
 ## Overview
 
-The product has two ways to trigger the same automation evaluation path:
+The repo currently ships two scheduled Cloud Functions:
 
-1. Dashboard-triggered cycle execution via `POST /api/automation/cycle`
-2. Background scheduler execution via the `runAutomation` Cloud Function
+1. `runAutomation`
+2. `refreshAemoLiveSnapshots`
 
-Both paths converge on the same core automation cycle logic. The frontend timer
-exists for a responsive UX while the authenticated app is open, but background
-execution is handled by the server-side scheduler and does not depend on the
+The authenticated app can also invoke `POST /api/automation/cycle` for an
+immediate rule evaluation, but unattended automation does not depend on the
 browser staying open.
+
+## Cloud Function Exports
+
+| Export | Schedule | Time zone | Purpose |
+| --- | --- | --- | --- |
+| `api` | HTTP | n/a | Express API behind Hosting rewrite |
+| `runAutomation` | `every 1 minutes` | `UTC` | Per-user automation orchestration |
+| `refreshAemoLiveSnapshots` | `1-59/5 * * * *` | `Australia/Brisbane` | Refresh Firestore-backed current AEMO regional snapshots |
 
 ## Runtime Topology
 
 ```text
 Authenticated dashboard open?
-  yes -> client countdown can call POST /api/automation/cycle
-  no  -> runAutomation scheduler handles background cadence
+  yes -> UI can call POST /api/automation/cycle for fast feedback
+  no  -> runAutomation keeps unattended automation alive
 
-runAutomation (Cloud Functions v2 scheduler, every 1 minute, UTC)
-  -> runAutomationSchedulerCycle(...)
+runAutomation
   -> fetch eligible users
-  -> apply concurrency, lock, and idempotency controls
-  -> invoke shared automation cycle handler for each user that is due
-  -> persist scheduler metrics, alert state, and dead-letter records
+  -> apply due-check logic
+  -> acquire per-user lock
+  -> write idempotency marker
+  -> invoke the same automation cycle handler used by POST /api/automation/cycle
+  -> persist metrics, alert state, and dead-letter data
+
+refreshAemoLiveSnapshots
+  -> refresh current AEMO price snapshots for supported regions
+  -> write aemoSnapshots/{region}
+  -> feed admin/DataWorks health views and AEMO-backed pricing paths
 ```
 
-## Cloud Function Exports
+## `runAutomation` Details
 
-- `exports.api = functions.https.onRequest(app)`
-- `exports.runAutomation = onSchedule({ schedule: 'every 1 minutes', timeZone: 'UTC', ... })`
+### Cadence model
 
-The scheduler export lives in [functions/index.js](../functions/index.js) and is
-wired to `runAutomationSchedulerCycle(...)` in
-[functions/lib/services/automation-scheduler-service.js](../functions/lib/services/automation-scheduler-service.js).
+The scheduler wakes every minute, but each user may run less frequently.
 
-## Scheduler Cadence Model
-
-The scheduler itself runs every minute, but user automation does not necessarily
-run every minute.
-
-Per user, the backend checks:
+Per-user due checks currently consider:
 
 - automation enabled state
 - blackout-window eligibility
-- elapsed time since `automation/state.lastCheck`
-- configured interval override in `users/{uid}/config/main`
+- elapsed time since the last check
+- user-specific interval override in config
 
 Current defaults:
 
 - scheduler tick: 1 minute
 - default automation interval: 60000 ms
-- default cache TTLs:
-  - Amber: 60000 ms
-  - inverter telemetry: 300000 ms
-  - weather: 1800000 ms
-  - Tesla status cache: 600000 ms
+- default Amber cache TTL: 60000 ms
+- default inverter cache TTL: 300000 ms
+- default weather cache TTL: 1800000 ms
+- default Tesla status cache TTL: 600000 ms
 
-User-configurable automation interval is still respected even though the
-scheduler wakes every minute.
+### Shared cycle handler
 
-## What Happens in a Background Run
+Both manual and scheduled automation converge on the same cycle handler.
 
-For each scheduler tick:
+That shared path:
 
-1. Fetch eligible users and current automation/config state.
-2. Determine whether each user is due for a cycle.
-3. Acquire a short-lived per-user lock.
-4. Create or verify an idempotency marker for the cycle key.
-5. Invoke the same automation cycle handler used by
-   `POST /api/automation/cycle`.
-6. Persist scheduler metrics, phase timings, status, and alert snapshots.
-7. Release the lock and record dead-letter data on repeated failure.
+1. loads config, state, and enabled rules
+2. resolves timezone and blackout-window status
+3. cleans up expired quick control
+4. fetches cached or live pricing, weather, inverter, and EV data
+5. evaluates rules in priority order
+6. applies the winning rule action when one triggers
+7. evaluates curtailment
+8. writes history, audit, and updated state
 
-The cycle handler then performs the usual work:
+### Concurrency, retries, and idempotency
 
-1. read current config and rules
-2. honor blackout windows and quick-control pauses
-3. fetch cached or live pricing, weather, and provider telemetry
-4. evaluate rules by priority
-5. apply provider-aware actions through the adapter registry
-6. run curtailment evaluation where enabled
-7. write automation history, audit, and state updates
+Current scheduler controls include:
 
-## Concurrency, Retries, and Idempotency
+- bounded concurrency
+- per-user lock lease
+- idempotency markers by cycle key
+- retry attempts with jittered delay
+- dead-letter retention for repeated failures
 
-The background scheduler now includes orchestration controls that were not part
-of the earlier single-loop implementation.
-
-### Concurrency
-
-Users are processed with bounded concurrency. Current server-side defaults are:
-
-- `maxConcurrentUsers`: 10
-- `retryAttempts`: 2
-- `retryBaseDelayMs`: 500
-- `retryJitterMs`: 250
-- `lockLeaseMs`: 120000
-- `idempotencyTtlMs`: 300000
-- `deadLetterTtlMs`: 604800000
-
-These can be overridden via server config or environment variables:
+Relevant env vars:
 
 - `AUTOMATION_SCHEDULER_MAX_CONCURRENCY`
 - `AUTOMATION_SCHEDULER_RETRY_ATTEMPTS`
@@ -116,43 +102,27 @@ These can be overridden via server config or environment variables:
 - `AUTOMATION_SCHEDULER_IDEMPOTENCY_TTL_MS`
 - `AUTOMATION_SCHEDULER_DEAD_LETTER_TTL_MS`
 
-### Per-user Locking
-
-Each user gets a scheduler lock document under:
+Important Firestore paths:
 
 - `users/{uid}/automation/lock`
-
-This prevents overlapping scheduler workers from trying to apply actions for the
-same user at the same time.
-
-### Idempotency
-
-Each attempted cycle writes an idempotency marker under:
-
 - `users/{uid}/automation/idempotency_<cycleKey>`
+- `users/{uid}/automation_dead_letters/{docId}`
 
-This prevents duplicate execution when the same cycle key is retried or two
-workers race on the same user.
+### Metrics and alerts
 
-### Dead Letters
-
-Repeated scheduler failures are retained long enough for operational follow-up.
-Dead-letter metrics are included in the scheduler admin view and SLO alerting.
-
-## Metrics and Alerting
-
-Scheduler metrics are persisted for operational visibility.
-
-Firestore paths:
+Scheduler metrics are persisted under:
 
 - `metrics/automationScheduler/runs/{runId}`
 - `metrics/automationScheduler/daily/{YYYY-MM-DD}`
 - `metrics/automationScheduler/alerts/current`
 - `metrics/automationScheduler/alerts/{YYYY-MM-DD}`
 
-The admin dashboard and `/api/admin/scheduler-metrics` read from these docs.
+Operator surfaces:
 
-SLO thresholds are configurable with environment variables such as:
+- `GET /api/admin/scheduler-metrics`
+- admin dashboard scheduler views
+
+Relevant SLO env vars include:
 
 - `AUTOMATION_SCHEDULER_SLO_ERROR_RATE_PCT`
 - `AUTOMATION_SCHEDULER_SLO_DEAD_LETTER_RATE_PCT`
@@ -165,50 +135,41 @@ SLO thresholds are configurable with environment variables such as:
 - `AUTOMATION_SCHEDULER_SLO_ALERT_WEBHOOK_URL`
 - `AUTOMATION_SCHEDULER_SLO_ALERT_COOLDOWN_MS`
 
-Operational response guidance is documented in
-[SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md](SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md).
+## `refreshAemoLiveSnapshots` Details
+
+This job refreshes current AEMO regional snapshots on a 5-minute cadence.
+
+Current behavior:
+
+- runs in `Australia/Brisbane`
+- calls the AEMO adapter refresh path for all supported regions
+- writes or updates `aemoSnapshots/{region}`
+- logs updated, skipped, and failed regions
+- throws when one or more regional refreshes fail
+
+This job supports:
+
+- AEMO-backed pricing flows
+- admin API health and DataWorks status views
+- current snapshot inspection in Firestore
+
+Related admin routes:
+
+- `GET /api/admin/api-health`
+- `GET /api/admin/dataworks/ops`
+- `POST /api/admin/dataworks/dispatch`
 
 ## Frontend Interaction
 
-The dashboard still reads config and automation status so it can show:
-
-- countdown to the next expected cycle
-- active automation state
-- quick-control pause effects
-- recent history and telemetry
+The browser still shows countdowns and current automation state, but that is a
+UX layer, not the automation authority.
 
 Important distinction:
 
-- frontend countdown is a UX convenience
+- browser-triggered cycle calls are convenience and immediate feedback
 - background automation authority is the server-side scheduler
 
-If the browser is closed, automation continues through `runAutomation`.
-
-## Cache Behavior
-
-Automation reuses cached provider data wherever allowed to control cost and API
-pressure.
-
-Current defaults from server config:
-
-| Data source | Default TTL |
-| --- | --- |
-| Amber pricing | 60 seconds |
-| Inverter/device telemetry | 5 minutes |
-| Weather | 30 minutes |
-| Tesla status | 10 minutes |
-
-Provider-specific UI paths may still request fresh data when the user explicitly
-asks for a live refresh.
-
-## Manual and Background Triggers Compared
-
-| Trigger | Who starts it | Main use |
-| --- | --- | --- |
-| `POST /api/automation/cycle` | user/frontend/backend tools | immediate evaluation, testing, UX responsiveness |
-| `runAutomation` | Cloud Scheduler | unattended background execution for all users |
-
-The rule engine, provider adapters, and automation state model are shared.
+If the browser is closed, `runAutomation` still evaluates due users.
 
 ## Troubleshooting Checklist
 
@@ -216,35 +177,37 @@ The rule engine, provider adapters, and automation state model are shared.
 
 Check:
 
-1. user automation is enabled
+1. automation is enabled for the user
 2. `lastCheck` is advancing
 3. blackout windows are not active
-4. quick control is not still overriding the cycle
-5. scheduler metrics show successful recent runs
+4. quick control is not still active
+5. scheduler metrics show recent successful runs
 
 ### Scheduler is running but users are skipped
 
 Common reasons:
 
-- user interval has not elapsed yet
-- lock already held by another worker
-- idempotency marker already exists for the cycle
-- automation disabled
-- blackout window active
+- user interval has not elapsed
+- lock is already held
+- idempotency marker already exists for the cycle key
+- automation is disabled
+- blackout window is active
 
-### Elevated scheduler errors or lag
+### AEMO snapshot health looks stale
 
-Use:
+Check:
 
-- admin dashboard scheduler metrics
-- `/api/admin/scheduler-metrics`
-- [SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md](SCHEDULER_SLO_ALERT_RUNBOOK_MAR26.md)
+1. `refreshAemoLiveSnapshots` logs
+2. Firestore docs in `aemoSnapshots/{region}`
+3. admin DataWorks/API health views
+4. whether stale regions are isolated or all-region failures
 
-### Validation commands
+## Validation Commands
 
 ```bash
 npm --prefix functions run lint
 npm --prefix functions test -- --runInBand
 node scripts/pre-deploy-check.js
 firebase functions:log --only runAutomation
+firebase functions:log --only refreshAemoLiveSnapshots
 ```

@@ -1,92 +1,150 @@
 # Deployment Guide
 
 Purpose: practical deployment runbook for production-safe releases.
-Last updated: 2026-03-11
+Last updated: 2026-03-26
 
-For full go/no-go criteria, use `docs/RELEASE_READINESS_CHECKLIST.md`.
+Use [RELEASE_READINESS_CHECKLIST.md](RELEASE_READINESS_CHECKLIST.md) for the
+full go/no-go list.
 
 ## 1. Standard Safe Path
 
 Run from repo root:
 
 ```bash
-# 1) Static + contract + hygiene gates
-npm --prefix functions run pre-deploy
+# 1) Core gate bundle
+node scripts/pre-deploy-check.js
 
-# 2) Backend verification
-npm --prefix functions test -- --runInBand
+# 2) Release asset and PWA gates
+npm run test:pwa:versions
+npm run test:release:manifest
 
-# 3) Frontend verification (required when frontend changed)
+# 3) Frontend verification when frontend changed
 npm run test:e2e:frontend
 
-# 4) Deploy functions first (safer rollback path)
+# 4) Deploy functions first when backend changed
 firebase deploy --only functions
 
-# 5) Deploy hosting/rules/indexes only when needed
+# 5) Deploy hosting when frontend/public assets changed
 firebase deploy --only hosting
+
+# 6) Deploy Firestore rules/indexes when data-access contracts changed
 firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-## 2. Pre-Deploy Guardrails
+## 2. Pre-deploy Guardrails
 
-`npm --prefix functions run pre-deploy` must pass before any deploy.
+`node scripts/pre-deploy-check.js` must pass before deployment.
 
-It validates:
-- linting (`npm --prefix functions run lint`)
-- backend test execution (`npm --prefix functions test`)
-- API contract drift (`npm run api:contract:check`)
-- OpenAPI drift (`npm run openapi:check`)
-- repo hygiene (`npm run hygiene:check`)
+It currently validates:
 
-If any check fails, stop and fix before deployment.
+- backend Jest suite
+- market-insights contract tests
+- ESLint
+- critical module/export wiring
+- Firebase rewrite sanity checks
+- API contract parity
+- OpenAPI parity
+- repo hygiene checks
+
+Additional release checks to run when relevant:
+
+- `npm run test:pwa:versions`
+- `npm run test:release:manifest`
+- `npm run release:verify-live`
 
 ## 3. Deployment Modes
 
-Use the smallest blast radius for the change:
-- `functions` only: backend logic/config changes
-- `hosting` only: frontend static assets
-- `firestore:rules,firestore:indexes`: data access/index updates
-- full `firebase deploy`: coordinated release touching multiple surfaces
+Use the smallest blast radius that matches the change:
 
-## 4. Immediate Verification (First 10 Minutes)
+- `functions` only
+  - backend logic, provider behavior, scheduler changes, admin API changes
+- `hosting` only
+  - public pages, authenticated frontend, PWA shell, published market bundle
+- `firestore:rules,firestore:indexes`
+  - rules and index changes
+- full `firebase deploy`
+  - coordinated multi-surface release
+
+## 4. Hosting-specific Notes
+
+Hosting deploys are not just static file uploads.
+
+Current Hosting predeploy in `firebase.json` runs:
+
+1. `npm run aemo:dashboard:sync:hosting -- --strict`
+2. `npm run release:manifest`
+
+Implications:
+
+- deploys fail if the hosted market-insights bundle cannot be validated in
+  strict mode
+- each hosting deploy writes `frontend/data/release-manifest.json`
+- release-manifest freshness and PWA asset alignment are part of the release
+  contract now
+
+If you are performing a branch-sensitive or DataWorks-assisted deploy, run:
 
 ```bash
-# Function logs
-firebase functions:log | tail -50
-
-# Health check
-curl "https://<your-host>/api/health"
+npm run release:verify-live
 ```
 
-Expected health envelope:
+before the hosting deploy so you do not push a mismatched checkout over the
+live branch unexpectedly.
 
-```json
-{"errno":0,"result":{"status":"OK"}}
+## 5. Immediate Verification
+
+### First 10 minutes
+
+Check:
+
+```bash
+curl "https://<your-host>/api/health"
+firebase functions:log --only runAutomation
+firebase functions:log --only refreshAemoLiveSnapshots
 ```
 
 Manual smoke checks:
-- auth flows (login/logout/password reset)
-- dashboard data loads (inverter + pricing)
-- automation rule save/toggle/trigger
-- settings persist and reload correctly
-- admin endpoints work for admin and reject non-admin
 
-## 5. Rollback Triggers
+- login, logout, and password reset
+- dashboard data loads
+- automation rule save/toggle/cycle
+- settings persist and reload
+- public tools load
+- public market-insights preview loads
+- admin endpoints work for admins and reject non-admins
 
-Start rollback immediately if any of the following occur:
+### Release asset verification
+
+After hosting deploy, verify:
+
+- `/data/release-manifest.json` exists
+- `/sw.js` and `/js/app-shell.js` are aligned with the expected PWA versions
+- `/data/aemo-market-insights/index.json` is present and fresh
+
+## 6. Rollback Triggers
+
+Initiate rollback if any of the following occur:
+
 - sustained elevated error rate after deploy
-- scheduler misses multiple expected runs
+- scheduler misses expected runs
 - login/setup path broken for users
+- market-insights bundle missing or stale after hosting deploy
+- release-manifest or PWA shell alignment is broken
 - security/rules regression affecting data access
 
-Rollback procedure:
-- `docs/PROD_BACKUP_ROLLBACK_RUNBOOK.md`
-- `docs/checklists/ROLLBACK_CHECKLIST.md`
+Rollback references:
 
-## 6. Release Hygiene
+- [PROD_BACKUP_ROLLBACK_RUNBOOK.md](PROD_BACKUP_ROLLBACK_RUNBOOK.md)
+- [checklists/ROLLBACK_CHECKLIST.md](checklists/ROLLBACK_CHECKLIST.md)
 
-Before merge/deploy:
+## 7. Release Hygiene
+
+Before merge or deploy:
+
 - use small, reversible commits
-- avoid mixing migration + feature + refactor in one deploy
-- include docs updates for any API/behavior/config changes
+- avoid mixing migrations, refactors, and features in one release when possible
+- update docs for behavior, API, or operational-flow changes
+- refresh `docs/API_CONTRACT_BASELINE_MAR26.md` after live route changes
 - keep `docs/API.md` and `docs/openapi/openapi.v1.yaml` aligned with runtime
+- keep public-content changes aligned with `sitemap.xml`, `llms.txt`,
+  `llms-full.txt`, and `firebase.json`

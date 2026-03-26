@@ -1,24 +1,29 @@
 # Testing Guide
 
 Purpose: canonical test execution reference.
-Last verified: 2026-03-13
+Last verified: 2026-03-26
 
 ## 1. Test Tracks
 
-- Backend: Jest (`functions/test/*.test.js`)
-- Frontend: Playwright (`tests/frontend/*.spec.js`)
+Current repo test tracks:
 
-Current snapshot (2026-03-13):
-- Jest test files: 103
-- Backend run (`--runInBand`): 103 suites, 1406 tests passing
-- Playwright spec files: 13
-- Playwright listed tests: 201
+- Backend Jest suites: `functions/test/*.test.js`
+- Frontend Playwright specs: `tests/frontend/*.spec.js`
+- Root Node contract/unit tests: `tests/scripts/*.test.js`
+
+Current snapshot:
+
+- backend Jest suite files: `113`
+- frontend Playwright spec files: `20`
+- root script test files: `5`
+- Playwright listed tests: `261`
 
 Refresh inventory:
 
 ```bash
 npm --prefix functions test -- --listTests
 npx playwright test --list
+Get-ChildItem tests/scripts -Filter *.test.js
 ```
 
 ## 2. Backend (Jest)
@@ -29,16 +34,16 @@ Run all backend tests:
 npm --prefix functions test
 ```
 
-Run deterministically in one process (good for release checks):
+Run deterministically in one process:
 
 ```bash
 npm --prefix functions test -- --runInBand
 ```
 
-Run one file:
+Run a single file:
 
 ```bash
-npm --prefix functions test -- routes-integration.test.js
+npm --prefix functions test -- automation-cycle-route-module.test.js
 ```
 
 Coverage:
@@ -49,16 +54,22 @@ npm --prefix functions test -- --coverage
 
 ## 3. Frontend (Playwright)
 
-Run all:
+Run all frontend tests:
 
 ```bash
 npm run test:e2e:frontend
 ```
 
-Run one spec:
+Run smoke tests only:
 
 ```bash
-npx playwright test tests/frontend/control.spec.js
+npm run test:e2e:frontend:smoke
+```
+
+Run a single spec:
+
+```bash
+npx playwright test tests/frontend/market-insights.spec.js
 ```
 
 List tests:
@@ -67,7 +78,53 @@ List tests:
 npx playwright test --list
 ```
 
-## 4. PowerShell Runner
+## 4. Root Contract and Release Tests
+
+Market-insights data bundle contracts:
+
+```bash
+npm run test:market-insights:contracts
+```
+
+PWA version contract:
+
+```bash
+npm run test:pwa:versions
+```
+
+Release-manifest contract:
+
+```bash
+npm run test:release:manifest
+```
+
+## 5. Contract Checks
+
+API route parity:
+
+```bash
+npm run api:contract:check
+```
+
+Refresh generated API baseline:
+
+```bash
+npm run api:contract:refresh
+```
+
+OpenAPI parity:
+
+```bash
+npm run openapi:check
+```
+
+Repo hygiene:
+
+```bash
+npm run hygiene:check
+```
+
+## 6. PowerShell Runner
 
 File: `run-tests.ps1`
 
@@ -83,10 +140,11 @@ Supported modes:
 ```
 
 Notes:
-- `unit` is an alias for backend Jest tests.
-- `auth` tests require emulators.
 
-## 5. Emulator-Dependent Auth Tests
+- `unit` is an alias for backend Jest tests
+- `auth` tests require emulators
+
+## 7. Emulator-dependent Flows
 
 Start emulators first:
 
@@ -94,30 +152,36 @@ Start emulators first:
 npm run emu:start
 ```
 
-Then run auth flows:
+Then run emulator-sensitive tests or flows such as auth-focused backend tests.
+
+Recommended reset when local state is suspicious:
 
 ```bash
-npm --prefix functions test -- auth-flows.test.js
+npm run emu:reset
 ```
 
-## 6. CI Alignment
+## 8. Recommended CI / Release Set
 
-Minimum CI checks for merges to `main`:
+Minimum merge or release checks:
+
 - `npm --prefix functions run lint`
-- `npm --prefix functions test`
+- `npm --prefix functions test -- --runInBand`
 - `npm run api:contract:check`
 - `npm run openapi:check`
 - `npm run hygiene:check`
+- `npm run test:market-insights:contracts`
+- `npm run test:pwa:versions`
+- `npm run test:release:manifest`
 
-When frontend is changed, include:
+When frontend changed, also run:
+
 - `npm run test:e2e:frontend`
 
-## 7. Troubleshooting
+## 9. Troubleshooting
 
-- Emulator startup fails with Java runtime errors on macOS:
-  - `export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"`
-  - `export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"`
 - Playwright browser missing:
   - `npx playwright install`
-- Flaky local state:
-  - use deterministic reset: `npm run emu:reset`
+- emulator state looks stale:
+  - `npm run emu:reset`
+- local Hosting/PWA behavior looks inconsistent:
+  - clear service worker/cache and rerun the PWA version contract

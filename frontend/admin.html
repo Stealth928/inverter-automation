@@ -3030,12 +3030,12 @@
                     <div class="scheduler-slo-item" id="scheduler24hSloTelemetryAge">
                         <div class="slo-title">
                             <span class="label-row">SLO: Telemetry Age
-                                <span class="info-tip" tabindex="0" data-tip="Derived from the source timestamp embedded in inverter telemetry. Shows the highest telemetry age among executed cycles where a parseable timestamp was present; cycles with missing timestamps are excluded from this age max and counted separately in diagnostics. Healthy when <= 30m.">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Derived from the source timestamp embedded in inverter telemetry. The card status is based on how many executed cycles were paused for stale timestamped telemetry; the worst max age is still shown as a diagnostic so isolated outliers stay visible without turning the whole window into a false breach. Cycles with missing timestamps are excluded from the stale-age max and counted separately in diagnostics.">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
                         <div class="slo-value">-</div>
-                        <div class="slo-meta">Target max <= 30m 0s</div>
+                        <div class="slo-meta">Target stale rate <= 1.00% - diagnostic max <= 30m 0s</div>
                     </div>
                     <div class="scheduler-slo-item" id="scheduler24hSloCycleTailP99">
                         <div class="slo-title">
@@ -3098,12 +3098,12 @@
                     <div class="scheduler-slo-item" id="scheduler14dSloTelemetryAge">
                         <div class="slo-title">
                             <span class="label-row">SLO: Telemetry Age
-                                <span class="info-tip" tabindex="0" data-tip="Derived from the source timestamp embedded in inverter telemetry. Shows the highest telemetry age among executed cycles where a parseable timestamp was present; cycles with missing timestamps are excluded from this age max and counted separately in diagnostics. Healthy when <= 30m.">i</span>
+                                <span class="info-tip" tabindex="0" data-tip="Derived from the source timestamp embedded in inverter telemetry. The card status is based on how many executed cycles were paused for stale timestamped telemetry; the worst max age is still shown as a diagnostic so isolated outliers stay visible without turning the whole window into a false breach. Cycles with missing timestamps are excluded from the stale-age max and counted separately in diagnostics.">i</span>
                             </span>
                         </div>
                         <div class="slo-status">-</div>
                         <div class="slo-value">-</div>
-                        <div class="slo-meta">Target max <= 30m 0s</div>
+                        <div class="slo-meta">Target stale rate <= 1.00% - diagnostic max <= 30m 0s</div>
                     </div>
                     <div class="scheduler-slo-item" id="scheduler14dSloCycleTailP99">
                         <div class="slo-title">

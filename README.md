@@ -1,25 +1,25 @@
 # Inverter Automation
 
-SoCrates is a serverless energy automation platform for solar, battery, pricing,
-weather, and EV workflows. The current product ships a Firebase-hosted web app,
-an API surface behind `/api/**`, and a one-minute background scheduler that
-evaluates user rules, applies inverter actions, manages curtailment, and records
-admin-grade metrics.
+SoCrates is a serverless home-energy automation platform for solar, battery,
+pricing, weather, curtailment, and Tesla EV workflows. The repo ships a
+Firebase-hosted web app, an `/api/**` backend, two scheduled Cloud Functions,
+public decision tools, and admin/operator tooling.
 
 ## Current Capability Snapshot
 
-- Multi-provider inverter support: FoxESS, Sungrow, SigenEnergy, AlphaESS
-- Amber Electric pricing integration for current, forecast, and history views
-- Weather-aware automation using forecast temperature, radiation, and cloud cover
-- Rule engine with priorities, cooldowns, time windows, blackout windows, and
-  provider-aware action execution
-- Manual scheduler editing plus quick charge/discharge overrides
-- Tesla EV integration with OAuth onboarding, vehicle status, wake, charging
-  commands, charge-limit updates, and charging-amps control when command
-  readiness allows it
-- Admin tooling for user management, platform stats, Firestore cost visibility,
-  scheduler metrics, and SLO alerting
-- Responsive frontend with PWA support and public landing/legal pages
+- Inverter providers: FoxESS, Sungrow, SigenEnergy, AlphaESS
+- Pricing providers: Amber Electric and AEMO regional market data
+- Automation inputs: current price, forecast price, SoC, temperature, time,
+  solar radiation, cloud cover, and EV-aware conditions
+- Automation actions: `SelfUse`, `ForceCharge`, `ForceDischarge`, `Feedin`,
+  `Backup` with provider-aware validation
+- Manual tools: quick control, scheduler editing, diagnostics, Automation Lab
+- Tesla EV: OAuth, vehicle registration, status, command-readiness, wake, and
+  charging commands when transport/readiness allows it
+- Admin tooling: user management, announcements, Firestore and scheduler
+  metrics, API health, behavior analytics, dead-letter retry, and DataWorks ops
+- Public web surface: landing page, ROI calculator, battery wear estimator,
+  market insights preview, rule template recommender, blog, privacy, and terms
 
 ## Quick Start
 
@@ -30,47 +30,54 @@ firebase login
 firebase deploy
 ```
 
-For local development, provider setup, emulator workflows, and operational env
-vars, start with [docs/SETUP.md](docs/SETUP.md).
+Use [docs/SETUP.md](docs/SETUP.md) for local emulators, provider onboarding,
+runtime secrets, Firestore paths, and production prerequisites.
 
 ## Documentation
 
-Use [docs/INDEX.md](docs/INDEX.md) as the canonical doc map.
+Use [docs/INDEX.md](docs/INDEX.md) as the canonical map.
 
-High-value entry points:
+High-signal entry points:
 
 | Document | Purpose |
 | --- | --- |
-| [docs/SETUP.md](docs/SETUP.md) | Local development, deployment prerequisites, provider onboarding, runtime configuration |
-| [docs/API.md](docs/API.md) | Narrative API guide for common product and operator workflows; not the exhaustive route inventory |
-| [docs/openapi/openapi.v1.yaml](docs/openapi/openapi.v1.yaml) | Incremental OpenAPI contract baseline used by contract checks |
-| [docs/API_CONTRACT_BASELINE_MAR26.md](docs/API_CONTRACT_BASELINE_MAR26.md) | Current measured backend/frontend route inventory while OpenAPI coverage catches up |
-| [docs/AUTOMATION.md](docs/AUTOMATION.md) | Rule model, conditions, actions, and provider behavior |
-| [docs/BACKGROUND_AUTOMATION.md](docs/BACKGROUND_AUTOMATION.md) | Scheduler orchestration, cadence, concurrency, metrics, and alerting |
-| [docs/guides/PRODUCT_GUIDE.md](docs/guides/PRODUCT_GUIDE.md) | Product-facing description of shipped UI and capability |
-| [docs/guides/TESTING_GUIDE.md](docs/guides/TESTING_GUIDE.md) | Backend/frontend test execution and CI alignment |
-| [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | Production-safe release workflow |
+| [docs/SETUP.md](docs/SETUP.md) | Local development, provider onboarding, secrets, Firestore model, deployment prerequisites |
+| [docs/API.md](docs/API.md) | Narrative API guide grouped by workflow and auth model |
+| [docs/API_CONTRACT_BASELINE_MAR26.md](docs/API_CONTRACT_BASELINE_MAR26.md) | Generated live route inventory from mounted backend routes |
+| [docs/openapi/openapi.v1.yaml](docs/openapi/openapi.v1.yaml) | Incremental machine-readable OpenAPI baseline |
+| [docs/AUTOMATION.md](docs/AUTOMATION.md) | Rule model, supported conditions/actions, provider behavior |
+| [docs/BACKGROUND_AUTOMATION.md](docs/BACKGROUND_AUTOMATION.md) | Scheduled jobs, cadence, locks, idempotency, metrics, alerting |
+| [docs/AEMO_AGGREGATION_PIPELINE.md](docs/AEMO_AGGREGATION_PIPELINE.md) | Raw AEMO ingest, aggregate generation, published bundle flow, live snapshot job |
+| [docs/guides/PRODUCT_GUIDE.md](docs/guides/PRODUCT_GUIDE.md) | Concise product surface and boundaries |
+| [docs/guides/TESTING_GUIDE.md](docs/guides/TESTING_GUIDE.md) | Backend, frontend, contract, and release test tracks |
+| [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | Practical production-safe release workflow |
 
 ## Architecture
 
 ```text
-Frontend (Firebase Hosting)
-  Public pages + authenticated app shell + PWA assets
+Firebase Hosting
+  Public pages + authenticated app pages + PWA shell + published data assets
         |
         | /api/** rewrite
         v
-HTTP API (Cloud Function export: api)
-  Express routes for setup, config, pricing, device control,
-  automation, history, EV, admin, diagnostics, and metrics
+Cloud Function export: api
+  Express routes for setup, config, pricing, automation, devices, EV, admin,
+  metrics, and diagnostics
         |
-        +--> Firestore (user config, rules, caches, audit, metrics)
+        +--> Firestore
         +--> Provider APIs (FoxESS, Sungrow, SigenEnergy, AlphaESS)
         +--> Amber Electric
+        +--> AEMO adapters + Firestore live snapshots
         +--> Open-Meteo
-        +--> Tesla Fleet API / signed-command proxy when needed
+        +--> Tesla Fleet API / signed-command proxy
 
-Background Scheduler (Cloud Function export: runAutomation)
-  1-minute cadence -> per-user orchestration -> automation cycle execution
+Cloud Function export: runAutomation
+  every 1 minute, UTC
+  -> per-user automation orchestration
+
+Cloud Function export: refreshAemoLiveSnapshots
+  every 5 minutes, Australia/Brisbane
+  -> refresh Firestore-backed current AEMO regional snapshots
 ```
 
 ## Repository Layout
@@ -80,35 +87,45 @@ inverter-automation/
 |-- firebase.json
 |-- package.json
 |-- frontend/
-|   |-- index.html                  # Public landing page
-|   |-- app.html                    # Authenticated dashboard
-|   |-- setup.html                  # Guided setup flow
-|   |-- settings.html               # Credentials, automation, Tesla, curtailment
-|   |-- control.html                # Manual control workflows
-|   |-- history.html                # Reports and history
-|   |-- roi.html                    # ROI analysis
-|   |-- rules-library.html          # Rule templates
-|   |-- admin.html                  # Admin dashboard
+|   |-- index.html
+|   |-- battery-roi-calculator.html
+|   |-- battery-wear-estimator.html
+|   |-- market-insights/
+|   |-- rule-template-recommender/
+|   |-- blog/
+|   |-- app.html
+|   |-- settings.html
+|   |-- control.html
+|   |-- history.html
+|   |-- roi.html
+|   |-- rules-library.html
+|   |-- market-insights.html
+|   |-- admin.html
+|   |-- test.html
+|   |-- data/
 |   |-- js/
 |   |-- css/
 |-- functions/
-|   |-- index.js                    # Composition root + exports
-|   |-- api/routes/                 # Route registration modules
-|   |-- lib/services/               # Automation, EV, admin, and runtime services
-|   |-- lib/repositories/           # Firestore data access helpers
-|-- scripts/                        # Quality gates, emulator tooling, contract checks
-|-- docs/                           # Canonical docs, runbooks, audits, and historical evidence
+|   |-- index.js
+|   |-- api/routes/
+|   |-- lib/services/
+|   |-- lib/repositories/
+|-- scripts/
+|-- tests/
+|   |-- frontend/
+|   |-- scripts/
+|-- docs/
 ```
 
 ## Local Development
 
-Recommended emulator workflow:
+Recommended emulator reset:
 
 ```bash
 npm run emu:reset
 ```
 
-Other useful commands:
+Useful commands:
 
 ```bash
 npm run emu:start
@@ -117,21 +134,27 @@ npm run emu:status
 npm run emu:stop
 ```
 
-Verification commands:
+## Verification Commands
 
 ```bash
 npm --prefix functions run lint
 npm --prefix functions test -- --runInBand
 npm run api:contract:check
 npm run openapi:check
+npm run test:market-insights:contracts
+npm run test:pwa:versions
+npm run test:release:manifest
 npm run test:e2e:frontend
 node scripts/pre-deploy-check.js
 ```
 
 ## Deployment Notes
 
-- Node runtime target is `nodejs22`
-- Hosting rewrites `/api/**` to the `api` Cloud Function
-- The scheduled automation export is `runAutomation`
-- Keep response envelopes backward compatible: `{ errno, result, error, msg }`
-- Update docs and focused tests when changing API behavior or operational flows
+- Functions runtime target is `nodejs22`.
+- Hosting rewrites `/api/**` to the `api` Cloud Function export.
+- Hosting predeploy runs `npm run aemo:dashboard:sync:hosting -- --strict` and
+  `npm run release:manifest`.
+- `npm run api:contract:refresh` regenerates the live route baseline from
+  mounted routes only. Unmounted route modules are intentionally excluded.
+- Keep API response envelopes backward compatible:
+  `{ errno, result, error, msg }`.

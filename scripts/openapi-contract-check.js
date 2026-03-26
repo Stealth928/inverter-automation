@@ -1,25 +1,22 @@
 #!/usr/bin/env node
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
+const {
+  getLiveBackendRouteInventory,
+  getRepoRoot,
+  normalizeEndpointPath,
+  pathsEquivalent,
+  readFileOrThrow,
+  toRelPath
+} = require('./lib/backend-route-inventory');
 
 const args = new Set(process.argv.slice(2));
 const silent = args.has('--silent');
 
-function getRepoRoot() {
-  let root = process.cwd();
-  if (path.basename(root) === 'functions') {
-    root = path.dirname(root);
-  }
-  return root;
-}
-
 const repoRoot = getRepoRoot();
 const openApiSpecPath = path.join(repoRoot, 'docs', 'openapi', 'openapi.v1.yaml');
-const backendFilePath = path.join(repoRoot, 'functions', 'index.js');
-const backendRoutesDir = path.join(repoRoot, 'functions', 'api', 'routes');
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch']);
 
@@ -27,143 +24,6 @@ function logInfo(message) {
   if (!silent) {
     console.log(`[OpenAPI] ${message}`);
   }
-}
-
-function toPosix(filePath) {
-  return filePath.replace(/\\/g, '/');
-}
-
-function toRelPath(filePath) {
-  return toPosix(path.relative(repoRoot, filePath));
-}
-
-function normalizeEndpointPath(raw) {
-  if (!raw || typeof raw !== 'string') {
-    return '';
-  }
-
-  let value = raw.trim();
-  if (!value) {
-    return '';
-  }
-
-  const apiIndex = value.indexOf('/api/');
-  if (apiIndex >= 0) {
-    value = value.slice(apiIndex);
-  }
-
-  value = value.split('#')[0];
-  value = value.split('?')[0];
-  value = value.replace(/\$\{[^}]+\}/g, ':param');
-  value = value.replace(/\{[^}]+\}/g, ':param');
-  value = value.replace(/\/+/g, '/');
-
-  if (!value.startsWith('/')) {
-    value = `/${value}`;
-  }
-
-  if (value.length > 1 && value.endsWith('/')) {
-    value = value.slice(0, -1);
-  }
-
-  return value;
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function compilePathPattern(patternPath) {
-  const normalized = normalizeEndpointPath(patternPath);
-  if (!normalized) {
-    return null;
-  }
-
-  const segments = normalized.split('/').filter(Boolean);
-  const regexSegments = segments.map((segment) => {
-    if (segment.startsWith(':')) {
-      return '[^/]+';
-    }
-    return escapeRegExp(segment);
-  });
-
-  return new RegExp(`^/${regexSegments.join('/')}$`);
-}
-
-function pathsMatch(patternPath, actualPath) {
-  const regex = compilePathPattern(patternPath);
-  const normalizedActual = normalizeEndpointPath(actualPath);
-  if (!regex || !normalizedActual) {
-    return false;
-  }
-  return regex.test(normalizedActual);
-}
-
-function pathsEquivalent(pathA, pathB) {
-  return pathsMatch(pathA, pathB) || pathsMatch(pathB, pathA);
-}
-
-function readFileOrThrow(filePath) {
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`Required file not found: ${filePath}`);
-  }
-  return fs.readFileSync(filePath, 'utf8');
-}
-
-function walkFiles(dirPath) {
-  if (!fs.existsSync(dirPath)) {
-    return [];
-  }
-  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-  const results = [];
-  entries.forEach((entry) => {
-    const fullPath = path.join(dirPath, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...walkFiles(fullPath));
-      return;
-    }
-    if (entry.name.toLowerCase().endsWith('.js')) {
-      results.push(fullPath);
-    }
-  });
-  return results;
-}
-
-function parseBackendRoutesFromFile(content, sourceFile) {
-  const lines = content.split(/\r?\n/);
-  const routeLinePattern = /^\s*app\.(get|post|put|delete|patch)\(\s*['"]([^'"]+)['"]/;
-  const routes = [];
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const match = lines[i].match(routeLinePattern);
-    if (!match) {
-      continue;
-    }
-
-    const method = match[1].toUpperCase();
-    const routePath = normalizeEndpointPath(match[2]);
-    if (!routePath) {
-      continue;
-    }
-
-    routes.push({
-      method,
-      path: routePath,
-      source: `${sourceFile}:${i + 1}`,
-    });
-  }
-
-  return routes;
-}
-
-function parseBackendRoutes() {
-  const files = [backendFilePath, ...walkFiles(backendRoutesDir).sort()];
-  const routes = [];
-  files.forEach((filePath) => {
-    const content = readFileOrThrow(filePath);
-    routes.push(...parseBackendRoutesFromFile(content, toRelPath(filePath)));
-  });
-  return routes;
 }
 
 function parseOpenApiOperations(specDoc) {
@@ -275,7 +135,7 @@ function main() {
     process.exit(1);
   }
 
-  const backendRoutes = parseBackendRoutes();
+  const backendRoutes = getLiveBackendRouteInventory(repoRoot).routes;
   const { operations, errors: structuralErrors } = parseOpenApiOperations(specDoc);
 
   const parityMismatches = operations
@@ -334,7 +194,7 @@ function main() {
     (route) => !operations.some((operation) => operation.method === route.method && pathsEquivalent(operation.path, route.path))
   );
 
-  logInfo(`Spec parsed: ${toRelPath(openApiSpecPath)}`);
+  logInfo(`Spec parsed: ${toRelPath(repoRoot, openApiSpecPath)}`);
   logInfo(`Backend routes discovered: ${backendRoutes.length}`);
   logInfo(`OpenAPI operations declared: ${operations.length}`);
   logInfo(`OpenAPI operations matching backend: ${operations.length - parityMismatches.length}`);
