@@ -1815,6 +1815,9 @@
             <div class="section-description">
                 Manage in-app inbox and web push delivery for this account and this browser/device.
             </div>
+            <div class="alert alert-info" role="note" style="margin-bottom:16px;">
+                <strong>Opt-in:</strong> Notifications are off by default. Nothing is delivered until you enable the categories you want, and push still needs to be enabled separately on each device.
+            </div>
             <div class="settings-grid">
                 <div class="setting-item">
                     <div class="setting-label">Push status</div>
@@ -1833,22 +1836,22 @@
                     <div class="setting-hint">Choose which notification categories you want delivered.</div>
                     <div style="display:grid;gap:8px;margin-top:auto;">
                         <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary);">
-                            <input id="notifications_pref_inboxEnabled" type="checkbox" checked>
+                            <input id="notifications_pref_inboxEnabled" type="checkbox">
                             <span>Enable in-app inbox</span>
                             <span class="setting-inline-help" title="Save notification records in the app so users can review them later, even if they miss the live event." aria-label="Help: in-app inbox">?</span>
                         </label>
                         <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary);">
-                            <input id="notifications_pref_broadcastsEnabled" type="checkbox" checked>
+                            <input id="notifications_pref_broadcastsEnabled" type="checkbox">
                             <span>Admin broadcasts</span>
                             <span class="setting-inline-help" title="Allow admin-sent broadcast messages, such as maintenance notices or release updates, to reach this account." aria-label="Help: admin broadcasts">?</span>
                         </label>
                         <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary);">
-                            <input id="notifications_pref_highSignalAutomationEnabled" type="checkbox" checked>
+                            <input id="notifications_pref_highSignalAutomationEnabled" type="checkbox">
                             <span>High-signal automation alerts</span>
                             <span class="setting-inline-help" title="Receive only important automation events like telemetry pauses and cycle failures. Routine rule-trigger noise is excluded." aria-label="Help: high-signal automation alerts">?</span>
                         </label>
                         <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary);">
-                            <input id="notifications_pref_curtailmentEnabled" type="checkbox" checked>
+                            <input id="notifications_pref_curtailmentEnabled" type="checkbox">
                             <span>Curtailment transitions</span>
                             <span class="setting-inline-help" title="Get alerted when curtailment turns on or off because the app changed export limits in response to market conditions." aria-label="Help: curtailment transitions">?</span>
                         </label>

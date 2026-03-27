@@ -10,10 +10,10 @@ try {
 }
 
 const NOTIFICATION_PREF_DEFAULTS = Object.freeze({
-  inboxEnabled: true,
-  broadcastsEnabled: true,
-  highSignalAutomationEnabled: true,
-  curtailmentEnabled: true
+  inboxEnabled: false,
+  broadcastsEnabled: false,
+  highSignalAutomationEnabled: false,
+  curtailmentEnabled: false
 });
 
 const NOTIFICATION_SEVERITIES = new Set(['info', 'success', 'warning', 'danger']);
@@ -72,10 +72,10 @@ function normalizeNotificationChannels(value) {
 function normalizeNotificationPreferences(value) {
   const source = value && typeof value === 'object' ? value : {};
   return {
-    inboxEnabled: source.inboxEnabled !== false,
-    broadcastsEnabled: source.broadcastsEnabled !== false,
-    highSignalAutomationEnabled: source.highSignalAutomationEnabled !== false,
-    curtailmentEnabled: source.curtailmentEnabled !== false
+    inboxEnabled: source.inboxEnabled === true,
+    broadcastsEnabled: source.broadcastsEnabled === true,
+    highSignalAutomationEnabled: source.highSignalAutomationEnabled === true,
+    curtailmentEnabled: source.curtailmentEnabled === true
   };
 }
 

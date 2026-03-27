@@ -238,6 +238,9 @@ const _secretSungrowAppSecret = defineSecret('SUNGROW_APP_SECRET');
 const _secretTeslaProxyUrl    = defineSecret('TESLA_SIGNED_COMMAND_PROXY_URL');
 const _secretTeslaProxyToken  = defineSecret('TESLA_SIGNED_COMMAND_PROXY_TOKEN');
 const _secretGithubDataworksToken = defineSecret('GITHUB_DATAWORKS_TOKEN');
+const _secretWebPushVapidPublicKey = defineSecret('WEB_PUSH_VAPID_PUBLIC_KEY');
+const _secretWebPushVapidPrivateKey = defineSecret('WEB_PUSH_VAPID_PRIVATE_KEY');
+const _secretWebPushVapidSubject = defineSecret('WEB_PUSH_VAPID_SUBJECT');
 
 // ==================== CONFIGURATION ====================
 // Reads from environment variables (populated from Secret Manager at runtime,
@@ -1527,7 +1530,10 @@ exports.api = onRequest(
     secrets: [
       _secretTeslaProxyUrl,
       _secretTeslaProxyToken,
-      _secretGithubDataworksToken
+      _secretGithubDataworksToken,
+      _secretWebPushVapidPublicKey,
+      _secretWebPushVapidPrivateKey,
+      _secretWebPushVapidSubject
     ]
   },
   app

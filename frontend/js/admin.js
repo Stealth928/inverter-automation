@@ -128,6 +128,7 @@
     let usersFilterInputDebounce = null;
     let currentAdminAnnouncement = null;
     let announcementEditorBound = false;
+    let notificationsEditorBound = false;
     let currentAdminNotificationsConfig = null;
 
     function createDefaultUsersFilters() {
@@ -2595,6 +2596,10 @@
             configRequireSetupInput: document.getElementById('notificationsConfigRequireSetupInput'),
             configRequireAutomationInput: document.getElementById('notificationsConfigRequireAutomationInput'),
             configMinAgeInput: document.getElementById('notificationsConfigMinAgeInput'),
+            configOnlyIncludeUidsInput: document.getElementById('notificationsConfigOnlyIncludeUidsInput'),
+            configIncludeUidsInput: document.getElementById('notificationsConfigIncludeUidsInput'),
+            configExcludeUidsInput: document.getElementById('notificationsConfigExcludeUidsInput'),
+            configAudienceSummary: document.getElementById('notificationsConfigAudienceSummary'),
             overviewPushConfigured: document.getElementById('notificationsOverviewPushConfigured'),
             overviewActiveSubs: document.getElementById('notificationsOverviewActiveSubs'),
             overviewCampaignCount: document.getElementById('notificationsOverviewCampaignCount'),
@@ -2605,6 +2610,7 @@
             broadcastDeepLinkInput: document.getElementById('notificationsBroadcastDeepLinkInput'),
             broadcastChannelInboxInput: document.getElementById('notificationsBroadcastChannelInboxInput'),
             broadcastChannelPushInput: document.getElementById('notificationsBroadcastChannelPushInput'),
+            broadcastAudienceSummary: document.getElementById('notificationsBroadcastAudienceSummary'),
             sendBroadcastBtn: document.getElementById('sendNotificationsBroadcastBtn')
         };
     }
@@ -2626,6 +2632,47 @@
         if (els.refreshBtn) els.refreshBtn.disabled = isBusy;
         if (els.saveBtn) els.saveBtn.disabled = isBusy;
         if (els.sendBroadcastBtn) els.sendBroadcastBtn.disabled = isBusy;
+    }
+
+    function renderAdminNotificationsAudienceSummary(audienceDefaults) {
+        const els = getNotificationsConfigElements();
+        const summaryLines = buildAudienceSummaryLines({ audience: audienceDefaults || {} });
+        if (els.configAudienceSummary) {
+            els.configAudienceSummary.innerHTML = summaryLines
+                .map((line) => `<div>${escapeHtml(line)}</div>`)
+                .join('');
+        }
+        if (els.broadcastAudienceSummary) {
+            els.broadcastAudienceSummary.innerHTML = `<div><strong>Broadcast audience</strong></div>${summaryLines
+                .map((line) => `<div>${escapeHtml(line)}</div>`)
+                .join('')}`;
+        }
+    }
+
+    function bindAdminNotificationsHandlers() {
+        if (notificationsEditorBound) return;
+        notificationsEditorBound = true;
+
+        const els = getNotificationsConfigElements();
+        const summaryHandler = () => {
+            renderAdminNotificationsAudienceSummary(collectAdminNotificationsConfigForm().audienceDefaults);
+        };
+
+        [
+            els.configRequireTourInput,
+            els.configRequireSetupInput,
+            els.configRequireAutomationInput,
+            els.configMinAgeInput,
+            els.configOnlyIncludeUidsInput,
+            els.configIncludeUidsInput,
+            els.configExcludeUidsInput
+        ].forEach((el) => {
+            if (!el || typeof el.addEventListener !== 'function') return;
+            el.addEventListener('input', summaryHandler);
+            el.addEventListener('change', summaryHandler);
+        });
+
+        summaryHandler();
     }
 
     function normalizeAdminNotificationsConfig(config) {
@@ -2671,6 +2718,10 @@
                 ? String(normalized.audienceDefaults.minAccountAgeDays)
                 : '';
         }
+        if (els.configOnlyIncludeUidsInput) els.configOnlyIncludeUidsInput.value = formatAnnouncementUidList(normalized.audienceDefaults.onlyIncludeUids);
+        if (els.configIncludeUidsInput) els.configIncludeUidsInput.value = formatAnnouncementUidList(normalized.audienceDefaults.includeUids);
+        if (els.configExcludeUidsInput) els.configExcludeUidsInput.value = formatAnnouncementUidList(normalized.audienceDefaults.excludeUids);
+        renderAdminNotificationsAudienceSummary(normalized.audienceDefaults);
 
         if (els.updated) {
             if (normalized.updatedAt) {
@@ -2724,7 +2775,10 @@
                 requireAutomationEnabled: els.configRequireAutomationInput?.checked === true,
                 minAccountAgeDays: Number.isFinite(minAccountAgeRaw) && minAccountAgeRaw > 0
                     ? Math.min(3650, Math.round(minAccountAgeRaw))
-                    : null
+                    : null,
+                onlyIncludeUids: parseAnnouncementUidList(els.configOnlyIncludeUidsInput?.value || ''),
+                includeUids: parseAnnouncementUidList(els.configIncludeUidsInput?.value || ''),
+                excludeUids: parseAnnouncementUidList(els.configExcludeUidsInput?.value || '')
             }
         };
     }
@@ -5620,6 +5674,7 @@
         initializeInfoTips();
         bindUsersFilterHandlers();
         bindAnnouncementEditorHandlers();
+        bindAdminNotificationsHandlers();
         if (!adminApiClient) {
             document.getElementById('accessDenied').style.display = '';
             return;

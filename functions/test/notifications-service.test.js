@@ -253,7 +253,6 @@ function createMockDb(seed = {}) {
         },
         async commit() {
           for (const op of ops) {
-            // eslint-disable-next-line no-await-in-loop
             await op();
           }
         }
@@ -327,7 +326,7 @@ describe('notifications service', () => {
       }
     });
 
-    let nowMs = 1_700_000_000_000;
+    let nowMs = 1700000000000;
     const service = createNotificationsService({
       db,
       serverTimestamp: () => createTimestamp('ts'),
@@ -383,7 +382,7 @@ describe('notifications service', () => {
     const service = createNotificationsService({
       db,
       serverTimestamp: () => createTimestamp('ts'),
-      now: () => 1_700_000_000_000,
+      now: () => 1700000000000,
       logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() }
     });
 
@@ -403,6 +402,24 @@ describe('notifications service', () => {
       active: false,
       lastErrorStatusCode: 410
     }));
+  });
+
+  test('getBootstrap defaults notification preferences to disabled when no config exists', async () => {
+    const { db } = createMockDb({ users: { 'user-1': {} } });
+    const service = createNotificationsService({
+      db,
+      serverTimestamp: () => createTimestamp('ts'),
+      logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() }
+    });
+
+    const bootstrap = await service.getBootstrap('user-1');
+
+    expect(bootstrap.preferences).toEqual({
+      inboxEnabled: false,
+      broadcastsEnabled: false,
+      highSignalAutomationEnabled: false,
+      curtailmentEnabled: false
+    });
   });
 
   test('getBootstrap uses generated VAPID keys in emulator when env vars are missing', async () => {

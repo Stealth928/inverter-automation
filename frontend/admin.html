@@ -2636,9 +2636,9 @@
             <button class="tab-btn" data-tab="scheduler" onclick="switchTab('scheduler')">⚙️ Scheduler</button>
             <button class="tab-btn" data-tab="dataworks" onclick="switchTab('dataworks')">🛰️ DataWorks</button>
             <button class="tab-btn" data-tab="behavior" onclick="switchTab('behavior')">🧭 Behaviour</button>
+            <button class="tab-btn" data-tab="apiHealth" onclick="switchTab('apiHealth')">🩺 API Health</button>
             <button class="tab-btn" data-tab="announcement" onclick="switchTab('announcement')">📣 Announcement</button>
             <button class="tab-btn" data-tab="notifications" onclick="switchTab('notifications')">🔔 Notifications</button>
-            <button class="tab-btn" data-tab="apiHealth" onclick="switchTab('apiHealth')">🩺 API Health</button>
         </nav>
 
         <div id="tab-overview" class="tab-panel active">
@@ -3131,6 +3131,26 @@
                                         <label for="notificationsConfigMinAgeInput">Minimum account age (days)</label>
                                         <input id="notificationsConfigMinAgeInput" class="announcement-input" type="number" min="0" max="3650" placeholder="e.g. 7">
                                     </div>
+                                    <div class="announcement-field full">
+                                        <label for="notificationsConfigOnlyIncludeUidsInput">Only include users</label>
+                                        <textarea id="notificationsConfigOnlyIncludeUidsInput" class="announcement-textarea" style="min-height:88px;" placeholder="One email or UID per line, or comma-separated"></textarea>
+                                    </div>
+                                    <div class="announcement-field full">
+                                        <label for="notificationsConfigIncludeUidsInput">Always include override</label>
+                                        <textarea id="notificationsConfigIncludeUidsInput" class="announcement-textarea" style="min-height:88px;" placeholder="One email or UID per line, or comma-separated"></textarea>
+                                    </div>
+                                    <div class="announcement-field full">
+                                        <label for="notificationsConfigExcludeUidsInput">Always exclude override</label>
+                                        <textarea id="notificationsConfigExcludeUidsInput" class="announcement-textarea" style="min-height:88px;" placeholder="One email or UID per line, or comma-separated"></textarea>
+                                    </div>
+                                    <div class="announcement-field full">
+                                        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;">
+                                            Use email addresses or UIDs. These audience filters apply to saved notification defaults and send-now broadcasts.
+                                        </div>
+                                        <div id="notificationsConfigAudienceSummary" style="font-size:12px;color:var(--text-secondary);line-height:1.6;border:1px solid var(--border-secondary);border-radius:12px;padding:12px;background:rgba(255,255,255,0.02);">
+                                            Audience summary will appear here.
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </section>
@@ -3180,6 +3200,9 @@
                                             <span class="announcement-toggle-label">Channel: push</span>
                                         </span>
                                     </label>
+                                </div>
+                                <div id="notificationsBroadcastAudienceSummary" style="margin-top:12px;font-size:12px;color:var(--text-secondary);line-height:1.5;">
+                                    Broadcast audience uses the runtime config filters shown on the left.
                                 </div>
                                 <div style="margin-top: 12px;display:flex;justify-content:flex-end;">
                                     <button class="action-btn" onclick="sendAdminNotificationBroadcast()" id="sendNotificationsBroadcastBtn">🚀 Send Broadcast</button>

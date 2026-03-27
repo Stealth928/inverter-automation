@@ -221,6 +221,25 @@ Current code uses:
 - `TESLA_SIGNED_COMMAND_PROXY_URL`
 - `TESLA_SIGNED_COMMAND_PROXY_TOKEN`
 - `GITHUB_DATAWORKS_TOKEN`
+- `WEB_PUSH_VAPID_PUBLIC_KEY`
+- `WEB_PUSH_VAPID_PRIVATE_KEY`
+- `WEB_PUSH_VAPID_SUBJECT`
+
+For web push in production, all three `WEB_PUSH_VAPID_*` values must be
+present on the API runtime. The notifications bootstrap endpoint reports push
+as unconfigured when any of them are missing, and Settings will show:
+`Push transport is not configured on the server yet.`
+
+Typical secret setup:
+
+```bash
+firebase functions:secrets:set WEB_PUSH_VAPID_PUBLIC_KEY
+firebase functions:secrets:set WEB_PUSH_VAPID_PRIVATE_KEY
+firebase functions:secrets:set WEB_PUSH_VAPID_SUBJECT
+```
+
+`WEB_PUSH_VAPID_SUBJECT` should usually be a contact URI such as
+`mailto:ops@example.com`.
 
 ### Scheduler, cache, and SLO tuning
 

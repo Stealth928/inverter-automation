@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-03-26
+Last updated: 2026-03-27
 Purpose: canonical map of the actively maintained documentation set.
 
 ## Start Here
@@ -44,6 +44,8 @@ Purpose: canonical map of the actively maintained documentation set.
   workflow.
 - [RELEASE_READINESS_CHECKLIST.md](RELEASE_READINESS_CHECKLIST.md): pre-release
   go/no-go checklist.
+- [COST_ANALYSIS.md](COST_ANALYSIS.md): canonical Firebase cost,
+  load-complexity, and performance review with ranked optimization priorities.
 - [guides/TESTING_GUIDE.md](guides/TESTING_GUIDE.md): backend, frontend,
   contract, and release test tracks.
 - [LOCAL_DEV_KNOWN_ISSUES.md](LOCAL_DEV_KNOWN_ISSUES.md): emulator and local-dev
@@ -83,7 +85,6 @@ the day-to-day source of truth for shipped behavior.
 - [REFACTORING_IMPLEMENTATION_PLAN_MAR26.md](REFACTORING_IMPLEMENTATION_PLAN_MAR26.md)
 - [evidence/REFACTORING_EXECUTION_LOG_MAR26.md](evidence/REFACTORING_EXECUTION_LOG_MAR26.md)
 - [evidence/scheduler-soak/README.md](evidence/scheduler-soak/README.md)
-- [COST_ANALYSIS.md](COST_ANALYSIS.md)
 
 ## Legacy Aliases
 
