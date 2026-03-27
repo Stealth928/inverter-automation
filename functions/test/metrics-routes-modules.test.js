@@ -5,33 +5,29 @@ const request = require('supertest');
 
 const { registerMetricsRoutes } = require('../api/routes/metrics');
 
-function createDoc(data = {}) {
-  return {
-    data: () => data,
-    exists: true
-  };
-}
-
-function createQuerySnapshot(docs = []) {
-  return {
-    forEach: (cb) => docs.forEach((doc) => cb(doc))
-  };
-}
-
 function createDbWithUserMetrics(userDocs = []) {
-  const get = jest.fn(async () => createQuerySnapshot(userDocs));
-  const limit = jest.fn(() => ({
-    get
-  }));
-  const orderBy = jest.fn(() => ({
-    limit
+  const docsById = new Map(userDocs.map((doc) => [doc.id, doc]));
+  const getDoc = jest.fn(async (docId) => {
+    const doc = docsById.get(docId);
+    if (doc) {
+      return {
+        exists: true,
+        data: doc.data
+      };
+    }
+    return {
+      exists: false,
+      data: () => ({})
+    };
+  });
+  const doc = jest.fn((docId) => ({
+    get: jest.fn(async () => getDoc(docId))
   }));
 
   return {
     __mocks: {
-      get,
-      limit,
-      orderBy
+      doc,
+      getDoc
     },
     collection: jest.fn((name) => {
       if (name !== 'users') {
@@ -42,8 +38,7 @@ function createDbWithUserMetrics(userDocs = []) {
           collection: jest.fn((sub) => {
             if (sub !== 'metrics') throw new Error(`Unexpected subcollection ${sub}`);
             return {
-              get,
-              orderBy
+              doc
             };
           })
         }))
@@ -117,9 +112,8 @@ describe('metrics route module', () => {
       sigenergy: 0,
       alphaess: 0
     });
-    expect(db.__mocks.get).toHaveBeenCalledTimes(1);
-    expect(db.__mocks.orderBy).toHaveBeenCalledWith('__name__', 'desc');
-    expect(db.__mocks.limit).toHaveBeenCalledWith(1);
+    expect(db.__mocks.doc).toHaveBeenCalledWith('2026-03-14');
+    expect(db.__mocks.getDoc).toHaveBeenCalledWith('2026-03-14');
   });
 
   test('respects explicit inverter field when present', async () => {

@@ -534,7 +534,7 @@ Status update against the immediate implementation order:
 
 | Sequence Item | Status | Implementation Notes |
 | --- | --- | --- |
-| 1. Fix user metrics full-scan reads | Implemented | `/api/metrics/api-calls?scope=user` now queries bounded docs (`orderBy('__name__', 'desc').limit(days)`) with safe fallback behavior. |
+| 1. Fix user metrics full-scan reads | Implemented | `/api/metrics/api-calls?scope=user` now reads the last `N` date-keyed daily docs directly, removing the previous full-scan path and avoiding Firestore index dependencies. |
 | 2. Split public config from secrets reads | Implemented | Added `getUserConfigPublic()` and `getUserConfigWithSecrets()`. Hot read routes now use public config by default. |
 | 3. Slim `/api/automation/status` | Implemented (phase 1) | Added lightweight `GET /api/automation/status-summary` and moved dashboard interval polling to this summary route. Full status route remains for detailed data. |
 | 4. Remove scheduler zero-user migration scan | Implemented | Removed full `users` collection fallback scan from steady-state scheduler. Scheduler now exits early when prefilter finds zero enabled users. |
@@ -546,12 +546,18 @@ Status update against the immediate implementation order:
 ## Validation Evidence (2026-03-27)
 
 - Full functions test suite passed:
-  `npm --prefix functions test` -> `115` suites, `1562` tests, `0` failures.
+  `npm --prefix functions test` -> `115` suites, `1566` tests, `0` failures.
 - Lint passed:
   `npm --prefix functions run lint`.
 - Full pre-deploy gate passed:
   `npm --prefix functions run pre-deploy` -> tests, contract checks, lint, import/export checks, API/OpenAPI contract parity, and repo hygiene all passed.
 - Targeted regression suites for touched modules were also run during implementation and passed (metrics route, config/status routes, setup/health routes, scheduler service, user profile init route, repository split tests).
+
+## Production Hotfix (2026-03-27)
+
+- Follow-up production log review found that the first bounded metrics implementation was still falling back in prod because the query shape required a Firestore index that was not present.
+- The production-safe fix was to replace the query with direct reads of the last `N` date-keyed user metrics documents.
+- Hotfix validation passed locally and via the full pre-deploy gate, and the `api` function was redeployed successfully to production.
 
 ## Rollout and Regression Notes
 

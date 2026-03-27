@@ -71,17 +71,18 @@ function registerMetricsRoutes(app, deps = {}) {
     return toCounter(metricsDoc.amber) + toCounter(metricsDoc.aemo);
   };
 
-  const getRecentUserMetricsSnapshot = async (metricsCollection, days) => {
-    if (metricsCollection && typeof metricsCollection.orderBy === 'function') {
-      try {
-        return await metricsCollection.orderBy('__name__', 'desc').limit(days).get();
-      } catch (queryError) {
-        logger.warn(
-          `[Metrics] Bounded user metrics query failed; falling back to full scan: ${queryError?.message || queryError}`
-        );
-      }
+  const getRecentUserMetricsByDate = async (metricsCollection, days, endDate) => {
+    const metricsByDate = {};
+
+    for (let i = 0; i < days; i++) {
+      const d = new Date(endDate);
+      d.setDate(d.getDate() - i);
+      const key = getAusDateKey(d);
+      const doc = await metricsCollection.doc(key).get();
+      metricsByDate[key] = doc && doc.exists ? buildMetricsEnvelope(doc.data() || {}) : buildMetricsEnvelope({});
     }
-    return metricsCollection.get();
+
+    return metricsByDate;
   };
 
   const buildMetricsEnvelope = (rawDoc = {}) => {
@@ -173,33 +174,7 @@ function registerMetricsRoutes(app, deps = {}) {
         }
 
         const metricsCollection = db.collection('users').doc(userId).collection('metrics');
-        const metricsSnapshot = await getRecentUserMetricsSnapshot(metricsCollection, days);
-
-        const result = {};
-        const allDocs = [];
-        metricsSnapshot.forEach((doc) => {
-          const d = buildMetricsEnvelope(doc.data() || {});
-          allDocs.push({
-            id: doc.id,
-            metrics: d
-          });
-        });
-
-        // Sort by date descending (YYYY-MM-DD format sorts alphabetically)
-        allDocs.sort((a, b) => b.id.localeCompare(a.id));
-
-        // Take only the most recent N days
-        allDocs.slice(0, days).forEach((doc) => {
-          result[doc.id] = doc.metrics;
-        });
-
-        // Fill in missing days with zeros (Australia/Sydney local date)
-        for (let i = 0; i < days; i++) {
-          const d = new Date(endDate);
-          d.setDate(d.getDate() - i);
-          const key = getAusDateKey(d);
-          if (!result[key]) result[key] = buildMetricsEnvelope({});
-        }
+        const result = await getRecentUserMetricsByDate(metricsCollection, days, endDate);
 
         return res.json({ errno: 0, result });
       }

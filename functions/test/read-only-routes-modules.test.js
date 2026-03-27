@@ -124,19 +124,16 @@ describe('read-only route modules', () => {
 
   test('metrics routes return user metrics when user scope is requested', async () => {
     const todayKey = new Date().toISOString().slice(0, 10);
-    const metricsSnapshot = {
-      forEach: (callback) => {
-        callback({
-          id: todayKey,
-          data: () => ({ foxess: 7, amber: 5, weather: 3 })
-        });
-      }
-    };
     const db = {
       collection: jest.fn(() => ({
         doc: jest.fn(() => ({
           collection: jest.fn(() => ({
-            get: jest.fn(async () => metricsSnapshot)
+            doc: jest.fn((docId) => ({
+              get: jest.fn(async () => ({
+                exists: docId === todayKey,
+                data: () => ({ foxess: 7, amber: 5, weather: 3 })
+              }))
+            }))
           }))
         }))
       }))
@@ -177,29 +174,26 @@ describe('read-only route modules', () => {
 
   test('metrics routes expose EV counter from teslaFleet usage metrics', async () => {
     const todayKey = new Date().toISOString().slice(0, 10);
-    const metricsSnapshot = {
-      forEach: (callback) => {
-        callback({
-          id: todayKey,
-          data: () => ({
-            foxess: 2,
-            amber: 1,
-            weather: 1,
-            teslaFleet: {
-              calls: {
-                billable: 9,
-                total: 12
-              }
-            }
-          })
-        });
-      }
-    };
     const db = {
       collection: jest.fn(() => ({
         doc: jest.fn(() => ({
           collection: jest.fn(() => ({
-            get: jest.fn(async () => metricsSnapshot)
+            doc: jest.fn((docId) => ({
+              get: jest.fn(async () => ({
+                exists: docId === todayKey,
+                data: () => ({
+                  foxess: 2,
+                  amber: 1,
+                  weather: 1,
+                  teslaFleet: {
+                    calls: {
+                      billable: 9,
+                      total: 12
+                    }
+                  }
+                })
+              }))
+            }))
           }))
         }))
       }))
@@ -233,28 +227,25 @@ describe('read-only route modules', () => {
 
   test('metrics routes normalize fractional counters and support lowercase teslafleet payloads', async () => {
     const todayKey = new Date().toISOString().slice(0, 10);
-    const metricsSnapshot = {
-      forEach: (callback) => {
-        callback({
-          id: todayKey,
-          data: () => ({
-            inverter: 584.456,
-            amber: 512.2,
-            weather: 58.6,
-            teslafleet: {
-              calls: {
-                total: 3.2
-              }
-            }
-          })
-        });
-      }
-    };
     const db = {
       collection: jest.fn(() => ({
         doc: jest.fn(() => ({
           collection: jest.fn(() => ({
-            get: jest.fn(async () => metricsSnapshot)
+            doc: jest.fn((docId) => ({
+              get: jest.fn(async () => ({
+                exists: docId === todayKey,
+                data: () => ({
+                  inverter: 584.456,
+                  amber: 512.2,
+                  weather: 58.6,
+                  teslafleet: {
+                    calls: {
+                      total: 3.2
+                    }
+                  }
+                })
+              }))
+            }))
           }))
         }))
       }))
