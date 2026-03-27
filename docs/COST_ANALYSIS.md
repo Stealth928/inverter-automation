@@ -559,6 +559,27 @@ Status update against the immediate implementation order:
 - The production-safe fix was to replace the query with direct reads of the last `N` date-keyed user metrics documents.
 - Hotfix validation passed locally and via the full pre-deploy gate, and the `api` function was redeployed successfully to production.
 
+## Production Stabilization Follow-up (2026-03-27)
+
+- A later production log review found two separate operational issues on live revision `api-00548-xun`:
+  1. `GET /api/admin/dead-letters` was returning `500` because its collection-group query over `automation_dead_letters` required a Firestore index that was not checked in.
+  2. The shared `api` function was exceeding the default `256MiB` memory tier during live traffic and cold starts.
+- Fixes implemented:
+  - Added the missing `automation_dead_letters.createdAt` Firestore single-field collection-group index override to `firestore.indexes.json` (`fieldOverrides`, not a composite index).
+  - Hardened `/api/admin/dead-letters` so it falls back to a per-user subcollection scan only when the optimized collection-group query is unavailable (for example while an index is missing or still building).
+  - Set the `api` function memory tier explicitly to `512MiB`, which matches observed production usage with safe headroom.
+- Rollout status:
+  - Firestore field override deployed successfully to production.
+  - `functions:api` redeployed successfully to production as revision `api-00549-juw`.
+  - Post-deploy log sampling on `api-00549-juw` showed healthy `/api/health` and `/api/metrics/api-calls` traffic with no fresh memory-limit errors and no sampled `/api/admin/dead-letters` `500`s.
+- Cost / complexity impact:
+  - The dead-letter fallback is admin-only and activates only when the primary indexed path is unavailable, so steady-state read cost does not increase once the index is live.
+  - The `512MiB` memory tier is a reliability tradeoff, not a cost-saving change, but it is the smallest practical tier above the observed `260-271MiB` production peaks and avoids repeated instance crashes.
+- Validation for this follow-up passed:
+  - `npm --prefix functions test -- admin-routes-modules.test.js --runInBand`
+  - `npm --prefix functions test -- routes-integration.test.js admin.test.js --runInBand`
+  - `npm --prefix functions run pre-deploy` -> `115` suites, `1567` tests, `0` failures
+
 ## Rollout and Regression Notes
 
 - Backward compatibility: `getUserConfig()` still returns full (with secrets) behavior, while new callers can opt into public config reads.

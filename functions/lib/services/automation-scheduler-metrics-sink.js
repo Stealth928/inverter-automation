@@ -742,6 +742,14 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
     };
 
     if (status !== 'healthy') {
+      let previousAlertStatus = currentAlertStatusCache;
+      if (!previousAlertStatus) {
+        const currentAlertSnapshot = await currentAlertRef.get();
+        if (currentAlertSnapshot.exists) {
+          previousAlertStatus = String(currentAlertSnapshot.data()?.status || '').trim().toLowerCase() || null;
+        }
+      }
+
       await currentAlertRef.set(currentAlert, { merge: true });
       currentAlertStatusCache = status;
       await dayAlertRef.set({
@@ -758,7 +766,8 @@ function createAutomationSchedulerMetricsSink(deps = {}) {
           })}`
         );
       }
-      if (onSloAlert) {
+      const shouldEmitAlert = previousAlertStatus !== status;
+      if (onSloAlert && shouldEmitAlert) {
         try {
           await onSloAlert({
             ...currentAlert,

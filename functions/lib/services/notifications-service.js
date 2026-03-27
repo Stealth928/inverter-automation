@@ -1307,7 +1307,7 @@ function createNotificationsService(deps = {}) {
       if (schedulerStatus === 'breach' && previousSchedulerStatus !== 'breach') {
         pendingAlerts.push({
           eventType: 'scheduler_breach',
-          stateSignature: toNullableString(schedulerAlert.schedulerId, 120) || 'scheduler',
+          stateSignature: 'scheduler',
           title: 'Scheduler breach detected',
           body: 'Scheduler SLO status moved to breach. Review scheduler metrics and dead letters in admin.',
           severity: 'danger',

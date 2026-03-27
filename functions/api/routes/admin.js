@@ -1631,6 +1631,141 @@ function registerAdminRoutes(app, deps = {}) {
     return text.toLowerCase().replace(/\s+/g, ' ').slice(0, 160);
   };
 
+  const sortDeadLetterEntries = (entries = []) => entries
+    .slice()
+    .sort((left, right) => {
+      const createdDelta = toFiniteNumber(right?.item?.createdAt, 0) - toFiniteNumber(left?.item?.createdAt, 0);
+      if (createdDelta !== 0) return createdDelta;
+
+      const leftUserId = String(left?.item?.userId || '');
+      const rightUserId = String(right?.item?.userId || '');
+      const userDelta = leftUserId.localeCompare(rightUserId);
+      if (userDelta !== 0) return userDelta;
+
+      return String(left?.item?.id || '').localeCompare(String(right?.item?.id || ''));
+    });
+
+  const isDeadLetterCollectionGroupFallbackError = (error) => {
+    if (!error) return false;
+    const code = toFiniteNumber(error.code, NaN);
+    if (code === 9) return true;
+
+    const message = String(error.message || error.details || error || '');
+    return /FAILED_PRECONDITION|requires an index|collection group/i.test(message);
+  };
+
+  const buildDeadLetterEntry = (doc, { nowMs, retryReadyAfterMinutes, fallbackUserId = null } = {}) => {
+    const data = doc && typeof doc.data === 'function' ? (doc.data() || {}) : {};
+    const pathSegments = String(doc?.ref?.path || '').split('/').filter(Boolean);
+    const userId = pathSegments.length >= 2 ? pathSegments[1] : (fallbackUserId || null);
+    const createdAt = toFiniteNumber(data.createdAt, 0);
+    const ageMs = createdAt > 0 ? Math.max(0, nowMs - createdAt) : 0;
+    const retryReady = ageMs >= retryReadyAfterMinutes * 60 * 1000;
+    const errorKey = normalizeDeadLetterErrorKey(data.error);
+
+    return {
+      item: {
+        id: String(doc?.id || ''),
+        userId,
+        cycleKey: data.cycleKey ? String(data.cycleKey) : null,
+        attempts: Math.max(1, toFiniteNumber(data.attempts, 1)),
+        createdAt,
+        expiresAt: toFiniteNumber(data.expiresAt, 0),
+        ageMs,
+        retryReady,
+        error: String(data.error || 'Unknown scheduler error').slice(0, 300)
+      },
+      errorKey
+    };
+  };
+
+  const buildDeadLetterResponseSummary = (entries, limit) => {
+    const selectedEntries = sortDeadLetterEntries(entries).slice(0, limit);
+    const items = [];
+    const errorCounts = new Map();
+    let retryReadyCount = 0;
+    let oldestAgeMs = 0;
+
+    selectedEntries.forEach((entry) => {
+      if (!entry || !entry.item) return;
+      items.push(entry.item);
+      errorCounts.set(entry.errorKey, (errorCounts.get(entry.errorKey) || 0) + 1);
+      oldestAgeMs = Math.max(oldestAgeMs, toFiniteNumber(entry.item.ageMs, 0));
+      if (entry.item.retryReady) {
+        retryReadyCount += 1;
+      }
+    });
+
+    const topErrors = Array.from(errorCounts.entries())
+      .map(([error, count]) => ({ error, count }))
+      .sort((a, b) => b.count - a.count || a.error.localeCompare(b.error))
+      .slice(0, 10);
+
+    return {
+      total: items.length,
+      retryReadyCount,
+      oldestAgeMs,
+      topErrors,
+      items
+    };
+  };
+
+  const fetchDeadLetterEntriesWithCollectionGroup = async ({ windowStartMs, limit, nowMs, retryReadyAfterMinutes }) => {
+    const snapshot = await db.collectionGroup('automation_dead_letters')
+      .where('createdAt', '>=', windowStartMs)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+
+    const entries = [];
+    snapshot.forEach((doc) => {
+      entries.push(buildDeadLetterEntry(doc, { nowMs, retryReadyAfterMinutes }));
+    });
+    return entries;
+  };
+
+  const fetchDeadLetterEntriesViaUserScan = async ({ windowStartMs, nowMs, retryReadyAfterMinutes }) => {
+    const usersCollection = db.collection('users');
+    const usersQuery = typeof usersCollection.select === 'function'
+      ? usersCollection.select()
+      : usersCollection;
+    const usersSnapshot = await usersQuery.get();
+    const userDocs = Array.isArray(usersSnapshot?.docs) ? usersSnapshot.docs : [];
+    const userIds = userDocs
+      .map((doc) => String(doc?.id || '').trim())
+      .filter(Boolean);
+    const entries = [];
+    const batchSize = 10;
+
+    for (let index = 0; index < userIds.length; index += batchSize) {
+      const batchUserIds = userIds.slice(index, index + batchSize);
+      const batchResults = await Promise.all(batchUserIds.map(async (userId) => {
+        try {
+          const snapshot = await db.collection('users').doc(userId).collection('automation_dead_letters').get();
+          const userEntries = [];
+          snapshot.forEach((doc) => {
+            const entry = buildDeadLetterEntry(doc, {
+              nowMs,
+              retryReadyAfterMinutes,
+              fallbackUserId: userId
+            });
+            if (toFiniteNumber(entry.item.createdAt, 0) >= windowStartMs) {
+              userEntries.push(entry);
+            }
+          });
+          return userEntries;
+        } catch (error) {
+          console.warn(`[Admin] Dead-letter fallback scan skipped user ${userId}:`, error?.message || String(error));
+          return [];
+        }
+      }));
+
+      batchResults.forEach((userEntries) => entries.push(...userEntries));
+    }
+
+    return entries;
+  };
+
   const createMockResponseCollector = () => {
     let statusCode = 200;
     let payload = null;
@@ -4746,73 +4881,46 @@ app.get('/api/admin/dead-letters', authenticateUser, requireAdmin, async (req, r
     const retryReadyAfterMinutes = parseBoundedInt(req.query?.retryReadyAfterMinutes, 15, 1, 180);
     const nowMs = Date.now();
     const windowStartMs = nowMs - (days * 24 * 60 * 60 * 1000);
+    let entries = [];
 
-    if (typeof db.collectionGroup !== 'function') {
-      return res.json({
-        errno: 0,
-        result: {
-          days,
-          total: 0,
-          retryReadyCount: 0,
-          oldestAgeMs: 0,
-          topErrors: [],
-          items: []
+    if (typeof db.collectionGroup === 'function') {
+      try {
+        entries = await fetchDeadLetterEntriesWithCollectionGroup({
+          windowStartMs,
+          limit,
+          nowMs,
+          retryReadyAfterMinutes
+        });
+      } catch (error) {
+        if (!isDeadLetterCollectionGroupFallbackError(error)) {
+          throw error;
         }
+        console.warn('[Admin] Dead-letter collectionGroup query unavailable; falling back to per-user scan:', error?.message || String(error));
+        entries = await fetchDeadLetterEntriesViaUserScan({
+          windowStartMs,
+          nowMs,
+          retryReadyAfterMinutes
+        });
+      }
+    } else {
+      entries = await fetchDeadLetterEntriesViaUserScan({
+        windowStartMs,
+        nowMs,
+        retryReadyAfterMinutes
       });
     }
 
-    const snapshot = await db.collectionGroup('automation_dead_letters')
-      .where('createdAt', '>=', windowStartMs)
-      .orderBy('createdAt', 'desc')
-      .limit(limit)
-      .get();
-
-    const items = [];
-    const errorCounts = new Map();
-    let retryReadyCount = 0;
-    let oldestAgeMs = 0;
-
-    snapshot.forEach((doc) => {
-      const data = doc.data() || {};
-      const pathSegments = String(doc.ref?.path || '').split('/');
-      const userId = pathSegments.length >= 2 ? pathSegments[1] : null;
-      const createdAt = toFiniteNumber(data.createdAt, 0);
-      const ageMs = createdAt > 0 ? Math.max(0, nowMs - createdAt) : 0;
-      const retryReady = ageMs >= retryReadyAfterMinutes * 60 * 1000;
-      const errorKey = normalizeDeadLetterErrorKey(data.error);
-      errorCounts.set(errorKey, (errorCounts.get(errorKey) || 0) + 1);
-      oldestAgeMs = Math.max(oldestAgeMs, ageMs);
-      if (retryReady) {
-        retryReadyCount += 1;
-      }
-
-      items.push({
-        id: doc.id,
-        userId,
-        cycleKey: data.cycleKey ? String(data.cycleKey) : null,
-        attempts: Math.max(1, toFiniteNumber(data.attempts, 1)),
-        createdAt,
-        expiresAt: toFiniteNumber(data.expiresAt, 0),
-        ageMs,
-        retryReady,
-        error: String(data.error || 'Unknown scheduler error').slice(0, 300)
-      });
-    });
-
-    const topErrors = Array.from(errorCounts.entries())
-      .map(([error, count]) => ({ error, count }))
-      .sort((a, b) => b.count - a.count || a.error.localeCompare(b.error))
-      .slice(0, 10);
+    const summary = buildDeadLetterResponseSummary(entries, limit);
 
     return res.json({
       errno: 0,
       result: {
         days,
-        total: items.length,
-        retryReadyCount,
-        oldestAgeMs,
-        topErrors,
-        items
+        total: summary.total,
+        retryReadyCount: summary.retryReadyCount,
+        oldestAgeMs: summary.oldestAgeMs,
+        topErrors: summary.topErrors,
+        items: summary.items
       }
     });
   } catch (error) {

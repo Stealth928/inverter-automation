@@ -2250,11 +2250,130 @@ describe('admin route module', () => {
       { error: 'foxess timeout', count: 2 }
     ]);
     expect(response.body.result.items[0]).toEqual(expect.objectContaining({
+      userId: 'u-2',
+      cycleKey: 'u-2_1',
+      attempts: 3
+    }));
+    expect(response.body.result.items[1]).toEqual(expect.objectContaining({
       userId: 'u-1',
       cycleKey: 'u-1_1',
       attempts: 3
     }));
     expect(deadLetterGet).toHaveBeenCalledTimes(1);
+  });
+
+  test('dead-letters falls back to per-user scan when collection-group query needs an index', async () => {
+    const nowMs = Date.now();
+    const collectionGroupGet = jest.fn(async () => {
+      const error = new Error('FAILED_PRECONDITION: The query requires an index');
+      error.code = 9;
+      throw error;
+    });
+    const usersGet = jest.fn(async () => ({
+      docs: [
+        { id: 'u-1' },
+        { id: 'u-2' }
+      ]
+    }));
+    const deadLettersByUser = {
+      'u-1': jest.fn(async () => ({
+        forEach: (callback) => {
+          callback({
+            id: 'dl-1',
+            ref: { path: 'users/u-1/automation_dead_letters/dl-1' },
+            data: () => ({
+              cycleKey: 'u-1_1',
+              createdAt: nowMs - 5 * 60 * 1000,
+              expiresAt: nowMs + 55 * 60 * 1000,
+              attempts: 2,
+              error: 'Sungrow timeout'
+            })
+          });
+        }
+      })),
+      'u-2': jest.fn(async () => ({
+        forEach: (callback) => {
+          callback({
+            id: 'dl-2',
+            ref: { path: 'users/u-2/automation_dead_letters/dl-2' },
+            data: () => ({
+              cycleKey: 'u-2_1',
+              createdAt: nowMs - 60 * 1000,
+              expiresAt: nowMs + 59 * 60 * 1000,
+              attempts: 3,
+              error: 'Sungrow timeout'
+            })
+          });
+        }
+      }))
+    };
+
+    const deps = createDeps({
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') {
+            return {
+              doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
+              where: jest.fn(() => ({})),
+              add: jest.fn(async () => undefined)
+            };
+          }
+          return {
+            get: usersGet,
+            doc: jest.fn((uid) => ({
+              collection: jest.fn((subName) => {
+                if (subName !== 'automation_dead_letters') {
+                  throw new Error(`Unexpected subcollection: ${subName}`);
+                }
+                return {
+                  get: deadLettersByUser[uid]
+                };
+              })
+            }))
+          };
+        }),
+        collectionGroup: jest.fn((name) => {
+          if (name !== 'automation_dead_letters') {
+            throw new Error(`Unexpected collectionGroup: ${name}`);
+          }
+          return {
+            where: jest.fn(() => ({
+              orderBy: jest.fn(() => ({
+                limit: jest.fn(() => ({
+                  get: collectionGroupGet
+                }))
+              }))
+            }))
+          };
+        })
+      }
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/admin/dead-letters?days=7&limit=10')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.total).toBe(2);
+    expect(response.body.result.topErrors).toEqual([
+      { error: 'sungrow timeout', count: 2 }
+    ]);
+    expect(response.body.result.items[0]).toEqual(expect.objectContaining({
+      userId: 'u-2',
+      cycleKey: 'u-2_1',
+      attempts: 3
+    }));
+    expect(response.body.result.items[1]).toEqual(expect.objectContaining({
+      userId: 'u-1',
+      cycleKey: 'u-1_1',
+      attempts: 2
+    }));
+    expect(collectionGroupGet).toHaveBeenCalledTimes(1);
+    expect(usersGet).toHaveBeenCalledTimes(1);
+    expect(deadLettersByUser['u-1']).toHaveBeenCalledTimes(1);
+    expect(deadLettersByUser['u-2']).toHaveBeenCalledTimes(1);
   });
 
   test('dead-letter retry invokes automation cycle handler and deletes recovered item', async () => {

@@ -527,7 +527,7 @@ const emitSchedulerSloAlert = async (alert = {}) => {
 
   await notificationsService.sendAdminSystemAlert({
     eventType: 'scheduler_breach',
-    stateSignature: String(alert?.schedulerId || 'scheduler'),
+    stateSignature: 'scheduler',
     title: 'Scheduler breach detected',
     body: 'Scheduler SLO status moved to breach. Review scheduler metrics and dead letters in admin.',
     severity: 'danger',
@@ -1549,6 +1549,7 @@ exports.api = onRequest(
   {
     timeoutSeconds: 60,
     maxInstances: 20,
+    memory: '512MiB',
     secrets: [
       _secretTeslaProxyUrl,
       _secretTeslaProxyToken,

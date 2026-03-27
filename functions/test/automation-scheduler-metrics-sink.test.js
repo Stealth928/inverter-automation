@@ -404,6 +404,58 @@ describe('automation scheduler metrics sink', () => {
     }));
   });
 
+  test('does not re-emit callback while the same non-healthy status persists', async () => {
+    const { db } = createInMemoryDb();
+    let nowMs = 1710000010000;
+    const onSloAlert = jest.fn(async () => undefined);
+    const sink = createAutomationSchedulerMetricsSink({
+      db,
+      now: () => nowMs,
+      serverTimestamp: () => 'server-ts',
+      timezone: 'UTC',
+      sloThresholds: {
+        errorRatePct: 0.5,
+        deadLetterRatePct: 0.1,
+        maxQueueLagMs: 10,
+        maxCycleDurationMs: 10,
+        p99CycleDurationMs: 10
+      },
+      onSloAlert
+    });
+
+    const breachMetrics = {
+      completedAtMs: 1710000011000,
+      cycleCandidates: 3,
+      cycleDurationMs: { avgMs: 20, count: 3, maxMs: 30, minMs: 5, p95Ms: 22, p99Ms: 25 },
+      deadLetters: 1,
+      durationMs: 1000,
+      errors: 1,
+      failureByType: { api_timeout: 1 },
+      queueLagMs: { avgMs: 5, count: 3, maxMs: 20, minMs: 1, p95Ms: 18, p99Ms: 19 },
+      retries: 0,
+      skipped: { disabledOrBlackout: 0, idempotent: 0, locked: 0, tooSoon: 1 },
+      telemetryAgeMs: { avgMs: 10000, count: 3, maxMs: 20000, minMs: 5000, p95Ms: 18000, p99Ms: 19000 },
+      totalEnabledUsers: 3
+    };
+
+    await sink.emitSchedulerMetrics({
+      ...breachMetrics,
+      schedulerId: 'sched-a',
+      startedAtMs: nowMs
+    });
+
+    nowMs += 60000;
+
+    await sink.emitSchedulerMetrics({
+      ...breachMetrics,
+      schedulerId: 'sched-b',
+      startedAtMs: nowMs,
+      completedAtMs: nowMs + 1000
+    });
+
+    expect(onSloAlert).toHaveBeenCalledTimes(1);
+  });
+
   test('flags telemetry age SLO breach when max telemetry age exceeds threshold', async () => {
     const { db, getDoc } = createInMemoryDb();
     const sink = createAutomationSchedulerMetricsSink({
