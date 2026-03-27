@@ -86,6 +86,7 @@ function createDeps(overrides = {}) {
     db: dbMock.db,
     deleteCollectionDocs: jest.fn(async () => undefined),
     deleteUserDataTree: jest.fn(async () => undefined),
+    sendSignupAlert: jest.fn(async () => ({ sent: true })),
     serverTimestamp: jest.fn(() => '__TS__'),
     __dbMock: dbMock,
     __deleteUser: deleteUser,
@@ -130,6 +131,10 @@ describe('user self route module', () => {
       }),
       { merge: true }
     );
+    expect(deps.sendSignupAlert).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'u-self',
+      email: 'self@example.com'
+    }));
     expect(dbMock.stateDocSet).toHaveBeenCalledWith(expect.objectContaining({
       enabled: false,
       updatedAt: '__TS__'
@@ -162,6 +167,7 @@ describe('user self route module', () => {
     expect(response.body.result.automationEnabled).toBe(true);
     expect(dbMock.userDocSet).not.toHaveBeenCalled();
     expect(dbMock.stateDocSet).not.toHaveBeenCalled();
+    expect(deps.sendSignupAlert).not.toHaveBeenCalled();
   });
 
   test('delete-account rejects invalid confirmation text', async () => {

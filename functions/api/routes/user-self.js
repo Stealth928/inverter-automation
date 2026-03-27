@@ -7,6 +7,9 @@ function registerUserSelfRoutes(app, deps = {}) {
   const deleteCollectionDocs = deps.deleteCollectionDocs;
   const deleteUserDataTree = deps.deleteUserDataTree;
   const serverTimestamp = deps.serverTimestamp;
+  const sendSignupAlert = typeof deps.sendSignupAlert === 'function'
+    ? deps.sendSignupAlert
+    : null;
 
   if (!app || typeof app.post !== 'function') {
     throw new Error('registerUserSelfRoutes requires an Express app');
@@ -66,6 +69,22 @@ function registerUserSelfRoutes(app, deps = {}) {
       if (shouldWriteProfile) {
         profileUpdate.lastUpdated = serverTimestamp();
         await userRef.set(profileUpdate, { merge: true });
+      }
+
+      if (!userDoc.exists && sendSignupAlert) {
+        try {
+          await sendSignupAlert({
+            userId,
+            email: userEmail,
+            displayName: req.user.displayName || '',
+            title: 'New user signup',
+            body: `${userEmail || userId} completed account initialization.`,
+            severity: 'info',
+            deepLink: '/admin.html#users'
+          });
+        } catch (alertError) {
+          console.warn('[API] Failed to emit admin signup alert:', alertError && alertError.message ? alertError.message : alertError);
+        }
       }
 
       // Ensure automation state exists and is enabled

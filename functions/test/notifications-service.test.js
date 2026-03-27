@@ -636,6 +636,58 @@ describe('notifications service', () => {
     expect(result.pushAttempted).toBe(1);
   });
 
+  test('sendAdminSignupAlert only emits once for the same user', async () => {
+    const { db, users, notificationAdminRuntime } = createMockDb({
+      users: {
+        'admin-1': {
+          profile: {
+            email: 'admin@example.com',
+            role: 'admin'
+          },
+          notifications: {}
+        }
+      },
+      shared: {
+        serverConfig: {
+          notifications: {
+            adminAlerts: {
+              enabled: true,
+              channels: ['inbox'],
+              events: {
+                signup: { enabled: true }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const service = createNotificationsService({
+      db,
+      now: () => 1700000000000,
+      serverTimestamp: () => createTimestamp('ts'),
+      logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() }
+    });
+
+    const first = await service.sendAdminSignupAlert({
+      userId: 'new-user',
+      email: 'new-user@example.com'
+    });
+    const second = await service.sendAdminSignupAlert({
+      userId: 'new-user',
+      email: 'new-user@example.com'
+    });
+
+    expect(first).toEqual(expect.objectContaining({
+      sent: true,
+      targetedAdmins: 1,
+      inboxCreated: 1
+    }));
+    expect(second).toEqual({ sent: false, reason: 'already_sent' });
+    expect(Object.keys(users['admin-1'].notifications)).toHaveLength(1);
+    expect(notificationAdminRuntime).toBeDefined();
+  });
+
   test('sendAdminSystemAlert enforces cooldown dedupe', async () => {
     const { db, users } = createMockDb({
       users: {

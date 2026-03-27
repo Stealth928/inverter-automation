@@ -374,6 +374,10 @@ function createNotificationsService(deps = {}) {
     return db.collection('notificationAdminRuntime').doc(ADMIN_ALERT_RUNTIME_DOC_ID);
   }
 
+  function adminSignupRuntimeRef(userId) {
+    return db.collection('notificationAdminRuntime').doc(`signup:${buildStableId(userId)}`);
+  }
+
   async function resolveAdminRecipients() {
     const usersSnapshot = await db.collection('users').get();
     if (!usersSnapshot || !usersSnapshot.size) return [];
@@ -1271,6 +1275,117 @@ function createNotificationsService(deps = {}) {
     return summary;
   }
 
+  async function sendAdminSignupAlert(eventInput = {}) {
+    const event = eventInput && typeof eventInput === 'object' ? eventInput : {};
+    const userId = trimString(event.userId || event.uid);
+    if (!userId) {
+      return { sent: false, reason: 'invalid_event' };
+    }
+
+    const runtimeRef = adminSignupRuntimeRef(userId);
+    const nowMs = now();
+    const signupSignature = `uid:${userId}`;
+    const title = toNullableString(event.title, 160) || 'New user signup';
+    const email = toNullableString(event.email || event.userEmail, 240);
+    const displayName = toNullableString(event.displayName, 160);
+    const body = toNullableString(
+      event.body,
+      4000
+    ) || `${email || displayName || userId} completed account initialization.`;
+    const deepLink = toNullableString(event.deepLink, 300) || '/admin.html#users';
+
+    let shouldSend = false;
+    let priorStatus = null;
+
+    await db.runTransaction(async (tx) => {
+      const snapshot = await tx.get(runtimeRef);
+      const runtimeData = snapshot.exists ? (snapshot.data() || {}) : {};
+      priorStatus = trimString(runtimeData.status).toLowerCase();
+      const sentAtMs = Number(runtimeData.sentAtMs || 0);
+      const claimedAtMs = Number(runtimeData.claimedAtMs || 0);
+
+      if (priorStatus === 'sent' || sentAtMs > 0) {
+        shouldSend = false;
+        return;
+      }
+
+      if (priorStatus === 'sending' && claimedAtMs > 0 && (nowMs - claimedAtMs) < 10 * 60 * 1000) {
+        shouldSend = false;
+        return;
+      }
+
+      shouldSend = true;
+      tx.set(runtimeRef, {
+        status: 'sending',
+        userId,
+        email: email || null,
+        displayName: displayName || null,
+        eventType: 'signup',
+        stateSignature: signupSignature,
+        claimedAtMs: nowMs,
+        claimedAt: serverTimestamp(),
+        updatedAtMs: nowMs,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    });
+
+    if (!shouldSend) {
+      return { sent: false, reason: priorStatus === 'sent' ? 'already_sent' : 'in_progress' };
+    }
+
+    const adminAlertPayload = {
+      eventType: 'signup',
+      stateSignature: signupSignature,
+      title,
+      body,
+      severity: event.severity || 'info',
+      deepLink,
+      source: toNullableString(event.source, 80) || 'auth'
+    };
+    if (event.channels) {
+      adminAlertPayload.channels = event.channels;
+    }
+
+    let result;
+    try {
+      result = await sendAdminSystemAlert(adminAlertPayload);
+    } catch (error) {
+      await runtimeRef.set({
+        status: 'failed',
+        lastError: error?.message || String(error),
+        lastAttemptAtMs: nowMs,
+        lastAttemptAt: serverTimestamp(),
+        updatedAtMs: nowMs,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      throw error;
+    }
+
+    if (result && result.sent === true) {
+      await runtimeRef.set({
+        status: 'sent',
+        sentAtMs: nowMs,
+        sentAt: serverTimestamp(),
+        lastResult: result,
+        updatedAtMs: nowMs,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } else {
+      await runtimeRef.set({
+        status: result?.reason === 'admin_alerts_disabled' || result?.reason === 'event_disabled' || result?.reason === 'no_admin_recipients'
+          ? 'blocked'
+          : 'not_sent',
+        lastResult: result || null,
+        lastAttemptAtMs: nowMs,
+        lastAttemptAt: serverTimestamp(),
+        updatedAtMs: nowMs,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    }
+
+    return result;
+  }
+
   async function evaluateAndSendAdminOperationalAlerts(input = {}) {
     const source = input && typeof input === 'object' ? input : {};
     const schedulerAlert = source.schedulerAlert && typeof source.schedulerAlert === 'object'
@@ -1433,6 +1548,7 @@ function createNotificationsService(deps = {}) {
     sendPushToUser,
     emitEventNotification,
     sendAdminSystemAlert,
+    sendAdminSignupAlert,
     evaluateAndSendAdminOperationalAlerts,
     readAdminConfig,
     saveAdminConfig,

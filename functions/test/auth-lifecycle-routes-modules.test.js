@@ -43,6 +43,7 @@ function createDeps(overrides = {}) {
       info: jest.fn()
     },
     sendAdminSystemAlert: jest.fn(async () => ({ sent: true })),
+    sendSignupAlert: jest.fn(async () => ({ sent: true })),
     serverTimestamp: jest.fn(() => 'server-ts'),
     setUserConfig: jest.fn(async () => undefined),
     __refs: { usersCollectionRef, userDocRef, automationCollectionRef, stateDocRef }
@@ -124,10 +125,11 @@ describe('auth lifecycle route module', () => {
       lastTriggered: null,
       activeRule: null
     }, { merge: true });
-    expect(deps.sendAdminSystemAlert).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'signup',
-      stateSignature: 'uid:user-1'
+    expect(deps.sendSignupAlert).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user-1',
+      email: 'user@example.com'
     }));
+    expect(deps.sendAdminSystemAlert).not.toHaveBeenCalled();
   });
 
   test('init-user does not send signup alert when user already exists', async () => {
@@ -139,6 +141,7 @@ describe('auth lifecycle route module', () => {
       .set('Authorization', 'Bearer token');
 
     expect(response.statusCode).toBe(200);
+    expect(deps.sendSignupAlert).not.toHaveBeenCalled();
     expect(deps.sendAdminSystemAlert).not.toHaveBeenCalled();
   });
 

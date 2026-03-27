@@ -7,9 +7,9 @@ function registerAuthLifecycleRoutes(app, deps = {}) {
   const logger = deps.logger;
   const serverTimestamp = deps.serverTimestamp;
   const setUserConfig = deps.setUserConfig;
-  const sendAdminSystemAlert = typeof deps.sendAdminSystemAlert === 'function'
-    ? deps.sendAdminSystemAlert
-    : null;
+  const sendSignupAlert = typeof deps.sendSignupAlert === 'function'
+    ? deps.sendSignupAlert
+    : (typeof deps.sendAdminSystemAlert === 'function' ? deps.sendAdminSystemAlert : null);
 
   if (!app || typeof app.get !== 'function' || typeof app.post !== 'function') {
     throw new Error('registerAuthLifecycleRoutes requires an Express app');
@@ -78,12 +78,14 @@ function registerAuthLifecycleRoutes(app, deps = {}) {
         activeRule: null
       }, { merge: true });
 
-      if (isFirstInit && sendAdminSystemAlert) {
+      if (isFirstInit && sendSignupAlert) {
         try {
-          await sendAdminSystemAlert({
+          await sendSignupAlert({
+            userId,
             eventType: 'signup',
             stateSignature: `uid:${userId}`,
             title: 'New user signup',
+            email,
             body: `${email || userId} completed account initialization.`,
             severity: 'info',
             deepLink: '/admin.html#users'

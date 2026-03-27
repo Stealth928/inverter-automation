@@ -1250,6 +1250,7 @@ registerAuthLifecycleRoutes(app, {
   deleteUserDataTree,
   logger,
   sendAdminSystemAlert: async (payload) => notificationsService.sendAdminSystemAlert(payload),
+  sendSignupAlert: async (payload) => notificationsService.sendAdminSignupAlert(payload),
   serverTimestamp,
   setUserConfig
 });
@@ -1339,7 +1340,8 @@ registerUserSelfRoutes(app, {
   db,
   deleteCollectionDocs,
   deleteUserDataTree,
-  serverTimestamp
+  serverTimestamp,
+  sendSignupAlert: async (payload) => notificationsService.sendAdminSignupAlert(payload)
 });
 registerAutomationMutationRoutes(app, {
   addAutomationAuditEntry,
